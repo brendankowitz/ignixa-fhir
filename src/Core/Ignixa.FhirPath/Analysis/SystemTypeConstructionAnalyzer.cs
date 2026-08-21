@@ -32,7 +32,7 @@ internal sealed class SystemTypeConstructionAnalyzer(
             ParenthesizedExpression parenthesized => Analyze(parenthesized.InnerExpression),
             UnaryExpression unary => AnalyzeUnary(unary),
             PropertyAccessExpression property => AnalyzePropertyAccess(property),
-            ChildExpression => SystemTypeConstruction.None,
+            ChildExpression child => AnalyzeChild(child),
             IndexerExpression => SystemTypeConstruction.Any,
             FunctionCallExpression function => AnalyzeFunction(function),
             EmptyExpression => SystemTypeConstruction.Empty,
@@ -42,6 +42,25 @@ internal sealed class SystemTypeConstructionAnalyzer(
             IdentifierExpression => SystemTypeConstruction.Any,
             _ => SystemTypeConstruction.Any,
         };
+
+    /// <summary>
+    /// Treats a child navigated off a constructed System value as an unknown System-type construction.
+    /// </summary>
+    /// <remarks>
+    /// The evaluator projects System value members such as <c>Quantity.value</c> and <c>Quantity.unit</c>,
+    /// so a child whose focus constructs a System value constructs one too. Naming that member's type would
+    /// require mirroring the evaluator's member map, which cannot be proven complete, so the negative answer
+    /// survives only when the focus is proven to construct nothing. This is weaker than
+    /// <see cref="AnalyzePropertyAccess"/>, which propagates only the unknown bit: a property access never
+    /// navigates off a constructed value, because the grammar only produces it at term position.
+    /// </remarks>
+    private SystemTypeConstruction AnalyzeChild(ChildExpression expression)
+    {
+        var focus = Analyze(expression.Focus);
+        return focus.MayConstructAny || focus.TypeNames.Count > 0
+            ? SystemTypeConstruction.Any
+            : SystemTypeConstruction.None;
+    }
 
     private SystemTypeConstruction AnalyzePropertyAccess(PropertyAccessExpression expression)
     {

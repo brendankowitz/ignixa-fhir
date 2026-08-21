@@ -380,6 +380,62 @@ public class AnalyzerCastProvenanceRegressionTests
         ]);
     }
 
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenAChildNavigatedOffAConstructedQuantity_WhenCastToTheMemberSystemType_ThenAnalysisIsNotAlwaysEmpty(
+        FhirVersion version)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var subject = ResourceJsonNode.Parse(PatientJson).ToElement(schema);
+        string[] expressions =
+        [
+            "(1 'mg').value.ofType(System.Decimal)",
+            "(1 'mg').unit.ofType(System.String)",
+        ];
+
+        // Act
+        var outcomes = expressions
+            .Select(expression => ObserveCast(subject, expression, schema))
+            .ToArray();
+
+        // Assert
+        outcomes.ShouldAllBe(outcome => outcome.EvaluatedCount == 1);
+        outcomes.ShouldAllBe(outcome => !outcome.HasAlwaysEmptySubexpression);
+    }
+
+    public static TheoryData<FhirVersion, bool, int> NavigatedFhirStringCastVerdicts => new()
+    {
+        { FhirVersion.Stu3, false, 1 },
+        { FhirVersion.R4, false, 1 },
+        { FhirVersion.R4B, false, 1 },
+        { FhirVersion.R5, true, 0 },
+        { FhirVersion.R6, true, 0 },
+    };
+
+    [Theory]
+    [MemberData(nameof(NavigatedFhirStringCastVerdicts))]
+    public void GivenAChildNavigatedOffNavigatedFhirData_WhenCastToASystemType_ThenAnalysisKeepsItsVerdict(
+        FhirVersion version,
+        bool expectedAlwaysEmpty,
+        int expectedCount)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var subject = ResourceJsonNode.Parse(PatientJson).ToElement(schema);
+        const string expression = "Patient.name.family.ofType(System.String)";
+
+        // Act
+        var outcome = ObserveCast(subject, expression, schema);
+
+        // Assert
+        outcome.ShouldBe(new(expression, expectedCount, true, expectedAlwaysEmpty, expectedCount > 0));
+    }
+
     private IReadOnlyList<IElement> Evaluate(IElement subject, string expression, ISchema schema) =>
         _evaluator
             .Evaluate(
