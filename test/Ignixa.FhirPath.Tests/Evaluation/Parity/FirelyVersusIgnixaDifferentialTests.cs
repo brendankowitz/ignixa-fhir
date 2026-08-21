@@ -73,17 +73,16 @@ public class FirelyVersusIgnixaDifferentialTests
     /// the raw <c>InstanceType</c>, which is what this row reads.
     /// </para>
     /// <para>
-    /// What it does not do: nothing enumerates this list, so it cannot detect a row deleted while
-    /// still divergent. It makes each row self-verifying, so a row can only be retired honestly
-    /// after this test has gone red.
+    /// The list is enumerated by
+    /// <see cref="GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent"/>,
+    /// which asserts the complete expected expression set against a literal written out independently
+    /// of <see cref="NormalisedTypeNames"/>. Deleting a row therefore fails that test rather than
+    /// quietly reducing coverage, which is the defect recorded as issue #425 - a reviewer deleted the
+    /// <c>1 'mg'</c> row and the suite stayed green with four cases.
     /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("active and true", "System.Boolean", "boolean")]
-    [InlineData("'a' & 'b'", "System.String", "string")]
-    [InlineData("1 + 1", "System.Integer", "integer")]
-    [InlineData("birthDate + 1 year", "System.Date", "date")]
-    [InlineData("1 'mg'", "System.Quantity", "Quantity")]
+    [MemberData(nameof(NormalisedTypeNames))]
     public void GivenAnOperatorResult_WhenTypedByBothEngines_ThenFirelyNamesTheSystemTypeAndIgnixaTheFhirType(
         string expression,
         string firelyType,
@@ -112,6 +111,63 @@ public class FirelyVersusIgnixaDifferentialTests
             ParityTypeName.Canonical(ignixaName),
             $"ParityTypeName no longer collapses the two spellings of '{expression}', so ParitySweep "
             + "reports this divergence itself and this row has become a duplicate pin.");
+    }
+
+    public static TheoryData<string, string, string> NormalisedTypeNames { get; } = new()
+    {
+        { "active and true", "System.Boolean", "boolean" },
+        { "'a' & 'b'", "System.String", "string" },
+        { "1 + 1", "System.Integer", "integer" },
+        { "birthDate + 1 year", "System.Date", "date" },
+        { "1 'mg'", "System.Quantity", "Quantity" },
+    };
+
+    /// <summary>
+    /// Asserts the acknowledged normalised-divergence set is complete, so a row cannot be removed from
+    /// <see cref="NormalisedTypeNames"/> without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The expected set is written out here as a literal rather than derived from
+    /// <see cref="NormalisedTypeNames"/>, because an inventory computed from the collection it is
+    /// meant to guard agrees with any edit to that collection and asserts nothing. Issue #425 records
+    /// the consequence: a reviewer deleted the <c>1 'mg'</c> row and the theory passed with four cases,
+    /// so a divergence <see cref="ParityTypeName"/> still normalises away silently left the
+    /// acknowledged set. Two independent statements of the same set are what make removal detectable.
+    /// </para>
+    /// <para>
+    /// Scope: these five are the raw primitive-name divergences that <see cref="ParityTypeName"/>
+    /// collapses, which is why <see cref="ParitySweep"/> cannot report them and they have to be pinned
+    /// by hand. This is not an inventory of parity coverage in general - the resource-backed sweep
+    /// counts are pinned by <c>ResourceBackedKnownDivergences</c>, and the version-specific evaluator
+    /// divergences live in the native-Firely probes for each FHIR version.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "'a' & 'b'",
+            "1 'mg'",
+            "1 + 1",
+            "active and true",
+            "birthDate + 1 year",
+        ];
+
+        // Act
+        var actual = NormalisedTypeNames
+            .Select(row => (string)row[0])
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        actual.ShouldBe(
+            expected,
+            "The acknowledged normalised-divergence set changed. A row may only be retired after "
+            + "GivenAnOperatorResult_WhenTypedByBothEngines_ThenFirelyNamesTheSystemTypeAndIgnixaTheFhirType "
+            + "has gone red for it, proving the engines now agree; update this inventory in the same change.");
     }
 
     /// <summary>
