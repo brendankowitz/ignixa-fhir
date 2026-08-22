@@ -121,18 +121,26 @@ public class CompiledVersusInterpretedDifferentialTests
         var ast = _parser.Parse(expression);
         var compiled = _compiler.TryCompile(ast);
 
+        // Act
+        var interpretedResult = DifferentialFixture.Describe(() => _evaluator.Evaluate(subject, ast, DifferentialFixture.CreateContext(subject)));
+
+        // Assert: a thrown exception is never "agreement", whichever path produced it, and is checked
+        // whether or not this row reaches the compiled path. Without this, mutual throwing and mutual
+        // emptiness both read as agreement - DifferentialFixture.AssertEvaluated's own remarks record
+        // that making Evaluate throw unconditionally left 335 of 337 rows green across this repo's
+        // differential suites before this call was wired in here.
+        DifferentialFixture.AssertEvaluated(interpretedResult, expression);
+
         if (compiled is null)
         {
             // Declining to compile is the designed escape hatch: Select() falls back to the
-            // interpreter, so the two paths agree by construction and there is nothing to compare.
+            // interpreter, so there is no second path to compare here.
             return;
         }
 
-        // Act
         var compiledResult = DifferentialFixture.Describe(() => compiled(subject, DifferentialFixture.CreateContext(subject)));
-        var interpretedResult = DifferentialFixture.Describe(() => _evaluator.Evaluate(subject, ast, DifferentialFixture.CreateContext(subject)));
+        DifferentialFixture.AssertEvaluated(compiledResult, expression);
 
-        // Assert
         compiledResult.ShouldBe(
             interpretedResult,
             $"Compiled and interpreted evaluation of '{expression}' disagree.");

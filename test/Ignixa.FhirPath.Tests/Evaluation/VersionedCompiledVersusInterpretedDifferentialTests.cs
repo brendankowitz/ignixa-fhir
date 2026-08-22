@@ -136,18 +136,35 @@ public class VersionedCompiledVersusInterpretedDifferentialTests
     }
 
     /// <summary>
-    /// One literal expected answer per (row, version), captured against the interpreter once and
-    /// written by hand - independent of both evaluation paths, so agreement between them is no longer
-    /// the thing being asserted.
+    /// One literal expected answer per (row, version), captured from the interpreter rather than
+    /// compared only against the compiled path.
     /// </summary>
     /// <remarks>
     /// <para>
+    /// This is a per-row behavioural snapshot, not a spec-derived oracle, and calling it fully
+    /// independent overstates it. Column by column: the <b>value</b> and <b>cardinality</b> of each
+    /// answer are independently derivable from the fixture and were checked that way - the subject's
+    /// <c>birthDate</c> is <c>1974-12-25</c>, its <c>name</c> has two entries, <c>Smith</c> and
+    /// <c>Jones</c>. The <b>InstanceType</b> and <b>CLR-type</b> segments (<c>integer|Int32</c>,
+    /// <c>boolean|Boolean</c>, <c>date|FhirTemporal</c>) are recorded engine output copied from a single
+    /// run - <c>FhirTemporal</c> is an Ignixa class name with no content in the specification - because
+    /// <c>DifferentialFixture.Describe</c> bakes both into its rendering and neither has independent
+    /// spec content to check against. A bug that changed those two segments identically on both paths
+    /// would still be invisible to this snapshot.
+    /// </para>
+    /// <para>
+    /// What this snapshot does close is the hole the class remarks describe: agreement between the
+    /// compiled and interpreted paths is no longer the assertion, so a bug reintroduced into
+    /// <c>TypeMatcher</c> that both paths route through cannot pass by both being wrong the same way -
+    /// falsified directly by mutating <c>TypeMatcher.IsSystemElement</c> to <c>false</c>, which turns
+    /// this suite red where the old agreement-only assertion stayed green under the same mutation.
+    /// </para>
+    /// <para>
     /// The eight <see cref="MustCompile"/> rows are the ones where the theory below actually exercises
     /// both evaluation paths, so they are the ones where "both paths agree" could mean "both paths
-    /// share the same bug" - exactly the shape of the defect this class exists to catch (see the class
-    /// remarks). <c>birthDate.ofType(Date)</c> is the one <c>MustCompile</c> row whose answer is
-    /// version-gated: R5 2.1.9.1.2 withdraws the pre-R5 System-spelling alias for the cast operators, so
-    /// the capitalised <c>Date</c> spelling stops matching the lower-case <c>date</c> instance from R5
+    /// share the same bug". <c>birthDate.ofType(Date)</c> is the one <c>MustCompile</c> row whose answer
+    /// is version-gated: R5 2.1.9.1.2 withdraws the pre-R5 System-spelling alias for the cast operators,
+    /// so the capitalised <c>Date</c> spelling stops matching the lower-case <c>date</c> instance from R5
     /// on. Every other <c>MustCompile</c> row is version-independent because the rule that saves it -
     /// either an exact instance-type match, or the System-spelling alias for an engine-produced value,
     /// which <c>TypeMatcher.TypeNamesMatch</c> checks above the R5 gate - does not read the version at
@@ -161,10 +178,18 @@ public class VersionedCompiledVersusInterpretedDifferentialTests
     /// rule is unconditional on every version (<c>TypeMatcher.EnsureSingletonTypeTestInput</c>), so both
     /// <c>name is HumanName</c> and <c>name is humanname</c> throw on all five - the corpus's deliberate
     /// probe for that rule, and the reason <c>name is HumanName</c> is listed in
-    /// <see cref="DifferentialFixture"/>'s <c>ErrorProbes</c>. <c>as</c>'s singleton rule is enforced only
-    /// from R5 (<c>TypeMatcher.EnsureSingletonInput</c>), so <c>name.as(HumanName).family</c> succeeds on
-    /// Stu3/R4/R4B and throws only on R5/R6 - a genuine version-gated divergence that a flat, version-blind
-    /// error-probe list cannot express, which is why it is pinned here instead of added there.
+    /// <see cref="DifferentialFixture"/>'s <c>ErrorProbes</c>.
+    /// </para>
+    /// <para>
+    /// <c>as</c>'s cardinality rule is enforced only from R5 (<c>TypeMatcher.EnsureSingletonInput</c>),
+    /// so <c>name.as(HumanName).family</c> succeeds on Stu3/R4/R4B and throws only on R5/R6 - but that
+    /// split is an Ignixa compatibility concession, not what the specification asks for. HL7's own
+    /// conformance suite (<c>testFHIRPathAsFunction21</c>) marks the multi-item <c>as</c> case invalid on
+    /// <em>every</em> published version; Ignixa deliberately under-enforces below R5 because HL7's own
+    /// R4/R4B SearchParameter artifacts put 0..* paths on the left of <c>as</c>, and enforcing there would
+    /// silently empty the search index (see <c>TypeMatcher.EnsureSingletonInput</c>'s own remarks for the
+    /// count). The version split is real and worth pinning - a flat, version-blind error-probe list
+    /// cannot express it - but a reader of this test alone should not conclude FHIRPath mandates it.
     /// <c>name.as(humanname).family</c> never matches at all (Ordinal comparison rejects the mis-cased
     /// spelling - see the class remarks on <c>TypeMatcher</c>), so pre-R5 it is empty rather than
     /// Smith/Jones, and R5 on it throws for the same cardinality reason as its correctly-cased sibling.
@@ -251,19 +276,24 @@ public class VersionedCompiledVersusInterpretedDifferentialTests
 
         if (expected is not null)
         {
-            // The real check for a MustCompile row: against the independently written answer, not
-            // merely against whatever the interpreter also produced.
+            // The check for a MustCompile row: against the pinned snapshot, not merely against whatever
+            // the interpreter also produced.
             compiledResult.ShouldBe(
                 expected,
                 $"Compiled evaluation of '{expression}' on {version} should be [{string.Join(", ", expected)}].");
         }
         else
         {
-            // A row outside MustCompile that starts compiling has no literal oracle yet; agreement with
-            // the interpreter is a floor, not the final word - see MustCompile's remarks.
-            compiledResult.ShouldBe(
-                interpretedResult,
-                $"Compiled and interpreted evaluation of '{expression}' disagree on {version}.");
+            // Every row that reaches this point (compiled is not null) is one of the eight MustCompile
+            // rows, and every one of those has an ExpectedResult entry - so this is unreachable today.
+            // Failing outright rather than falling back to compiledResult.ShouldBe(interpretedResult) is
+            // deliberate: that fallback is exactly the self-comparison this class exists to avoid, and a
+            // silent fallback here would let a ninth row start compiling and reopen the hole quietly.
+            // Reaching this means a row now compiles without a literal answer - add one to ExpectedResult
+            // and, if it is not already there, to MustCompile.
+            Assert.Fail(
+                $"'{expression}' on {version} now compiles but has no entry in ExpectedResult. Add one "
+                + "instead of letting this fall back to comparing the two paths against each other.");
         }
     }
 

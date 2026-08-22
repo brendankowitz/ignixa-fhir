@@ -76,15 +76,31 @@ public class SystemValueTypeMatchingTests
     """;
 
     /// <summary>
-    /// One literal expected answer per expression, independent of both evaluation paths.
+    /// One literal expected answer per expression, captured from the interpreter rather than compared
+    /// only against the compiled path.
     /// </summary>
     /// <remarks>
-    /// A pure agreement check between the compiled and interpreted paths is satisfied by both paths
-    /// being wrong in the same way - which is exactly what happened here (see the class remarks). The
-    /// literal below was captured once against the interpreter on every published version and confirmed
-    /// version-independent (the System-spelling match that saves each of these rows sits above the R5
-    /// namespace gate, see <c>TypeMatcher.TypeNamesMatch</c>), then written by hand rather than derived
-    /// from either path, so a regression that moves both paths to the same wrong answer still fails.
+    /// <para>
+    /// This is a per-row behavioural snapshot, not a spec-derived oracle, and describing it as fully
+    /// independent overstates it. Column by column: the <b>value</b> and <b>cardinality</b> are
+    /// independently derivable from the fixture and were checked that way -
+    /// <c>value.count()</c> is 1, <c>code.exists()</c> is <c>true</c>, the literal string is
+    /// <c>"literal"</c>. The <b>InstanceType</b> and <b>CLR-type</b> columns (<c>integer|Int32</c>,
+    /// <c>boolean|Boolean</c>, <c>string|String</c>) are recorded engine output copied from a single run,
+    /// because <see cref="Describe"/> bakes both into its rendering and neither has independent spec
+    /// content to check against. A bug that changed those two columns identically on both paths would
+    /// still be invisible to this snapshot - the residual risk is concrete, not hypothetical:
+    /// <see cref="GivenQuantityLiteral_WhenItsTypeIsReported_ThenItRemainsFhirQuantity"/> a few tests down
+    /// pins exactly that shape of thing, a known <c>InstanceType</c> deviation from the specification.
+    /// </para>
+    /// <para>
+    /// What this snapshot does close is the hole the class remarks describe: agreement between the
+    /// compiled and interpreted paths is no longer the assertion, so a bug reintroduced into
+    /// <c>TypeMatcher</c> that both paths route through cannot pass by both being wrong the same way -
+    /// the falsification in this PR's history demonstrates that directly (mutating
+    /// <c>TypeMatcher.IsSystemElement</c> to <c>false</c> turns this suite red, where the old
+    /// agreement-only assertion stayed green under the same mutation).
+    /// </para>
     /// </remarks>
     private static IReadOnlyDictionary<string, string> ExpectedSystemResults => new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -138,6 +154,129 @@ public class SystemValueTypeMatchingTests
         "'literal'.ofType(String)",
     };
 
+    /// <summary>
+    /// Asserts <see cref="MustCompile"/> is a subset of the expressions in
+    /// <see cref="SystemResultsAcrossPaths"/>.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors <c>VersionedCompiledVersusInterpretedDifferentialTests</c>'s and
+    /// <c>CompiledVersusInterpretedDifferentialTests</c>'s guard of the same name. Without it, a row
+    /// could be edited out of <see cref="SystemResultsAcrossPaths"/> while surviving in
+    /// <c>MustCompile</c>, leaving this suite asserting compilation for an expression the theory below
+    /// never runs.
+    /// </remarks>
+    [Fact]
+    public void GivenMustCompile_WhenComparedAgainstTheCorpus_ThenEveryRowIsAMemberOfIt()
+    {
+        // Arrange
+        var corpus = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in SystemResultsAcrossPaths)
+        {
+            corpus.Add((string)row[1]);
+        }
+
+        var mustCompile = new List<string>();
+        foreach (string expression in MustCompile)
+        {
+            mustCompile.Add(expression);
+        }
+
+        // Act & Assert
+        mustCompile.ShouldAllBe(
+            expression => corpus.Contains(expression),
+            "every row in MustCompile has to also be a row in SystemResultsAcrossPaths, or this suite is "
+            + "asserting compilation for an expression the theory below never runs.");
+    }
+
+    /// <summary>
+    /// Asserts the <see cref="MustCompile"/> inventory is complete, so a row cannot be deleted from it
+    /// without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// The subset check above cannot catch deletion: removing a row still leaves every remaining row a
+    /// member of <see cref="SystemResultsAcrossPaths"/>, so that check stays green with fewer rows
+    /// compared. The expected list here is written independently of <see cref="MustCompile"/> for the
+    /// same reason <c>FirelyVersusIgnixaDifferentialTests.NormalisedTypeNames</c>'s inventory test is: a
+    /// list derived from the collection it guards agrees with any edit to that collection and asserts
+    /// nothing.
+    /// </remarks>
+    [Fact]
+    public void GivenTheMustCompileInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "value.count().ofType(Integer)",
+            "value.count().ofType(integer)",
+            "code.exists().ofType(Boolean)",
+            "code.exists().ofType(boolean)",
+            "'literal'.ofType(String)",
+        ];
+
+        var actual = new List<string>();
+        foreach (string expression in MustCompile)
+        {
+            actual.Add(expression);
+        }
+
+        // Assert
+        actual.ToArray().ShouldBe(
+            expected,
+            "The MustCompile inventory changed. A row may only be retired after confirming it no longer "
+            + "carries differential coverage; update this inventory in the same change.");
+    }
+
+    /// <summary>
+    /// Asserts <see cref="SystemResultsAcrossPaths"/> itself has not silently lost a row.
+    /// </summary>
+    /// <remarks>
+    /// Deleting a single <c>data.Add(version, expression)</c> call there removes five theory cases (one
+    /// per version) with nothing else in this file noticing: <see cref="ExpectedSystemResults"/> keeps
+    /// the key regardless, so
+    /// <see cref="GivenTheSystemResultsCorpus_WhenCheckedForCompilability_ThenExactlyFiveOfSevenExpressionsCompile"/>
+    /// stays green through it too. The expected pair list here is written independently of
+    /// <see cref="SystemResultsAcrossPaths"/>'s generator loop, for the same reason every other inventory
+    /// guard in this class is: a count or list derived from the collection it checks agrees with any edit
+    /// to that collection.
+    /// </remarks>
+    [Fact]
+    public void GivenTheSystemResultsAcrossPathsInventory_WhenEnumerated_ThenEveryPinnedRowIsPresent()
+    {
+        // Arrange
+        string[] expectedExpressions =
+        [
+            "value.count().ofType(Integer)",
+            "value.count().ofType(integer)",
+            "code.exists().ofType(Boolean)",
+            "code.exists().ofType(boolean)",
+            "value.count().is(Integer)",
+            "code.exists().as(Boolean)",
+            "'literal'.ofType(String)",
+        ];
+
+        var actualRows = new List<(FhirVersion Version, string Expression)>();
+        foreach (var row in SystemResultsAcrossPaths)
+        {
+            actualRows.Add(((FhirVersion)row[0], (string)row[1]));
+        }
+
+        // Assert
+        actualRows.Count.ShouldBe(
+            AllVersions.Count * expectedExpressions.Length,
+            "SystemResultsAcrossPaths should be every expression below crossed with every version in "
+            + "AllVersions; a missing row silently shrinks this count without failing anything else.");
+
+        foreach (var version in AllVersions)
+        {
+            foreach (var expression in expectedExpressions)
+            {
+                actualRows.ShouldContain(
+                    (version, expression),
+                    $"missing ({version}, '{expression}') from SystemResultsAcrossPaths.");
+            }
+        }
+    }
+
     [Theory]
     [MemberData(nameof(SystemResultsAcrossPaths))]
     public void GivenAnEngineProducedSystemValue_WhenTypeMatchedOnBothPaths_ThenTheAnswersAgree(
@@ -154,8 +293,9 @@ public class SystemValueTypeMatchingTests
         // Act
         var interpretedResult = Describe(() => _evaluator.Evaluate(element, ast, Context(element, schema)));
 
-        // Assert: the interpreter's answer must be the one the spec predicts, not merely equal to
-        // whatever the compiled path also happens to return.
+        // Assert: the interpreter's answer must be the pinned snapshot (see ExpectedSystemResults'
+        // remarks on what that does and does not prove), not merely equal to whatever the compiled path
+        // also happens to return.
         interpretedResult.ShouldBe(
             expected,
             $"Interpreted evaluation of '{expression}' on {version} should be {expected[0]}.");
