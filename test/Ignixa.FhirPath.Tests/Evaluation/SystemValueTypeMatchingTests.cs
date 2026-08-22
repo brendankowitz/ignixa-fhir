@@ -75,6 +75,28 @@ public class SystemValueTypeMatchingTests
     }
     """;
 
+    /// <summary>
+    /// One literal expected answer per expression, independent of both evaluation paths.
+    /// </summary>
+    /// <remarks>
+    /// A pure agreement check between the compiled and interpreted paths is satisfied by both paths
+    /// being wrong in the same way - which is exactly what happened here (see the class remarks). The
+    /// literal below was captured once against the interpreter on every published version and confirmed
+    /// version-independent (the System-spelling match that saves each of these rows sits above the R5
+    /// namespace gate, see <c>TypeMatcher.TypeNamesMatch</c>), then written by hand rather than derived
+    /// from either path, so a regression that moves both paths to the same wrong answer still fails.
+    /// </remarks>
+    private static IReadOnlyDictionary<string, string> ExpectedSystemResults => new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["value.count().ofType(Integer)"] = "integer|Int32|1",
+        ["value.count().ofType(integer)"] = "integer|Int32|1",
+        ["code.exists().ofType(Boolean)"] = "boolean|Boolean|True",
+        ["code.exists().ofType(boolean)"] = "boolean|Boolean|True",
+        ["value.count().is(Integer)"] = "boolean|Boolean|True",
+        ["code.exists().as(Boolean)"] = "boolean|Boolean|True",
+        ["'literal'.ofType(String)"] = "string|String|literal",
+    };
+
     public static TheoryData<FhirVersion, string> SystemResultsAcrossPaths
     {
         get
@@ -95,6 +117,27 @@ public class SystemValueTypeMatchingTests
         }
     }
 
+    /// <summary>
+    /// The <see cref="SystemResultsAcrossPaths"/> expressions that reach the compiled path today.
+    /// </summary>
+    /// <remarks>
+    /// <c>value.count().is(Integer)</c> and <c>code.exists().as(Boolean)</c> are binary <c>is</c>/<c>as</c>
+    /// forms, and <see cref="FhirPathDelegateCompiler.CompileBinary"/> only handles
+    /// <c>= != &lt; &gt; &lt;= &gt;=</c>, so those two decline unconditionally and the theory below never
+    /// exercises a compiled path for them - only the interpreter is checked, via
+    /// <see cref="ExpectedSystemResults"/>. Written independently of that compiler method and of
+    /// <see cref="SystemResultsAcrossPaths"/> itself: if either changes shape, this list and the count
+    /// assertion below have to be edited by hand rather than agreeing automatically.
+    /// </remarks>
+    public static TheoryData<string> MustCompile => new()
+    {
+        "value.count().ofType(Integer)",
+        "value.count().ofType(integer)",
+        "code.exists().ofType(Boolean)",
+        "code.exists().ofType(boolean)",
+        "'literal'.ofType(String)",
+    };
+
     [Theory]
     [MemberData(nameof(SystemResultsAcrossPaths))]
     public void GivenAnEngineProducedSystemValue_WhenTypeMatchedOnBothPaths_ThenTheAnswersAgree(
@@ -106,22 +149,68 @@ public class SystemValueTypeMatchingTests
         var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
         var ast = _parser.Parse(expression);
         var compiled = _compiler.TryCompile(ast);
+        string[] expected = [ExpectedSystemResults[expression]];
+
+        // Act
+        var interpretedResult = Describe(() => _evaluator.Evaluate(element, ast, Context(element, schema)));
+
+        // Assert: the interpreter's answer must be the one the spec predicts, not merely equal to
+        // whatever the compiled path also happens to return.
+        interpretedResult.ShouldBe(
+            expected,
+            $"Interpreted evaluation of '{expression}' on {version} should be {expected[0]}.");
 
         if (compiled is null)
         {
-            // Declining to compile routes the caller to the interpreter, so the paths agree by
-            // construction and there is nothing to compare.
+            // Declining to compile routes the caller to the interpreter in production, so there is no
+            // second path to compare here - MustCompile below guards against this becoming true for a
+            // row it should not be true for.
             return;
         }
 
-        // Act
         var compiledResult = Describe(() => compiled(element, Context(element, schema)));
-        var interpretedResult = Describe(() => _evaluator.Evaluate(element, ast, Context(element, schema)));
+        compiledResult.ShouldBe(
+            expected,
+            $"Compiled evaluation of '{expression}' on {version} should be {expected[0]}.");
+    }
+
+    /// <summary>
+    /// Names the rows in <see cref="MustCompile"/> so a row silently ceasing to compile fails here
+    /// instead of quietly joining the declined half of <see cref="SystemResultsAcrossPaths"/>.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(MustCompile))]
+    public void GivenARowThatCarriesCompiledCoverage_WhenCompiled_ThenCompilationIsNotDeclined(
+        string expression)
+    {
+        // Arrange
+        var schema = FhirVersion.R5.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+
+        // Act & Assert
+        Compile(element, expression, schema);
+    }
+
+    /// <summary>
+    /// Counts how many of the seven <see cref="SystemResultsAcrossPaths"/> expressions compile, so the
+    /// count itself - not just <see cref="MustCompile"/>'s membership - cannot silently drift.
+    /// </summary>
+    [Fact]
+    public void GivenTheSystemResultsCorpus_WhenCheckedForCompilability_ThenExactlyFiveOfSevenExpressionsCompile()
+    {
+        // Arrange
+        var uniqueExpressions = ExpectedSystemResults.Keys.ToList();
+
+        // Act
+        var compilableCount = uniqueExpressions.Count(expr => _compiler.TryCompile(_parser.Parse(expr)) is not null);
 
         // Assert
-        compiledResult.ShouldBe(
-            interpretedResult,
-            $"Compiled and interpreted evaluation of '{expression}' disagree on {version}.");
+        uniqueExpressions.Count.ShouldBe(7, "the corpus size changed; the compiled-row expectation below needs revisiting.");
+        compilableCount.ShouldBe(
+            5,
+            "value.count().is(Integer) and code.exists().as(Boolean) are the only rows expected to decline "
+            + "compilation. If this count changes, some of the 35 rows in the theory above silently stop "
+            + "exercising a compiled path without the compiled-versus-expected assertion catching it.");
     }
 
     [Theory]

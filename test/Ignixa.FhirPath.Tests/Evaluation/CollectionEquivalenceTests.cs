@@ -2,6 +2,7 @@
  * Copyright (c) 2025, Ignixa Contributors
  */
 
+using System.Reflection;
 using Ignixa.Abstractions;
 using Ignixa.Extensions.FirelySdk;
 using Ignixa.FhirPath.Evaluation;
@@ -479,6 +480,267 @@ public class CollectionEquivalenceTests
 
         nativeResult.ShouldBeTrue();
         adaptedResult.ShouldBe(nativeResult);
+    }
+
+    /// <summary>
+    /// Bounded property test proving <c>FhirPathEvaluator.TryPair</c> computes a genuine maximum bipartite
+    /// matching, independent of the five hand-picked cases above - every one of which is n=2, where
+    /// <c>TryPair</c> reaches recursion depth 2 at most and never needs to displace a pairing more than
+    /// once, so the cycle guard and the deeper augmenting search are never exercised.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A prior PR claimed this algorithm was "proven maximum against a brute-force oracle over 33.5M
+    /// generated graphs". No such oracle, generator, or property test existed anywhere in the repo - the
+    /// claim survived only in the PR description. This is the oracle that claim should have shipped with.
+    /// </para>
+    /// <para>
+    /// <c>TryPair</c> and <c>AreCollectionsEquivalent</c> are not modified or reimplemented here - they
+    /// have been independently reviewed as correct (visited reset per left node, the <c>-1</c> sentinel,
+    /// termination, the up-front cardinality check, order independence). <see cref="RunsProductionAlgorithm"/>
+    /// invokes the real, private <c>TryPair</c> through reflection and reproduces only
+    /// <c>AreCollectionsEquivalent</c>'s outer loop (iterate left indices in order, clear <c>visited</c>,
+    /// call <c>TryPair</c>) so the full per-graph answer is exercised, not just one augmenting search.
+    /// </para>
+    /// <para>
+    /// The graph is driven from a synthetic <c>bool[][]</c> adjacency matrix rather than from FHIR element
+    /// equivalence: <c>AreElementsEquivalent</c> is close to an equality relation for most element types
+    /// (two decimals or two strings), so it cannot be made to express an arbitrary bipartite graph -
+    /// equivalence is symmetric and near-transitive by construction, whereas an adjacency matrix's cells
+    /// are independent. Reflection reaches the matching algorithm directly instead, which is what "driven
+    /// from an adjacency predicate you control" means here: the predicate is the matrix itself.
+    /// </para>
+    /// <para>
+    /// The brute-force oracle (<see cref="HasPerfectMatchingByBruteForce"/>) tries every permutation of
+    /// right-hand indices and accepts if any one respects the adjacency matrix everywhere - the textbook
+    /// definition of a perfect matching - and calls nothing from <c>FhirPathEvaluator</c>, so it shares no
+    /// code path with the algorithm it is checking.
+    /// </para>
+    /// </remarks>
+    private static readonly MethodInfo TryPairMethod =
+        typeof(FhirPathEvaluator).GetMethod("TryPair", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException(
+            "FhirPathEvaluator.TryPair was not found by reflection. Its name or signature changed, and "
+            + "this property test needs updating to match before it can prove anything again.");
+
+    // Mirrors FhirPathEvaluator.Unpaired. The two are independent constants that happen to agree, not a
+    // shared one - reflection reaches the method, not its private fields.
+    private const int Unpaired = -1;
+
+    private static bool RunsProductionAlgorithm(bool[][] adjacency)
+    {
+        var n = adjacency.Length;
+        var candidates = new List<int>[n];
+
+        for (var leftIndex = 0; leftIndex < n; leftIndex++)
+        {
+            var row = new List<int>();
+            for (var rightIndex = 0; rightIndex < n; rightIndex++)
+            {
+                if (adjacency[leftIndex][rightIndex])
+                {
+                    row.Add(rightIndex);
+                }
+            }
+
+            candidates[leftIndex] = row;
+        }
+
+        var pairedWith = new int[n];
+        Array.Fill(pairedWith, Unpaired);
+
+        for (var leftIndex = 0; leftIndex < n; leftIndex++)
+        {
+            var visited = new bool[n];
+            var paired = (bool)TryPairMethod.Invoke(null, [leftIndex, candidates, pairedWith, visited])!;
+            if (!paired)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool HasPerfectMatchingByBruteForce(bool[][] adjacency)
+    {
+        var n = adjacency.Length;
+        var indices = new int[n];
+        for (var i = 0; i < n; i++)
+        {
+            indices[i] = i;
+        }
+
+        foreach (var permutation in Permutations(indices))
+        {
+            var isPerfectMatching = true;
+            for (var leftIndex = 0; leftIndex < n; leftIndex++)
+            {
+                if (!adjacency[leftIndex][permutation[leftIndex]])
+                {
+                    isPerfectMatching = false;
+                    break;
+                }
+            }
+
+            if (isPerfectMatching)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Heap's algorithm, written independently of anything under test - its only job is to drive the
+    /// brute-force oracle above, which must not call the code it exists to check.
+    /// </summary>
+    private static IEnumerable<int[]> Permutations(int[] items)
+    {
+        var n = items.Length;
+        var working = (int[])items.Clone();
+        var state = new int[n];
+
+        yield return (int[])working.Clone();
+
+        var i = 0;
+        while (i < n)
+        {
+            if (state[i] < i)
+            {
+                if (i % 2 == 0)
+                {
+                    (working[0], working[i]) = (working[i], working[0]);
+                }
+                else
+                {
+                    (working[state[i]], working[i]) = (working[i], working[state[i]]);
+                }
+
+                yield return (int[])working.Clone();
+                state[i]++;
+                i = 0;
+            }
+            else
+            {
+                state[i] = 0;
+                i++;
+            }
+        }
+    }
+
+    [Fact]
+    public void GivenEveryPossibleThreeByThreeAdjacencyMatrix_WhenMatchedByTheProductionAlgorithm_ThenItAgreesWithBruteForce()
+    {
+        const int n = 3;
+
+        for (var mask = 0; mask < 1 << (n * n); mask++)
+        {
+            var adjacency = new bool[n][];
+            for (var row = 0; row < n; row++)
+            {
+                adjacency[row] = new bool[n];
+                for (var column = 0; column < n; column++)
+                {
+                    adjacency[row][column] = (mask & (1 << (row * n + column))) != 0;
+                }
+            }
+
+            var expected = HasPerfectMatchingByBruteForce(adjacency);
+            var actual = RunsProductionAlgorithm(adjacency);
+
+            actual.ShouldBe(expected, $"adjacency mask {mask} (n=3) disagrees with the brute-force oracle.");
+        }
+    }
+
+    [Fact]
+    public void GivenEveryPossibleFourByFourAdjacencyMatrix_WhenMatchedByTheProductionAlgorithm_ThenItAgreesWithBruteForce()
+    {
+        const int n = 4;
+
+        for (var mask = 0; mask < 1 << (n * n); mask++)
+        {
+            var adjacency = new bool[n][];
+            for (var row = 0; row < n; row++)
+            {
+                adjacency[row] = new bool[n];
+                for (var column = 0; column < n; column++)
+                {
+                    adjacency[row][column] = (mask & (1 << (row * n + column))) != 0;
+                }
+            }
+
+            var expected = HasPerfectMatchingByBruteForce(adjacency);
+            var actual = RunsProductionAlgorithm(adjacency);
+
+            actual.ShouldBe(expected, $"adjacency mask {mask} (n=4) disagrees with the brute-force oracle.");
+        }
+    }
+
+    /// <summary>
+    /// n=5 is 2^25 adjacency matrices - exhaustive is not a "few seconds" property test at this size, so
+    /// this samples instead, from a fixed seed rather than an unseeded <see cref="Random"/>, so a failure
+    /// reproduces on the next run instead of depending on when the test happened to be executed.
+    /// </summary>
+    [Fact]
+    public void GivenAFixedSeedSampleOfFiveByFiveAdjacencyMatrices_WhenMatchedByTheProductionAlgorithm_ThenItAgreesWithBruteForce()
+    {
+        const int n = 5;
+        const int sampleCount = 2000;
+
+        // Deterministic test-data generation, not a security context - CA5394 does not apply.
+#pragma warning disable CA5394
+        var random = new Random(20260821);
+#pragma warning restore CA5394
+
+        for (var sample = 0; sample < sampleCount; sample++)
+        {
+            var adjacency = new bool[n][];
+            for (var row = 0; row < n; row++)
+            {
+                adjacency[row] = new bool[n];
+                for (var column = 0; column < n; column++)
+                {
+#pragma warning disable CA5394
+                    adjacency[row][column] = random.Next(2) == 1;
+#pragma warning restore CA5394
+                }
+            }
+
+            var expected = HasPerfectMatchingByBruteForce(adjacency);
+            var actual = RunsProductionAlgorithm(adjacency);
+
+            actual.ShouldBe(
+                expected,
+                $"sample {sample} (n=5, seed 20260821) disagrees with the brute-force oracle.");
+        }
+    }
+
+    /// <summary>
+    /// A synthetic adjacency where greedy first-fit - pair each left item with its first available
+    /// candidate, never revisit - reports no perfect matching, while one genuinely exists through a
+    /// single displacement. The human-readable example of what the augmenting-path search buys over
+    /// first-fit, matching <c>FhirPathEvaluator.TryPair</c>'s own remarks on why greedy is unsound here.
+    /// </summary>
+    /// <remarks>
+    /// L0 pairs with R0 or R1; L1 pairs only with R0; L2 pairs with R1 or R2. Greedy left-to-right gives
+    /// L0 to R0 (its first candidate) and then strands L1, whose only candidate R0 is already taken -
+    /// greedy never asks whether L0 could move elsewhere. The perfect matching L0-R1, L1-R0, L2-R2 exists,
+    /// and reaching it takes exactly one displacement: L1 claims R0 by evicting L0, and L0 finds R1 free.
+    /// </remarks>
+    [Fact]
+    public void GivenAnAdjacencyWhereGreedyFirstFitFails_WhenMatchedByTheProductionAlgorithm_ThenAPerfectMatchingIsFound()
+    {
+        bool[][] adjacency =
+        [
+            [true, true, false],
+            [true, false, false],
+            [false, true, true],
+        ];
+
+        RunsProductionAlgorithm(adjacency).ShouldBeTrue();
+        HasPerfectMatchingByBruteForce(adjacency).ShouldBeTrue();
     }
 
     private static IElement ParseNative(string json) => ResourceJsonNode.Parse(json).ToElement(Schema);
