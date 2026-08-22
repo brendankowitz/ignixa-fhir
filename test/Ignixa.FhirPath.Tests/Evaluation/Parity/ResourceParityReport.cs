@@ -26,14 +26,22 @@ internal sealed record ResourceParityReport(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <see cref="AgreementsOnValues"/> used to be this subtraction rather than an observed count.
-    /// That made the headline number depend on the counters subtracted from it: a
-    /// <see cref="BothThrew"/> that stopped incrementing inflated it and made
-    /// <c>MinimumAgreementsOnValues</c> easier to satisfy, so the counter guarding the conformance
-    /// claim was itself unguarded. Counting all four at the point of observation and asserting the
-    /// partition here turns that dependency into a cross-check: the two statements are now
-    /// independent, and a disagreement between them is a defect in the tally rather than a silently
-    /// better-looking result.
+    /// Only the second half of that is a genuine cross-check. <c>ParityOutcomeTally.Observe</c> does
+    /// one <c>Evaluations++</c> and takes exactly one bucket branch, so the sum identity is a
+    /// structural property of that method rather than an independent statement about it: it catches an
+    /// increment that was dropped, and cannot catch one that was filed under the wrong heading. The
+    /// divergent count is different - it is compared against a list built on a separate pass through
+    /// <c>ParityOutcome.Matches</c>, so those two really are two paths to the same fact.
+    /// </para>
+    /// <para>
+    /// What repaired <see cref="AgreementsOnValues"/> is therefore not this property. It used to be
+    /// the subtraction below rather than an observed count, which made the headline number depend on
+    /// the counters subtracted from it: a <see cref="BothThrew"/> that stopped incrementing inflated
+    /// it and made <c>MinimumAgreementsOnValues</c> easier to satisfy, leaving the counter that guards
+    /// the conformance claim the one counter nothing guarded. Observing it directly is what fixed
+    /// that, and <c>ParityOutcomeTallyTests</c> is what pins the branch assignment the sum identity
+    /// cannot see. This property is the cheap check that the tally did not lose an evaluation on the
+    /// way.
     /// </para>
     /// </remarks>
     public bool BucketsPartitionEvaluations =>

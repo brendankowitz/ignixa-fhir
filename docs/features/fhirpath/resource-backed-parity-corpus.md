@@ -100,6 +100,32 @@ The split avoids running the entire corpus twice while preserving targeted check
 
 The reverse corpus evaluated 19,647 expression/resource pairs per engine over 788 resources. It found 120 `Select` divergences and 11 resources with index divergences. The final verification measured 27.434 seconds in-process on .NET 9 and 29.506 seconds on .NET 10, with respective test-command wall times of 28.945 and 30.951 seconds. Those aggregate counts describe the reverse-bridge topology only.
 
+### What the 19,647 evaluations actually establish
+
+| Outcome | Count |
+|---|---:|
+| Both engines returned nothing | 9,453 |
+| Both engines returned the same values | **10,074** |
+| Both engines threw | 0 |
+| Divergent | 120 |
+
+The 10,074 is the count the conformance claim rests on, and it is floored rather than pinned so it can only be satisfied by holding or gaining evidence. It used to be derived by subtracting the other three from the total, which meant a both-threw counter that stopped incrementing would have inflated it and made its own floor easier to satisfy; all four are now counted where they are observed. The index half compares 10,743 Firely and 10,753 Ignixa canonicalized entries, each floored per engine.
+
+### What the index half cannot see
+
+The index comparison runs Firely for `Select` only. Everything downstream - the search parameter definitions, `InferSearchParamTypeFromFhirType`, `GetSearchValueTypeForSearchParamType` and the converter manager - is a single set of Ignixa objects that `SearchIndexParityHarness` constructs once and hands to both indexers. When both sides skip an element, that is one object making one decision, not two implementations agreeing, so **no entry-list comparison over this corpus can detect a gap in the converter pipeline.**
+
+Capturing the production indexer's contained failures - it catches per search parameter, logs and continues, and the harness previously gave it a null logger - surfaced 302 of them per sweep, split by what the corpus can adjudicate:
+
+| Class | Count | Status |
+|---|---:|---|
+| Contained throws (`ExpectedIgnixaEvaluationFailures`) | 1 | Adjudicable. Ignixa's `NotSupportedException` for `hasExtension()`, already pinned on the `Select` side. |
+| Classification skips (`ExpectedIgnixaConverterPipelineSkips`) | 301 | Recorded, not adjudicable. |
+
+Of the 301, 229 are converter-manager misses and **186 are `canonical` under 46 shipped SearchParameters** - 45 `Reference`-typed plus `MessageHeader-event`. Ignixa registers `canonical` against `UriSearchValue` only, so those 46 parameters index nothing: `QuestionnaireResponse-questionnaire`, `MeasureReport-measure`, `StructureDefinition-base`, `PlanDefinition-definition`, the `instantiates-canonical` family across nine resource types, the `-depends-on` family, and eight `ConceptMap` parameters among them.
+
+microsoft/fhir-server, which this indexer was ported from, additionally ships `CanonicalToReferenceSearchValueConverter`, `IdToReferenceSearchValueConverter`, `IdentifierToStringSearchValueConverter` and `ReferenceToUriSearchValueConverter`. The first closes the 186. That is `Ignixa.Search` production work tracked separately as release-blocking, not a FHIRPath change; the counts are pinned exactly here so that when the converters land this corpus says by how much they moved.
+
 The earlier `8 Select / 9 indexed` typed-choice count and `2 Select / 2 indexed` instant count are not valid Phase 3 numbers. Native Firely probes split each bucket into production-confirmed, harness-only, and unverifiable portions:
 
 | Class | Phase 3 status | Evidence |

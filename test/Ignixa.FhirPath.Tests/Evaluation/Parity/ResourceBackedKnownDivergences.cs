@@ -28,8 +28,8 @@ internal static class ResourceBackedKnownDivergences
         };
 
     /// <summary>
-    /// Every failure production <c>ElementSearchIndexer</c> contains during the index sweep, keyed by
-    /// site and counted by reach.
+    /// The failures production <c>ElementSearchIndexer</c> contained on the one axis this harness
+    /// actually evaluates twice: FHIRPath evaluation and value conversion.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -40,30 +40,78 @@ internal static class ResourceBackedKnownDivergences
     /// against Firely's legitimate empty as agreement.
     /// </para>
     /// <para>
-    /// None of these is a divergence: the index sweep still reports the same 11 divergent resources it
-    /// did before they became visible, because the reference indexer performs the matching skips - it
-    /// breaks out of a composite whose component definition is unresolved, and it <c>continue</c>s past
-    /// an element type it has no converter for, exactly as production does. What they establish is that
-    /// 302 of the sweep's comparisons are backed by mutual silence rather than by matched values, which
-    /// is the thing an entry-list equality cannot say.
+    /// A contained throw is what this dictionary holds, and it is separated from
+    /// <see cref="ExpectedIgnixaConverterPipelineSkips"/> because only these are corroborated. Ignixa's
+    /// evaluator ran the expression and Firely's ran it too, so a failure here is a real observation
+    /// about two engines. Everything in the other dictionary is Ignixa's own code reached from both
+    /// sides, where agreement establishes nothing.
+    /// </para>
+    /// <para>
+    /// The single entry is the <c>NotSupportedException</c> Ignixa raises for <c>hasExtension()</c>,
+    /// which <see cref="KnownDivergences"/> already pins on the Select side - Firely refuses the same
+    /// parameter at compile time, so the expression is outside the compared set and neither engine
+    /// indexes it.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyDictionary<string, int> ExpectedIgnixaEvaluationFailures { get; } =
+        new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["FailedToExtractValues :: http://hl7.org/fhir/SearchParameter/questionnaireresponse-extensions-QuestionnaireResponse-item-subject :: QuestionnaireResponse :: NotSupportedException"] = 1,
+        };
+
+    /// <summary>
+    /// The elements production <c>ElementSearchIndexer</c> classified as unindexable and skipped,
+    /// which this corpus records but cannot adjudicate.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Read the limitation before reading the numbers. This is a FHIRPath harness: the only thing it
+    /// runs on two engines is <c>Select</c>. Everything downstream of that - the search parameter
+    /// definitions, <c>InferSearchParamTypeFromFhirType</c>,
+    /// <c>GetSearchValueTypeForSearchParamType</c> and the converter manager - is a single set of
+    /// Ignixa objects that <see cref="SearchIndexParityHarness"/> constructs once and hands to
+    /// <em>both</em> indexers. The reference indexer resolves converters through the same instance
+    /// production does. So when both sides skip an element that is one object making one decision, not
+    /// two implementations agreeing, and no entry-list comparison over this corpus can detect a gap in
+    /// it. An earlier revision of this comment claimed the reference indexer performs the matching
+    /// skips "exactly as production does" and offered that as corroboration. It is a structural
+    /// guarantee, and it was false as a claim about agreement.
+    /// </para>
+    /// <para>
+    /// What the skips are, measured by replaying the converter lookup with the parameter identity
+    /// production does not log: 229 of the 301 are <c>FhirElementTypeNotSupported</c>, a converter
+    /// manager miss, and 186 of those are <c>canonical</c> under 46 shipped SearchParameters - 45
+    /// <c>Reference</c>-typed plus <c>MessageHeader-event</c>. Ignixa registers <c>canonical</c>
+    /// against <c>UriSearchValue</c> only, so those 46 parameters index nothing. Among them are
+    /// <c>QuestionnaireResponse-questionnaire</c>, <c>MeasureReport-measure</c>,
+    /// <c>StructureDefinition-base</c>, <c>PlanDefinition-definition</c>, the
+    /// <c>instantiates-canonical</c> family across nine resource types, the <c>-depends-on</c> family,
+    /// and eight <c>ConceptMap</c> parameters.
+    /// </para>
+    /// <para>
+    /// microsoft/fhir-server, which this indexer was ported from, additionally ships
+    /// <c>CanonicalToReferenceSearchValueConverter</c>, <c>IdToReferenceSearchValueConverter</c>,
+    /// <c>IdentifierToStringSearchValueConverter</c> and <c>ReferenceToUriSearchValueConverter</c>.
+    /// The first is what closes the 186. Writing them is <c>Ignixa.Search</c> production work, tracked
+    /// separately as release-blocking and deliberately out of scope for a FHIRPath change; what
+    /// belongs here is that the corpus stops implying it has cleared them. When the converters land
+    /// these counts drop, and this pin is what says by how much.
     /// </para>
     /// <para>
     /// Pinned exactly rather than floored, and by site rather than in total, because each of the three
-    /// ways this number can move means something different. A new signature is a new unindexable site.
-    /// A count that rises is an existing gap spreading. A count that falls is either a real fix or a
-    /// corpus that stopped generating the shape - and the two must not be indistinguishable. The one
-    /// entry that is an actual thrown exception rather than a classification skip is the
-    /// <c>NotSupportedException</c> from <c>hasExtension()</c>, which <see cref="KnownDivergences"/>
-    /// already pins on the Select side.
+    /// ways a number can move means something different. A new signature is a new unindexable site. A
+    /// count that rises is an existing gap spreading. A count that falls is either a converter landing
+    /// or a corpus that stopped generating the shape - and the two must not be indistinguishable.
     /// </para>
     /// <para>
     /// <c>FhirElementTypeNotSupported</c> signatures carry no parameter identity because production
     /// logs only the element type for that event. That is a gap in production logging; it is recorded
     /// here rather than worked around, since inventing an identity the log does not carry would make
-    /// the pin say more than the evidence does.
+    /// the pin say more than the evidence does. The 46-parameter breakdown above was recovered by
+    /// replaying the lookup outside the indexer, not read out of these signatures.
     /// </para>
     /// </remarks>
-    public static IReadOnlyDictionary<string, int> ExpectedIgnixaIndexFailures { get; } =
+    public static IReadOnlyDictionary<string, int> ExpectedIgnixaConverterPipelineSkips { get; } =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
             ["CannotInferSearchParamType :: http://hl7.org/fhir/SearchParameter/Encounter-location :: Encounter.Location :: "] = 1,
@@ -78,7 +126,6 @@ internal static class ResourceBackedKnownDivergences
             ["ComponentNullResolvedSearchParameter :: scope-artifact-phase ::  :: "] = 1,
             ["ComponentNullResolvedSearchParameter :: specification-version ::  :: "] = 1,
             ["ComponentNullResolvedSearchParameter :: version-type ::  :: "] = 3,
-            ["FailedToExtractValues :: http://hl7.org/fhir/SearchParameter/questionnaireresponse-extensions-QuestionnaireResponse-item-subject :: QuestionnaireResponse :: NotSupportedException"] = 1,
             ["FhirElementTypeNotSupported ::  :: Attachment :: "] = 2,
             ["FhirElementTypeNotSupported ::  :: DeviceDefinition.UdiDeviceIdentifier :: "] = 1,
             ["FhirElementTypeNotSupported ::  :: Encounter.Location :: "] = 8,
@@ -95,6 +142,34 @@ internal static class ResourceBackedKnownDivergences
             ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/Encounter-location ::  :: "] = 2,
             ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/InventoryReport-item ::  :: "] = 2,
         };
+
+    /// <summary>
+    /// Lower bound on the canonicalised index entries each engine contributes across the whole index
+    /// sweep.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The index half asserted that its divergences were classified and its failure sites pinned.
+    /// Neither says how much was compared, so a change that halved the entries every parameter
+    /// produced satisfied both - the same defect class as an agreement count derived by subtraction,
+    /// one level up and in the half that runs the production indexer over every resource in the
+    /// corpus. A floor rather than an exact pin, for the reason given on
+    /// <see cref="MinimumAgreementsOnValues"/>: it can only be satisfied by holding or gaining
+    /// evidence.
+    /// </para>
+    /// <para>
+    /// Applied to each engine separately rather than to the total, because a total is satisfied by one
+    /// side growing while the other collapses. The two currently sit at 10,743 Firely and 10,753
+    /// Ignixa - the ten-entry gap is the 11 divergent resources - so the floor is the lower of them.
+    /// </para>
+    /// </remarks>
+    public const int MinimumIndexEntriesComparedPerEngine = 10743;
+
+    /// <summary>
+    /// Lower bound on resources reaching the index sweep, so a corpus that stopped generating them
+    /// cannot satisfy the index pins with nothing to index.
+    /// </summary>
+    public const int MinimumIndexResourceCount = 788;
 
     /// <summary>
     /// Evaluations where both engines threw. Pinned at zero because a mutual throw satisfies

@@ -22,15 +22,39 @@ resource-backed enablement gate now lives in
 shipped expressions against 788 real resource-shaped inputs, compares CLR carriers as well as
 FHIR values, and uses the production Ignixa indexer.
 
-**The inventory is short, and that is the finding.**
+**The inventory is short. Read what the population is before reading that as a finding.**
 
 Across the R4 search parameter corpus - **1,367 distinct expressions x 5 resources = 6,835
 evaluations per engine** - the two engines disagree on **6 outcomes arising from 2 root causes**.
 Neither cause changes an indexed *value*; one changes an element's declared type, the other changes
 *when* an already-broken parameter fails.
 
+Those 6,835 evaluations decompose as follows, and the shape matters more than the divergence count:
+
+| Outcome | Count | What it establishes |
+|---|---:|---|
+| Both engines returned nothing | 6,752 | Agreement on absence. Weak evidence. |
+| Both engines returned the same values | **76** | The only positive evidence in this sweep. |
+| Both engines threw | 1 | No values compared. This is the `hasExtension()` subject that makes entry 1's count 4 and not 5. |
+| Divergent | 6 | The inventory below. |
+
+**76 is the number of evaluations in this sweep that compared matching non-empty values.** The
+corpus is every shipped R4 SearchParameter expression run against five subject resources, so almost
+every expression addresses a resource type the subject is not, and answers empty on both engines for
+reasons that have nothing to do with either engine. A short inventory over this corpus means "no new
+disagreement appeared among the expressions production evaluates on every write" - a regression net.
+It is not a measure of how much behaviour has been shown to agree. The volume of matched values
+lives in the [resource-backed corpus](resource-backed-parity-corpus.md), at 10,074 across 788
+resources.
+
+All four counts are pinned in `KnownDivergences.SearchParameterPopulation`, because until they were,
+an evaluation that stopped comparing values and started throwing on both engines left every entry in
+this document satisfied and the suite green.
+
 The language-construct corpus (83 expressions, deliberately chosen to target what this branch
-changed) produces 38 outcomes from 6 open root causes.
+changed) produces 58 outcomes, grouped in this document under 6 open root causes. 17 of its 415
+evaluations are mutual throws - it deliberately probes operations one engine or the other does not
+implement - and those are pinned in `KnownDivergences.ConstructPopulation` for the same reason.
 **None of them is reachable from any shipped R4 SearchParameter expression.**
 Two entries have since closed: entry 5 (`is` on a multi-item collection), fixed by enforcing the
 singleton rule the spec mandates for `is`; and entry 6 (`highBoundary()` at year precision), which

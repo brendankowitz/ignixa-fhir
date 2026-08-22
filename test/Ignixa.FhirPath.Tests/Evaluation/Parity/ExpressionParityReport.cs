@@ -34,6 +34,11 @@ internal sealed record ExpressionParityReport(
     /// Whether the four outcome buckets account for every evaluation exactly once, and whether the
     /// divergences that were counted are the divergences that were collected.
     /// </summary>
+    /// <remarks>
+    /// The sum identity is structural rather than independent, and only the divergent-count comparison
+    /// is a real two-path cross-check; see the same property on <see cref="ResourceParityReport"/> for
+    /// why, and for what actually pins the bucket assignment.
+    /// </remarks>
     public bool BucketsPartitionEvaluations =>
         BothThrew + BothEmpty + AgreementsOnValues + DivergentEvaluations == EvaluationsPerEngine
         && DivergentEvaluations == Divergences.Count;

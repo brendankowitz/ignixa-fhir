@@ -61,11 +61,20 @@ public class SearchIndexParityTests
     /// Asserts real agreement rather than compatible silence.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The two failure checks run first and the non-empty checks run before the equality check, because
     /// equality on its own is satisfied by two engines that both produced nothing - the Firely
     /// expression throwing and production <c>ElementSearchIndexer</c> containing its own evaluation
     /// failure both yield an empty entry set. Only once neither side is silent does entry equality mean
     /// the two engines agreed.
+    /// </para>
+    /// <para>
+    /// The Ignixa-side check expects emptiness, which a capture that recorded nothing at all would also
+    /// satisfy, so on its own it cannot tell a clean resource from a dead <see cref="IgnixaFailureCapture"/>.
+    /// What rules that out is <c>ResourceBackedParityCorpusTests</c>, which drives the same harness and
+    /// pins a non-empty expected set through it, so a capture reverted to <c>NullLoggerFactory</c> fails
+    /// there. <c>IgnixaFailureCaptureTests</c> pins the mechanism itself for the same reason.
+    /// </para>
     /// </remarks>
     private static void AssertParity(SearchIndexComparison comparison)
     {

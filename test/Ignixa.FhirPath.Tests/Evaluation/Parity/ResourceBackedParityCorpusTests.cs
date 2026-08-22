@@ -33,12 +33,16 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             select.BothEmpty,
             select.AgreementsOnValues);
         _output.WriteLine(
-            "Index: {0} resources in {1:F3}s; {2} divergent resources; {3} reference failures; {4} Ignixa failures.",
+            "Index: {0} resources in {1:F3}s; {2} entries compared ({3} Firely / {4} Ignixa); {5} divergent resources; {6} reference failures; {7} Ignixa evaluation failures; {8} Ignixa pipeline skips.",
             index.ResourceCount,
             index.Elapsed.TotalSeconds,
+            index.EntriesCompared,
+            index.FirelyEntriesCompared,
+            index.IgnixaEntriesCompared,
             index.Divergences.Count,
             index.ReferenceFailures.Count,
-            index.IgnixaFailures.Count);
+            index.IgnixaFailures.Count(failure => failure.ContainedAThrow),
+            index.IgnixaFailures.Count(failure => !failure.ContainedAThrow));
         foreach (var failure in index.ReferenceFailures
                      .GroupBy(failure => failure.Signature, StringComparer.Ordinal)
                      .OrderBy(group => group.Key, StringComparer.Ordinal))
@@ -162,16 +166,49 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
         report.ReferenceFailures.ShouldBeEmpty(
             string.Join(Environment.NewLine, report.ReferenceFailures.Select(failure => failure.Describe())));
 
-        AssertCounts(
-            report.IgnixaFailures.Select(failure => failure.Signature),
-            ResourceBackedKnownDivergences.ExpectedIgnixaIndexFailures,
+        report.ResourceCount.ShouldBeGreaterThanOrEqualTo(
+            ResourceBackedKnownDivergences.MinimumIndexResourceCount,
             """
-            The set of failures production ElementSearchIndexer contained during the sweep moved.
-            Each of these is a search parameter that indexed nothing while the comparison still
-            scored it as agreement, so the pin is what stops that silence spreading unnoticed.
-            A new signature is a new unindexable site; a higher count is an existing gap reaching
-            further; a lower count is either a fix or a corpus that stopped generating the shape.
-            Say which before re-pinning.
+            The index sweep ran over fewer resources than the floor.
+            Check SchemaBasedFhirResourceFaker and the resource type list before anything else.
+            Raise this floor when the corpus genuinely grows; never lower it to accommodate a loss.
+            """);
+        report.FirelyEntriesCompared.ShouldBeGreaterThanOrEqualTo(
+            ResourceBackedKnownDivergences.MinimumIndexEntriesComparedPerEngine,
+            """
+            The reference side of the index sweep contributed fewer entries than the floor, so the
+            evidence base shrank while the divergence and failure pins stayed satisfied - they say
+            what went wrong, never how much was examined. Find what stopped producing entries.
+            Raise this floor when the corpus genuinely grows; never lower it to accommodate a loss.
+            """);
+        report.IgnixaEntriesCompared.ShouldBeGreaterThanOrEqualTo(
+            ResourceBackedKnownDivergences.MinimumIndexEntriesComparedPerEngine,
+            """
+            The production side of the index sweep contributed fewer entries than the floor.
+            A search parameter that stops indexing is invisible to entry equality whenever the
+            reference side also produced nothing for it, which is what this floor exists to catch.
+            Raise this floor when the corpus genuinely grows; never lower it to accommodate a loss.
+            """);
+
+        AssertCounts(
+            report.IgnixaFailures.Where(failure => failure.ContainedAThrow).Select(failure => failure.Signature),
+            ResourceBackedKnownDivergences.ExpectedIgnixaEvaluationFailures,
+            """
+            The set of exceptions production ElementSearchIndexer contained during the sweep moved.
+            These are the failures this harness can adjudicate: Ignixa's evaluator threw where
+            Firely's ran the same expression, and the contained throw indexed nothing while the
+            comparison still scored it as agreement.
+            """);
+        AssertCounts(
+            report.IgnixaFailures.Where(failure => !failure.ContainedAThrow).Select(failure => failure.Signature),
+            ResourceBackedKnownDivergences.ExpectedIgnixaConverterPipelineSkips,
+            """
+            The set of elements production ElementSearchIndexer skipped as unindexable moved.
+            Both indexers reach that decision through the same Ignixa objects, so this corpus records
+            these and cannot adjudicate them - 186 of them are the canonical converter gap tracked as
+            production work. A new signature is a new unindexable site; a higher count is an existing
+            gap reaching further; a lower count is either a converter landing or a corpus that stopped
+            generating the shape. Say which before re-pinning.
             """);
 
         var classified = report.Divergences

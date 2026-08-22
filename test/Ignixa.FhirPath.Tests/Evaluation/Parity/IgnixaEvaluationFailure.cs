@@ -67,6 +67,21 @@ internal sealed record IgnixaEvaluationFailure(
     }
 
     /// <summary>
+    /// Whether an exception was contained here, as opposed to the indexer classifying an element as
+    /// unindexable and continuing.
+    /// </summary>
+    /// <remarks>
+    /// This is the line between a failure the harness can adjudicate and one it cannot. A contained
+    /// throw came out of Ignixa's evaluator or a converter, both of which Firely also exercised, so it
+    /// is an observation about two engines. A classification skip comes from the definition manager,
+    /// the type inference or the converter manager - one set of objects that
+    /// <see cref="SearchIndexParityHarness"/> shares with the reference indexer, so both sides reach
+    /// it through the same code and their agreement is structural. The two are pinned separately for
+    /// that reason; see <c>ResourceBackedKnownDivergences.ExpectedIgnixaConverterPipelineSkips</c>.
+    /// </remarks>
+    public bool ContainedAThrow => ExceptionType.Length > 0;
+
+    /// <summary>
     /// Identifies the failing site without the resource it was observed on, so a pin counts how many
     /// subject resources reach one failure rather than collapsing unrelated failures into one bucket.
     /// </summary>
