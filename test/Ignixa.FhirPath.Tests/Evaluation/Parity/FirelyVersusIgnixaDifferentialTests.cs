@@ -12,6 +12,7 @@
  */
 
 using System.IO;
+using Xunit.Abstractions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
@@ -28,8 +29,10 @@ namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 /// elsewhere in this project are what establish correctness against the spec; this one only compares
 /// the two engines to each other.
 /// </remarks>
-public class FirelyVersusIgnixaDifferentialTests
+public class FirelyVersusIgnixaDifferentialTests(ITestOutputHelper output)
 {
+    private readonly ITestOutputHelper _output = output;
+
     /// <summary>
     /// Sweeps the expressions that actually run in production and pins what they disagree on.
     /// </summary>
@@ -38,10 +41,12 @@ public class FirelyVersusIgnixaDifferentialTests
     {
         // Arrange & Act
         var corpus = FirelyParityFixture.SearchParameterExpressions;
-        var divergences = ParitySweep.Run(corpus, "searchparam");
+        var report = ParitySweep.Run(corpus, "searchparam");
+        _output.WriteLine("searchparam: {0}", report.Describe());
 
         // Assert
-        AssertPinned(divergences, KnownDivergences.SearchParameterSignatures, "searchparam", corpus.Count);
+        AssertPopulation(report, KnownDivergences.SearchParameterPopulation);
+        AssertPinned(report.Divergences, KnownDivergences.SearchParameterSignatures, "searchparam", corpus.Count);
     }
 
     /// <summary>
@@ -52,10 +57,12 @@ public class FirelyVersusIgnixaDifferentialTests
     {
         // Arrange & Act
         var corpus = FirelyParityFixture.ConstructCorpus;
-        var divergences = ParitySweep.Run(corpus, "construct");
+        var report = ParitySweep.Run(corpus, "construct");
+        _output.WriteLine("construct: {0}", report.Describe());
 
         // Assert
-        AssertPinned(divergences, KnownDivergences.ConstructSignatures, "construct", corpus.Count);
+        AssertPopulation(report, KnownDivergences.ConstructPopulation);
+        AssertPinned(report.Divergences, KnownDivergences.ConstructSignatures, "construct", corpus.Count);
     }
 
     /// <summary>
@@ -292,6 +299,57 @@ public class FirelyVersusIgnixaDifferentialTests
 
         // Assert
         ignixa.ShouldBe([expected]);
+    }
+
+    /// <summary>
+    /// Asserts the shape of the whole population, not only the disagreements in it.
+    /// </summary>
+    /// <remarks>
+    /// The divergence pins below are satisfied by a sweep in which every remaining evaluation became a
+    /// mutual throw, because a mutual throw is agreement to <see cref="ParityOutcome.Matches"/> and
+    /// never reaches a divergence list. This is the containment that keeps that from passing - the same
+    /// containment <c>ResourceParityReport</c> already had and this sweep never received, even though
+    /// <see cref="KnownDivergences"/> records a live mutual throw in this very corpus.
+    /// </remarks>
+    private static void AssertPopulation(ExpressionParityReport report, ExpressionCorpusExpectations expected)
+    {
+        report.BucketsPartitionEvaluations.ShouldBeTrue(
+            $"""
+            The outcome buckets no longer account for every evaluation exactly once:
+            {report.BothThrew} both threw + {report.BothEmpty} both empty
+            + {report.AgreementsOnValues} agreed on values + {report.DivergentEvaluations} divergent
+            != {report.EvaluationsPerEngine} evaluations, or the divergent count disagrees with the
+            {report.Divergences.Count} divergences collected. That is a defect in ParityOutcomeTally.
+            """);
+        report.EvaluationsPerEngine.ShouldBeGreaterThanOrEqualTo(
+            expected.MinimumEvaluationsPerEngine,
+            """
+            The sweep evaluated fewer expressions per engine than the floor, so the evidence base
+            shrank. Find what removed expressions or subject resources and restore it.
+            Raise this floor when the corpus genuinely grows; never lower it to accommodate a loss.
+            """);
+        report.BothThrew.ShouldBe(
+            expected.ExpectedBothThrew,
+            """
+            The number of evaluations where both engines throw moved. This is not a parity failure -
+            the engines still agree - but a mutual throw compares no values, so a rise is coverage
+            lost and it is invisible to every divergence pin. Identify the expression and confirm the
+            throw is correct for both engines before re-pinning.
+            """);
+        report.BothEmpty.ShouldBe(
+            expected.ExpectedBothEmpty,
+            """
+            The both-empty count moved. Agreement on absence is legitimate but weak evidence, and it
+            is invisible to the divergence pins, so establish whether the corpus or an engine moved
+            before re-pinning.
+            """);
+        report.AgreementsOnValues.ShouldBeGreaterThanOrEqualTo(
+            expected.MinimumAgreementsOnValues,
+            """
+            Fewer evaluations produced matching non-empty values than the floor requires. This is the
+            number the conformance claim rests on, so a drop is a regression until proven otherwise.
+            Fix the regression rather than re-pinning the floor beneath it.
+            """);
     }
 
     private static void AssertPinned(

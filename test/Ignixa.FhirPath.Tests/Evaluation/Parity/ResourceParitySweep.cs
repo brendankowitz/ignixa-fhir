@@ -44,6 +44,8 @@ internal static class ResourceParitySweep
             tally.Evaluations,
             tally.BothThrew,
             tally.BothEmpty,
+            tally.AgreedOnValues,
+            tally.Divergent,
             stopwatch.Elapsed,
             divergences);
     }
@@ -66,6 +68,8 @@ internal static class ResourceParitySweep
             tally.Evaluations,
             tally.BothThrew,
             tally.BothEmpty,
+            tally.AgreedOnValues,
+            tally.Divergent,
             stopwatch.Elapsed,
             divergences);
     }

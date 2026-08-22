@@ -18,7 +18,8 @@ internal static class SearchIndexParityHarness
     {
         var harness = Harnesses[version];
         var resource = ResourceJsonNode.Parse(json).ToElement(harness.Schema);
-        var ignixa = harness.Ignixa.Extract(resource);
+        IReadOnlyCollection<SearchIndexEntry> ignixa = [];
+        var ignixaFailures = IgnixaFailureCapture.While(() => ignixa = harness.Ignixa.Extract(resource));
         var firely = harness.Firely.Extract(resource);
 
         return new SearchIndexComparison(
@@ -28,7 +29,8 @@ internal static class SearchIndexParityHarness
                 ignixa.Where(entry => harness.CommonExpressions.Contains(entry.SearchParameter.Expression))),
             firely.Failures
                 .Where(failure => harness.CommonExpressions.Contains(failure.ParameterExpression))
-                .ToArray());
+                .ToArray(),
+            ignixaFailures);
     }
 
     private static Harness Create(FhirVersion version)
@@ -43,7 +45,7 @@ internal static class SearchIndexParityHarness
             NullFhirBaseUriProvider.Instance);
         var ignixa = SearchIndexerFactory.CreateInstance(
             schema,
-            NullLoggerFactory.Instance,
+            IgnixaFailureCapture.Instance,
             definitions,
             NullFhirBaseUriProvider.Instance);
         var firely = new FirelySearchIndexer(definitions, converters, schema);

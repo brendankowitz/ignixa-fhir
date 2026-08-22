@@ -61,8 +61,8 @@ public class SearchIndexParityTests
     /// Asserts real agreement rather than compatible silence.
     /// </summary>
     /// <remarks>
-    /// The reference-failure check runs first and the non-empty check runs before the equality check,
-    /// because equality on its own is satisfied by two engines that both produced nothing - the Firely
+    /// The two failure checks run first and the non-empty checks run before the equality check, because
+    /// equality on its own is satisfied by two engines that both produced nothing - the Firely
     /// expression throwing and production <c>ElementSearchIndexer</c> containing its own evaluation
     /// failure both yield an empty entry set. Only once neither side is silent does entry equality mean
     /// the two engines agreed.
@@ -71,6 +71,8 @@ public class SearchIndexParityTests
     {
         comparison.FirelyFailures.ShouldBeEmpty(
             string.Join(Environment.NewLine, comparison.FirelyFailures.Select(failure => failure.Describe())));
+        comparison.IgnixaFailures.ShouldBeEmpty(
+            string.Join(Environment.NewLine, comparison.IgnixaFailures.Select(failure => failure.Describe())));
         comparison.FirelyEntries.ShouldNotBeEmpty();
         comparison.IgnixaEntries.ShouldNotBeEmpty();
         comparison.FirelyEntries.ShouldBe(comparison.IgnixaEntries, ignoreOrder: true);

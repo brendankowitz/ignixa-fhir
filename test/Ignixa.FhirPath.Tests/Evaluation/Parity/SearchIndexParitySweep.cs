@@ -10,6 +10,7 @@ internal static class SearchIndexParitySweep
         var stopwatch = Stopwatch.StartNew();
         var divergences = new List<SearchIndexDivergence>();
         var referenceFailures = new List<ReferenceEvaluationFailure>();
+        var ignixaFailures = new List<IgnixaEvaluationFailure>();
         int resources = 0;
 
         foreach (var version in GeneratedParityCorpus.Build())
@@ -22,7 +23,8 @@ internal static class SearchIndexParitySweep
                     resource.Json,
                     "de-DE",
                     divergences,
-                    referenceFailures);
+                    referenceFailures,
+                    ignixaFailures);
                 resources++;
             }
         }
@@ -35,12 +37,18 @@ internal static class SearchIndexParitySweep
                 resource.Json,
                 resource.CultureName,
                 divergences,
-                referenceFailures);
+                referenceFailures,
+                ignixaFailures);
             resources++;
         }
 
         stopwatch.Stop();
-        return new SearchIndexParityReport(resources, stopwatch.Elapsed, divergences, referenceFailures);
+        return new SearchIndexParityReport(
+            resources,
+            stopwatch.Elapsed,
+            divergences,
+            referenceFailures,
+            ignixaFailures);
     }
 
     private static void Collect(
@@ -49,7 +57,8 @@ internal static class SearchIndexParitySweep
         string json,
         string? cultureName,
         List<SearchIndexDivergence> divergences,
-        List<ReferenceEvaluationFailure> referenceFailures)
+        List<ReferenceEvaluationFailure> referenceFailures,
+        List<IgnixaEvaluationFailure> ignixaFailures)
     {
         var originalCulture = CultureInfo.CurrentCulture;
         var originalUiCulture = CultureInfo.CurrentUICulture;
@@ -64,6 +73,7 @@ internal static class SearchIndexParitySweep
 
             var comparison = SearchIndexParityHarness.Compare(version, json);
             referenceFailures.AddRange(comparison.FirelyFailures);
+            ignixaFailures.AddRange(comparison.IgnixaFailures);
             if (!comparison.FirelyEntries.SequenceEqual(comparison.IgnixaEntries, StringComparer.Ordinal))
             {
                 divergences.Add(

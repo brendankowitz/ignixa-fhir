@@ -28,6 +28,75 @@ internal static class ResourceBackedKnownDivergences
         };
 
     /// <summary>
+    /// Every failure production <c>ElementSearchIndexer</c> contains during the index sweep, keyed by
+    /// site and counted by reach.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These were invisible until the harness stopped handing the production indexer a null logger
+    /// factory. The indexer catches evaluation and conversion failures per search parameter, logs them
+    /// and continues - correct for a write path, fatal for a differential harness, because a parameter
+    /// that throws contributes no entries and an entry-list comparison then scores Ignixa's failure
+    /// against Firely's legitimate empty as agreement.
+    /// </para>
+    /// <para>
+    /// None of these is a divergence: the index sweep still reports the same 11 divergent resources it
+    /// did before they became visible, because the reference indexer performs the matching skips - it
+    /// breaks out of a composite whose component definition is unresolved, and it <c>continue</c>s past
+    /// an element type it has no converter for, exactly as production does. What they establish is that
+    /// 302 of the sweep's comparisons are backed by mutual silence rather than by matched values, which
+    /// is the thing an entry-list equality cannot say.
+    /// </para>
+    /// <para>
+    /// Pinned exactly rather than floored, and by site rather than in total, because each of the three
+    /// ways this number can move means something different. A new signature is a new unindexable site.
+    /// A count that rises is an existing gap spreading. A count that falls is either a real fix or a
+    /// corpus that stopped generating the shape - and the two must not be indistinguishable. The one
+    /// entry that is an actual thrown exception rather than a classification skip is the
+    /// <c>NotSupportedException</c> from <c>hasExtension()</c>, which <see cref="KnownDivergences"/>
+    /// already pins on the Select side.
+    /// </para>
+    /// <para>
+    /// <c>FhirElementTypeNotSupported</c> signatures carry no parameter identity because production
+    /// logs only the element type for that event. That is a gap in production logging; it is recorded
+    /// here rather than worked around, since inventing an identity the log does not carry would make
+    /// the pin say more than the evidence does.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyDictionary<string, int> ExpectedIgnixaIndexFailures { get; } =
+        new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["CannotInferSearchParamType :: http://hl7.org/fhir/SearchParameter/Encounter-location :: Encounter.Location :: "] = 1,
+            ["ComponentNullResolvedSearchParameter :: code-value-concept ::  :: "] = 11,
+            ["ComponentNullResolvedSearchParameter :: code-value-date ::  :: "] = 11,
+            ["ComponentNullResolvedSearchParameter :: code-value-quantity ::  :: "] = 11,
+            ["ComponentNullResolvedSearchParameter :: code-value-string ::  :: "] = 22,
+            ["ComponentNullResolvedSearchParameter :: progress-status-state-actual ::  :: "] = 2,
+            ["ComponentNullResolvedSearchParameter :: progress-status-state-period ::  :: "] = 2,
+            ["ComponentNullResolvedSearchParameter :: progress-status-state-period-actual ::  :: "] = 2,
+            ["ComponentNullResolvedSearchParameter :: scope-artifact-conformance ::  :: "] = 1,
+            ["ComponentNullResolvedSearchParameter :: scope-artifact-phase ::  :: "] = 1,
+            ["ComponentNullResolvedSearchParameter :: specification-version ::  :: "] = 1,
+            ["ComponentNullResolvedSearchParameter :: version-type ::  :: "] = 3,
+            ["FailedToExtractValues :: http://hl7.org/fhir/SearchParameter/questionnaireresponse-extensions-QuestionnaireResponse-item-subject :: QuestionnaireResponse :: NotSupportedException"] = 1,
+            ["FhirElementTypeNotSupported ::  :: Attachment :: "] = 2,
+            ["FhirElementTypeNotSupported ::  :: DeviceDefinition.UdiDeviceIdentifier :: "] = 1,
+            ["FhirElementTypeNotSupported ::  :: Encounter.Location :: "] = 8,
+            ["FhirElementTypeNotSupported ::  :: Ingredient.Manufacturer :: "] = 4,
+            ["FhirElementTypeNotSupported ::  :: Location.Position :: "] = 6,
+            ["FhirElementTypeNotSupported ::  :: MedicinalProductDefinition.Contact :: "] = 4,
+            ["FhirElementTypeNotSupported ::  :: SubstanceDefinition.Code :: "] = 3,
+            ["FhirElementTypeNotSupported ::  :: SubstanceDefinition.Name :: "] = 2,
+            ["FhirElementTypeNotSupported ::  :: SubstanceSpecification.Code :: "] = 2,
+            ["FhirElementTypeNotSupported ::  :: base64Binary :: "] = 1,
+            ["FhirElementTypeNotSupported ::  :: canonical :: "] = 186,
+            ["FhirElementTypeNotSupported ::  :: string :: "] = 7,
+            ["FhirElementTypeNotSupported ::  :: uri :: "] = 3,
+            ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/Encounter-location ::  :: "] = 2,
+            ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/InventoryReport-item ::  :: "] = 2,
+        };
+
+    /// <summary>
     /// Evaluations where both engines threw. Pinned at zero because a mutual throw satisfies
     /// <c>ParityOutcome.Matches</c> without either engine producing a comparable value, so it is
     /// agreement the harness asserts but never established. Any non-zero value here is a finding.

@@ -43,6 +43,50 @@ internal static class KnownDivergences
         };
 
     /// <summary>
+    /// The population the shipped R4 SearchParameter sweep is expected to produce.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The divergence pins above say what the two engines disagree on and nothing about what they
+    /// agreed on or how often. Mutual throws are live in this corpus - the single one counted here is
+    /// the <c>hasExtension()</c> subject that makes the pin above 4 and not 5 - so an evaluation that
+    /// stops comparing values and starts throwing on both sides leaves every pin above satisfied.
+    /// These four numbers are what makes that visible.
+    /// </para>
+    /// <para>
+    /// The shape they expose is worth reading before quoting this sweep as evidence: of 6,835
+    /// evaluations per engine, 6,752 agree on empty and only 76 compare matching non-empty values. The
+    /// corpus is the shipped R4 SearchParameter expressions run against five subject resources, so
+    /// almost every expression addresses a resource type the subject is not. This sweep is a
+    /// regression net over the expressions production evaluates on every write, not a broad
+    /// conformance measurement - <c>ResourceBackedKnownDivergences</c> is where the volume of matched
+    /// values lives, at 10,074.
+    /// </para>
+    /// </remarks>
+    public static ExpressionCorpusExpectations SearchParameterPopulation { get; } =
+        new(
+            MinimumEvaluationsPerEngine: 6835,
+            ExpectedBothThrew: 1,
+            ExpectedBothEmpty: 6752,
+            MinimumAgreementsOnValues: 76);
+
+    /// <summary>
+    /// The population the changed-construct sweep is expected to produce.
+    /// </summary>
+    /// <remarks>
+    /// 17 of these 415 evaluations are mutual throws - the construct corpus deliberately probes
+    /// operations one engine or the other does not implement - and every one of them was uncounted
+    /// until this pin existed, since a mutual throw satisfies <see cref="ParityOutcome.Matches"/> and
+    /// never becomes a divergence.
+    /// </remarks>
+    public static ExpressionCorpusExpectations ConstructPopulation { get; } =
+        new(
+            MinimumEvaluationsPerEngine: 415,
+            ExpectedBothThrew: 17,
+            ExpectedBothEmpty: 166,
+            MinimumAgreementsOnValues: 174);
+
+    /// <summary>
     /// Divergences in the language constructs this branch changed. None of these is reachable from a
     /// shipped R4 SearchParameter expression, which is what makes them cheap.
     /// </summary>
