@@ -921,6 +921,20 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// chasing over the precomputed rows is O(n^3), and it is free by comparison. Collections here are
     /// FHIR repeating elements, and no generated search-parameter expression uses <c>~</c> or <c>!~</c>.
     /// </para>
+    /// <para>
+    /// The descent carries no depth guard, and deliberately so. A stack overflow cannot be caught, so
+    /// one here would falsify <c>ElementSearchIndexer</c>'s containment ladder rather than be reported
+    /// by it - but measured out-of-process, the floor is around 3,900 nested levels, and nothing can
+    /// arrive that deep. Every element tree the evaluator sees is parsed through
+    /// <c>JsonSourceNodeFactory</c>, whose <c>MaxDepth</c> is System.Text.Json's default of 64 and is
+    /// overridden nowhere in <c>src/</c>; <c>Utf8JsonWriter</c>'s non-configurable 1,000-level ceiling
+    /// means nothing deeper can be stored or returned even if it were built in memory. Guarding only
+    /// here would buy nothing in any case: <see cref="AreElementsEquivalent"/> calls
+    /// <c>FunctionHelpers.AreElementsEqual</c> on its first rung, whose equally unguarded descent
+    /// predates this method and reaches the same floor from <c>=</c>, <c>in</c>, <c>contains</c>,
+    /// <c>distinct()</c>, <c>|</c>, <c>intersect</c> and <c>exclude</c> - which generated search
+    /// parameters do use. <c>EquivalenceRecursionDepthTests</c> pins the parser ceiling that holds both.
+    /// </para>
     /// </remarks>
     private bool AreCollectionsEquivalent(
         IReadOnlyList<IElement> left,
