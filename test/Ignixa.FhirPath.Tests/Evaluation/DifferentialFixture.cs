@@ -373,6 +373,25 @@ internal static class DifferentialFixture
         "@T10:30 < @T11:00",
         "@2012-01-01 + 0",
 
+        // A string literal that happens to look temporal. The interpreter's comparison routes on the
+        // value's shape rather than on the element's type, so it answers these the temporal way -
+        // empty, because @2012 and @2012-01 only overlap in precision. The folder has no notion of
+        // precision overlap, so it must decline rather than answer them as ordinal strings.
+        "'@2013' < '@2013-01'",
+        "'@2013' <= '@2013-01'",
+        "'@2013' > '@2013-01'",
+        "'@2013' >= '@2013-01'",
+        "'@2013' = '@2013-01'",
+        "'2013' < '2013-01'",
+        "'@2013' < '@2014'",
+
+        // toString() over a literal: the folder returns the focus unchanged when the focus already
+        // carries a string, and a temporal literal carries one too. Folding it there leaves a date
+        // element where toString() owes a string one.
+        "@2013-06-15.toString()",
+        "@T10:30.toString()",
+        "'@2013-06-15'.toString()",
+
         // Two numeric literals are the shape the folder answered by CLR type where FHIRPath answers by
         // value: object.Equals boxed 1 and 1.0 as different types, so "1 = 1.0" was true unoptimized and
         // false under Optimize. The ordering folder already widened to decimal, which is why only the

@@ -532,8 +532,22 @@ internal class OptimizingAstBuilder : AstBuilder
     private static bool IsDiscardable(Expression? expression) =>
         expression is null or ConstantExpression or EmptyExpression;
 
+    /// <summary>
+    /// Reports whether the interpreter may compare this constant as a temporal value.
+    /// </summary>
+    /// <remarks>
+    /// This has to stay a refusal, not a claim. The node kind alone answers a narrower question than
+    /// the one the folder needs: the interpreter's comparison routes on the value's shape, through
+    /// <c>FhirPathEvaluator.IsDateTimeString</c>, and never consults the element's type - so it treats
+    /// a string literal such as <c>'@2013'</c> as a temporal too, and answers empty where two temporal
+    /// precisions merely overlap. Narrowing this to the node kind therefore let the folder answer
+    /// <c>'@2013' &lt; '@2013-01'</c> as an ordinal string compare while the interpreter answered
+    /// empty. The same predicate the interpreter uses is asked here, so the folder declines to fold
+    /// exactly where the interpreter would take a route the folder cannot reproduce.
+    /// </remarks>
     private static bool IsTemporalLiteral(Expression expression) =>
-        expression is TemporalConstantExpression;
+        expression is TemporalConstantExpression
+        || (expression is ConstantExpression { Value: string text } && FhirTemporal.IsTemporalLiteral(text));
 
     /// <summary>
     /// Folds the boolean operator rows whose answer the left operand alone decides.

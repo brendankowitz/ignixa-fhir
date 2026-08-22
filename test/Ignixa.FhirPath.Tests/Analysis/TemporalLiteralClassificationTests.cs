@@ -12,6 +12,7 @@ using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
+using Superpower;
 
 namespace Ignixa.FhirPath.Tests.Analysis;
 
@@ -48,6 +49,7 @@ public class TemporalLiteralClassificationTests
 
     private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
+    private readonly Tokenizer<FhirPathTokenKind> _tokenizer = FhirPathTokenizer.Create();
 
     /// <summary>
     /// The two literals whose source text differs only by the quotes the grammar discards. Nothing
@@ -161,9 +163,12 @@ public class TemporalLiteralClassificationTests
     /// </summary>
     [Theory]
     [InlineData("@2013", "date", "2013")]
+    [InlineData("@2013-06", "date", "2013-06")]
     [InlineData("@2013-06-15", "date", "2013-06-15")]
     [InlineData("@2013-06-15T10:00:00", "dateTime", "2013-06-15T10:00:00")]
+    [InlineData("@2013-06-15T10:00:00.123+10:00", "dateTime", "2013-06-15T10:00:00.123+10:00")]
     [InlineData("@T10:00:00", "time", "10:00:00")]
+    [InlineData("@T10:00:00.5", "time", "10:00:00.5")]
     public void GivenATemporalLiteral_WhenAnalysed_ThenItKeepsItsTemporalType(
         string expression,
         string expectedTypeName,
@@ -219,6 +224,53 @@ public class TemporalLiteralClassificationTests
     }
 
     /// <summary>
+    /// The second grammar reaches the same verdict as the one the parser uses.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="FhirPathGrammar"/> builds an AST directly and duplicates the literal rules of
+    /// <c>FhirPathParseTreeGrammar</c> with no shared code between them. Nothing inside the repo calls
+    /// <see cref="FhirPathGrammar.Expression"/> - only <c>FhirPathGrammar.Quantity</c> has callers - so
+    /// reverting its temporal rules broke nothing, and "the two grammars cannot disagree" was an
+    /// assertion about untested code. It is public surface on a shipped assembly, where the absence of
+    /// an internal caller says nothing about external ones, so it is covered rather than deleted.
+    /// </remarks>
+    [Theory]
+    [InlineData("@2013-06-15", "date")]
+    [InlineData("@2013-06-15T10:00:00", "dateTime")]
+    [InlineData("@T10:00:00", "time")]
+    public void GivenTheDirectGrammar_WhenParsingATemporalLiteral_ThenItAgreesWithTheParseTreeGrammar(
+        string expression,
+        string expectedTypeName)
+    {
+        // Act
+        var direct = ParseWithDirectGrammar(expression);
+        var viaParseTree = _parser.Parse(expression);
+
+        // Assert
+        direct.ShouldBeOfType<TemporalConstantExpression>(
+            $"the direct grammar must classify '{expression}' by its token, as the parse tree grammar does.");
+        ((TemporalConstantExpression)direct).TemporalTypeName.ShouldBe(expectedTypeName);
+        ((TemporalConstantExpression)direct).Literal.ShouldBe(
+            ((TemporalConstantExpression)viaParseTree).Literal,
+            "the two grammars must carry the same literal text.");
+    }
+
+    /// <summary>
+    /// The inverse for the direct grammar: a quoted literal stays a string there too.
+    /// </summary>
+    [Fact]
+    public void GivenTheDirectGrammar_WhenParsingAStringLiteralBeginningWithTheSigil_ThenItStaysAString()
+    {
+        // Act
+        var direct = ParseWithDirectGrammar("'@2013-06-15'");
+
+        // Assert
+        direct.ShouldBeOfType<ConstantExpression>(
+            "a quoted literal is a string in the direct grammar as well.");
+        ((ConstantExpression)direct).Value.ShouldBe("@2013-06-15");
+    }
+
+    /// <summary>
     /// Pins the classification of a constant carrying no value.
     /// </summary>
     /// <remarks>
@@ -240,6 +292,17 @@ public class TemporalLiteralClassificationTests
         Should.Throw<ArgumentNullException>(
             () => new ConstantExpression(null!),
             "the AST cannot carry a null constant, which is why the arm above is asserted directly.");
+    }
+
+    private Expression ParseWithDirectGrammar(string expression)
+    {
+        var tokenized = _tokenizer.TryTokenize(expression);
+        tokenized.HasValue.ShouldBeTrue($"Tokenization failed: {tokenized}");
+
+        var parsed = FhirPathGrammar.Expression.AtEnd().TryParse(tokenized.Value);
+        parsed.HasValue.ShouldBeTrue($"Parsing failed: {parsed}");
+
+        return parsed.Value;
     }
 
     private IReadOnlyList<IElement> Evaluate(IElement element, string expression, ISchema schema) =>

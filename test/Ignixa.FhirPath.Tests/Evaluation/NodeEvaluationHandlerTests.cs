@@ -254,6 +254,41 @@ public class NodeEvaluationHandlerTests
         key.Split(',').Length.ShouldBe(3);
     }
 
+    /// <summary>
+    /// A string literal beginning with <c>@</c> is keyed as a string, not as a temporal.
+    /// </summary>
+    /// <remarks>
+    /// The key rendered an <c>@</c>-prefixed string bare, the way a date literal is spelled, because it
+    /// classified on the value's first character - the same sniff the parser stopped relying on. Firely
+    /// and HAPI quote a string literal, so the unquoted form made the trace claim a key parity it did
+    /// not have. The two rows here are the pair no value-based predicate can separate.
+    /// </remarks>
+    [Theory]
+    [InlineData("'@2013'.exists()", "'@2013'")]
+    [InlineData("@2013.exists()", "@2013")]
+    [InlineData("'plain'.exists()", "'plain'")]
+    public void GivenALiteralFocus_WhenGettingKey_ThenOnlyATemporalLiteralIsSpelledBare(
+        string expression,
+        string expectedName)
+    {
+        // Arrange
+        var patient = CreatePatientElement();
+        var entries = new List<NodeEvaluationEntry>();
+        var context = new EvaluationContext { Resource = patient, RootResource = patient, Schema = _r4Provider }
+            .WithNodeEvaluationHandler(entry => entries.Add(entry));
+
+        // Act
+        var results = _evaluator.Evaluate(patient, _parser.Parse(expression), context).ToList();
+
+        // Assert
+        results.ShouldNotBeEmpty($"'{expression}' must evaluate, or no entry is captured to key.");
+        var constantEntry = entries.FirstOrDefault(e => e.Expression is ConstantExpression);
+        constantEntry.ShouldNotBeNull($"'{expression}' must capture a constant entry.");
+        constantEntry.GetKey().Split(',')[^1].ShouldBe(
+            expectedName,
+            $"the trace key for the literal in '{expression}' must match the way it was written.");
+    }
+
     [Fact]
     public void GivenExpressionWithoutLocation_WhenGettingKey_ThenReturnsNameOnly()
     {

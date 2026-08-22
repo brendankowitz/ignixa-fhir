@@ -28,6 +28,8 @@ public sealed class TemporalConstantExpression : ConstantExpression
     public TemporalConstantExpression(string literal, ISourcePositionInfo? location = null)
         : base(literal, location)
     {
+        Literal = literal;
+
         var body = literal.StartsWith('@') ? literal[1..] : literal;
 
         if (body.StartsWith('T'))
@@ -46,6 +48,11 @@ public sealed class TemporalConstantExpression : ConstantExpression
             ElementValue = body;
         }
     }
+
+    /// <summary>
+    /// Gets the literal's source text, sigil included, as it was written.
+    /// </summary>
+    public string Literal { get; }
 
     /// <summary>
     /// Gets the FHIRPath type this literal constructs: <c>date</c>, <c>dateTime</c> or <c>time</c>.
