@@ -339,15 +339,29 @@ tracked elsewhere — out of scope for #427 (a FHIRPath PR); recorded here becau
 session's evidence-base repair and must not be lost.**
 - Ignixa registers `canonical` against `UriSearchValue` only
   (`src/Core/Ignixa.Search/Indexing/Converters/CanonicalToUriSearchValueConverter.cs:17`).
-- `microsoft/fhir-server` additionally ships `CanonicalToReferenceSearchValueConverter`, which Ignixa
-  has no equivalent of.
-- Consequence: **46 shipped SearchParameters index nothing in Ignixa and do return results
-  upstream** — including `QuestionnaireResponse-questionnaire`, `MeasureReport-measure`, the
-  `instantiates-canonical` family, `ConceptMap-source-scope`, `StructureDefinition-base`, and
+- Consequence: **46 shipped SearchParameters index nothing in Ignixa** — including
+  `QuestionnaireResponse-questionnaire`, `MeasureReport-measure`, the `instantiates-canonical`
+  family, `ConceptMap-source-scope`, `StructureDefinition-base`, and
   `CapabilityStatement-supported-profile`.
-- Three further converters are missing versus upstream: `IdToReferenceSearchValueConverter`,
-  `IdentifierToStringSearchValueConverter`, `ReferenceToUriSearchValueConverter`. Not sized here —
-  flagged so the tracked-elsewhere work item doesn't stop at `canonical` alone.
+- **Corrected 2026-08-22. An earlier revision of this entry framed the fix as porting
+  `CanonicalToReferenceSearchValueConverter` (and three further converters) from
+  `microsoft/fhir-server`. That is wrong for this codebase, and the correction matters more than the
+  original finding.** [PR #430](https://github.com/brendankowitz/ignixa-fhir/pull/430) establishes
+  that canonical values *are* indexed correctly today — `CanonicalToUriSearchValueConverter` splits
+  them into `UriSearchParam.Uri`/`.Version`/`.Fragment`. Ignixa stores canonical components in
+  `UriSearchParam`, **not** `ReferenceSearchParam`, so a `ReferenceSearchValue` converter would
+  target the wrong storage model.
+- The real shape, per #430: `QuestionnaireResponse-questionnaire` is byte-identical metadata across
+  STU3/R4/R5 (`Reference`, target `Questionnaire`) while the *element* changed `Reference` →
+  `canonical`. Same parameter, different storage table, and nothing in `SearchParameterInfo`
+  distinguishes them — so **codegen metadata is required**, and canonical resolution is a *value
+  join* across two search-parameter indexes (R5 §2.1.3.0.6), not the id join every existing include
+  hard-codes via `rsp.BaseUri IS NULL`. #430 owns this work; do not re-derive it here.
+- `:identifier` is likewise **not** a missing-converter problem:
+  [PR #421](https://github.com/brendankowitz/ignixa-fhir/pull/421) solves it with a derived token
+  search parameter (`{url}#identifier`) plus `ReferenceToTokenSearchValueConverter`, compiling to a
+  single `TokenSearchParam` seek with no schema, TVP, or stored-procedure change. Treat
+  `IdentifierToStringSearchValueConverter` as superseded rather than missing.
 - **The parity harness is structurally incapable of detecting any of this on its own**: it hands one
   converter-manager instance to both indexers (E2's original defect), so the only axis that is ever
   doubly evaluated is `Select` — a missing *converter* looks identical to "both sides agreed on
@@ -355,11 +369,20 @@ session's evidence-base repair and must not be lost.**
 - Diagnostic gap worth recording alongside this: `Log.FhirElementTypeNotSupported` carries the
   element type but no parameter identity, so this class of gap cannot be diagnosed from logs on a
   running server — only from a parity run or a code read.
-- **This contradicts ADR 2608's claim that "index rows written under either provider stay valid."**
-  Under Ignixa, for these 46 parameters, rows are not written differently or invalidly — they are
-  **never written at all**. That is a stronger failure than the §3.3/§3.4 divergence framing covers,
-  and the ADR correction (§8) must carry this as its own bullet, not fold it into the additive-rows
-  story those sections tell.
+- **This does NOT contradict ADR 2608's claim that "index rows written under either provider stay
+  valid." Corrected 2026-08-22; an earlier revision of this entry asserted that it did, and that
+  assertion was a category error.** The ADR's seam is `IFhirPathProvider` — FHIRPath evaluation
+  only. fhir-server's `TypedElementSearchIndexer` takes the provider by constructor injection, and
+  everything downstream of `Select` — including fhir-server's *own* converter manager, which does
+  have a canonical-to-reference converter — is fhir-server code that runs identically under either
+  provider. `Ignixa.Search`'s converter manager never executes inside fhir-server at all, so
+  flipping the provider changes nothing for these 46 parameters. ADR line 167 is contradicted
+  **once**, by the R5 `instant` carrier (§3.4), not twice.
+- What D6 does block is **Ignixa's own search fidelity and any index-parity claim this repo
+  publishes**. The upstream takeaway for the ADR correction is therefore *methodological*, not a
+  rollback-claim retraction: Ignixa's published parity numbers do not adjudicate the converter
+  pipeline, so ADR line 167's justification must come from fhir-server's own two-provider corpus —
+  which ADR lines 163-164 already specify.
 *Fix:* out of scope here — do not write the missing converters as part of this documentation pass or
 as part of #427. This is `Ignixa.Search` production work and belongs in its own PR against that
 project, referenced from the ADR correction.
@@ -545,7 +568,7 @@ Latest published is 0.6.41 (`release/0.6.41` = `c22ca789`, 2026-07-27); #398 (`4
 a judgment call — say so in the release notes.
 
 **Hard blockers (all true before dispatch):** was 9 at the plan's writing; D4 leaving the list
-(measurement resolved it — see §4) makes 8; the D6 converter gap discovered while fixing the evidence
+(measurement resolved it — see §4) makes 8; the D6 canonical indexing gap discovered while fixing the evidence
 base makes it 9 again. D4 is **not** on this list — see its entry in §4 for why.
 
 1. D1 (string-literal regression) merged. — dangerous-direction write-path regression.
@@ -559,13 +582,15 @@ base makes it 9 again. D4 is **not** on this list — see its entry in §4 for w
    `40f425ec`) — and this is the fix that surfaced D6 below: once the harness could see Ignixa-side
    failures instead of laundering them into agreement, the missing `canonical` converters stopped
    being invisible.
-6. **D6 (new) — the `canonical` search-value converter gap, resolved or explicitly accepted as a
-   named enablement gap.** 46 shipped SearchParameters index nothing in Ignixa where Firely returns
-   results (§4, D6). The fix is `Ignixa.Search` production work in a separate PR, out of scope for
-   #427 itself — but the ADR 2608 correction PR (below) must not go out claiming "index rows written
-   under either provider stay valid" while this gap is open. Either the converters ship first, or the
-   ADR correction names this gap explicitly as an accepted, tracked exception. Silence is not an
-   option here — that is exactly the failure mode this whole evidence-base repair exists to close.
+6. **D6 (new) — the `canonical` indexing gap, resolved or explicitly accepted as a named gap in
+   Ignixa's own search fidelity.** 46 shipped SearchParameters index nothing in Ignixa (§4, D6).
+   The work is `Ignixa.Search` production work owned by
+   [PR #430](https://github.com/brendankowitz/ignixa-fhir/pull/430), out of scope for #427 itself.
+   It gates this repo's **index-parity language**, not the seam: per §4 D6 as corrected, flipping
+   fhir-server's provider does not change these rows, because fhir-server's own converters run
+   either way. So the requirement here is that no release note or parity claim published from this
+   repo asserts index fidelity while the gap is open. Silence is not an option — that is exactly
+   the failure mode this evidence-base repair exists to close.
 7. **Firely floor resolved (explicit answer):** the shipped `src/Core/Extensions/Ignixa.Extensions.FirelySdk5` targets
    `Hl7.Fhir.Base` **5.13.1**
    (`C:/w427/src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Directory.Packages.props:14`)
@@ -622,11 +647,15 @@ base makes it 9 again. D4 is **not** on this list — see its entry in §4 for w
   (`src/Core/Ignixa.Search/Indexing/ElementSearchIndexer.cs:61-81` — the unset-Schema comment is load-bearing) — the snippet must
   match the shipped composition; (e) "index rows written under either provider stay valid" gets
   the §3.3 additive-rows framing and the §3.4 R5-instant qualification; (f) the package
-  prerequisite is a release containing **#427**, not merely #398; (g) **new** — "index rows written
-  under either provider stay valid" is not just incomplete, it is false for the 46 parameters behind
-  the D6 `canonical` converter gap (§4 D6): under Ignixa those rows are never written at all. This
-  needs its own bullet in the corrected ADR text, not a fold-in to (e)'s additive-rows framing, which
-  describes a different and milder failure mode.
+  prerequisite is a release containing **#427**, not merely #398; (g) **new, and methodological rather than a
+  retraction** — Ignixa's published parity numbers do **not** adjudicate the converter pipeline,
+  because the corpus hands one converter-manager instance to both indexers and therefore doubly
+  evaluates only `Select` (§4 D6). So ADR line 167's justification cannot rest on figures published
+  from this repo; it must come from fhir-server's own two-provider corpus, which ADR lines 163-164
+  already specify. **Do not** write into the ADR that line 167 is false for the 46 D6 parameters —
+  an earlier revision of this document said so and it was a category error: `Ignixa.Search`'s
+  converter manager never executes inside fhir-server, so the provider flag does not move those
+  rows. (e) remains the only correction line 167 needs.
 
 ---
 
@@ -640,7 +669,7 @@ reused unchanged. New PRs:
 | **N1** | E1 runner honesty + §6 re-baseline + skip conversion/guards + snapshot pin | Changes the headline number everyone downstream quotes; its PR description carries the operator-arm-deletion red run | 2–3 d |
 | **N2** | E2+E3+E4 parity-evidence repairs + corpus re-run | Test-only, one theme; its description carries the injected-throw red runs | 2–3 d |
 | **N3** | D1 parse-layer literal fix | Production parser/analyzer semantics; nothing rides with it | 1–2 d |
-| **N4** | D2 `repeat()` cap (+dedup check) + D4 recursion guard | One theme: evaluator resource guards on the write path; both throw `FhirPathEvaluationException` per WI-4's pin, so it lands **after or with** residuals PR 3 (#428 affirmation) — the tier decision is the same conversation | 1–2 d |
+| **N4** | D2 `repeat()` cap (+dedup check). **D4 cut** — resolved by measurement, no guard needed | Evaluator resource guard on the write path; throws `FhirPathEvaluationException` per WI-4's pin, so it lands **after or with** residuals PR 3 (#428 affirmation) — the tier decision is the same conversation | 1 d |
 | **N5** | §3.6 environment-variable binding precedence | Production evaluation-context semantics; seam-facing contract | 1–2 d |
 | **N6** | D3 + D5 + type-name census | Consistency fixes, one theme | 1 d |
 | **N7** | Firely floor: props change to 5.11.4, CI matrix leg, nuspec test (H7) | Packaging; must not ride with semantics changes | 1 d |
