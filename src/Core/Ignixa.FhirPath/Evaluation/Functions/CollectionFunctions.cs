@@ -430,6 +430,7 @@ internal static class CollectionFunctions
     /// Per FHIRPath spec: Returns only the results of the projection, not the original focus items.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>ReturnType = "any"</c> rather than <c>"context"</c> because this returns the projection's
     /// results, never the focus items themselves, so passing the focus type through would name a type the
     /// evaluator cannot produce. It did: <c>(name.repeat(family)).ofType(string)</c> typed the result as
@@ -442,6 +443,58 @@ internal static class CollectionFunctions
     /// downstream of a <c>repeat()</c>, and downstream of one only: <c>repeat(</c> appears in no generated
     /// search parameter definition, and in three shipped invariant expressions (R5 and R6 only; two on
     /// PlanDefinition, one on QuestionnaireResponse), none of which navigates a cast off the result.
+    /// </para>
+    /// <para>
+    /// <b>Iteration guard (#433):</b> the dedup check below only stops a projection that <em>navigates</em>
+    /// an existing finite tree - it never terminates for one that <em>constructs</em> a fresh value each
+    /// round, e.g. <c>repeat($this &amp; 'x')</c>, whose output is never deep-equal to anything already
+    /// processed. <see cref="RepeatAll"/> caps at 100,000 iterations; this cap is 10,000, and that
+    /// difference is a cost-shape decision, not an oversight to be "harmonised" away later. The two
+    /// functions do not cost the same per iteration: <c>repeatAll</c> is dequeue-evaluate-append, O(1) of
+    /// bookkeeping per item. <c>Repeat</c> runs <em>three</em> O(n) scans per item - <c>processed.Any(...)</c>
+    /// twice and <c>result.Any(...)</c> once - each via <see cref="FunctionHelpers.AreElementsEqual"/>,
+    /// which recurses over subtrees. That is O(n²) with an expensive comparator, so the same iteration count
+    /// buys a very different wall-clock budget:
+    /// <list type="table">
+    /// <item><description>1,000 iterations: ~3x10^6 deep-equality comparisons - well under a second.</description></item>
+    /// <item><description>10,000 iterations (this cap): ~3x10^8 comparisons - tens of seconds for the
+    /// worst-case adversarial shape (measured against <c>repeat($this &amp; 'x')</c> in this codebase's own
+    /// falsification test), long enough to be a real limit, short enough to still be a guard a request can
+    /// survive rather than a hang.</description></item>
+    /// <item><description>100,000 iterations (repeatAll's cap, applied here): ~3x10^10 comparisons - two
+    /// orders of magnitude past the above, i.e. tens of minutes to hours - a hang wearing a guard's
+    /// clothing.</description></item>
+    /// </list>
+    /// 10,000 also leaves roughly an order of magnitude of headroom over plausible real input: navigating
+    /// <c>repeat(item)</c> over a large structured Questionnaire dequeues once per nested item, and real
+    /// forms run on the order of 50-1,500 items. The guard exists to catch runaway construction, not to
+    /// reject big-but-finite data.
+    /// </para>
+    /// <para>
+    /// <b>Exception type and log tier:</b> the guard throws <see cref="FhirPathEvaluationException"/>,
+    /// matching <see cref="RepeatAll"/>'s guard, so <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c>
+    /// classifies both the same way - expected containment (Warning) rather than an indexer defect (Error).
+    /// That tier was affirmed and pinned for <c>repeatAll</c>'s guard in commit b691f142 on the rationale
+    /// that a guard a tenant can trip on demand, against tenant-supplied data, is data, not an indexer bug.
+    /// Two iteration-limit guards reporting at different severities would be worse than either choice, so
+    /// both land in the same one.
+    /// </para>
+    /// <para>
+    /// <b>Dedup semantics vs. the spec (considered, not changed):</b> the FHIRPath spec defines
+    /// <c>repeat()</c>'s dedup via the <c>=</c> operator - "only if they are not already in the output
+    /// collection as determined by the equals (<c>=</c>) operator returning <c>true</c> (i.e. <c>false</c>
+    /// and empty both indicate that the values are not equal and thus added)" (continuous build,
+    /// index.md:1016) - while this method dedups via <see cref="FunctionHelpers.AreElementsEqual"/>, a deep
+    /// equality helper. For primitives these coincide. For temporals of mismatched precision, <c>=</c> is
+    /// indeterminate (empty), which per the spec passage above means "not equal, so add" - the same outcome
+    /// a naive deep-equality check might get wrong by treating "can't decide" as "equal enough to drop". In
+    /// this codebase they do not diverge in practice: <see cref="FunctionHelpers.AreElementsEqual"/> routes
+    /// temporal comparisons through <see cref="TemporalOperand.AreSameItem"/>, which was itself built to
+    /// collapse an indeterminate <see cref="TemporalOperand.AreEqual"/> to <see langword="false"/> (see its
+    /// remarks) - i.e. "not the same item" - which is exactly the spec's "not equal, so add". So the
+    /// divergence the spec wording invites is already closed for the case that matters here; this is a
+    /// documented decision, not an unexamined gap, and no dedup behavior changes in this fix.
+    /// </para>
     /// </remarks>
     [FhirPathFunction("repeat",
         SupportedContexts = "any-any",
@@ -466,18 +519,24 @@ internal static class CollectionFunctions
         var processed = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
+        const int maxIterations = 10_000;
+        var iterations = 0;
+
         while (queue.Count > 0)
         {
+            if (++iterations > maxIterations)
+                throw new FhirPathEvaluationException($"repeat() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
+
             var current = queue.Dequeue();
-            
+
             // Check if we've already processed this element using deep equality comparison
             if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, current)))
             {
                 processed.Add(current);
-                
+
                 var innerContext = context.PushThis(current);
                 var projected = evaluateExpression([current], projection, innerContext);
-                
+
                 foreach (var item in projected)
                 {
                     // Add projection results to the output result set (avoiding duplicates)

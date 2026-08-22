@@ -148,6 +148,48 @@ public class RemainingCoverageTests
         Assert.Empty(result);
     }
 
+    [Fact]
+    public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionWithinTheGuardedIterationLimit()
+    {
+        // Arrange - repeat($this & 'x') is the constructing-projection hazard from #433: every round
+        // concatenates a literal onto $this, so the output is a fresh, longer string that is never
+        // deep-equal to anything already processed. The dedup check that stops a *navigating* projection
+        // over a finite tree (see the tests above) cannot stop one that *constructs* a new value each
+        // round - only the iteration cap can.
+        var expr = _parser.Parse("'a'.repeat($this & 'x')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert - the cap fires deterministically and quickly (see CollectionFunctions.Repeat's remarks
+        // for why 10,000 iterations of this shape costs roughly a second, not minutes).
+        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
+        exception.Message.ShouldContain("repeat()");
+        exception.Message.ShouldContain("maximum iteration limit");
+    }
+
+    [Fact]
+    public void GivenDeeplyNestedQuestionnaireItems_WhenRepeatItem_ThenReturnsEveryItemWithoutTrippingTheIterationGuard()
+    {
+        // Arrange - the control for the test above: a Questionnaire.item-shaped tree that *navigates*
+        // rather than constructs. Branching 3 deep 6 yields 1,092 items, sized to sit near the top of a
+        // real Questionnaire's item count (the guard's remarks cite ~50-1,500 items for real forms), so
+        // this proves the 10,000-iteration cap does not reject big-but-finite, legitimate input.
+        const int breadth = 3;
+        const int depth = 6;
+        var expectedItemCount = Enumerable.Range(1, depth).Sum(level => (int)Math.Pow(breadth, level));
+        var questionnaire = CreateDeeplyNestedQuestionnaireItems(breadth, depth);
+        var expr = _parser.Parse("repeat(item)");
+
+        // Act
+        var result = _evaluator.Evaluate(questionnaire, expr).ToList();
+
+        // Assert
+        result.Count.ShouldBe(expectedItemCount);
+        result.Select(e => e.Children("linkId").Single().Value).Distinct().Count().ShouldBe(expectedItemCount);
+    }
+
     #endregion
 
     #region IsDistinct Tests (TypedElementEqualityComparer Coverage)
@@ -467,6 +509,41 @@ public class RemainingCoverageTests
         };
 
         return new ComplexElement("Patient", "Patient", children);
+    }
+
+    /// <summary>
+    /// Builds a Questionnaire.item-shaped tree, <paramref name="breadth"/> items wide at every level down
+    /// to <paramref name="depth"/> levels deep, each carrying a unique <c>linkId</c> so no two items are
+    /// deep-equal - a real Questionnaire's items are distinguishable the same way, and a false dedup here
+    /// would under-count the control this tree exists to provide.
+    /// </summary>
+    private IElement CreateDeeplyNestedQuestionnaireItems(int breadth, int depth)
+    {
+        IElement BuildItem(string linkId, int remainingDepth)
+        {
+            var children = new List<IElement>
+            {
+                new PrimitiveElement(linkId, "string", "linkId")
+            };
+
+            if (remainingDepth > 0)
+            {
+                for (int i = 0; i < breadth; i++)
+                {
+                    children.Add(BuildItem($"{linkId}.{i}", remainingDepth - 1));
+                }
+            }
+
+            return new ComplexElement("item", "Questionnaire.item", children);
+        }
+
+        var rootItems = new List<IElement>();
+        for (int i = 0; i < breadth; i++)
+        {
+            rootItems.Add(BuildItem($"{i}", depth - 1));
+        }
+
+        return new ComplexElement("Questionnaire", "Questionnaire", rootItems);
     }
 
     private class PrimitiveElement : IElement

@@ -58,9 +58,10 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// <para>
 /// Not every test below exercises the laziness hazard either.
 /// <see cref="GivenACustomSearchParameterWhoseExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex"/>
-/// pins a different, unrelated property - the log tier a guard exception lands in (issue #428) - and its
-/// expression throws eagerly inside <c>Select</c> itself, so it provides no coverage of the #403 laziness
-/// guard. See that test's own doc comment for why that is fine for its purpose.
+/// and <see cref="GivenACustomSearchParameterWhoseRepeatExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex"/>
+/// pin a different, unrelated property - the log tier a guard exception lands in (issues #428 and #433) - and
+/// their expressions throw eagerly inside <c>Select</c> itself, so neither provides coverage of the #403
+/// laziness guard. See each test's own doc comment for why that is fine for its purpose.
 /// </para>
 /// </summary>
 public class SearchIndexerFailureContainmentTests
@@ -299,6 +300,55 @@ public class SearchIndexerFailureContainmentTests
         indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
     }
 
+    [Fact]
+    public void GivenACustomSearchParameterWhoseRepeatExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex()
+    {
+        // Arrange - status.repeat($this & 'x') is a deliberate non-terminator, not a typo (issue #433): the
+        // projection concatenates a literal onto $this every round, so it *constructs* a fresh, longer string
+        // each time rather than *navigating* a finite tree. Repeat()'s only other bound - the dedup check
+        // against `processed` - never fires, because the new string is never deep-equal to anything already
+        // seen, so the queue never drains on its own. CollectionFunctions.Repeat trips its own 10,000-iteration
+        // guard (a tighter cap than RepeatAll's 100,000, because Repeat's per-item cost is O(n) deep-equality
+        // scans rather than RepeatAll's O(1) - see Repeat's own remarks for the full reasoning) and throws
+        // FhirPathEvaluationException, the same exception type RepeatAll's guard uses. The guard is tripped by
+        // a tenant-supplied expression against tenant-supplied data, deterministically, on demand - the same
+        // class of failure as a malformed literal (FormatException) or an unsupported function
+        // (NotSupportedException), both of which IsExpectedEvaluationFailure already routes to Warning. It must
+        // not surface as UnexpectedExtractionFailure (Error): that tier is reserved for indexer or converter
+        // code defects (NullReferenceException, InvalidCastException), not for a guard the evaluator raises on
+        // purpose against input it does not control. repeat() appears in no generated *SearchParameterDefinitions.g.cs
+        // file's non-invariant search parameters, so a *constructing* projection like this one is reachable only
+        // from a tenant-authored custom search parameter, never from base FHIR search parameters.
+        //
+        // This test pins tier assignment (#433) only, matching what GivenACustomSearchParameterWhoseExpressionNeverTerminates_...
+        // above pins for repeatAll() (#428). It deliberately does not cover the issue #403 laziness guard the
+        // class doc describes: Repeat's iteration check throws inside the loop that Select() itself drives to
+        // build its result, so the exception surfaces eagerly from element.Select(...) and never reaches a lazy
+        // ToList() further out. Deleting the materialising .ToList() from the try block this test's call site
+        // uses would not un-catch this exception, so it does not exercise that guard.
+        var captured = new List<(LogLevel Level, string Message)>();
+        _searchParameterDefinitionManager.AddNewSearchParameters([NeverTerminatingRepeatSearchParameter()]);
+        var indexer = CreateIndexer(new CapturingLoggerFactory(captured));
+        var observation = ObservationJson();
+        var element = observation.ToElement(_schemaProvider);
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert - logged as an expected data/expression-level miss (Warning) naming the parameter, never as an
+        // indexer defect (Error), and containment is per-parameter: every sibling parameter still indexes.
+        var failureLog = captured.Single(c => c.Message.Contains(NeverTerminatingRepeatExpression, StringComparison.Ordinal));
+        failureLog.Level.ShouldBe(LogLevel.Warning);
+        failureLog.Message.ShouldContain(NeverTerminatingRepeatUrl);
+        failureLog.Message.ShouldContain("Observation/o1");
+        captured.ShouldNotContain(c => c.Level == LogLevel.Error);
+
+        indices.Count(i => i.SearchParameter.Code == NeverTerminatingRepeatCode).ShouldBe(0);
+        indices.Count(i => i.SearchParameter.Code == "status").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
+    }
+
     private const string BrokenNonCompositeCode = "broken-non-composite";
     private const string BrokenNonCompositeExpression = "Observation.code.coding.where(system + 1 = 'non-composite')";
     private const string BrokenNonCompositeUrl = "http://example.org/fhir/SearchParameter/broken-non-composite";
@@ -318,6 +368,10 @@ public class SearchIndexerFailureContainmentTests
     private const string NeverTerminatingCode = "repeat-all-never-terminates";
     private const string NeverTerminatingExpression = "repeatAll($this)";
     private const string NeverTerminatingUrl = "http://example.org/fhir/SearchParameter/repeat-all-never-terminates";
+
+    private const string NeverTerminatingRepeatCode = "repeat-never-terminates";
+    private const string NeverTerminatingRepeatExpression = "status.repeat($this & 'x')";
+    private const string NeverTerminatingRepeatUrl = "http://example.org/fhir/SearchParameter/repeat-never-terminates";
 
     private IElement BrokenNonComposite()
     {
@@ -414,6 +468,25 @@ public class SearchIndexerFailureContainmentTests
               "base": [ "Observation" ],
               "type": "string",
               "expression": "{{NeverTerminatingExpression}}"
+            }
+            """;
+
+        return ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
+    }
+
+    private IElement NeverTerminatingRepeatSearchParameter()
+    {
+        string json = $$"""
+            {
+              "resourceType": "SearchParameter",
+              "id": "{{NeverTerminatingRepeatCode}}",
+              "url": "{{NeverTerminatingRepeatUrl}}",
+              "name": "{{NeverTerminatingRepeatCode}}",
+              "status": "active",
+              "code": "{{NeverTerminatingRepeatCode}}",
+              "base": [ "Observation" ],
+              "type": "string",
+              "expression": "{{NeverTerminatingRepeatExpression}}"
             }
             """;
 
