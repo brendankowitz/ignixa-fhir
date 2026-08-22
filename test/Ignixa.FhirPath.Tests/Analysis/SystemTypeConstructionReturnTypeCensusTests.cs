@@ -140,8 +140,10 @@ public class SystemTypeConstructionReturnTypeCensusTests
                 + "constructions; probed with a single System-integer-constructing argument, so the union is that named type."),
             ["any"] =
                 (ConstructionVerdict.FailsOpenByDesign,
-                "Declared by children() and descendants(). \"No specific return type inference\" - the analyzer answers Any "
-                + "unconditionally, independent of focus or arguments, by design."),
+                "Declared by children(), descendants(), repeat() and repeatAll(). \"No specific return type inference\" - the "
+                + "analyzer answers Any unconditionally, independent of focus or arguments, by design. repeat()/repeatAll() "
+                + "moved here from \"context\" in #423: they return the projection, never the focus, so inheriting the focus's "
+                + "construction named a value they cannot produce."),
         };
 
     private static readonly IFhirSchemaProvider Schema = FhirVersion.R4.GetSchemaProvider();

@@ -436,9 +436,12 @@ internal static class CollectionFunctions
     /// <c>HumanName</c> and was reported as provably empty while the evaluator returned two strings
     /// (#423). Naming the projection's type instead would need a fixpoint over the recursion, which
     /// <c>descendants()</c> - the same shape of unbounded recursion - already declines to do for the same
-    /// reason. Unknown fails open in the cast and provenance paths, so the cost is losing true
-    /// always-empty diagnostics downstream of a <c>repeat()</c>, which no shipped search parameter and no
-    /// shipped invariant depends on.
+    /// reason. Unknown fails open in the cast and provenance paths, and every site that raises an
+    /// always-empty diagnostic is gated on the focus not being unknown, so widening the type here cannot
+    /// manufacture a claim - it can only drop one. The cost is losing true always-empty diagnostics
+    /// downstream of a <c>repeat()</c>, and downstream of one only: <c>repeat(</c> appears in no generated
+    /// search parameter definition, and in three shipped invariant expressions (R5 and R6 only; two on
+    /// PlanDefinition, one on QuestionnaireResponse), none of which navigates a cast off the result.
     /// </remarks>
     [FhirPathFunction("repeat",
         SupportedContexts = "any-any",
