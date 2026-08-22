@@ -87,15 +87,31 @@ internal sealed class SystemTypeConstructionAnalyzer(
             : SystemTypeConstruction.None;
     }
 
+    /// <summary>
+    /// Names the FHIRPath type a constant constructs.
+    /// </summary>
+    /// <remarks>
+    /// A temporal literal is recognised by its node kind, not by its value. Sniffing a leading <c>@</c>
+    /// classified the string literal <c>'@x'</c> as a date, because the grammar hands both literal kinds
+    /// the same CLR string; that made <c>'@'.length()</c> a hard error and <c>'@x' as String</c> a
+    /// confident always-empty verdict on expressions the evaluator answers. Email-shaped literals appear
+    /// throughout FHIR invariants, so the misclassification is reachable.
+    /// </remarks>
     public static string GetConstantTypeName(ConstantExpression expression) =>
-        expression.Value switch
+        expression is TemporalConstantExpression temporal
+            ? temporal.TemporalTypeName
+            : GetValueTypeName(expression.Value);
+
+    /// <summary>
+    /// Names the FHIRPath type a constant's CLR payload constructs, independent of the literal's node kind.
+    /// </summary>
+    internal static string GetValueTypeName(object? value) =>
+        value switch
         {
+            null => "empty",
             bool => "boolean",
             int or long => "integer",
             decimal or double or float => "decimal",
-            string value when value.StartsWith("@T", StringComparison.Ordinal) => "time",
-            string value when value.StartsWith('@') && value.Contains('T', StringComparison.Ordinal) => "dateTime",
-            string value when value.StartsWith('@') => "date",
             string => "string",
             DateTime or DateTimeOffset => "dateTime",
             _ => "string",

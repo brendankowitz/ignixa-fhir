@@ -78,20 +78,20 @@ public static class FhirPathGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> DateLiteral =
         Token.EqualTo(FhirPathTokenKind.DateLiteral)
-            .Select(t => new ConstantExpression(
-                t.ToStringValue(), // Store as string for now
+            .Select(t => (ConstantExpression)new TemporalConstantExpression(
+                t.ToStringValue(),
                 CreatePosition(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> DateTimeLiteral =
         Token.EqualTo(FhirPathTokenKind.DateTimeLiteral)
-            .Select(t => new ConstantExpression(
-                t.ToStringValue(), // Store as string for now
+            .Select(t => (ConstantExpression)new TemporalConstantExpression(
+                t.ToStringValue(),
                 CreatePosition(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> TimeLiteral =
         Token.EqualTo(FhirPathTokenKind.TimeLiteral)
-            .Select(t => new ConstantExpression(
-                t.ToStringValue(), // Store as string for now
+            .Select(t => (ConstantExpression)new TemporalConstantExpression(
+                t.ToStringValue(),
                 CreatePosition(t)));
 
     // Quantity: number followed by unit string (e.g., 5 'mg', 37.5 'Cel')

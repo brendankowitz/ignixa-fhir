@@ -129,7 +129,7 @@ internal class OptimizingAstBuilder : AstBuilder
         // A temporal literal reaches the AST as its source text, sigil and all, so folding it here
         // would compare "@2012" to "@2012-01" as ordinal strings. FHIRPath compares them by instant
         // and answers empty when their precisions merely overlap, which no string compare can express.
-        if (IsTemporalLiteral(leftConst.Value) || IsTemporalLiteral(rightConst.Value))
+        if (IsTemporalLiteral(leftConst) || IsTemporalLiteral(rightConst))
         {
             return false;
         }
@@ -532,8 +532,8 @@ internal class OptimizingAstBuilder : AstBuilder
     private static bool IsDiscardable(Expression? expression) =>
         expression is null or ConstantExpression or EmptyExpression;
 
-    private static bool IsTemporalLiteral(object? value) =>
-        value is string text && text.StartsWith('@');
+    private static bool IsTemporalLiteral(Expression expression) =>
+        expression is TemporalConstantExpression;
 
     /// <summary>
     /// Folds the boolean operator rows whose answer the left operand alone decides.
@@ -691,7 +691,9 @@ internal class OptimizingAstBuilder : AstBuilder
                 break;
 
             case "TOSTRING":
-                if (focus is ConstantExpression { Value: string })
+                // A temporal literal also carries a string, but returning it unchanged would leave a
+                // date element where toString() has to produce a string one.
+                if (focus is ConstantExpression { Value: string } and not TemporalConstantExpression)
                 {
                     result = focus;
                     return true;

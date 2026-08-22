@@ -1280,47 +1280,32 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         };
     }
 
+    /// <summary>
+    /// Builds the element a literal denotes, typing temporal literals from the node the parser produced.
+    /// </summary>
+    /// <remarks>
+    /// The <c>@</c> sigil cannot decide this. A string literal keeps whatever characters it was written
+    /// with, so <c>'@2013'</c> and <c>@2013</c> arrive carrying the same CLR string; typing on the sigil
+    /// built a <c>date</c> element out of the string literal, which made <c>'@2013'.length()</c> answer 4
+    /// and <c>'@x' as String</c> answer empty. The sigil and the time literal's <c>T</c> marker are
+    /// FHIRPath syntax rather than part of the value, so
+    /// <see cref="TemporalConstantExpression.ElementValue"/> has already removed them.
+    /// </remarks>
     public IEnumerable<IElement> VisitConstant(ConstantExpression expression, EvaluationContext context)
     {
+        if (expression is TemporalConstantExpression temporal)
+        {
+            return [new PrimitiveElement(temporal.ElementValue, temporal.TemporalTypeName)];
+        }
+
         return expression.Value switch
         {
             int i => [CreateInteger(i)],
             decimal d => [CreateDecimal(d)],
             bool b => [CreateBoolean(b)],
-            string s => [CreateDateTimeOrString(s)],
+            string s => [CreateString(s)],
             _ => [CreateConstant(expression.Value)]
         };
-    }
-
-    /// <summary>
-    /// Creates a typed element from a string value.
-    /// Detects date/time literals (@YYYY, @YYYY-MM-DD, @YYYY-MM-DDTHH:MM:SS, @THH:MM:SS)
-    /// and creates elements with appropriate types (date, dateTime, time).
-    /// </summary>
-    private IElement CreateDateTimeOrString(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return CreateString(value);
-
-        if (!value.StartsWith("@", StringComparison.Ordinal))
-            return CreateString(value);
-
-        var dateTimeValue = value.Substring(1);
-
-        if (dateTimeValue.StartsWith("T", StringComparison.Ordinal))
-        {
-            // Strip T prefix - it's FHIRPath syntax, not part of the value
-            // FHIR time format is HH:mm:ss, not THH:mm:ss
-            // This matches Firely SDK and fhirpath.js behavior
-            return new PrimitiveElement(dateTimeValue.Substring(1), "time");
-        }
-
-        if (dateTimeValue.Contains('T', StringComparison.Ordinal))
-        {
-            return new PrimitiveElement(dateTimeValue, "dateTime");
-        }
-
-        return new PrimitiveElement(dateTimeValue, "date");
     }
 
     public IEnumerable<IElement> VisitIndexer(IndexerExpression expression, EvaluationContext context)
