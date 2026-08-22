@@ -9,14 +9,25 @@
  * direction for that signal: a consumer acts on it.
  *
  * Both functions now declare ReturnType = "any", matching descendants() - the same shape of unbounded
- * recursion, which already declines to name its result type. Every case below asserts the evaluator's
- * own result first, so the analyzer assertion that follows cannot pass vacuously.
+ * recursion, which already declines to name its result type. The three core tests
+ * (GivenACastOnARepeatProjection_WhenAnalysed_ThenItIsNotReportedAsAlwaysEmpty,
+ * GivenARepeatOverAQuantity_WhenCastToTheProjectedSystemType_ThenItIsNotReportedAsAlwaysEmpty, and
+ * GivenAnAlwaysEmptyCastBesideARepeat_WhenAnalysed_ThenTheAlwaysEmptyClaimSurvives) each assert the
+ * evaluator's own result first, so the analyzer assertion that follows cannot pass vacuously.
+ *
+ * Two tests are deliberately exceptions to that pattern:
+ * - GivenACastOnARepeatProjection_WhenAnalysed_ThenTheVerdictIsIndeterminateRatherThanValid pins the
+ *   verdict's shape (IsIndeterminate, not IsValid), which has no evaluator-side anchor - only analysis
+ *   can observe this property. See that test's own doc comment for the cost this verdict names.
+ * - GivenARepeatProjection_WhenItsCastProvenanceIsAnalysed_ThenItFailsOpen is deliberately independent
+ *   of the type-set axis, asserted only via AnalyzeCastFocusProvenance() against SystemTypeConstructionAnalyzer
+ *   directly. This guards against the provenance half of the defect hiding behind the type-set half on
+ *   revert. See that test's own doc comment for why discriminating them matters.
  *
  * The one attribute string moves two independent mechanisms - the generator's return-type delegate and
  * SystemTypeConstructionAnalyzer - so a test that observes only the always-empty verdict goes red on
- * revert without being able to say which half it was measuring. The provenance axis is therefore asserted
- * against SystemTypeConstructionAnalyzer directly, in its own statements, so a regression confined to it
- * cannot hide behind the type-set half.
+ * revert without being able to say which half it was measuring. The provenance axis discrimination is
+ * therefore critical for detecting a provenance-only regression.
  */
 
 using Ignixa.Abstractions;

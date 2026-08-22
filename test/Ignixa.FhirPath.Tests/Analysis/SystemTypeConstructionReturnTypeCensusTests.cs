@@ -48,6 +48,8 @@ namespace Ignixa.FhirPath.Tests.Analysis;
 /// <para>
 /// Scope is <c>typeof(FunctionHelpers).Assembly</c>, the assembly that declares every
 /// <see cref="FhirPathFunctionAttribute"/> in the repository (verified: no other assembly declares one).
+/// This single-assembly census is sufficient today because <see cref="SymbolTable"/> is internal,
+/// so a second assembly cannot register functions anyway.
 /// </para>
 /// </remarks>
 public class SystemTypeConstructionReturnTypeCensusTests
