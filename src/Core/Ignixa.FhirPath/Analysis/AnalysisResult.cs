@@ -12,6 +12,15 @@ namespace Ignixa.FhirPath.Analysis;
 /// <summary>
 /// Represents the result of FhirPath expression analysis.
 /// </summary>
+/// <remarks>
+/// Cast type-name resolution uses the evaluator's exact matching and pre-R5 alias rules. Because schema
+/// providers resolve type names case-insensitively for general and BackboneElement lookups, the analyzer
+/// validates the canonical type name returned by the provider before accepting a cast target. A
+/// mis-cased target therefore infers no type and sets <see cref="HasAlwaysEmptySubexpression"/> when the
+/// focus is statically known, matching the evaluator's empty result without narrowing schema lookup for
+/// unrelated callers. The analyzer derives the evaluator's System-namespace exception from the cast
+/// focus expression rather than storing namespace provenance in inferred type identity.
+/// </remarks>
 public sealed class AnalysisResult
 {
     /// <summary>
@@ -32,9 +41,67 @@ public sealed class AnalysisResult
     public Collection<ValidationIssue> Issues { get; } = [];
 
     /// <summary>
-    /// Gets whether the analysis found no errors.
+    /// Gets whether the analysis found no errors and fully determined the expression's validity.
     /// </summary>
-    public bool IsValid => !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error);
+    /// <remarks>
+    /// This is deliberately stricter than "no errors were reported": an expression the analyzer could not
+    /// fully reason about is not certified valid. Callers writing a rejection gate should choose between
+    /// this and <see cref="IsValidOrIndeterminate"/> explicitly. Against the shipped search-parameter
+    /// corpus, <c>Severity == Error</c> is confined to a single defective upstream expression — 26 of
+    /// 1,977 parameter/base-resource pairs on R5 and 25 of 2,027 on R6, none on STU3, R4 or R4B — and
+    /// <c>IsValid</c> is additionally false wherever the result is indeterminate, up to 4.2% of pairs
+    /// (83 of 1,977 on R5). A decidably always-empty navigation is neither, as a diagnostic: it is
+    /// raised as a warning, so in isolation it leaves <c>IsValid</c> true and
+    /// <see cref="HasAlwaysEmptySubexpression"/> is the only signal for it. That describes the
+    /// diagnostic, not the corpus — there the always-empty pairs and the error pairs are the same set
+    /// (26 of 26 on R5, 25 of 25 on R6), so <c>HasAlwaysEmptySubexpression &amp;&amp; IsValid</c> does
+    /// not occur in the shipped vocabulary at all. Expect the combination from hand-written
+    /// expressions.
+    /// </remarks>
+    public bool IsValid =>
+        !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error) &&
+        !IsIndeterminate;
+
+    /// <summary>
+    /// Gets whether the analysis found no errors, treating what it could not determine as acceptable.
+    /// </summary>
+    /// <remarks>
+    /// The permissive counterpart to <see cref="IsValid"/>, for callers that would rather admit an
+    /// expression static analysis cannot decide than reject a conformant one. Inspect
+    /// <see cref="IsIndeterminate"/> to tell the two admitted outcomes apart.
+    /// </remarks>
+    public bool IsValidOrIndeterminate =>
+        !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error);
+
+    /// <summary>
+    /// Gets whether the analyzer concluded that some subexpression always yields empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberately independent of <see cref="IsValid"/>. An always-empty navigation is a decided fact,
+    /// so treating it as invalid would contradict the analyzer's own reasoning; but it is also the shape
+    /// a typo takes once the root type is known concretely (<c>status</c> against a <c>Patient</c> root is
+    /// decidably empty, and almost certainly a mistake). Neither <see cref="IsValid"/> nor
+    /// <see cref="IsValidOrIndeterminate"/> separates that case from a correct expression, so this
+    /// predicate exists to let a caller apply its own policy without matching on warning text. It is not
+    /// evidence of a defect on its own: an expression written as a union across resource types is
+    /// legitimately empty on most of them.
+    /// </para>
+    /// <para>
+    /// This reports the analyzer's conclusion, not decidability. The classifier keys on
+    /// <see cref="FhirPathTypeSet.IsRoot"/>, so only a bare root-relative name reaches the always-empty
+    /// outcome: <c>Patient.status</c> provably yields empty and returns <see langword="false"/> here,
+    /// as do <c>$this.status</c>, <c>%resource.status</c> and <c>Patient.where(status = 'active')</c>,
+    /// all of which are reported as an unresolved-property error instead. A <see langword="false"/>
+    /// result therefore means "not classified as always-empty", not "not always empty".
+    /// </para>
+    /// </remarks>
+    public bool HasAlwaysEmptySubexpression => Issues.Any(issue => issue.Kind == ValidationIssueKind.AlwaysEmpty);
+
+    /// <summary>
+    /// Gets whether static analysis could not determine the expression's validity.
+    /// </summary>
+    public bool IsIndeterminate => Issues.Any(issue => issue.Kind == ValidationIssueKind.Indeterminate);
 
     /// <summary>
     /// Gets whether the analysis found any warnings.

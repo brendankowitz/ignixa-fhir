@@ -822,7 +822,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [];
 
         return FunctionHelpers.ReturnBoolean(
-            TypeMatcher.IsTypeMatch(left[0], typeName, TypeMatchMode.TypeTest));
+            TypeMatcher.IsTypeMatch(left[0], typeName, TypeMatchMode.TypeTest, context.Schema));
     }
 
     private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr, EvaluationContext context)
@@ -849,7 +849,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // what stops the operator and the function drifting apart again - which is the defect this line
         // exists to fix. FilterByType is subclass-aware over complex types, so this now agrees with
         // 'is' on an Age: both see a Quantity. It stays exact over primitives; see TypeMatcher.
-        return TypeMatcher.FilterByType(left, typeName);
+        return TypeMatcher.FilterByType(left, typeName, context.Schema);
     }
 
     private bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn)
@@ -883,38 +883,181 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private bool? CompareEquivalence(List<IElement> left, List<IElement> right, bool equivalent)
     {
-        if (left.Count == 0 && right.Count == 0)
-            return equivalent;
+        return AreCollectionsEquivalent(left, right, matchNames: false) == equivalent;
+    }
 
+    /// <summary>
+    /// Marks a right-hand item that no left-hand item currently holds.
+    /// </summary>
+    private const int Unpaired = -1;
+
+    /// <summary>
+    /// Determines whether two collections are equivalent, which is to say some one-to-one pairing of
+    /// their items makes every pair equivalent.
+    /// </summary>
+    /// <param name="left">The left collection.</param>
+    /// <param name="right">The right collection.</param>
+    /// <param name="matchNames">
+    /// Whether a pair must also agree on <see cref="IElement.Name"/>. Set when descending into the
+    /// children of a complex value, where position carries no meaning but the element name does.
+    /// </param>
+    /// <returns><see langword="true"/> when such a pairing exists.</returns>
+    /// <remarks>
+    /// <para>
+    /// The pairing is a <b>maximum</b> bipartite matching (Kuhn's augmenting-path algorithm), not a greedy
+    /// first-fit. Greedy is only sound when equivalence is transitive, and FHIRPath equivalence is not:
+    /// it compares decimals rounded to the <i>lesser</i> of the two stated precisions, so
+    /// <c>1.0 ~ 0.96</c> and <c>1.04 ~ 1.0</c> both hold while <c>1.04 ~ 0.96</c> does not. First-fit
+    /// pairs <c>1.0</c> with <c>1.0</c>, strands <c>1.04</c> against <c>0.96</c>, and reports two
+    /// collections as inequivalent even though the pairing <c>1.0-0.96, 1.04-1.0</c> exists - so the
+    /// answer depended on the order the operands happened to arrive in, which the spec forbids for a
+    /// collection operator. No sort or pre-ordering repairs this, because non-transitivity is intrinsic
+    /// to the rule; only a matching that can un-pair and re-pair is correct.
+    /// </para>
+    /// <para>
+    /// Adjacency is materialised up front so that <see cref="AreElementsEquivalent"/> - which recurses
+    /// over entire subtrees - is asked about each pair exactly once, however many times the augmenting
+    /// search revisits it. That keeps the comparison count at O(n^2), as before; only the pointer
+    /// chasing over the precomputed rows is O(n^3), and it is free by comparison. Collections here are
+    /// FHIR repeating elements, and no generated search-parameter expression uses <c>~</c> or <c>!~</c>.
+    /// </para>
+    /// <para>
+    /// The descent carries no depth guard, and deliberately so. A stack overflow cannot be caught, so
+    /// one here would falsify <c>ElementSearchIndexer</c>'s containment ladder rather than be reported
+    /// by it - but measured out-of-process, the floor is around 3,900 nested levels, and nothing can
+    /// arrive that deep. Every element tree the evaluator sees is parsed through
+    /// <c>JsonSourceNodeFactory</c>, whose <c>MaxDepth</c> is System.Text.Json's default of 64 and is
+    /// overridden nowhere in <c>src/</c>; <c>Utf8JsonWriter</c>'s non-configurable 1,000-level ceiling
+    /// means nothing deeper can be stored or returned even if it were built in memory. Guarding only
+    /// here would buy nothing in any case: <see cref="AreElementsEquivalent"/> calls
+    /// <c>FunctionHelpers.AreElementsEqual</c> on its first rung, whose equally unguarded descent
+    /// predates this method and reaches the same floor from <c>=</c>, <c>in</c>, <c>contains</c>,
+    /// <c>distinct()</c>, <c>|</c>, <c>intersect</c> and <c>exclude</c> - which generated search
+    /// parameters do use. <c>EquivalenceRecursionDepthTests</c> pins the parser ceiling that holds both.
+    /// </para>
+    /// </remarks>
+    private bool AreCollectionsEquivalent(
+        IReadOnlyList<IElement> left,
+        IReadOnlyList<IElement> right,
+        bool matchNames)
+    {
         if (left.Count != right.Count)
-            return !equivalent;
+            return false;
 
-        if (left.Count == 1 && right.Count == 1)
+        var candidates = new List<int>[left.Count];
+
+        for (var leftIndex = 0; leftIndex < left.Count; leftIndex++)
         {
-            // Try to extract quantities from elements (handles FHIR Quantity complex types)
-            var leftQty = TryExtractQuantity(left[0]);
-            var rightQty = TryExtractQuantity(right[0]);
+            var row = new List<int>();
 
-            if (leftQty != null && rightQty != null)
+            for (var rightIndex = 0; rightIndex < right.Count; rightIndex++)
             {
-                var isEquiv = AreEquivalent(leftQty, rightQty);
-                return isEquiv == equivalent;
+                if ((!matchNames || string.Equals(left[leftIndex].Name, right[rightIndex].Name, StringComparison.Ordinal))
+                    && AreElementsEquivalent(left[leftIndex], right[rightIndex]))
+                {
+                    row.Add(rightIndex);
+                }
             }
 
-            var isEquivValue = AreEquivalent(left[0].Value, right[0].Value);
-            return isEquivValue == equivalent;
+            // An item with no partner at all cannot be paired by any matching, so stopping here spares
+            // the remaining rows - each of which costs a full recursive descent per candidate.
+            if (row.Count == 0)
+                return false;
+
+            candidates[leftIndex] = row;
         }
 
-        var leftSorted = left.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
-        var rightSorted = right.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
+        var pairedWith = new int[right.Count];
+        Array.Fill(pairedWith, Unpaired);
+        var visited = new bool[right.Count];
 
-        for (int i = 0; i < leftSorted.Count; i++)
+        for (var leftIndex = 0; leftIndex < left.Count; leftIndex++)
         {
-            if (!AreEquivalent(leftSorted[i].Value, rightSorted[i].Value))
-                return !equivalent;
+            Array.Clear(visited);
+
+            // The counts are equal, so a matching that leaves any left item unpaired is not perfect,
+            // and a maximum matching that is not perfect proves no perfect one exists.
+            if (!TryPair(leftIndex, candidates, pairedWith, visited))
+                return false;
         }
 
-        return equivalent;
+        return true;
+    }
+
+    /// <summary>
+    /// Pairs one left item, displacing already-paired items along an augmenting path where necessary.
+    /// </summary>
+    /// <param name="leftIndex">The left item to pair.</param>
+    /// <param name="candidates">For each left item, the right items it is equivalent to.</param>
+    /// <param name="pairedWith">
+    /// For each right item, the left item holding it, or <see cref="Unpaired"/>. Updated in place.
+    /// </param>
+    /// <param name="visited">
+    /// The right items already considered on this search, which is what stops it cycling. Reset by the
+    /// caller before each new left item.
+    /// </param>
+    /// <returns><see langword="true"/> when the item was paired without unpairing anyone permanently.</returns>
+    /// <remarks>
+    /// The displaced holder is asked to find another partner before the claim is honoured, so an earlier
+    /// pairing is only ever surrendered for one that still leaves its owner paired. This is the step
+    /// first-fit lacks, and the reason the result cannot depend on operand order.
+    /// </remarks>
+    private static bool TryPair(int leftIndex, List<int>[] candidates, int[] pairedWith, bool[] visited)
+    {
+        foreach (var rightIndex in candidates[leftIndex])
+        {
+            if (visited[rightIndex])
+                continue;
+
+            visited[rightIndex] = true;
+
+            if (pairedWith[rightIndex] == Unpaired
+                || TryPair(pairedWith[rightIndex], candidates, pairedWith, visited))
+            {
+                pairedWith[rightIndex] = leftIndex;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether two single items are equivalent, descending into children when neither carries
+    /// a primitive value of its own.
+    /// </summary>
+    /// <param name="left">The left item.</param>
+    /// <param name="right">The right item.</param>
+    /// <returns><see langword="true"/> when the two are equivalent.</returns>
+    /// <remarks>
+    /// The ladder is ordered so that the loosest rule that applies wins: an exact match settles it, then
+    /// the quantity rule (which converts units), then the primitive rule (which rounds decimals and
+    /// truncates temporals to the lesser precision), and only then a structural descent. A resource-backed
+    /// complex element - <c>CodeableConcept</c>, <c>HumanName</c>, <c>Address</c> - has a null
+    /// <see cref="IElement.Value"/> and carries its content in children, so the descent is what stops any
+    /// two such collections of equal length answering <see langword="true"/>, which was issue #411.
+    /// The descent matches children by name rather than by position, because repeating children have no
+    /// meaningful order.
+    /// </remarks>
+    private bool AreElementsEquivalent(IElement left, IElement right)
+    {
+        if (FunctionHelpers.AreElementsEqual(left, right))
+            return true;
+
+        var leftQuantity = TryExtractQuantity(left);
+        var rightQuantity = TryExtractQuantity(right);
+
+        if (leftQuantity is not null || rightQuantity is not null)
+        {
+            return leftQuantity is not null
+                && rightQuantity is not null
+                && AreEquivalent(leftQuantity, rightQuantity);
+        }
+
+        if (left.Value is not null || right.Value is not null)
+            return AreEquivalent(left.Value, right.Value);
+
+        return AreCollectionsEquivalent(left.Children(), right.Children(), matchNames: true);
     }
 
     /// <summary>
@@ -1151,47 +1294,32 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         };
     }
 
+    /// <summary>
+    /// Builds the element a literal denotes, typing temporal literals from the node the parser produced.
+    /// </summary>
+    /// <remarks>
+    /// The <c>@</c> sigil cannot decide this. A string literal keeps whatever characters it was written
+    /// with, so <c>'@2013'</c> and <c>@2013</c> arrive carrying the same CLR string; typing on the sigil
+    /// built a <c>date</c> element out of the string literal, which made <c>'@2013'.length()</c> answer 4
+    /// and <c>'@x' as String</c> answer empty. The sigil and the time literal's <c>T</c> marker are
+    /// FHIRPath syntax rather than part of the value, so
+    /// <see cref="TemporalConstantExpression.ElementValue"/> has already removed them.
+    /// </remarks>
     public IEnumerable<IElement> VisitConstant(ConstantExpression expression, EvaluationContext context)
     {
+        if (expression is TemporalConstantExpression temporal)
+        {
+            return [new PrimitiveElement(temporal.ElementValue, temporal.TemporalTypeName)];
+        }
+
         return expression.Value switch
         {
             int i => [CreateInteger(i)],
             decimal d => [CreateDecimal(d)],
             bool b => [CreateBoolean(b)],
-            string s => [CreateDateTimeOrString(s)],
+            string s => [CreateString(s)],
             _ => [CreateConstant(expression.Value)]
         };
-    }
-
-    /// <summary>
-    /// Creates a typed element from a string value.
-    /// Detects date/time literals (@YYYY, @YYYY-MM-DD, @YYYY-MM-DDTHH:MM:SS, @THH:MM:SS)
-    /// and creates elements with appropriate types (date, dateTime, time).
-    /// </summary>
-    private IElement CreateDateTimeOrString(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return CreateString(value);
-
-        if (!value.StartsWith("@", StringComparison.Ordinal))
-            return CreateString(value);
-
-        var dateTimeValue = value.Substring(1);
-
-        if (dateTimeValue.StartsWith("T", StringComparison.Ordinal))
-        {
-            // Strip T prefix - it's FHIRPath syntax, not part of the value
-            // FHIR time format is HH:mm:ss, not THH:mm:ss
-            // This matches Firely SDK and fhirpath.js behavior
-            return new PrimitiveElement(dateTimeValue.Substring(1), "time");
-        }
-
-        if (dateTimeValue.Contains('T', StringComparison.Ordinal))
-        {
-            return new PrimitiveElement(dateTimeValue, "dateTime");
-        }
-
-        return new PrimitiveElement(dateTimeValue, "date");
     }
 
     public IEnumerable<IElement> VisitIndexer(IndexerExpression expression, EvaluationContext context)
@@ -1604,22 +1732,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 return CompareDateTimesWithPrecision(leftValue, rightValue, leftType, rightType, greater, orEqual);
             }
 
-                    if (WireValue.AsWireString(leftValue) is { } leftStr && WireValue.AsWireString(rightValue) is { } rightStr)
-                    {
-                        // Try to treat as typed dates first if they look like dates
-                        // This handles cases where type info is lost or implicit conversion is expected
-                        if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
-                        {
-                             // Date comparison - if result is null (uncertain), don't fall through to string comparison
-                             return CompareDateTimesWithPrecision(leftValue, rightValue, null, null, greater, orEqual);
-                        }
-            
-                        var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
-                        return greater
-                            ? (orEqual ? comparison >= 0 : comparison > 0)
-                            : (orEqual ? comparison <= 0 : comparison < 0);
-                    }
-            // Handle mixed numeric comparison (e.g. 1.5 > 1)
+            // Handle mixed numeric comparison (e.g. 1.5 > 1). Must stay above the wire-string branch
+            // below: if WireValue.AsWireString ever covers a numeric type, a numeric pair would reach
+            // that branch first and be ordered as text, where "10" sorts before "9".
             if ((leftValue is int || leftValue is decimal || leftValue is long) &&
                 (rightValue is int || rightValue is decimal || rightValue is long))
             {
@@ -1631,7 +1746,23 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                         : (orEqual ? comparison <= 0 : comparison < 0);
                 }
             }
-    
+
+            if (WireValue.AsWireString(leftValue) is { } leftStr && WireValue.AsWireString(rightValue) is { } rightStr)
+            {
+                // Try to treat as typed dates first if they look like dates
+                // This handles cases where type info is lost or implicit conversion is expected
+                if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
+                {
+                    // Date comparison - if result is null (uncertain), don't fall through to string comparison
+                    return CompareDateTimesWithPrecision(leftValue, rightValue, null, null, greater, orEqual);
+                }
+
+                var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
+                return greater
+                    ? (orEqual ? comparison >= 0 : comparison > 0)
+                    : (orEqual ? comparison <= 0 : comparison < 0);
+            }
+
             if (leftValue is IComparable leftComparable && rightValue is IComparable rightComparable)
             {
                 int comparison;
@@ -1721,10 +1852,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Per FHIRPath spec: When comparing dates with different precision,
         // the result is null unless one interval completely precedes/follows the other.
         // For ordering (not equality), we use interval comparison semantics.
-        var leftLower = GetDateTimeLowerBound(leftStr, leftPrecision);
-        var leftUpper = GetDateTimeUpperBound(leftStr, leftPrecision);
-        var rightLower = GetDateTimeLowerBound(rightStr, rightPrecision);
-        var rightUpper = GetDateTimeUpperBound(rightStr, rightPrecision);
+        var leftLower = FhirTemporal.GetLowerBound(leftStr, leftPrecision);
+        var leftUpper = FhirTemporal.GetUpperBound(leftStr, leftPrecision);
+        var rightLower = FhirTemporal.GetLowerBound(rightStr, rightPrecision);
+        var rightUpper = FhirTemporal.GetUpperBound(rightStr, rightPrecision);
 
         if (!leftLower.HasValue || !leftUpper.HasValue || !rightLower.HasValue || !rightUpper.HasValue)
             return null;
@@ -2089,54 +2220,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out result);
     }
 
-        private DateTime? GetDateTimeLowerBound(string value, FhirTemporalPrecision precision)
-        {
-            try
-            {
-                return precision switch
-                {
-                    FhirTemporalPrecision.Year => new DateTime(int.Parse(value), 1, 1, 0, 0, 0, DateTimeKind.Utc),
-                    FhirTemporalPrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime(),
-                    _ => TryParseFhirDateTime(value, out var dt) ? dt.UtcDateTime : null
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
-    
-        private DateTime? GetDateTimeUpperBound(string value, FhirTemporalPrecision precision)
-        {
-            try
-            {
-                if (precision == FhirTemporalPrecision.Year)
-                    return new DateTime(int.Parse(value), 12, 31, 23, 59, 59, 999, DateTimeKind.Utc);
-    
-                if (precision == FhirTemporalPrecision.Month)
-                    return DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime().AddMonths(1).AddMilliseconds(-1);
-    
-                if (!TryParseFhirDateTime(value, out var dtOffset))
-                    return null;
-    
-                var dt = dtOffset.UtcDateTime;
-    
-                return precision switch
-                {
-                    FhirTemporalPrecision.Day => dt.Date.AddDays(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Hour => dt.AddHours(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Minute => dt.AddMinutes(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Second => dt.AddSeconds(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Millisecond => dt, // Millisecond precision is exact
-                    _ => dt
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
     private IEnumerable<IElement> EvaluateDateTimeArithmetic(string dateTimeStr, FhirQuantity quantity, bool add, string instanceType)
     {
         ThrowIfCalendarIncompatibleUnit(instanceType, quantity);
@@ -2202,7 +2285,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return TryParseFhirDateTime(value, out result);
         }
 
-        var anchor = GetDateTimeLowerBound(value, precision);
+        var anchor = FhirTemporal.GetLowerBound(value, precision);
         result = anchor is null ? default : new DateTimeOffset(anchor.Value);
 
         return anchor is not null;
@@ -2365,9 +2448,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         UnorderedCollectionDetection.GetUnorderedNavigationSource(focus);
 
     /// <summary>
-    /// Simple implementation of IElement for primitive values.
+    /// Simple implementation of IElement for primitive values produced by the evaluator.
     /// </summary>
-    private class PrimitiveElement : IElement
+    /// <remarks>Declares <see cref="ISystemValueElement"/>; see that interface for why.</remarks>
+    private class PrimitiveElement : ISystemValueElement
     {
         public PrimitiveElement(object value, string type)
         {

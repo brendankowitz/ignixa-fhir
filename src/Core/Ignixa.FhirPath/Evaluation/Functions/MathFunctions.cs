@@ -21,7 +21,7 @@ internal static class MathFunctions
     /// </summary>
     [FhirPathFunction("round",
         SupportedContexts = "number-number",
-        ReturnType = "context",
+        ReturnType = "constructsFromContext",
         MinArguments = 0,
         MaxArguments = 1,
         Category = "Math",
@@ -72,7 +72,7 @@ internal static class MathFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("power() requires an exponent argument");
+            throw new FhirPathEvaluationException("power() requires an exponent argument");
 
         if (!FunctionHelpers.TryGetSingleNumber(focus, "power", out var baseValue))
             return [];
@@ -157,7 +157,7 @@ internal static class MathFunctions
     /// </summary>
     [FhirPathFunction("abs",
         SupportedContexts = "number-number",
-        ReturnType = "context",
+        ReturnType = "constructsFromContext",
         MinArguments = 0,
         MaxArguments = 0,
         Category = "Math",
@@ -268,7 +268,7 @@ internal static class MathFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("log() requires a base argument");
+            throw new FhirPathEvaluationException("log() requires a base argument");
 
         if (!FunctionHelpers.TryGetSingleNumber(focus, "log", out var value))
             return [];

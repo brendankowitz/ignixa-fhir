@@ -13,6 +13,7 @@ using Hl7.Fhir.Specification;
 using Ignixa.Abstractions;
 using Ignixa.Extensions.FirelySdk;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parser;
 using Xunit;
 using IgnixaQuantity = Ignixa.Abstractions.FhirQuantity;
@@ -356,6 +357,50 @@ public class FirelyPrimitiveValueContractTests
     }
 
     [Fact]
+    public void GivenFirelyInstant_WhenReadThroughIgnixaElementAdapter_ThenPreservesInstantKind()
+    {
+        // Arrange
+        var element = new StubTypedElement
+        {
+            InstanceType = "instant",
+            Value = P.DateTime.Parse("2013-01-01T11:22:33.123Z"),
+        };
+
+        // Act
+        var value = new IgnixaElementAdapter(element).Value;
+
+        // Assert
+        var temporal = Assert.IsType<FhirTemporal>(value);
+        Assert.Equal(FhirPrimitive.Instant, temporal.Kind);
+    }
+
+    /// <remarks>
+    /// The <c>Kind</c> assertion above pins the mechanism; this pins the consequence. A value read
+    /// through the adapter and re-wrapped as a FHIRPath constant is typed by
+    /// <c>FhirPathEvaluator.GetFhirPathTypeName</c>, which is the only place <c>Kind</c> distinguishes
+    /// <c>Instant</c> from <c>DateTime</c>, and types SQL-on-FHIR environment variables. Losing
+    /// the kind at the adapter seam silently retypes such values as <c>dateTime</c>.
+    /// </remarks>
+    [Fact]
+    public void GivenFirelyInstant_WhenAdapterValueIsEvaluatedAsFhirPathConstant_ThenTypedAsInstant()
+    {
+        // Arrange
+        var element = new StubTypedElement
+        {
+            InstanceType = "instant",
+            Value = P.DateTime.Parse("2013-01-01T11:22:33.123Z"),
+        };
+        var adapted = new IgnixaElementAdapter(element);
+        var constant = new ConstantExpression(adapted.Value!);
+
+        // Act
+        var results = new FhirPathEvaluator().Evaluate(adapted, constant).ToList();
+
+        // Assert
+        Assert.Equal("instant", Assert.Single(results).InstanceType);
+    }
+
+    [Fact]
     public void GivenFirelyDate_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal()
     {
         // Arrange
@@ -564,10 +609,13 @@ public class FirelyPrimitiveValueContractTests
     }
 
     [Theory]
-    [InlineData("value = 5 'mg'")]
-    [InlineData("value > 1 'mg'")]
-    [InlineData("value ~ 5 'mg'")]
-    public void GivenFirelyBackedElement_WhenComparingQuantitiesInFhirPath_ThenYieldsBooleanRatherThanEmpty(string expression)
+    [InlineData("value = 5 'mg'", true)]
+    [InlineData("value > 1 'mg'", true)]
+    [InlineData("value ~ 5 'mg'", true)]
+    [InlineData("value !~ 5 'mg'", false)]
+    public void GivenFirelyBackedElement_WhenComparingQuantitiesInFhirPath_ThenYieldsExpectedBoolean(
+        string expression,
+        bool expected)
     {
         // The quantity counterpart of the date defect above, and the reason the translation has to
         // produce Ignixa's own Quantity rather than be matched for structurally in one helper:
@@ -592,7 +640,7 @@ public class FirelyPrimitiveValueContractTests
 
         // Assert
         var result = Assert.Single(results);
-        Assert.Equal(true, result.Value);
+        Assert.Equal(expected, result.Value);
     }
 
     #endregion

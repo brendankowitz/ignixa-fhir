@@ -15,6 +15,7 @@ using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
 using Ignixa.Validation.Tests.TestHelpers;
+using NSubstitute;
 using Shouldly;
 using Xunit;
 
@@ -906,24 +907,75 @@ public class FhirPathInvariantCheckTests
     }
 
     /// <summary>
-    /// Pins the catch-all branch: an evaluation failure that is neither a known engine gap
-    /// (<see cref="NotSupportedException"/>) nor a correctly-signalled evaluation error
-    /// (<see cref="FhirPathEvaluationException"/>) is an unexpected engine defect and must fail
-    /// loudly - invalid, Error severity - rather than being masked as a benign warning.
-    /// <c>substring()</c> called with no arguments throws a plain <see cref="ArgumentException"/>
-    /// (<c>StringFunctions.Substring</c>: "substring() requires a start argument"), which is
-    /// exactly such an unclassified failure.
+    /// Pins the <c>FhirPathEvaluationException</c> branch for the case the fix was written for: a
+    /// function invoked without a required argument. A profile author writing <c>name.skip()</c> has
+    /// produced an ill-formed expression, which the engine must refuse to evaluate - but that is a
+    /// defect in the constraint, not in the instance, so it degrades to a non-failing Warning on the
+    /// same footing as <c>tim-9</c> above rather than rejecting the resource.
+    /// <para>
+    /// One case per converted argument check, enumerated from the diff rather than sampled. Sampling was
+    /// the defect: four cases pinned four of thirty-two conversions, and reverting <c>power()</c> to
+    /// <see cref="ArgumentException"/> left every test green while silently re-tiering a malformed
+    /// constraint from a non-failing Warning to a resource-rejecting Error.
+    /// </para>
+    /// <para>
+    /// The message assertion is deliberately split: <c>ShouldStartWith</c> pins the <em>tier</em> - the
+    /// catch-all at <c>FhirPathInvariantCheck</c> formats its issue as "<c>{key}: unexpected error
+    /// evaluating FHIRPath expression</c>", so a tier regression cannot satisfy this prefix - while
+    /// <c>ShouldContain</c> pins that the refusal still names the offending function, which is the only
+    /// thing that makes the warning actionable.
+    /// </para>
     /// </summary>
-    [Fact]
-    public void GivenConstraintThrowingUnclassifiedException_WhenValidating_ThenInvalidWithError()
+    public static TheoryData<string, string> MissingArgumentInvocations() =>
+        new()
+        {
+            { "name.skip()", "skip()" },
+            { "name.take()", "take()" },
+            { "name.where()", "where()" },
+            { "name.select()", "select()" },
+            { "name.all()", "all()" },
+            { "name.repeat()", "repeat()" },
+            { "name.repeatAll()", "repeatAll()" },
+            { "name.coalesce()", "coalesce()" },
+            { "name.ofType()", "ofType()" },
+            { "name.as()", "as()" },
+            { "name.intersect()", "intersect()" },
+            { "name.exclude()", "exclude()" },
+            { "name.union()", "union()" },
+            { "name.combine()", "combine()" },
+            { "name.aggregate()", "aggregate()" },
+            { "name.subsetOf()", "subsetOf()" },
+            { "name.supersetOf()", "supersetOf()" },
+            { "name.iif()", "iif()" },
+            { "name.extension()", "extension()" },
+            { "name.count().power()", "power()" },
+            { "name.count().log()", "log()" },
+            { "name.first().family.indexOf()", "indexOf()" },
+            { "name.first().family.lastIndexOf()", "lastIndexOf()" },
+            { "name.first().family.substring()", "substring()" },
+            { "name.first().family.startsWith()", "startsWith()" },
+            { "name.first().family.endsWith()", "endsWith()" },
+            { "name.first().family.replace()", "replace()" },
+            { "name.first().family.matches()", "matches()" },
+            { "name.first().family.matchesFull()", "matchesFull()" },
+            { "name.first().family.replaceMatches()", "replaceMatches()" },
+            { "name.first().family.split()", "split()" },
+            { "name.first().family.contains()", "contains()" },
+        };
+
+    [Theory]
+    [MemberData(nameof(MissingArgumentInvocations))]
+    public void GivenConstraintWithMissingFunctionArgument_WhenValidating_ThenValidWithWarning(
+        string expression,
+        string function)
     {
         // Arrange
         var constraint = new Ignixa.Specification.ConstraintDefinition
         {
-            Key = "pin-unexpected",
+            Key = "pin-missing-argument",
             Severity = ConstraintSeverity.Error,
-            Human = "Malformed use of substring()",
-            Expression = "name.first().family.substring()",
+            Human = "Malformed function invocation",
+            Expression = expression,
             Xpath = null,
             AppliesTo = new[] { "Patient" }
         };
@@ -938,13 +990,134 @@ public class FhirPathInvariantCheckTests
         // Act
         var result = check.Validate(element, settings, state);
 
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("pin-missing-argument");
+        result.Issues[0].Message.ShouldStartWith("Constraint 'pin-missing-argument' could not be evaluated:");
+        result.Issues[0].Message.ShouldContain(function);
+    }
+
+    /// <summary>
+    /// Pins the catch-all branch: an evaluation failure that is neither a known engine gap
+    /// (<see cref="NotSupportedException"/>) nor a correctly-signalled refusal
+    /// (<c>FhirPathEvaluationException</c>) is an unexpected engine defect and must fail loudly -
+    /// invalid, Error severity - rather than being masked as a benign warning.
+    /// <para>
+    /// The vehicle is a stub <see cref="IElement"/> whose <see cref="IElement.Children"/> throws a bare
+    /// <see cref="InvalidOperationException"/>. <c>Validate</c>'s catch clauses are, in order,
+    /// <see cref="OperationCanceledException"/>, <see cref="NotSupportedException"/>,
+    /// <c>FhirPathEvaluationException</c>, then <see cref="Exception"/>; there is no
+    /// <c>catch (InvalidOperationException)</c>, so a bare one falls through to the catch-all even
+    /// though <c>FhirPathEvaluationException</c> derives from it. The stub therefore asserts the tier
+    /// boundary directly, which is what this test is for.
+    /// </para>
+    /// <para>
+    /// It did not always. This pin previously rode on <c>substring()</c> called with no arguments,
+    /// purely because that happened to throw a plain <see cref="ArgumentException"/>. Converting the
+    /// function library to signal argument refusals as <c>FhirPathEvaluationException</c> re-tiered that
+    /// expression to a Warning - correctly - and the pin silently stopped reaching the branch it named.
+    /// No expression-level vehicle survives the conversion, and depending on one again would reintroduce
+    /// exactly that fragility: a pin on the catch-all must not be hostage to some unrelated function's
+    /// incidental exception type.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void GivenConstraintThrowingUnclassifiedException_WhenValidating_ThenInvalidWithError()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "pin-unexpected",
+            Severity = ConstraintSeverity.Error,
+            Human = "Any well-formed constraint - the defect being pinned is in the engine",
+            Expression = "name.exists()",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""name"":[{""family"":""Doe""}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var realElement = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+
+        // A Patient root that is well-formed in every respect the check inspects before evaluating -
+        // InstanceType for the AppliesTo filter, Location for the issue - but whose navigation fails the
+        // way an engine defect would: an exception carrying no evaluation-tier signal at all.
+        var element = Substitute.For<IElement>();
+        element.Name.Returns(realElement.Name);
+        element.InstanceType.Returns(realElement.InstanceType);
+        element.Location.Returns(realElement.Location);
+        element.Type.Returns(realElement.Type);
+        element.Value.Returns(realElement.Value);
+        element.HasPrimitiveValue.Returns(realElement.HasPrimitiveValue);
+        element.Children(Arg.Any<string?>())
+            .Returns<IReadOnlyList<IElement>>(_ =>
+                throw new InvalidOperationException("simulated engine defect while reading children"));
+
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
         // Assert - an unexpected engine defect must be loud, not swallowed
         result.IsValid.ShouldBeFalse();
         result.Issues.Count.ShouldBe(1);
         result.Issues[0].Severity.ShouldBe(IssueSeverity.Error);
         result.Issues[0].Code.ShouldBe("pin-unexpected");
+        result.Issues[0].Message.ShouldStartWith(
+            "pin-unexpected: unexpected error evaluating FHIRPath expression:");
     }
 
+    /// <summary>
+    /// Pins the tier <c>repeatAll()</c>'s runaway-iteration guard now lands in. The guard fires after
+    /// 100,000 passes (<c>CollectionFunctions.RepeatAll</c>) and signals
+    /// <c>FhirPathEvaluationException</c> rather than the bare <see cref="InvalidOperationException"/> it
+    /// used to, which moves a non-converging constraint expression off the catch-all's
+    /// resource-rejecting Error and onto the non-failing Warning tier.
+    /// <para>
+    /// That is the right tier - the guard bounds a runaway <em>user expression</em>, so a projection
+    /// that never terminates is a defect in the constraint's text and not evidence the instance is
+    /// invalid - but it is a wider behaviour change than the missing-argument refusals it shipped
+    /// alongside, and it is the only one that alters whether a resource is rejected without any
+    /// malformed call being involved. It is pinned separately for that reason.
+    /// <c>repeatAll($this)</c> re-enqueues its own input on every pass and therefore never converges.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void GivenConstraintExceedingRepeatAllIterationLimit_WhenValidating_ThenValidWithWarning()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "pin-runaway-repeatall",
+            Severity = ConstraintSeverity.Error,
+            Human = "Projection that never converges",
+            Expression = "repeatAll($this).exists()",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""name"":[{""family"":""Doe""}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert - a runaway expression is a constraint defect, so it must not reject the instance
+        result.IsValid.ShouldBeTrue();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("pin-runaway-repeatall");
+        result.Issues[0].Message.ShouldStartWith("Constraint 'pin-runaway-repeatall' could not be evaluated:");
+        result.Issues[0].Message.ShouldContain("maximum iteration limit");
+    }
 
     #region Performance
 

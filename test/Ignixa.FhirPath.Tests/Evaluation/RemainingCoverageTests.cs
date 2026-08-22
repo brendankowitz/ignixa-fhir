@@ -312,6 +312,21 @@ public class RemainingCoverageTests
         Assert.Empty(result);
     }
 
+    [Fact]
+    public void GivenSelfReferentialProjection_WhenRepeatAllExceedsIterationLimit_ThenThrowsFhirPathEvaluationException()
+    {
+        // Arrange
+        var expr = _parser.Parse("1.repeatAll($this)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
+        exception.Message.ShouldContain("maximum iteration limit");
+    }
+
     #endregion
 
     #region Coalesce Function Tests

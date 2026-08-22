@@ -47,14 +47,18 @@ public class OrderDependentFunctionsAfterChildrenAnalysisTests
     [InlineData("Patient.children().last()")]
     [InlineData("Patient.descendants().first()")]
     [InlineData("Patient.descendants().last()")]
-    public void GivenExistentialFunctionAfterUnordered_WhenAnalyzing_ThenReturnsWarning(string expression)
+    public void GivenExistentialFunctionAfterUnordered_WhenAnalyzing_ThenReturnsIndeterminateWarnings(string expression)
     {
         var result = _analyzer.Analyze(expression, "Patient");
 
-        Assert.True(result.IsValid);
+        Assert.False(result.IsValid);
+        Assert.True(result.IsIndeterminate);
         Assert.Contains(result.Issues, issue =>
             issue.Severity == ValidationIssueSeverity.Warning &&
             issue.Message.Contains("non-deterministic", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Issues, issue =>
+            issue.IsIndeterminate &&
+            issue.Message.Contains("cannot be analysed", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

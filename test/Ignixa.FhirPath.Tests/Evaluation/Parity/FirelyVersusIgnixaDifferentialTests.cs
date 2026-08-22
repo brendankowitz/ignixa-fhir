@@ -12,6 +12,7 @@
  */
 
 using System.IO;
+using Xunit.Abstractions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
@@ -28,8 +29,10 @@ namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 /// elsewhere in this project are what establish correctness against the spec; this one only compares
 /// the two engines to each other.
 /// </remarks>
-public class FirelyVersusIgnixaDifferentialTests
+public class FirelyVersusIgnixaDifferentialTests(ITestOutputHelper output)
 {
+    private readonly ITestOutputHelper _output = output;
+
     /// <summary>
     /// Sweeps the expressions that actually run in production and pins what they disagree on.
     /// </summary>
@@ -38,10 +41,12 @@ public class FirelyVersusIgnixaDifferentialTests
     {
         // Arrange & Act
         var corpus = FirelyParityFixture.SearchParameterExpressions;
-        var divergences = ParitySweep.Run(corpus, "searchparam");
+        var report = ParitySweep.Run(corpus, "searchparam");
+        _output.WriteLine("searchparam: {0}", report.Describe());
 
         // Assert
-        AssertPinned(divergences, KnownDivergences.SearchParameterSignatures, "searchparam", corpus.Count);
+        AssertPopulation(report, KnownDivergences.SearchParameterPopulation);
+        AssertPinned(report.Divergences, KnownDivergences.SearchParameterSignatures, "searchparam", corpus.Count);
     }
 
     /// <summary>
@@ -52,22 +57,39 @@ public class FirelyVersusIgnixaDifferentialTests
     {
         // Arrange & Act
         var corpus = FirelyParityFixture.ConstructCorpus;
-        var divergences = ParitySweep.Run(corpus, "construct");
+        var report = ParitySweep.Run(corpus, "construct");
+        _output.WriteLine("construct: {0}", report.Describe());
 
         // Assert
-        AssertPinned(divergences, KnownDivergences.ConstructSignatures, "construct", corpus.Count);
+        AssertPopulation(report, KnownDivergences.ConstructPopulation);
+        AssertPinned(report.Divergences, KnownDivergences.ConstructSignatures, "construct", corpus.Count);
     }
 
     /// <summary>
-    /// Pins the one divergence <see cref="ParityTypeName"/> normalises away, so normalising it does
-    /// not amount to hiding it.
+    /// Pins raw primitive-name divergences <see cref="ParityTypeName"/> normalises away, so
+    /// normalising them does not amount to hiding them.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each row also asserts the two conditions that are its reason for existing: the engines still
+    /// spell the type differently, and <see cref="ParityTypeName"/> still reduces both spellings to
+    /// one so <see cref="ParitySweep"/> cannot report it. A row that stops satisfying either fails
+    /// here instead of silently becoming a tautology. That closes the gap which let the
+    /// <c>1 'mg'</c> row be deleted on the belief its divergence had closed: it had not, and nothing
+    /// contradicted the belief. <c>e82f1f03</c> made <c>is System.Quantity</c> true without changing
+    /// the raw <c>InstanceType</c>, which is what this row reads.
+    /// </para>
+    /// <para>
+    /// The list is enumerated by
+    /// <see cref="GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent"/>,
+    /// which asserts the complete expected expression set against a literal written out independently
+    /// of <see cref="NormalisedTypeNames"/>. Deleting a row therefore fails that test rather than
+    /// quietly reducing coverage, which is the defect recorded as issue #425 - a reviewer deleted the
+    /// <c>1 'mg'</c> row and the suite stayed green with four cases.
+    /// </para>
+    /// </remarks>
     [Theory]
-    [InlineData("active and true", "System.Boolean", "boolean")]
-    [InlineData("'a' & 'b'", "System.String", "string")]
-    [InlineData("1 + 1", "System.Integer", "integer")]
-    [InlineData("birthDate + 1 year", "System.Date", "date")]
-    [InlineData("1 'mg'", "System.Quantity", "Quantity")]
+    [MemberData(nameof(NormalisedTypeNames))]
     public void GivenAnOperatorResult_WhenTypedByBothEngines_ThenFirelyNamesTheSystemTypeAndIgnixaTheFhirType(
         string expression,
         string firelyType,
@@ -83,6 +105,76 @@ public class FirelyVersusIgnixaDifferentialTests
         // Assert
         firely.ShouldBe([firelyType]);
         ignixa.ShouldBe([ignixaType]);
+
+        var firelyName = firely.ShouldHaveSingleItem();
+        var ignixaName = ignixa.ShouldHaveSingleItem();
+
+        firelyName.ShouldNotBe(
+            ignixaName,
+            $"The engines now agree on the raw type of '{expression}', so this row pins nothing. "
+            + "Retire it, and confirm ParitySweep covers whatever behaviour replaced it.");
+
+        ParityTypeName.Canonical(firelyName).ShouldBe(
+            ParityTypeName.Canonical(ignixaName),
+            $"ParityTypeName no longer collapses the two spellings of '{expression}', so ParitySweep "
+            + "reports this divergence itself and this row has become a duplicate pin.");
+    }
+
+    public static TheoryData<string, string, string> NormalisedTypeNames { get; } = new()
+    {
+        { "active and true", "System.Boolean", "boolean" },
+        { "'a' & 'b'", "System.String", "string" },
+        { "1 + 1", "System.Integer", "integer" },
+        { "birthDate + 1 year", "System.Date", "date" },
+        { "1 'mg'", "System.Quantity", "Quantity" },
+    };
+
+    /// <summary>
+    /// Asserts the acknowledged normalised-divergence set is complete, so a row cannot be removed from
+    /// <see cref="NormalisedTypeNames"/> without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The expected set is written out here as a literal rather than derived from
+    /// <see cref="NormalisedTypeNames"/>, because an inventory computed from the collection it is
+    /// meant to guard agrees with any edit to that collection and asserts nothing. Issue #425 records
+    /// the consequence: a reviewer deleted the <c>1 'mg'</c> row and the theory passed with four cases,
+    /// so a divergence <see cref="ParityTypeName"/> still normalises away silently left the
+    /// acknowledged set. Two independent statements of the same set are what make removal detectable.
+    /// </para>
+    /// <para>
+    /// Scope: these five are the raw primitive-name divergences that <see cref="ParityTypeName"/>
+    /// collapses, which is why <see cref="ParitySweep"/> cannot report them and they have to be pinned
+    /// by hand. This is not an inventory of parity coverage in general - the resource-backed sweep
+    /// counts are pinned by <c>ResourceBackedKnownDivergences</c>, and the version-specific evaluator
+    /// divergences live in the native-Firely probes for each FHIR version.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "'a' & 'b'",
+            "1 'mg'",
+            "1 + 1",
+            "active and true",
+            "birthDate + 1 year",
+        ];
+
+        // Act
+        var actual = NormalisedTypeNames
+            .Select(row => (string)row[0])
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        actual.ShouldBe(
+            expected,
+            "The acknowledged normalised-divergence set changed. A row may only be retired after "
+            + "GivenAnOperatorResult_WhenTypedByBothEngines_ThenFirelyNamesTheSystemTypeAndIgnixaTheFhirType "
+            + "has gone red for it, proving the engines now agree; update this inventory in the same change.");
     }
 
     /// <summary>
@@ -207,6 +299,57 @@ public class FirelyVersusIgnixaDifferentialTests
 
         // Assert
         ignixa.ShouldBe([expected]);
+    }
+
+    /// <summary>
+    /// Asserts the shape of the whole population, not only the disagreements in it.
+    /// </summary>
+    /// <remarks>
+    /// The divergence pins below are satisfied by a sweep in which every remaining evaluation became a
+    /// mutual throw, because a mutual throw is agreement to <see cref="ParityOutcome.Matches"/> and
+    /// never reaches a divergence list. This is the containment that keeps that from passing - the same
+    /// containment <c>ResourceParityReport</c> already had and this sweep never received, even though
+    /// <see cref="KnownDivergences"/> records a live mutual throw in this very corpus.
+    /// </remarks>
+    private static void AssertPopulation(ExpressionParityReport report, ExpressionCorpusExpectations expected)
+    {
+        report.BucketsPartitionEvaluations.ShouldBeTrue(
+            $"""
+            The outcome buckets no longer account for every evaluation exactly once:
+            {report.BothThrew} both threw + {report.BothEmpty} both empty
+            + {report.AgreementsOnValues} agreed on values + {report.DivergentEvaluations} divergent
+            != {report.EvaluationsPerEngine} evaluations, or the divergent count disagrees with the
+            {report.Divergences.Count} divergences collected. That is a defect in ParityOutcomeTally.
+            """);
+        report.EvaluationsPerEngine.ShouldBeGreaterThanOrEqualTo(
+            expected.MinimumEvaluationsPerEngine,
+            """
+            The sweep evaluated fewer expressions per engine than the floor, so the evidence base
+            shrank. Find what removed expressions or subject resources and restore it.
+            Raise this floor when the corpus genuinely grows; never lower it to accommodate a loss.
+            """);
+        report.BothThrew.ShouldBe(
+            expected.ExpectedBothThrew,
+            """
+            The number of evaluations where both engines throw moved. This is not a parity failure -
+            the engines still agree - but a mutual throw compares no values, so a rise is coverage
+            lost and it is invisible to every divergence pin. Identify the expression and confirm the
+            throw is correct for both engines before re-pinning.
+            """);
+        report.BothEmpty.ShouldBe(
+            expected.ExpectedBothEmpty,
+            """
+            The both-empty count moved. Agreement on absence is legitimate but weak evidence, and it
+            is invisible to the divergence pins, so establish whether the corpus or an engine moved
+            before re-pinning.
+            """);
+        report.AgreementsOnValues.ShouldBeGreaterThanOrEqualTo(
+            expected.MinimumAgreementsOnValues,
+            """
+            Fewer evaluations produced matching non-empty values than the floor requires. This is the
+            number the conformance claim rests on, so a drop is a regression until proven otherwise.
+            Fix the regression rather than re-pinning the floor beneath it.
+            """);
     }
 
     private static void AssertPinned(

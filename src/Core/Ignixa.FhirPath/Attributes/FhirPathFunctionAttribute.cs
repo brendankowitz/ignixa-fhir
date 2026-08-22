@@ -84,11 +84,23 @@ public sealed class FhirPathFunctionAttribute : Attribute
     /// <remarks>
     /// <para>Special values:</para>
     /// <list type="bullet">
-    /// <item><description>"context" - Returns the same type as focus (e.g., where(), first())</description></item>
+    /// <item><description>"context" - Selects elements out of the focus, so the result has the focus's type
+    /// <em>and</em> the focus's namespace provenance (e.g., where(), first())</description></item>
+    /// <item><description>"constructsFromContext" - Builds a new value of the focus's type (e.g., abs(),
+    /// round(), sum())</description></item>
+    /// <item><description>"boundaryOfContext" - Builds a new value that is the boundary of the focus, whose
+    /// type is the boundary type rather than the focus type (e.g., lowBoundary(), highBoundary())</description></item>
     /// <item><description>"fromArgument" - Returns type from first argument evaluation (e.g., select())</description></item>
     /// <item><description>"any" - No specific return type inference</description></item>
     /// </list>
     /// <para>Concrete types: "boolean", "integer", "decimal", "string", "date", "dateTime", "time"</para>
+    /// <para>
+    /// The "constructs" rules exist because a function that returns a freshly built element yields a System
+    /// value, while a selector hands back the focus element unchanged. Cast analysis needs that distinction:
+    /// from R5 onward the System spelling of a type name reaches a constructed value but not a navigated
+    /// FHIR element, so declaring a constructing function as "context" makes the analyzer inherit the
+    /// focus's FHIR provenance and report a valid cast as provably empty.
+    /// </para>
     /// </remarks>
     public string ReturnType { get; set; } = "any";
 

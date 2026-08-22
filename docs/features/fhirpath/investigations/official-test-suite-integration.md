@@ -259,14 +259,14 @@ engine work and were stale in every column.
 
 | Version | Executed | Passed | Failed | Skipped | Not supported | Genuinely asserted |
 |---------|----------|--------|--------|---------|----------------|---------------------|
-| **R4**    | 935       | 931       | 0     | 4      | 2     | 929 (99.4%)     |
-| **R4B**   | 933       | 929       | 0     | 4      | 2     | 927 (99.4%)     |
-| **R5**    | 1,032     | 1,030     | 0     | 2      | 5     | 1,025 (99.3%)   |
-| **Total** | **2,900** | **2,890** | **0** | **10** | **9** | **2,881 (99.3%)** |
+| **R4**    | 935       | 933       | 0     | 2      | 2     | 931 (99.6%)     |
+| **R4B**   | 933       | 931       | 0     | 2      | 2     | 929 (99.6%)     |
+| **R5**    | 1,032     | 1,032     | 0     | 0      | 5     | 1,027 (99.5%)   |
+| **Total** | **2,900** | **2,896** | **0** | **4**  | **9** | **2,887 (99.6%)** |
 
 (Measured against `fhir-test-cases` 1.7.46, `dotnet test test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj
 --filter "FullyQualifiedName~OfficialTestSuite_R4&FullyQualifiedName!~OfficialTestSuite_R4B"` and the
-equivalent `_R4B` / `_R5` filters.)
+equivalent `_R4B` / `_R5` filters. **Count unverified pending runner fix**: The current runner cannot distinguish an unimplemented function from a passing test because it treats `NotSupportedException` as an unconditional pass; see [FHIRPath Release Readiness](release-readiness.md) item E1 for details.)
 
 Read the last column, not the "Failed" column. Every case in the suite now either asserts and passes or
 is accounted for explicitly, so a raw pass rate reads 100% and tells you nothing. Two things are worth
@@ -282,15 +282,20 @@ watching, and they are not the same thing anymore:
   again, this is the guard that will catch the gap closing without the entry being removed. Read a claim
   of "35 deferred cases" anywhere else in this repo's history as stale - it described an earlier state of
   this dictionary, not the current one.
-- **Skipped (10)**, all of them version- or library-specific, none of them deferrals:
+- **Skipped (4)**, all of them version-specific, none of them deferrals:
   `testPlusDate19` and `testFHIRPathAsFunction21` skip on R4/R4B only (2 each, 4 total) because both
-  encode behaviour this implementation deliberately doesn't enforce below R5, and
-  `testQuantity9`/`testQuantity10` skip on all three versions (6 total) because Fhir.Metrics doesn't do
-  UCUM unit algebra across prefixes. These report as real xunit skips via `Xunit.SkippableFact` (xunit
+  encode behaviour this implementation deliberately doesn't enforce below R5. These report as real xunit
+  skips via `Xunit.SkippableFact` (xunit
   2.9.3 has no working dynamic skip of its own, so before that they reported as passes and were
   indistinguishable from coverage) - but they never touch `_unsignalledInvalidCases` or
   `AssertDeferralIsStillNeeded`, because that machinery is specific to `invalid`-marked cases, and none of
   these four are.
+
+  Each remaining skip is now routed through `SkipUnlessTheCaseWouldNowPass`, which runs the case and
+  fails if it passes, so a skip cannot outlive the limitation that justified it. That guard was added
+  because six `testQuantity9`/`testQuantity10` skips had already gone stale: they passed on R4, R4B and
+  R5 while still being skipped, hiding six conformance results behind a Fhir.Metrics limitation that no
+  longer applied to them.
 - **Not supported (9)** - `NotSupportedException` early returns: `conformsTo()` (6, two cases × three
   versions) and `%terminologies` (3, R5 only). These count as xunit passes, not skips; they're broken out
   here because the test short-circuits on catching the exception rather than asserting anything.
@@ -304,11 +309,12 @@ the 35 real gaps that then went into `_unsignalledInvalidCases` as named deferra
 (`FhirPathAnalyzer` static analysis, `VariableScope` lexical scoping, version-gating the `as` singleton
 rule) is what closed all 35 down to zero - the `Assert.Fail` fix exposed the gaps, it didn't close them.
 
-Three R5 cases are CDA-mode and excluded at parse time, so 2,903 parse and 2,900 execute.
+Three R5 cases are CDA-mode and excluded at parse time, so 2,903 parse and 2,900 execute (**count unverified pending runner fix** — see caveat above).
 
 **Test Coverage Distribution** (by group, counting only genuinely asserted cases):
 - `testBasics` - 5/7; `testType` - 30/30
-- `testQuantity` - 9/11 (`testQuantity9`/`10` need full UCUM unit algebra; Fhir.Metrics limitation)
+- `testQuantity` - 11/11 (`testQuantity9`/`10` were skipped for a Fhir.Metrics UCUM limitation that no
+  longer applies to them; the skips were stale and have been retired)
 - `defineVariable` (R5 only) - 21/21, no deferrals. `defineVariable9`/`10`/`12`/`16` and
   `dvUsageOutsideScopeThrows` were deferred until `%context` was implemented and `defineVariable`
   bindings were scoped lexically (`VariableScope`); reading an undefined `%name` now signals an error
@@ -368,7 +374,7 @@ skipped result instead of a silent pass.
 - ✅ Failed tests report expression, expected vs actual output, input file reference
 - ✅ Tests run in parallel via xUnit's default parallelization
 - ✅ Coverage report via `dotnet test --logger "console;verbosity=detailed"`
-- ✅ Full R4/R4B/R5 suite (2,900 tests executed) - exceeded Phase 1 goal of 200 tests
+- ✅ Full R4/R4B/R5 suite (2,900 tests executed (**count unverified** — see caveat in summary table above)) - exceeded Phase 1 goal of 200 tests
 - ✅ FHIRPath 2.0 support: Comments, `defineVariable()`, backtick variables, escape sequences
 - ✅ Comprehensive function coverage: 120 registered `[FhirPathFunction]` implementations
 
@@ -381,7 +387,7 @@ skipped result instead of a silent pass.
 
 ### Next Steps
 
-1. **Gap closure** (19 of 2,900 cases are not asserted: 10 skipped, 9 unsupported - the deferral list is
+1. **Gap closure** (13 of 2,900 cases are not asserted: 4 skipped, 9 unsupported - the deferral list is
    empty, see the table above):
    - ✅ ~~Math functions (round, abs, sqrt, ln, exp, power, floor, ceiling, truncate)~~ - Complete
    - ✅ ~~String functions (trim, split, contains, encode/decode, escape/unescape)~~ - Complete
@@ -390,8 +396,8 @@ skipped result instead of a silent pass.
    - ✅ ~~`aggregate()` edge cases~~ - Complete
    - 🔲 `conformsTo()` - Requires profile validation infrastructure (6 cases)
    - 🔲 `%terminologies` - Requires a terminology server binding (3 cases, R5)
-   - 🔲 UCUM library integration for quantity unit conversion (`testQuantity9`/`testQuantity10`, so 2
-     distinct cases but 6 skips, since both skip on all three versions)
+   - ✅ ~~UCUM library integration for quantity unit conversion (`testQuantity9`/`testQuantity10`)~~ -
+     the skips were stale; both cases pass on R4, R4B and R5 and are now asserted
    - ✅ ~~The deferred cases in `_unsignalledInvalidCases` - invalid expressions the engine does not yet
      signal an error for~~ - Complete; all 35 closed and the dictionary is now empty
 2. **CI integration**: Add pass rate tracking to GitHub Actions (fail on regression)

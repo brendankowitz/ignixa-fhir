@@ -41,6 +41,77 @@ public class CompiledVersusInterpretedDifferentialTests
         "gender = 'male'",
     };
 
+    /// <summary>
+    /// Asserts <see cref="MustCompile"/> is a subset of <see cref="Corpus"/>.
+    /// </summary>
+    /// <remarks>
+    /// The two lists are maintained by hand - <c>MustCompile</c> here, <c>Corpus</c> via
+    /// <see cref="DifferentialFixture"/> - so a row could be edited out of one while surviving in the
+    /// other, leaving this suite asserting compilation for an expression the differential theory above
+    /// never runs. Mirrors <c>VersionedCompiledVersusInterpretedDifferentialTests</c>'s guard of the same
+    /// name.
+    /// </remarks>
+    [Fact]
+    public void GivenMustCompile_WhenComparedAgainstTheCorpus_ThenEveryRowIsAMemberOfIt()
+    {
+        // Arrange
+        var corpus = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string expression in Corpus)
+        {
+            corpus.Add(expression);
+        }
+
+        var mustCompile = new List<string>();
+        foreach (string expression in MustCompile)
+        {
+            mustCompile.Add(expression);
+        }
+
+        // Act & Assert
+        mustCompile.ShouldAllBe(
+            expression => corpus.Contains(expression),
+            "every row in MustCompile has to also be a row in Corpus, or this suite is asserting "
+            + "compilation for an expression the differential theory never runs.");
+    }
+
+    /// <summary>
+    /// Asserts the <see cref="MustCompile"/> inventory is complete, so a row cannot be deleted from it
+    /// without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// The subset check above cannot catch deletion: removing a row still leaves every remaining row a
+    /// member of <c>Corpus</c>, so that check stays green with fewer rows compared. The expected list
+    /// here is written independently of <see cref="MustCompile"/> for the same reason
+    /// <c>FirelyVersusIgnixaDifferentialTests.NormalisedTypeNames</c>'s inventory test is: a list derived
+    /// from the collection it guards agrees with any edit to that collection and asserts nothing.
+    /// </remarks>
+    [Fact]
+    public void GivenTheMustCompileInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "birthDate = @1974-12-25",
+            "meta.lastUpdated > @2024-01-01T00:00:00Z",
+            "extension.value = @T10:30:00",
+            "contact.period.start < contact.period.end",
+            "telecom.where(system = 'phone')",
+            "gender = 'male'",
+        ];
+
+        var actual = new List<string>();
+        foreach (string expression in MustCompile)
+        {
+            actual.Add(expression);
+        }
+
+        // Assert
+        actual.ToArray().ShouldBe(
+            expected,
+            "The MustCompile inventory changed. A row may only be retired after confirming it no longer "
+            + "carries differential coverage; update this inventory in the same change.");
+    }
+
     [Theory]
     [MemberData(nameof(Corpus))]
     public void GivenAnExpression_WhenEvaluatedByBothPaths_ThenResultsAreIdentical(string expression)
@@ -50,18 +121,26 @@ public class CompiledVersusInterpretedDifferentialTests
         var ast = _parser.Parse(expression);
         var compiled = _compiler.TryCompile(ast);
 
+        // Act
+        var interpretedResult = DifferentialFixture.Describe(() => _evaluator.Evaluate(subject, ast, DifferentialFixture.CreateContext(subject)));
+
+        // Assert: a thrown exception is never "agreement", whichever path produced it, and is checked
+        // whether or not this row reaches the compiled path. Without this, mutual throwing and mutual
+        // emptiness both read as agreement - DifferentialFixture.AssertEvaluated's own remarks record
+        // that making Evaluate throw unconditionally left 335 of 337 rows green across this repo's
+        // differential suites before this call was wired in here.
+        DifferentialFixture.AssertEvaluated(interpretedResult, expression);
+
         if (compiled is null)
         {
             // Declining to compile is the designed escape hatch: Select() falls back to the
-            // interpreter, so the two paths agree by construction and there is nothing to compare.
+            // interpreter, so there is no second path to compare here.
             return;
         }
 
-        // Act
         var compiledResult = DifferentialFixture.Describe(() => compiled(subject, DifferentialFixture.CreateContext(subject)));
-        var interpretedResult = DifferentialFixture.Describe(() => _evaluator.Evaluate(subject, ast, DifferentialFixture.CreateContext(subject)));
+        DifferentialFixture.AssertEvaluated(compiledResult, expression);
 
-        // Assert
         compiledResult.ShouldBe(
             interpretedResult,
             $"Compiled and interpreted evaluation of '{expression}' disagree.");

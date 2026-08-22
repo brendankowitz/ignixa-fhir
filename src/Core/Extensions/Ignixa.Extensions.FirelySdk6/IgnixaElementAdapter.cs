@@ -59,7 +59,7 @@ public class IgnixaElementAdapter : IElement
         {
             if (!_translatedValueResolved)
             {
-                _translatedValue = FirelyPrimitiveValues.ToIgnixa(_firelyElement.Value);
+                _translatedValue = FirelyPrimitiveValues.ToIgnixa(_firelyElement.Value, _firelyElement.InstanceType);
                 _translatedValueResolved = true;
             }
 
@@ -83,7 +83,7 @@ public class IgnixaElementAdapter : IElement
 
     /// <inheritdoc/>
     public IType? Type => _firelyElement.Definition != null
-        ? new TypeAdapter(_firelyElement.Definition)
+        ? new TypeAdapter(_firelyElement.Definition, InstanceType)
         : null;
 
     /// <inheritdoc/>
@@ -130,11 +130,13 @@ public class IgnixaElementAdapter : IElement
     private class TypeAdapter : IType
     {
         private readonly FirelyElementDef _definition;
+        private readonly string _instanceType;
         private TypeInfo? _cachedInfo;
 
-        public TypeAdapter(FirelyElementDef definition)
+        public TypeAdapter(FirelyElementDef definition, string instanceType)
         {
             _definition = definition ?? throw new ArgumentNullException(nameof(definition));
+            _instanceType = instanceType;
         }
 
         public TypeInfo Info
@@ -144,7 +146,16 @@ public class IgnixaElementAdapter : IElement
                 if (_cachedInfo.HasValue)
                     return _cachedInfo.Value;
 
-                var typeName = _definition.Type.FirstOrDefault()?.GetTypeName() ?? _definition.ElementName;
+                var selectedChoiceType = _definition.IsChoiceElement
+                    ? _definition.Type.FirstOrDefault(type =>
+                        string.Equals(type.GetTypeName(), _instanceType, StringComparison.Ordinal))
+                    : null;
+
+                // A custom ITypedElement can report an InstanceType absent from its declared choice types.
+                // The definition remains the authority for declared metadata, so preserve the prior first-type
+                // fallback instead of fabricating a declaration from the unmatched runtime value.
+                var typeName = (selectedChoiceType ?? _definition.Type.FirstOrDefault())?.GetTypeName()
+                    ?? _definition.ElementName;
                 var primitive = FhirPrimitiveExtensions.FromTypeString(typeName);
 
                 _cachedInfo = new TypeInfo(

@@ -173,6 +173,28 @@ public sealed record AnalysisContext
     }
 
     /// <summary>
+    /// Adds a warning reporting a subexpression that provably yields empty for every conformant input.
+    /// </summary>
+    public void AddAlwaysEmptyWarning(string message, Expression? location = null)
+    {
+        _issues.Add(ValidationIssue.AlwaysEmpty(
+            message,
+            location?.Location?.ToString(),
+            location?.ToString()));
+    }
+
+    /// <summary>
+    /// Adds a warning that marks the analysis as indeterminate rather than invalid.
+    /// </summary>
+    public void AddIndeterminateWarning(string message, Expression? location = null)
+    {
+        _issues.Add(ValidationIssue.Indeterminate(
+            message,
+            location?.Location?.ToString(),
+            location?.ToString()));
+    }
+
+    /// <summary>
     /// Adds an informational issue.
     /// </summary>
     public void AddInfo(string message, Expression? location = null)

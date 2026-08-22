@@ -481,9 +481,10 @@ public static class DateTimeFunctions
     }
 
     /// <summary>
-    /// Simple IElement implementation for primitive values.
+    /// Simple IElement implementation for primitive values produced by the date/time functions.
     /// </summary>
-    private class PrimitiveElement : IElement
+    /// <remarks>Declares <see cref="ISystemValueElement"/>; see that interface for why.</remarks>
+    private class PrimitiveElement : ISystemValueElement
     {
         public PrimitiveElement(object value, string instanceType)
         {

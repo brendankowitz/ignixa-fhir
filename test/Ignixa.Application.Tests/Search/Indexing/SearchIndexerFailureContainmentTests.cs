@@ -27,11 +27,18 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// index entries and nothing else - the resource still stores, and every other parameter still indexes.
 /// </para>
 /// <para>
-/// Laziness is what makes this easy to get wrong. Both <c>ProcessCompositeSearchParameter</c> and the
-/// converters are <c>yield</c> iterators, so a value produced inside a try block does no work until it is
-/// enumerated, and the enumeration happens further out - past the catch that looked like it covered it. Each
-/// test below asserts the underlying operation genuinely throws before asserting that Extract survives it,
-/// so neither can quietly stop testing anything if the hazard is refactored away.
+/// Laziness is what makes this easy to get wrong, and it is the specific property these tests exist to pin
+/// (issue #403). <c>element.Select</c> hands back the evaluator's own enumerable, which for anything built on
+/// <c>where()</c> is a <c>yield</c> iterator that does no work until enumerated; <c>ProcessCompositeSearchParameter</c>
+/// and the converters are <c>yield</c> iterators too. A value produced inside a try block therefore does nothing
+/// until it is enumerated, and the enumeration happens further out - past the catch that looked like it covered
+/// it - so one bad expression fails the create or update of the whole resource.
+/// </para>
+/// <para>
+/// Every failing expression below is chosen so that <c>Select</c> returns <em>without</em> throwing and the throw
+/// lands on enumeration, and each test asserts exactly that pair before asserting Extract survives it. That
+/// ordering is load-bearing: an expression that threw eagerly inside <c>Select</c> would satisfy every other
+/// assertion here while the guarded <c>.ToList()</c> was deleted and the bug fully reintroduced.
 /// </para>
 /// </summary>
 public class SearchIndexerFailureContainmentTests
@@ -121,31 +128,143 @@ public class SearchIndexerFailureContainmentTests
     }
 
     [Fact]
-    public void GivenACompositeWhoseRootExpressionFails_WhenIndexed_ThenTheWriteSurvivesAndOtherParametersStillIndex()
+    public void GivenANonCompositeWhoseExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex()
     {
-        // Arrange - a custom composite whose root expression cannot be evaluated. ProcessCompositeSearchParameter
-        // is a yield iterator, so the root Select's error surfaced at Extract's entries.AddRange and propagated
-        // straight out of ISearchIndexer.Extract, failing the whole write over one bad custom parameter.
-        _searchParameterDefinitionManager.AddNewSearchParameters([BrokenRootComposite()]);
-
+        // Arrange - pins the materialisation inside ExtractSearchValues, the non-composite call site. The
+        // expression parses and compiles cleanly, so Select returns a lazy where() iterator and the type error
+        // (string + integer) only surfaces on enumeration. Delete the .ToList() from that try and the throw
+        // escapes the per-parameter catch and aborts Extract for the whole Observation.
+        var captured = new List<(LogLevel Level, string Message)>();
+        _searchParameterDefinitionManager.AddNewSearchParameters([BrokenNonComposite()]);
+        var indexer = CreateIndexer(new CapturingLoggerFactory(captured));
         var observation = ObservationJson();
         var element = observation.ToElement(_schemaProvider);
 
-        // The hazard is real: evaluating that root expression against this resource does throw.
-        Should.Throw<Exception>(() => element.Select(BrokenRootExpression).ToList());
+        // The hazard is real and it is lazy: Select returns cleanly, then enumerating what it returned throws.
+        IEnumerable<IElement> lazyValues = Should.NotThrow(() => element.Select(BrokenNonCompositeExpression));
+        Should.Throw<Exception>(() => lazyValues.ToList());
 
         // Act
-        var indices = Should.NotThrow(() => _indexer.Extract(element));
+        var indices = Should.NotThrow(() => indexer.Extract(element));
 
         // Assert
-        indices.ShouldNotBeEmpty();
-        indices.Select(i => i.SearchParameter.Code).ShouldContain("status");
-        indices.Select(i => i.SearchParameter.Code).ShouldNotContain(BrokenCompositeCode);
+        var failureLog = captured.Single(c => c.Message.Contains(BrokenNonCompositeExpression, StringComparison.Ordinal));
+        failureLog.Level.ShouldBe(LogLevel.Warning);
+        failureLog.Message.ShouldContain(BrokenNonCompositeUrl);
+        failureLog.Message.ShouldContain("Observation/o1");
+
+        indices.Count(i => i.SearchParameter.Code == BrokenNonCompositeCode).ShouldBe(0);
+        indices.Count(i => i.SearchParameter.Code == "status").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
     }
 
-    private const string BrokenCompositeCode = "broken-root-composite";
+    [Fact]
+    public void GivenACompositeWhoseRootExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex()
+    {
+        // Arrange - pins the materialisation inside ProcessCompositeSearchParameter, the composite root call
+        // site. That method is itself a yield iterator, so a lazy root enumerable escaping it would not be
+        // enumerated until Extract's entries.AddRange - outside ISearchIndexer.Extract entirely.
+        var captured = new List<(LogLevel Level, string Message)>();
+        _searchParameterDefinitionManager.AddNewSearchParameters([BrokenRootComposite()]);
+        var indexer = CreateIndexer(new CapturingLoggerFactory(captured));
+        var observation = ObservationJson();
+        var element = observation.ToElement(_schemaProvider);
 
-    private const string BrokenRootExpression = "Observation.value.ofType(Quantity) + 'not-a-number'";
+        // The hazard is real and it is lazy: Select returns cleanly, then enumerating what it returned throws.
+        IEnumerable<IElement> lazyRootObjects = Should.NotThrow(() => element.Select(BrokenRootExpression));
+        Should.Throw<Exception>(() => lazyRootObjects.ToList());
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert
+        var failureLog = captured.Single(c => c.Message.Contains(BrokenRootExpression, StringComparison.Ordinal));
+        failureLog.Level.ShouldBe(LogLevel.Warning);
+        failureLog.Message.ShouldContain(BrokenCompositeUrl);
+        failureLog.Message.ShouldContain("Observation/o1");
+
+        indices.Count(i => i.SearchParameter.Code == BrokenCompositeCode).ShouldBe(0);
+        indices.Count(i => i.SearchParameter.Code == "status").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code-value-quantity").ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenACompositeWhoseComponentExpressionFails_WhenIndexed_ThenTheWholeCompositeEntryIsDroppedAndTheComponentDefinitionIsLogged()
+    {
+        // Arrange - pins the materialisation inside ExtractCompositeComponentSearchValues, the one call site
+        // the tests above cannot reach: they fail at the composite's root expression, so rootObjects is empty
+        // and the per-component loop never runs. Here the root expression is valid and the first component
+        // succeeds, so the loop does run and the second component fails during enumeration.
+        var captured = new List<(LogLevel Level, string Message)>();
+        _searchParameterDefinitionManager.AddNewSearchParameters([BrokenComponentComposite()]);
+        var indexer = CreateIndexer(new CapturingLoggerFactory(captured));
+        var observation = ObservationJson();
+        var element = observation.ToElement(_schemaProvider);
+
+        // The hazard is real and it is lazy: Select returns cleanly, then enumerating what it returned throws.
+        // Evaluated against the element itself because the valid root expression yields the resource.
+        IEnumerable<IElement> lazyComponentValues = Should.NotThrow(() => element.Select(BrokenComponentExpression));
+        Should.Throw<Exception>(() => lazyComponentValues.ToList());
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert - the failure is attributed to the component's resolved definition, not to the composite that
+        // declared it, so a test asserting the composite's own URL would miss a regression at this call site.
+        var failureLog = captured.Single(c => c.Message.Contains(BrokenComponentExpression, StringComparison.Ordinal));
+        failureLog.Level.ShouldBe(LogLevel.Warning);
+        failureLog.Message.ShouldContain(BrokenComponentDefinitionUrl);
+        failureLog.Message.ShouldNotContain(BrokenComponentCompositeUrl);
+        failureLog.Message.ShouldContain("Observation/o1");
+
+        // Containment here is coarser than the non-composite case: an empty component result trips the
+        // "no values for this component" check, which skips the entire composite entry for that root object -
+        // discarding the first component's successful values with it. Only the composite entry is lost; the
+        // parameters its components resolve to still index on their own.
+        indices.Count(i => i.SearchParameter.Code == BrokenComponentCompositeCode).ShouldBe(0);
+        indices.Count(i => i.SearchParameter.Code == "status").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code-value-quantity").ShouldBe(1);
+    }
+
+    private const string BrokenNonCompositeCode = "broken-non-composite";
+    private const string BrokenNonCompositeExpression = "Observation.code.coding.where(system + 1 = 'non-composite')";
+    private const string BrokenNonCompositeUrl = "http://example.org/fhir/SearchParameter/broken-non-composite";
+    private const string BrokenCompositeCode = "broken-root-composite";
+    private const string BrokenRootExpression = "Observation.code.coding.where(system + 2 = 'composite-root')";
+    private const string BrokenCompositeUrl = "http://example.org/fhir/SearchParameter/broken-root-composite";
+    private const string BrokenComponentCompositeCode = "broken-component-composite";
+    private const string BrokenComponentExpression = "code.coding.where(system + 3 = 'composite-component')";
+    private const string BrokenComponentCompositeUrl = "http://example.org/fhir/SearchParameter/broken-component-composite";
+
+    /// <summary>
+    /// The definition the broken component resolves to. ExtractCompositeComponentSearchValues logs this URL
+    /// rather than the URL of the composite that declared the component.
+    /// </summary>
+    private const string BrokenComponentDefinitionUrl = "http://hl7.org/fhir/SearchParameter/clinical-code";
+
+    private IElement BrokenNonComposite()
+    {
+        string json = $$"""
+            {
+              "resourceType": "SearchParameter",
+              "id": "{{BrokenNonCompositeCode}}",
+              "url": "{{BrokenNonCompositeUrl}}",
+              "name": "{{BrokenNonCompositeCode}}",
+              "status": "active",
+              "code": "{{BrokenNonCompositeCode}}",
+              "base": [ "Observation" ],
+              "type": "string",
+              "expression": "{{BrokenNonCompositeExpression}}"
+            }
+            """;
+
+        return ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
+    }
 
     private IElement BrokenRootComposite()
     {
@@ -153,7 +272,7 @@ public class SearchIndexerFailureContainmentTests
             {
               "resourceType": "SearchParameter",
               "id": "{{BrokenCompositeCode}}",
-              "url": "http://example.org/fhir/SearchParameter/{{BrokenCompositeCode}}",
+              "url": "{{BrokenCompositeUrl}}",
               "name": "{{BrokenCompositeCode}}",
               "status": "active",
               "code": "{{BrokenCompositeCode}}",
@@ -175,6 +294,47 @@ public class SearchIndexerFailureContainmentTests
 
         return ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
     }
+
+    /// <summary>
+    /// A composite whose root expression is valid and whose first component succeeds, so extraction reaches the
+    /// second component - the only way to exercise ExtractCompositeComponentSearchValues, which the tests that
+    /// fail at the root expression never reach.
+    /// </summary>
+    private IElement BrokenComponentComposite()
+    {
+        string json = $$"""
+            {
+              "resourceType": "SearchParameter",
+              "id": "{{BrokenComponentCompositeCode}}",
+              "url": "{{BrokenComponentCompositeUrl}}",
+              "name": "{{BrokenComponentCompositeCode}}",
+              "status": "active",
+              "code": "{{BrokenComponentCompositeCode}}",
+              "base": [ "Observation" ],
+              "type": "composite",
+              "expression": "Observation",
+              "component": [
+                {
+                  "definition": "http://hl7.org/fhir/SearchParameter/Observation-value-quantity",
+                  "expression": "value.ofType(Quantity)"
+                },
+                {
+                  "definition": "{{BrokenComponentDefinitionUrl}}",
+                  "expression": "{{BrokenComponentExpression}}"
+                }
+              ]
+            }
+            """;
+
+        return ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
+    }
+
+    private ISearchIndexer CreateIndexer(ILoggerFactory loggerFactory)
+        => SearchIndexerFactory.CreateInstance(
+            _schemaProvider,
+            loggerFactory,
+            _searchParameterDefinitionManager,
+            NullFhirBaseUriProvider.Instance);
 
     private static ResourceJsonNode ServiceRequestWithTiming(string timingJson)
         => ResourceJsonNode.Parse($$"""

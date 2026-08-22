@@ -512,9 +512,16 @@ public record EvaluationContext
     }
 
     /// <summary>
-    /// Simple implementation of IElement for index values.
+    /// The <c>$index</c> iteration counter, as an element.
     /// </summary>
-    private sealed class IndexElement(int value) : IElement
+    /// <remarks>
+    /// Declares <see cref="ISystemValueElement"/>: <c>$index</c> is a <c>System.Integer</c> the
+    /// evaluator produces, never a value read from a resource. Without the declaration
+    /// <c>select($index).ofType(Integer)</c> returned empty from R5 onwards - the pre-R5 cast alias
+    /// had been rescuing the misclassified value, and the R5 gate withdraws it - and
+    /// <c>$index is Integer</c> was false on every version.
+    /// </remarks>
+    private sealed class IndexElement(int value) : ISystemValueElement
     {
         public string Name => string.Empty;
         public string InstanceType => "integer";
@@ -529,9 +536,18 @@ public record EvaluationContext
     }
 
     /// <summary>
-    /// Simple implementation of IElement for string constant values.
+    /// A standard FHIRPath external constant - <c>%sct</c>, <c>%loinc</c>, <c>%ucum</c> and the
+    /// <c>%vs-</c> and <c>%ext-</c> families - as an element.
     /// </summary>
-    private sealed class StringElement(string value) : IElement
+    /// <remarks>
+    /// Declares <see cref="ISystemValueElement"/>: <see cref="GetStandardConstant"/> returns values
+    /// the specification defines, which the evaluator materialises here as <c>System.String</c>; none
+    /// of them is read from a resource. Without the declaration <c>%ucum.ofType(String)</c> returned
+    /// empty from R5 onwards and <c>%ucum is String</c> was false on every version. Environment
+    /// variables supplied by the caller do not come through here - they arrive as elements the caller
+    /// already built, and classifying those is the caller's decision.
+    /// </remarks>
+    private sealed class StringElement(string value) : ISystemValueElement
     {
         public string Name => string.Empty;
         public string InstanceType => "string";

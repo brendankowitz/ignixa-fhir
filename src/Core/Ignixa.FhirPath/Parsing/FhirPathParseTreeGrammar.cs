@@ -54,15 +54,15 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DateLiteral =
         Token.EqualTo(FhirPathTokenKind.DateLiteral)
-            .Select(t => new ConstantParseNode(t.ToStringValue(), Loc(t)));
+            .Select(t => (ConstantParseNode)new TemporalConstantParseNode(t.ToStringValue(), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DateTimeLiteral =
         Token.EqualTo(FhirPathTokenKind.DateTimeLiteral)
-            .Select(t => new ConstantParseNode(t.ToStringValue(), Loc(t)));
+            .Select(t => (ConstantParseNode)new TemporalConstantParseNode(t.ToStringValue(), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> TimeLiteral =
         Token.EqualTo(FhirPathTokenKind.TimeLiteral)
-            .Select(t => new ConstantParseNode(t.ToStringValue(), Loc(t)));
+            .Select(t => (ConstantParseNode)new TemporalConstantParseNode(t.ToStringValue(), Loc(t)));
 
     public static readonly TokenListParser<FhirPathTokenKind, QuantityParseNode> Quantity =
         from valueToken in Token.EqualTo(FhirPathTokenKind.DecimalLiteral)

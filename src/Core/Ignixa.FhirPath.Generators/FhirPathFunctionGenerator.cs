@@ -238,6 +238,7 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
                 sb.Append(", supportedAtRoot: true");
             }
 
+            sb.Append($", declaredReturnType: \"{func.ReturnType}\"");
             sb.AppendLine(")");
 
             if (func.SupportedContexts != "any-any")
@@ -273,9 +274,18 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
     {
         var returnType = func.ReturnType;
 
-        if (string.Equals(returnType, "context", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(returnType, "any", StringComparison.OrdinalIgnoreCase))
+        {
+            sb.AppendLine("            .WithReturnType(ReturnsUnknown)");
+        }
+        else if (string.Equals(returnType, "context", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(returnType, "constructsFromContext", StringComparison.OrdinalIgnoreCase))
         {
             sb.AppendLine("            .WithReturnType(ReturnsContext)");
+        }
+        else if (string.Equals(returnType, "boundaryOfContext", StringComparison.OrdinalIgnoreCase))
+        {
+            sb.AppendLine("            .WithReturnType(ReturnsBoundaryOfContext)");
         }
         else if (string.Equals(returnType, "fromargument", StringComparison.OrdinalIgnoreCase))
         {
@@ -295,13 +305,13 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
                 sb.AppendLine("            .WithReturnType(ReturnsFromArgument)");
             }
         }
-        else if (!string.Equals(returnType, "any", StringComparison.OrdinalIgnoreCase))
+        else
         {
             // For complex types (non-primitive), use schema-aware type resolution
             // to ensure return types have proper IType definitions with children
             if (IsPrimitiveReturnType(returnType))
             {
-                // Primitives don't need schema resolution
+                // Primitives don't need schema resolution.
                 sb.AppendLine($"            .WithReturnType((def, focus, args, issues) => new List<FhirPathType> {{ new FhirPathType(\"{func.ReturnType}\", focus.IsCollection()) }})");
             }
             else

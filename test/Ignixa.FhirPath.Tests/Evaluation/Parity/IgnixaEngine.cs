@@ -4,7 +4,6 @@
  * Drives Ignixa's engine through the same public entry point production search indexing uses.
  */
 
-using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization.SourceNodes;
@@ -43,6 +42,20 @@ internal static class IgnixaEngine
         }
     }
 
+    public static ParityOutcome Evaluate(IElement subject, ISchema schema, string expression)
+    {
+        try
+        {
+            var results = subject.Select(expression, Context(subject, schema)).ToList();
+
+            return ParityOutcome.Returned(results.ConvertAll(Render));
+        }
+        catch (Exception exception)
+        {
+            return ParityOutcome.Failed(exception);
+        }
+    }
+
     /// <summary>
     /// Binds %resource, %rootResource and the resolve() resolver.
     /// </summary>
@@ -54,21 +67,24 @@ internal static class IgnixaEngine
     /// the engines agreeing on their own.
     /// </remarks>
     private static FhirEvaluationContext Context(IElement subject) =>
+        Context(subject, Schema);
+
+    private static FhirEvaluationContext Context(IElement subject, ISchema schema) =>
         new FhirEvaluationContext
         {
-            ElementResolver = Resolve,
+            ElementResolver = reference => Resolve(reference, schema),
         } with
         {
             Resource = subject,
             RootResource = subject,
-            Schema = Schema,
+            Schema = schema,
         };
 
     /// <summary>
     /// Renders one result element as "InstanceType|value".
     /// </summary>
     public static string Render(IElement element) =>
-        $"{ParityTypeName.Canonical(element.InstanceType)}|{RenderValue(element.Value)}";
+        $"{ParityTypeName.Canonical(element.InstanceType)}|{ParityValue.Render(element.Value, element.InstanceType)}";
 
     /// <summary>
     /// The un-canonicalised <c>InstanceType</c> of each result.
@@ -80,7 +96,9 @@ internal static class IgnixaEngine
     /// The raw values of each result, so a test can pin an exact literal.
     /// </summary>
     public static IReadOnlyList<string> RawValues(IElement subject, string expression) =>
-        subject.Select(expression, Context(subject)).Select(element => RenderValue(element.Value)).ToList();
+        subject.Select(expression, Context(subject))
+            .Select(element => ParityValue.RenderText(element.Value))
+            .ToList();
 
     /// <summary>
     /// Ignixa's own <c>Scalar</c>, for comparison with Firely 5.11.4's throwing one.
@@ -100,24 +118,13 @@ internal static class IgnixaEngine
     public static bool IsTrue(IElement subject, string expression) =>
         subject.IsTrue(expression, Context(subject));
 
-    /// <summary>
-    /// The Ignixa half of the canonical rendering described on
-    /// <see cref="FirelyEngine"/>'s equivalent.
-    /// </summary>
-    private static string RenderValue(object? value) => value switch
-    {
-        null => "<null>",
-        bool flag => flag ? "true" : "false",
-        FhirTemporal temporal => temporal.Literal,
-        string text => text,
-        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? "<null>"
-    };
-
     private static IElement? Resolve(string reference)
+        => Resolve(reference, Schema);
+
+    private static IElement? Resolve(string reference, ISchema schema)
     {
         var json = ParityReferenceResolver.SynthesiseTarget(reference);
 
-        return json is null ? null : Parse(json);
+        return json is null ? null : ResourceJsonNode.Parse(json).ToElement(schema);
     }
 }

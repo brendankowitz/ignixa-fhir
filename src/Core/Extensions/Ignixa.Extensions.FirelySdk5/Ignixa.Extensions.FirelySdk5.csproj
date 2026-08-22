@@ -5,8 +5,6 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <RootNamespace>Ignixa.Extensions.FirelySdk</RootNamespace>
-    <!-- Define preprocessor symbol to handle SDK 5.x API differences -->
-    <DefineConstants>FIRELYSDK5</DefineConstants>
   </PropertyGroup>
 
   <!-- NuGet Package Configuration -->
@@ -39,4 +37,3 @@
     <PackageReference Include="Hl7.Fhir.Base" />
   </ItemGroup>
 </Project>
-

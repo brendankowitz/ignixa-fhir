@@ -59,6 +59,7 @@ public sealed class NodeEvaluationEntry
             UnaryExpression unary => unary.Operator,
             PropertyAccessExpression prop => prop.PropertyName,
             FunctionCallExpression func => func.FunctionName,
+            TemporalConstantExpression temporal => temporal.Literal,
             ConstantExpression constant => FormatConstantKey(constant.Value),
             ParenthesizedExpression => "()",
             ScopeExpression scope => $"${scope.ScopeName}",
@@ -76,12 +77,20 @@ public sealed class NodeEvaluationEntry
         return name;
     }
 
+    /// <summary>
+    /// Renders a non-temporal constant's value as Firely and HAPI spell it in a trace key.
+    /// </summary>
+    /// <remarks>
+    /// A string is always quoted here. Rendering an <c>@</c>-prefixed one bare, as the temporal form,
+    /// spelled the string literal <c>'@x'</c> as <c>@x</c> - the same sigil sniff this type's caller
+    /// stopped relying on, and one that made the trace claim a key parity it did not have. A temporal
+    /// literal reaches its own arm in <see cref="GetKey"/> and never arrives here.
+    /// </remarks>
     private static string FormatConstantKey(object? value)
     {
         return value switch
         {
             null => "null",
-            string s when s.StartsWith('@') => s,
             string s => $"'{s}'",
             bool b => b ? "true" : "false",
             _ => string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}", value)

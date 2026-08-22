@@ -1,4 +1,6 @@
 using System.Collections.Frozen;
+using System.Reflection;
+using System.Security.Cryptography;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Analysis;
 using Ignixa.FhirPath.Evaluation;
@@ -143,6 +145,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4TestCases = new(() => LoadTestCases("r4"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4bTestCases = new(() => LoadTestCases("r4b"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r5TestCases = new(() => LoadTestCases("r5"));
+    private static readonly Lazy<bool> _fhirTestCasesProvenanceVerified = new(VerifyFhirTestCasesProvenance);
 
     /// <summary>
     /// Official <c>invalid</c>-marked cases the engine does not yet signal an error for, keyed by test name
@@ -209,6 +212,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
     private static IReadOnlyList<FhirPathTestCase> LoadTestCases(string version)
     {
+        _ = _fhirTestCasesProvenanceVerified.Value;
         var testSuiteFilePath = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", version, "fhirpath", $"tests-fhir-{version}.xml");
 
         if (!File.Exists(testSuiteFilePath))
@@ -218,6 +222,49 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         return FhirPathTestSuiteParser.ParseTestSuite(testSuiteFilePath);
     }
+
+    private static bool VerifyFhirTestCasesProvenance()
+    {
+        var expectedVersion = GetFhirTestCasesMetadata("FhirTestCasesVersion");
+        var expectedHash = GetFhirTestCasesMetadata("FhirTestCasesArchiveSha256");
+        var testDataDirectory = Path.Combine(_projectRoot, "TestData");
+        var markerPath = Path.Combine(testDataDirectory, "fhir-test-cases", ".downloaded");
+        string[] expectedMarker =
+        [
+            $"packageVersion={expectedVersion}",
+            $"archiveSha256={expectedHash}",
+        ];
+
+        if (!File.Exists(markerPath) || !File.ReadAllLines(markerPath).SequenceEqual(expectedMarker, StringComparer.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"FHIR test cases provenance marker is missing or mismatched: {markerPath}. Delete TestData and rebuild to download fhir-test-cases {expectedVersion}.");
+        }
+
+        var archivePath = Path.Combine(testDataDirectory, "testcases.zip");
+        if (!File.Exists(archivePath))
+        {
+            throw new FileNotFoundException(
+                $"FHIR test cases archive is missing: {archivePath}. Delete TestData and rebuild to download fhir-test-cases {expectedVersion}.",
+                archivePath);
+        }
+
+        using var archive = File.OpenRead(archivePath);
+        var actualHash = Convert.ToHexString(SHA256.HashData(archive));
+        if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"FHIR test cases archive hash mismatch. Expected {expectedHash}, got {actualHash}. Delete TestData and rebuild.");
+        }
+
+        return true;
+    }
+
+    private static string GetFhirTestCasesMetadata(string key) =>
+        typeof(OfficialTestSuiteRunner).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .SingleOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))?.Value
+        ?? throw new InvalidOperationException($"Missing {key} assembly metadata.");
 
     public static IEnumerable<object[]> GetR4TestCases() => GetTestCasesForVersion("r4", _r4TestCases);
     public static IEnumerable<object[]> GetR4BTestCases() => GetTestCasesForVersion("r4b", _r4bTestCases);
@@ -294,7 +341,10 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // and our implementation follows R5 (sub-second precision preserved).
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testPlusDate19")
         {
-            SkipTest("testPlusDate19: R4/R4B expect truncation of fractional seconds; this implementation follows R5 behaviour");
+            SkipUnlessTheCaseWouldNowPass(
+                testCase,
+                fhirVersion,
+                "testPlusDate19: R4/R4B expect truncation of fractional seconds; this implementation follows R5 behaviour");
             return;
         }
 
@@ -307,19 +357,63 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // same reason (doNotEnforceAsSingletonRule below R5).
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testFHIRPathAsFunction21")
         {
-            SkipTest("testFHIRPathAsFunction21: the 'as' singleton rule is enforced from R5 onwards, because HL7's own R4/R4B SearchParameters violate it - see TypeMatcher.EnsureSingletonInput");
+            SkipUnlessTheCaseWouldNowPass(
+                testCase,
+                fhirVersion,
+                "testFHIRPathAsFunction21: the 'as' singleton rule is enforced from R5 onwards, because HL7's own R4/R4B SearchParameters violate it - see TypeMatcher.EnsureSingletonInput");
             return;
         }
 
-        // Quantity algebra: Fhir.Metrics does not support unit multiplication/division across prefixes.
-        // testQuantity9:  2.0 'cm' * 2.0 'm' = 0.040 'm2' (unit multiplication)
-        // testQuantity10: 4.0 'g'  / 2.0 'm' = 2 'g/m'    (unit division)
-        if (testCase.Name is "testQuantity9" or "testQuantity10")
+        ExecuteTestCase(testCase, fhirVersion);
+    }
+
+    /// <summary>
+    /// Runs a version-policy skip's case and fails when it now passes, so the skip retires itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A skip with no such guard stays green forever whether or not it is still needed. Six quantity-algebra
+    /// skips in this file went stale exactly that way: their cases passed on all three versions and nothing
+    /// said so, which also meant unit multiplication and division could regress without failing anything.
+    /// <see cref="AssertDeferralIsStillNeeded"/> gives <see cref="_unsignalledInvalidCases"/> the same
+    /// protection; this gives it to the two version-policy skips, which are not deferrals and so do not go
+    /// through that list.
+    /// </para>
+    /// <para>
+    /// The skip carries the failure that produced it. Any throw out of <see cref="ExecuteTestCase"/> is
+    /// read here as "the limitation still applies", and a harness bug throws exactly the same way a real
+    /// version-policy mismatch does, so a <see cref="NullReferenceException"/> would otherwise report as a
+    /// legitimate skip with its cause discarded. Naming the exception in the reason makes the skip its own
+    /// evidence: when it later turns out to have been wrong, the record of why it skipped is still there.
+    /// <see cref="OperationCanceledException"/> is re-thrown so an abandoned run cannot be recorded as a
+    /// version-policy skip.
+    /// </para>
+    /// </remarks>
+    private void SkipUnlessTheCaseWouldNowPass(FhirPathTestCase testCase, FhirVersion fhirVersion, string reason)
+    {
+        try
         {
-            SkipTest($"{testCase.Name}: requires full UCUM unit algebra; Fhir.Metrics library limitation");
+            ExecuteTestCase(testCase, fhirVersion);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is not Xunit.SkipException)
+        {
+            SkipTest($"{reason} [{ex.GetType().Name}: {ex.Message}]");
             return;
         }
 
+        Assert.Fail($"""
+            '{testCase.Name}' is skipped on {fhirVersion} but the case now passes, so the skip is stale and must be removed.
+            Expression: {testCase.Expression}
+            Skip reason on file: {reason}
+            """);
+    }
+
+    private void ExecuteTestCase(FhirPathTestCase testCase, FhirVersion fhirVersion)
+    {
         var versionString = fhirVersion switch
         {
             FhirVersion.R4 => "r4",

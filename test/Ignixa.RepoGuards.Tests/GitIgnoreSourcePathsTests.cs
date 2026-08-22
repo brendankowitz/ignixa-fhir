@@ -34,7 +34,7 @@ public class GitIgnoreSourcePathsTests
     [MemberData(nameof(MustNotBeIgnored))]
     public void GivenSourcePathUnderPackagesDir_WhenAskingGit_ThenPathIsNotIgnored(string relativePath)
     {
-        var repoRoot = FindRepoRoot();
+        var repoRoot = RepoRoot.Find();
         var fullPath = Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
         File.Exists(fullPath).ShouldBeTrue(
             $"Fixture path missing: {fullPath}. Update the guard data or restore the file.");
@@ -60,16 +60,5 @@ public class GitIgnoreSourcePathsTests
             1,
             $"Path '{relativePath}' is ignored by .gitignore (match: {stdout.Trim()}). " +
             "Update the Packages exception block in .gitignore.");
-    }
-
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
-        {
-            dir = dir.Parent;
-        }
-        dir.ShouldNotBeNull($"Could not find repo root from {AppContext.BaseDirectory}");
-        return dir!.FullName;
     }
 }

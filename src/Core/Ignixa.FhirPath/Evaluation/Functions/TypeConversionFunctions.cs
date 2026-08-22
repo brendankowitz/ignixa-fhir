@@ -732,7 +732,7 @@ internal static partial class TypeConversionFunctions
             return [];
 
         return FunctionHelpers.ReturnBoolean(
-            TypeMatcher.IsTypeMatch(list[0], targetTypeName, TypeMatchMode.TypeTest));
+            TypeMatcher.IsTypeMatch(list[0], targetTypeName, TypeMatchMode.TypeTest, context.Schema));
     }
 
     #endregion

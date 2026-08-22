@@ -259,7 +259,7 @@ public class SchemaBasedFhirResourceFaker
                 continue;
             }
 
-            var value = GenerateElementValue(actualElement, resourceType, depth: 0);
+            var value = GenerateResolvedElementValue(child, actualElement, resourceType, depth: 0);
             if (value is not null)
             {
                 root[actualElementName] = value;
@@ -281,18 +281,27 @@ public class SchemaBasedFhirResourceFaker
     /// <summary>
     /// Generates a value for a specific element based on its type and cardinality.
     /// </summary>
-    private JsonNode? GenerateElementValue(IType element, string parentResourceType, int depth = 0)
+    private JsonNode? GenerateResolvedElementValue(
+        IType declaredElement,
+        IType resolvedElement,
+        string parentResourceType,
+        int depth)
     {
-        var elementName = element.Info.Name;
+        var elementName = declaredElement.Info.Name;
 
         // Handle collections
-        if (element.IsCollection)
+        if (declaredElement.IsCollection)
         {
             var arraySize = _random.Next(1, 3); // Generate 1-2 items
             var array = new JsonArray();
             for (int i = 0; i < arraySize; i++)
             {
-                var item = GenerateSingleValue(element, elementName, parentResourceType, depth);
+                var item = GenerateSingleValue(
+                    declaredElement,
+                    resolvedElement,
+                    elementName,
+                    parentResourceType,
+                    depth);
                 if (item is not null)
                 {
                     array.Add(item);
@@ -302,10 +311,10 @@ public class SchemaBasedFhirResourceFaker
             // For required collections, ensure at least one item exists (even if empty)
             // This handles cases like DataElement.element (type ElementDefinition) where we can't generate content
             // but still need to satisfy min cardinality constraints
-            if (array.Count == 0 && element.IsRequired)
+            if (array.Count == 0 && declaredElement.IsRequired)
             {
                 // Add a minimal placeholder object for complex types
-                if (!element.Info.IsPrimitive)
+                if (!resolvedElement.Info.IsPrimitive)
                 {
                     array.Add(new JsonObject());
                 }
@@ -314,7 +323,12 @@ public class SchemaBasedFhirResourceFaker
             return array.Count > 0 ? array : null;
         }
 
-        return GenerateSingleValue(element, elementName, parentResourceType, depth);
+        return GenerateSingleValue(
+            declaredElement,
+            resolvedElement,
+            elementName,
+            parentResourceType,
+            depth);
     }
 
     /// <summary>
@@ -322,13 +336,18 @@ public class SchemaBasedFhirResourceFaker
     /// Uses binding information when available (ITypeExtended) to generate terminology-correct codes.
     /// </summary>
     [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "Used for pattern matching, not for display")]
-    private JsonNode? GenerateSingleValue(IType element, string elementName, string parentResourceType, int depth = 0)
+    private JsonNode? GenerateSingleValue(
+        IType declaredElement,
+        IType resolvedElement,
+        string elementName,
+        string parentResourceType,
+        int depth = 0)
     {
-        var info = element.Info;
+        var info = resolvedElement.Info;
         var lowerName = elementName.ToLowerInvariant();
 
         // Try binding-aware generation first for code elements
-        if (TryGenerateFromBinding(element, out var bindingValue))
+        if (TryGenerateFromBinding(declaredElement, out var bindingValue))
         {
             return bindingValue;
         }
@@ -349,7 +368,7 @@ public class SchemaBasedFhirResourceFaker
                 FhirPrimitive.DateTime => JsonValue.Create(_faker.Date.Past(5).ToString("o")),
                 FhirPrimitive.Instant => JsonValue.Create(_faker.Date.Recent().ToString("o")),
                 FhirPrimitive.Time => JsonValue.Create($"{_faker.Random.Int(0, 23):D2}:{_faker.Random.Int(0, 59):D2}:{_faker.Random.Int(0, 59):D2}"),
-                FhirPrimitive.Code => GenerateCodeValue(lowerName, element),
+                FhirPrimitive.Code => GenerateCodeValue(lowerName, declaredElement),
                 FhirPrimitive.Id => JsonValue.Create(_faker.Random.AlphaNumeric(8)),
                 FhirPrimitive.Markdown => JsonValue.Create(_faker.Lorem.Sentence()),
                 FhirPrimitive.Base64Binary => JsonValue.Create(Convert.ToBase64String(_faker.Random.Bytes(16))),
@@ -364,27 +383,27 @@ public class SchemaBasedFhirResourceFaker
         // Complex types - use specialized generators with binding awareness
         // For child elements, Info.Name is the element name, not the type name.
         // Get the actual type from Types[0] or fallback to Info.Name for root resources.
-        var childTypeName = element is ITypeExtended extended && extended.Types.Count > 0
+        var childTypeName = resolvedElement is ITypeExtended extended && extended.Types.Count > 0
             ? extended.Types[0].Code
-            : element.Info.Name;
+            : resolvedElement.Info.Name;
 
         return childTypeName switch
         {
-            "HumanName" => GenerateHumanName(element),
-            "Address" => GenerateAddress(element),
-            "ContactPoint" => GenerateContactPoint(element),
-            "Identifier" => GenerateIdentifier(element),
-            "CodeableConcept" => GenerateCodeableConcept(lowerName, element),
-            "Coding" => GenerateCoding(lowerName, element),
-            "Reference" => GenerateReference(element, parentResourceType),
+            "HumanName" => GenerateHumanName(resolvedElement),
+            "Address" => GenerateAddress(resolvedElement),
+            "ContactPoint" => GenerateContactPoint(resolvedElement),
+            "Identifier" => GenerateIdentifier(resolvedElement),
+            "CodeableConcept" => GenerateCodeableConcept(lowerName, declaredElement),
+            "Coding" => GenerateCoding(lowerName, declaredElement),
+            "Reference" => GenerateReference(declaredElement, parentResourceType),
             "Period" => GeneratePeriod(),
             "Quantity" => GenerateQuantity(),
             "Range" => GenerateRange(),
             "Ratio" => GenerateRatio(),
             "Attachment" => GenerateAttachment(),
-            "CodeableReference" => GenerateCodeableReference(lowerName, element, parentResourceType),
-            "Signature" => GenerateSignature(element, depth),
-            _ => GenerateGenericComplexType(element, parentResourceType, depth) // Generate complex types like BackboneElement
+            "CodeableReference" => GenerateCodeableReference(lowerName, declaredElement, parentResourceType),
+            "Signature" => GenerateSignature(resolvedElement, depth),
+            _ => GenerateGenericComplexType(resolvedElement, parentResourceType, depth) // Generate complex types like BackboneElement
         };
     }
 
@@ -483,7 +502,7 @@ public class SchemaBasedFhirResourceFaker
                 continue;
             }
 
-            var value = GenerateElementValue(actualElement, currentTypeName, depth + 1);
+            var value = GenerateResolvedElementValue(child, actualElement, currentTypeName, depth + 1);
             if (value is not null)
             {
                 obj[actualElementName] = value;
@@ -1162,7 +1181,11 @@ public class SchemaBasedFhirResourceFaker
             // Create the actual JSON element name (e.g., "deceased" + "Boolean" = "deceasedBoolean")
             var actualElementName = elementName + typeSuffix;
 
-            return (actualElementName, element);
+            // A selected choice comes from this provider's own schema, so absence means inconsistent metadata.
+            var actualElement = _schemaProvider.GetTypeDefinition(selectedType.Code)
+                ?? throw new InvalidOperationException(
+                    $"FHIR choice type '{selectedType.Code}' has no schema definition.");
+            return (actualElementName, actualElement);
         }
 
         // Fallback: element is marked as choice but has no types info - use default type if available

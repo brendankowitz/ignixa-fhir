@@ -27,6 +27,19 @@ internal static class DifferentialFixture
     /// <summary>
     /// Expressions every pair of evaluation paths must agree on.
     /// </summary>
+    /// <remarks>
+    /// Measured, at <see cref="DefaultVersion"/>: 100 of the 205 rows compile and 105 are declined. The
+    /// declined half - the quantity arithmetic, the temporal set operations, most of the <c>is</c> and
+    /// <c>as</c> forms, and the conversion and boundary functions - reaches the <c>compiled is null</c>
+    /// early-out, where the two paths agree by construction because only one of them ran. Those rows
+    /// still earn their place: <see cref="FoldableCorpus"/> and the interpreter-versus-folded harness
+    /// read the same list, and a row that starts compiling later gains differential coverage for free.
+    /// But a green run here is evidence about 100 expressions, not 205, and the rows that must keep
+    /// compiling are named in <c>CompiledVersusInterpretedDifferentialTests.MustCompile</c> rather than
+    /// left to the count. (<see cref="FoldableCorpus"/> is 24 compiled of 114 by the same measure; its
+    /// harness compares the interpreter against the folded AST, so declining to compile does not make
+    /// those rows inert.)
+    /// </remarks>
     public static TheoryData<string> Corpus => new()
     {
         "birthDate = @1974-12-25",
@@ -360,6 +373,25 @@ internal static class DifferentialFixture
         "@T10:30 < @T11:00",
         "@2012-01-01 + 0",
 
+        // A string literal that happens to look temporal. The interpreter's comparison routes on the
+        // value's shape rather than on the element's type, so it answers these the temporal way -
+        // empty, because @2012 and @2012-01 only overlap in precision. The folder has no notion of
+        // precision overlap, so it must decline rather than answer them as ordinal strings.
+        "'@2013' < '@2013-01'",
+        "'@2013' <= '@2013-01'",
+        "'@2013' > '@2013-01'",
+        "'@2013' >= '@2013-01'",
+        "'@2013' = '@2013-01'",
+        "'2013' < '2013-01'",
+        "'@2013' < '@2014'",
+
+        // toString() over a literal: the folder returns the focus unchanged when the focus already
+        // carries a string, and a temporal literal carries one too. Folding it there leaves a date
+        // element where toString() owes a string one.
+        "@2013-06-15.toString()",
+        "@T10:30.toString()",
+        "'@2013-06-15'.toString()",
+
         // Two numeric literals are the shape the folder answered by CLR type where FHIRPath answers by
         // value: object.Equals boxed 1 and 1.0 as different types, so "1 = 1.0" was true unoptimized and
         // false under Optimize. The ordering folder already widened to decimal, which is why only the
@@ -402,9 +434,99 @@ internal static class DifferentialFixture
         "true or ((1 | 2).single().exists() and true)",
     };
 
-    public static EvaluationContext CreateContext(IElement subject)
+    /// <summary>
+    /// Type-operator expressions swept across every published version rather than fixed at
+    /// <see cref="DefaultVersion"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The main corpus fixes the version, which is fine for the rules that do not read it - but the
+    /// FHIRPath type operators do. <c>as</c> accepts a set of capitalised aliases below R5 and rejects
+    /// them from R5 on, and the branch that exempts engine-produced System values from that gate is
+    /// only reachable when a schema is present. A single-version corpus cannot see a divergence that
+    /// exists on one side of that gate and not the other, and did not: the compiled path returned empty
+    /// for <c>value.count().ofType(Integer)</c> on R5 and R6 while the interpreter returned the
+    /// integer, and every differential suite passed.
+    /// </para>
+    /// <para>
+    /// The System-spelling rows are the ones that carry that regression. The rest are here because the
+    /// version gate sits in the same method and a change to it should be visible on all five versions
+    /// at once, not discovered one artifact at a time.
+    /// </para>
+    /// <para>
+    /// What this corpus actually compares, measured: 8 of the 29 rows compile, 21 are declined. The
+    /// eight are the <c>ofType()</c> forms plus <c>name.count() &gt; 0</c>; <c>TryCompile</c> declines
+    /// every <c>is</c> form, every <c>as</c> and <c>.as()</c> form, and both <c>type()</c> forms. Those
+    /// 21 rows reach the early-out in the versioned harness, so across five versions the sweep is 40
+    /// real comparisons and 105 no-ops. Two of the three operators named above therefore contribute no
+    /// differential coverage at all, and <c>as</c> - the operator the R5 gate governs - is one of them.
+    /// Their version-axis coverage rests entirely on the single-path assertions in
+    /// <c>SystemValueTypeMatchingTests</c> and <c>TypeNameCaseSensitivityTests</c>. Do not read a green
+    /// versioned differential suite as evidence about <c>is</c> or <c>as</c>.
+    /// </para>
+    /// <para>
+    /// The eight that do compile are pinned by
+    /// <c>VersionedCompiledVersusInterpretedDifferentialTests.MustCompile</c>, so a row quietly becoming
+    /// uncompilable fails rather than joining the silent majority.
+    /// </para>
+    /// </remarks>
+    public static TheoryData<string> TypeOperatorCorpus => new()
     {
-        return new EvaluationContext() with { Resource = subject, RootResource = subject };
+        "birthDate.count().ofType(Integer)",
+        "birthDate.count().ofType(integer)",
+        "birthDate.exists().ofType(Boolean)",
+        "birthDate.exists().ofType(boolean)",
+        "name.count() > 0",
+        "birthDate.count() is Integer",
+        "birthDate.exists() is Boolean",
+        "birthDate.count().as(Integer)",
+        "birthDate is date",
+        "birthDate is dateTime",
+        "birthDate is Date",
+        "birthDate as date",
+        "birthDate as Date",
+        "birthDate.ofType(date)",
+        "birthDate.ofType(Date)",
+        "meta.lastUpdated is instant",
+        "active is boolean",
+        "active is Boolean",
+        "multipleBirthInteger is integer",
+        "multipleBirthInteger is Integer",
+        "name is HumanName",
+        "name is humanname",
+        "name.as(HumanName).family",
+        "name.as(humanname).family",
+        "name.first().family is string",
+        "name.first().family is String",
+        "name.ofType(HumanName).family",
+        "birthDate.type().name",
+        "birthDate.type().namespace",
+    };
+
+    /// <summary>
+    /// Builds the evaluation context for a differential run, over the same FHIR version the subject was
+    /// parsed against.
+    /// </summary>
+    /// <remarks>
+    /// The <see cref="EvaluationContext.Schema"/> is not optional here even though the type says it is.
+    /// Several evaluation rules are version-gated - the pre-R5 cast aliases, the R5 singleton-input rule
+    /// for <c>as</c>, type-identifier resolution - and every one of them reads the version off this
+    /// schema. A context without one silently pins the whole suite to the unversioned branch of each of
+    /// those rules, which is how a compiled-versus-interpreted divergence that only existed on R5 and R6
+    /// passed a suite whose entire purpose is to catch compiled-versus-interpreted divergence.
+    /// </remarks>
+    public static EvaluationContext CreateContext(IElement subject) =>
+        CreateContext(subject, DefaultVersion);
+
+    /// <inheritdoc cref="CreateContext(IElement)"/>
+    public static EvaluationContext CreateContext(IElement subject, FhirVersion version)
+    {
+        return new EvaluationContext()
+        {
+            Resource = subject,
+            RootResource = subject,
+            Schema = version.GetSchemaProvider(),
+        };
     }
 
     /// <summary>
@@ -581,12 +703,29 @@ internal static class DifferentialFixture
     /// <c>contact.extension.value</c> (valueDecimal) for <c>decimal</c>.
     /// </para>
     /// </remarks>
-    public static IElement CreateSubject()
+    public static IElement CreateSubject() => CreateSubject(DefaultVersion);
+
+    /// <inheritdoc cref="CreateSubject()"/>
+    public static IElement CreateSubject(FhirVersion version)
     {
-        return ResourceJsonNode.Parse(SubjectJson).ToElement(Schema);
+        return ResourceJsonNode.Parse(SubjectJson).ToElement(version.GetSchemaProvider());
     }
 
-    private static readonly IFhirSchemaProvider Schema = FhirVersion.R5.GetSchemaProvider();
+    /// <summary>
+    /// Every published version the corpus is expected to behave identically across, for suites that
+    /// sweep the version axis rather than fixing it at <see cref="DefaultVersion"/>.
+    /// </summary>
+    public static readonly FhirVersion[] PublishedVersions =
+    [
+        FhirVersion.Stu3, FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5, FhirVersion.R6
+    ];
+
+    /// <summary>
+    /// The version the single-version suites run at. R5 rather than the oldest, so the default run
+    /// exercises the post-R5 branch of the version-gated type rules.
+    /// </summary>
+    public const FhirVersion DefaultVersion = FhirVersion.R5;
+
 
     private const string SubjectJson = """
     {

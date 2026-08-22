@@ -97,7 +97,7 @@ internal sealed record ChildParseNode(
 /// Represents a constant value in the parse tree.
 /// Examples: 42, 3.14, 'hello', true, @2024-01-15
 /// </summary>
-internal sealed record ConstantParseNode(
+internal record ConstantParseNode(
     object Value,
     SourceLocation Location) : ParseNode(Location)
 {

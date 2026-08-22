@@ -16,15 +16,45 @@ on every write through `TypedElementSearchIndexer`. A divergence nothing can rea
 
 ## Headline
 
-**The inventory is short, and that is the finding.**
+This document describes the original expression-focused R4 inventory. The all-version,
+resource-backed enablement gate now lives in
+[Resource-backed Firely parity corpus](resource-backed-parity-corpus.md). That follow-up runs
+shipped expressions against 788 real resource-shaped inputs, compares CLR carriers as well as
+FHIR values, and uses the production Ignixa indexer.
+
+**The inventory is short. Read what the population is before reading that as a finding.**
 
 Across the R4 search parameter corpus - **1,367 distinct expressions x 5 resources = 6,835
 evaluations per engine** - the two engines disagree on **6 outcomes arising from 2 root causes**.
 Neither cause changes an indexed *value*; one changes an element's declared type, the other changes
 *when* an already-broken parameter fails.
 
+Those 6,835 evaluations decompose as follows, and the shape matters more than the divergence count:
+
+| Outcome | Count | What it establishes |
+|---|---:|---|
+| Both engines returned nothing | 6,752 | Agreement on absence. Weak evidence. |
+| Both engines returned the same values | **76** | The only positive evidence in this sweep. |
+| Both engines threw | 1 | No values compared. This is the `hasExtension()` subject that makes entry 1's count 4 and not 5. |
+| Divergent | 6 | The inventory below. |
+
+**76 is the number of evaluations in this sweep that compared matching non-empty values.** The
+corpus is every shipped R4 SearchParameter expression run against five subject resources, so almost
+every expression addresses a resource type the subject is not, and answers empty on both engines for
+reasons that have nothing to do with either engine. A short inventory over this corpus means "no new
+disagreement appeared among the expressions production evaluates on every write" - a regression net.
+It is not a measure of how much behaviour has been shown to agree. The volume of matched values
+lives in the [resource-backed corpus](resource-backed-parity-corpus.md), at 10,074 across 788
+resources.
+
+All four counts are pinned in `KnownDivergences.SearchParameterPopulation`, because until they were,
+an evaluation that stopped comparing values and started throwing on both engines left every entry in
+this document satisfied and the suite green.
+
 The language-construct corpus (83 expressions, deliberately chosen to target what this branch
-changed) produces 38 outcomes from 6 open root causes.
+changed) produces 58 outcomes, grouped in this document under 6 open root causes. 17 of its 415
+evaluations are mutual throws - it deliberately probes operations one engine or the other does not
+implement - and those are pinned in `KnownDivergences.ConstructPopulation` for the same reason.
 **None of them is reachable from any shipped R4 SearchParameter expression.**
 Two entries have since closed: entry 5 (`is` on a multi-item collection), fixed by enforcing the
 singleton rule the spec mandates for `is`; and entry 6 (`highBoundary()` at year precision), which
@@ -67,9 +97,10 @@ between releases. Consequently **the R5-specific `as`/`is` behaviour is not cove
 
 ## What is compared, and what is normalised
 
-Compared: result count, each result's `InstanceType`, each result's value, and whether evaluation
-threw. A throw is an outcome, not a test failure - "one engine throws where the other returns empty"
-is the exact mechanism ADR 2608 names for turning a conformance gap into silent index drift.
+Compared: result count, each result's `InstanceType`, each result's CLR carrier and invariant value,
+and whether evaluation threw. A throw is an outcome, not a test failure - "one engine throws where
+the other returns empty" is the exact mechanism ADR 2608 names for turning a conformance gap into
+silent index drift.
 
 Two normalisations, both deliberate:
 
@@ -253,6 +284,44 @@ rejects a conformant one, so nothing breaks. No shipped R4 parameter uses the su
 > Checked and cleared: 13 R4 parameters use `ActivityDefinition.effectivePeriod` and similar. Those
 > are genuine element names, not choice suffixes, and both engines resolve them identically.
 
+### 13. Collection equivalence (`~`) on duplicate items — decided divergence from HAPI
+
+`[a,a,b] ~ [a,b,b]`: **HAPI returns `true`; Ignixa returns `false`.**
+
+HAPI's `opEquivalent` (`FHIRPathEngine.java:2496-2517`) checks collection size plus, for each left
+item, whether *some* right item is equivalent to it — a matched right item is never consumed, so
+one right item can satisfy more than one left item. Ignixa's `AreCollectionsEquivalent` instead
+computes a genuine maximum bipartite matching (Kuhn's algorithm), which requires every right item to
+pair with at most one left item. For `[a,a,b] ~ [a,b,b]`, both left `a`s compete for the single
+right `a`; no perfect matching exists, so Ignixa answers `false` where HAPI's unconsumed existence
+check answers `true`.
+
+The FHIRPath spec (build.fhir.org continuous build, `index.md` lines 3499-3503: same size, "each
+item must be equivalent", order-independent) is silent on duplicate multiplicity — it does not say
+whether duplicates must pair off one-to-one or merely each find some equivalent partner. Tier 1
+(spec) does not settle this; Tier 2 (HAPI) would normally decide it, but see the decision below.
+
+**Reachable: no.** Zero `~` characters appear in any expression across all five generated
+`*SearchParameterDefinitions.g.cs` files (STU3, R4, R4B, R5, R6) — verified by grep. No case in the
+vendored official FHIRPath suite (`test/Ignixa.FhirPath.Tests/TestData/fhir-test-cases/{r4,r4b,r5}/fhirpath/`)
+distinguishes the two semantics either: every `~`/`!~` collection case there (`testEquivalent19`
+through `testEquivalent24`(R5) /`testNotEquivalent19`-`21`) compares distinct items, only ever
+reordered, never duplicated within one operand. Neither the production surface nor the conformance
+suite can tell these two implementations apart.
+
+> **DECIDED 2026-08-21 (user signoff): keep the Kuhn matching.** This is the one place this
+> inventory deviates from HAPI where the spec is ambiguous, so the reasoning is recorded rather than
+> merely asserted: HAPI's `opEquivalent` reads as an implementation shortcut rather than a considered
+> reading of the ambiguity; the inputs that distinguish the two semantics are unreachable from any
+> shipped search parameter; and the matching's order-independence is guaranteed by construction where
+> an existence check's is not. Downgrading a verified-correct multiset semantics to an existence
+> check to match an implementation detail buys nothing and loses that guarantee. If HL7 clarifies the
+> spec text, revisit — the trigger is the same spec lines cited above.
+>
+> Pinned by
+> `GivenALeftDuplicateNotConsumedByASingleRightMatch_WhenComparedForEquivalence_ThenIgnixaDivergesFromHapiAndReturnsFalse`
+> in `test/Ignixa.FhirPath.Tests/Evaluation/CollectionEquivalenceTests.cs`.
+
 ---
 
 ## Expectations tested
@@ -268,16 +337,14 @@ The brief predicted four findings. Two were confirmed, two refuted.
 
 ---
 
-## Not yet covered
+## Not covered by the original R4 inventory
 
-- **R5 and R4B.** The harness is R4-only, because referencing two Firely model assemblies makes
-  `ModelInfo` ambiguous. Covering R5 needs a second test project or `extern alias`. The R5 `as`
-  prediction is untested as a result.
+The resource-backed follow-up linked above now covers all five versions, populated resources, and
+present/absent/contained `resolve()` targets. The following limitations describe only the original
+expression-focused harness or remain future work:
+
 - **Custom search parameters.** ADR 2608 already scopes these to bake-in observation rather than a
   pre-merge gate.
-- **`resolve()` against a real resource graph.** Both engines get an identical synthetic resolver, so
-  `resolve()` is compared rather than the fixture - but a resolver that returns fully populated
-  resources would exercise more.
 - **Firely 6.0.1 vs 5.11.4 as its own axis.** Both are available offline; a second project could
   report where the two Firely versions disagree, which is directly useful when fhir-server upgrades.
 

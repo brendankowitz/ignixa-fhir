@@ -225,7 +225,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("skip() requires a num argument");
+            throw new FhirPathEvaluationException("skip() requires a num argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
@@ -253,7 +253,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("take() requires a num argument");
+            throw new FhirPathEvaluationException("take() requires a num argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
@@ -283,7 +283,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("where() requires a criteria argument");
+            throw new FhirPathEvaluationException("where() requires a criteria argument");
 
         var criteria = arguments[0];
         var index = 0;
@@ -318,7 +318,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("select() requires a projection argument");
+            throw new FhirPathEvaluationException("select() requires a projection argument");
 
         var projection = arguments[0];
         var focusList = focus.ToList();
@@ -355,7 +355,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("all() requires a criteria argument");
+            throw new FhirPathEvaluationException("all() requires a criteria argument");
 
         var criteria = arguments[0];
         var index = 0;
@@ -445,7 +445,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("repeat() requires a projection argument");
+            throw new FhirPathEvaluationException("repeat() requires a projection argument");
 
         var projection = arguments[0];
         var result = new List<IElement>();
@@ -505,7 +505,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("repeatAll() requires a projection argument");
+            throw new FhirPathEvaluationException("repeatAll() requires a projection argument");
 
         var projection = arguments[0];
         var result = new List<IElement>();
@@ -517,7 +517,7 @@ internal static class CollectionFunctions
         while (queue.Count > 0)
         {
             if (++iterations > maxIterations)
-                throw new InvalidOperationException($"repeatAll() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
+                throw new FhirPathEvaluationException($"repeatAll() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
 
             var current = queue.Dequeue();
 
@@ -555,7 +555,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("coalesce() requires at least one argument");
+            throw new FhirPathEvaluationException("coalesce() requires at least one argument");
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
         foreach (var arg in arguments)
@@ -586,7 +586,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("ofType() requires a type argument");
+            throw new FhirPathEvaluationException("ofType() requires a type argument");
 
         string? typeName = null;
 
@@ -609,7 +609,7 @@ internal static class CollectionFunctions
 
         TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "ofType()");
 
-        return TypeMatcher.FilterByType(focus, typeName);
+        return TypeMatcher.FilterByType(focus, typeName, context.Schema);
     }
 
     /// <summary>
@@ -631,7 +631,7 @@ internal static class CollectionFunctions
         EvaluationContext context)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("as() requires a type argument");
+            throw new FhirPathEvaluationException("as() requires a type argument");
 
         var typeName = TypeMatcher.ExtractTypeName(arguments[0]);
         if (string.IsNullOrEmpty(typeName))
@@ -642,7 +642,7 @@ internal static class CollectionFunctions
         var input = focus as IReadOnlyCollection<IElement> ?? focus.ToList();
         TypeMatcher.EnsureSingletonInput(input.Count, context.Schema, "as()");
 
-        return TypeMatcher.FilterByType(input, typeName);
+        return TypeMatcher.FilterByType(input, typeName, context.Schema);
     }
 
     /// <summary>
@@ -663,7 +663,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("intersect() requires an other argument");
+            throw new FhirPathEvaluationException("intersect() requires an other argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
@@ -698,7 +698,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("exclude() requires an other argument");
+            throw new FhirPathEvaluationException("exclude() requires an other argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
@@ -733,7 +733,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("union() requires an other argument");
+            throw new FhirPathEvaluationException("union() requires an other argument");
 
         // Evaluate the argument from $this context if available (e.g., inside select())
         // Otherwise fall back to focus
@@ -761,7 +761,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("combine() requires an other argument");
+            throw new FhirPathEvaluationException("combine() requires an other argument");
 
         // Evaluate the argument from $this context if available (e.g., inside select())
         // Otherwise use the original evaluation context Focus (not the current result collection)
@@ -790,7 +790,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("aggregate() requires an aggregator expression");
+            throw new FhirPathEvaluationException("aggregate() requires an aggregator expression");
 
         // Initialize $total: initial-value if provided, otherwise empty
         // Per spec: init argument is evaluated on the outer context (before $this/$index are set)
@@ -835,7 +835,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("subsetOf() requires an other argument");
+            throw new FhirPathEvaluationException("subsetOf() requires an other argument");
 
         var focusList = focus.ToList();
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -867,7 +867,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("supersetOf() requires an other argument");
+            throw new FhirPathEvaluationException("supersetOf() requires an other argument");
 
         var focusList = focus.ToList();
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -902,10 +902,10 @@ internal static class CollectionFunctions
             string ns = "FHIR";
             string name = typeName;
 
-            // Distinguish between System literals (PrimitiveElement) and FHIR elements (e.g. ElementNode, PocoElement)
-            // This is a heuristic based on the implementing class name.
-            var implType = element.GetType().Name;
-            bool isSystemLiteral = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+            // System literals and engine-produced values declare themselves; FHIR elements (ElementNode,
+            // SchemaAwareElement, PocoElement) do not. See ISystemValueElement for why this is declared
+            // rather than inferred from the implementing class name.
+            bool isSystemLiteral = element is ISystemValueElement;
 
             if (isSystemLiteral)
             {
@@ -983,7 +983,7 @@ internal static class CollectionFunctions
 
         if (arguments.Count == 0)
         {
-            return RunSort(list.OrderBy(e => (IElement?)e, SortComparer.NullsLow));
+            return RunSort(list.OrderBy(e => (IElement?)e, ValueOrdering.SortComparer.NullsLow));
         }
 
         // Extract sort key info (expression and direction) for all arguments
@@ -1005,7 +1005,9 @@ internal static class CollectionFunctions
 
         // Apply first sort key
         var firstKey = sortKeys[0];
-        var firstComparer = firstKey.IsDescending ? SortComparer.NullsHigh : SortComparer.NullsLow;
+        var firstComparer = firstKey.IsDescending
+            ? ValueOrdering.SortComparer.NullsHigh
+            : ValueOrdering.SortComparer.NullsLow;
         IOrderedEnumerable<IElement> orderedList = firstKey.IsDescending
             ? list.OrderByDescending(createKeySelector(firstKey.Expression), firstComparer)
             : list.OrderBy(createKeySelector(firstKey.Expression), firstComparer);
@@ -1015,7 +1017,9 @@ internal static class CollectionFunctions
         {
             var key = sortKeys[i];
             var keySelector = createKeySelector(key.Expression);
-            var keyComparer = key.IsDescending ? SortComparer.NullsHigh : SortComparer.NullsLow;
+            var keyComparer = key.IsDescending
+                ? ValueOrdering.SortComparer.NullsHigh
+                : ValueOrdering.SortComparer.NullsLow;
             orderedList = key.IsDescending
                 ? orderedList.ThenByDescending(keySelector, keyComparer)
                 : orderedList.ThenBy(keySelector, keyComparer);

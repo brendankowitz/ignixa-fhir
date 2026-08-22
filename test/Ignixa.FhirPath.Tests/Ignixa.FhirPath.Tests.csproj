@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Bogus" />
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Shouldly" />
@@ -24,9 +25,60 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirFakes\Ignixa.FhirFakes.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+
+    <!-- Referenced only so the Decisions census can scan every current production assembly that may
+         introduce an IElement wrapper. The census itself scans all available Ignixa.* metadata. -->
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.TestScript\Ignixa.TestScript.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.DeId\Ignixa.DeId.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.NarrativeGenerator\Ignixa.NarrativeGenerator.csproj" />
+  </ItemGroup>
+
+  <!--
+    The adapter sources the parity tests exercise, link-compiled here so they build against this
+    project's pinned Firely 5.11.4 rather than the 6.0.1 the repo ships against.
+
+    Why not a ProjectReference to Ignixa.Extensions.FirelySdk5, which already link-compiles all six
+    adapter sources for exactly this reason: measured, it restores but does not compile. The pin itself
+    survives restore - CentralPackageTransitivePinningEnabled plus the VersionOverride below hold this
+    project at 5.11.4 rather than floating it to the 5.13.1 that project's folder-local
+    Directory.Packages.props asks for - but the reference then contributes an assembly built against
+    5.13.1, and the build reports two diagnostics but fails only one way. MSB3277 (a conflict between
+    Hl7.Fhir.Base 5.11.4 and 5.13.1 "that could not be resolved", 5.11.4 winning as primary) stays a
+    warning: TreatWarningsAsErrors promotes CS diagnostics, not MSB ones. The failure is CS0436 on
+    IgnixaElementAdapter, because that project link-compiles the same sources this one does, so the type
+    arrives both as source and as metadata.
+    Four of the six sources are needed: the parity tests drive both adapter directions and the
+    primitive-value translation they depend on. They do not need SourceNavigatorAdapter.cs's
+    source-navigation compatibility or FirelySdkExtensions.cs's broader SDK extension entry points.
+
+    This holds only while no project in this graph references Ignixa.Extensions.FirelySdk6. If one of
+    the four Core references above ever takes that dependency, this assembly gets both a compiled and a
+    referenced IgnixaElementAdapter, they become two distinct types, and the result is the same CS0436 at
+    best and an unreadable type mismatch at worst. An extern alias would be the fix; there is nothing to
+    alias today.
+
+    Compiling at 5.11.4 means these tests pin the adapter's behaviour on the engine fhir-server will
+    actually run, which is the more useful target for a parity claim. Ignixa.Extensions.Tests covers the
+    same adapter at 6.0.1, so the two are complementary and the shipped SDK-6 path is not left unguarded.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\FirelyPrimitiveValues.cs"
+             Link="FirelySdkAdapter\FirelyPrimitiveValues.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs"
+             Link="FirelySdkAdapter\IgnixaElementAdapter.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaExtensions.cs"
+             Link="FirelySdkAdapter\IgnixaExtensions.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\TypedElementAdapter.cs"
+             Link="FirelySdkAdapter\TypedElementAdapter.cs" />
+    <Compile Include="..\..\bench\Ignixa.Benchmarks.Firely5\SearchParameterExpressionCorpus.cs"
+             Link="Corpus\SearchParameterExpressionCorpus.cs" />
   </ItemGroup>
 
   <!--
@@ -45,6 +97,7 @@
 
   <PropertyGroup>
     <FhirTestCasesVersion>1.7.46</FhirTestCasesVersion>
+    <FhirTestCasesArchiveSha256>D89CEC2BD3A22D9968AE91EFCB460B7FAA0802802840E7AC99A0A9D65B091302</FhirTestCasesArchiveSha256>
     <FhirTestCasesUrl>https://github.com/FHIR/fhir-test-cases/releases/download/$(FhirTestCasesVersion)/testcases.zip</FhirTestCasesUrl>
     <FhirTestCasesZip>$(MSBuildProjectDirectory)\TestData\testcases.zip</FhirTestCasesZip>
     <FhirTestCasesDir>$(MSBuildProjectDirectory)\TestData\fhir-test-cases</FhirTestCasesDir>
@@ -52,12 +105,22 @@
     <FhirTestCasesMarker>$(FhirTestCasesDir)\.downloaded</FhirTestCasesMarker>
   </PropertyGroup>
 
+  <ItemGroup>
+    <AssemblyMetadata Include="FhirTestCasesVersion" Value="$(FhirTestCasesVersion)" />
+    <AssemblyMetadata Include="FhirTestCasesArchiveSha256" Value="$(FhirTestCasesArchiveSha256)" />
+  </ItemGroup>
+
   <!-- Runs once in the outer (multi-targeting) build via DispatchToInnerBuilds so the parallel
        per-TFM inner builds don't race on the shared testcases.zip; BeforeBuild covers single-TFM builds. -->
   <Target Name="DownloadFhirTestCases" BeforeTargets="DispatchToInnerBuilds;BeforeBuild" Condition="!Exists('$(FhirTestCasesMarker)')">
     <Message Text="Downloading FHIR test cases from $(FhirTestCasesUrl)..." Importance="high" />
     <MakeDir Directories="$(MSBuildProjectDirectory)\TestData" />
     <DownloadFile SourceUrl="$(FhirTestCasesUrl)" DestinationFolder="$(MSBuildProjectDirectory)\TestData" DestinationFileName="testcases.zip" SkipUnchangedFiles="true" />
+    <GetFileHash Files="$(FhirTestCasesZip)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="FhirTestCasesArchiveHash" />
+    </GetFileHash>
+    <Error Condition="'%(FhirTestCasesArchiveHash.FileHash)' != '$(FhirTestCasesArchiveSha256)'"
+           Text="FHIR test cases archive hash mismatch. Expected $(FhirTestCasesArchiveSha256), got %(FhirTestCasesArchiveHash.FileHash)." />
 
     <Message Text="Extracting FHIR test cases to temporary location..." Importance="high" />
     <RemoveDir Directories="$(FhirTestCasesTempDir)" Condition="Exists('$(FhirTestCasesTempDir)')" />
@@ -72,9 +135,10 @@
     <Move SourceFiles="@(ExtractedFiles)" DestinationFolder="$(FhirTestCasesDir)\%(RecursiveDir)" />
 
     <RemoveDir Directories="$(FhirTestCasesTempDir)" />
-    <Touch Files="$(FhirTestCasesMarker)" AlwaysCreate="true" />
+    <WriteLinesToFile File="$(FhirTestCasesMarker)"
+                      Lines="packageVersion=$(FhirTestCasesVersion);archiveSha256=$(FhirTestCasesArchiveSha256)"
+                      Overwrite="true" />
     <Message Text="FHIR test cases downloaded and extracted successfully." Importance="high" />
   </Target>
 
 </Project>
-

@@ -8,14 +8,15 @@
  * either not compile or, worse, silently bind to the wrong one.
  */
 
-using System.Globalization;
 using Hl7.Fhir.ElementModel;
 using Hl7.Fhir.FhirPath;
 using Hl7.Fhir.Introspection;
 using Hl7.Fhir.Serialization;
 using Hl7.Fhir.Specification;
 using Hl7.FhirPath;
-using P = Hl7.Fhir.ElementModel.Types;
+using Ignixa.Abstractions;
+using Ignixa.Extensions.FirelySdk;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
@@ -26,6 +27,8 @@ namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 internal static class FirelyEngine
 {
     private static readonly IStructureDefinitionSummaryProvider Provider = CreateProvider();
+
+    internal static void EnsureInitialized() => _ = Provider;
 
     /// <summary>
     /// Parses JSON into the element model Firely evaluates over.
@@ -57,11 +60,44 @@ internal static class FirelyEngine
         }
     }
 
+    public static ParityOutcome Evaluate(IElement subject, ISchema schema, string expression)
+    {
+        try
+        {
+            var results = Select(subject, schema, expression);
+
+            return ParityOutcome.Returned(results.Select(Render).ToList());
+        }
+        catch (Exception exception)
+        {
+            return ParityOutcome.Failed(exception);
+        }
+    }
+
+    internal static IReadOnlyList<ITypedElement> Select(IElement subject, ISchema schema, string expression)
+    {
+        var adapted = new TypedElementAdapter(subject);
+        return Select(adapted, schema, expression);
+    }
+
+    internal static IReadOnlyList<ITypedElement> Select(
+        ITypedElement subject,
+        ISchema schema,
+        string expression)
+    {
+        var context = new FhirEvaluationContext
+        {
+            ElementResolver = reference => ResolveAdapted(reference, schema)
+        };
+
+        return subject.Select(expression, context).ToList();
+    }
+
     /// <summary>
     /// Renders one result element as "InstanceType|value".
     /// </summary>
     public static string Render(ITypedElement element) =>
-        $"{ParityTypeName.Canonical(element.InstanceType)}|{RenderValue(element.Value)}";
+        $"{ParityTypeName.Canonical(element.InstanceType)}|{ParityValue.Render(element.Value, element.InstanceType)}";
 
     /// <summary>
     /// The un-canonicalised <c>InstanceType</c> of each result, for the tests that pin the naming
@@ -77,7 +113,7 @@ internal static class FirelyEngine
     /// </summary>
     public static IReadOnlyList<string> RawValues(ITypedElement subject, string expression) =>
         subject.Select(expression, new FhirEvaluationContext())
-            .Select(element => RenderValue(element.Value))
+            .Select(element => ParityValue.RenderText(element.Value))
             .ToList();
 
     /// <summary>
@@ -109,34 +145,6 @@ internal static class FirelyEngine
         IValueProviderFPExtensions.IsTrue(subject, expression);
 
     /// <summary>
-    /// Collapses Firely's value representations onto the same canonical strings
-    /// <see cref="IgnixaEngine"/> produces.
-    /// </summary>
-    /// <remarks>
-    /// Firely surfaces primitives as the CQL-ish <c>Hl7.Fhir.ElementModel.Types</c> wrappers where
-    /// Ignixa surfaces its own <c>FhirTemporal</c> and plain CLR values. Those are representation
-    /// differences, not behavioural ones, and leaving them unnormalised would drown the real findings
-    /// in thousands of false positives. Anything genuinely semantic - the count of results, their
-    /// declared type, the actual text of a value - survives this normalisation intact.
-    /// </remarks>
-    private static string RenderValue(object? value) => value switch
-    {
-        null => "<null>",
-        bool flag => flag ? "true" : "false",
-        P.Boolean boolean => boolean.Value ? "true" : "false",
-        P.Date or P.DateTime or P.Time => value.ToString() ?? "<null>",
-        P.Quantity quantity => quantity.ToString(),
-        P.Decimal number => number.Value.ToString(CultureInfo.InvariantCulture),
-        P.Integer integer => integer.Value.ToString(CultureInfo.InvariantCulture),
-        P.Long duration => duration.Value.ToString(CultureInfo.InvariantCulture),
-        P.String text => text.Value,
-        P.Code code => code.Value ?? "<null>",
-        string text => text,
-        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? "<null>"
-    };
-
-    /// <summary>
     /// Backs <c>resolve()</c>, which appears 76 times across the shipped search parameters and is the
     /// single highest-risk behaviour in the seam's evaluation-context bridge. Both engines get a
     /// resolver with identical semantics so that a divergence here is the engine's, not the fixture's.
@@ -148,6 +156,14 @@ internal static class FirelyEngine
         // Firely types the resolver as returning a non-nullable ITypedElement but treats null as
         // "unresolvable", which is the case every relative reference to an absent resource hits.
         return json is null ? null! : Parse(json);
+    }
+
+    private static ITypedElement ResolveAdapted(string reference, ISchema schema)
+    {
+        var json = ParityReferenceResolver.SynthesiseTarget(reference);
+        return json is null
+            ? null!
+            : new TypedElementAdapter(ResourceJsonNode.Parse(json).ToElement(schema));
     }
 
     private static IStructureDefinitionSummaryProvider CreateProvider()

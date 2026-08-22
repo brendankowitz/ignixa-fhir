@@ -397,7 +397,11 @@ internal class SqlOnFhirEvaluationVisitor
                 yield return name;
     }
 
-    private class PrimitiveValueElement : IElement
+    /// <summary>
+    /// Wraps a value produced by FHIRPath evaluation for consumption by the view runner.
+    /// </summary>
+    /// <remarks>Declares <see cref="ISystemValueElement"/>; see that interface for why.</remarks>
+    private class PrimitiveValueElement : ISystemValueElement
     {
         private readonly object _value;
         private readonly string _type;
