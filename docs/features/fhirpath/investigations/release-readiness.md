@@ -238,7 +238,8 @@ Every item: the concrete production mutation that turns the new test red, demons
 execution. This codebase's history (six tests that passed but could not fail; four consecutive
 self-certified commits) makes "reviewed the diff" a non-closure.
 
-**D1 — `'@x'` string literals misclassified as temporals (regression, dangerous direction). HARD BLOCKER.**
+**D1 — `'@x'` string literals misclassified as temporals (regression, dangerous direction). HARD
+BLOCKER. DONE (`b7611520`, `e6023789`).**
 `src/Core/Ignixa.FhirPath/Analysis/SystemTypeConstructionAnalyzer.cs:GetConstantTypeName:90-102` sniffs a leading `@`;
 `src/Core/Ignixa.FhirPath/Parsing/FhirPathParseTreeGrammar.cs:57` stores `DateLiteral` with its `@` while `:30` strips only quotes
 from `StringLiteral`, making them byte-identical in the AST. `'@'.length()` → hard Error;
@@ -249,7 +250,7 @@ analyzer never string-sniffs; restore the null/empty arm explicitly. Not a switc
 Tier 1, no cross-check needed.
 *Falsify:* new tests `'@2013'.length() = 5`, `'@x' as String` non-empty,
 `{} …` null-arm analyzer case. Then revert only the parse-layer change (restore the `@`-sniffing
-classification), run, show red, restore. Execute and record in the PR.
+classification), run, show red, restore. Executed and recorded across `b7611520`/`e6023789`.
 
 **D2 — `repeat()` has no iteration cap. HARD BLOCKER (tenant-suppliable unbounded loop+memory on the write path).**
 `src/Core/Ignixa.FhirPath/Evaluation/Functions/CollectionFunctions.cs:446-485` vs `RepeatAll`'s 100,000 cap at `:518`. Residuals plan WI-4
@@ -287,19 +288,39 @@ on a documented-inert allowlist (`Quantity`, with rationale); behaviour test
 remove `["Boolean"]` → census red (proves the census discriminates beyond the one name it was
 written for). Execute both.
 
-**D4 — Unguarded mutual recursion in collection equivalence. HARD BLOCKER.**
-`src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:AreCollectionsEquivalent` (~925) ↔ `AreElementsEquivalent` (:~1028) with no
-depth/work guard; a `StackOverflowException` kills the process — `ElementSearchIndexer`'s catch
-ladder cannot contain it, so the write-path containment guarantee is false for this path. HAPI
-shares the exposure (2.6) — irrelevant; HAPI is not a multi-tenant indexer.
-*Fix:* depth or work-budget guard throwing `FhirPathEvaluationException` (same tier logic as D2).
-The Kuhn matching itself is verified correct — do not touch `TryPair`.
-*Tier:* engine hardening; no conformance dimension.
-*Falsify:* in-proc test: deeply nested tenant-shaped JSON (extension-in-extension chain, depth in
-the thousands) through `~`, assert `FhirPathEvaluationException` not process death. Mutation =
-remove the guard and run the same input in a **separate process** (scratch harness, not xunit),
-observe abnormal exit; restore. Record both executions — an SOE cannot be asserted in-proc, so
-the out-of-proc run is the only honest red.
+**D4 — Unguarded mutual recursion in collection equivalence. RESOLVED BY MEASUREMENT — not merged;
+the plan's premise was wrong. No longer a hard blocker; removed from the §7 checklist.**
+`src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:AreCollectionsEquivalent` (~925) ↔ `AreElementsEquivalent` (:~1028) still
+carry no depth/work guard, and this plan originally called that a hard blocker on the theory that an
+uncatchable `StackOverflowException` defeats `ElementSearchIndexer`'s containment guarantee. Measured
+instead of argued (commit `6ebdb444`):
+- Ingest is capped at **31 nested extensions** — every element tree reaches the evaluator through
+  `JsonSourceNodeFactory` at `System.Text.Json`'s default `MaxDepth` of 64, overridden nowhere in
+  `src/`. `Utf8JsonWriter`'s non-configurable 1,000-level ceiling means nothing deeper can even be
+  stored or returned once built.
+- The crash floor is **3,200–4,800 levels**, measured out-of-process (an SOE cannot be asserted
+  in-proc). Margin from the ingest cap is roughly 125x.
+- The frame that actually overflows first is `FunctionHelpers.AreElementsEqual` — **pre-existing on
+  `origin/main`**, unrelated to this branch's `~` work, and reachable from `=`, `in`, `contains`,
+  `distinct()`, `|`, `intersect`, `exclude` and `repeat()` — all of which shipped search parameters do
+  use. `AreElementsEquivalent` calls it on its first ladder rung, so a depth counter placed on
+  `AreCollectionsEquivalent` alone would sit at 1 while the process died in the shared, wider frame
+  underneath it.
+- A guard scoped to `~` would therefore have shipped a green test while leaving the more reachable
+  path exposed — the exact "passes but cannot fail" defect class this work exists to remove. Adding it
+  would have been worse than doing nothing: it looks like containment and is not.
+- What shipped instead: `EquivalenceRecursionDepthTests` pins the parser ceiling that holds both
+  descents off the stack. It goes red if anyone raises `MaxDepth` on the parse path — the guard is on
+  the actual constraint (ingest depth), not on the symptom (recursion in one function).
+*Tier:* engine hardening; no conformance dimension. HAPI shares the exposure (2.6) — irrelevant; HAPI
+is not a multi-tenant indexer.
+*Falsify:* executed. Out-of-process forced-overflow runs located the two floors above; reverting the
+new test and raising `MaxDepth` demonstrates red. The Kuhn matching itself was not touched — `TryPair`
+remains verified correct.
+*Left open, not this branch's scope:* the wider, pre-existing `AreElementsEqual` exposure is real and
+reachable from more operators than `~` is. It predates PR #427 and is not introduced or worsened by
+it, so it is not re-litigated as a blocker here — but it is not fixed either, and a future depth/work
+guard on that shared descent would need to cover all of its callers, not just `~`.
 
 **D5 — Analyzer/evaluator casing policy split.**
 `src/Core/Ignixa.FhirPath/Visitors/FhirPathTypeSet.cs:CanBeOfType:144,150` matches `OrdinalIgnoreCase` ungated by version;
@@ -311,6 +332,44 @@ exact area `AnalyzerEvaluatorTypeCasingAlignmentTests` exists to guard. *Fix:* a
 *Falsify:* extend `AnalyzerEvaluatorTypeCasingAlignmentTests` with a mis-cased pre-R5-alias case
 whose analyzer verdict must match the evaluator's; mutation = revert `CanBeOfType` to
 `OrdinalIgnoreCase` → red. Execute.
+
+**D6 — `canonical` search-value converter gap. NEW HARD BLOCKER, discovered by E2/E3/E4 once the
+harness could see Ignixa-side failures (commit `40f425ec`). `Ignixa.Search` production work,
+tracked elsewhere — out of scope for #427 (a FHIRPath PR); recorded here because it was found by this
+session's evidence-base repair and must not be lost.**
+- Ignixa registers `canonical` against `UriSearchValue` only
+  (`src/Core/Ignixa.Search/Indexing/Converters/CanonicalToUriSearchValueConverter.cs:17`).
+- `microsoft/fhir-server` additionally ships `CanonicalToReferenceSearchValueConverter`, which Ignixa
+  has no equivalent of.
+- Consequence: **46 shipped SearchParameters index nothing in Ignixa and do return results
+  upstream** — including `QuestionnaireResponse-questionnaire`, `MeasureReport-measure`, the
+  `instantiates-canonical` family, `ConceptMap-source-scope`, `StructureDefinition-base`, and
+  `CapabilityStatement-supported-profile`.
+- Three further converters are missing versus upstream: `IdToReferenceSearchValueConverter`,
+  `IdentifierToStringSearchValueConverter`, `ReferenceToUriSearchValueConverter`. Not sized here —
+  flagged so the tracked-elsewhere work item doesn't stop at `canonical` alone.
+- **The parity harness is structurally incapable of detecting any of this on its own**: it hands one
+  converter-manager instance to both indexers (E2's original defect), so the only axis that is ever
+  doubly evaluated is `Select` — a missing *converter* looks identical to "both sides agreed on
+  nothing" until the logger capture E2 added made the Ignixa-side silence visible.
+- Diagnostic gap worth recording alongside this: `Log.FhirElementTypeNotSupported` carries the
+  element type but no parameter identity, so this class of gap cannot be diagnosed from logs on a
+  running server — only from a parity run or a code read.
+- **This contradicts ADR 2608's claim that "index rows written under either provider stay valid."**
+  Under Ignixa, for these 46 parameters, rows are not written differently or invalidly — they are
+  **never written at all**. That is a stronger failure than the §3.3/§3.4 divergence framing covers,
+  and the ADR correction (§8) must carry this as its own bullet, not fold it into the additive-rows
+  story those sections tell.
+*Fix:* out of scope here — do not write the missing converters as part of this documentation pass or
+as part of #427. This is `Ignixa.Search` production work and belongs in its own PR against that
+project, referenced from the ADR correction.
+*Tier:* not a FHIRPath conformance question — a search-indexing completeness gap one layer above the
+engine this PR ships.
+*Falsify:* not executed here (no code changes made). The gap is demonstrated by the converter
+registration read above and by the E2 harness fix that made the Ignixa-side silence visible in the
+first place; a dedicated `Ignixa.Search` PR would falsify it the same way D2/D4 falsify — inject the
+missing converter, show a previously-silent parameter starts indexing, then decide whether to ship
+it.
 
 Verified-correct list (do not spend effort): Kuhn matching/`TryPair`; `ValueOrdering` transitivity;
 `SystemTypeConstruction.TypeNames` throw-on-unknown; `IsSystemValue` flag deletion.
@@ -337,36 +396,47 @@ function name), never on bare `NotSupportedException`.
 **red**; restore. Executed and recorded in the PR description. Until this run exists, no
 conformance figure is quoted anywhere — release notes, README, or the ADR correction.
 
-**E2 — `SearchIndexParityHarness` discards Ignixa-side failures.**
+**E2 — `SearchIndexParityHarness` discards Ignixa-side failures. DONE (`af451067`, `40f425ec`).**
 `test/Ignixa.FhirPath.Tests/Evaluation/Parity/SearchIndexParityHarness.cs:44-48` builds the production indexer with `NullLoggerFactory`;
 Ignixa-throws + Firely-legitimately-empty = 0 vs 0 = green. *Fix:* capture logger; any
 contained-failure log entry on the Ignixa side is a tallied outcome class (`IgnixaContained`),
 asserted zero or pinned. *Falsify:* inject an unconditional throw for one parameter (temporary
-production mutation or test seam), show the corpus goes red instead of green; restore. Execute.
+production mutation or test seam), show the corpus goes red instead of green; restore. Executed.
+This is the fix that surfaced D6 (§4): once the logger was captured, the `canonical` converter gap's
+46 silently-unindexed parameters stopped being indistinguishable from "both sides legitimately empty."
 
-**E3 — `ResourceParityReport` derives `AgreementsOnValues` by subtraction.**
+**E3 — `ResourceParityReport` derives `AgreementsOnValues` by subtraction. DONE (`af451067`,
+`40f425ec`).**
 `test/Ignixa.FhirPath.Tests/Evaluation/Parity/ResourceParityReport.cs:32-33`: a `BothThrew` counter that stops incrementing inflates the
 headline and *relaxes* the `MinimumAgreementsOnValues` floor. *Fix:* count agreements positively;
 `BothThrew` becomes its own asserted floor/pin. *Falsify:* mutation = stop incrementing
-`BothThrew` → the positive-count floor must go red. Execute.
+`BothThrew` → the positive-count floor must go red. Executed.
 
-**E4 — `ParitySweep` has no tally.** `test/Ignixa.FhirPath.Tests/Evaluation/Parity/ParitySweep.cs:38-57` (~1,400 R4 expressions × 5 resources)
+**E4 — `ParitySweep` has no tally. DONE (`af451067`, `40f425ec`).**
+`test/Ignixa.FhirPath.Tests/Evaluation/Parity/ParitySweep.cs:38-57` (~1,400 R4 expressions × 5 resources)
 records nothing; mutual throws already occur. *Fix:* same outcome-class tally as E3.
-*Falsify:* make Ignixa throw for one swept expression (temporary mutation) → sweep red. Execute.
+*Falsify:* make Ignixa throw for one swept expression (temporary mutation) → sweep red. Executed.
 
-**E5 — Compiled-vs-interpreted differentials compare `TypeMatcher` to itself.**
+**E5 — Compiled-vs-interpreted differentials compare `TypeMatcher` to itself. DONE (`4c6cf2cf`,
+`26e8ca04`).**
 `test/Ignixa.FhirPath.Tests/Evaluation/SystemValueTypeMatchingTests.cs:120`, `test/Ignixa.FhirPath.Tests/Compilation/VersionedCompiledVersusInterpretedDifferentialTests.cs:92`
 — both paths route `ofType()` through `FilterByType`. *Fix:* either add an independent expected-
 value oracle (literal expected results per case) or retitle/re-scope the tests honestly ("compiled
 and interpreted route through one matcher — this pins route equality, not correctness"). Prefer
 the oracle for the small case set. *Falsify:* mutation in `FilterByType` that changes both paths
 identically → the oracle version goes red, the self-comparison version demonstrably stays green
-(that pair of observations is the point). Execute both runs.
+(that pair of observations is the point). Executed both runs.
 
-**E6 — The bipartite "33.5M-graph brute-force oracle" is not committed; every shipped case is n=2.**
+**E6 — The bipartite "33.5M-graph brute-force oracle" is not committed; every shipped case is n=2.
+DONE (`4c6cf2cf`, `26e8ca04`).**
 *Fix:* commit a bounded property test (n ≤ 5, exhaustive or randomized-with-seed, brute-force
 matcher as oracle) or delete the claim from docs/comments. *Falsify:* mutation = skip the
-visited-reset in `TryPair` → property test red. Execute.
+visited-reset in `TryPair` → property test red. Executed. The property test found the Kuhn matching
+**correct** — exhaustive at n=3 and n=4 against an independent brute-force oracle, plus a
+fixed-seed n=5 sample and a hand-built greedy-first-fit counterexample
+(`test/Ignixa.FhirPath.Tests/Evaluation/CollectionEquivalenceTests.cs`). The previously-unbacked
+"33.5M generated graphs" claim is retired in favor of this smaller but real, committed, and
+independently-checkable evidence.
 
 **E7 — Benchmark README cites a commit (`86b5cce8`) that does not exist in the branch**, with 13
 `src/` commits including `src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs` postdating the figures
@@ -474,14 +544,28 @@ Latest published is 0.6.41 (`release/0.6.41` = `c22ca789`, 2026-07-27); #398 (`4
 #427-inclusive. Version: next minor (0.7.0) given the new public interface; 0.x semver makes this
 a judgment call — say so in the release notes.
 
-**Hard blockers (all true before dispatch):**
+**Hard blockers (all true before dispatch):** was 9 at the plan's writing; D4 leaving the list
+(measurement resolved it — see §4) makes 8; the D6 converter gap discovered while fixing the evidence
+base makes it 9 again. D4 is **not** on this list — see its entry in §4 for why.
+
 1. D1 (string-literal regression) merged. — dangerous-direction write-path regression.
-2. D2 (`repeat()` cap) merged. — tenant-suppliable unbounded loop on the write path.
-3. D4 (equivalence recursion guard) merged. — process-killing SOE breaks the containment guarantee.
-4. §3.6 (`%resource`/`%rootResource`/`%context` explicit-binding precedence) merged — 5 shipped
-   composite components and the seam's context bridge depend on it.
-5. E1 merged and the suite re-baselined (§6.1); Bar A green; any post-E1 normative reds fixed.
-6. E2–E4 merged and the parity corpus re-run green with positive counting.
+   **DONE** (`b7611520`, `e6023789`).
+2. D2 (`repeat()` cap) merged. — tenant-suppliable unbounded loop on the write path. Not yet done.
+3. §3.6 (`%resource`/`%rootResource`/`%context` explicit-binding precedence) merged — 5 shipped
+   composite components and the seam's context bridge depend on it. Not yet done.
+4. E1 merged and the suite re-baselined (§6.1); Bar A green; any post-E1 normative reds fixed. Not
+   yet done.
+5. E2–E4 merged and the parity corpus re-run green with positive counting. **DONE** (`af451067`,
+   `40f425ec`) — and this is the fix that surfaced D6 below: once the harness could see Ignixa-side
+   failures instead of laundering them into agreement, the missing `canonical` converters stopped
+   being invisible.
+6. **D6 (new) — the `canonical` search-value converter gap, resolved or explicitly accepted as a
+   named enablement gap.** 46 shipped SearchParameters index nothing in Ignixa where Firely returns
+   results (§4, D6). The fix is `Ignixa.Search` production work in a separate PR, out of scope for
+   #427 itself — but the ADR 2608 correction PR (below) must not go out claiming "index rows written
+   under either provider stay valid" while this gap is open. Either the converters ship first, or the
+   ADR correction names this gap explicitly as an accepted, tracked exception. Silence is not an
+   option here — that is exactly the failure mode this whole evidence-base repair exists to close.
 7. **Firely floor resolved (explicit answer):** the shipped `src/Core/Extensions/Ignixa.Extensions.FirelySdk5` targets
    `Hl7.Fhir.Base` **5.13.1**
    (`C:/w427/src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Directory.Packages.props:14`)
@@ -497,16 +581,24 @@ a judgment call — say so in the release notes.
    Multi-targeting is not the tool here — this is a dependency-version floor, not a TFM problem.
    *Falsify:* packaging test asserting the nuspec dependency range floor is 5.11.4; mutation =
    bump the props version → red. Plus the two CI legs actually executing (check the run, not the
-   yaml).
+   yaml). Not yet done.
 8. #427 + all of the above merged to main; `ci.yml` green on main; artifact version.txt matches
-   the intended release version.
+   the intended release version. Not yet done.
 9. Release notes drafted quoting **only** post-fix measurements (E-series) and carrying the
-   §3.3/§3.4 divergence framing verbatim.
+   §3.3/§3.4 divergence framing verbatim, plus the D6 converter-gap framing where it does not. Not
+   yet done.
 
 **Should-fix (ship without only with a recorded decision):**
-- D3 (`Long` spelling + census), D5 (casing-policy alignment).
-- E5 (differential oracle), E6 (bipartite property test or claim deletion), E7 (benchmark re-run,
-  README commit fix).
+- D3 (`Long` spelling + census), D5 (casing-policy alignment). Not yet done.
+- E5 (differential oracle), E6 (bipartite property test or claim deletion). **DONE** (`4c6cf2cf`,
+  `26e8ca04`) — E6 in particular found the Kuhn matching **correct**: exhaustive at n=3 and n=4
+  against an independent brute-force oracle, plus a seeded n=5 sample and a hand-built
+  greedy-first-fit counterexample, all in
+  `test/Ignixa.FhirPath.Tests/Evaluation/CollectionEquivalenceTests.cs`. The previously-unbacked
+  "33.5M generated graphs" claim is retired; this is different and smaller evidence (n≤5, not
+  millions), but it is real, committed, and independently checkable — where the prior claim was
+  neither.
+- E7 (benchmark re-run, README commit fix). Not yet done.
 - Residuals WI-1 (#423 analyzer fix + sweep) and WI-2/3/4 per `pr427-residuals.md` — folded into
   sequencing below by reference, not restated.
 - §6.4 `testPlusDate19` HAPI verification; fhir-test-cases snapshot pinning (§6 preamble).
@@ -514,7 +606,8 @@ a judgment call — say so in the release notes.
 
 **Document-and-ship (no code):**
 - Pre-R5 capitalised casts: deliberate, Ignixa+HAPI-correct, additive-rows enablement note (§3.3).
-- Collection `~` matching semantics vs HAPI (§3.5).
+- Collection `~` matching semantics vs HAPI (§3.5) — **done**, including the decided-divergence pin
+  and its firely-parity.md entry (§4 D4 context; see `firely-parity.md` entry 13).
 - `Scalar`/`Predicate`/`IsBoolean` API-surface differences and the seam derivation story (§3.1/3.2).
 - STU date-component rename drift vs the FHIRPath CI build (§1.2 item 7).
 - Skip/exclusion register for the official suite (§6.3–6.5).
@@ -529,7 +622,11 @@ a judgment call — say so in the release notes.
   (`src/Core/Ignixa.Search/Indexing/ElementSearchIndexer.cs:61-81` — the unset-Schema comment is load-bearing) — the snippet must
   match the shipped composition; (e) "index rows written under either provider stay valid" gets
   the §3.3 additive-rows framing and the §3.4 R5-instant qualification; (f) the package
-  prerequisite is a release containing **#427**, not merely #398.
+  prerequisite is a release containing **#427**, not merely #398; (g) **new** — "index rows written
+  under either provider stay valid" is not just incomplete, it is false for the 46 parameters behind
+  the D6 `canonical` converter gap (§4 D6): under Ignixa those rows are never written at all. This
+  needs its own bullet in the corrected ADR text, not a fold-in to (e)'s additive-rows framing, which
+  describes a different and milder failure mode.
 
 ---
 

@@ -284,6 +284,44 @@ rejects a conformant one, so nothing breaks. No shipped R4 parameter uses the su
 > Checked and cleared: 13 R4 parameters use `ActivityDefinition.effectivePeriod` and similar. Those
 > are genuine element names, not choice suffixes, and both engines resolve them identically.
 
+### 13. Collection equivalence (`~`) on duplicate items — decided divergence from HAPI
+
+`[a,a,b] ~ [a,b,b]`: **HAPI returns `true`; Ignixa returns `false`.**
+
+HAPI's `opEquivalent` (`FHIRPathEngine.java:2496-2517`) checks collection size plus, for each left
+item, whether *some* right item is equivalent to it — a matched right item is never consumed, so
+one right item can satisfy more than one left item. Ignixa's `AreCollectionsEquivalent` instead
+computes a genuine maximum bipartite matching (Kuhn's algorithm), which requires every right item to
+pair with at most one left item. For `[a,a,b] ~ [a,b,b]`, both left `a`s compete for the single
+right `a`; no perfect matching exists, so Ignixa answers `false` where HAPI's unconsumed existence
+check answers `true`.
+
+The FHIRPath spec (build.fhir.org continuous build, `index.md` lines 3499-3503: same size, "each
+item must be equivalent", order-independent) is silent on duplicate multiplicity — it does not say
+whether duplicates must pair off one-to-one or merely each find some equivalent partner. Tier 1
+(spec) does not settle this; Tier 2 (HAPI) would normally decide it, but see the decision below.
+
+**Reachable: no.** Zero `~` characters appear in any expression across all five generated
+`*SearchParameterDefinitions.g.cs` files (STU3, R4, R4B, R5, R6) — verified by grep. No case in the
+vendored official FHIRPath suite (`test/Ignixa.FhirPath.Tests/TestData/fhir-test-cases/{r4,r4b,r5}/fhirpath/`)
+distinguishes the two semantics either: every `~`/`!~` collection case there (`testEquivalent19`
+through `testEquivalent24`(R5) /`testNotEquivalent19`-`21`) compares distinct items, only ever
+reordered, never duplicated within one operand. Neither the production surface nor the conformance
+suite can tell these two implementations apart.
+
+> **DECIDED 2026-08-21 (user signoff): keep the Kuhn matching.** This is the one place this
+> inventory deviates from HAPI where the spec is ambiguous, so the reasoning is recorded rather than
+> merely asserted: HAPI's `opEquivalent` reads as an implementation shortcut rather than a considered
+> reading of the ambiguity; the inputs that distinguish the two semantics are unreachable from any
+> shipped search parameter; and the matching's order-independence is guaranteed by construction where
+> an existence check's is not. Downgrading a verified-correct multiset semantics to an existence
+> check to match an implementation detail buys nothing and loses that guarantee. If HL7 clarifies the
+> spec text, revisit — the trigger is the same spec lines cited above.
+>
+> Pinned by
+> `GivenALeftDuplicateNotConsumedByASingleRightMatch_WhenComparedForEquivalence_ThenIgnixaDivergesFromHapiAndReturnsFalse`
+> in `test/Ignixa.FhirPath.Tests/Evaluation/CollectionEquivalenceTests.cs`.
+
 ---
 
 ## Expectations tested

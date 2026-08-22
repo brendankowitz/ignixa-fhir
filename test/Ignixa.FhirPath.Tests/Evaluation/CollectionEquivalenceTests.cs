@@ -317,6 +317,50 @@ public class CollectionEquivalenceTests
         result.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// Pins a deliberate divergence from HAPI, not a defect - do not "fix" this to agree with HAPI.
+    /// HAPI's <c>opEquivalent</c> (<c>FHIRPathEngine.java:2496-2517</c>) checks collection size plus,
+    /// for each left item, whether *some* right item is equivalent to it - a matched right item is
+    /// never consumed, so the same right item can satisfy more than one left item. Ignixa's
+    /// <c>AreCollectionsEquivalent</c> instead requires a genuine maximum bipartite (Kuhn) matching,
+    /// where every right item pairs with at most one left item.
+    /// </summary>
+    /// <remarks>
+    /// For <c>[a,a,b] ~ [a,b,b]</c>: sizes agree (3 = 3). HAPI answers <c>true</c> - left 'a' finds
+    /// right's 'a', the second left 'a' also finds right's same 'a' (unconsumed), left 'b' finds one
+    /// of right's two 'b's. Ignixa answers <c>false</c> - a perfect matching needs a distinct right
+    /// partner per left item, both left 'a's compete for the single right 'a', and the right operand
+    /// has no second 'a' for the loser to pair with instead.
+    /// <para>
+    /// The FHIRPath spec (build.fhir.org continuous build, <c>index.md</c> lines 3499-3503) requires
+    /// equal size, "each item must be equivalent", and an order-independent comparison - it does not
+    /// say whether duplicate items must pair off one-to-one (multiset matching) or merely each find
+    /// some equivalent partner, so the spec does not settle which reading is correct.
+    /// </para>
+    /// <para>
+    /// Decided 2026-08-21 (user signoff, recorded in
+    /// <c>docs/features/fhirpath/investigations/release-readiness.md</c> §3.5 and
+    /// <c>docs/features/fhirpath/firely-parity.md</c>): keep the Kuhn matching. HAPI's behaviour reads
+    /// as an implementation shortcut rather than a considered reading of the ambiguity, the inputs that
+    /// distinguish the two semantics are unreachable from any shipped search parameter, and the
+    /// matching's order-independence is guaranteed by construction where an existence check's is not.
+    /// No case in the vendored official FHIRPath suite (<c>r4</c>/<c>r4b</c>/<c>r5</c>) distinguishes
+    /// the two semantics either - every <c>~</c>/<c>!~</c> collection case there compares distinct
+    /// items, only ever reordered, never duplicated.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GivenALeftDuplicateNotConsumedByASingleRightMatch_WhenComparedForEquivalence_ThenIgnixaDivergesFromHapiAndReturnsFalse()
+    {
+        var root = new ScalarRoot();
+
+        var result = EvaluateBoolean(
+            root,
+            "('a'.combine('a').combine('b')) ~ ('a'.combine('b').combine('b'))");
+
+        result.ShouldBeFalse();
+    }
+
     [Fact]
     public void GivenConvertibleQuantityCollectionsInDifferentOrders_WhenComparedForEquivalence_ThenTheyAreEquivalent()
     {
