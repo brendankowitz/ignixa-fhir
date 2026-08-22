@@ -231,6 +231,69 @@ public class SearchIndexerFailureContainmentTests
         indices.Count(i => i.SearchParameter.Code == "code-value-quantity").ShouldBe(1);
     }
 
+    [Fact]
+    public void GivenACustomSearchParameterWhoseExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex()
+    {
+        // Arrange - repeatAll($this) is a deliberate infinite loop, not a typo: the projection is the identity,
+        // so every item repeatAll() dequeues re-projects itself back onto the queue and the queue never drains.
+        // CollectionFunctions.RepeatAll trips its own 100_000-iteration guard and throws FhirPathEvaluationException
+        // (PR #427 converted this from a bare InvalidOperationException; issue #428 is about which log tier that
+        // move landed the guard in). The guard is tripped by a tenant-supplied expression against a tenant-supplied
+        // resource shape, deterministically, on demand - the same class of failure as a malformed literal
+        // (FormatException) or an unsupported function (NotSupportedException), both of which IsExpectedEvaluationFailure
+        // already routes to Warning. It must not surface as UnexpectedExtractionFailure (Error): that tier is
+        // reserved for indexer or converter code defects (NullReferenceException, InvalidCastException), not for a
+        // guard the evaluator raises on purpose against input it does not control. A bare InvalidOperationException
+        // staying out of the expected set is correct and is not what this test is pinning - the guard's exception
+        // type changed, not its cause, and IsExpectedEvaluationFailure must follow the type, not special-case it.
+        // repeatAll appears in none of the generated *SearchParameterDefinitions.g.cs files, so this path is
+        // reachable only from a tenant-authored custom search parameter, never from base FHIR search parameters.
+        var captured = new List<(LogLevel Level, string Message)>();
+        _searchParameterDefinitionManager.AddNewSearchParameters([NeverTerminatingSearchParameter()]);
+        var indexer = CreateIndexer(new CapturingLoggerFactory(captured));
+        var observation = ObservationJson();
+        var element = observation.ToElement(_schemaProvider);
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert - logged as an expected data/expression-level miss (Warning) naming the parameter, never as an
+        // indexer defect (Error), and containment is per-parameter: every sibling parameter still indexes.
+        var failureLog = captured.Single(c => c.Message.Contains(NeverTerminatingExpression, StringComparison.Ordinal));
+        failureLog.Level.ShouldBe(LogLevel.Warning);
+        failureLog.Message.ShouldContain(NeverTerminatingUrl);
+        failureLog.Message.ShouldContain("Observation/o1");
+        captured.ShouldNotContain(c => c.Level == LogLevel.Error);
+
+        indices.Count(i => i.SearchParameter.Code == NeverTerminatingCode).ShouldBe(0);
+        indices.Count(i => i.SearchParameter.Code == "status").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
+    }
+
+    private const string NeverTerminatingCode = "repeat-all-never-terminates";
+    private const string NeverTerminatingExpression = "repeatAll($this)";
+    private const string NeverTerminatingUrl = "http://example.org/fhir/SearchParameter/repeat-all-never-terminates";
+
+    private IElement NeverTerminatingSearchParameter()
+    {
+        string json = $$"""
+            {
+              "resourceType": "SearchParameter",
+              "id": "{{NeverTerminatingCode}}",
+              "url": "{{NeverTerminatingUrl}}",
+              "name": "{{NeverTerminatingCode}}",
+              "status": "active",
+              "code": "{{NeverTerminatingCode}}",
+              "base": [ "Observation" ],
+              "type": "string",
+              "expression": "{{NeverTerminatingExpression}}"
+            }
+            """;
+
+        return ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
+    }
+
     private const string BrokenNonCompositeCode = "broken-non-composite";
     private const string BrokenNonCompositeExpression = "Observation.code.coding.where(system + 1 = 'non-composite')";
     private const string BrokenNonCompositeUrl = "http://example.org/fhir/SearchParameter/broken-non-composite";
