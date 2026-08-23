@@ -448,27 +448,31 @@ internal static class CollectionFunctions
     /// <b>Iteration guard (#433):</b> the dedup check below only stops a projection that <em>navigates</em>
     /// an existing finite tree - it never terminates for one that <em>constructs</em> a fresh value each
     /// round, e.g. <c>repeat($this &amp; 'x')</c>, whose output is never deep-equal to anything already
-    /// processed. <see cref="RepeatAll"/> caps at 100,000 iterations; this cap is 10,000, and that
-    /// difference is a cost-shape decision, not an oversight to be "harmonised" away later. The two
-    /// functions do not cost the same per iteration: <c>repeatAll</c> is dequeue-evaluate-append, O(1) of
-    /// bookkeeping per item. <c>Repeat</c> runs <em>three</em> O(n) scans per item - <c>processed.Any(...)</c>
-    /// twice and <c>result.Any(...)</c> once - each via <see cref="FunctionHelpers.AreElementsEqual"/>,
-    /// which recurses over subtrees. That is O(n²) with an expensive comparator, so the same iteration count
-    /// buys a very different wall-clock budget:
-    /// <list type="table">
-    /// <item><description>1,000 iterations: ~3x10^6 deep-equality comparisons - well under a second.</description></item>
-    /// <item><description>10,000 iterations (this cap): ~3x10^8 comparisons - tens of seconds for the
-    /// worst-case adversarial shape (measured against <c>repeat($this &amp; 'x')</c> in this codebase's own
-    /// falsification test), long enough to be a real limit, short enough to still be a guard a request can
-    /// survive rather than a hang.</description></item>
-    /// <item><description>100,000 iterations (repeatAll's cap, applied here): ~3x10^10 comparisons - two
-    /// orders of magnitude past the above, i.e. tens of minutes to hours - a hang wearing a guard's
-    /// clothing.</description></item>
-    /// </list>
-    /// 10,000 also leaves roughly an order of magnitude of headroom over plausible real input: navigating
-    /// <c>repeat(item)</c> over a large structured Questionnaire dequeues once per nested item, and real
-    /// forms run on the order of 50-1,500 items. The guard exists to catch runaway construction, not to
-    /// reject big-but-finite data.
+    /// processed. <see cref="RepeatAll"/> caps at 100,000 iterations; this cap is 10,000. <b>This is a data-headroom
+    /// choice, not a cost-shape choice.</b> The cap guarantees <em>termination</em> - a constructing projection
+    /// can no longer loop forever - but it does <em>not</em> bound wall-clock cost. Per-iteration cost grows
+    /// with the projection's fan-out (number of <c>|</c> branches): <c>Repeat</c> runs <em>three</em> O(n) scans
+    /// per item - <c>processed.Any(...)</c> twice and <c>result.Any(...)</c> once - each via
+    /// <see cref="FunctionHelpers.AreElementsEqual"/>, which recurses over subtrees. Measured wall time to reach
+    /// the 10,000 cap: <c>repeat($this &amp; 'x')</c> (branching factor 1) reaches 33.4 seconds;
+    /// <c>repeat(($this &amp; 'x') | ($this &amp; 'y'))</c> (branching factor 2) reaches 63.4 seconds.
+    /// One additional <c>|</c> branch roughly doubles the time to reach the same cap.
+    /// </para>
+    /// <para>
+    /// <b>Why 10,000 and not lower:</b> this is a data-headroom budget, not a cost budget. The control test
+    /// (<c>RemainingCoverageTests</c>, nested-Questionnaire case) uses a 1,092-item tree and genuinely dequeues
+    /// roughly 1,093 times; a 1,000 iteration cap would reject that legitimate data. 10,000 gives approximately
+    /// 9× headroom over that observed real shape. The residual gap - bounding actual per-projection cost, which
+    /// depends on fan-out - requires a work budget (comparison count) alongside the iteration cap; that is tracked
+    /// separately and is deliberately not implemented here.
+    /// </para>
+    /// <para>
+    /// <b>Harmonisation with <see cref="RepeatAll"/>'s 100,000:</b> do not raise this cap toward that figure. The
+    /// two functions do not cost the same per iteration: <c>repeatAll</c> is dequeue-evaluate-append, O(1) of
+    /// bookkeeping per item. <c>Repeat</c> does three O(n) deep-equality scans per item with an expensive recursing
+    /// comparator. Raising 10,000 toward 100,000 would multiply an already-33-second worst case by roughly a hundred,
+    /// turning a guard into a hang. This difference is structural and deliberate, not an oversight to be "harmonised"
+    /// away later.
     /// </para>
     /// <para>
     /// <b>Exception type and log tier:</b> the guard throws <see cref="FhirPathEvaluationException"/>,
