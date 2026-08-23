@@ -189,21 +189,8 @@ internal static class BoundaryFunctions
             return temporal.Kind == FhirPrimitive.Time ? DefaultTimePrecision : DefaultDateTimePrecision;
         }
         
-        // Check for date/time string literals (starting with @)
-        if (element.Value is string str)
-        {
-            var cleanStr = str.StartsWith("@", StringComparison.Ordinal) ? str[1..] : str;
-            if (FhirTemporal.IsDateOrDateTimeLiteral(cleanStr))
-            {
-                return DefaultDateTimePrecision;
-            }
-            if (IsTimeString(cleanStr))
-            {
-                return DefaultTimePrecision;
-            }
-        }
-        
-        // Default to decimal precision for numeric types
+        // No value-shape fallback: a String is not a boundary-bearing type however it is spelled,
+        // and every genuine temporal is already covered by the declared type or by FhirTemporal above.
         return DefaultDecimalPrecision;
     }
 
@@ -224,14 +211,17 @@ internal static class BoundaryFunctions
 
     private static IElement? CalculateLowBoundary(IElement element, int outputPrecision)
     {
-        // Normalise the element value: strip a leading @ from string literals, and unwrap
-        // FhirTemporal to its wire literal so the string arms below can handle it uniformly.
+        // Unwrap FhirTemporal to its wire literal so the string arms below can handle a resource-backed
+        // temporal and a temporal literal uniformly. Whether those arms may fire at all is decided by the
+        // element's type, not by the value's shape: lowBoundary()/highBoundary() are defined for Decimal,
+        // Date, DateTime and Time only, and a String that reads like a date is still a String.
         object? cleanValue = element.Value switch
         {
-            string s when s.StartsWith("@", StringComparison.Ordinal) => s[1..],
             FhirTemporal temporal => temporal.Literal,
             var other => other
         };
+
+        var isTemporal = TemporalOperand.IsTemporal(element.Value, element.InstanceType);
 
         // Handle Quantity type (has both value and unit)
         if (element.Value is FhirQuantity qty)
@@ -258,11 +248,11 @@ internal static class BoundaryFunctions
             int i => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)i, 0, outputPrecision)),  // integers have 0 precision
             long l => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)l, 0, outputPrecision)),
 
-            // DateTime strings (with @ prefix handled above)
-            string str when FhirTemporal.IsDateOrDateTimeLiteral(str) => CalculateDateTimeLowBoundary(str, outputPrecision, element.InstanceType),
+            // Date and dateTime, gated on the declared type
+            string str when isTemporal && FhirTemporal.IsDateOrDateTimeLiteral(str) => CalculateDateTimeLowBoundary(str, outputPrecision, element.InstanceType),
 
-            // Time strings
-            string str when IsTimeString(str) => CalculateTimeLowBoundary(str, outputPrecision),
+            // Time, gated on the declared type
+            string str when isTemporal && IsTimeString(str) => CalculateTimeLowBoundary(str, outputPrecision),
 
             _ => null
         };
@@ -270,14 +260,17 @@ internal static class BoundaryFunctions
 
     private static IElement? CalculateHighBoundary(IElement element, int outputPrecision)
     {
-        // Normalise the element value: strip a leading @ from string literals, and unwrap
-        // FhirTemporal to its wire literal so the string arms below can handle it uniformly.
+        // Unwrap FhirTemporal to its wire literal so the string arms below can handle a resource-backed
+        // temporal and a temporal literal uniformly. Whether those arms may fire at all is decided by the
+        // element's type, not by the value's shape: lowBoundary()/highBoundary() are defined for Decimal,
+        // Date, DateTime and Time only, and a String that reads like a date is still a String.
         object? cleanValue = element.Value switch
         {
-            string s when s.StartsWith("@", StringComparison.Ordinal) => s[1..],
             FhirTemporal temporal => temporal.Literal,
             var other => other
         };
+
+        var isTemporal = TemporalOperand.IsTemporal(element.Value, element.InstanceType);
 
         // Handle Quantity type (has both value and unit)
         if (element.Value is FhirQuantity qty)
@@ -304,11 +297,11 @@ internal static class BoundaryFunctions
             int i => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)i, 0, outputPrecision)),  // integers have 0 precision
             long l => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)l, 0, outputPrecision)),
 
-            // DateTime strings (with @ prefix handled above)
-            string str when FhirTemporal.IsDateOrDateTimeLiteral(str) => CalculateDateTimeHighBoundary(str, outputPrecision, element.InstanceType),
+            // Date and dateTime, gated on the declared type
+            string str when isTemporal && FhirTemporal.IsDateOrDateTimeLiteral(str) => CalculateDateTimeHighBoundary(str, outputPrecision, element.InstanceType),
 
-            // Time strings
-            string str when IsTimeString(str) => CalculateTimeHighBoundary(str),
+            // Time, gated on the declared type
+            string str when isTemporal && IsTimeString(str) => CalculateTimeHighBoundary(str),
 
             _ => null
         };

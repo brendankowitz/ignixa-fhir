@@ -6,7 +6,6 @@
  */
 
 using System.Globalization;
-using Ignixa.Abstractions;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parsing.ParseTree;
 
@@ -536,18 +535,16 @@ internal class OptimizingAstBuilder : AstBuilder
     /// Reports whether the interpreter may compare this constant as a temporal value.
     /// </summary>
     /// <remarks>
-    /// This has to stay a refusal, not a claim. The node kind alone answers a narrower question than
-    /// the one the folder needs: the interpreter's comparison routes on the value's shape, through
-    /// <c>FhirPathEvaluator.IsDateTimeString</c>, and never consults the element's type - so it treats
-    /// a string literal such as <c>'@2013'</c> as a temporal too, and answers empty where two temporal
-    /// precisions merely overlap. Narrowing this to the node kind therefore let the folder answer
-    /// <c>'@2013' &lt; '@2013-01'</c> as an ordinal string compare while the interpreter answered
-    /// empty. The same predicate the interpreter uses is asked here, so the folder declines to fold
-    /// exactly where the interpreter would take a route the folder cannot reproduce.
+    /// The node kind is the whole question, because the interpreter now routes comparison on the
+    /// operand's instance type rather than on the value's shape. A String constant - even one written
+    /// <c>'@2013'</c> - reaches an ordinal <see cref="string.Compare(string,string,StringComparison)"/>
+    /// in both the interpreter and <see cref="TryFoldLessThan"/>, so folding it reproduces the
+    /// interpreter exactly. This predicate previously also asked the shape, matching the interpreter's
+    /// own shape sniff; both moved together, and they have to keep moving together or the folder and
+    /// the interpreter will disagree about <c>'@2013' &lt; '@2013-01'</c> again.
     /// </remarks>
     private static bool IsTemporalLiteral(Expression expression) =>
-        expression is TemporalConstantExpression
-        || (expression is ConstantExpression { Value: string text } && FhirTemporal.IsTemporalLiteral(text));
+        expression is TemporalConstantExpression;
 
     /// <summary>
     /// Folds the boolean operator rows whose answer the left operand alone decides.

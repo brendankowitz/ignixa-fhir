@@ -1051,11 +1051,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             return leftQuantity is not null
                 && rightQuantity is not null
-                && AreEquivalent(leftQuantity, rightQuantity);
+                && AreEquivalent(leftQuantity, rightQuantity, left.InstanceType, right.InstanceType);
         }
 
         if (left.Value is not null || right.Value is not null)
-            return AreEquivalent(left.Value, right.Value);
+            return AreEquivalent(left.Value, right.Value, left.InstanceType, right.InstanceType);
 
         return AreCollectionsEquivalent(left.Children(), right.Children(), matchNames: true);
     }
@@ -1077,7 +1077,21 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return ValueOrdering.IsQuantity(element) ? ValueOrdering.AsQuantity(element) : null;
     }
 
-    private bool AreEquivalent(object? left, object? right)
+    /// <summary>
+    /// Determines whether two primitive values are equivalent, routing temporals by declared type.
+    /// </summary>
+    /// <param name="left">The left value.</param>
+    /// <param name="right">The right value.</param>
+    /// <param name="leftType">The left operand's declared instance type, or <see langword="null"/>.</param>
+    /// <param name="rightType">The right operand's declared instance type, or <see langword="null"/>.</param>
+    /// <remarks>
+    /// The types have to be threaded in rather than recovered from the values. A temporal literal's
+    /// value is a plain string once the parser has stripped the sigil, and a string literal keeps
+    /// whatever it was written with, so <c>@2013</c> arrives as <c>"2013"</c> and <c>'@2013'</c> as
+    /// <c>"@2013"</c>. Deciding temporality from that string treated the String as the temporal and the
+    /// Date as an ordinary string, which is how <c>'@2013' ~ @2013</c> came to answer true.
+    /// </remarks>
+    private bool AreEquivalent(object? left, object? right, string? leftType, string? rightType)
     {
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
@@ -1105,12 +1119,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (WireValue.AsWireString(left) is { } leftStr && WireValue.AsWireString(right) is { } rightStr)
         {
-            // Check if these are datetime strings (start with @ or look like dates/times)
-            if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
+            if (IsTemporalOperand(left, leftType) && IsTemporalOperand(right, rightType))
             {
-                // Normalize @ prefix and millisecond precision for datetime equivalence
-                var normalizedLeft = NormalizeMillisecondPrecision(leftStr.StartsWith('@') ? leftStr.Substring(1) : leftStr);
-                var normalizedRight = NormalizeMillisecondPrecision(rightStr.StartsWith('@') ? rightStr.Substring(1) : rightStr);
+                var normalizedLeft = NormalizeMillisecondPrecision(leftStr);
+                var normalizedRight = NormalizeMillisecondPrecision(rightStr);
 
                 // Per FHIRPath §6.5: For Date, DateTime, and Time values, comparison is done
                 // at the precision of the least precise operand. Trailing components are ignored.
@@ -1210,14 +1222,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         return 0;
-    }
-
-    /// <summary>
-    /// Determines if a string value appears to be a FHIRPath date/time value.
-    /// </summary>
-    private static bool IsDateTimeString(string value)
-    {
-        return FhirTemporal.IsTemporalLiteral(value);
     }
 
     private string NormalizeWhitespace(string str)
@@ -1747,16 +1751,18 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 }
             }
 
+            // Exactly one temporal operand is a type error, not an ordering. FHIRPath requires comparison
+            // operands to be of the same type or implicitly convertible to it, and the conversion table
+            // makes String-to-Date explicit-only, so there is no conversion to reach for.
+            if (IsTemporalOperand(leftValue, leftType) != IsTemporalOperand(rightValue, rightType))
+            {
+                throw new FhirPathEvaluationException(
+                    $"Cannot compare '{left[0].InstanceType ?? "unknown"}' with '{right[0].InstanceType ?? "unknown"}': " +
+                    "comparison operands must be of the same type.");
+            }
+
             if (WireValue.AsWireString(leftValue) is { } leftStr && WireValue.AsWireString(rightValue) is { } rightStr)
             {
-                // Try to treat as typed dates first if they look like dates
-                // This handles cases where type info is lost or implicit conversion is expected
-                if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
-                {
-                    // Date comparison - if result is null (uncertain), don't fall through to string comparison
-                    return CompareDateTimesWithPrecision(leftValue, rightValue, null, null, greater, orEqual);
-                }
-
                 var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
                 return greater
                     ? (orEqual ? comparison >= 0 : comparison > 0)

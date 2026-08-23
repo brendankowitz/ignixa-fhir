@@ -88,10 +88,14 @@ internal static class FunctionHelpers
     #region Equality Helpers
 
     /// <summary>
-    /// Compares two values for equality.
-    /// Handles date/time literals with @ prefix normalization and numeric type coercion.
+    /// Compares two values for equality, as text or as numbers, with no notion of a temporal.
     /// </summary>
     /// <remarks>
+    /// This used to strip a leading <c>@</c> from either operand so that <c>"@2023-01-01"</c> and
+    /// <c>"2023-01-01"</c> would compare equal. Nothing legitimate needed that:
+    /// <see cref="FhirTemporal.Literal"/> is already sigil-free, so the only value the strip could ever
+    /// change was a String whose content happens to start with <c>@</c>. It made <c>'@2013' = @2013</c>
+    /// answer true, and let a String and a Date dedupe each other in <c>distinct()</c> and <c>|</c>.
     /// Private because it cannot see an operand's instance type, and a FHIRPath temporal literal is a
     /// plain <see cref="string"/> until the instance type says otherwise. Callers must go through
     /// <see cref="AreElementsEqual"/>, which has the types and can route temporals to
@@ -106,9 +110,7 @@ internal static class FunctionHelpers
 
         if (WireValue.AsWireString(left) is { } leftStr && WireValue.AsWireString(right) is { } rightStr)
         {
-            var leftNormalized = NormalizeDateString(leftStr);
-            var rightNormalized = NormalizeDateString(rightStr);
-            return leftNormalized == rightNormalized;
+            return leftStr == rightStr;
         }
 
         if (TryConvertToDecimal(left, out var leftDecimal) && TryConvertToDecimal(right, out var rightDecimal))
@@ -189,21 +191,6 @@ internal static class FunctionHelpers
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// Normalizes date/time strings by ensuring consistent @ prefix handling.
-    /// For date/time values, both "@2023-01-01" and "2023-01-01" should compare equal.
-    /// </summary>
-    private static string NormalizeDateString(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return value;
-
-        if (value.StartsWith('@'))
-            return value.Substring(1);
-
-        return value;
     }
 
     #endregion

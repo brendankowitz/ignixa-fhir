@@ -66,8 +66,8 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
     public virtual Expression VisitConstant(ConstantParseNode node, AstBuildContext context)
     {
         var location = CreateLocation(node.Location);
-        return node is TemporalConstantParseNode temporal
-            ? new TemporalConstantExpression(temporal.Literal, location)
+        return node is TemporalConstantParseNode
+            ? new TemporalConstantExpression((string)node.Value, location)
             : new ConstantExpression(node.Value, location);
     }
 
