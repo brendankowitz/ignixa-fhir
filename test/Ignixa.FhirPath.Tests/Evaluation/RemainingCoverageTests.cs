@@ -162,8 +162,9 @@ public class RemainingCoverageTests
         // Act
         var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
 
-        // Assert - the cap fires deterministically and quickly (see CollectionFunctions.Repeat's remarks
-        // for why 10,000 iterations of this shape costs roughly a second, not minutes).
+        // Assert - the cap fires deterministically; proving it fires requires driving the full O(n²)
+        // cost. Per CollectionFunctions.Repeat's remarks, this test costs roughly 33 seconds by
+        // construction for branching factor 1. The cost issue and proposed test seam are tracked in #435.
         var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
         exception.Message.ShouldContain("repeat()");
         exception.Message.ShouldContain("maximum iteration limit");
@@ -173,9 +174,9 @@ public class RemainingCoverageTests
     public void GivenDeeplyNestedQuestionnaireItems_WhenRepeatItem_ThenReturnsEveryItemWithoutTrippingTheIterationGuard()
     {
         // Arrange - the control for the test above: a Questionnaire.item-shaped tree that *navigates*
-        // rather than constructs. Branching 3 deep 6 yields 1,092 items, sized to sit near the top of a
-        // real Questionnaire's item count (the guard's remarks cite ~50-1,500 items for real forms), so
-        // this proves the 10,000-iteration cap does not reject big-but-finite, legitimate input.
+        // rather than constructs. Branching 3 deep 6 yields 1,092 items. Per CollectionFunctions.Repeat's
+        // remarks, this control test legitimately dequeues roughly 1,093 times (1,092-item tree with ~9×
+        // headroom built into the 10,000-iteration cap), proving the cap does not reject real input.
         const int breadth = 3;
         const int depth = 6;
         var expectedItemCount = Enumerable.Range(1, depth).Sum(level => (int)Math.Pow(breadth, level));
