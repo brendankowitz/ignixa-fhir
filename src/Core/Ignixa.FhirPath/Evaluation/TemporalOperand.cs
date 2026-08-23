@@ -126,6 +126,35 @@ internal static class TemporalOperand
     }
 
     /// <summary>
+    /// Reports whether two temporals are of types FHIRPath relates at all.
+    /// </summary>
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    /// <returns><see langword="false"/> when one is a time of day and the other a calendar value.</returns>
+    /// <remarks>
+    /// <para>
+    /// The conversion table gives Date and DateTime an Implicit relationship in one direction and no
+    /// relationship to Time in either, so a time of day and a calendar value are operands the comparison
+    /// operators must reject rather than order. <see cref="FhirTemporal.Compare"/> cannot express that:
+    /// it answers <see langword="null"/> both for these and for two same-kind values whose precisions
+    /// merely overlap, and those two nulls mean opposite things - an error and a legitimate empty.
+    /// </para>
+    /// <para>
+    /// This sits beside <see cref="AreEqual"/> because that method draws the identical line for
+    /// equality, where the answer is a decidable <see langword="false"/> rather than an error (official
+    /// <c>testDateNotEqualTime*</c>). Keeping one discriminator for both stops <c>=</c> and <c>&lt;</c>
+    /// disagreeing about which temporals are even the same type.
+    /// </para>
+    /// </remarks>
+    public static bool AreComparableKinds(FhirTemporal left, FhirTemporal right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        return (left.Kind == FhirPrimitive.Time) == (right.Kind == FhirPrimitive.Time);
+    }
+
+    /// <summary>
     /// Decides membership of one temporal in a collection, where FHIRPath has no third state.
     /// </summary>
     /// <param name="left">The candidate.</param>

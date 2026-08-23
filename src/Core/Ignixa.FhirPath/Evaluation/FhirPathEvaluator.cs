@@ -1731,8 +1731,33 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 return QuantityEvaluator.EvaluateComparison(left, op, right);
             }
     
-            if (IsTemporalOperand(leftValue, leftType) && IsTemporalOperand(rightValue, rightType))
+            var leftIsTemporal = IsTemporalOperand(leftValue, leftType);
+            var rightIsTemporal = IsTemporalOperand(rightValue, rightType);
+
+            // FHIRPath requires comparison operands to be of the same type, or implicitly convertible to
+            // it, and signals an error otherwise. Two rows of the conversion table land here and neither
+            // offers a conversion: String to Date is Explicit-only, and Date/DateTime to Time has no
+            // entry in either direction. Only the first is visible from IsTemporalOperand, which answers
+            // true for a time of day and for a calendar value alike.
+            if (leftIsTemporal != rightIsTemporal)
             {
+                throw IncomparableOperandTypes(left[0], right[0]);
+            }
+
+            if (leftIsTemporal && rightIsTemporal)
+            {
+                // Resolving both is what separates a type error from a genuine partial-precision empty.
+                // @2013-01-01T10:00:00 < @2013-01-01 must stay empty - Date to DateTime is Implicit, so
+                // those two are one type compared at overlapping precisions. A time of day against
+                // either is not. An operand that fails to resolve is left to the comparison below rather
+                // than reported as a type error, since its type is not what is wrong with it.
+                if (AsTemporal(leftValue, leftType) is { } leftTemporal
+                    && AsTemporal(rightValue, rightType) is { } rightTemporal
+                    && !TemporalOperand.AreComparableKinds(leftTemporal, rightTemporal))
+                {
+                    throw IncomparableOperandTypes(left[0], right[0]);
+                }
+
                 return CompareDateTimesWithPrecision(leftValue, rightValue, leftType, rightType, greater, orEqual);
             }
 
@@ -1749,16 +1774,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                         ? (orEqual ? comparison >= 0 : comparison > 0)
                         : (orEqual ? comparison <= 0 : comparison < 0);
                 }
-            }
-
-            // Exactly one temporal operand is a type error, not an ordering. FHIRPath requires comparison
-            // operands to be of the same type or implicitly convertible to it, and the conversion table
-            // makes String-to-Date explicit-only, so there is no conversion to reach for.
-            if (IsTemporalOperand(leftValue, leftType) != IsTemporalOperand(rightValue, rightType))
-            {
-                throw new FhirPathEvaluationException(
-                    $"Cannot compare '{left[0].InstanceType ?? "unknown"}' with '{right[0].InstanceType ?? "unknown"}': " +
-                    "comparison operands must be of the same type.");
             }
 
             if (WireValue.AsWireString(leftValue) is { } leftStr && WireValue.AsWireString(rightValue) is { } rightStr)
@@ -1798,6 +1813,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
     private static FhirTemporal? AsTemporal(object? value, string? instanceType)
         => TemporalOperand.AsTemporal(value, instanceType);
+
+    /// <summary>
+    /// Builds the error FHIRPath requires when comparison operands are of types it does not relate.
+    /// </summary>
+    private static FhirPathEvaluationException IncomparableOperandTypes(IElement left, IElement right)
+        => new($"Cannot compare '{left.InstanceType ?? "unknown"}' with '{right.InstanceType ?? "unknown"}': " +
+               "comparison operands must be of the same type.");
 
     private bool? CompareDateTimesWithPrecision(object? leftValue, object? rightValue, string? leftType, string? rightType, bool greater, bool orEqual)
     {

@@ -268,21 +268,28 @@ public static class DateTimeFunctions
     }
 
     /// <summary>
-    /// Parses a date/time literal value from an IElement.
+    /// Parses a date/time value from an IElement, or returns null when the element is not a temporal.
     /// Supports ISO 8601 formats with partial precision:
-    /// - Date: @YYYY, @YYYY-MM, @YYYY-MM-DD
-    /// - DateTime: @YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
-    /// - Time: @THH:MM:SS.FFF
+    /// - Date: YYYY, YYYY-MM, YYYY-MM-DD
+    /// - DateTime: YYYY-MM-DDTHH:MM:SS.FFF(Z|±HH:MM)?
+    /// - Time: HH:MM:SS.FFF
     /// </summary>
+    /// <remarks>
+    /// The type gate is the whole of what separates a temporal from a String that reads like one. This
+    /// used to strip a leading <c>@</c> and then parse by shape, which made <c>'@2013'.year()</c> answer
+    /// 2013 and <c>'2013-06-15'.month()</c> answer 6 - a String reporting calendar components it does
+    /// not have. Every one of the thirteen call sites funnels through here, so the gate belongs here and
+    /// not at each of them. The sigil strip is gone with it: a temporal's value never carries one, and
+    /// a String that does is no longer admitted.
+    /// </remarks>
     private static ParsedDateTime? ParseDateTimeValue(IElement element)
     {
-        var value = element.Value?.ToString();
-        if (string.IsNullOrEmpty(value))
+        if (!TemporalOperand.IsTemporal(element.Value, element.InstanceType))
             return null;
 
-        // Remove leading @ if present (from literal syntax)
-        if (value.StartsWith("@", StringComparison.Ordinal))
-            value = value.Substring(1);
+        var value = WireValue.AsWireString(element.Value);
+        if (string.IsNullOrEmpty(value))
+            return null;
 
         var parsed = new ParsedDateTime();
 

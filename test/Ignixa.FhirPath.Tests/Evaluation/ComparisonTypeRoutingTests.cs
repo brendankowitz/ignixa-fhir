@@ -142,13 +142,170 @@ public class ComparisonTypeRoutingTests
     }
 
     [Theory]
-    [InlineData("@2013.lowBoundary()", "2013-01-01T00:00:00.000+14:00")]
-    [InlineData("@2013.highBoundary()", "2013-12-31T23:59:59.999-12:00")]
-    [InlineData("@T12:00.lowBoundary()", "12:00:00.000")]
-    [InlineData("$this.lowBoundary()", "1974-12-25T00:00:00.000+14:00")]
+    [InlineData("@2013.lowBoundary()", "2013-01-01T00:00:00.000+14:00", "dateTime")]
+    [InlineData("@2013.highBoundary()", "2013-12-31T23:59:59.999-12:00", "dateTime")]
+    [InlineData("@T12:00.lowBoundary()", "12:00:00.000", "time")]
+    [InlineData("$this.lowBoundary()", "1974-12-25T00:00:00.000+14:00", "dateTime")]
     public void GivenAGenuineTemporal_WhenTakingABoundary_ThenTheAnswerIsUnchanged(
-        string expression, string expected)
+        string expression, string expected, string expectedType)
     {
+        // The instance type is asserted as well as the value, and the two rows that expect dateTime
+        // from a Date input pin something known to be wrong: FHIRPath 3.0 lowBoundary says the function
+        // "returns the same type as the value in the input collection", so @2013.lowBoundary() should
+        // be a Date. That defect predates the type-routing change and is deliberately untouched by it.
+        // Asserting the type proves this change is not its cause, and makes fixing it later a
+        // deliberate edit here rather than a silent drift.
+        var result = Evaluate(expression).Single();
+
+        result.Value.ShouldBe(expected);
+        result.InstanceType.ShouldBe(expectedType);
+    }
+
+    [Theory]
+    [InlineData("'@2013'.year()")]
+    [InlineData("'2013'.year()")]
+    [InlineData("'2013-06-15'.month()")]
+    [InlineData("'2013-06-15'.day()")]
+    [InlineData("'@2013-06-15T10:30:00'.hour()")]
+    [InlineData("'2013-06-15T10:30:00'.minute()")]
+    [InlineData("'2013-06-15T10:30:45'.second()")]
+    [InlineData("'2013-06-15T10:30:45.123'.millisecond()")]
+    [InlineData("'@T12:30'.hour()")]
+    [InlineData("'2013-06-15T10:30:00Z'.timezone()")]
+    [InlineData("'2013-06-15'.difference(@2014-06-15, 'years')")]
+    [InlineData("'2013-06-15'.duration(@2014-06-15)")]
+    public void GivenAStringSpellingATemporal_WhenExtractingADateTimeComponent_ThenItIsEmpty(
+        string expression)
+    {
+        // The fifth sniff site. DateTimeFunctions.ParseDateTimeValue stripped a leading sigil and then
+        // parsed by shape, consulting InstanceType only for the time special case, so a String reported
+        // calendar components it does not have: '@2013'.year() answered 2013 and '2013-06-15'.month()
+        // answered 6. All thirteen call sites funnel through that one method, so all thirteen were
+        // affected and one gate fixes all of them.
+        //
+        // These are Ignixa extensions rather than FHIRPath functions - Firely throws ArgumentException
+        // on month() - so no reference engine governs them and nothing external could have caught this.
+        Evaluate(expression).ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("@2013.year()", 2013)]
+    [InlineData("@2013-06-15.month()", 6)]
+    [InlineData("@2013-06-15.day()", 15)]
+    [InlineData("@2013-06-15T10:30:00.hour()", 10)]
+    [InlineData("@2013-06-15T10:30:00.minute()", 30)]
+    [InlineData("@T12:30:45.second()", 45)]
+    [InlineData("$this.year()", 1974)]
+    [InlineData("$this.month()", 12)]
+    [InlineData("$this.day()", 25)]
+    public void GivenAGenuineTemporal_WhenExtractingADateTimeComponent_ThenTheAnswerIsUnchanged(
+        string expression, int expected)
+    {
+        var result = Evaluate(expression).Single();
+
+        result.Value.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("$this.hour()", 12)]
+    [InlineData("$this.minute()", 30)]
+    [InlineData("$this.second()", 45)]
+    public void GivenAResourceBackedTime_WhenExtractingAComponent_ThenTheAnswerIsUnchanged(
+        string expression, int expected)
+    {
+        // A FhirTemporal-valued element rather than a literal. The gate must admit it by its value as
+        // well as by its declared type, and the wire form it yields still carries the time marker that
+        // the literal path has already had removed.
+        var result = EvaluateOn(TemporalElement("t", "12:30:45", FhirPrimitive.Time, "time"), expression)
+            .Single();
+
+        result.Value.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("@2013 < @T12:00")]
+    [InlineData("@T12:00 < @2013")]
+    [InlineData("@2013 > @T12:00")]
+    [InlineData("@T12:00 >= @2013")]
+    [InlineData("@2013-06-15T10:00:00 < @T12:00")]
+    [InlineData("@T12:00 <= @2013-06-15T10:00:00")]
+    public void GivenATimeOfDayAndACalendarValue_WhenOrdered_ThenItIsATypeError(string expression)
+    {
+        // Both operands are temporals, so a gate that only asks "is this a temporal?" is blind between
+        // them - the first version of this guard was, and these answered empty. The conversion table
+        // gives Date/DateTime to Time no entry in either direction, so the Comparison error mandate
+        // applies just as it does to String against Date. Firely throws on both orderings; HAPI's
+        // opLessThan matches neither its date/dateTime/instant arm nor its time arm and falls through
+        // to FHIRPATH_CANT_COMPARE.
+        var thrown = Should.Throw<FhirPathEvaluationException>(() => Evaluate(expression).ToList());
+
+        thrown.Message.ShouldContain("must be of the same type");
+    }
+
+    [Fact]
+    public void GivenAResourceBackedTime_WhenOrderedAgainstADateLiteral_ThenItIsATypeError()
+    {
+        var thrown = Should.Throw<FhirPathEvaluationException>(
+            () => EvaluateOn(TemporalElement("t", "12:30:45", FhirPrimitive.Time, "time"), "$this < @2013")
+                .ToList());
+
+        thrown.Message.ShouldContain("must be of the same type");
+    }
+
+    [Theory]
+    [InlineData("@2013-01-01T10:00:00 < @2013-01-01")]
+    [InlineData("@2013-01-01 < @2013-01-01T10:00:00")]
+    [InlineData("@2013 < @2013-01")]
+    public void GivenADateAndADateTime_WhenOrderedAtOverlappingPrecision_ThenItStaysEmpty(
+        string expression)
+    {
+        // The boundary the Date-versus-Time error must not cross. Date to DateTime is Implicit in the
+        // conversion table, so these are one type compared at precisions that merely overlap: a genuine
+        // indeterminate empty, not a type error. An error here would be the over-reach.
+        Evaluate(expression).ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("@T12:00 < @T13:00", true)]
+    [InlineData("@T12:00 = @T12:00", true)]
+    [InlineData("@2013 = @T12:00", false)]
+    [InlineData("@T12:00 = @2013", false)]
+    public void GivenTemporalKinds_WhenComparedForEquality_ThenTheAnswerIsUnchanged(
+        string expression, bool expected)
+    {
+        // Equality already drew the Time-versus-calendar line correctly and answers a decidable false
+        // rather than an error, per official testDateNotEqualTime*. The ordering fix must not migrate
+        // that into a throw - the two operators legitimately differ here, which is why the shared
+        // discriminator lives in TemporalOperand.AreComparableKinds and only ordering treats it as an
+        // error.
+        var result = Evaluate(expression).Single();
+
+        result.Value.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("'2013' = @2013", true)]
+    [InlineData("'2013' ~ @2013", true)]
+    [InlineData("'2013' != @2013", false)]
+    [InlineData("'2013' !~ @2013", false)]
+    public void GivenAStringEqualToATemporalsWireText_WhenComparedForEquality_ThenTheyAreEqual(
+        string expression, bool expected)
+    {
+        // This pins a deliberate non-change, and it is the only thing that does. Equality gained no
+        // type guard: a String and a Date whose texts match compare equal, because that is what HAPI
+        // answers - doEquals reaches Base.equals(left.primitiveValue(), right.primitiveValue()) with no
+        // type-difference check, so "2013" equals "2013".
+        //
+        // The engines split here. Firely answers false for the same expression. The spec does not
+        // settle it: the Equals section states operands "must be of the same type (or be implicitly
+        // convertible to the same type)" and then says nothing about what happens when they are not.
+        // HAPI was followed because HAPI is Tier 2 of the precedence used throughout this change, and
+        // Firely is Tier 3.
+        //
+        // Every other String-versus-temporal row in this file uses '@2013', whose sigil makes it
+        // unequal by text whether or not a blanket type guard exists. Those rows would all stay green
+        // if someone added one. These four are the ones that would go red, so they are the only guard
+        // on the restraint.
         var result = Evaluate(expression).Single();
 
         result.Value.ShouldBe(expected);
@@ -173,8 +330,18 @@ public class ComparisonTypeRoutingTests
 
     private IEnumerable<IElement> Evaluate(string expression)
     {
-        var root = new PrimitiveDateElement("birthDate", "1974-12-25");
+        return EvaluateOn(new PrimitiveDateElement("birthDate", "1974-12-25"), expression);
+    }
+
+    private IEnumerable<IElement> EvaluateOn(IElement root, string expression)
+    {
         return _evaluator.Evaluate(root, _parser.Parse(expression));
+    }
+
+    private static IElement TemporalElement(string name, string literal, FhirPrimitive kind, string instanceType)
+    {
+        FhirTemporal.TryParse(literal, kind, out var temporal).ShouldBeTrue();
+        return new TypedValueElement(name, temporal, instanceType);
     }
 
     private sealed class PrimitiveDateElement : IElement
@@ -187,6 +354,27 @@ public class ComparisonTypeRoutingTests
 
         public string Name { get; }
         public string InstanceType => "date";
+        public object? Value { get; }
+        public string Location => Name;
+        public IType? Type => null;
+        public bool HasPrimitiveValue => true;
+
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
+    }
+
+    private sealed class TypedValueElement : IElement
+    {
+        public TypedValueElement(string name, object? value, string instanceType)
+        {
+            Name = name;
+            Value = value;
+            InstanceType = instanceType;
+        }
+
+        public string Name { get; }
+        public string InstanceType { get; }
         public object? Value { get; }
         public string Location => Name;
         public IType? Type => null;

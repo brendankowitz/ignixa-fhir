@@ -649,6 +649,13 @@ internal static class DifferentialFixture
         // value's shape and so read the String as a date.
         "birthDate < '1980-01-01'",
 
+        // A time of day ordered against a calendar value. Both operands are temporals, so this is not
+        // the row above in another spelling: the conversion table gives Date/DateTime to Time no entry
+        // in either direction, which is a stronger statement than String to Date's Explicit-only. These
+        // used to answer empty, indistinguishable from a genuine partial-precision indeterminate.
+        "birthDate < @T10:30:00",
+        "meta.lastUpdated > @T10:30:00",
+
         // A primitive that is not a number, reached through an operator that is defined only over
         // numbers. The optimizer's identity folds are what put these in the corpus.
         "active + 1",
