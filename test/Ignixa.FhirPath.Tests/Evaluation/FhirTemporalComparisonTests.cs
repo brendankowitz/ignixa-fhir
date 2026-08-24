@@ -148,14 +148,18 @@ public class FhirTemporalComparisonTests
     }
 
     [Fact]
-    public void GivenDateLookingStringsForTheSameInstant_WhenOrdered_ThenUsesTemporalSemantics()
+    public void GivenDateLookingStringsForTheSameInstant_WhenOrdered_ThenUsesStringSemantics()
     {
-        // Pins current behaviour rather than asserting a spec requirement: FHIRPath does not oblige an
-        // untyped string that merely looks like a dateTime to be compared as one. This is a guard, not a
-        // regression test - it exists so that changing the IsDateTimeString branch has to be deliberate.
+        // Both operands are String. FHIRPath §Comparison: "String ordering is strictly lexical and is
+        // based on the Unicode value of the individual characters" - a String that happens to spell a
+        // dateTime is still a String, and nothing implicitly converts one to a Date.
+        //
+        // This is the deliberate flip the guard this test replaced was written to force. It previously
+        // asserted true, pinning the shape-sniffing branch that read any date-looking string as a
+        // temporal. That branch is gone; comparison now routes on the operand's instance type.
         //
         // The literals are load-bearing and must not be "simplified" to two same-offset timestamps. The
-        // two offsets denote the same instant, so the temporal reading answers true, while ordinal
+        // two offsets denote the same instant, so a temporal reading would answer true, while ordinal
         // comparison reaches '2' against '1' at the hour and answers false. Two same-offset ISO-8601
         // timestamps agree under both readings, which would leave the test passing while pinning nothing.
 
@@ -167,7 +171,7 @@ public class FhirTemporalComparisonTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        result.Value.ShouldBe(true);
+        result.Value.ShouldBe(false);
     }
 
     [Fact]

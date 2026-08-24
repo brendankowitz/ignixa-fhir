@@ -118,11 +118,60 @@ internal class SqlOnFhirEvaluationVisitor
         var context = new EvaluationContext() with { RootResource = resource };
         foreach (var constant in viewDef.Constants)
             if (constant.Value != null)
-                context = context.WithEnvironmentVariable(constant.Name, new PrimitiveValueElement(constant.Value));
+                context = context.WithEnvironmentVariable(
+                    constant.Name, new PrimitiveValueElement(constant.Value, constant.ValueType));
         // Caller-supplied variables override ViewDefinition constants if names collide (caller wins).
+        //
+        // The caller wins on the *value*; the declared type belongs to the slot, so a variable that
+        // overrides a constant inherits that constant's type. Without this, overriding a valueDate
+        // constant would silently retype it as System.String and reintroduce the comparison failure the
+        // constant path was fixed for - and since variables arrive as IReadOnlyDictionary<string,
+        // string>, the caller has no way to say otherwise. Declaring the constant with the right
+        // value[x] and overriding its value at runtime is therefore the supported way to pass a typed
+        // variable.
+        //
+        // SCOPE, measured rather than assumed. An earlier revision of this comment claimed the untyped
+        // path was unreachable because ValidateConstantReferences requires every %name to be a declared
+        // constant. That is false: it exempts context, resource, rootResource, ucum, sct, loinc,
+        // rowIndex and the vs- prefix. Of those, exactly three reach this loop untyped -
+        //
+        //   ucum, sct, loinc   bind the caller's string with no constant to inherit from
+        //
+        // - and for those three System.String is the correct type, not a defect: FHIRPath defines them
+        // as fixed URIs, so a caller-supplied string is already the right thing. `birthDate < %ucum`
+        // throwing "Cannot compare 'date' with 'string'" is the correct answer to putting a date in a
+        // URI slot, not a typing failure. The engine's override of those names is a deliberate,
+        // documented feature (EvaluationContext's remarks) and is left working.
+        //
+        // The rest cannot reach here untyped at all: context/resource/rootResource are answered by
+        // TryGetEnvironmentVariable's switch before it consults Environment, rowIndex is re-injected below
+        // and wins, and %vs-x / %ext-x never parse as variable references in the first place - the
+        // FhirPathTokenizer's ExternalConstant regex (src/Core/Ignixa.FhirPath/Parser/FhirPathTokenizer.cs)
+        // has no hyphen in its identifier pattern, so these lex as multiple tokens; validation then rejects
+        // the truncated '%vs' / '%ext' as undefined. Only %vs- has a StartsWith exemption in ValidateConstantReferences;
+        // %ext- is rejected identically. That tokenizer truncation is a separate pre-existing bug; it is recorded
+        // here only because it is why the vs- exemption is unreachable, and it is deliberately not fixed as a side effect.
+        // GetStandardConstant in EvaluationContext.cs contains unreachable prefix-expansion logic for both.
+        //
+        // A caller who does want a typed value under one of the three does not need the signature
+        // widened: declaring a constant of that name with the right value[x] and overriding its value
+        // works, because the inheritance above then applies. All of this is pinned by the
+        // GivenAPredefinedVariableName_* tests.
         if (variables != null)
+        {
+            // Built with the indexer, not ToDictionary: two constants sharing a name is malformed input
+            // that the loop above resolves as last-wins rather than rejecting, and ToDictionary would
+            // turn that into a throw from a code path that only exists to supply a type.
+            var declaredTypes = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var constant in viewDef.Constants)
+                declaredTypes[constant.Name] = constant.ValueType;
+
             foreach (var (name, value) in variables)
-                context = context.WithEnvironmentVariable(name, new PrimitiveValueElement(value));
+            {
+                declaredTypes.TryGetValue(name, out var declaredType);
+                context = context.WithEnvironmentVariable(name, new PrimitiveValueElement(value, declaredType));
+            }
+        }
         // rowIndex injected last so it cannot be shadowed by user-defined constants or variables
         context = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
         return context;
@@ -406,10 +455,22 @@ internal class SqlOnFhirEvaluationVisitor
         private readonly object _value;
         private readonly string _type;
 
-        public PrimitiveValueElement(object value)
+        /// <param name="value">The value to wrap.</param>
+        /// <param name="declaredType">
+        /// The FHIRPath type the producer knows the value to have, or <see langword="null"/> to infer it
+        /// from the CLR type.
+        /// </param>
+        /// <remarks>
+        /// Inference is not enough for a ViewDefinition constant. <c>valueDate</c>, <c>valueDateTime</c>,
+        /// <c>valueInstant</c> and <c>valueTime</c> all reach here as a <see cref="string"/>, which infers
+        /// as System.String, so <c>%cutoff</c> in <c>birthDate &lt; %cutoff</c> compared a date against a
+        /// string and threw. The declared type comes off the <c>value[x]</c> suffix, which the parser has
+        /// and the value does not.
+        /// </remarks>
+        public PrimitiveValueElement(object value, string? declaredType = null)
         {
             _value = value;
-            _type = FhirPathEvaluator.GetFhirPathTypeName(value);
+            _type = declaredType ?? FhirPathEvaluator.GetFhirPathTypeName(value);
         }
 
         public string Name => "value";

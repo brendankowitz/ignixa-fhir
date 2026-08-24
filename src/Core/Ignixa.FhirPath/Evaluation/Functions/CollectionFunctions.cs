@@ -430,6 +430,7 @@ internal static class CollectionFunctions
     /// Per FHIRPath spec: Returns only the results of the projection, not the original focus items.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>ReturnType = "any"</c> rather than <c>"context"</c> because this returns the projection's
     /// results, never the focus items themselves, so passing the focus type through would name a type the
     /// evaluator cannot produce. It did: <c>(name.repeat(family)).ofType(string)</c> typed the result as
@@ -442,6 +443,71 @@ internal static class CollectionFunctions
     /// downstream of a <c>repeat()</c>, and downstream of one only: <c>repeat(</c> appears in no generated
     /// search parameter definition, and in three shipped invariant expressions (R5 and R6 only; two on
     /// PlanDefinition, one on QuestionnaireResponse), none of which navigates a cast off the result.
+    /// </para>
+    /// <para>
+    /// <b>Iteration guard (#433):</b> the dedup check below only stops a projection that <em>navigates</em>
+    /// an existing finite tree - it never terminates for one that <em>constructs</em> a fresh value each
+    /// round, e.g. <c>repeat($this &amp; 'x')</c>, whose output is never deep-equal to anything already
+    /// processed. <see cref="RepeatAll"/> caps at 100,000 iterations; this cap is 10,000. <b>This is a data-headroom
+    /// choice, not a cost-shape choice.</b> The cap guarantees <em>termination</em> - a constructing projection
+    /// can no longer loop forever - but it does <em>not</em> bound wall-clock cost. Per-iteration cost grows
+    /// with the projection's fan-out (number of <c>|</c> branches): <c>Repeat</c> runs <em>three</em> O(n) scans
+    /// per item - <c>processed.Any(...)</c> twice and <c>result.Any(...)</c> once - each via
+    /// <see cref="FunctionHelpers.AreElementsEqual"/>, which recurses over subtrees. Measured wall time to reach
+    /// the 10,000 cap: <c>repeat($this &amp; 'x')</c> (branching factor 1) reaches 33.4 seconds;
+    /// <c>repeat(($this &amp; 'x') | ($this &amp; 'y'))</c> (branching factor 2) reaches 63.4 seconds.
+    /// One additional <c>|</c> branch roughly doubles the time to reach the same cap.
+    /// </para>
+    /// <para>
+    /// <b>Why 10,000 and not lower:</b> this is a data-headroom budget, not a cost budget. The control test
+    /// (<c>RemainingCoverageTests</c>, nested-Questionnaire case) uses a 1,092-item tree and genuinely dequeues
+    /// roughly 1,093 times; a 1,000 iteration cap would reject that legitimate data. 10,000 gives approximately
+    /// 9× headroom over that observed real shape. The residual gap - bounding actual per-projection cost, which
+    /// depends on fan-out - requires a work budget (comparison count) alongside the iteration cap; that is tracked
+    /// separately and is deliberately not implemented here.
+    /// </para>
+    /// <para>
+    /// <b>Harmonisation with <see cref="RepeatAll"/>'s 100,000:</b> do not raise this cap toward that figure. The
+    /// two functions do not cost the same per iteration: <c>repeatAll</c> is dequeue-evaluate-append, O(1) of
+    /// bookkeeping per item. <c>Repeat</c> does three O(n) deep-equality scans per item with an expensive recursing
+    /// comparator. Raising 10,000 toward 100,000 would multiply an already-33-second worst case by roughly a hundred,
+    /// turning a guard into a hang. This difference is structural and deliberate, not an oversight to be "harmonised"
+    /// away later.
+    /// </para>
+    /// <para>
+    /// <b>Exception type and log tier:</b> the guard throws <see cref="FhirPathEvaluationException"/>,
+    /// matching <see cref="RepeatAll"/>'s guard, so <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c>
+    /// classifies both the same way - expected containment (Warning) rather than an indexer defect (Error).
+    /// That tier was affirmed and pinned for <c>repeatAll</c>'s guard in #428 on the rationale
+    /// that a guard a tenant can trip on demand, against tenant-supplied data, is data, not an indexer bug.
+    /// Two iteration-limit guards reporting at different severities would be worse than either choice, so
+    /// both land in the same one.
+    /// </para>
+    /// <para>
+    /// <b>The guard fails all-or-nothing, deliberately.</b> This method is eager - results accumulate
+    /// into a local list that the throw abandons - so tripping the cap yields no partial collection, and
+    /// a caller indexing a search parameter over this expression drops the whole parameter rather than
+    /// storing a truncated one. That is the intended behaviour: a prefix of a non-terminating projection
+    /// is an arbitrary cut with no meaning, and half an index that reports itself as complete is worse
+    /// than an absent one. Making the method lazy would change this silently, which is why it is written
+    /// down here rather than left to the reader to infer from the absence of a <c>yield</c>.
+    /// </para>
+    /// <para>
+    /// <b>Dedup semantics vs. the spec (considered, not changed):</b> the FHIRPath spec defines
+    /// <c>repeat()</c>'s dedup via the <c>=</c> operator - "only if they are not already in the output
+    /// collection as determined by the equals (<c>=</c>) operator returning <c>true</c> (i.e. <c>false</c>
+    /// and empty both indicate that the values are not equal and thus added)" (continuous build,
+    /// index.md:1016) - while this method dedups via <see cref="FunctionHelpers.AreElementsEqual"/>, a deep
+    /// equality helper. For primitives these coincide. For temporals of mismatched precision, <c>=</c> is
+    /// indeterminate (empty), which per the spec passage above means "not equal, so add" - the same outcome
+    /// a naive deep-equality check might get wrong by treating "can't decide" as "equal enough to drop". In
+    /// this codebase they do not diverge in practice: <see cref="FunctionHelpers.AreElementsEqual"/> routes
+    /// temporal comparisons through <see cref="TemporalOperand.AreSameItem"/>, which was itself built to
+    /// collapse an indeterminate <see cref="TemporalOperand.AreEqual"/> to <see langword="false"/> (see its
+    /// remarks) - i.e. "not the same item" - which is exactly the spec's "not equal, so add". So the
+    /// divergence the spec wording invites is already closed for the case that matters here; this is a
+    /// documented decision, not an unexamined gap, and no dedup behavior changes in this fix.
+    /// </para>
     /// </remarks>
     [FhirPathFunction("repeat",
         SupportedContexts = "any-any",
@@ -466,18 +532,24 @@ internal static class CollectionFunctions
         var processed = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
+        const int maxIterations = 10_000;
+        var iterations = 0;
+
         while (queue.Count > 0)
         {
+            if (++iterations > maxIterations)
+                throw new FhirPathEvaluationException($"repeat() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
+
             var current = queue.Dequeue();
-            
+
             // Check if we've already processed this element using deep equality comparison
             if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, current)))
             {
                 processed.Add(current);
-                
+
                 var innerContext = context.PushThis(current);
                 var projected = evaluateExpression([current], projection, innerContext);
-                
+
                 foreach (var item in projected)
                 {
                     // Add projection results to the output result set (avoiding duplicates)
@@ -504,8 +576,20 @@ internal static class CollectionFunctions
     /// Per FHIRPath spec: $this is set for each item but $index is undefined.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>ReturnType = "any"</c> for the same reason as <see cref="Repeat"/>: the result is the
     /// projection, not the focus.
+    /// </para>
+    /// <para>
+    /// <b>The iteration guard fails all-or-nothing, deliberately.</b> This method is eager - results
+    /// accumulate into a local list that the throw abandons - so tripping the cap yields no partial
+    /// collection, and a caller indexing a search parameter over this expression drops the whole
+    /// parameter rather than storing a truncated one. That is the intended behaviour: a prefix of a
+    /// non-terminating projection is an arbitrary cut with no meaning, and half an index that reports
+    /// itself as complete is worse than an absent one. Making the method lazy would change this
+    /// silently, which is why it is written down here rather than left to the reader to infer from the
+    /// absence of a <c>yield</c>.
+    /// </para>
     /// </remarks>
     [FhirPathFunction("repeatAll",
         SupportedContexts = "any-any",

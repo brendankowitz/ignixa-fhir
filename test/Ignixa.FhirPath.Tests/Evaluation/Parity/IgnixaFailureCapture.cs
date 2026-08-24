@@ -70,9 +70,14 @@ internal sealed class IgnixaFailureCapture : ILoggerFactory, ILogger
     {
         if (Sink.Value is not { } failures)
         {
+            // The logged exception becomes the inner one. This throw fires from inside the indexer's
+            // catch block, so it replaces whatever the indexer was reporting - and that is precisely the
+            // exception a reader needs to work out why the indexer failed. Discarding it turns a
+            // diagnosable failure into a bare harness complaint about scoping.
             throw new InvalidOperationException(
                 $"The production indexer logged '{eventId.Name}' outside a capture scope. "
-                + "Route every Extract call through IgnixaFailureCapture.While so contained failures stay assertable.");
+                + "Route every Extract call through IgnixaFailureCapture.While so contained failures stay assertable.",
+                exception);
         }
 
         failures.Add(IgnixaEvaluationFailure.From(eventId, state, exception));

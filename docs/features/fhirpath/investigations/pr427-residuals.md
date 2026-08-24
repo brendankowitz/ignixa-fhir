@@ -1,8 +1,28 @@
 # Investigation: PR #427 Known Residuals
 
 **Feature**: fhirpath
-**Status**: In Progress
+**Status**: Superseded
 **Created**: 2026-08-21
+
+> Superseded on 2026-08-23. This was an implementation plan, and the work it planned has shipped —
+> #423, #425, #426, #428 and #429 all landed, and #424 remains deferred on the trigger recorded in WI-5.
+> Read it as a record of what was planned, not as a description of the code.
+>
+> Four statements in it are now false, which is why it is marked rather than left to rot:
+>
+> - The "adjacent finding" under WI-4 says `repeat()` "has **no iteration guard at all**". It has one
+>   since #433 — a 10,000-iteration cap, and it throws `FhirPathEvaluationException` exactly as that
+>   section asked the eventual fix to.
+> - WI-1 says shipped usage of `repeat()` is "two invariant-style expressions ... all self-similar".
+>   Re-measured: **three**, in R5 and R6 only — two on PlanDefinition, one on QuestionnaireResponse — and
+>   they are not all self-similar. `CollectionFunctions.Repeat`'s remarks carry the current figure.
+> - WI-4's falsification recipe says to revert the guard "at `CollectionFunctions.cs:520`". That line is
+>   now `Repeat`'s missing-argument throw, so following the recipe mutates the wrong function;
+>   `RepeatAll`'s guard is the one that recipe means.
+> - Every line number in the file predates the changes above and has moved.
+>
+> Current behaviour lives in the XML remarks on `CollectionFunctions.Repeat` and
+> `CollectionFunctions.RepeatAll`, which are maintained alongside the code. Prefer those.
 
 Implementation plan: PR #427 known residuals (#423, #424, #425, #426, #428, #429)
 

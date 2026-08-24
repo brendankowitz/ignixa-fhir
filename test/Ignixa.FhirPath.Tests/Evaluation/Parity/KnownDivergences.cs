@@ -74,16 +74,33 @@ internal static class KnownDivergences
     /// The population the changed-construct sweep is expected to produce.
     /// </summary>
     /// <remarks>
-    /// 17 of these 415 evaluations are mutual throws - the construct corpus deliberately probes
+    /// <para>
+    /// 19 of these evaluations are mutual throws - the construct corpus deliberately probes
     /// operations one engine or the other does not implement - and every one of them was uncounted
     /// until this pin existed, since a mutual throw satisfies <see cref="ParityOutcome.Matches"/> and
     /// never becomes a divergence.
+    /// </para>
+    /// <para>
+    /// Two of the 19 are the type-error semantics this branch introduced: <c>birthDate &lt;
+    /// '1980-01-01'</c> (String against Date) and <c>birthDate &lt; @T10:30:00</c> (time of day against
+    /// a calendar value). They moved the count from 17 to 19 when they were added, which is the evidence
+    /// that Firely throws on them too - previously that was only asserted in a comment. A mutual throw
+    /// is normally coverage lost; here it is the agreement being measured, so these two are the one case
+    /// in this population where a rise was the intended outcome rather than something to investigate.
+    /// </para>
+    /// <para>
+    /// Those two expressions contribute ten evaluations, not two: the sweep runs every expression
+    /// against all five subjects and only the Patient has a <c>birthDate</c>. On the other four
+    /// <c>birthDate</c> is empty, and FHIRPath's empty propagation short-circuits the comparison before
+    /// either engine reaches its type check, so they land in <see cref="ExpectedBothEmpty"/> - which is
+    /// why that figure moved by eight at the same time.
+    /// </para>
     /// </remarks>
     public static ExpressionCorpusExpectations ConstructPopulation { get; } =
         new(
-            MinimumEvaluationsPerEngine: 415,
-            ExpectedBothThrew: 17,
-            ExpectedBothEmpty: 166,
+            MinimumEvaluationsPerEngine: 425,
+            ExpectedBothThrew: 19,
+            ExpectedBothEmpty: 174,
             MinimumAgreementsOnValues: 174);
 
     /// <summary>

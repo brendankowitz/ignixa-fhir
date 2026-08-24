@@ -642,6 +642,23 @@ internal static class DifferentialFixture
         "1 'mg' > true",
         "1 'mg' > @2012-01-01",
 
+        // A Date element ordered against a String. §Comparison: "Both arguments must be of the same
+        // type (or implicitly convertible to the same type), and the evaluator will throw an error if
+        // the types differ", and the implicit-conversion table makes String-to-Date explicit-only.
+        // This row used to answer a definite true, because the ordering path decided temporality from
+        // the value's shape, read the String as a date and compared the two as instants - and the
+        // fixture's birthDate, 1974-12-25, does precede 1980-01-01. The direction matters when judging
+        // what shipped data a fix like this affects: the old engine over-matched, admitting records a
+        // type-correct engine never compares, rather than excluding valid ones.
+        "birthDate < '1980-01-01'",
+
+        // A time of day ordered against a calendar value. Both operands are temporals, so this is not
+        // the row above in another spelling: the conversion table gives Date/DateTime to Time no entry
+        // in either direction, which is a stronger statement than String to Date's Explicit-only. These
+        // used to answer empty, indistinguishable from a genuine partial-precision indeterminate.
+        "birthDate < @T10:30:00",
+        "meta.lastUpdated > @T10:30:00",
+
         // A primitive that is not a number, reached through an operator that is defined only over
         // numbers. The optimizer's identity folds are what put these in the corpus.
         "active + 1",

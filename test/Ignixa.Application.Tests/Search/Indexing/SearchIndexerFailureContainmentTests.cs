@@ -30,7 +30,7 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// Laziness is what makes this easy to get wrong. The named range from
 /// <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheWriteSurvivesAndOtherParametersStillIndex"/>
 /// through <see cref="GivenACompositeWhoseComponentExpressionFails_WhenIndexed_ThenTheWholeCompositeEntryIsDroppedAndTheComponentDefinitionIsLogged"/>
-/// spans <em>six</em> tests, not five, and only three of them exist to pin the laziness hazard (issue #403):
+/// spans six tests, and only three of them exist to pin the laziness hazard (issue #403):
 /// <see cref="GivenANonCompositeWhoseExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex"/>,
 /// <see cref="GivenACompositeWhoseRootExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex"/>
 /// and <see cref="GivenACompositeWhoseComponentExpressionFails_WhenIndexed_ThenTheWholeCompositeEntryIsDroppedAndTheComponentDefinitionIsLogged"/>.
@@ -44,7 +44,7 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// those tests make while the guarded <c>.ToList()</c> was deleted and the bug fully reintroduced.
 /// </para>
 /// <para>
-/// The other three tests in that named range are not built on that hazard.
+/// The remaining three in that range cover containment without touching laziness.
 /// <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheWriteSurvivesAndOtherParametersStillIndex"/>
 /// and <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheFailureIsLoggedAsExpectedNotUnexpected"/>
 /// both use a malformed <c>Timing.event</c> literal whose failure lives inside
@@ -56,11 +56,23 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// producing entries.
 /// </para>
 /// <para>
-/// Not every test below exercises the laziness hazard either.
-/// <see cref="GivenACustomSearchParameterWhoseExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex"/>
-/// pins a different, unrelated property - the log tier a guard exception lands in (issue #428) - and its
-/// expression throws eagerly inside <c>Select</c> itself, so it provides no coverage of the #403 laziness
-/// guard. See that test's own doc comment for why that is fine for its purpose.
+/// The seventh test,
+/// <see cref="GivenACustomSearchParameterWhoseExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex"/>,
+/// sits outside that range and pins a different, unrelated property - the log tier a guard exception lands
+/// in (issues #428 and #433). Its expression throws eagerly inside <c>Select</c> itself, so it provides no
+/// coverage of the #403 laziness guard; its own doc comment says why that is fine for its purpose.
+/// </para>
+/// <para>
+/// <strong>A <c>repeat()</c> sibling of that test was deleted rather than kept.</strong> It indexed against
+/// <c>status.repeat($this &amp; 'x')</c> and cost 35 seconds against its <c>repeatAll</c> sibling's 503
+/// milliseconds, because tripping <c>Repeat</c>'s cap is Θ(cap²) with a recursing deep-equality comparator.
+/// It carried no marginal information: <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c> is a pure
+/// type test, both guards throw <c>FhirPathEvaluationException</c>, so nothing it could assert would
+/// distinguish the two - and the two facts it composed are each pinned more cheaply elsewhere.
+/// <c>RemainingCoverageTests</c> pins that <c>Repeat</c>'s guard throws that type (and, since it must pay
+/// the Θ(cap²) cost anyway, that the cap is 10,000); the test above pins that the type routes to Warning.
+/// Do not restore it: a rewrite that genuinely discriminates the two guards would have to trip
+/// <c>Repeat</c>'s cap, which is where the 35 seconds comes from.
 /// </para>
 /// </summary>
 public class SearchIndexerFailureContainmentTests
