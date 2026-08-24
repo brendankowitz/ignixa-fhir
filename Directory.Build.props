@@ -7,7 +7,6 @@
     <RepositoryUrl>https://github.com/brendankowitz/ignixa-fhir</RepositoryUrl>
     <PackageProjectUrl>https://github.com/brendankowitz/ignixa-fhir</PackageProjectUrl>
     <PackageTags>fhir;fhir-server;healthcare;hl7;r4;r4b;r5;stu3;r6</PackageTags>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Source Link / Embedded Debug Symbols -->
     <IncludeSymbols>false</IncludeSymbols>
     <DebugType>embedded</DebugType>
@@ -62,7 +61,26 @@
     </When>
   </Choose>
 
-  <ItemGroup Condition="Exists('README.md')">
+  <!--
+    PackageReadmeFile and the README ItemGroup below must share the same condition, and that
+    condition must be anchored to $(MSBuildProjectDirectory), not a bare Exists('README.md').
+    Exists() with a relative path resolves against MSBuild's current working directory, not the
+    importing project's directory: from the repo root (where every CI pack step and most local
+    invocations run), a bare Exists('README.md') is therefore always true, because the repo root
+    itself has a README.md, regardless of whether the individual project being packed has one.
+    That bare form never actually gated anything: it happened to look like it worked only because
+    the ItemGroup's own Include="README.md" is a project-relative item path that silently
+    resolves to nothing when the file is missing, while the (always-true) property still told
+    NuGet a readme was coming. That mismatch is exactly NU5039. A missing README is a
+    documentation gap, not a build error: a packable project without one should just pack without
+    a readme, not break `dotnet pack`, which for Core/tool projects only runs on push to main, not
+    on pull requests, so a PR cannot catch this.
+  -->
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)\README.md')">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\README.md')">
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
