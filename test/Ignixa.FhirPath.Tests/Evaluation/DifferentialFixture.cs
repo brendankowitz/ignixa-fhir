@@ -645,8 +645,11 @@ internal static class DifferentialFixture
         // A Date element ordered against a String. §Comparison: "Both arguments must be of the same
         // type (or implicitly convertible to the same type), and the evaluator will throw an error if
         // the types differ", and the implicit-conversion table makes String-to-Date explicit-only.
-        // This row used to answer false, because the ordering path decided temporality from the
-        // value's shape and so read the String as a date.
+        // This row used to answer a definite true, because the ordering path decided temporality from
+        // the value's shape, read the String as a date and compared the two as instants - and the
+        // fixture's birthDate, 1974-12-25, does precede 1980-01-01. The direction matters when judging
+        // what shipped data a fix like this affects: the old engine over-matched, admitting records a
+        // type-correct engine never compares, rather than excluding valid ones.
         "birthDate < '1980-01-01'",
 
         // A time of day ordered against a calendar value. Both operands are temporals, so this is not

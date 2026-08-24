@@ -62,8 +62,13 @@ public class ComparisonTypeRoutingTests
     [Fact]
     public void GivenAResourceBackedDate_WhenOrderedAgainstAStringLiteral_ThenItIsATypeError()
     {
-        // The real-world shape of the same defect: before the fix this answered a definite false,
-        // because the String operand sniffed as a date and the two were compared as instants.
+        // The real-world shape of the same defect: before the fix this answered a definite true,
+        // because the String operand sniffed as a date and the two were compared as instants - and
+        // this fixture's birthDate is 1974-12-25, which does precede 1980-01-01. The old engine
+        // therefore over-matched rather than under-matched, which is the opposite remediation: it
+        // admitted records a type-correct engine refuses to compare at all, and did not exclude valid
+        // ones. GivenDateLookingStringsForTheSameInstant_* in FhirTemporalComparisonTests was flipped
+        // for the same reason - the old shape-sniff produced a definite answer, on instant ordering.
         var thrown = Should.Throw<FhirPathEvaluationException>(
             () => Evaluate("$this < '1980-01-01'").ToList());
 
@@ -180,11 +185,18 @@ public class ComparisonTypeRoutingTests
         // The fifth sniff site. DateTimeFunctions.ParseDateTimeValue stripped a leading sigil and then
         // parsed by shape, consulting InstanceType only for the time special case, so a String reported
         // calendar components it does not have: '@2013'.year() answered 2013 and '2013-06-15'.month()
-        // answered 6. All thirteen call sites funnel through that one method, so all thirteen were
-        // affected and one gate fixes all of them.
+        // answered 6. All twelve call sites funnel through that one method - ten functions, with
+        // difference() and duration() calling it once per operand - so all twelve were affected and one
+        // gate fixes all of them.
         //
         // These are Ignixa extensions rather than FHIRPath functions - Firely throws ArgumentException
         // on month() - so no reference engine governs them and nothing external could have caught this.
+        //
+        // Empty rather than a throw is deliberate, and it is the one place this change leaves the same
+        // type mismatch answering two ways: an error under < and an empty under .month(). The reason is
+        // recorded in full at ParseDateTimeValue - §Comparison mandates the ordering error and nothing
+        // mandates one here, while throwing would cost a whole search parameter at indexing time. These
+        // rows are the pin on that decision, so changing them is the deliberate edit that reopens it.
         Evaluate(expression).ShouldBeEmpty();
     }
 
@@ -234,12 +246,58 @@ public class ComparisonTypeRoutingTests
         // Both operands are temporals, so a gate that only asks "is this a temporal?" is blind between
         // them - the first version of this guard was, and these answered empty. The conversion table
         // gives Date/DateTime to Time no entry in either direction, so the Comparison error mandate
-        // applies just as it does to String against Date. Firely throws on both orderings; HAPI's
-        // opLessThan matches neither its date/dateTime/instant arm nor its time arm and falls through
-        // to FHIRPATH_CANT_COMPARE.
+        // applies just as it does to String against Date.
+        //
+        // Firely throws on both orderings, and that is measured rather than asserted: birthDate <
+        // @T10:30:00 and birthDate < '1980-01-01' are rows in FirelyParityFixture.ConstructCorpus, and
+        // adding them moved KnownDivergences.ConstructPopulation.ExpectedBothThrew from 17 to 19 - both
+        // engines throwing on both. The HAPI half is still only read from source: opLessThan matches
+        // neither its date/dateTime/instant arm nor its time arm and falls through to
+        // FHIRPATH_CANT_COMPARE. No HAPI harness exists here, so that one remains a citation.
         var thrown = Should.Throw<FhirPathEvaluationException>(() => Evaluate(expression).ToList());
 
         thrown.Message.ShouldContain("must be of the same type");
+    }
+
+    [Theory]
+    [InlineData("(@2013 | @T12:00).max()")]
+    [InlineData("(@T12:00 | @2013).max()")]
+    [InlineData("(@2013 | @T12:00).min()")]
+    [InlineData("(@T12:00 | @2013).min()")]
+    [InlineData("(@2013 | @T12:00).sort()")]
+    [InlineData("(@T12:00 | @2013).sort()")]
+    public void GivenATimeOfDayAndACalendarValue_WhenAggregatedOrSorted_ThenItIsTheSameTypeError(
+        string expression)
+    {
+        // min()/max()/sort() defer their ordering to the Comparison operators rather than restating it,
+        // so they have to reject the operand pair the operators reject. The gate the row above pins was
+        // added to the operators and to equality but not to ValueOrdering.CompareTemporals, the third
+        // consumer, so these went the other way: FhirTemporal.Compare answered null, Extreme read null as
+        // "the incumbent stands", and max() returned whichever operand was written first - the same
+        // collection gave two different answers depending on the order of the union. sort() was worse
+        // still, placing a time of day among calendar values with no signal at all.
+        //
+        // The error text differs from the operators' "must be of the same type" because it comes from
+        // ValueOrdering.NotOrderable, which names the calling function; that these are the same defect is
+        // the point, not that they are the same string.
+        var thrown = Should.Throw<FhirPathEvaluationException>(() => Evaluate(expression).ToList());
+
+        thrown.Message.ShouldContain("cannot order operands");
+    }
+
+    [Theory]
+    [InlineData("(@2013 | @2014).max()", "2014")]
+    [InlineData("(@T12:00 | @T13:00).max()", "13:00")]
+    [InlineData("(@2013 | @2013-06).sort().count()", 2)]
+    public void GivenTemporalsOfOneKind_WhenAggregatedOrSorted_ThenTheAnswerIsUnchanged(
+        string expression, object expected)
+    {
+        // The control. Only the cross-kind pair became an error; same-kind ordering keeps its answer,
+        // including the partial-precision pair whose comparison is indeterminate but whose sort is still
+        // a total order over both elements.
+        var result = Evaluate(expression).Single();
+
+        result.Value.ShouldBe(expected);
     }
 
     [Fact]
@@ -304,8 +362,21 @@ public class ComparisonTypeRoutingTests
         //
         // Every other String-versus-temporal row in this file uses '@2013', whose sigil makes it
         // unequal by text whether or not a blanket type guard exists. Those rows would all stay green
-        // if someone added one. These four are the ones that would go red, so they are the only guard
-        // on the restraint.
+        // if someone added one, so these four are the only rows here that react to the restraint at all.
+        //
+        // Only the = and != rows guard it. Measured by injecting a blanket "different instance types are
+        // never equal" guard at each site in turn: at FunctionHelpers.AreElementsEqual, = and != go red
+        // and ~ and !~ stay green; at AreEquivalent, nothing goes red. Equivalence has two independent
+        // routes to true - FhirPathEvaluator.AreElementsEquivalent tries AreElementsEqual as a fast path
+        // and falls through to AreEquivalent's untyped wire-string comparison when it answers false - and
+        // either alone is sufficient, so no single-site guard can move them. The ~ rows corroborate that
+        // the restraint holds end to end; they do not detect its removal.
+        //
+        // The two operators are deliberately not routed through one gate to fix that. Equivalence is a
+        // different relation, not a laxer spelling of equality - it rounds decimals, truncates temporals
+        // to the lesser precision and ignores string case and whitespace - and the fast-path-then-descend
+        // shape of AreElementsEquivalent is what issue #411 needed. Collapsing them so one mutation moves
+        // both would trade real semantics for a tidier mutation score.
         var result = Evaluate(expression).Single();
 
         result.Value.ShouldBe(expected);

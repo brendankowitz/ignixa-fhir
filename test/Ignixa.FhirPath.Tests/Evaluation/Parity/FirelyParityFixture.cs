@@ -55,6 +55,14 @@ internal static class FirelyParityFixture
         "birthDate + 1 'a'",
         "birthDate + 1 week",
 
+        // The two type-error semantics this branch introduced, and the only external check on them.
+        // The conformance suite is documented as blind here (#432), and DifferentialFixture.ErrorProbes
+        // feeds only the optimizer differential - ParitySweep.Run reads this corpus. Without these rows
+        // the claim that Firely throws on both orderings, and that HAPI reaches FHIRPATH_CANT_COMPARE,
+        // is a comment nothing exercises. Both are expected to land in ExpectedBothThrew.
+        "birthDate < '1980-01-01'",
+        "birthDate < @T10:30:00",
+
         "1 'mg' = 1000 'ug'",
         "1 'm' + 1 'cm'",
         "1 'kg' > 1 'g'",

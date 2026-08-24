@@ -440,6 +440,16 @@ internal static class ValueOrdering
 
         if (leftTemporal is not null && rightTemporal is not null)
         {
+            // A time of day and a calendar value are both temporals, so the IsTemporal gate below is
+            // blind between them. Without this the ordering functions disagree with the operators that
+            // §min() defers to: @2013 > @T12:00 throws, while (@2013 | @T12:00).max() returned whichever
+            // element happened to be first, because FhirTemporal.Compare answers null and Extreme reads
+            // null as "no update". Same value, opposite answers, and the silent one was order-dependent.
+            if (!TemporalOperand.AreComparableKinds(leftTemporal, rightTemporal))
+            {
+                throw NotOrderable(left, right, function);
+            }
+
             return totalOrder
                 ? leftTemporal.CompareTo(rightTemporal)
                 : FhirTemporal.Compare(leftTemporal, rightTemporal);
