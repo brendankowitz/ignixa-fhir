@@ -72,7 +72,9 @@ public sealed record WhereExpression(
 /// <param name="Value">The constant's value, in whatever CLR type carries it.</param>
 /// <param name="ValueType">
 /// The FHIRPath type the declared <c>value[x]</c> suffix converts to, or <see langword="null"/> when the
-/// suffix was absent or unrecognised.
+/// suffix was absent - a bare <c>value</c> property. An unrecognised suffix is <c>"string"</c> rather
+/// than <see langword="null"/>, since every FHIR primitive the parser does not name converts to
+/// System.String.
 /// </param>
 /// <remarks>
 /// <see cref="ValueType"/> exists because the CLR type of <see cref="Value"/> cannot always recover it.

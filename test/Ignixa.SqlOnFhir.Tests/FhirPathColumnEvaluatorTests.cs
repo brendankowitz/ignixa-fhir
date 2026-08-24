@@ -568,12 +568,12 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Theory]
-    [InlineData("valueDate", "2020-01-01", "birthDate < %cutoff", true)]
-    [InlineData("valueDate", "1970-01-01", "birthDate < %cutoff", false)]
-    [InlineData("valueDateTime", "2020-01-01T00:00:00Z", "birthDate < %cutoff", true)]
-    [InlineData("valueInstant", "2020-01-01T00:00:00Z", "birthDate < %cutoff", true)]
+    [InlineData("valueDate", "2020-01-01", true)]
+    [InlineData("valueDate", "1970-01-01", false)]
+    [InlineData("valueDateTime", "2020-01-01T00:00:00Z", true)]
+    [InlineData("valueInstant", "2020-01-01T00:00:00Z", true)]
     public void GivenATemporalConstant_WhenComparedAgainstAResourceDate_ThenItOrdersAsATemporal(
-        string valueProperty, string constantValue, string filter, bool expectRow)
+        string valueProperty, string constantValue, bool expectRow)
     {
         // The constant's declared type is the only place its temporal-ness is recorded: valueDate,
         // valueDateTime, valueInstant and valueTime all collapse to a bare string in the parser, so
@@ -596,7 +596,7 @@ public class SqlOnFhirEvaluatorTests
             {
               "resource": "Patient",
               "constant": [{ "name": "cutoff", "{{valueProperty}}": "{{constantValue}}" }],
-              "where": [{ "path": "{{filter}}" }],
+              "where": [{ "path": "birthDate < %cutoff" }],
               "select": [{ "column": [{ "name": "id", "path": "id" }] }]
             }
             """;
@@ -605,6 +605,114 @@ public class SqlOnFhirEvaluatorTests
         var rows = _evaluator.Evaluate(sourceNode, resource).ToList();
 
         Assert.Equal(expectRow ? 1 : 0, rows.Count);
+    }
+
+    [Fact]
+    public void GivenATimeConstant_WhenComparedAgainstAResourceTime_ThenItOrdersAsATemporal()
+    {
+        // valueTime is the fourth temporal suffix and the only one the theory above cannot reach: a
+        // time of day against a Date is a type error, not an ordering, so it needs a time-valued
+        // element to compare with. Without it SystemTypeOf("Time") is exercised only by the official
+        // suite's equality rows, and equality would pass just as happily with the "string" the parser
+        // used to hand back - leaving the one mapping the fix exists for unvalidated for ordering.
+        var observationJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Observation" },
+            { "id", "o-time" },
+            { "status", "final" },
+            { "valueTime", "10:30:00" }
+        };
+        var resource = CreateTypedElement(observationJson);
+
+        var viewJson = """
+            {
+              "resource": "Observation",
+              "constant": [{ "name": "cutoff", "valueTime": "09:00:00" }],
+              "where": [{ "path": "value.ofType(time) > %cutoff" }],
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var rows = _evaluator.Evaluate(sourceNode, resource).ToList();
+
+        Assert.Single(rows);
+    }
+
+    [Fact]
+    public void GivenAVariableOverridingATemporalConstant_WhenCompared_ThenItInheritsTheConstantsDeclaredType()
+    {
+        // Caller-supplied variables arrive as IReadOnlyDictionary<string, string>, which carries no type,
+        // so a variable overriding a valueDate constant would otherwise retype the slot as System.String
+        // and reintroduce the very failure the constant path was fixed for. The caller wins on the
+        // value; the declared type belongs to the slot. This is also the supported workaround for the
+        // limitation pinned below - declare the constant with the right value[x], override its value.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-var" },
+            { "birthDate", "1980-06-15" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "constant": [{ "name": "cutoff", "valueDate": "1900-01-01" }],
+              "where": [{ "path": "birthDate < %cutoff" }],
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        // The declared default excludes the patient; the caller's override includes them. A row proves
+        // the override took effect, and that it was still ordered as a date rather than throwing.
+        var withDefault = _evaluator.Evaluate(sourceNode, resource).ToList();
+        var overridden = _evaluator
+            .Evaluate(sourceNode, resource, new Dictionary<string, string> { ["cutoff"] = "2020-01-01" })
+            .ToList();
+
+        Assert.Empty(withDefault);
+        Assert.Single(overridden);
+    }
+
+    [Fact]
+    public void GivenAVariableWithNoMatchingConstant_WhenReferenced_ThenTheViewDefinitionIsRejected()
+    {
+        // This is what makes the inheritance above a complete fix rather than a partial one. A caller
+        // cannot supply a variable the ViewDefinition has not declared: the parser rejects any %name
+        // that is neither a declared constant nor one of the predefined variables, before evaluation
+        // and regardless of what the caller passes. So every variable that can reach the evaluator has
+        // a constant to inherit its type from, and the untyped path is unreachable rather than merely
+        // undocumented.
+        //
+        // Without this, "variables are string-to-string so they cannot be typed" looks like a gap that
+        // needs the public API widened. It is not one.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-var" },
+            { "birthDate", "1980-06-15" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "constant": [{ "name": "unrelated", "valueString": "x" }],
+              "where": [{ "path": "birthDate < %cutoff" }],
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var thrown = Assert.Throws<InvalidOperationException>(
+            () => _evaluator
+                .Evaluate(sourceNode, resource, new Dictionary<string, string> { ["cutoff"] = "2020-01-01" })
+                .ToList());
+
+        var cause = Assert.IsType<InvalidOperationException>(thrown.InnerException);
+        Assert.Contains("undefined constant '%cutoff'", cause.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -631,7 +739,18 @@ public class SqlOnFhirEvaluatorTests
             """;
         var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
 
-        Assert.ThrowsAny<Exception>(() => _evaluator.Evaluate(sourceNode, resource).ToList());
+        // Asserted on the inner exception, not the outer. SqlOnFhirEvaluator.EvaluateBatch catches
+        // FhirPathEvaluationException and rethrows the same type wrapping it, so the outer message is
+        // only "Failed to evaluate ViewDefinition for resource type 'Patient'" - which a JSON parse
+        // failure, a missing constant or a null-reference in the visitor would produce just as readily.
+        // ThrowsAny<Exception> here asserted nothing about *why* it threw.
+        var thrown = Assert.Throws<FhirPathEvaluationException>(
+            () => _evaluator.Evaluate(sourceNode, resource).ToList());
+
+        var cause = Assert.IsType<FhirPathEvaluationException>(thrown.InnerException);
+        Assert.Contains("must be of the same type", cause.Message, StringComparison.Ordinal);
+        Assert.Contains("'date'", cause.Message, StringComparison.Ordinal);
+        Assert.Contains("'string'", cause.Message, StringComparison.Ordinal);
     }
 
     [Fact]

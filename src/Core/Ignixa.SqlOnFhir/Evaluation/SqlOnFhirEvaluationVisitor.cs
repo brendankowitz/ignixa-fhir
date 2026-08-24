@@ -121,9 +121,36 @@ internal class SqlOnFhirEvaluationVisitor
                 context = context.WithEnvironmentVariable(
                     constant.Name, new PrimitiveValueElement(constant.Value, constant.ValueType));
         // Caller-supplied variables override ViewDefinition constants if names collide (caller wins).
+        //
+        // The caller wins on the *value*; the declared type belongs to the slot, so a variable that
+        // overrides a constant inherits that constant's type. Without this, overriding a valueDate
+        // constant would silently retype it as System.String and reintroduce the comparison failure the
+        // constant path was fixed for - and since variables arrive as IReadOnlyDictionary<string,
+        // string>, the caller has no way to say otherwise. Declaring the constant with the right
+        // value[x] and overriding its value at runtime is therefore the supported way to pass a typed
+        // variable.
+        //
+        // This closes the gap rather than narrowing it. A variable with no declared constant would have
+        // no type to inherit, but it also cannot reach here: ValidateConstantReferences rejects any
+        // %name that is neither a declared constant nor a predefined variable, at parse time and
+        // whatever the caller passes. So no widening of the string-to-string signature is needed to
+        // type a variable - declaring the constant is already mandatory, and the type rides along with
+        // it. Pinned by GivenAVariableWithNoMatchingConstant_WhenReferenced_ThenTheViewDefinitionIsRejected.
         if (variables != null)
+        {
+            // Built with the indexer, not ToDictionary: two constants sharing a name is malformed input
+            // that the loop above resolves as last-wins rather than rejecting, and ToDictionary would
+            // turn that into a throw from a code path that only exists to supply a type.
+            var declaredTypes = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var constant in viewDef.Constants)
+                declaredTypes[constant.Name] = constant.ValueType;
+
             foreach (var (name, value) in variables)
-                context = context.WithEnvironmentVariable(name, new PrimitiveValueElement(value));
+            {
+                declaredTypes.TryGetValue(name, out var declaredType);
+                context = context.WithEnvironmentVariable(name, new PrimitiveValueElement(value, declaredType));
+            }
+        }
         // rowIndex injected last so it cannot be shadowed by user-defined constants or variables
         context = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
         return context;
