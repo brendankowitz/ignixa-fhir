@@ -27,20 +27,36 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// index entries and nothing else - the resource still stores, and every other parameter still indexes.
 /// </para>
 /// <para>
-/// Laziness is what makes this easy to get wrong, and it is the specific property the five tests from
+/// Laziness is what makes this easy to get wrong. The named range from
 /// <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheWriteSurvivesAndOtherParametersStillIndex"/>
 /// through <see cref="GivenACompositeWhoseComponentExpressionFails_WhenIndexed_ThenTheWholeCompositeEntryIsDroppedAndTheComponentDefinitionIsLogged"/>
-/// exist to pin (issue #403). <c>element.Select</c> hands back the evaluator's own enumerable, which for anything
-/// built on <c>where()</c> is a <c>yield</c> iterator that does no work until enumerated; <c>ProcessCompositeSearchParameter</c>
-/// and the converters are <c>yield</c> iterators too. A value produced inside a try block therefore does nothing
-/// until it is enumerated, and the enumeration happens further out - past the catch that looked like it covered
-/// it - so one bad expression fails the create or update of the whole resource. Each of those five tests is
-/// built from an expression chosen so that <c>Select</c> returns <em>without</em> throwing and the throw lands
-/// on enumeration - an expression that threw eagerly inside <c>Select</c> would satisfy every other assertion
+/// spans <em>six</em> tests, not five, and only three of them exist to pin the laziness hazard (issue #403):
+/// <see cref="GivenANonCompositeWhoseExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex"/>,
+/// <see cref="GivenACompositeWhoseRootExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex"/>
+/// and <see cref="GivenACompositeWhoseComponentExpressionFails_WhenIndexed_ThenTheWholeCompositeEntryIsDroppedAndTheComponentDefinitionIsLogged"/>.
+/// <c>element.Select</c> hands back the evaluator's own enumerable, which for anything built on <c>where()</c>
+/// is a <c>yield</c> iterator that does no work until enumerated; <c>ProcessCompositeSearchParameter</c> is a
+/// <c>yield</c> iterator too. A value produced inside a try block therefore does nothing until it is
+/// enumerated, and the enumeration happens further out - past the catch that looked like it covered it - so
+/// one bad expression fails the create or update of the whole resource. Each of those three tests is built
+/// from an expression chosen so that <c>Select</c> returns <em>without</em> throwing and the throw lands on
+/// enumeration - an expression that threw eagerly inside <c>Select</c> would satisfy every other assertion
 /// those tests make while the guarded <c>.ToList()</c> was deleted and the bug fully reintroduced.
 /// </para>
 /// <para>
-/// Not every test below exercises that hazard.
+/// The other three tests in that named range are not built on that hazard.
+/// <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheWriteSurvivesAndOtherParametersStillIndex"/>
+/// and <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheFailureIsLoggedAsExpectedNotUnexpected"/>
+/// both use a malformed <c>Timing.event</c> literal whose failure lives inside
+/// <c>TimingToDateTimeSearchValueConverter.ConvertTo</c> - a separate <c>yield</c> iterator downstream of
+/// <c>Select</c>, not the FHIRPath <c>where()</c> iterator itself, as the first test's own comment says.
+/// <see cref="GivenATimingWithAParseableEvent_WhenIndexed_ThenTheOccurrenceParameterStillIndexes"/> is the
+/// control for those two: its literal parses cleanly, so nothing throws anywhere and it exists only to prove
+/// containment comes from catching the failure, not from the occurrence parameter having quietly stopped
+/// producing entries.
+/// </para>
+/// <para>
+/// Not every test below exercises the laziness hazard either.
 /// <see cref="GivenACustomSearchParameterWhoseExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex"/>
 /// pins a different, unrelated property - the log tier a guard exception lands in (issue #428) - and its
 /// expression throws eagerly inside <c>Select</c> itself, so it provides no coverage of the #403 laziness

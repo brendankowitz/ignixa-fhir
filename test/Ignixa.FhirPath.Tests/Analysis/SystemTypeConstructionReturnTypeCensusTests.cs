@@ -47,9 +47,14 @@ namespace Ignixa.FhirPath.Tests.Analysis;
 /// </para>
 /// <para>
 /// Scope is <c>typeof(FunctionHelpers).Assembly</c>, the assembly that declares every
-/// <see cref="FhirPathFunctionAttribute"/> in the repository (verified: no other assembly declares one).
-/// This single-assembly census is sufficient today because <see cref="SymbolTable"/> is internal,
-/// so a second assembly cannot register functions anyway.
+/// <see cref="FhirPathFunctionAttribute"/> that is actually registered. Other assemblies, including this
+/// test assembly, can and do declare the attribute (see
+/// <c>ValueConstructionReturnTypeTests.ConstructionFixtures</c>), but it is inert there: the source
+/// generator that turns the attribute into a <see cref="SymbolTable"/> registration is referenced by
+/// <c>Ignixa.FhirPath</c> as a Roslyn analyzer, and analyzer references do not flow across a project
+/// reference, so a <see cref="FhirPathFunctionAttribute"/> declared outside <c>Ignixa.FhirPath</c> is never
+/// scanned. Single-assembly scope is therefore sufficient regardless of <see cref="SymbolTable"/>'s
+/// internal visibility.
 /// </para>
 /// </remarks>
 public class SystemTypeConstructionReturnTypeCensusTests
@@ -71,77 +76,85 @@ public class SystemTypeConstructionReturnTypeCensusTests
     /// <summary>
     /// Every distinct declared <c>ReturnType</c> keyword, keyed case-insensitively to match how
     /// <see cref="SystemTypeConstructionAnalyzer"/> itself compares it, with the verdict class a synthetic
-    /// function declaring it must produce and why.
+    /// function declaring it must produce, the exact System type name it must produce when that verdict is
+    /// <see cref="ConstructionVerdict.ConstructsSystemValue"/> (null otherwise), and why.
     /// </summary>
-    private static readonly IReadOnlyDictionary<string, (ConstructionVerdict Verdict, string Rationale)> Decisions =
-        new Dictionary<string, (ConstructionVerdict, string)>(StringComparer.OrdinalIgnoreCase)
+    /// <remarks>
+    /// <c>ExpectedTypeName</c> exists because <see cref="ConstructionVerdict"/> only records which of three
+    /// buckets a construction falls into, not which System type a <c>ConstructsSystemValue</c> row names.
+    /// Nine rows below all fall into that one bucket; without this field they would be interchangeable as
+    /// far as this census is concerned, and a keyword mapped to the wrong type name - "date" answering
+    /// "boolean", say - would pass silently as long as it still answered some named type.
+    /// </remarks>
+    private static readonly IReadOnlyDictionary<string, (ConstructionVerdict Verdict, string? ExpectedTypeName, string Rationale)> Decisions =
+        new Dictionary<string, (ConstructionVerdict, string?, string)>(StringComparer.OrdinalIgnoreCase)
         {
             ["boolean"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "boolean",
                 "GetSystemPrimitiveRuntimeTypeName maps BOOLEAN to \"boolean\"; declared by the is-type predicates and toBoolean()."),
             ["integer"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "integer",
                 "Maps INTEGER to \"integer\"; declared by toInteger(), length() and similar counting functions."),
             ["decimal"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "decimal",
                 "Maps DECIMAL to \"decimal\"; declared by toDecimal() and the arithmetic-adjacent conversions."),
             ["string"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "string",
                 "Maps STRING to \"string\"; declared by toString() and the string-producing conversions."),
             ["long"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "long",
                 "Maps LONG to \"long\"; declared by toLong()."),
             ["quantity"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "Quantity",
                 "Maps QUANTITY to \"Quantity\" regardless of the declared casing (\"quantity\" or \"Quantity\" both appear in the "
                 + "library and both upper-invariant to the same switch arm); declared by toQuantity()."),
             ["date"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "date",
                 "Maps DATE to \"date\"; declared by toDate()."),
             ["dateTime"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "dateTime",
                 "Maps DATETIME to \"dateTime\"; declared by toDateTime() and now()."),
             ["time"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "time",
                 "Maps TIME to \"time\"; declared by toTime()."),
             ["ClassInfo"] =
-                (ConstructionVerdict.FailsOpenByDesign,
+                (ConstructionVerdict.FailsOpenByDesign, null,
                 "Declared by type(). \"ClassInfo\" names a reflection concept the FHIR schema does not register, so "
                 + "IsKnownFhirType(\"ClassInfo\") is false and the fallthrough answers Any rather than guessing either namespace - "
                 + "the deliberate fail-open resolution documented on the four fallthrough cases."),
             ["Coding"] =
-                (ConstructionVerdict.ConstructsNoSystemValue,
+                (ConstructionVerdict.ConstructsNoSystemValue, null,
                 "Declared by translate(). \"Coding\" is a real FHIR complex type the schema registers, so IsKnownFhirType(\"Coding\") "
                 + "is true and the fallthrough answers None: a navigated/constructed FHIR value, not a System one."),
             ["Extension"] =
-                (ConstructionVerdict.ConstructsNoSystemValue,
+                (ConstructionVerdict.ConstructsNoSystemValue, null,
                 "Declared by extension(). \"Extension\" is a registered FHIR type, so the fallthrough answers None for the same "
                 + "reason as Coding."),
             ["Resource"] =
-                (ConstructionVerdict.ConstructsNoSystemValue,
+                (ConstructionVerdict.ConstructsNoSystemValue, null,
                 "Declared by resolve(). \"Resource\" is a registered FHIR type, so the fallthrough answers None for the same reason "
                 + "as Coding."),
             ["context"] =
-                (ConstructionVerdict.ConstructsNoSystemValue,
+                (ConstructionVerdict.ConstructsNoSystemValue, null,
                 "Declared by selectors such as where() and first(). \"context\" inherits whatever the focus already constructs; "
                 + "probed here with a focus that is a known root property access, which AnalyzePropertyAccess classifies as None, "
                 + "so the selector must pass that None through unchanged rather than guessing."),
             ["constructsFromContext"] =
-                (ConstructionVerdict.FailsOpenByDesign,
+                (ConstructionVerdict.FailsOpenByDesign, null,
                 "Declared by abs(), round() and sum(). Builds a new value out of a non-empty focus; naming the constructed type "
                 + "would mean mirroring the evaluator's per-function result matrix, so this is a deliberate over-approximation to "
                 + "Any rather than an unnamed System guess, documented on AnalyzeConstructionFromContext."),
             ["boundaryOfContext"] =
-                (ConstructionVerdict.FailsOpenByDesign,
+                (ConstructionVerdict.FailsOpenByDesign, null,
                 "Declared by lowBoundary() and highBoundary(). Routes through the same AnalyzeConstructionFromContext as "
                 + "constructsFromContext and is Any for the same reason: naming the boundary type here would require mirroring "
                 + "the evaluator's boundary matrix."),
             ["fromArgument"] =
-                (ConstructionVerdict.ConstructsSystemValue,
+                (ConstructionVerdict.ConstructsSystemValue, "integer",
                 "Declared by select() and iif(). For a non-iif function the result is the union of its arguments' own "
                 + "constructions; probed with a single System-integer-constructing argument, so the union is that named type."),
             ["any"] =
-                (ConstructionVerdict.FailsOpenByDesign,
+                (ConstructionVerdict.FailsOpenByDesign, null,
                 "Declared by children(), descendants(), repeat() and repeatAll(). \"No specific return type inference\" - the "
                 + "analyzer answers Any unconditionally, independent of focus or arguments, by design. repeat()/repeatAll() "
                 + "moved here from \"context\" in #423: they return the projection, never the focus, so inheriting the focus's "
@@ -182,14 +195,30 @@ public class SystemTypeConstructionReturnTypeCensusTests
         var mismatches = new List<string>();
 
         // Act
-        foreach (var (returnType, (expectedVerdict, rationale)) in Decisions)
+        foreach (var (returnType, (expectedVerdict, expectedTypeName, rationale)) in Decisions)
         {
-            var actualVerdict = ClassifyVerdict(AnalyzeProbeFunction(returnType));
+            var construction = AnalyzeProbeFunction(returnType);
+            var actualVerdict = ClassifyVerdict(construction);
             if (actualVerdict != expectedVerdict)
             {
                 mismatches.Add(
                     $"ReturnType \"{returnType}\" is recorded as {expectedVerdict} ({rationale}) but "
                     + $"SystemTypeConstructionAnalyzer.Analyze answered {actualVerdict} for a probe function declaring it.");
+                continue;
+            }
+
+            if (expectedVerdict != ConstructionVerdict.ConstructsSystemValue)
+            {
+                continue;
+            }
+
+            var actualTypeNames = string.Join(", ", construction.TypeNames.OrderBy(name => name, StringComparer.Ordinal));
+            if (construction.TypeNames.Count != 1 || !construction.TypeNames.Contains(expectedTypeName!))
+            {
+                mismatches.Add(
+                    $"ReturnType \"{returnType}\" is recorded as constructing System type \"{expectedTypeName}\" ({rationale}) but "
+                    + $"SystemTypeConstructionAnalyzer.Analyze answered TypeNames = [{actualTypeNames}] for a probe function "
+                    + "declaring it.");
             }
         }
 
