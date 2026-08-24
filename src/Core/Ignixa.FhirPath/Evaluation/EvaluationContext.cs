@@ -462,7 +462,7 @@ public record EvaluationContext
 
             // Not-supported environment variables that require external services
             case "terminologies":
-                throw new NotSupportedException("Environment variable '%terminologies' is not supported. It requires terminology service integration.");
+                throw new FhirPathFunctionNotSupportedException("%terminologies", "Environment variable '%terminologies' is not supported. It requires terminology service integration.");
         }
 
         if (Variables.TryResolve(name, out var definedValue))

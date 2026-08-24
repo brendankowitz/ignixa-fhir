@@ -197,11 +197,49 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// </summary>
     public static string ProjectRoot => _projectRoot;
 
-    // Functions that throw NotImplementedException at runtime - tests are run but expected to fail
-    // These functions are explicitly defined to throw for proper test tracking.
-    // Type introspection: conformsTo()
-    // Terminology services: %terminologies.expand, validateVS(), translate(), memberOf()
-    // CDA-specific: hasTemplateIdOf()
+    /// <summary>
+    /// The FHIR-specific features this engine deliberately does not implement, keyed by the
+    /// <see cref="FhirPathFunctionNotSupportedException.FeatureName"/> the engine reports, with the
+    /// reason each one is a choice rather than a gap.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This list is what makes the type marker discriminating. Catching
+    /// <see cref="FhirPathFunctionNotSupportedException"/> alone would still be scoping by exception type,
+    /// which is the defect being fixed here in a narrower form: a seventh feature could start throwing the
+    /// marker and be recorded as deliberate without anyone having decided it was. A marker whose name is
+    /// not listed here fails the case, exactly as a bare <see cref="NotSupportedException"/> now does.
+    /// </para>
+    /// <para>
+    /// None of these appears in any shipped SearchParameter expression in any supported version, so they
+    /// gate the conformance claim rather than resource indexing. Each is a recorded skip, never a pass:
+    /// "the suite exercised a feature we chose not to build" and "the engine computed the right answer"
+    /// are different results, and a published count has to be able to say which.
+    /// </para>
+    /// <para>
+    /// The list retires itself through
+    /// <see cref="OfficialTestSuiteSkipListTests.GivenTheDeliberatelyUnsupportedFeatures_WhenEachIsInvoked_ThenTheEngineStillRefusesByName"/>,
+    /// which invokes every listed feature and fails if one no longer throws. Implementing
+    /// <c>conformsTo</c> therefore turns that guard red and forces its entry out, rather than leaving an
+    /// allowlist entry that quietly catches nothing - the staleness
+    /// <see cref="AssertDeferralIsStillNeeded"/> exists to prevent on the other list.
+    /// </para>
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> _deliberatelyUnsupportedFeatures = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["conformsTo"] = "profile validation infrastructure is out of scope for the FHIRPath engine; it belongs to Ignixa.Validation",
+        ["memberOf"] = "requires a terminology server, which this engine deliberately does not depend on",
+        ["validateVS"] = "requires a terminology server, which this engine deliberately does not depend on",
+        ["translate"] = "requires a terminology server and ConceptMap resolution, which this engine deliberately does not depend on",
+        ["hasTemplateIdOf"] = "CDA support is out of scope for a FHIR server, consistent with the suite's cda-mode exclusion",
+        ["%terminologies"] = "requires a terminology server, which this engine deliberately does not depend on",
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The deliberately unsupported feature names with their justifications, exposed so
+    /// <see cref="OfficialTestSuiteSkipListTests"/> can prove each one is still refused by the engine.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> DeliberatelyUnsupportedFeatures => _deliberatelyUnsupportedFeatures;
 
     // Default patient resource for tests without input files (matches Firely validator behavior)
     private const string DefaultPatientXml = "<Patient xmlns=\"http://hl7.org/fhir\"><id value=\"pat1\"/></Patient>";
@@ -249,15 +287,63 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
                 archivePath);
         }
 
-        using var archive = File.OpenRead(archivePath);
-        var actualHash = Convert.ToHexString(SHA256.HashData(archive));
-        if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+        using (var archive = File.OpenRead(archivePath))
         {
-            throw new InvalidDataException(
-                $"FHIR test cases archive hash mismatch. Expected {expectedHash}, got {actualHash}. Delete TestData and rebuild.");
+            var actualHash = Convert.ToHexString(SHA256.HashData(archive));
+            if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"FHIR test cases archive hash mismatch. Expected {expectedHash}, got {actualHash}. Delete TestData and rebuild.");
+            }
         }
 
+        VerifySuiteFileHashes(expectedVersion);
         return true;
+    }
+
+    /// <summary>
+    /// The SHA-256 of each per-version suite file as extracted from fhir-test-cases 1.7.46, so a
+    /// conformance claim names the corpus it was measured against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The archive hash above pins what was downloaded. These pin what is actually parsed, which is not
+    /// the same claim: <c>TestData/</c> is gitignored, so the extracted tree is unversioned local state
+    /// that a hand edit, a partial extraction, or a half-finished corpus bump can change without touching
+    /// <c>testcases.zip</c> or the <c>.downloaded</c> marker. Editing an expected output in one of these
+    /// files would move the pass count with nothing to say so.
+    /// </para>
+    /// <para>
+    /// Bytes, not parsed content: extraction does no newline translation, so these are stable across
+    /// machines, and a diff in either direction should be a deliberate corpus bump that updates
+    /// <c>FhirTestCasesVersion</c>, the archive hash, and these three values together.
+    /// </para>
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> _suiteFileHashes = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["r4"] = "BE78B5237322AB0EEFC628676A28FC503F67AFF2524CAF60F8FF5A7ABAE0E570",
+        ["r4b"] = "F812D45BCABB7D90C1BAF9CBF7FC461C7E832BB6AC73A290BB0C12740956F4F3",
+        ["r5"] = "74DF53B7671C2C2B9E5100816BF2A70409F7AD00C0927AC6422C9BEC3B3AA366",
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    private static void VerifySuiteFileHashes(string expectedVersion)
+    {
+        foreach (var (version, expectedHash) in _suiteFileHashes)
+        {
+            var suitePath = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", version, "fhirpath", $"tests-fhir-{version}.xml");
+            if (!File.Exists(suitePath))
+            {
+                throw new FileNotFoundException($"FHIR test suite file is missing: {suitePath}. Delete TestData and rebuild to download fhir-test-cases {expectedVersion}.", suitePath);
+            }
+
+            using var suiteFile = File.OpenRead(suitePath);
+            var actualHash = Convert.ToHexString(SHA256.HashData(suiteFile));
+            if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"FHIR test suite file hash mismatch for {version}. Expected {expectedHash}, got {actualHash} at {suitePath}. The extracted corpus no longer matches fhir-test-cases {expectedVersion}; delete TestData and rebuild, or update the pin deliberately.");
+            }
+        }
     }
 
     private static string GetFhirTestCasesMetadata(string key) =>
@@ -474,11 +560,9 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         {
             resultList = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
         }
-        catch (NotSupportedException ex)
+        catch (FhirPathFunctionNotSupportedException ex) when (_deliberatelyUnsupportedFeatures.ContainsKey(ex.FeatureName))
         {
-            // NotSupportedException is expected for unsupported functions (conformsTo, memberOf, etc.)
-            // Log and pass - these are known unsupported features, not bugs
-            _output.WriteLine($"[NOT SUPPORTED] {testCase.Name}: {ex.Message}");
+            SkipDeliberatelyUnsupportedFeature(testCase, ex);
             return;
         }
         catch (Exception ex)
@@ -549,6 +633,11 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         {
             // Force evaluation by iterating results - the evaluator is lazy
             results = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
+        }
+        catch (FhirPathFunctionNotSupportedException ex) when (_deliberatelyUnsupportedFeatures.ContainsKey(ex.FeatureName))
+        {
+            SkipDeliberatelyUnsupportedFeature(testCase, ex);
+            return;
         }
         catch (Exception ex) when (IsEngineSignalledError(ex))
         {
@@ -661,11 +750,35 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     };
 
     /// <summary>
-    /// Distinguishes an error signalled by the FHIRPath engine from an assertion raised by this harness.
+    /// Distinguishes an error signalled by the FHIRPath engine from an assertion raised by this harness,
+    /// and from a feature this engine chose not to build.
+    /// </summary>
+    /// <remarks>
+    /// <para>
     /// xunit assertion failures (<see cref="XunitException"/>, including <c>Assert.Fail</c>'s
     /// <c>FailException</c>) must never be mistaken for the engine reporting an invalid expression.
+    /// </para>
+    /// <para>
+    /// <see cref="FhirPathFunctionNotSupportedException"/> is excluded for the same reason pointing the
+    /// other way. <c>testConformsTo3</c> is marked <c>invalid</c> and expects
+    /// <c>conformsTo('http://trash')</c> to be refused for naming a profile that does not exist; this
+    /// engine refuses it for not implementing <c>conformsTo</c> at all. Both throw, so the case passed -
+    /// on an error it was not testing for. Erroring for the wrong reason is not conformance, so these
+    /// route to a recorded skip instead.
+    /// </para>
+    /// </remarks>
+    private static bool IsEngineSignalledError(Exception exception) =>
+        exception is not XunitException and not FhirPathFunctionNotSupportedException;
+
+    /// <summary>
+    /// Records a case the suite exercises through a feature this engine deliberately does not implement.
     /// </summary>
-    private static bool IsEngineSignalledError(Exception exception) => exception is not XunitException;
+    /// <remarks>
+    /// The feature name is repeated into the reason rather than left implicit in the exception message,
+    /// because the name is what the allowlist matched on and what a reader has to check the entry against.
+    /// </remarks>
+    private void SkipDeliberatelyUnsupportedFeature(FhirPathTestCase testCase, FhirPathFunctionNotSupportedException exception) =>
+        SkipTest($"{testCase.Name}: '{exception.FeatureName}' is deliberately not implemented - {_deliberatelyUnsupportedFeatures[exception.FeatureName]} [{exception.Message}]");
 
     /// <summary>
     /// Records that this test case is deliberately not asserted, with the reason, and stops the test.
