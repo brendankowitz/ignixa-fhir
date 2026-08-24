@@ -198,11 +198,21 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     public static string ProjectRoot => _projectRoot;
 
     /// <summary>
-    /// The FHIR-specific features this engine deliberately does not implement, keyed by the
+    /// The deliberately unimplemented FHIR-specific features that report a
+    /// <see cref="FhirPathFunctionNotSupportedException"/>, keyed by the
     /// <see cref="FhirPathFunctionNotSupportedException.FeatureName"/> the engine reports, with the
     /// reason each one is a choice rather than a gap.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// Not an inventory of everything this engine chose not to build. <c>htmlChecks</c>,
+    /// <c>subsumes</c> and <c>subsumedBy</c> are also deliberate omissions, but they carry no
+    /// <c>[FhirPathFunction]</c> registration at all, so they fall through the generated dispatcher's
+    /// default arm as a bare <see cref="NotSupportedException"/> and this runner reports them as engine
+    /// gaps. That is the safe direction and no current case reaches them, but a corpus bump that adds
+    /// one would produce a red suite with a misleading cause; the fix then is to give those three a
+    /// marker and list them here, not to widen the catch.
+    /// </para>
     /// <para>
     /// This list is what makes the type marker discriminating. Catching
     /// <see cref="FhirPathFunctionNotSupportedException"/> alone would still be scoping by exception type,
@@ -711,10 +721,21 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// engine now signals, so closing a gap forces the list entry to be removed.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Deliberately re-runs the evaluator only, not <see cref="DescribeAnalyzerRejection"/>. Every remaining
     /// entry is deferred on an evaluator gap, and a gap closed in the analyzer instead has to be retired by
     /// hand - checking both here would fail the entries currently being worked on in parallel rather than
     /// reporting on the one that was fixed.
+    /// </para>
+    /// <para>
+    /// The marker branch mirrors the one in <see cref="ExecuteTestCase"/> and
+    /// <see cref="RunInvalidExpressionTest"/>, and exists because <see cref="IsEngineSignalledError"/>
+    /// now excludes the marker by type: without it, a deferred case whose expression happens to use an
+    /// allowlisted feature would escape the filter as a raw exception and fail rather than skip. Such a
+    /// case reports as a feature skip and its staleness goes unchecked, which is not a loss - an
+    /// expression the engine refuses to evaluate cannot demonstrate whether the deferred gap has closed
+    /// either way. Unreachable today: <see cref="_unsignalledInvalidCases"/> is empty by design.
+    /// </para>
     /// </remarks>
     private void AssertDeferralIsStillNeeded(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider, string deferralReason)
     {
@@ -723,6 +744,11 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             var expression = _parser.Parse(testCase.Expression);
 
             _ = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
+        }
+        catch (FhirPathFunctionNotSupportedException ex) when (_deliberatelyUnsupportedFeatures.ContainsKey(ex.FeatureName))
+        {
+            SkipDeliberatelyUnsupportedFeature(testCase, ex);
+            return;
         }
         catch (Exception ex) when (IsEngineSignalledError(ex))
         {

@@ -406,7 +406,7 @@ Order matters: no number gets re-stated until the instrument that produces it di
 **E1 — `OfficialTestSuiteRunner` `NotSupportedException`-as-PASS. RUNNER FIXED AND FALSIFIED; RE-BASELINE STILL OUTSTANDING.**
 `test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:477-482`: `catch (NotSupportedException)` → log + `return` → xunit
 Passed. The catch is scoped by exception *type*; `src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:322` ("Binary operator not
-yet implemented") and `:1250` ("Scope not yet implemented") throw the same type, so deleting a
+yet implemented") and `:1268` ("Scope not yet implemented") throw the same type, so deleting a
 binary-operator arm turns every conformance case using that operator green. *Fix:* replace with a
 name-allowlisted genuine skip (the runner already has a real dynamic-skip mechanism —
 `test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:674` region — use it): only the five terminology/profile/CDA functions
@@ -433,17 +433,37 @@ fails the 27 affected cases (nine `testBooleanLogicXOr*` cases × three versions
 `System.NotSupportedException : Binary operator 'xor' is not yet implemented`. The arm was restored
 and the suite re-run green.
 
-*Two of the three unintended throw sites turned out to be unreachable, not laundered.*
-`FhirPathEvaluator.cs:1268` (`Scope '$name' is not yet implemented`) cannot be reached from any
-parseable expression: `FhirPathTokenizer` matches only `\$(this|index|total)\b`, so an unknown `$name`
-fails tokenization long before evaluation. `ParseTree/ParseNode.cs:219`
-(`ElementAssignmentParseNode is not directly visitable`) cannot be reached either: `IParseTreeVisitor`
-has no `VisitElementAssignment` and `AstBuilder.VisitInstanceSelector` reads `node.Elements` directly
-rather than calling `Accept`. Both are dead defensive code. `:219` was still reclassified to
+*Two of the three unintended throw sites are unreachable while the engine is complete — but not for
+the reason first recorded here.* `FhirPathEvaluator.cs:1268` (`Scope '$name' is not yet implemented`)
+is **not** unreachable because the tokenizer restricts `$name`. It does — `FhirPathTokenizer.cs:86`
+matches only `\$(this|index|total)\b`, and `$unsupportedScope` dies at tokenization — but the tokenizer
+is not the only producer of a `ScopeParseNode`. `FhirPathParseTreeGrammar.cs:200` synthesises
+`new ScopeParseNode("that", default)` as the focus of *every* head-position function call, and
+`AstBuilder.VisitFunctionCall` visits it. The arm is unreachable only because `case "that":` exists at
+`FhirPathEvaluator.cs:1245` — four names are handled, three of which the tokenizer can spell. Measured:
+deleting `case "that":` turns 56 R4 cases red with
+`System.NotSupportedException : Scope '$that' is not yet implemented`, which is a second reachable
+bare-`NotSupportedException` site and a second demonstration that the fixed runner fails on one.
+
+`ParseTree/ParseNode.cs:219` (`ElementAssignmentParseNode is not directly visitable`) is genuinely
+unreachable: `IParseTreeVisitor` has no `VisitElementAssignment` and `AstBuilder.VisitInstanceSelector`
+reads `node.Elements` directly rather than calling `Accept`. It was still reclassified to
 `InvalidOperationException`, because it guards a broken invariant and `NotSupportedException` reads as
 a documented capability limit — which is exactly how it would have been reported. `:322` and `:1268`
 stay bare `NotSupportedException` deliberately: the runner is now required to fail on that type, so an
 unimplemented feature stays loud.
+
+*A third bare-`NotSupportedException` site is reachable from any parseable expression, and is what the
+permanent guard uses.* `FhirPathFunctionGenerator.cs:415` emits the generated dispatcher's default arm,
+so any unregistered function name — `Patient.notARealFunctionAtAll()` — throws
+`NotSupportedException` with no engine mutation and no test seam. It is live in production:
+`htmlChecks()` reaches it on every supported version through `txt-1`/`txt-2`, which is why
+`FhirPathInvariantCheck.cs:248` names that function first in its own catch. This is what makes the
+discriminator falsifiable by CI rather than by hand: `GivenAnUnregisteredFunction_...ThenTheCaseFails`
+and `GivenAnAllowlistedFeature_...ThenTheCaseSkips` drive the runner through its public
+`OfficialTestSuite_R4` entry point and pin both edges. Verified by mutation in both directions —
+re-broadening the catch to `catch (NotSupportedException)` turns both red; dropping `memberOf` from the
+allowlist turns the skip guard red on its own while the failure guard stays green.
 
 *Newly red from the fix itself: zero.* Twelve cases moved from Passed to Skipped (`conformsTo` and
 `%terminologies` cases, plus `testConformsTo3`, which is `invalid`-marked and was passing because the
@@ -525,7 +545,7 @@ passed / failed / skipped-with-recorded-reason / excluded-by-scope. The current
 "2,900 runnable / 2,887 asserted / 9 pass-throughs / 4 skipped" is not a baseline — it was
 produced by a runner that converts unimplemented functionality into green. The unknown quantity is
 **cases newly red once laundering stops**: `NotSupportedException` from
-`src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:322/:1250` may be propping up currently-green cases. Quantify before sizing:
+`src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:322/:1268` may be propping up currently-green cases. Quantify before sizing:
 if the newly-red set is empty beyond the known 9, this section is a cleanup; if operators or
 scopes surface, it is implementation work and gets sized then — do not pre-commit effort to an
 unmeasured set.

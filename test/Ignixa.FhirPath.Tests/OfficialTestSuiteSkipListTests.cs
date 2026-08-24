@@ -9,6 +9,7 @@
  * catch nothing while still reading as a deliberate exclusion.
  */
 
+using System.Collections.Frozen;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
@@ -82,7 +83,7 @@ public class OfficialTestSuiteSkipListTests
     /// An allowlist entry with no probe would be an entry nothing ever exercises, which is the same
     /// unfalsifiable shape the allowlist exists to remove.
     /// </remarks>
-    private static readonly Dictionary<string, string> _featureProbes = new(StringComparer.Ordinal)
+    private static readonly FrozenDictionary<string, string> _featureProbes = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["conformsTo"] = "conformsTo('http://hl7.org/fhir/StructureDefinition/Patient')",
         ["memberOf"] = "Patient.gender.memberOf('http://hl7.org/fhir/ValueSet/administrative-gender')",
@@ -90,7 +91,7 @@ public class OfficialTestSuiteSkipListTests
         ["translate"] = "Patient.gender.translate('http://hl7.org/fhir/ConceptMap/cm-administrative-gender-v2', true)",
         ["hasTemplateIdOf"] = "hasTemplateIdOf('http://hl7.org/cda/us/ccda/StructureDefinition/ContinuityofCareDocumentCCD')",
         ["%terminologies"] = "%terminologies.expand('http://hl7.org/fhir/ValueSet/administrative-gender')",
-    };
+    }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>
     /// Invokes every deliberately unsupported feature and fails if the engine no longer refuses it by name.
@@ -163,6 +164,89 @@ public class OfficialTestSuiteSkipListTests
         features.ShouldAllBe(entry => !string.IsNullOrWhiteSpace(entry.Value));
         features.ShouldAllBe(entry => entry.Value.Length > 40);
     }
+
+    /// <summary>
+    /// Drives the runner with an expression whose function does not exist, and fails unless the case is
+    /// reported as a failure.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the guard for the defect itself, and it pins the edge the allowlist guard above does not:
+    /// that a <see cref="NotSupportedException"/> carrying no marker still fails. Re-broadening the catch
+    /// in <see cref="OfficialTestSuiteRunner"/> back to <c>catch (NotSupportedException)</c> turns this
+    /// red, which is what the hand-run "delete a binary-operator switch arm" mutation demonstrated once
+    /// and could not keep demonstrating.
+    /// </para>
+    /// <para>
+    /// The probe reaches a real production throw site with no engine mutation and no test seam.
+    /// <c>FhirPathFunctionGenerator</c> emits the generated dispatcher's default arm as
+    /// <c>_ =&gt; throw new NotSupportedException($"Function '{functionName}' is not yet implemented")</c>,
+    /// so any unregistered function name lands there. It is not a hypothetical path: <c>htmlChecks()</c>
+    /// reaches it on every supported version through <c>txt-1</c>/<c>txt-2</c>, which is why
+    /// <c>FhirPathInvariantCheck</c> names that function first in its own catch.
+    /// </para>
+    /// <para>
+    /// Both assertions matter and they fail for different regressions. A <see langword="null"/> exception
+    /// means the runner swallowed the throw and recorded a pass - the original defect. A
+    /// <c>SkipException</c> means it recorded a skip, which would be the same laundering wearing an
+    /// honest label: an engine gap accounted for as a deliberate exclusion.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GivenAnUnregisteredFunction_WhenRunThroughTheOfficialSuiteRunner_ThenTheCaseFails()
+    {
+        // Arrange
+        var runner = new OfficialTestSuiteRunner(new NullTestOutputHelper());
+        var testCase = ProbeCase("probeUnregisteredFunction", "Patient.notARealFunctionAtAll()");
+
+        // Act
+        var thrown = Record.Exception(() => runner.OfficialTestSuite_R4(testCase));
+
+        // Assert
+        thrown.ShouldNotBeNull("An unregistered function threw NotSupportedException and the runner recorded a pass. That is the defect this runner was fixed for: the catch is scoped by exception type again.");
+        thrown.ShouldNotBeOfType<Xunit.SkipException>();
+        thrown.InnerException.ShouldNotBeNull().GetType().ShouldBe(typeof(NotSupportedException));
+    }
+
+    /// <summary>
+    /// Drives the runner with an allowlisted feature and fails unless the case is reported as a skip.
+    /// </summary>
+    /// <remarks>
+    /// The mirror of the guard above, and the reason it cannot be satisfied by simply failing everything.
+    /// Together the two pin both edges of the discriminator: a marker naming a listed feature skips, and
+    /// anything else fails. Either one alone is satisfiable by a runner that has stopped discriminating.
+    /// </remarks>
+    [Fact]
+    public void GivenAnAllowlistedFeature_WhenRunThroughTheOfficialSuiteRunner_ThenTheCaseSkips()
+    {
+        // Arrange
+        var runner = new OfficialTestSuiteRunner(new NullTestOutputHelper());
+        var testCase = ProbeCase("probeAllowlistedFeature", "Patient.gender.memberOf('http://hl7.org/fhir/ValueSet/administrative-gender')");
+
+        // Act
+        var thrown = Record.Exception(() => runner.OfficialTestSuite_R4(testCase));
+
+        // Assert
+        var skip = thrown.ShouldBeOfType<Xunit.SkipException>();
+        skip.Message.ShouldContain("memberOf");
+    }
+
+    /// <summary>
+    /// A minimal non-invalid, non-predicate case with no input file, so the runner uses its default
+    /// patient and reaches evaluation without any corpus dependency.
+    /// </summary>
+    private static FhirPathTestCase ProbeCase(string name, string expression) => new(
+        Name: name,
+        GroupName: "runner-discrimination-probes",
+        Expression: expression,
+        InputFile: null,
+        ExpectedOutputs: [new ExpectedOutput("boolean", "true")],
+        IsInvalidTest: false,
+        InvalidType: null,
+        Ordered: true,
+        Predicate: false,
+        Description: null,
+        Mode: null);
 
     /// <summary>
     /// Evaluates a probe and returns whatever it threw, or <see langword="null"/> when it produced a
