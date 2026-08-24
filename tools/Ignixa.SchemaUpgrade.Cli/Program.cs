@@ -38,7 +38,24 @@ internal static class Program
                 AllowIncompatiblePlatform: parseResult.GetValue(allowIncompatiblePlatformOption),
                 ConfigPath: parseResult.GetValue(configOption) ?? "appsettings.json");
 
-            return await RunAsync(options, Console.In, Console.Out, cancellationToken);
+            try
+            {
+                return await RunAsync(options, Console.In, Console.Out, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Exit code 3 is deliberately distinct from exit code 1 ("the operator declined
+                // the confirmation prompt; nothing was applied"): without this boundary catch,
+                // System.CommandLine's default exception handler also returns 1 for any unhandled
+                // exception, so a scripted caller branching on --confirm's exit code could not
+                // tell "declined" from "crashed before doing anything" apart. This is exactly the
+                // failure mode for an unknown/inactive tenant, a non-SQL-Server or misconfigured
+                // storage type, an unparseable connection string, a missing --config file, or a
+                // missing embedded schema dacpac -- see TenantConnectionStringResolver.ResolveAsync
+                // and RunAsync's AddJsonFile/GetManifestResourceStream calls.
+                Console.Error.WriteLine($"Error: {ex.Message}");
+                return 3;
+            }
         });
 
         return rootCommand;

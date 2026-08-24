@@ -94,4 +94,50 @@ public class RunAsyncConfigLoadTests
             Directory.Delete(tempDir.FullName, recursive: true);
         }
     }
+
+    // Pins Program.cs's SetAction boundary catch: an unknown tenant makes RunAsync throw
+    // InvalidOperationException (proven above), but System.CommandLine's default exception
+    // handler would otherwise report that the same way as exit code 1 ("the operator declined
+    // the confirmation prompt; nothing was applied"). Driving through CreateRootCommand/InvokeAsync
+    // (not RunAsync directly, unlike the tests above) is what actually exercises that catch.
+    // Deliberately does NOT redirect Console.Out/Console.Error: those are process-wide statics,
+    // and RootCommandHelpTests (a different class, so a different, concurrently-running xUnit
+    // collection by default) already redirects Console.Out -- swapping it here too raced with
+    // that test and made it observe the wrong writer.
+    [Fact]
+    public async Task GivenAnUnknownTenantId_WhenInvokedThroughMain_ThenReturnsExitCode3NotExitCode1()
+    {
+        var tempDir = Directory.CreateTempSubdirectory("schema-upgrade-cli-exit-code-test-");
+        try
+        {
+            var configPath = Path.Combine(tempDir.FullName, "test-appsettings.json");
+            await File.WriteAllTextAsync(configPath, MinimalAppSettingsJson);
+
+            var exitCode = await Program.CreateRootCommand()
+                .Parse(["--tenant-id", "999", "--confirm", "--config", configPath])
+                .InvokeAsync();
+
+            exitCode.ShouldBe(3);
+        }
+        finally
+        {
+            Directory.Delete(tempDir.FullName, recursive: true);
+        }
+    }
+
+    // Same boundary catch, different uncaught path: AddJsonFile(configPath, optional: false)
+    // throws when --config does not resolve, before any tenant is even looked up. Proves the
+    // catch is generic (System.IO's FileNotFoundException here, InvalidOperationException above),
+    // not coincidentally tied to TenantConnectionStringResolver's exception type.
+    [Fact]
+    public async Task GivenAMissingConfigFile_WhenInvokedThroughMain_ThenReturnsExitCode3NotExitCode1()
+    {
+        var missingConfigPath = Path.Combine(Path.GetTempPath(), $"schema-upgrade-cli-missing-{Guid.NewGuid()}.json");
+
+        var exitCode = await Program.CreateRootCommand()
+            .Parse(["--tenant-id", "1", "--confirm", "--config", missingConfigPath])
+            .InvokeAsync();
+
+        exitCode.ShouldBe(3);
+    }
 }
