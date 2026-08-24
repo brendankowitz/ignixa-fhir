@@ -679,15 +679,13 @@ public class SqlOnFhirEvaluatorTests
     [Fact]
     public void GivenAVariableWithNoMatchingConstant_WhenReferenced_ThenTheViewDefinitionIsRejected()
     {
-        // This is what makes the inheritance above a complete fix rather than a partial one. A caller
-        // cannot supply a variable the ViewDefinition has not declared: the parser rejects any %name
-        // that is neither a declared constant nor one of the predefined variables, before evaluation
-        // and regardless of what the caller passes. So every variable that can reach the evaluator has
-        // a constant to inherit its type from, and the untyped path is unreachable rather than merely
-        // undocumented.
+        // The parser rejects any %name that is neither a declared constant nor one of the predefined
+        // variables, before evaluation and regardless of what the caller passes.
         //
-        // Without this, "variables are string-to-string so they cannot be typed" looks like a gap that
-        // needs the public API widened. It is not one.
+        // This test says nothing about the predefined names, and an earlier comment here wrongly
+        // generalised from it to all names - claiming the untyped path was unreachable. "cutoff" is
+        // simply not on the exemption list. The GivenAPredefinedVariableName_* tests below cover the
+        // names that are, which is where the generalisation actually had to be checked.
         var patientJson = new Dictionary<string, object?>
         {
             { "resourceType", "Patient" },
@@ -713,6 +711,117 @@ public class SqlOnFhirEvaluatorTests
 
         var cause = Assert.IsType<InvalidOperationException>(thrown.InnerException);
         Assert.Contains("undefined constant '%cutoff'", cause.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("ucum", "http://unitsofmeasure.org")]
+    [InlineData("sct", "http://snomed.info/sct")]
+    [InlineData("loinc", "http://loinc.org")]
+    public void GivenAPredefinedVariableName_WhenOverriddenWithNoDeclaredConstant_ThenItBindsAsAString(
+        string predefinedName, string defaultUri)
+    {
+        // The three names that genuinely reach the variable loop with no constant to inherit from.
+        // ValidateConstantReferences exempts context, resource, rootResource, ucum, sct, loinc, rowIndex
+        // and the vs- prefix - but of those only these three arrive here untyped: the first three are
+        // answered by TryGetEnvironmentVariable's switch before it consults caller variables, rowIndex
+        // is re-injected afterwards and wins, and %vs-x never parses as a variable reference at all.
+        //
+        // System.String is the right answer for them, not a gap. FHIRPath defines %ucum, %sct and
+        // %loinc as fixed URIs, so a caller-supplied string is already correctly typed - and the engine
+        // documents the override as a deliberate feature. The row below proves the override takes
+        // effect and that the default is a string too, so nothing is being silently retyped.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-predef" },
+            { "birthDate", "1980-06-15" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        string View(string filter) => $$"""
+            {
+              "resource": "Patient",
+              "constant": [{ "name": "unrelated", "valueString": "x" }],
+              "where": [{ "path": "{{filter}}" }],
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var defaultNode = JsonNodeSourceNode.Create(
+            JsonNode.Parse(View($"%{predefinedName} = '{defaultUri}'"))!, "ViewDefinition");
+        var overriddenNode = JsonNodeSourceNode.Create(
+            JsonNode.Parse(View($"%{predefinedName} = 'OVERRIDDEN'"))!, "ViewDefinition");
+
+        Assert.Single(_evaluator.Evaluate(defaultNode, resource).ToList());
+        Assert.Single(_evaluator
+            .Evaluate(overriddenNode, resource,
+                new Dictionary<string, string> { [predefinedName] = "OVERRIDDEN" })
+            .ToList());
+    }
+
+    [Fact]
+    public void GivenAPredefinedVariableName_WhenOrderedAgainstADate_ThenTheStringTypeErrorIsCorrect()
+    {
+        // The case the previous round's comment wrongly claimed could not happen. It can, and the throw
+        // is the right outcome rather than a defect to fix: %ucum is a URI slot, so putting a date in it
+        // and ordering a date against it is a genuine type mismatch. Fixing this by re-inferring the
+        // type from the value's shape is exactly the defect this branch removed.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-predef" },
+            { "birthDate", "1980-06-15" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "constant": [{ "name": "unrelated", "valueString": "x" }],
+              "where": [{ "path": "birthDate < %ucum" }],
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var thrown = Assert.Throws<FhirPathEvaluationException>(
+            () => _evaluator
+                .Evaluate(sourceNode, resource, new Dictionary<string, string> { ["ucum"] = "1990-01-01" })
+                .ToList());
+
+        var cause = Assert.IsType<FhirPathEvaluationException>(thrown.InnerException);
+        Assert.Contains("Cannot compare 'date' with 'string'", cause.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenAPredefinedVariableNameDeclaredAsAConstant_WhenOverridden_ThenItInheritsTheDeclaredType()
+    {
+        // The escape hatch, and the reason the string-to-string signature does not need widening. A
+        // caller who wants a typed value under a predefined name declares a constant of that name with
+        // the right value[x]; the inheritance rule then types the override. Exempt from the
+        // must-be-declared check is not the same as forbidden from being declared.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-predef" },
+            { "birthDate", "1980-06-15" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "constant": [{ "name": "ucum", "valueDate": "1900-01-01" }],
+              "where": [{ "path": "birthDate < %ucum" }],
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        // The declared default excludes the patient; the override includes them, ordered as a date.
+        Assert.Empty(_evaluator.Evaluate(sourceNode, resource).ToList());
+        Assert.Single(_evaluator
+            .Evaluate(sourceNode, resource, new Dictionary<string, string> { ["ucum"] = "1990-01-01" })
+            .ToList());
     }
 
     [Fact]

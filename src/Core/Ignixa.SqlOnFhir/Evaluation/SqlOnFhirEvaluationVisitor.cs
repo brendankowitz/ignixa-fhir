@@ -130,12 +130,30 @@ internal class SqlOnFhirEvaluationVisitor
         // value[x] and overriding its value at runtime is therefore the supported way to pass a typed
         // variable.
         //
-        // This closes the gap rather than narrowing it. A variable with no declared constant would have
-        // no type to inherit, but it also cannot reach here: ValidateConstantReferences rejects any
-        // %name that is neither a declared constant nor a predefined variable, at parse time and
-        // whatever the caller passes. So no widening of the string-to-string signature is needed to
-        // type a variable - declaring the constant is already mandatory, and the type rides along with
-        // it. Pinned by GivenAVariableWithNoMatchingConstant_WhenReferenced_ThenTheViewDefinitionIsRejected.
+        // SCOPE, measured rather than assumed. An earlier revision of this comment claimed the untyped
+        // path was unreachable because ValidateConstantReferences requires every %name to be a declared
+        // constant. That is false: it exempts context, resource, rootResource, ucum, sct, loinc,
+        // rowIndex and the vs- prefix. Of those, exactly three reach this loop untyped -
+        //
+        //   ucum, sct, loinc   bind the caller's string with no constant to inherit from
+        //
+        // - and for those three System.String is the correct type, not a defect: FHIRPath defines them
+        // as fixed URIs, so a caller-supplied string is already the right thing. `birthDate < %ucum`
+        // throwing "Cannot compare 'date' with 'string'" is the correct answer to putting a date in a
+        // URI slot, not a typing failure. The engine's override of those names is a deliberate,
+        // documented feature (EvaluationContext's remarks) and is left working.
+        //
+        // The rest cannot reach here untyped at all: context/resource/rootResource are answered by
+        // TryGetEnvironmentVariable's switch before it consults Variables, rowIndex is re-injected below
+        // and wins, and %vs-x / %ext-x never parse as variable references in the first place - the
+        // collector truncates at the hyphen and validation rejects them as undefined constant '%vs' /
+        // '%ext'. That truncation is a separate pre-existing bug; it is recorded here only because it is
+        // why the vs- exemption is unreachable, and it is deliberately not fixed as a side effect.
+        //
+        // A caller who does want a typed value under one of the three does not need the signature
+        // widened: declaring a constant of that name with the right value[x] and overriding its value
+        // works, because the inheritance above then applies. All of this is pinned by the
+        // GivenAPredefinedVariableName_* tests.
         if (variables != null)
         {
             // Built with the indexer, not ToDictionary: two constants sharing a name is malformed input
