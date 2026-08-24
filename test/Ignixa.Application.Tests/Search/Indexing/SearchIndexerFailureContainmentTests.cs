@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -330,7 +330,6 @@ public class SearchIndexerFailureContainmentTests
     private const string NeverTerminatingCode = "repeat-all-never-terminates";
     private const string NeverTerminatingExpression = "repeatAll($this)";
     private const string NeverTerminatingUrl = "http://example.org/fhir/SearchParameter/repeat-all-never-terminates";
-
 
     private IElement BrokenNonComposite()
     {

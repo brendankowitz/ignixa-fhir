@@ -172,10 +172,15 @@ public class RemainingCoverageTests
         // 10,000 toward RepeatAll's 100,000, which would multiply this test's already-33-second cost by
         // roughly a hundred. Without this line that change leaves the suite green and hangs CI for the
         // better part of an hour instead of failing.
+        //
+        // The parentheses are load-bearing. ShouldContain is ordinal substring containment, so a bare
+        // "10000" is satisfied by the "100000" a raise to RepeatAll's cap would print - the assertion
+        // would pass on precisely the change it exists to block, and on any 1 followed by four or more
+        // zeros. "(10000)" is the whole formatted argument and rejects "(100000)".
         var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
         exception.Message.ShouldContain("repeat()");
         exception.Message.ShouldContain("maximum iteration limit");
-        exception.Message.ShouldContain("10000");
+        exception.Message.ShouldContain("(10000)");
     }
 
     [Fact]
