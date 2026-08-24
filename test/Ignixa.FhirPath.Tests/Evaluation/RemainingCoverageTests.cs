@@ -165,9 +165,17 @@ public class RemainingCoverageTests
         // Assert - the cap fires deterministically; proving it fires requires driving the full O(n²)
         // cost. Per CollectionFunctions.Repeat's remarks, this test costs roughly 33 seconds by
         // construction for branching factor 1. The cost issue and proposed test seam are tracked in #435.
+        //
+        // The cap's *value* is asserted, not just that some cap exists. Only the lower direction is
+        // self-policing: drop the cap below ~1,093 and the nested-Questionnaire control below reddens.
+        // Raising it is caught by nothing else - and Repeat's remarks warn specifically against raising
+        // 10,000 toward RepeatAll's 100,000, which would multiply this test's already-33-second cost by
+        // roughly a hundred. Without this line that change leaves the suite green and hangs CI for the
+        // better part of an hour instead of failing.
         var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
         exception.Message.ShouldContain("repeat()");
         exception.Message.ShouldContain("maximum iteration limit");
+        exception.Message.ShouldContain("10000");
     }
 
     [Fact]

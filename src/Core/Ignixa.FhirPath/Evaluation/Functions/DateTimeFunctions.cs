@@ -278,9 +278,31 @@ public static class DateTimeFunctions
     /// The type gate is the whole of what separates a temporal from a String that reads like one. This
     /// used to strip a leading <c>@</c> and then parse by shape, which made <c>'@2013'.year()</c> answer
     /// 2013 and <c>'2013-06-15'.month()</c> answer 6 - a String reporting calendar components it does
-    /// not have. Every one of the thirteen call sites funnels through here, so the gate belongs here and
-    /// not at each of them. The sigil strip is gone with it: a temporal's value never carries one, and
-    /// a String that does is no longer admitted.
+    /// not have. Every one of the twelve call sites funnels through here - ten functions, of which
+    /// <c>difference()</c> and <c>duration()</c> call it twice, once per operand - so the gate belongs
+    /// here and not at each of them. The sigil strip is gone with it: a temporal's value never carries
+    /// one, and a String that does is no longer admitted.
+    /// <para>
+    /// <b>A type mismatch here is an empty, not an error, and that is deliberate.</b> The
+    /// <see langword="null"/> this returns for a non-temporal is indistinguishable at every call site
+    /// from the <see langword="null"/> a genuinely absent element produces, so <c>'2013-06-15'.month()</c>
+    /// reads the same as <c>Patient.birthDate.month()</c> on a patient with no birth date. That is the
+    /// same conflation the ordering operators were changed to stop making, and it is kept here on a
+    /// distinction the two cases do not share: FHIRPath §Comparison <em>mandates</em> the error - "the
+    /// evaluator will throw an error if the types differ" - whereas <c>month()</c>, <c>year()</c>,
+    /// <c>difference()</c> and the rest are Ignixa extensions that FHIRPath does not define at all, so
+    /// no mandate reaches them. Firely throwing <c>ArgumentException</c> on <c>month()</c> is one engine's
+    /// choice about its own extension, not a conformance argument.
+    /// </para>
+    /// <para>
+    /// The cost of throwing is concrete and one-directional: these functions appear in tenant-authored
+    /// search parameter and invariant expressions, where <c>ElementSearchIndexer</c> contains a
+    /// <see cref="FhirPathEvaluationException"/> by dropping the whole parameter. Trading "this element
+    /// is not a date, so no rows" for "this parameter does not index" buys no conformance and loses
+    /// search coverage. Revisit this only together with the ordering path, not piecemeal - the two
+    /// answering differently is the documented position, and changing one alone re-opens the split this
+    /// paragraph exists to record.
+    /// </para>
     /// </remarks>
     private static ParsedDateTime? ParseDateTimeValue(IElement element)
     {

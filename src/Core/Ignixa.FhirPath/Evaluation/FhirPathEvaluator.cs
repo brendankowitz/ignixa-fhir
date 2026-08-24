@@ -1449,10 +1449,24 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Applies FHIRPath <c>=</c> / <c>!=</c> semantics to two evaluated operand collections.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Internal rather than private because <see cref="FhirPathDelegateCompiler"/> calls it. The compiled
     /// fast path once carried its own ordinal string comparison, which answered <c>false</c> for
     /// <c>birthDate = @1974-12-25</c> while this method answered <c>true</c>. Sharing the one
     /// implementation is what makes the two evaluation paths incapable of drifting apart again.
+    /// </para>
+    /// <para>
+    /// <b>No same-type guard here, deliberately.</b> The ordering operators throw on operand types
+    /// FHIRPath does not relate (see <c>IncomparableOperandTypes</c> and the remarks at the ordering
+    /// comparison), and the asymmetry is a decision rather than an oversight: §Equals states the
+    /// same-type requirement and then says nothing about what happens when it is violated, so the
+    /// engines split - HAPI's <c>doEquals</c> reaches <c>Base.equals(primitiveValue(), ...)</c> with no
+    /// type check and answers <c>'2013' = @2013</c> true, while Firely answers false. HAPI was followed
+    /// because it outranks Firely in the precedence this engine uses. Adding a guard here to match the
+    /// ordering operators would silently change that. It is pinned by
+    /// <c>ComparisonTypeRoutingTests.GivenAStringEqualToATemporalsWireText_*</c>, whose comment carries
+    /// the full argument.
+    /// </para>
     /// </remarks>
     internal bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals)
     {
@@ -1799,9 +1813,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                     // collection hid a real type error (official testLiteralDecimalLessThanInvalid:
                     // Observation.value.value < 'test'). Undecidable-but-well-typed comparisons, such as
                     // partial-precision dates, are handled above and still return null.
-                    throw new FhirPathEvaluationException(
-                        $"Cannot compare '{left[0].InstanceType ?? "unknown"}' with '{right[0].InstanceType ?? "unknown"}': " +
-                        "comparison operands must be of the same type.", ex);
+                    throw IncomparableOperandTypes(left[0], right[0], ex);
                 }
 
                 return greater
@@ -1817,9 +1829,31 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// <summary>
     /// Builds the error FHIRPath requires when comparison operands are of types it does not relate.
     /// </summary>
-    private static FhirPathEvaluationException IncomparableOperandTypes(IElement left, IElement right)
-        => new($"Cannot compare '{left.InstanceType ?? "unknown"}' with '{right.InstanceType ?? "unknown"}': " +
-               "comparison operands must be of the same type.");
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    /// <param name="inner">
+    /// The exception that revealed the mismatch, when one did. The <c>IComparable</c> fallback below
+    /// learns of the mismatch only by catching <see cref="ArgumentException"/> from <c>CompareTo</c>, and
+    /// used to rebuild this message inline purely because this helper could not carry that exception.
+    /// </param>
+    /// <returns>The exception to throw.</returns>
+    /// <remarks>
+    /// The operands are described by <see cref="ValueOrdering.Describe"/> rather than by
+    /// <see cref="IElement.InstanceType"/> alone. Two operands with no declared type produced
+    /// "Cannot compare 'unknown' with 'unknown'", which names nothing a reader can act on; Describe falls
+    /// back to the CLR type name and appends it when the declared type and the representation disagree,
+    /// so a decimal that arrived as text reads "decimal (String)". It deliberately stops at type names:
+    /// these operands are patient data, and this message reaches logs and OperationOutcome.
+    /// </remarks>
+    private static FhirPathEvaluationException IncomparableOperandTypes(
+        IElement left, IElement right, Exception? inner = null)
+    {
+        var message =
+            $"Cannot compare '{ValueOrdering.Describe(left)}' with '{ValueOrdering.Describe(right)}': " +
+            "comparison operands must be of the same type.";
+
+        return inner is null ? new(message) : new(message, inner);
+    }
 
     private bool? CompareDateTimesWithPrecision(object? leftValue, object? rightValue, string? leftType, string? rightType, bool greater, bool orEqual)
     {

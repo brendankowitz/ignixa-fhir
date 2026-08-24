@@ -213,8 +213,20 @@ internal static class BoundaryFunctions
     {
         // Unwrap FhirTemporal to its wire literal so the string arms below can handle a resource-backed
         // temporal and a temporal literal uniformly. Whether those arms may fire at all is decided by the
-        // element's type, not by the value's shape: lowBoundary()/highBoundary() are defined for Decimal,
-        // Date, DateTime and Time only, and a String that reads like a date is still a String.
+        // element's type, not by the value's shape: FHIRPath defines lowBoundary()/highBoundary() over
+        // Decimal, Date, DateTime and Time, and a String that reads like a date is still a String.
+        //
+        // "Decimal, Date, DateTime and Time" is the spec sentence, not the set this method accepts. The
+        // Quantity arms below, and the int/long/double arms in the switch, are deliberate Ignixa
+        // extensions past it: a Quantity is a decimal with a unit, so its boundary is the decimal
+        // boundary carrying the unit through, and an integer is a decimal of precision zero. They are
+        // not out-of-spec leftovers to be deleted on the strength of the quoted sentence. Only the
+        // String-versus-temporal line is what the type gate here decides.
+        //
+        // A type mismatch falls through to the switch's null arm and surfaces as an empty, not an error,
+        // so '@2013'.lowBoundary() reads the same as an absent element. That matches
+        // DateTimeFunctions.ParseDateTimeValue and is kept for the reason recorded there: §Comparison
+        // mandates an error for the ordering operators, and nothing mandates one for these.
         object? cleanValue = element.Value switch
         {
             FhirTemporal temporal => temporal.Literal,
@@ -262,8 +274,20 @@ internal static class BoundaryFunctions
     {
         // Unwrap FhirTemporal to its wire literal so the string arms below can handle a resource-backed
         // temporal and a temporal literal uniformly. Whether those arms may fire at all is decided by the
-        // element's type, not by the value's shape: lowBoundary()/highBoundary() are defined for Decimal,
-        // Date, DateTime and Time only, and a String that reads like a date is still a String.
+        // element's type, not by the value's shape: FHIRPath defines lowBoundary()/highBoundary() over
+        // Decimal, Date, DateTime and Time, and a String that reads like a date is still a String.
+        //
+        // "Decimal, Date, DateTime and Time" is the spec sentence, not the set this method accepts. The
+        // Quantity arms below, and the int/long/double arms in the switch, are deliberate Ignixa
+        // extensions past it: a Quantity is a decimal with a unit, so its boundary is the decimal
+        // boundary carrying the unit through, and an integer is a decimal of precision zero. They are
+        // not out-of-spec leftovers to be deleted on the strength of the quoted sentence. Only the
+        // String-versus-temporal line is what the type gate here decides.
+        //
+        // A type mismatch falls through to the switch's null arm and surfaces as an empty, not an error,
+        // so '@2013'.lowBoundary() reads the same as an absent element. That matches
+        // DateTimeFunctions.ParseDateTimeValue and is kept for the reason recorded there: §Comparison
+        // mandates an error for the ordering operators, and nothing mandates one for these.
         object? cleanValue = element.Value switch
         {
             FhirTemporal temporal => temporal.Literal,

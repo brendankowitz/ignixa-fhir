@@ -478,10 +478,19 @@ internal static class CollectionFunctions
     /// <b>Exception type and log tier:</b> the guard throws <see cref="FhirPathEvaluationException"/>,
     /// matching <see cref="RepeatAll"/>'s guard, so <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c>
     /// classifies both the same way - expected containment (Warning) rather than an indexer defect (Error).
-    /// That tier was affirmed and pinned for <c>repeatAll</c>'s guard in commit b691f142 on the rationale
+    /// That tier was affirmed and pinned for <c>repeatAll</c>'s guard in #428 on the rationale
     /// that a guard a tenant can trip on demand, against tenant-supplied data, is data, not an indexer bug.
     /// Two iteration-limit guards reporting at different severities would be worse than either choice, so
     /// both land in the same one.
+    /// </para>
+    /// <para>
+    /// <b>The guard fails all-or-nothing, deliberately.</b> This method is eager - results accumulate
+    /// into a local list that the throw abandons - so tripping the cap yields no partial collection, and
+    /// a caller indexing a search parameter over this expression drops the whole parameter rather than
+    /// storing a truncated one. That is the intended behaviour: a prefix of a non-terminating projection
+    /// is an arbitrary cut with no meaning, and half an index that reports itself as complete is worse
+    /// than an absent one. Making the method lazy would change this silently, which is why it is written
+    /// down here rather than left to the reader to infer from the absence of a <c>yield</c>.
     /// </para>
     /// <para>
     /// <b>Dedup semantics vs. the spec (considered, not changed):</b> the FHIRPath spec defines
@@ -567,8 +576,20 @@ internal static class CollectionFunctions
     /// Per FHIRPath spec: $this is set for each item but $index is undefined.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>ReturnType = "any"</c> for the same reason as <see cref="Repeat"/>: the result is the
     /// projection, not the focus.
+    /// </para>
+    /// <para>
+    /// <b>The iteration guard fails all-or-nothing, deliberately.</b> This method is eager - results
+    /// accumulate into a local list that the throw abandons - so tripping the cap yields no partial
+    /// collection, and a caller indexing a search parameter over this expression drops the whole
+    /// parameter rather than storing a truncated one. That is the intended behaviour: a prefix of a
+    /// non-terminating projection is an arbitrary cut with no meaning, and half an index that reports
+    /// itself as complete is worse than an absent one. Making the method lazy would change this
+    /// silently, which is why it is written down here rather than left to the reader to infer from the
+    /// absence of a <c>yield</c>.
+    /// </para>
     /// </remarks>
     [FhirPathFunction("repeatAll",
         SupportedContexts = "any-any",
