@@ -56,9 +56,29 @@ the same shape the server itself reads its tenant configuration from:
 }
 ```
 
+`"Type": "SqlServer"` and `"Type": "SqlEntityFramework"` are accepted as the same storage type by
+`TenantConnectionStringResolver.IsSqlServerStorage`. Every `appsettings*.json` under
+`src/Application/Ignixa.Web/` uses `SqlEntityFramework`, so if you copy `Storage` from a running
+server's own configuration (as this section recommends), expect to see that value, not `SqlServer`.
+
+The configuration file passed via `--config` is not the only source of settings: `Program.cs` also
+layers `appsettings.{ASPNETCORE_ENVIRONMENT ?? "Production"}.json` (optional, same directory) and
+then environment variables on top of it, exactly like the server does. If `ASPNETCORE_ENVIRONMENT`
+is set in the shell you run this tool from -- common in a deployed environment -- values from that
+environment-specific file or from environment variables can silently override what `--config`
+specifies.
+
 Only the tenant identified by `--tenant-id` needs a `SqlServer`/`SqlEntityFramework` storage type
 with a connection string; the tool resolves that single tenant's connection string and does not
-touch any other tenant's database.
+touch any other tenant's database -- **except for `--tenant-id 0`**. Tenant 0 is the reserved
+system partition, and if it has no `ConnectionString` of its own, `TenantConnectionStringResolver`
+resolves it by inheriting the connection string of another tenant, named by
+`Storage:InheritConnectionStringFromTenant` (defaults to tenant 1). In that configuration,
+`--tenant-id 0` deploys schema to that other tenant's database, not a system-only database --
+including under `--allow-data-loss`. This is deliberate single-tenant-deployment behavior (see the
+comments in `TenantConnectionStringResolver.ResolveAsync`), but it means the blast radius of a
+`--tenant-id 0` run depends on how the target tenant configures that setting. See #395 for a
+related issue with how `InheritConnectionStringFromTenant` binds from configuration.
 
 ## Exit Codes
 
@@ -68,6 +88,12 @@ touch any other tenant's database.
   The database is up to date; only the version record is missing. Do not re-run the tool expecting
   the schema change to be re-applied -- resolve the underlying error first, or insert the version
   row manually.
+- `3` - The tool failed before or during setup and nothing was attempted: an unknown or inactive
+  tenant, a tenant not configured for `SqlServer`/`SqlEntityFramework` storage, a missing or
+  unparseable connection string, a `--config` file that could not be found, or a missing embedded
+  schema dacpac. The error is written to stderr. This is deliberately a different code from `1`:
+  a scripted caller relying on `--confirm` needs to be able to tell "the operator declined" apart
+  from "the tool crashed before doing anything".
 
 ## License
 
