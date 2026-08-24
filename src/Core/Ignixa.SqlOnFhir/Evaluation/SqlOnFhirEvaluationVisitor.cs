@@ -144,11 +144,14 @@ internal class SqlOnFhirEvaluationVisitor
         // documented feature (EvaluationContext's remarks) and is left working.
         //
         // The rest cannot reach here untyped at all: context/resource/rootResource are answered by
-        // TryGetEnvironmentVariable's switch before it consults Variables, rowIndex is re-injected below
+        // TryGetEnvironmentVariable's switch before it consults Environment, rowIndex is re-injected below
         // and wins, and %vs-x / %ext-x never parse as variable references in the first place - the
-        // collector truncates at the hyphen and validation rejects them as undefined constant '%vs' /
-        // '%ext'. That truncation is a separate pre-existing bug; it is recorded here only because it is
-        // why the vs- exemption is unreachable, and it is deliberately not fixed as a side effect.
+        // FhirPathTokenizer's ExternalConstant regex (src/Core/Ignixa.FhirPath/Parser/FhirPathTokenizer.cs)
+        // has no hyphen in its identifier pattern, so these lex as multiple tokens; validation then rejects
+        // the truncated '%vs' / '%ext' as undefined. Only %vs- has a StartsWith exemption in ValidateConstantReferences;
+        // %ext- is rejected identically. That tokenizer truncation is a separate pre-existing bug; it is recorded
+        // here only because it is why the vs- exemption is unreachable, and it is deliberately not fixed as a side effect.
+        // GetStandardConstant in EvaluationContext.cs contains unreachable prefix-expansion logic for both.
         //
         // A caller who does want a typed value under one of the three does not need the signature
         // widened: declaring a constant of that name with the right value[x] and overriding its value
