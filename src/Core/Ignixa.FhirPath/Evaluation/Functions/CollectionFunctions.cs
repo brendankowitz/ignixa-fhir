@@ -429,9 +429,23 @@ internal static class CollectionFunctions
     /// repeat() - Recursively applies a projection expression until no new elements are found.
     /// Per FHIRPath spec: Returns only the results of the projection, not the original focus items.
     /// </summary>
+    /// <remarks>
+    /// <c>ReturnType = "any"</c> rather than <c>"context"</c> because this returns the projection's
+    /// results, never the focus items themselves, so passing the focus type through would name a type the
+    /// evaluator cannot produce. It did: <c>(name.repeat(family)).ofType(string)</c> typed the result as
+    /// <c>HumanName</c> and was reported as provably empty while the evaluator returned two strings
+    /// (#423). Naming the projection's type instead would need a fixpoint over the recursion, which
+    /// <c>descendants()</c> - the same shape of unbounded recursion - already declines to do for the same
+    /// reason. Unknown fails open in the cast and provenance paths, and every site that raises an
+    /// always-empty diagnostic is gated on the focus not being unknown, so widening the type here cannot
+    /// manufacture a claim - it can only drop one. The cost is losing true always-empty diagnostics
+    /// downstream of a <c>repeat()</c>, and downstream of one only: <c>repeat(</c> appears in no generated
+    /// search parameter definition, and in three shipped invariant expressions (R5 and R6 only; two on
+    /// PlanDefinition, one on QuestionnaireResponse), none of which navigates a cast off the result.
+    /// </remarks>
     [FhirPathFunction("repeat",
         SupportedContexts = "any-any",
-        ReturnType = "context",
+        ReturnType = "any",
         SupportsCollections = true,
         MinArguments = 1,
         MaxArguments = 1,
@@ -489,9 +503,13 @@ internal static class CollectionFunctions
     /// Unlike repeat(), does NOT check for duplicates before adding - better performance but allows duplicates.
     /// Per FHIRPath spec: $this is set for each item but $index is undefined.
     /// </summary>
+    /// <remarks>
+    /// <c>ReturnType = "any"</c> for the same reason as <see cref="Repeat"/>: the result is the
+    /// projection, not the focus.
+    /// </remarks>
     [FhirPathFunction("repeatAll",
         SupportedContexts = "any-any",
-        ReturnType = "context",
+        ReturnType = "any",
         SupportsCollections = true,
         MinArguments = 1,
         MaxArguments = 1,

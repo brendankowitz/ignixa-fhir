@@ -230,12 +230,15 @@ public class FirelyVersusIgnixaDifferentialTests(ITestOutputHelper output)
     /// only because the bridge binds it explicitly. This test is what stops that binding being
     /// dropped as redundant.
     /// </summary>
+    /// <remarks>
+    /// The floor asserted before the comparison is not decoration: <see cref="ParityOutcome.Describe"/>
+    /// renders both a throw and an empty result as short marker strings, so two engines that both came
+    /// back empty - or both threw - would satisfy the comparison at the end of this test while
+    /// establishing nothing about <c>%resource</c> resolution. Asserting a non-empty, non-throwing
+    /// result on both sides first makes that pass impossible.
+    /// </remarks>
     [Theory]
-    [InlineData("%resource.id")]
-    [InlineData("%rootResource.id")]
-    [InlineData("%context.id")]
-    [InlineData("Bundle.entry.resource.select(%resource.id)")]
-    [InlineData("Bundle.entry.resource.ofType(Patient).name.select(%rootResource.id)")]
+    [MemberData(nameof(ResourceVariableExpressions))]
     public void GivenAResourceVariable_WhenResolvedByBothEngines_ThenTheyAgree(string expression)
     {
         // Arrange
@@ -246,7 +249,70 @@ public class FirelyVersusIgnixaDifferentialTests(ITestOutputHelper output)
         var ignixa = IgnixaEngine.Evaluate(IgnixaEngine.Parse(bundle), expression);
 
         // Assert
+        firely.Threw.ShouldBeFalse(
+            $"'{expression}' threw on Firely, so the agreement asserted below would compare two throws, "
+            + "not the resolved %resource value this test exists to check.");
+        ignixa.Threw.ShouldBeFalse(
+            $"'{expression}' threw on Ignixa, so the agreement asserted below would compare two throws, "
+            + "not the resolved %resource value this test exists to check.");
+        firely.Results.ShouldNotBeEmpty(
+            $"'{expression}' must resolve to a non-empty value on Firely, or the agreement asserted "
+            + "below is vacuous - both engines returning empty is not evidence %resource resolved.");
+        ignixa.Results.ShouldNotBeEmpty(
+            $"'{expression}' must resolve to a non-empty value on Ignixa, or the agreement asserted "
+            + "below is vacuous - both engines returning empty is not evidence %resource resolved.");
+
         ignixa.Describe().ShouldBe(firely.Describe());
+    }
+
+    public static TheoryData<string> ResourceVariableExpressions { get; } = new()
+    {
+        "%resource.id",
+        "%rootResource.id",
+        "%context.id",
+        "Bundle.entry.resource.select(%resource.id)",
+        "Bundle.entry.resource.ofType(Patient).name.select(%rootResource.id)",
+    };
+
+    /// <summary>
+    /// Asserts the acknowledged <c>%resource</c>-agreement set is complete, so a row cannot be removed
+    /// from <see cref="ResourceVariableExpressions"/> without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// The expected set is written out here as a literal rather than derived from
+    /// <see cref="ResourceVariableExpressions"/>, for the same reason
+    /// <see cref="GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent"/>
+    /// does: an inventory computed from the collection it is meant to guard agrees with any edit to
+    /// that collection and asserts nothing.
+    /// </remarks>
+    [Fact]
+    public void GivenTheResourceVariableInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "%context.id",
+            "%resource.id",
+            "%rootResource.id",
+            "Bundle.entry.resource.ofType(Patient).name.select(%rootResource.id)",
+            "Bundle.entry.resource.select(%resource.id)",
+        ];
+
+        // Act
+        // TheoryData<string> - unlike the multi-column TheoryData<T1, T2, ...> forms - implements
+        // IEnumerable<string> directly alongside IEnumerable<object[]>, so an unqualified .Select(...)
+        // is ambiguous between the two. The explicit cast picks the strongly-typed row directly.
+        var actual = ((IEnumerable<string>)ResourceVariableExpressions)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        actual.ShouldBe(
+            expected,
+            "The acknowledged %resource-agreement set changed. A row may only be retired after "
+            + "GivenAResourceVariable_WhenResolvedByBothEngines_ThenTheyAgree has gone red for it, "
+            + "proving the engines no longer need to be compared for it; update this inventory in the "
+            + "same change.");
     }
 
     /// <summary>
@@ -279,14 +345,16 @@ public class FirelyVersusIgnixaDifferentialTests(ITestOutputHelper output)
     /// Guards the neighbours of the year-precision fix: coarser input must not start borrowing the
     /// month, and finer input must keep the month it was given.
     /// </summary>
+    /// <remarks>
+    /// This is a unilateral Ignixa pin, not a parity comparison: every row asserts a concrete literal
+    /// against <see cref="IgnixaEngine"/> alone, and Firely never appears here. It has no hollowness
+    /// problem for <see cref="ParityOutcome.Describe"/> to hide behind - a literal cannot pass while
+    /// vacuous the way a Firely/Ignixa comparison can. The enumeration guard below exists only because
+    /// a pinned row set that nothing enumerates can still be silently trimmed, the same defect
+    /// <see cref="NormalisedTypeNames"/> guards against.
+    /// </remarks>
     [Theory]
-    [InlineData("@2012.highBoundary()", "2012-12-31T23:59:59.999-12:00")]
-    [InlineData("@2012.highBoundary(6)", "2012-12")]
-    [InlineData("@2012.highBoundary(8)", "2012-12-31")]
-    [InlineData("@2012-06.highBoundary()", "2012-06-30T23:59:59.999-12:00")]
-    [InlineData("@2012-02.highBoundary(8)", "2012-02-29")]
-    [InlineData("@2011-02.highBoundary(8)", "2011-02-28")]
-    [InlineData("@2012-06-15.highBoundary()", "2012-06-15T23:59:59.999-12:00")]
+    [MemberData(nameof(HighBoundaryPrecisionCases))]
     public void GivenADateOfSomePrecision_WhenTakingItsHighBoundary_ThenMaximisesOnlyUnspecifiedComponents(
         string expression,
         string expected)
@@ -299,6 +367,58 @@ public class FirelyVersusIgnixaDifferentialTests(ITestOutputHelper output)
 
         // Assert
         ignixa.ShouldBe([expected]);
+    }
+
+    public static TheoryData<string, string> HighBoundaryPrecisionCases { get; } = new()
+    {
+        { "@2012.highBoundary()", "2012-12-31T23:59:59.999-12:00" },
+        { "@2012.highBoundary(6)", "2012-12" },
+        { "@2012.highBoundary(8)", "2012-12-31" },
+        { "@2012-06.highBoundary()", "2012-06-30T23:59:59.999-12:00" },
+        { "@2012-02.highBoundary(8)", "2012-02-29" },
+        { "@2011-02.highBoundary(8)", "2011-02-28" },
+        { "@2012-06-15.highBoundary()", "2012-06-15T23:59:59.999-12:00" },
+    };
+
+    /// <summary>
+    /// Asserts the acknowledged high-boundary-precision case set is complete, so a row cannot be
+    /// removed from <see cref="HighBoundaryPrecisionCases"/> without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// The expected set is written out here as a literal rather than derived from
+    /// <see cref="HighBoundaryPrecisionCases"/>, for the same reason
+    /// <see cref="GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent"/>
+    /// does: an inventory computed from the collection it is meant to guard agrees with any edit to
+    /// that collection and asserts nothing.
+    /// </remarks>
+    [Fact]
+    public void GivenTheHighBoundaryPrecisionInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "@2011-02.highBoundary(8)",
+            "@2012-02.highBoundary(8)",
+            "@2012-06-15.highBoundary()",
+            "@2012-06.highBoundary()",
+            "@2012.highBoundary()",
+            "@2012.highBoundary(6)",
+            "@2012.highBoundary(8)",
+        ];
+
+        // Act
+        var actual = HighBoundaryPrecisionCases
+            .Select(row => (string)row[0])
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        actual.ShouldBe(
+            expected,
+            "The acknowledged high-boundary-precision case set changed. A row may only be retired after "
+            + "GivenADateOfSomePrecision_WhenTakingItsHighBoundary_ThenMaximisesOnlyUnspecifiedComponents "
+            + "has gone red for it, proving the boundary computation changed intentionally; update this "
+            + "inventory in the same change.");
     }
 
     /// <summary>

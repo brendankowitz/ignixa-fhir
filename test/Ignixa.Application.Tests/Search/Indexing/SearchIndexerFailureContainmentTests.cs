@@ -27,18 +27,40 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// index entries and nothing else - the resource still stores, and every other parameter still indexes.
 /// </para>
 /// <para>
-/// Laziness is what makes this easy to get wrong, and it is the specific property these tests exist to pin
-/// (issue #403). <c>element.Select</c> hands back the evaluator's own enumerable, which for anything built on
-/// <c>where()</c> is a <c>yield</c> iterator that does no work until enumerated; <c>ProcessCompositeSearchParameter</c>
-/// and the converters are <c>yield</c> iterators too. A value produced inside a try block therefore does nothing
-/// until it is enumerated, and the enumeration happens further out - past the catch that looked like it covered
-/// it - so one bad expression fails the create or update of the whole resource.
+/// Laziness is what makes this easy to get wrong. The named range from
+/// <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheWriteSurvivesAndOtherParametersStillIndex"/>
+/// through <see cref="GivenACompositeWhoseComponentExpressionFails_WhenIndexed_ThenTheWholeCompositeEntryIsDroppedAndTheComponentDefinitionIsLogged"/>
+/// spans <em>six</em> tests, not five, and only three of them exist to pin the laziness hazard (issue #403):
+/// <see cref="GivenANonCompositeWhoseExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex"/>,
+/// <see cref="GivenACompositeWhoseRootExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex"/>
+/// and <see cref="GivenACompositeWhoseComponentExpressionFails_WhenIndexed_ThenTheWholeCompositeEntryIsDroppedAndTheComponentDefinitionIsLogged"/>.
+/// <c>element.Select</c> hands back the evaluator's own enumerable, which for anything built on <c>where()</c>
+/// is a <c>yield</c> iterator that does no work until enumerated; <c>ProcessCompositeSearchParameter</c> is a
+/// <c>yield</c> iterator too. A value produced inside a try block therefore does nothing until it is
+/// enumerated, and the enumeration happens further out - past the catch that looked like it covered it - so
+/// one bad expression fails the create or update of the whole resource. Each of those three tests is built
+/// from an expression chosen so that <c>Select</c> returns <em>without</em> throwing and the throw lands on
+/// enumeration - an expression that threw eagerly inside <c>Select</c> would satisfy every other assertion
+/// those tests make while the guarded <c>.ToList()</c> was deleted and the bug fully reintroduced.
 /// </para>
 /// <para>
-/// Every failing expression below is chosen so that <c>Select</c> returns <em>without</em> throwing and the throw
-/// lands on enumeration, and each test asserts exactly that pair before asserting Extract survives it. That
-/// ordering is load-bearing: an expression that threw eagerly inside <c>Select</c> would satisfy every other
-/// assertion here while the guarded <c>.ToList()</c> was deleted and the bug fully reintroduced.
+/// The other three tests in that named range are not built on that hazard.
+/// <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheWriteSurvivesAndOtherParametersStillIndex"/>
+/// and <see cref="GivenATimingWithAnUnparseableEvent_WhenIndexed_ThenTheFailureIsLoggedAsExpectedNotUnexpected"/>
+/// both use a malformed <c>Timing.event</c> literal whose failure lives inside
+/// <c>TimingToDateTimeSearchValueConverter.ConvertTo</c> - a separate <c>yield</c> iterator downstream of
+/// <c>Select</c>, not the FHIRPath <c>where()</c> iterator itself, as the first test's own comment says.
+/// <see cref="GivenATimingWithAParseableEvent_WhenIndexed_ThenTheOccurrenceParameterStillIndexes"/> is the
+/// control for those two: its literal parses cleanly, so nothing throws anywhere and it exists only to prove
+/// containment comes from catching the failure, not from the occurrence parameter having quietly stopped
+/// producing entries.
+/// </para>
+/// <para>
+/// Not every test below exercises the laziness hazard either.
+/// <see cref="GivenACustomSearchParameterWhoseExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex"/>
+/// pins a different, unrelated property - the log tier a guard exception lands in (issue #428) - and its
+/// expression throws eagerly inside <c>Select</c> itself, so it provides no coverage of the #403 laziness
+/// guard. See that test's own doc comment for why that is fine for its purpose.
 /// </para>
 /// </summary>
 public class SearchIndexerFailureContainmentTests
@@ -231,6 +253,52 @@ public class SearchIndexerFailureContainmentTests
         indices.Count(i => i.SearchParameter.Code == "code-value-quantity").ShouldBe(1);
     }
 
+    [Fact]
+    public void GivenACustomSearchParameterWhoseExpressionNeverTerminates_WhenIndexed_ThenTheIterationGuardIsLoggedAsExpectedNotUnexpectedAndSiblingParametersStillIndex()
+    {
+        // Arrange - repeatAll($this) is a deliberate infinite loop, not a typo: the projection is the identity,
+        // so every item repeatAll() dequeues re-projects itself back onto the queue and the queue never drains.
+        // CollectionFunctions.RepeatAll trips its own 100_000-iteration guard and throws FhirPathEvaluationException
+        // (PR #427 converted this from a bare InvalidOperationException; issue #428 is about which log tier that
+        // move landed the guard in). The guard is tripped by a tenant-supplied expression against a tenant-supplied
+        // resource shape, deterministically, on demand - the same class of failure as a malformed literal
+        // (FormatException) or an unsupported function (NotSupportedException), both of which IsExpectedEvaluationFailure
+        // already routes to Warning. It must not surface as UnexpectedExtractionFailure (Error): that tier is
+        // reserved for indexer or converter code defects (NullReferenceException, InvalidCastException), not for a
+        // guard the evaluator raises on purpose against input it does not control. A bare InvalidOperationException
+        // staying out of the expected set is correct and is not what this test is pinning - the guard's exception
+        // type changed, not its cause, and IsExpectedEvaluationFailure must follow the type, not special-case it.
+        // repeatAll appears in none of the generated *SearchParameterDefinitions.g.cs files, so this path is
+        // reachable only from a tenant-authored custom search parameter, never from base FHIR search parameters.
+        //
+        // This test pins tier assignment (#428) only. It deliberately does not cover the issue #403 laziness
+        // guard the class doc describes: RepeatAll's iteration check throws inside the loop that Select()
+        // itself drives to build its result, so the exception surfaces eagerly from element.Select(...) and
+        // never reaches a lazy ToList() further out. Deleting the materialising .ToList() from the try block
+        // this test's call site uses would not un-catch this exception, so it does not exercise that guard.
+        var captured = new List<(LogLevel Level, string Message)>();
+        _searchParameterDefinitionManager.AddNewSearchParameters([NeverTerminatingSearchParameter()]);
+        var indexer = CreateIndexer(new CapturingLoggerFactory(captured));
+        var observation = ObservationJson();
+        var element = observation.ToElement(_schemaProvider);
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert - logged as an expected data/expression-level miss (Warning) naming the parameter, never as an
+        // indexer defect (Error), and containment is per-parameter: every sibling parameter still indexes.
+        var failureLog = captured.Single(c => c.Message.Contains(NeverTerminatingExpression, StringComparison.Ordinal));
+        failureLog.Level.ShouldBe(LogLevel.Warning);
+        failureLog.Message.ShouldContain(NeverTerminatingUrl);
+        failureLog.Message.ShouldContain("Observation/o1");
+        captured.ShouldNotContain(c => c.Level == LogLevel.Error);
+
+        indices.Count(i => i.SearchParameter.Code == NeverTerminatingCode).ShouldBe(0);
+        indices.Count(i => i.SearchParameter.Code == "status").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
+    }
+
     private const string BrokenNonCompositeCode = "broken-non-composite";
     private const string BrokenNonCompositeExpression = "Observation.code.coding.where(system + 1 = 'non-composite')";
     private const string BrokenNonCompositeUrl = "http://example.org/fhir/SearchParameter/broken-non-composite";
@@ -246,6 +314,10 @@ public class SearchIndexerFailureContainmentTests
     /// rather than the URL of the composite that declared the component.
     /// </summary>
     private const string BrokenComponentDefinitionUrl = "http://hl7.org/fhir/SearchParameter/clinical-code";
+
+    private const string NeverTerminatingCode = "repeat-all-never-terminates";
+    private const string NeverTerminatingExpression = "repeatAll($this)";
+    private const string NeverTerminatingUrl = "http://example.org/fhir/SearchParameter/repeat-all-never-terminates";
 
     private IElement BrokenNonComposite()
     {
@@ -323,6 +395,25 @@ public class SearchIndexerFailureContainmentTests
                   "expression": "{{BrokenComponentExpression}}"
                 }
               ]
+            }
+            """;
+
+        return ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
+    }
+
+    private IElement NeverTerminatingSearchParameter()
+    {
+        string json = $$"""
+            {
+              "resourceType": "SearchParameter",
+              "id": "{{NeverTerminatingCode}}",
+              "url": "{{NeverTerminatingUrl}}",
+              "name": "{{NeverTerminatingCode}}",
+              "status": "active",
+              "code": "{{NeverTerminatingCode}}",
+              "base": [ "Observation" ],
+              "type": "string",
+              "expression": "{{NeverTerminatingExpression}}"
             }
             """;
 
