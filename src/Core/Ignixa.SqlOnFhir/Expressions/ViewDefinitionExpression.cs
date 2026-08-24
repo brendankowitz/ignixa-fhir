@@ -68,9 +68,23 @@ public sealed record WhereExpression(
 /// <summary>
 /// Expression representing a constant value that can be referenced as %name.
 /// </summary>
+/// <param name="Name">The constant's name, referenced as <c>%Name</c>.</param>
+/// <param name="Value">The constant's value, in whatever CLR type carries it.</param>
+/// <param name="ValueType">
+/// The FHIRPath type the declared <c>value[x]</c> suffix converts to, or <see langword="null"/> when the
+/// suffix was absent or unrecognised.
+/// </param>
+/// <remarks>
+/// <see cref="ValueType"/> exists because the CLR type of <see cref="Value"/> cannot always recover it.
+/// <c>valueDate</c>, <c>valueDateTime</c>, <c>valueInstant</c> and <c>valueTime</c> all arrive as a
+/// <see cref="string"/>, so a constant bound without this typed as System.String and
+/// <c>birthDate &lt; %cutoff</c> - a conformant ViewDefinition - failed as a comparison between a date
+/// and a string once the comparison operators started rejecting operand types FHIRPath does not relate.
+/// </remarks>
 public sealed record ConstantExpression(
     string Name,
-    object? Value) : SqlOnFhirExpression
+    object? Value,
+    string? ValueType = null) : SqlOnFhirExpression
 {
     public override TResult Accept<TResult>(ISqlOnFhirExpressionVisitor<TResult> visitor)
         => visitor.Visit(this);

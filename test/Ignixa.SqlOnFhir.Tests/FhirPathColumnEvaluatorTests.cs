@@ -567,6 +567,73 @@ public class SqlOnFhirEvaluatorTests
         Assert.Equal("from-caller", rows[0]["tag"]);
     }
 
+    [Theory]
+    [InlineData("valueDate", "2020-01-01", "birthDate < %cutoff", true)]
+    [InlineData("valueDate", "1970-01-01", "birthDate < %cutoff", false)]
+    [InlineData("valueDateTime", "2020-01-01T00:00:00Z", "birthDate < %cutoff", true)]
+    [InlineData("valueInstant", "2020-01-01T00:00:00Z", "birthDate < %cutoff", true)]
+    public void GivenATemporalConstant_WhenComparedAgainstAResourceDate_ThenItOrdersAsATemporal(
+        string valueProperty, string constantValue, string filter, bool expectRow)
+    {
+        // The constant's declared type is the only place its temporal-ness is recorded: valueDate,
+        // valueDateTime, valueInstant and valueTime all collapse to a bare string in the parser, so
+        // without carrying the value[x] suffix through, %cutoff typed as System.String and this
+        // conformant ViewDefinition threw "Cannot compare 'date' with 'string'" once the comparison
+        // operators began rejecting unrelated operand types.
+        //
+        // The official suite is blind to this: its only comparison-against-a-constant row uses
+        // valueDecimal, which survives the parser's own Decimal arm, and every temporal constant in the
+        // suite is compared with = rather than an ordering operator.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-temporal" },
+            { "birthDate", "1980-06-15" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = $$"""
+            {
+              "resource": "Patient",
+              "constant": [{ "name": "cutoff", "{{valueProperty}}": "{{constantValue}}" }],
+              "where": [{ "path": "{{filter}}" }],
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var rows = _evaluator.Evaluate(sourceNode, resource).ToList();
+
+        Assert.Equal(expectRow ? 1 : 0, rows.Count);
+    }
+
+    [Fact]
+    public void GivenAStringConstant_WhenComparedAgainstAResourceDate_ThenItIsStillATypeError()
+    {
+        // The restraint on the row above. Carrying the declared type must not make every constant
+        // temporal by shape: valueString stays System.String, so the comparison is between types
+        // FHIRPath does not relate and the error the operators were changed to raise still fires.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-temporal" },
+            { "birthDate", "1980-06-15" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "constant": [{ "name": "cutoff", "valueString": "2020-01-01" }],
+              "where": [{ "path": "birthDate < %cutoff" }],
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        Assert.ThrowsAny<Exception>(() => _evaluator.Evaluate(sourceNode, resource).ToList());
+    }
+
     [Fact]
     public void GivenNullVariables_WhenEvaluated_ThenNoRegression()
     {

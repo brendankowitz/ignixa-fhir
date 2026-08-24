@@ -118,7 +118,8 @@ internal class SqlOnFhirEvaluationVisitor
         var context = new EvaluationContext() with { RootResource = resource };
         foreach (var constant in viewDef.Constants)
             if (constant.Value != null)
-                context = context.WithEnvironmentVariable(constant.Name, new PrimitiveValueElement(constant.Value));
+                context = context.WithEnvironmentVariable(
+                    constant.Name, new PrimitiveValueElement(constant.Value, constant.ValueType));
         // Caller-supplied variables override ViewDefinition constants if names collide (caller wins).
         if (variables != null)
             foreach (var (name, value) in variables)
@@ -406,10 +407,22 @@ internal class SqlOnFhirEvaluationVisitor
         private readonly object _value;
         private readonly string _type;
 
-        public PrimitiveValueElement(object value)
+        /// <param name="value">The value to wrap.</param>
+        /// <param name="declaredType">
+        /// The FHIRPath type the producer knows the value to have, or <see langword="null"/> to infer it
+        /// from the CLR type.
+        /// </param>
+        /// <remarks>
+        /// Inference is not enough for a ViewDefinition constant. <c>valueDate</c>, <c>valueDateTime</c>,
+        /// <c>valueInstant</c> and <c>valueTime</c> all reach here as a <see cref="string"/>, which infers
+        /// as System.String, so <c>%cutoff</c> in <c>birthDate &lt; %cutoff</c> compared a date against a
+        /// string and threw. The declared type comes off the <c>value[x]</c> suffix, which the parser has
+        /// and the value does not.
+        /// </remarks>
+        public PrimitiveValueElement(object value, string? declaredType = null)
         {
             _value = value;
-            _type = FhirPathEvaluator.GetFhirPathTypeName(value);
+            _type = declaredType ?? FhirPathEvaluator.GetFhirPathTypeName(value);
         }
 
         public string Name => "value";

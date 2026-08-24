@@ -78,7 +78,7 @@ public static class ViewDefinitionExpressionParser
                 ?? throw new InvalidOperationException("Constant must have a 'name' property");
 
             // Extract value from value[x] properties
-            object? value = ExtractValue(constantNode);
+            object? value = ExtractValue(constantNode, out var valueType);
 
             // Validate that a value was provided
             if (value == null)
@@ -86,7 +86,7 @@ public static class ViewDefinitionExpressionParser
                 throw new InvalidOperationException($"Constant '{name}' must have a value property (valueString, valueInteger, valueBoolean, etc.)");
             }
 
-            builder.Add(new ConstantExpression(name, value));
+            builder.Add(new ConstantExpression(name, value, valueType));
         }
 
         return builder.ToImmutable();
@@ -345,10 +345,18 @@ public static class ViewDefinitionExpressionParser
     }
 
     /// <summary>
-    /// Extracts the value from a constant node's value[x] property using choice type wildcard.
+    /// Extracts the value and the declared FHIRPath type from a constant node's value[x] property.
     /// </summary>
-    private static object? ExtractValue(ISourceNavigator constantNode)
+    /// <param name="constantNode">The <c>constant</c> element.</param>
+    /// <param name="valueType">
+    /// Receives the FHIRPath type the declared suffix converts to, or <see langword="null"/> when there
+    /// is no recognisable <c>value[x]</c> suffix.
+    /// </param>
+    /// <returns>The constant's value, or <see langword="null"/> when it has none.</returns>
+    private static object? ExtractValue(ISourceNavigator constantNode, out string? valueType)
     {
+        valueType = null;
+
         // Use choice type wildcard to match any value[x] property
         var valueNode = constantNode.Children("value*").FirstOrDefault();
         if (valueNode == null)
@@ -364,6 +372,8 @@ public static class ViewDefinitionExpressionParser
         {
             var typeSuffix = propertyName.Substring(5); // Remove "value" prefix
 
+            valueType = SystemTypeOf(typeSuffix);
+
             return typeSuffix switch
             {
                 "Integer" or "PositiveInt" or "UnsignedInt" => int.TryParse(text, out var intValue) ? intValue : text,
@@ -376,6 +386,41 @@ public static class ViewDefinitionExpressionParser
 
         return text;
     }
+
+    /// <summary>
+    /// Maps a <c>value[x]</c> type suffix to the FHIRPath type the FHIR primitive converts to.
+    /// </summary>
+    /// <param name="typeSuffix">The suffix, with the <c>value</c> prefix already removed.</param>
+    /// <returns>The FHIRPath type name, or <see langword="null"/> for a suffix that is not recognised.</returns>
+    /// <remarks>
+    /// <para>
+    /// Only the temporal suffixes change anything a caller could not already infer: the switch above
+    /// hands back an <see cref="int"/>, <see cref="decimal"/> or <see cref="bool"/> for the numeric and
+    /// boolean suffixes, and every remaining FHIR primitive - <c>code</c>, <c>uri</c>, <c>id</c>,
+    /// <c>oid</c>, <c>uuid</c>, <c>url</c>, <c>canonical</c>, <c>markdown</c>, <c>base64Binary</c> -
+    /// converts to System.String, which is what a bare <see cref="string"/> already types as. The four
+    /// temporals are the ones whose type is unrecoverable from their CLR representation, so they are the
+    /// ones a comparison against a resource element got wrong.
+    /// </para>
+    /// <para>
+    /// They are deliberately named for the type, not returned verbatim from the suffix: a constant is a
+    /// System value, and this spelling is the one the evaluator's own
+    /// <c>FhirPathEvaluator.GetFhirPathTypeName</c> uses for a temporal, so the two producers of a
+    /// System temporal agree.
+    /// </para>
+    /// </remarks>
+    private static string? SystemTypeOf(string typeSuffix) => typeSuffix switch
+    {
+        "Date" => "date",
+        "DateTime" => "dateTime",
+        "Instant" => "instant",
+        "Time" => "time",
+        "Integer" or "PositiveInt" or "UnsignedInt" => "integer",
+        "Decimal" => "decimal",
+        "Boolean" => "boolean",
+        "" => null,
+        _ => "string"
+    };
 
     /// <summary>
     /// Validates that all SELECT expressions in a unionAll have the same column names in the same order.
