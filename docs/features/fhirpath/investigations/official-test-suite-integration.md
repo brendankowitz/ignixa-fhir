@@ -257,6 +257,13 @@ Full test suite integration completed across all FHIR versions. Numbers below re
 `fhir-test-cases` 1.7.46; the figures originally recorded here in January 2026 predated most of the
 engine work and were stale in every column.
 
+The corpus is pinned in three places so that "passes the official suite" names which suite: the csproj
+fails the build if `testcases.zip` does not hash to `FhirTestCasesArchiveSha256`,
+`VerifyFhirTestCasesProvenance` re-checks that hash and the `.downloaded` marker at test time, and
+`_suiteFileHashes` pins the SHA-256 of each extracted `tests-fhir-{r4,r4b,r5}.xml`. The last one is not
+redundant: `TestData/` is gitignored, so the extracted tree is unversioned local state, and editing an
+expected output in it would move the pass count with nothing to say so.
+
 | Version | Executed | Passed | Failed | Skipped | Not supported | Genuinely asserted |
 |---------|----------|--------|--------|---------|----------------|---------------------|
 | **R4**    | 935       | 933       | 0     | 2      | 2     | 931 (99.6%)     |
@@ -266,7 +273,14 @@ engine work and were stale in every column.
 
 (Measured against `fhir-test-cases` 1.7.46, `dotnet test test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj
 --filter "FullyQualifiedName~OfficialTestSuite_R4&FullyQualifiedName!~OfficialTestSuite_R4B"` and the
-equivalent `_R4B` / `_R5` filters. **Count unverified pending runner fix**: The current runner cannot distinguish an unimplemented function from a passing test because it treats `NotSupportedException` as an unconditional pass; see [FHIRPath Release Readiness](release-readiness.md) item E1 for details.)
+equivalent `_R4B` / `_R5` filters. **These figures are superseded and have not been re-measured.** They
+were produced by the pre-fix runner, which treated any `NotSupportedException` as a pass and so could
+not tell an unimplemented function from a passing test. That runner has since been fixed and falsified
+— with a binary-operator switch arm deleted from the engine it still reported a fully green suite; the
+fixed runner fails the 27 affected cases. See [FHIRPath Release Readiness](release-readiness.md) item
+E1 for the falsification run. Re-baselining the four-way split on the honest runner is a separate piece
+of work and is deliberately not done here, so that a corrected number does not arrive carrying the
+authority of having been fixed while still being unmeasured.)
 
 Read the last column, not the "Failed" column. Every case in the suite now either asserts and passes or
 is accounted for explicitly, so a raw pass rate reads 100% and tells you nothing. Two things are worth
@@ -296,9 +310,18 @@ watching, and they are not the same thing anymore:
   because six `testQuantity9`/`testQuantity10` skips had already gone stale: they passed on R4, R4B and
   R5 while still being skipped, hiding six conformance results behind a Fhir.Metrics limitation that no
   longer applied to them.
-- **Not supported (9)** - `NotSupportedException` early returns: `conformsTo()` (6, two cases × three
-  versions) and `%terminologies` (3, R5 only). These count as xunit passes, not skips; they're broken out
-  here because the test short-circuits on catching the exception rather than asserting anything.
+- **Not supported** - `conformsTo()` and `%terminologies` cases. In the run tabulated above these counted
+  as xunit *passes*: the runner caught `NotSupportedException` and returned, so a chosen non-feature and a
+  correct answer were the same result. They are now recorded skips. The engine throws
+  `FhirPathFunctionNotSupportedException`, which carries the feature name, and the runner skips only when
+  that name is on `_deliberatelyUnsupportedFeatures`; a bare `NotSupportedException`, or a marker naming
+  an unlisted feature, fails the case.
+  `OfficialTestSuiteSkipListTests.GivenTheDeliberatelyUnsupportedFeatures_WhenEachIsInvoked_ThenTheEngineStillRefusesByName`
+  invokes every listed feature and fails if one stops throwing, so implementing `conformsTo` forces its
+  allowlist entry out instead of leaving a guard that catches nothing.
+  `testConformsTo3` moved too: it is `invalid`-marked and was passing because the engine threw, but for
+  not implementing `conformsTo` at all rather than for the profile URL being bogus. Erroring for the wrong
+  reason is not conformance.
 
 The actual remaining teeth against a regression in the `invalid`-marked cases are `RunInvalidExpressionTest`'s
 `Assert.Fail` calls, which sit outside the `try`/`catch` on purpose - an earlier version wrapped the whole

@@ -403,7 +403,7 @@ Verified-correct list (do not spend effort): Kuhn matching/`TryPair`; `ValueOrde
 
 Order matters: no number gets re-stated until the instrument that produces it discriminates.
 
-**E1 — `OfficialTestSuiteRunner` `NotSupportedException`-as-PASS. First, highest leverage.**
+**E1 — `OfficialTestSuiteRunner` `NotSupportedException`-as-PASS. RUNNER FIXED AND FALSIFIED; RE-BASELINE STILL OUTSTANDING.**
 `test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:477-482`: `catch (NotSupportedException)` → log + `return` → xunit
 Passed. The catch is scoped by exception *type*; `src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:322` ("Binary operator not
 yet implemented") and `:1250` ("Scope not yet implemented") throw the same type, so deleting a
@@ -416,8 +416,40 @@ marker (e.g. a `FhirPathFunctionNotSupportedException : NotSupportedException` c
 function name), never on bare `NotSupportedException`.
 *Falsify (the coordinator's required mutation):* delete one binary-operator switch arm in
 `FhirPathEvaluator` (the `:322` region), run the suite, demonstrate cases using that operator go
-**red**; restore. Executed and recorded in the PR description. Until this run exists, no
-conformance figure is quoted anywhere — release notes, README, or the ADR correction.
+**red**; restore. Until this run exists, no conformance figure is quoted anywhere — release notes,
+README, or the ADR correction.
+
+*Falsification executed (`107480e5`).* The `"xor"` arm was deleted from the `:322` switch and the same filter run
+against both the pre-fix and the post-fix runner, on the same pinned corpus:
+
+| Runner | Same mutation (`xor` arm deleted) | Result |
+|---|---|---|
+| pre-fix (`ce533c1c`, isolated worktree) | `--filter "FullyQualifiedName~OfficialTestSuiteRunner"` | `Passed! - Failed: 0, Passed: 2902, Skipped: 4` |
+| post-fix | same filter | `Failed! - Failed: 27, Passed: 2863, Skipped: 16` |
+
+The pre-fix runner reported a full green suite with a binary operator removed from the engine — and
+the figure it reported while doing so is one of the three already in circulation. The post-fix runner
+fails the 27 affected cases (nine `testBooleanLogicXOr*` cases × three versions) with
+`System.NotSupportedException : Binary operator 'xor' is not yet implemented`. The arm was restored
+and the suite re-run green.
+
+*Two of the three unintended throw sites turned out to be unreachable, not laundered.*
+`FhirPathEvaluator.cs:1268` (`Scope '$name' is not yet implemented`) cannot be reached from any
+parseable expression: `FhirPathTokenizer` matches only `\$(this|index|total)\b`, so an unknown `$name`
+fails tokenization long before evaluation. `ParseTree/ParseNode.cs:219`
+(`ElementAssignmentParseNode is not directly visitable`) cannot be reached either: `IParseTreeVisitor`
+has no `VisitElementAssignment` and `AstBuilder.VisitInstanceSelector` reads `node.Elements` directly
+rather than calling `Accept`. Both are dead defensive code. `:219` was still reclassified to
+`InvalidOperationException`, because it guards a broken invariant and `NotSupportedException` reads as
+a documented capability limit — which is exactly how it would have been reported. `:322` and `:1268`
+stay bare `NotSupportedException` deliberately: the runner is now required to fail on that type, so an
+unimplemented feature stays loud.
+
+*Newly red from the fix itself: zero.* Twelve cases moved from Passed to Skipped (`conformsTo` and
+`%terminologies` cases, plus `testConformsTo3`, which is `invalid`-marked and was passing because the
+engine threw for not implementing `conformsTo` at all rather than for the profile URL being bogus).
+Nothing turned red, so §6.1's re-baseline is a counting exercise, not implementation work — but it is
+still outstanding and no figure below has been re-measured.
 
 **E2 — `SearchIndexParityHarness` discards Ignixa-side failures. DONE (`af451067`, `40f425ec`).**
 `test/Ignixa.FhirPath.Tests/Evaluation/Parity/SearchIndexParityHarness.cs:44-48` builds the production indexer with `NullLoggerFactory`;
