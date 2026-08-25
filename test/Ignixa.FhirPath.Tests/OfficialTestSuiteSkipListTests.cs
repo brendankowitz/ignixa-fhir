@@ -411,9 +411,11 @@ public class OfficialTestSuiteSkipListTests
             case "R4B":
                 runner.OfficialTestSuite_R4B(testCase);
                 break;
-            default:
+            case "R5":
                 runner.OfficialTestSuite_R5(testCase);
                 break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(version), version, "Unrecognized FHIR version string.");
         }
     }
 
