@@ -360,12 +360,13 @@ useful cross-check. The two broader filters seen in earlier write-ups do not:
 | Broader filter | Total | What it adds |
 |---|---|---|
 | `FullyQualifiedName~OfficialTestSuiteRunner` | 2,906 | + 6 `OfficialTestSuiteRunnerPredicateTests` harness tests |
-| `FullyQualifiedName~OfficialTestSuite` | 2,915 | + those 6, + 9 `OfficialTestSuiteSkipListTests` guard tests |
+| `FullyQualifiedName~OfficialTestSuite` | 2,916 | + those 6, + 10 `OfficialTestSuiteSkipListTests` guard tests |
 
-Neither of those 15 tests is an official-suite case. They are this repository's own tests *about*
+Neither of those 16 tests is an official-suite case. They are this repository's own tests *about*
 the runner, and counting them inflates a conformance figure with the harness that produces it. The
-second number moves whenever a guard is added — it was 2,912 before this round added three —
-which is a further reason the canonical figure is taken by trait and not by name prefix.
+second number moves whenever a guard is added — it was 2,912 before an earlier round added three,
+and 2,915 before this round added the guard that pins the 106 figure below (M3) — which is a
+further reason the canonical figure is taken by trait and not by name prefix.
 
 **Cross-check against the runner's own accounting.** `GetTestCasesForVersion` prints a census line at
 discovery time, independent of the xunit result tally. It goes to `Console`, which the default
@@ -387,6 +388,13 @@ into three fallbacks that exist only in that branch: case-insensitive boolean co
 re-parse, and `@`-prefix stripping for temporals. The corpus has 53 such outputs in R4, 53 in R4B and
 none in R5, so the *same expressions* are asserted strictly on R5 and leniently on R4/R4B, decided by
 nothing but a missing XML attribute.
+
+The 53/53/0 breakdown is pinned, not just printed: `OfficialTestSuiteSkipListTests`'s
+`GivenTheOfficialCorpus_WhenCountingUntypedOutputs_ThenTheLeniencyFigureMatchesThePublishedDocument`
+counts the same `type == "unknown"` predicate over each version's `GetR{4,4B,5}TestCases()` rows and
+asserts 53/53/0 directly, independent of the runner's console line. A corpus bump that adds or
+removes an untyped `<output>` now fails that test instead of silently changing what "106" means
+while this document still says 106.
 
 The leniency is load-bearing and is deliberately left alone: making only the `ValuesMatch` unknown
 branch strict fails 28 currently-passing cases — `Comparable1-3`, the `HighBoundary*` and

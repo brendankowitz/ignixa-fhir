@@ -401,6 +401,34 @@ public class OfficialTestSuiteSkipListTests
         drift.ShouldBeEmpty(string.Join(Environment.NewLine, drift));
     }
 
+    /// <summary>
+    /// Pins the untyped-output leniency counts that <c>official-test-suite-integration.md</c> publishes
+    /// as 53 R4 + 53 R4B + 0 R5 = 106. That figure previously lived only in the document's prose, with
+    /// nothing failing if a corpus bump added or removed an <c>&lt;output&gt;</c> with no <c>type</c>
+    /// attribute - the same shape the skip-population guard above was built to close for the skip count.
+    /// </summary>
+    /// <remarks>
+    /// Counts by the identical predicate the runner's own census line uses
+    /// (<c>GetTestCasesForVersion</c>'s <c>untypedOutputCases</c>), over the same filtered rows the suite
+    /// actually runs.
+    /// </remarks>
+    [Fact]
+    public void GivenTheOfficialCorpus_WhenCountingUntypedOutputs_ThenTheLeniencyFigureMatchesThePublishedDocument()
+    {
+        // Arrange / Act
+        static int CountUntyped(IEnumerable<object[]> rows) =>
+            rows.Count(row => ((FhirPathTestCase)row[0]).ExpectedOutputs.Any(output => output.Type == "unknown"));
+
+        var r4 = CountUntyped(OfficialTestSuiteRunner.GetR4TestCases());
+        var r4b = CountUntyped(OfficialTestSuiteRunner.GetR4BTestCases());
+        var r5 = CountUntyped(OfficialTestSuiteRunner.GetR5TestCases());
+
+        // Assert
+        r4.ShouldBe(53, "official-test-suite-integration.md publishes 53 R4 cases under the untyped-output leniency; update the document's 106 total alongside this pin.");
+        r4b.ShouldBe(53, "official-test-suite-integration.md publishes 53 R4B cases under the untyped-output leniency; update the document's 106 total alongside this pin.");
+        r5.ShouldBe(0, "official-test-suite-integration.md publishes 0 R5 cases under the untyped-output leniency; update the document's 106 total alongside this pin.");
+    }
+
     private static void Run(OfficialTestSuiteRunner runner, string version, FhirPathTestCase testCase)
     {
         switch (version)
