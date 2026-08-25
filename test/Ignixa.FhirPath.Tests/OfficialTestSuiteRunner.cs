@@ -412,7 +412,18 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         var predicateTests = testCases.Count(tc => tc.Predicate);
         var runningCount = filteredTests.Count();
 
-        Console.WriteLine($"[OfficialTestSuite-{versionLabel}] Total: {totalTests}, CDA excluded: {cdaTests}, Predicate included: {predicateTests}, Running: {runningCount}");
+        // Untyped outputs are asserted under a weaker rule than the rest, and the count says how much of
+        // the figure that covers. An <output> with no type attribute becomes "unknown", which makes
+        // TypesMatch return true unconditionally - the type assertion is skipped entirely - and routes
+        // ValuesMatch into three fallbacks that exist only in that branch (case-insensitive booleans,
+        // numeric re-parse, @-prefix stripping). The leniency is load-bearing and deliberately left
+        // alone: made strict, 28 currently-passing cases fail, all of them Comparable/HighBoundary/
+        // LowBoundary on R4 and R4B. What was not acceptable was leaving it unstated, so that the same
+        // expressions being asserted strictly on R5 and leniently on R4/R4B - decided by nothing but a
+        // missing XML attribute - showed up nowhere in the numbers this suite publishes.
+        var untypedOutputCases = filteredTests.Count(tc => tc.ExpectedOutputs.Any(output => output.Type == "unknown"));
+
+        Console.WriteLine($"[OfficialTestSuite-{versionLabel}] Total: {totalTests}, CDA excluded: {cdaTests}, Predicate included: {predicateTests}, Running: {runningCount}, Untyped outputs (asserted leniently): {untypedOutputCases}");
 
         foreach (var testCase in filteredTests)
         {

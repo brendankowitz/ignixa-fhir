@@ -357,6 +357,20 @@ discovery time, independent of the xunit result tally:
 `Total - CDA excluded = Running` in all three versions, and `Running = Passed + Skipped` in all
 three. The corpus, the discovery filter and the result tally agree.
 
+**106 of the 2,884 passes are asserted under a weaker rule, and the census line now says so.** An
+`<output>` element with no `type` attribute is parsed as type `"unknown"`, which makes `TypesMatch`
+return `true` unconditionally — the type assertion is skipped entirely — and routes `ValuesMatch`
+into three fallbacks that exist only in that branch: case-insensitive boolean comparison, a numeric
+re-parse, and `@`-prefix stripping for temporals. The corpus has 53 such outputs in R4, 53 in R4B and
+none in R5, so the *same expressions* are asserted strictly on R5 and leniently on R4/R4B, decided by
+nothing but a missing XML attribute.
+
+The leniency is load-bearing and is deliberately left alone: making only the `ValuesMatch` unknown
+branch strict fails 28 currently-passing cases — `Comparable1-3`, the `HighBoundary*` and
+`LowBoundary*` families, 14 cases across two versions. The defect was never the leniency; it was that
+roughly 1% of a figure published to be defensible was measured under a different rule from the other
+99% and nothing in the output said which cases those were. It does now.
+
 One discrepancy did surface and is reconciled rather than papered over: a raw `grep -c '<test '`
 over each suite file returns **937 / 935 / 1037**, two more per version than the parser reports.
 Those two per file sit inside XML comments — cases the upstream corpus has commented out. The
