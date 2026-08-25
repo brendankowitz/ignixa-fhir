@@ -6,6 +6,7 @@
 
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
 
@@ -149,38 +150,86 @@ public class RemainingCoverageTests
     }
 
     [Fact]
-    public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionWithinTheGuardedIterationLimit()
+    public void GivenASmallIterationCap_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionAtThatCap()
     {
-        // Arrange - repeat($this & 'x') is the constructing-projection hazard from #433: every round
-        // concatenates a literal onto $this, so the output is a fresh, longer string that is never
-        // deep-equal to anything already processed. The dedup check that stops a *navigating* projection
-        // over a finite tree (see the tests above) cannot stop one that *constructs* a new value each
-        // round - only the iteration cap can.
+        // Arrange - same constructing-projection hazard as the full-cost test below (repeat($this & 'x'),
+        // the #433 hazard: every round concatenates a literal onto $this, so the output is never deep-equal
+        // to anything already processed, and only an iteration or comparison cap can stop it) - but driven
+        // through RepeatGuardLimits' test seam (#435) with only MaxIterations lowered. MaxComparisons stays
+        // at its production default (15,000,000): at a 50-iteration cap this expression accumulates on the
+        // order of a few thousand comparisons at most (see CollectionFunctions.Repeat's remarks for the
+        // measured growth curve), nowhere near that default, so the iteration cap - not the comparison
+        // budget - is what trips here. This isolates the iteration-cap code path in milliseconds instead of
+        // the ~33 seconds proving it at the real 10,000-iteration scale used to cost.
+        const int smallCap = 50;
+        using var scope = new RepeatGuardLimits.Scope(maxIterations: smallCap);
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
 
         // Act
         var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
 
-        // Assert - the cap fires deterministically; proving it fires requires driving the full O(n²)
-        // cost. Per CollectionFunctions.Repeat's remarks, this test costs roughly 33 seconds by
-        // construction for branching factor 1. The cost issue and proposed test seam are tracked in #435.
-        //
-        // The cap's *value* is asserted, not just that some cap exists. Only the lower direction is
-        // self-policing: drop the cap below ~1,093 and the nested-Questionnaire control below reddens.
-        // Raising it is caught by nothing else - and Repeat's remarks warn specifically against raising
-        // 10,000 toward RepeatAll's 100,000, which would multiply this test's already-33-second cost by
-        // roughly a hundred. Without this line that change leaves the suite green and hangs CI for the
-        // better part of an hour instead of failing.
-        //
-        // The parentheses are load-bearing. ShouldContain is ordinal substring containment, so a bare
-        // "10000" is satisfied by the "100000" a raise to RepeatAll's cap would print - the assertion
-        // would pass on precisely the change it exists to block, and on any 1 followed by four or more
-        // zeros. "(10000)" is the whole formatted argument and rejects "(100000)".
+        // Assert - parentheses are load-bearing: ShouldContain is ordinal substring containment, so a bare
+        // "50" would also match a stray "150" or "500"; "(50)" is the whole formatted argument.
         var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
         exception.Message.ShouldContain("repeat()");
         exception.Message.ShouldContain("maximum iteration limit");
-        exception.Message.ShouldContain("(10000)");
+        exception.Message.ShouldContain($"({smallCap})");
+    }
+
+    [Fact]
+    public void GivenASmallComparisonBudget_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionAtThatBudget()
+    {
+        // Arrange - the same hazard again, but with only MaxComparisons lowered via the #435 seam.
+        // MaxIterations stays at its production default (10,000): at a 50-comparison budget this
+        // expression has only dequeued on the order of a handful of times (see CollectionFunctions.Repeat's
+        // remarks for the measured growth curve), nowhere near that default, so the comparison budget -
+        // not the iteration cap - is what trips here. This isolates the comparison-budget code path
+        // (added by #435) in milliseconds.
+        const long smallBudget = 50;
+        using var scope = new RepeatGuardLimits.Scope(maxComparisons: smallBudget);
+        var expr = _parser.Parse("'a'.repeat($this & 'x')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
+        exception.Message.ShouldContain("repeat()");
+        exception.Message.ShouldContain("maximum comparison-count budget");
+        exception.Message.ShouldContain($"({smallBudget})");
+    }
+
+    [Fact]
+    public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionWithinTheComparisonBudget()
+    {
+        // Arrange - repeat($this & 'x') is the constructing-projection hazard from #433: every round
+        // concatenates a literal onto $this, so the output is a fresh, longer string that is never
+        // deep-equal to anything already processed. The dedup check that stops a *navigating* projection
+        // over a finite tree (see the tests above) cannot stop one that *constructs* a new value each
+        // round - only the iteration cap and (since #435) the comparison-count budget can.
+        //
+        // This is the one full-cost test kept end-to-end at production thresholds (#435): the two tests
+        // above already prove each guard's code path and message in milliseconds via the test seam, so this
+        // one exists solely to pin that the *real* defaults (10,000 iterations, 15,000,000 comparisons)
+        // actually terminate this hazard, and in what shape. Before #435 this cost ~33 seconds and tripped
+        // the iteration cap. It now costs a few seconds (per CollectionFunctions.Repeat's remarks, the
+        // comparison budget reaches 15,000,000 at roughly a third of the iteration count the old iteration
+        // cap alone needed) and trips the comparison budget instead - the iteration cap is never reached by
+        // this expression at production scale any more, which is exactly the point of adding a cost bound
+        // alongside a count bound.
+        var expr = _parser.Parse("'a'.repeat($this & 'x')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert - the parentheses are load-bearing for the same ordinal-substring reason as above.
+        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
+        exception.Message.ShouldContain("repeat()");
+        exception.Message.ShouldContain("maximum comparison-count budget");
+        exception.Message.ShouldContain("(15000000)");
     }
 
     [Fact]

@@ -463,8 +463,35 @@ internal static class CollectionFunctions
     /// (<c>RemainingCoverageTests</c>, nested-Questionnaire case) uses a 1,092-item tree and genuinely dequeues
     /// roughly 1,093 times; a 1,000 iteration cap would reject that legitimate data. 10,000 gives approximately
     /// 9× headroom over that observed real shape. The residual gap - bounding actual per-projection cost, which
-    /// depends on fan-out - requires a work budget (comparison count) alongside the iteration cap; that is tracked
-    /// separately and is deliberately not implemented here.
+    /// depends on fan-out - is closed by the comparison-count budget below.
+    /// </para>
+    /// <para>
+    /// <b>Comparison-count budget (#435):</b> <see cref="RepeatGuardLimits.MaxComparisons"/> caps the total
+    /// number of <see cref="FunctionHelpers.AreElementsEqual"/> calls across the whole run, tripping whichever
+    /// of it or <see cref="RepeatGuardLimits.MaxIterations"/> is reached first, with the same exception type and
+    /// log tier either way. Unlike the iteration cap, this is a <em>cost</em> budget: it bounds wall-clock work
+    /// directly, so it catches the fan-out hazard the iteration cap cannot - a wider projection reaches the same
+    /// comparison total in fewer iterations, so it is stopped at roughly the same cost regardless of branching.
+    /// <b>The value is measured, not assumed.</b> Instrumenting this method and running the control case above
+    /// (the same 1,092-item nested-Questionnaire tree, 1,093 iterations) measured 1,391,754 total comparisons.
+    /// Instrumenting the <c>repeat($this &amp; 'x')</c> constructing-projection hazard (branching factor 1) to its
+    /// full 10,000-iteration cap measured 149,995,000 - roughly 108× the control's cost for roughly 9× its
+    /// iteration count, confirming the per-iteration cost genuinely grows faster than linearly as
+    /// <c>processed</c>/<c>result</c> grow. 15,000,000 was chosen as the budget: about 10.8× headroom over the
+    /// measured 1,391,754 control cost (the same order of headroom the iteration cap gives at ~9×), while still
+    /// stopping the branching-factor-1 hazard at roughly a third of its former 10,000-iteration run - and, because
+    /// this is a cost bound rather than an iteration bound, stopping a wider-fan-out hazard at roughly the *same*
+    /// comparison cost rather than at proportionally more wall-clock time the way the iteration-only cap did (one
+    /// extra <c>|</c> branch used to roughly double the 33.4s-vs-63.4s times above; both now stop at the same
+    /// ~15,000,000-comparison budget instead).
+    /// </para>
+    /// <para>
+    /// <b>Test seam (#435):</b> both thresholds live on <see cref="RepeatGuardLimits"/>, not as local <c>const</c>s,
+    /// specifically so <c>Ignixa.FhirPath.Tests</c> can substitute a small cap via
+    /// <see cref="RepeatGuardLimits.Scope"/> and prove either guard trips - same exception type, same message
+    /// shape, same log tier - in milliseconds instead of paying the real threshold's full wall-clock cost on every
+    /// CI run. See <see cref="RepeatGuardLimits"/>'s remarks for why this is safe under xUnit's default
+    /// parallelization.
     /// </para>
     /// <para>
     /// <b>Harmonisation with <see cref="RepeatAll"/>'s 100,000:</b> do not raise this cap toward that figure. The
@@ -532,18 +559,18 @@ internal static class CollectionFunctions
         var processed = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
-        const int maxIterations = 10_000;
         var iterations = 0;
+        long comparisons = 0;
 
         while (queue.Count > 0)
         {
-            if (++iterations > maxIterations)
-                throw new FhirPathEvaluationException($"repeat() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
+            if (++iterations > RepeatGuardLimits.MaxIterations)
+                throw new FhirPathEvaluationException($"repeat() exceeded maximum iteration limit ({RepeatGuardLimits.MaxIterations}) - possible infinite loop detected");
 
             var current = queue.Dequeue();
 
             // Check if we've already processed this element using deep equality comparison
-            if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, current)))
+            if (!ContainsElement(processed, current))
             {
                 processed.Add(current);
 
@@ -553,13 +580,13 @@ internal static class CollectionFunctions
                 foreach (var item in projected)
                 {
                     // Add projection results to the output result set (avoiding duplicates)
-                    if (!result.Any(r => FunctionHelpers.AreElementsEqual(r, item)))
+                    if (!ContainsElement(result, item))
                     {
                         result.Add(item);
                     }
 
                     // If this is a new item, add it to queue for further processing
-                    if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, item)))
+                    if (!ContainsElement(processed, item))
                     {
                         queue.Enqueue(item);
                     }
@@ -568,6 +595,23 @@ internal static class CollectionFunctions
         }
 
         return result;
+
+        // Counts every deep-equality scan against the comparison-count budget as it goes, rather than
+        // after each O(n) scan completes - see the "comparison-count budget" remarks paragraph above for
+        // why the check has to live inside the scan rather than once per iteration.
+        bool ContainsElement(List<IElement> list, IElement candidate)
+        {
+            foreach (var existing in list)
+            {
+                if (++comparisons > RepeatGuardLimits.MaxComparisons)
+                    throw new FhirPathEvaluationException($"repeat() exceeded maximum comparison-count budget ({RepeatGuardLimits.MaxComparisons}) - possible expensive projection detected");
+
+                if (FunctionHelpers.AreElementsEqual(existing, candidate))
+                    return true;
+            }
+
+            return false;
+        }
     }
 
     /// <summary>
