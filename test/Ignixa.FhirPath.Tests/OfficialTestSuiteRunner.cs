@@ -870,7 +870,12 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// parse-time signal but an evaluation-time defect - <c>BoundaryFunctions</c> and
     /// <c>TypeConversionFunctions</c> both reach <c>int.Parse</c>/<c>decimal.Parse</c> on values they have
     /// already pattern-matched, so a <see cref="FormatException"/> out of <c>Evaluate</c> means one of
-    /// those matches is wrong. One flat list across both phases would launder that as a pass.
+    /// those matches is wrong. A single flat list shared across both phases would accept that
+    /// <see cref="FormatException"/> at evaluation time too, which is the defect this split exists to
+    /// catch - but no case in the corpus currently throws <see cref="FormatException"/> from <c>Evaluate</c>,
+    /// so no test distinguishes the two allowlists from one shared list today, and a probe for it is not
+    /// constructible without mutating the engine to make <c>BoundaryFunctions</c> or
+    /// <c>TypeConversionFunctions</c> mis-parse an already-matched value.
     /// </para>
     /// <para>
     /// A bare <see cref="NotSupportedException"/> is not on either list, which is the rule this harness
