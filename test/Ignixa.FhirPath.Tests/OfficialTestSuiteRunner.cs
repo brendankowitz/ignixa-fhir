@@ -209,9 +209,12 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// <c>subsumes</c> and <c>subsumedBy</c> are also deliberate omissions, but they carry no
     /// <c>[FhirPathFunction]</c> registration at all, so they fall through the generated dispatcher's
     /// default arm as a bare <see cref="NotSupportedException"/> and this runner reports them as engine
-    /// gaps. That is the safe direction and no current case reaches them, but a corpus bump that adds
-    /// one would produce a red suite with a misleading cause; the fix then is to give those three a
-    /// marker and list them here, not to widen the catch.
+    /// gaps. That is the safe direction on every path - <see cref="IsParserSignalledError"/> and
+    /// <see cref="IsEvaluatorSignalledError"/> name the types they accept, so a bare
+    /// <see cref="NotSupportedException"/> fails an <c>invalid</c>-marked case exactly as it fails a
+    /// normal one. No current case reaches them, but a corpus bump that adds one would produce a red
+    /// suite with a misleading cause; the fix then is to give those three a marker and list them here,
+    /// not to widen the allowlists.
     /// </para>
     /// <para>
     /// This list is what makes the type marker discriminating. Catching
@@ -617,8 +620,18 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// Every <c>Assert.Fail</c> below sits outside a <c>try</c> on purpose. An earlier version wrapped the
     /// whole method body in one, so xunit's own <c>FailException</c> landed in the trailing
     /// <c>catch (Exception)</c> and was logged as <c>[INVALID-OK]</c> - which made every single
-    /// <c>invalid</c>-marked case pass unconditionally. The <c>IsEngineSignalledError</c> filters keep that
-    /// from coming back if this method is ever restructured.
+    /// <c>invalid</c>-marked case pass unconditionally. The <see cref="IsParserSignalledError"/> and
+    /// <see cref="IsEvaluatorSignalledError"/> filters keep that from coming back if this method is ever
+    /// restructured: both are allowlists of engine error types, and <c>FailException</c> is on neither.
+    /// </para>
+    /// <para>
+    /// The marker catch below the evaluation call is what turns <c>testConformsTo3</c> from a pass into a
+    /// skip. The case is marked <c>invalid</c> and expects <c>conformsTo('http://trash')</c> to be refused
+    /// for naming a profile that does not exist; this engine refuses it for not implementing
+    /// <c>conformsTo</c> at all. Both throw, so the case used to pass - on an error it was not testing for.
+    /// Erroring for the wrong reason is not conformance, so it routes to a recorded skip. The allowlists
+    /// would reject the marker on their own, but rejecting it produces a failure, not the skip; only that
+    /// catch produces the skip.
     /// </para>
     /// <para>
     /// The analyzer is consulted last, not first, even though HAPI's runner calls <c>check()</c> before
@@ -643,7 +656,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         {
             expression = _parser.Parse(testCase.Expression);
         }
-        catch (Exception ex) when (IsEngineSignalledError(ex))
+        catch (Exception ex) when (IsParserSignalledError(ex))
         {
             _output.WriteLine($"[INVALID-OK] {testCase.Name}: parse-time error as expected ({invalidType}): {ex.GetType().Name}: {ex.Message}");
             return;
@@ -665,7 +678,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             SkipDeliberatelyUnsupportedFeature(testCase, ex);
             return;
         }
-        catch (Exception ex) when (IsEngineSignalledError(ex))
+        catch (Exception ex) when (IsEvaluatorSignalledError(ex))
         {
             _output.WriteLine($"[INVALID-OK] {testCase.Name}: evaluation error as expected ({invalidType}): {ex.GetType().Name}: {ex.Message}");
             return;
@@ -745,12 +758,9 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// </para>
     /// <para>
     /// The marker branch mirrors the one in <see cref="ExecuteTestCase"/> and
-    /// <see cref="RunInvalidExpressionTest"/>, and exists because <see cref="IsEngineSignalledError"/>
-    /// now excludes the marker by type: without it, a deferred case whose expression happens to use an
-    /// allowlisted feature would escape the filter as a raw exception and fail rather than skip. Such a
-    /// case reports as a feature skip and its staleness goes unchecked, which is not a loss - an
-    /// expression the engine refuses to evaluate cannot demonstrate whether the deferred gap has closed
-    /// either way. Unreachable today: <see cref="_unsignalledInvalidCases"/> is empty by design.
+    /// <see cref="RunInvalidExpressionTest"/>. It is kept for that symmetry and not described further:
+    /// <see cref="_unsignalledInvalidCases"/> is empty by design, so this whole method is unreachable and
+    /// prose about how its branches interact would document behaviour nothing can execute.
     /// </para>
     /// </remarks>
     private void AssertDeferralIsStillNeeded(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider, string deferralReason)
@@ -766,7 +776,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             SkipDeliberatelyUnsupportedFeature(testCase, ex);
             return;
         }
-        catch (Exception ex) when (IsEngineSignalledError(ex))
+        catch (Exception ex) when (IsParserSignalledError(ex) || IsEvaluatorSignalledError(ex))
         {
             Assert.Fail($"""
                 '{testCase.Name}' is deferred in _unsignalledInvalidCases but the engine now signals the error, so the entry is stale and must be removed.
@@ -792,25 +802,66 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     };
 
     /// <summary>
-    /// Distinguishes an error signalled by the FHIRPath engine from an assertion raised by this harness,
-    /// and from a feature this engine chose not to build.
+    /// The exception the parser raises to mean "this expression is not FHIRPath", which is the only throw
+    /// out of <see cref="FhirPathParser.Parse"/> that lets a <c>syntax</c>-marked case pass.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// xunit assertion failures (<see cref="XunitException"/>, including <c>Assert.Fail</c>'s
-    /// <c>FailException</c>) must never be mistaken for the engine reporting an invalid expression.
+    /// An allowlist, not a denylist, and that is the whole point. Named exception types are the engine's
+    /// error signal; everything else reaching one of these catches is the engine falling over, and a
+    /// harness that reads "it threw" as "it correctly refused" cannot fail. This one names
+    /// <see cref="FormatException"/> because <see cref="FhirPathParser.ParseToTree"/> documents and throws
+    /// exactly that for a failed tokenize and a failed parse.
     /// </para>
     /// <para>
-    /// <see cref="FhirPathFunctionNotSupportedException"/> is excluded for the same reason pointing the
-    /// other way. <c>testConformsTo3</c> is marked <c>invalid</c> and expects
-    /// <c>conformsTo('http://trash')</c> to be refused for naming a profile that does not exist; this
-    /// engine refuses it for not implementing <c>conformsTo</c> at all. Both throw, so the case passed -
-    /// on an error it was not testing for. Erroring for the wrong reason is not conformance, so these
-    /// route to a recorded skip instead.
+    /// <see cref="ArgumentException"/> from the same method is deliberately not here. It reports a null or
+    /// whitespace expression - a caller-contract violation, not a verdict on FHIRPath syntax - and a
+    /// harness that accepted it would record "we passed the parser nothing" as "the parser rejected the
+    /// expression".
     /// </para>
     /// </remarks>
-    private static bool IsEngineSignalledError(Exception exception) =>
-        exception is not XunitException and not FhirPathFunctionNotSupportedException;
+    private static bool IsParserSignalledError(Exception exception) =>
+        exception is FormatException;
+
+    /// <summary>
+    /// The exception the evaluator raises to mean "the FHIRPath specification requires an error here",
+    /// which is the only throw out of <c>Evaluate</c> that lets a <c>semantic</c>/<c>execution</c>-marked
+    /// case pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="FhirPathEvaluationException"/> is the type whose entire reason for existing is this
+    /// distinction - see its own remarks: "the expression is wrong" versus "we are wrong". Its base
+    /// <see cref="InvalidOperationException"/> is not accepted, and that asymmetry is load-bearing: the
+    /// base type is what the engine throws for a broken internal invariant, so accepting it would let an
+    /// engine defect count as conformance on any case the corpus happens to mark invalid.
+    /// </para>
+    /// <para>
+    /// The list is deliberately narrower than the parser's. <see cref="FormatException"/> is a legitimate
+    /// parse-time signal but an evaluation-time defect - <c>BoundaryFunctions</c> and
+    /// <c>TypeConversionFunctions</c> both reach <c>int.Parse</c>/<c>decimal.Parse</c> on values they have
+    /// already pattern-matched, so a <see cref="FormatException"/> out of <c>Evaluate</c> means one of
+    /// those matches is wrong. One flat list across both phases would launder that as a pass.
+    /// </para>
+    /// <para>
+    /// A bare <see cref="NotSupportedException"/> is not on either list, which is the rule this harness
+    /// was rebuilt around: the generated dispatcher's default arm and the evaluator's binary-operator
+    /// default arm both throw it for "not yet implemented", and an engine that cannot evaluate an
+    /// expression has not refused it. <see cref="FhirPathFunctionNotSupportedException"/> is excluded by
+    /// the same rule - it derives from <see cref="NotSupportedException"/>, not from either allowlisted
+    /// type - and reaches a recorded skip through the marker catches that precede every call to this
+    /// method, never through here.
+    /// </para>
+    /// <para>
+    /// <see cref="OperationCanceledException"/> and <see cref="XunitException"/> fall out for free, which
+    /// the previous denylist had to name or missed. An abandoned run now surfaces as a failure rather than
+    /// as a recorded pass, consistent with <see cref="SkipUnlessTheCaseWouldNowPass"/> re-throwing it, and
+    /// <c>Assert.Fail</c>'s <c>FailException</c> still cannot be mistaken for the engine reporting an
+    /// invalid expression.
+    /// </para>
+    /// </remarks>
+    private static bool IsEvaluatorSignalledError(Exception exception) =>
+        exception is FhirPathEvaluationException;
 
     /// <summary>
     /// Records a case the suite exercises through a feature this engine deliberately does not implement.
