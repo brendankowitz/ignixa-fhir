@@ -198,6 +198,19 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     public static string ProjectRoot => _projectRoot;
 
     /// <summary>
+    /// Runs the corpus provenance and per-file hash checks, exposed so a test that parses the suite files
+    /// through <see cref="ProjectRoot"/> is held to the same pin as the three suite entry points.
+    /// </summary>
+    /// <remarks>
+    /// <c>TestData/</c> is gitignored, so nothing but these checks stands between an edited expected
+    /// output and a guard that reports green against it. <see cref="LoadTestCases"/> touches the pin for
+    /// the suite itself; a guard that reaches the same XML by its own path would otherwise make its claim
+    /// against an unverified corpus, and a targeted <c>--filter</c> run would never notice - measured,
+    /// <see cref="OfficialTestSuiteSkipListTests"/> reported all green against a tampered file.
+    /// </remarks>
+    public static void EnsureCorpusProvenance() => _ = _fhirTestCasesProvenanceVerified.Value;
+
+    /// <summary>
     /// The deliberately unimplemented FHIR-specific features that report a
     /// <see cref="FhirPathFunctionNotSupportedException"/>, keyed by the
     /// <see cref="FhirPathFunctionNotSupportedException.FeatureName"/> the engine reports, with the

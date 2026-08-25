@@ -351,8 +351,22 @@ public class OfficialTestSuiteSkipListTests
         }
     }
 
+    /// <summary>
+    /// Every official case across the three versions, read through the same provenance and per-file hash
+    /// pin the suite entry points use.
+    /// </summary>
+    /// <remarks>
+    /// The pin is not incidental here. These guards claim each deferred entry still names a real,
+    /// still-invalid official case, and that claim is only worth what the corpus behind it is worth -
+    /// measured, an edited expected output in <c>tests-fhir-r4.xml</c> failed all three suite entry points
+    /// on the hash while this class reported all green, because it reached the XML by its own path.
+    /// A missing file throws rather than shrinking the population silently, for the same reason: an
+    /// absent version would otherwise leave every entry from it unchecked and nothing would say so.
+    /// </remarks>
     private static IEnumerable<FhirPathTestCase> AllTestCases()
     {
+        OfficialTestSuiteRunner.EnsureCorpusProvenance();
+
         foreach (var version in new[] { "r4", "r4b", "r5" })
         {
             var path = Path.Combine(
@@ -365,7 +379,9 @@ public class OfficialTestSuiteSkipListTests
 
             if (!File.Exists(path))
             {
-                continue;
+                throw new FileNotFoundException(
+                    $"Official {version} suite file is missing: {path}. These guards check the deferral list against the official corpus, so a missing version has to fail rather than reduce what is checked.",
+                    path);
             }
 
             foreach (var testCase in FhirPathTestSuiteParser.ParseTestSuite(path))
