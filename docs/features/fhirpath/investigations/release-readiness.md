@@ -465,6 +465,31 @@ and `GivenAnAllowlistedFeature_...ThenTheCaseSkips` drive the runner through its
 re-broadening the catch to `catch (NotSupportedException)` turns both red; dropping `memberOf` from the
 allowlist turns the skip guard red on its own while the failure guard stays green.
 
+*E1a — the fix closed the hole on one of the runner's two arms and left it open on the other. DONE
+(`18797b52`, `4553c38e`).* Both guards above set `IsInvalidTest: false`, so both entered
+`ExecuteTestCase`; an `invalid`-marked case takes `RunInvalidExpressionTest` instead, whose filter was
+still a two-type denylist (`is not XunitException and not FhirPathFunctionNotSupportedException`). A
+bare `NotSupportedException` satisfied it, produced `[INVALID-OK]`, and returned — E1 verbatim, across
+the 114 `invalid`-marked cases. The inversion is the tell: the marker *subclass* was correctly refused
+while its base type was accepted. *Falsified the same way on a different arm:* deleting the `"&"` arm
+from the `:322` switch left `testConcatenate4` (`(1 | 2 | 3) & 'b' = '1,2,3b'`, `invalid="execution"`)
+passing on all three versions with an engine that has no string concatenation. *Fix:* both filters are
+now allowlists, and they differ by phase — the parser signals with `FormatException`, the evaluator
+with `FhirPathEvaluationException`, and `FormatException` out of `Evaluate` is an engine defect rather
+than a signal, so one flat list across both phases would have laundered it. With the allowlists in
+place the same `"&"` deletion fails `testConcatenate4` on all three versions. The two mirror probes
+`...WhenRunAsAnInvalidMarkedCase_ThenTheCaseFails` / `...ThenTheCaseSkips` pin those edges in CI; the
+first was red before the fix and green after. *Newly red from this fix: zero*, and the canonical figure
+did not move — a census of what actually reaches those catches across all three versions returns 79
+`FhirPathEvaluationException`, 12 parse-time `FormatException` and 18 analyzer rejections, so nothing
+was passing on a type the allowlists exclude.
+
+*The skip that `testConformsTo3` reports was held by two mechanisms and pinned by neither.* Reverting
+both the marker exclusion in the filter and the marker catch in `RunInvalidExpressionTest` produced
+`Failed: 0, Passed: 2887, Skipped: 13, Total: 2900` — a fully green canonical suite with E1 restored,
+its only trace a skip count that existed in a documentation table and nowhere else. Prose is not a
+guard. `...WhenRunAsAnInvalidMarkedCase_ThenTheCaseSkips` now fails under that combined revert.
+
 *Newly red from the fix itself: zero.* Twelve cases moved from Passed to Skipped (`conformsTo` and
 `%terminologies` cases, plus `testConformsTo3`, which is `invalid`-marked and was passing because the
 engine threw for not implementing `conformsTo` at all rather than for the profile URL being bogus).
@@ -482,14 +507,16 @@ documents cite:
 | **Total** | **2,903** | **3** | **2,900** | **2,884** | **0** | **16** |
 
 Canonical filter `--filter "Category=OfficialTestSuite"`, `fhir-test-cases` 1.7.46 pinned per suite
-file by SHA-256, `net10.0`, at `8183b284`. **The filter is part of the figure.** On this commit,
-against this corpus, passed counts of **2,884 / 2,890 / 2,896** and totals of
-**2,900 / 2,906 / 2,912** are all reproducible, varying only by `--filter`:
+file by SHA-256, `net10.0`, at `8183b284`, re-measured unchanged at `18797b52` after the
+`invalid`-path allowlist. **The filter is part of the figure.** On this commit,
+against this corpus, passed counts of **2,884 / 2,890 / 2,898** and totals of
+**2,900 / 2,906 / 2,914** are all reproducible, varying only by `--filter`:
 `FullyQualifiedName~OfficialTestSuiteRunner` adds 6 predicate harness tests and
-`FullyQualifiedName~OfficialTestSuite` adds 6 more skip-list guard tests, neither set being an
-official-suite case. That is precisely how three numbers ended up in circulation. Cross-checked
-against the runner's own discovery census (`Total - CDA excluded = Running`, `Running = Passed +
-Skipped`, all three versions) and against the corpus files directly.
+`FullyQualifiedName~OfficialTestSuite` adds 8 more skip-list guard tests, neither set being an
+official-suite case. That is precisely how three numbers ended up in circulation, and the third
+moves again every time a guard is added — it read 2,896 / 2,912 before the two `invalid`-path
+probes. Cross-checked against the runner's own discovery census (`Total - CDA excluded = Running`,
+`Running = Passed + Skipped`, all three versions) and against the corpus files directly.
 
 **E8 — the discovery filter's second clause can shrink the denominator silently. OPEN; DO NOT
 BUNDLE WITH A PUBLISHED FIGURE.**

@@ -257,7 +257,13 @@ Full test suite integration is complete across all FHIR versions, and the counts
 first conformance figures this project has published from a runner that can fail.
 
 **Measured 2026-08-24** at `8183b284` on branch `runner-honesty`, `net10.0`, against
-`fhir-test-cases` **1.7.46**. Reproduce it with, from the repository root:
+`fhir-test-cases` **1.7.46**, and **re-measured unchanged at `18797b52`**, the commit that turned the
+`invalid`-marked path's error filter into an allowlist. That second measurement is not a formality:
+until `18797b52` the same defect this figure was published to retire was still open on the other of
+the runner's two arms, so the figure was being carried by a runner that could still launder an engine
+gap on 114 of these cases. It did not move, because none of those 114 was passing on an exception
+type the allowlist excludes — see the census under "What makes this figure different" below.
+Reproduce it with, from the repository root:
 
 ```bash
 # `Platform=x86` is exported in some shells here and makes a bare `dotnet test <csproj>` fail CS8034.
@@ -284,13 +290,27 @@ from the same runner. Two things had to be true before any of them could be repl
    `Failed: 0, Passed: 2902, Skipped: 4, Total: 2906` — a fully green suite with an operator missing
    from the engine — while the fixed runner, same mutation and same filter
    (`--filter "FullyQualifiedName~OfficialTestSuiteRunner"`, the filter that run used), reports
-   `Failed: 27, Passed: 2863, Skipped: 16, Total: 2906`. Both edges of the discriminator are now pinned by CI
-   rather than by hand: `GivenAnUnregisteredFunction_WhenRunThroughTheOfficialSuiteRunner_ThenTheCaseFails`
-   requires a bare `NotSupportedException` to fail the case, and
+   `Failed: 27, Passed: 2863, Skipped: 16, Total: 2906`. All four edges of the discriminator are now
+   pinned by CI rather than by hand. On the normal path,
+   `GivenAnUnregisteredFunction_WhenRunThroughTheOfficialSuiteRunner_ThenTheCaseFails` requires a bare
+   `NotSupportedException` to fail the case and
    `GivenAnAllowlistedFeature_WhenRunThroughTheOfficialSuiteRunner_ThenTheCaseSkips` requires an
-   allowlisted marker to skip it. Either guard alone is satisfiable by a runner that has stopped
-   discriminating; together they are not. See [FHIRPath Release Readiness](release-readiness.md) E1
-   for the falsification run.
+   allowlisted marker to skip it; `...WhenRunAsAnInvalidMarkedCase_ThenTheCaseFails` and
+   `...WhenRunAsAnInvalidMarkedCase_ThenTheCaseSkips` require the same two outcomes on the
+   `invalid`-marked path. Either guard of a pair alone is satisfiable by a runner that has stopped
+   discriminating; together they are not.
+
+   The second pair exists because the first fix left the identical hole open one method over, and no
+   guard could see it: both original guards set `IsInvalidTest: false`, so both entered
+   `ExecuteTestCase` and neither ever reached `RunInvalidExpressionTest`, whose filter was still a
+   two-type denylist that a bare `NotSupportedException` satisfied. Demonstrated the same way, on a
+   different arm: with the `"&"` arm deleted from the binary-operator switch, the runner logged
+   `[INVALID-OK] testConcatenate4: NotSupportedException: Binary operator '&' is not yet implemented`
+   and recorded a pass on all three versions — an engine with no string concatenation at all, counted
+   as conformant. With the allowlist in place the same deletion fails `testConcatenate4` on all three
+   versions (`Failed: 17, Passed: 2867, Skipped: 16, Total: 2900`, canonical filter) alongside
+   `testConcatenate1/2/3`. See [FHIRPath Release Readiness](release-readiness.md) E1 for the original
+   falsification run.
 2. **The corpus is pinned per file, so the figure names *which* suite.** `_suiteFileHashes` pins the
    SHA-256 of each extracted `tests-fhir-{r4,r4b,r5}.xml` and `VerifyFhirTestCasesProvenance` checks
    all three before a single case is parsed. This is not redundant with the archive hash: `TestData/`
@@ -340,18 +360,21 @@ useful cross-check. The two broader filters seen in earlier write-ups do not:
 | Broader filter | Total | What it adds |
 |---|---|---|
 | `FullyQualifiedName~OfficialTestSuiteRunner` | 2,906 | + 6 `OfficialTestSuiteRunnerPredicateTests` harness tests |
-| `FullyQualifiedName~OfficialTestSuite` | 2,912 | + those 6, + 6 `OfficialTestSuiteSkipListTests` guard tests |
+| `FullyQualifiedName~OfficialTestSuite` | 2,914 | + those 6, + 8 `OfficialTestSuiteSkipListTests` guard tests |
 
-Neither of those 12 tests is an official-suite case. They are this repository's own tests *about*
-the runner, and counting them inflates a conformance figure with the harness that produces it.
+Neither of those 14 tests is an official-suite case. They are this repository's own tests *about*
+the runner, and counting them inflates a conformance figure with the harness that produces it. The
+second number moves whenever a guard is added — it was 2,912 before the two `invalid`-path probes —
+which is a further reason the canonical figure is taken by trait and not by name prefix.
 
 **Cross-check against the runner's own accounting.** `GetTestCasesForVersion` prints a census line at
-discovery time, independent of the xunit result tally:
+discovery time, independent of the xunit result tally. It goes to `Console`, which the default
+`dotnet test` logger does not surface — add `--logger "console;verbosity=detailed"` to see it:
 
 ```text
-[OfficialTestSuite-r4] Total: 935, CDA excluded: 0, Predicate included: 1, Running: 935
-[OfficialTestSuite-r4b] Total: 933, CDA excluded: 0, Predicate included: 1, Running: 933
-[OfficialTestSuite-r5] Total: 1035, CDA excluded: 3, Predicate included: 1, Running: 1032
+[OfficialTestSuite-r4] Total: 935, CDA excluded: 0, Predicate included: 1, Running: 935, Untyped outputs (asserted leniently): 53
+[OfficialTestSuite-r4b] Total: 933, CDA excluded: 0, Predicate included: 1, Running: 933, Untyped outputs (asserted leniently): 53
+[OfficialTestSuite-r5] Total: 1035, CDA excluded: 3, Predicate included: 1, Running: 1032, Untyped outputs (asserted leniently): 0
 ```
 
 `Total - CDA excluded = Running` in all three versions, and `Running = Passed + Skipped` in all
