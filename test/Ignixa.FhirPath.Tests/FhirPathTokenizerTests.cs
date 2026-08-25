@@ -200,6 +200,56 @@ public class FhirPathTokenizerTests
         Assert.Equal("%`some-dashed-name`", tokens[0].ToStringValue());
     }
 
+    [Theory]
+    [InlineData("%vs-mine")]
+    [InlineData("%ext-mine")]
+    public void GivenBareExternalConstantWithHyphen_WhenTokenizing_ThenProducesSingleExternalConstantToken(string expression)
+    {
+        // Issue #438: the FHIR profile of FHIRPath defines %vs-[name] and %ext-[name] as bare (unquoted)
+        // identifiers containing a hyphen. Before the fix, the bare-identifier alternative of the
+        // ExternalConstant regex had no hyphen, so this split into ExternalConstant("%vs") / Minus / Identifier
+        // ("mine") - three tokens, not one - and GetStandardConstant's prefix-expansion branch for these names
+        // could never be reached this way (only via the pre-existing backtick-quoted spelling).
+        var tokens = Tokenize(expression);
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal(expression, tokens[0].ToStringValue());
+    }
+
+    [Fact]
+    public void GivenExternalConstantMinusIdentifierWithNoWhitespace_WhenTokenizing_ThenTheHyphenIsPartOfTheName()
+    {
+        // Pins the resolution of the genuine ambiguity #438 introduces: adding '-' to the bare identifier
+        // alternative means "%a-b" with no intervening whitespace can no longer mean "the external constant
+        // %a, minus the value of b" - it is one identifier, "a-b". This matches HAPI's FHIRLexer (the
+        // reference implementation, per this project's precedence rules), whose '%' handling consumes a
+        // uniform run of [A-Za-z0-9:_-] with no whitespace-insensitive split between the identifier and a
+        // following operator. A caller who wants subtraction must separate the tokens with whitespace (see
+        // the guard test below), exactly as HAPI requires.
+        var tokens = Tokenize("%a-b");
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal("%a-b", tokens[0].ToStringValue());
+    }
+
+    [Fact]
+    public void GivenExternalConstantMinusIdentifierWithWhitespace_WhenTokenizing_ThenSubtractionIsUnaffected()
+    {
+        // Guards the other half of the #438 ambiguity resolution: legitimate subtraction of an identifier
+        // from an external constant is unaffected as long as it is separated by whitespace, since the
+        // hyphen only extends a match that is already touching the preceding identifier characters.
+        var tokens = Tokenize("%a - b");
+
+        Assert.Equal(3, tokens.Length);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal("%a", tokens[0].ToStringValue());
+        Assert.Equal(FhirPathTokenKind.Minus, tokens[1].Kind);
+        Assert.Equal(FhirPathTokenKind.Identifier, tokens[2].Kind);
+        Assert.Equal("b", tokens[2].ToStringValue());
+    }
+
     [Fact]
     public void GivenAxisThis_WhenTokenizing_ThenProducesAxisToken()
     {

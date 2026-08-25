@@ -93,6 +93,20 @@ public class EnvironmentVariableResolutionTests
         Assert.Equal(expected, result.Value);
     }
 
+    [Theory]
+    [InlineData("%vs-mine", "http://hl7.org/fhir/ValueSet/mine")]
+    [InlineData("%ext-mine", "http://hl7.org/fhir/StructureDefinition/mine")]
+    public void GivenABareFixedFhirConstant_WhenReferenced_ThenResolvesToItsUri(string expression, string expected)
+    {
+        // Issue #438: the bare (unquoted) spelling of %vs-[name] and %ext-[name] - as opposed to the
+        // pre-existing %`vs-[name]` backtick spelling covered above - must reach GetStandardConstant's
+        // prefix-expansion branch. Before the tokenizer fix this failed at Parse: "%vs-mine" lexed as
+        // ExternalConstant("%vs") / Minus / Identifier("mine"), and %vs alone is not a defined constant.
+        var result = _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).Single();
+
+        Assert.Equal(expected, result.Value);
+    }
+
     [Fact]
     public void GivenAHostSuppliedValueSetVariable_WhenReferenced_ThenOverridesTheGeneratedUri()
     {

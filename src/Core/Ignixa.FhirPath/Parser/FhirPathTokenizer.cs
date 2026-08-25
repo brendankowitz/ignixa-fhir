@@ -78,8 +78,19 @@ public static class FhirPathTokenizer
                 .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""),
                        FhirPathTokenKind.DelimitedIdentifier, requireDelimiters: false) // double-quote (legacy)
 
-                // External constants: %identifier or %`delimited-identifier`
-                .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_]*)"),
+                // External constants: %identifier or %`delimited-identifier`.
+                //
+                // The bare-identifier alternative includes '-' so %vs-[name] and %ext-[name] - the FHIR
+                // profile of FHIRPath's ValueSet/extension URI shorthands - lex as one token without
+                // requiring the backtick-quoted spelling the base spec's ANTLR grammar strictly requires
+                // for a hyphenated name. This matches HAPI's FHIRLexer (org.hl7.fhir.core), whose '%'
+                // handling consumes a single run of identifier characters that already includes '-'
+                // (and ':') for the unquoted form; Ignixa does not add ':' since no name here needs it.
+                // Because the match is greedy and only extends an already-touching identifier, "%a-b"
+                // written with no surrounding whitespace is one external-constant name, "a-b" - matching
+                // HAPI - while "%a - b" with whitespace around the operator still lexes as subtraction,
+                // since the space breaks contiguity. See FhirPathTokenizerTests for both pinned.
+                .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_-]*)"),
                        FhirPathTokenKind.ExternalConstant, requireDelimiters: false)
 
                 // Axis references: $this, $index, $total
@@ -184,8 +195,19 @@ public static class FhirPathTokenizer
                 .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""),
                        FhirPathTokenKind.DelimitedIdentifier, requireDelimiters: false) // double-quote (legacy)
 
-                // External constants: %identifier or %`delimited-identifier`
-                .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_]*)"),
+                // External constants: %identifier or %`delimited-identifier`.
+                //
+                // The bare-identifier alternative includes '-' so %vs-[name] and %ext-[name] - the FHIR
+                // profile of FHIRPath's ValueSet/extension URI shorthands - lex as one token without
+                // requiring the backtick-quoted spelling the base spec's ANTLR grammar strictly requires
+                // for a hyphenated name. This matches HAPI's FHIRLexer (org.hl7.fhir.core), whose '%'
+                // handling consumes a single run of identifier characters that already includes '-'
+                // (and ':') for the unquoted form; Ignixa does not add ':' since no name here needs it.
+                // Because the match is greedy and only extends an already-touching identifier, "%a-b"
+                // written with no surrounding whitespace is one external-constant name, "a-b" - matching
+                // HAPI - while "%a - b" with whitespace around the operator still lexes as subtraction,
+                // since the space breaks contiguity. See FhirPathTokenizerTests for both pinned.
+                .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_-]*)"),
                        FhirPathTokenKind.ExternalConstant, requireDelimiters: false)
 
                 // Axis references: $this, $index, $total
