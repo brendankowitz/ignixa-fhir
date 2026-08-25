@@ -509,13 +509,13 @@ documents cite:
 Canonical filter `--filter "Category=OfficialTestSuite"`, `fhir-test-cases` 1.7.46 pinned per suite
 file by SHA-256, `net10.0`, at `8183b284`, re-measured unchanged at `18797b52` after the
 `invalid`-path allowlist. **The filter is part of the figure.** On this commit,
-against this corpus, passed counts of **2,884 / 2,890 / 2,898** and totals of
-**2,900 / 2,906 / 2,914** are all reproducible, varying only by `--filter`:
+against this corpus, passed counts of **2,884 / 2,890 / 2,899** and totals of
+**2,900 / 2,906 / 2,915** are all reproducible, varying only by `--filter`:
 `FullyQualifiedName~OfficialTestSuiteRunner` adds 6 predicate harness tests and
-`FullyQualifiedName~OfficialTestSuite` adds 8 more skip-list guard tests, neither set being an
+`FullyQualifiedName~OfficialTestSuite` adds 9 more skip-list guard tests, neither set being an
 official-suite case. That is precisely how three numbers ended up in circulation, and the third
-moves again every time a guard is added — it read 2,896 / 2,912 before the two `invalid`-path
-probes. Cross-checked against the runner's own discovery census (`Total - CDA excluded = Running`,
+moves again every time a guard is added — it read 2,896 / 2,912 before this round added three
+guards. Cross-checked against the runner's own discovery census (`Total - CDA excluded = Running`,
 `Running = Passed + Skipped`, all three versions) and against the corpus files directly.
 
 **E8 — the discovery filter's second clause can shrink the denominator silently. OPEN; DO NOT

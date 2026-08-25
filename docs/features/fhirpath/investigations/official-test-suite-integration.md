@@ -360,11 +360,11 @@ useful cross-check. The two broader filters seen in earlier write-ups do not:
 | Broader filter | Total | What it adds |
 |---|---|---|
 | `FullyQualifiedName~OfficialTestSuiteRunner` | 2,906 | + 6 `OfficialTestSuiteRunnerPredicateTests` harness tests |
-| `FullyQualifiedName~OfficialTestSuite` | 2,914 | + those 6, + 8 `OfficialTestSuiteSkipListTests` guard tests |
+| `FullyQualifiedName~OfficialTestSuite` | 2,915 | + those 6, + 9 `OfficialTestSuiteSkipListTests` guard tests |
 
-Neither of those 14 tests is an official-suite case. They are this repository's own tests *about*
+Neither of those 15 tests is an official-suite case. They are this repository's own tests *about*
 the runner, and counting them inflates a conformance figure with the harness that produces it. The
-second number moves whenever a guard is added — it was 2,912 before the two `invalid`-path probes —
+second number moves whenever a guard is added — it was 2,912 before this round added three —
 which is a further reason the canonical figure is taken by trait and not by name prefix.
 
 **Cross-check against the runner's own accounting.** `GetTestCasesForVersion` prints a census line at
