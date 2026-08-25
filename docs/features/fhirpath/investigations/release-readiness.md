@@ -491,6 +491,32 @@ official-suite case. That is precisely how three numbers ended up in circulation
 against the runner's own discovery census (`Total - CDA excluded = Running`, `Running = Passed +
 Skipped`, all three versions) and against the corpus files directly.
 
+**E8 — the discovery filter's second clause can shrink the denominator silently. OPEN; DO NOT
+BUNDLE WITH A PUBLISHED FIGURE.**
+`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:384-392`. `GetTestCasesForVersion` filters twice:
+`.Where(tc => tc.Mode != "cda")`, which is counted and printed as `CDA excluded:` in the census line
+at `:399`, and `.Where(tc => tc.InputFile is null || File.Exists(...))`, which is **not** counted and
+not printed. A case whose `inputFile` is missing or renamed vanishes from the denominator with
+nothing logged and nothing failing.
+
+*Currently excludes zero cases on all three versions*, which is only knowable indirectly:
+`Total - CDA excluded == Running` holds exactly in the 2026-08-24 census, so the second clause
+removed nothing. That is an inference from an identity, not a measurement the runner reports —
+precisely the shape of E1 one layer out. A corpus bump that renames an input file would shrink the
+published conformance denominator and every guard in this repo would stay green.
+
+*Fix (small):* count the second clause and add it to the census line as its own field, or make a
+missing `inputFile` throw rather than filter. Either makes the exclusion visible.
+*Falsify:* rename one `inputFile` referenced by the R4 suite, confirm the new counter reports it (or
+the throw fires); restore the file byte-exactly — the per-file SHA-256 pins will fail otherwise.
+
+*Deliberately not fixed in the re-baseline commit.* Changing the runner's behaviour and publishing
+its number in the same commit is how an unfalsifiable figure gets made; keeping them apart is what
+let the re-baseline be independently reproduced at a later commit and yield the figure published for
+the earlier one. Sequence it into whichever PR next touches the runner, **after** the current figure
+is merged. A pointer comment sits at the clause itself so it cannot be found only by reading this
+document.
+
 **E2 — `SearchIndexParityHarness` discards Ignixa-side failures. DONE (`af451067`, `40f425ec`).**
 `test/Ignixa.FhirPath.Tests/Evaluation/Parity/SearchIndexParityHarness.cs:44-48` builds the production indexer with `NullLoggerFactory`;
 Ignixa-throws + Firely-legitimately-empty = 0 vs 0 = green. *Fix:* capture logger; any
@@ -599,8 +625,10 @@ worst option and dies with E1. The conformance claim then reads: "passes N of N 
 9 cases skipped pending terminology/profile services, listed with rationale" — honest and stable.
 
 ### 6.4 The 4 version-policy skips: keep, with HAPI citations attached — **DONE (2026-08-24)**
-Already genuine skips with recorded reasons (`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:342-363`; the mechanism
-reports real skips, `:674`):
+Already genuine skips with recorded reasons (`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:442-477`,
+guarded by `SkipUnlessTheCaseWouldNowPass` at `:504`; the mechanism that reports a real xunit skip is
+`SkipTest` at `:840`). Line references re-verified 2026-08-24 — the previous `:342-363` / `:674`
+citations had rotted and were carried under this DONE stamp until the review caught them.
 - **`testFHIRPathAsFunction21` (R4/R4B)** — Ignixa enforces the `as` singleton rule only from R5,
   "because HL7's own R4/R4B SearchParameters violate it" (`:363`). Now Tier-2-confirmed: HAPI sets
   `doNotEnforceAsSingletonRule = true` for pre-R5 (FHIRPathEngine.java:237-242) — HAPI would not
@@ -623,22 +651,15 @@ reports real skips, `:674`):
 
 ### 6.5 CDA exclusion: legitimate, make it a recorded scope decision — **DONE (2026-08-24)**
 The runner "Filter[s] like the Firely validator: exclude only CDA mode"
-(`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:279`) and prints the excluded count (`:297`); `hasTemplateIdOf`
+(`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:375-383`) and prints the excluded count
+(`:399`, re-verified 2026-08-24; the previous `:279` / `:297` citations had rotted); `hasTemplateIdOf`
 throws not-supported (`src/Core/Ignixa.FhirPath/Evaluation/Functions/FhirSpecificFunctions.cs:566`, "CDA support is out of scope"). Correct for
 a FHIR server package. Recorded as a deliberate scope decision with per-version counts (R4 0,
 R4B 0, R5 3) in [Official Test Suite Integration](official-test-suite-integration.md), reconciled
 against the runner's own `CDA excluded:` census line.
 
-**One residual worth watching, reported not fixed.** The discovery filter has a *second* clause
-beside the CDA one: a case whose `inputFile` resolves to no file on disk is also dropped. It
-currently excludes zero cases in all three versions (`Total - CDA excluded = Running` exactly, which
-is how we know), so today "excluded by scope" is CDA and only CDA. But that clause has no census
-line of its own — a corpus bump that added a case with a missing or renamed input file would remove
-it from the denominator with nothing printed and nothing failing. That is the same class of silent
-narrowing E1 was about, one layer out. Giving it a counter (or making it throw) is a small change
-and belongs in whichever PR next touches the runner; it is deliberately not bundled into the
-re-baseline, because changing the runner's behaviour and publishing its number in the same commit is
-how an unfalsifiable figure gets made.
+**One residual, registered as E8 below rather than left as prose here.** The discovery filter's
+second clause drops a case whose `inputFile` resolves to no file on disk, with no counter. See E8.
 
 ### 6.6 Falsification for the whole section
 The E1 operator-arm deletion run (suite goes red) is the load-bearing proof. Additional: remove
@@ -771,6 +792,7 @@ reused unchanged. New PRs:
 | PR | Content | Stands alone because | Effort |
 |---|---|---|---|
 | **N1** | E1 runner honesty + §6 re-baseline + skip conversion/guards + snapshot pin | Changes the headline number everyone downstream quotes; its PR description carries the operator-arm-deletion red run | 2–3 d |
+| **N1b** | E8 — give the discovery filter's input-file clause a counter (or make it throw) | Must land **after** N1, never with it: the re-baseline's independent reproducibility depends on N1 moving no runner behaviour | <0.5 d |
 | **N2** | E2+E3+E4 parity-evidence repairs + corpus re-run | Test-only, one theme; its description carries the injected-throw red runs | 2–3 d |
 | **N3** | D1 parse-layer literal fix | Production parser/analyzer semantics; nothing rides with it | 1–2 d |
 | **N4** | D2 `repeat()` cap (+dedup check). **D4 cut** — resolved by measurement, no guard needed | Evaluator resource guard on the write path; throws `FhirPathEvaluationException` per WI-4's pin, so it lands **after or with** residuals PR 3 (#428 affirmation) — the tier decision is the same conversation | 1 d |

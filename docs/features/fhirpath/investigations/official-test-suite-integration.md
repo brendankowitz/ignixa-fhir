@@ -4,6 +4,8 @@
 **Status**: Implemented
 **Created**: 2026-01-12
 **Completed**: 2026-01-12
+**Conformance baseline last measured**: 2026-08-24 (see [Results](#results); the January figures in
+this document's history predated the engine work and the runner fix, and are superseded)
 
 ## Approach
 
@@ -255,7 +257,19 @@ Full test suite integration is complete across all FHIR versions, and the counts
 first conformance figures this project has published from a runner that can fail.
 
 **Measured 2026-08-24** at `8183b284` on branch `runner-honesty`, `net10.0`, against
-`fhir-test-cases` **1.7.46**.
+`fhir-test-cases` **1.7.46**. Reproduce it with, from the repository root:
+
+```bash
+# `Platform=x86` is exported in some shells here and makes a bare `dotnet test <csproj>` fail CS8034.
+unset Platform
+
+dotnet test test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj -f net10.0 \
+  --filter "Category=OfficialTestSuite"
+# => Failed: 0, Passed: 2884, Skipped: 16, Total: 2900
+```
+
+The corpus downloads and hash-verifies on first build, so no manual setup is needed. Swap the
+`--filter` for any row in the table below to reproduce that row instead.
 
 #### What makes this figure different from the three it replaces
 
@@ -267,8 +281,10 @@ from the same runner. Two things had to be true before any of them could be repl
    exception type, not by the six functions its comment named, so an unimplemented binary operator
    was laundered into green. Demonstrated, not asserted: with the `xor` arm deleted from
    `FhirPathEvaluator`'s binary-operator switch, the pre-fix runner reported
-   `Failed: 0, Passed: 2902` — a fully green suite with an operator missing from the engine — while
-   the fixed runner reports `Failed: 27`. Both edges of the discriminator are now pinned by CI
+   `Failed: 0, Passed: 2902, Skipped: 4, Total: 2906` — a fully green suite with an operator missing
+   from the engine — while the fixed runner, same mutation and same filter
+   (`--filter "FullyQualifiedName~OfficialTestSuiteRunner"`, the filter that run used), reports
+   `Failed: 27, Passed: 2863, Skipped: 16, Total: 2906`. Both edges of the discriminator are now pinned by CI
    rather than by hand: `GivenAnUnregisteredFunction_WhenRunThroughTheOfficialSuiteRunner_ThenTheCaseFails`
    requires a bare `NotSupportedException` to fail the case, and
    `GivenAnAllowlistedFeature_WhenRunThroughTheOfficialSuiteRunner_ThenTheCaseSkips` requires an
@@ -333,9 +349,9 @@ the runner, and counting them inflates a conformance figure with the harness tha
 discovery time, independent of the xunit result tally:
 
 ```text
-[OfficialTestSuite-r4]  Total: 935,  CDA excluded: 0, Predicate included: 1, Running: 935
-[OfficialTestSuite-r4b] Total: 933,  CDA excluded: 0, Predicate included: 1, Running: 933
-[OfficialTestSuite-r5]  Total: 1035, CDA excluded: 3, Predicate included: 1, Running: 1032
+[OfficialTestSuite-r4] Total: 935, CDA excluded: 0, Predicate included: 1, Running: 935
+[OfficialTestSuite-r4b] Total: 933, CDA excluded: 0, Predicate included: 1, Running: 933
+[OfficialTestSuite-r5] Total: 1035, CDA excluded: 3, Predicate included: 1, Running: 1032
 ```
 
 `Total - CDA excluded = Running` in all three versions, and `Running = Passed + Skipped` in all
@@ -355,15 +371,26 @@ being a recorded non-feature. It is not a conformance gap and is not counted as 
 contain no CDA-mode cases at all.
 
 The discovery filter has a second clause — a case whose `inputFile` cannot be found is also dropped.
-It currently excludes **zero** cases in all three versions (`Total - CDA excluded = Running`
-exactly), which is why "excluded by scope" is CDA and only CDA. That clause is worth watching: it
-has no census line of its own, so a corpus bump that added a case with a missing input file would
-remove it from the denominator silently.
+It currently excludes **zero** cases in all three versions, which is why "excluded by scope" is CDA
+and only CDA. Note how that is known: not from anything the runner reports, but from
+`Total - CDA excluded = Running` holding exactly. The clause has no counter and no census field, so
+a corpus bump that renamed an input file would shrink this denominator with nothing printed and
+nothing failing. Tracked as **E8** in [FHIRPath Release Readiness](release-readiness.md), with a
+pointer comment at the clause itself. Deliberately not fixed in the commit that publishes this
+figure — changing the runner and publishing its number together is how an unfalsifiable number gets
+made.
 
 #### Skipped, with recorded reason (16)
 
 Not aggregated into a number. Each skip is named, carries its reason, and carries a guard that
-retires it automatically when the reason stops holding.
+retires it when the reason stops holding. Read that guarantee as **one-directional**: it catches a
+skip that has outlived its justification, and it does not verify that the skip is happening for the
+stated reason. `SkipUnlessTheCaseWouldNowPass` converts *any* non-`SkipException` throw into a skip,
+naming the exception type in the reason, so a harness bug would be recorded as a version-policy skip
+with its type attached rather than failing. The XML docs on that method say so; the published claim
+should too. The exception type in each recorded reason is the compensating control — for the two
+version-policy skips it currently reads `InvalidOperationException` (a value mismatch) and
+`FailException` (an expected-error assertion), which is what those limitations should produce.
 
 | Case | Versions | n | Reason | Self-retiring guard |
 |---|---|---:|---|---|
@@ -392,9 +419,22 @@ The two guards work in opposite directions and both are load-bearing:
   three versions while still being skipped for a `Fhir.Metrics` limitation that no longer applied.
 
 `conformsTo` and `%terminologies` gate the **conformance claim, not fhir-server integration**:
-neither appears in any shipped SearchParameter expression in any supported version, verified by grep
-across all five generated definition files. Implementing them for a FHIRPath package release would
-be scope creep into validation and terminology subsystems.
+neither the `conformsTo()` **function** nor the `%terminologies` variable appears in any shipped
+SearchParameter expression in any supported version. Implementing them for a FHIRPath package release
+would be scope creep into validation and terminology subsystems.
+
+State the grep precisely, because the obvious one appears to falsify the claim:
+
+```bash
+grep -c 'conformsTo(' src/Core/Ignixa.Search/Generated/*SearchParameterDefinitions.g.cs   # 0 in all five
+grep -c 'terminologies' src/Core/Ignixa.Search/Generated/*SearchParameterDefinitions.g.cs # 0 in all five
+```
+
+Searching for the bare string `conformsTo` instead returns **5 hits in R5 and 5 in R6** —
+`Device.conformsTo`, `DeviceDefinition.conformsTo`, `.conformsTo.specification`,
+`.conformsTo.category`. Those are R5 *element paths* on `Device`/`DeviceDefinition` that happen to
+share the function's name; they are property navigation, never an invocation. The claim is about the
+function, and the trailing `(` is what distinguishes them.
 
 #### The two version-policy skips, settled against HAPI
 
@@ -404,9 +444,25 @@ would misrepresent both.
 
 **`testFHIRPathAsFunction21` (R4/R4B) — the corpus contradicts both engines.** The suite marks
 `Patient.name.as(HumanName).use` invalid in all three versions, but the singleton rule is only
-enforceable from R5: HL7's own R4/R4B SearchParameter definitions spell 58 and 59 casts with the `as`
-operator, many over `0..*` paths, and rewrote almost all of them to `ofType()` in R5. Enforcing below
-R5 would make the indexer throw on HL7's own shipped expressions. **HAPI draws the line in the same
+enforceable from R5: HL7's own R4/R4B SearchParameter definitions lean heavily on the `as` cast, many
+over `0..*` paths, and R5 rewrote almost all of them to `ofType()`. Enforcing below R5 would make the
+indexer throw on HL7's own shipped expressions.
+
+Counted over the five generated `*SearchParameterDefinitions.g.cs` files, taking each `expression:`
+string literal and matching `as <Type>` or `.as(` within it (occurrences, then the number of
+expression strings containing at least one):
+
+| | STU3 | R4 | R4B | R5 | R6 |
+|---|---:|---:|---:|---:|---:|
+| `as`-cast occurrences | 57 | 145 | 146 | 8 | 7 |
+| expression strings containing one | 42 | 69 | 69 | 8 | 7 |
+| `ofType(` occurrences | 0 | 1 | 1 | 185 | 192 |
+
+The R4→R5 collapse from 145 occurrences to 8, against `ofType(` going from 1 to 185, is the whole
+argument and it does not depend on the exact rule used to count. An earlier revision of this
+paragraph cited "58 and 59 casts", which does not reproduce under either reading above; the figure
+came from a runner comment and should not have been promoted into a published document without a
+stated method. **HAPI draws the line in the same
 place**: `initFlags()` sets `doNotEnforceAsSingletonRule = true` when
 `!VersionUtilities.isR5Plus(worker.getVersion())`
 ([`org.hl7.fhir.r5/.../fhirpath/FHIRPathEngine.java:237-242`](https://github.com/hapifhir/org.hl7.fhir.core/blob/master/org.hl7.fhir.r5/src/main/java/org/hl7/fhir/r5/fhirpath/FHIRPathEngine.java)).
@@ -440,10 +496,11 @@ superseded in every column. The differences are not measurement noise:
 
 - **The 9 "not supported" pass-throughs are gone as a category.** They were xunit *passes*: a chosen
   non-feature and a correct answer were the same result. They are now 9 of the 16 recorded skips.
-- **Skips went 4 → 16.** Twelve cases moved Passed → Skipped (the six `conformsTo` cases on R4/R4B
-  plus `testConformsTo3` on all three versions, and the R5 `txTest01/02/03`, which the earlier
-  tabulation counted under "not supported" rather than as skips). **Newly-red from the fix itself:
-  zero.** Nothing broke; the honest runner simply stopped calling twelve non-results results.
+- **Skips went 4 → 16.** Twelve cases moved Passed → Skipped: `testConformsTo1`, `testConformsTo2`
+  and `testConformsTo3` on each of R4, R4B and R5 (9), plus `txTest01`, `txTest02` and `txTest03` on
+  R5 (3). That is the same set enumerated in the skip table above, and no other reading of it reaches
+  12. **Newly-red from the fix itself: zero.** Nothing broke; the honest runner simply stopped calling
+  twelve non-results results.
 - **Executed stayed at 2,900, but the denominator is now stated and verified.** 2,903 cases parse, 3
   are excluded by scope, 2,900 execute. The earlier text asserted "2,903 parse and 2,900 execute"
   and then caveated it as unverified; it now reconciles against the runner's own census line.
@@ -485,17 +542,41 @@ the 35 real gaps that then went into `_unsignalledInvalidCases` as named deferra
 (`FhirPathAnalyzer` static analysis, `VariableScope` lexical scoping, version-gating the `as` singleton
 rule) is what closed all 35 down to zero - the `Assert.Fail` fix exposed the gaps, it didn't close them.
 
-**Test Coverage Distribution** (by group, counting only cases that assert and pass):
-- `testBasics` - 5/7; `testType` - 30/30
-- `testQuantity` - 11/11 (`testQuantity9`/`10` were skipped for a Fhir.Metrics UCUM limitation that no
-  longer applies to them; the skips were stale and have been retired)
-- `defineVariable` (R5 only) - 21/21, no deferrals. `defineVariable9`/`10`/`12`/`16` and
-  `dvUsageOutsideScopeThrows` were deferred until `%context` was implemented and `defineVariable`
-  bindings were scoped lexically (`VariableScope`); reading an undefined `%name` now signals an error
-  per FHIRPath §1.9 instead of yielding empty
-- String functions (`split`, `trim`, `encode`, `escape`) - no deferrals, no failures
-- Math functions (`round`, `abs`, `sqrt`, `ln`, `exp`) - no deferrals, no failures
-- `testAggregate`, `LowBoundary`, `HighBoundary` - no deferrals, no failures
+#### Coverage by group
+
+Re-derived from the published run's TRX, not carried forward from earlier prose. Same run, same
+filter, same date as the totals above.
+
+The 2,900 executed cases fall into **101 groups**. **97 of them pass 100% on every version in which
+they appear.** Exactly four contain a skipped case, and they are the same four the skip table above
+already accounts for. None contains a failure, because `Failed` is zero:
+
+| Group | R4 | R4B | R5 | Passed / executed | Why not 100% |
+|---|---|---|---|---|---|
+| `testConformsTo` | 0/3 | 0/3 | 0/3 | 0/9 | all three cases exercise `conformsTo` |
+| `TerminologyTests` | — | — | 0/3 | 0/3 | R5-only; all three exercise `%terminologies` |
+| `testInheritance` | 23/24 | 23/24 | 24/24 | 70/72 | `testFHIRPathAsFunction21` on R4/R4B |
+| `testPlus` | 26/27 | 26/27 | 34/34 | 86/88 | `testPlusDate19` on R4/R4B |
+
+Those four plus the 97 clean groups sum to 2,884 passed and 16 skipped, which closes against the
+four-way split. Spot-checks from the same TRX: `testTypes` 297/297, `testLiterals` 246/246,
+`testType` 90/90, `testEquality` 84/84, `LowBoundary` 84/84, `HighBoundary` 72/72,
+`testQuantity` 33/33, `testBasics` 21/21, `defineVariable` 21/21 (R5 only), `testAggregate` 12/12.
+
+Notes that survive from the earlier version of this list, now that the numbers behind them are
+measured: `testQuantity` is clean because the `testQuantity9`/`10` skips were found stale and
+retired; `defineVariable` is clean because `%context` was implemented and `VariableScope` gave
+`defineVariable` real lexical scoping, so reading an undefined `%name` signals an error per
+FHIRPath §1.9 instead of yielding empty.
+
+**A laundered figure was published in this list, and is recorded rather than quietly corrected.**
+It previously read "`testBasics` - 5/7". `testBasics` is **7/7 on R4, R4B and R5**, and was so in the
+run being published — arithmetically forced, since `Failed` is zero and no `testBasics` case appears
+among the 16 skips. The 5/7 predated the engine work, was never re-measured, and was carried through
+a header change (from "counting only genuinely asserted cases" to "counting only cases that assert
+and pass") that re-certified it under stronger semantics without measuring it. That is precisely the
+defect this document exists to retire, committed inside the document. Every row above is now derived
+from the TRX of the run whose totals head this section.
 
 **Known Gaps**:
 - `conformsTo()` function - Profile validation (requires StructureDefinition validation)
@@ -527,8 +608,11 @@ tracked this work, is closed.
 - Parses `tests-fhir-r4.xml`, `tests-fhir-r4b.xml`, `tests-fhir-r5.xml`
 - Extracts test groups, expressions, expected outputs (typed), input files
 - Records `invalid="true"` / `invalid="semantic"` as `IsInvalidTest` rather than skipping. The runner
-  *executes* these through `RunInvalidExpressionTest` and asserts the engine signals an error; 82 cases
-  are covered this way. (This reverses the original design, which dropped them.)
+  *executes* these through `RunInvalidExpressionTest` and asserts the engine signals an error.
+  (This reverses the original design, which dropped them.) In the published run — same date and
+  filter as the totals above — **114 invalid-marked cases execute this way (R4 34, R4B 34, R5 46)
+  across 46 distinct case names; 109 pass and 5 are skipped.** An earlier revision said "82 cases",
+  undated and without a filter; it did not reproduce.
 
 **xUnit Theory Runner**:
 ```csharp

@@ -381,6 +381,12 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // Note: Check version directory first, then examples (version may have modified files for tests)
         var filteredTests = testCases
             .Where(tc => tc.Mode != "cda")
+            // KNOWN GAP (release-readiness E8): unlike the CDA clause above, this one has no counter.
+            // A case whose inputFile resolves to no file on disk leaves the denominator with nothing
+            // printed and nothing failing, so a published conformance count would silently shrink.
+            // It excludes zero cases on all three versions today, which is only knowable because
+            // Total - CDA excluded == Running in the census line below. Do not remove this clause
+            // without giving it a counter first.
             .Where(tc => tc.InputFile is null ||
                          File.Exists(Path.Combine(versionDirectory, tc.InputFile)) ||
                          File.Exists(Path.Combine(examplesDirectory, tc.InputFile)));
