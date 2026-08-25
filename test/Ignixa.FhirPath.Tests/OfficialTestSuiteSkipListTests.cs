@@ -232,17 +232,95 @@ public class OfficialTestSuiteSkipListTests
     }
 
     /// <summary>
-    /// A minimal non-invalid, non-predicate case with no input file, so the runner uses its default
-    /// patient and reaches evaluation without any corpus dependency.
+    /// The mirror of <see cref="GivenAnUnregisteredFunction_WhenRunThroughTheOfficialSuiteRunner_ThenTheCaseFails"/>
+    /// on the <c>invalid</c>-marked path, and the reason that guard is not the whole story.
     /// </summary>
-    private static FhirPathTestCase ProbeCase(string name, string expression) => new(
+    /// <remarks>
+    /// <para>
+    /// The runner's discriminator has three edges, not two. Both guards above hand it a case with
+    /// <c>IsInvalidTest: false</c>, so both enter <c>ExecuteTestCase</c> and only ever exercise the marker
+    /// catch on that path. An <c>invalid</c>-marked case takes a different arm entirely -
+    /// <c>RunInvalidExpressionTest</c> - which has its own catches and had its own copy of the defect: a
+    /// bare <see cref="NotSupportedException"/> satisfied the old two-type denylist, produced
+    /// <c>[INVALID-OK]</c>, and returned, which xunit records as a pass. Deleting the <c>"&amp;"</c> arm
+    /// from the evaluator's binary-operator switch left <c>testConcatenate4</c> green on all three
+    /// versions for exactly that reason.
+    /// </para>
+    /// <para>
+    /// 114 of the corpus's cases are <c>invalid</c>-marked, so this is the arm where a pass-on-any-throw
+    /// costs the most: every one of them would accept an engine that cannot evaluate the expression at all
+    /// as evidence that it correctly refused it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GivenAnUnregisteredFunction_WhenRunAsAnInvalidMarkedCase_ThenTheCaseFails()
+    {
+        // Arrange
+        var runner = new OfficialTestSuiteRunner(new NullTestOutputHelper());
+        var testCase = ProbeCase("probeUnregisteredFunctionInvalid", "Patient.notARealFunctionAtAll()", invalidType: "execution");
+
+        // Act
+        var thrown = Record.Exception(() => runner.OfficialTestSuite_R4(testCase));
+
+        // Assert
+        thrown.ShouldNotBeNull("An unregistered function threw NotSupportedException on the invalid-marked path and the runner recorded a pass. 'The engine threw' is not 'the engine refused the expression': the catches on that path are scoped by exception type again.");
+        thrown.ShouldNotBeOfType<Xunit.SkipException>();
+        thrown.GetType().ShouldBe(typeof(NotSupportedException));
+    }
+
+    /// <summary>
+    /// Drives the <c>invalid</c>-marked path with an allowlisted feature and fails unless the case is
+    /// reported as a skip.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The fourth edge, and the one that was held by a corpus coincidence rather than by a guard. The skip
+    /// that <c>testConformsTo3</c> now reports comes from the marker catch inside
+    /// <c>RunInvalidExpressionTest</c>, not from the allowlists - the allowlists would reject the marker,
+    /// but rejecting it produces a failure. Two mechanisms therefore have to hold for that case to skip,
+    /// and until this guard existed, removing both together turned the suite fully green again while
+    /// restoring the founding defect: the only visible trace was the skip count dropping from 16 to 13,
+    /// and the 16 lives in a documentation table, which is prose, not a guard.
+    /// </para>
+    /// <para>
+    /// <c>ShouldBeOfType</c> rather than <c>ShouldNotBeNull</c> is the point: the failure mode being
+    /// pinned is the marker escaping into the engine-error allowlists and being recorded as
+    /// <c>[INVALID-OK]</c>, which throws nothing at all.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GivenAnAllowlistedFeature_WhenRunAsAnInvalidMarkedCase_ThenTheCaseSkips()
+    {
+        // Arrange
+        var runner = new OfficialTestSuiteRunner(new NullTestOutputHelper());
+        var testCase = ProbeCase(
+            "probeAllowlistedFeatureInvalid",
+            "Patient.gender.memberOf('http://hl7.org/fhir/ValueSet/administrative-gender')",
+            invalidType: "execution");
+
+        // Act
+        var thrown = Record.Exception(() => runner.OfficialTestSuite_R4(testCase));
+
+        // Assert
+        var skip = thrown.ShouldBeOfType<Xunit.SkipException>();
+        skip.Message.ShouldContain("memberOf");
+    }
+
+    /// <summary>
+    /// A minimal non-predicate case with no input file, so the runner uses its default patient and reaches
+    /// evaluation without any corpus dependency. <paramref name="invalidType"/> selects which of the
+    /// runner's two arms the probe drives: <see langword="null"/> for the normal path through
+    /// <c>ExecuteTestCase</c>, a value for the <c>invalid</c>-marked path through
+    /// <c>RunInvalidExpressionTest</c>.
+    /// </summary>
+    private static FhirPathTestCase ProbeCase(string name, string expression, string? invalidType = null) => new(
         Name: name,
         GroupName: "runner-discrimination-probes",
         Expression: expression,
         InputFile: null,
         ExpectedOutputs: [new ExpectedOutput("boolean", "true")],
-        IsInvalidTest: false,
-        InvalidType: null,
+        IsInvalidTest: invalidType is not null,
+        InvalidType: invalidType,
         Ordered: true,
         Predicate: false,
         Description: null,
