@@ -403,7 +403,7 @@ Verified-correct list (do not spend effort): Kuhn matching/`TryPair`; `ValueOrde
 
 Order matters: no number gets re-stated until the instrument that produces it discriminates.
 
-**E1 — `OfficialTestSuiteRunner` `NotSupportedException`-as-PASS. RUNNER FIXED AND FALSIFIED; RE-BASELINE STILL OUTSTANDING.**
+**E1 — `OfficialTestSuiteRunner` `NotSupportedException`-as-PASS. DONE (`107480e5`, `8183b284`): RUNNER FIXED, FALSIFIED, AND RE-BASELINED.**
 `test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:477-482`: `catch (NotSupportedException)` → log + `return` → xunit
 Passed. The catch is scoped by exception *type*; `src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:322` ("Binary operator not
 yet implemented") and `:1268` ("Scope not yet implemented") throw the same type, so deleting a
@@ -468,8 +468,28 @@ allowlist turns the skip guard red on its own while the failure guard stays gree
 *Newly red from the fix itself: zero.* Twelve cases moved from Passed to Skipped (`conformsTo` and
 `%terminologies` cases, plus `testConformsTo3`, which is `invalid`-marked and was passing because the
 engine threw for not implementing `conformsTo` at all rather than for the profile URL being bogus).
-Nothing turned red, so §6.1's re-baseline is a counting exercise, not implementation work — but it is
-still outstanding and no figure below has been re-measured.
+Nothing turned red, so §6.1's re-baseline was a counting exercise rather than implementation work.
+
+*Re-baseline published (2026-08-24).* The four-way split now lives in
+[Official Test Suite Integration](official-test-suite-integration.md) and is the authority the other
+documents cite:
+
+| Version | Corpus | Excluded by scope | Executed | Passed | Failed | Skipped |
+|---|---:|---:|---:|---:|---:|---:|
+| R4 | 935 | 0 | 935 | 930 | 0 | 5 |
+| R4B | 933 | 0 | 933 | 928 | 0 | 5 |
+| R5 | 1,035 | 3 | 1,032 | 1,026 | 0 | 6 |
+| **Total** | **2,903** | **3** | **2,900** | **2,884** | **0** | **16** |
+
+Canonical filter `--filter "Category=OfficialTestSuite"`, `fhir-test-cases` 1.7.46 pinned per suite
+file by SHA-256, `net10.0`, at `8183b284`. **The filter is part of the figure.** On this commit,
+against this corpus, passed counts of **2,884 / 2,890 / 2,896** and totals of
+**2,900 / 2,906 / 2,912** are all reproducible, varying only by `--filter`:
+`FullyQualifiedName~OfficialTestSuiteRunner` adds 6 predicate harness tests and
+`FullyQualifiedName~OfficialTestSuite` adds 6 more skip-list guard tests, neither set being an
+official-suite case. That is precisely how three numbers ended up in circulation. Cross-checked
+against the runner's own discovery census (`Total - CDA excluded = Running`, `Running = Passed +
+Skipped`, all three versions) and against the corpus files directly.
 
 **E2 — `SearchIndexParityHarness` discards Ignixa-side failures. DONE (`af451067`, `40f425ec`).**
 `test/Ignixa.FhirPath.Tests/Evaluation/Parity/SearchIndexParityHarness.cs:44-48` builds the production indexer with `NullLoggerFactory`;
@@ -525,7 +545,10 @@ an ancestor of the release tag (cheap script in the release checklist).
 
 Measurement re-run order: E1 → re-baseline suite (§6.1) → E2/E3/E4 → re-run parity corpus → E7
 benchmark at the release commit. Anything published (release notes, ADR correction, docs site)
-quotes only post-fix numbers.
+quotes only post-fix numbers, **and quotes the `--filter` alongside every count** — the suite
+figure moved between 2,896 and 2,906 on a fixed corpus purely by changing the filter, so a bare
+count is not a measurement. E1 and the §6.1 re-baseline are done (2026-08-24); the remaining items
+in this order are unchanged.
 
 ---
 
@@ -539,16 +562,18 @@ sits beside the tree with no version marker. **Pin the snapshot**: record the fh
 commit/release in a README next to the data and assert it (hash of the xml files) in a test, so
 "passes the official suite" names *which* suite.
 
-### 6.1 Step zero: re-baseline on an honest runner
-E1 lands first. Then re-run all three versions and publish the true counts in the four-way split:
-passed / failed / skipped-with-recorded-reason / excluded-by-scope. The current
-"2,900 runnable / 2,887 asserted / 9 pass-throughs / 4 skipped" is not a baseline — it was
-produced by a runner that converts unimplemented functionality into green. The unknown quantity is
-**cases newly red once laundering stops**: `NotSupportedException` from
-`src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:322/:1268` may be propping up currently-green cases. Quantify before sizing:
-if the newly-red set is empty beyond the known 9, this section is a cleanup; if operators or
-scopes surface, it is implementation work and gets sized then — do not pre-commit effort to an
-unmeasured set.
+### 6.1 Step zero: re-baseline on an honest runner — **DONE (2026-08-24)**
+E1 landed first, then all three versions were re-run and the four-way split published:
+**2,884 passed / 0 failed / 16 skipped with recorded reasons / 3 excluded by scope**, of 2,903
+corpus cases, under `--filter "Category=OfficialTestSuite"`. Full table, per-version filters, skip
+enumeration and HAPI citations in
+[Official Test Suite Integration](official-test-suite-integration.md).
+
+The unknown quantity this step existed to measure — **cases newly red once laundering stops** — came
+back **empty**. No binary operator or scope was being propped up by the old catch. Twelve cases moved
+Passed → Skipped and nothing broke, so this section was cleanup, not implementation work. The
+superseded "2,900 runnable / 2,887 asserted / 9 pass-throughs / 4 skipped" was never a baseline: it
+was a hand subtraction on top of an instrument that could not produce the number.
 
 ### 6.2 Two bars, kept separate
 - **Bar A (release blocker):** every case whose expression surface is reachable from a shipped
@@ -573,7 +598,7 @@ function set) goes red, forcing the entry's removal. A pass-through that reads a
 worst option and dies with E1. The conformance claim then reads: "passes N of N runnable cases;
 9 cases skipped pending terminology/profile services, listed with rationale" — honest and stable.
 
-### 6.4 The 4 skips: keep, with HAPI citations attached
+### 6.4 The 4 version-policy skips: keep, with HAPI citations attached — **DONE (2026-08-24)**
 Already genuine skips with recorded reasons (`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:342-363`; the mechanism
 reports real skips, `:674`):
 - **`testFHIRPathAsFunction21` (R4/R4B)** — Ignixa enforces the `as` singleton rule only from R5,
@@ -582,21 +607,38 @@ reports real skips, `:674`):
   enforce it on R4 content either. The published R4/R4B expectation contradicts both engines'
   reading of R4. Keep the skip; add the HAPI citation to the reason string; file upstream at
   FHIR/fhir-test-cases (issue, low effort, optional).
-- **`testPlusDate19` (R4/R4B)** — reason on file: R4/R4B expect fractional-second truncation,
-  Ignixa follows R5 behaviour. Verification step before the release: check HAPI's date arithmetic
-  for the same case (its `DateTimeType` plus logic) — if HAPI R4 also refuses to truncate, the
-  case joins the contradicts-both-engines category and the skip stands with citation; if HAPI
-  truncates on R4, this is a genuine version-gating decision Ignixa made toward R5 semantics —
-  keep only with an explicit tier note ("Ignixa more R5-spec-compliant than the R4 expectation;
-  deliberate"). Either way the reason string ends up citing evidence, not assertion.
+- **`testPlusDate19` (R4/R4B)** — **checked, and it lands on the second branch.** HAPI ships
+  three version-specific engine copies rather than a runtime flag, and `dateAdd` differs between
+  them exactly here: the R4 and R4B engines' seconds arm is `result.add(Calendar.SECOND, value)`
+  with `value = q.getValue().intValue()` and nothing else
+  (`org.hl7.fhir.r4/src/main/java/org/hl7/fhir/r4/fhirpath/FHIRPathEngine.java:2752-2756`, R4B
+  identical), so `+ 0.1 's'` truncates to `.000`; the R5 engine adds the integer seconds and then
+  re-adds the fractional remainder as `(int)(decValue * 1000)` milliseconds
+  (`org.hl7.fhir.r5/.../fhirpath/FHIRPathEngine.java:2906-2916`), giving `.100`. **HAPI truncates on
+  R4/R4B and satisfies the published expectation. The corpus is not wrong here.** This is therefore
+  *not* the contradicts-both-engines category that `testFHIRPathAsFunction21` is in: Ignixa ships one
+  engine following R5 semantics, and the skip is recorded as "Ignixa deliberately more
+  R5-spec-compliant than the R4 expectation", not as an upstream corpus bug. Do not file this one
+  upstream.
 
-### 6.5 CDA exclusion: legitimate, make it a recorded scope decision
+### 6.5 CDA exclusion: legitimate, make it a recorded scope decision — **DONE (2026-08-24)**
 The runner "Filter[s] like the Firely validator: exclude only CDA mode"
 (`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:279`) and prints the excluded count (`:297`); `hasTemplateIdOf`
 throws not-supported (`src/Core/Ignixa.FhirPath/Evaluation/Functions/FhirSpecificFunctions.cs:566`, "CDA support is out of scope"). Correct for
-a FHIR server package. Action: one paragraph in the suite README recording it as a deliberate
-scope decision with the excluded-case count per version, and the exclusion filter covered by the
-same guard test as 6.3 so it cannot silently widen.
+a FHIR server package. Recorded as a deliberate scope decision with per-version counts (R4 0,
+R4B 0, R5 3) in [Official Test Suite Integration](official-test-suite-integration.md), reconciled
+against the runner's own `CDA excluded:` census line.
+
+**One residual worth watching, reported not fixed.** The discovery filter has a *second* clause
+beside the CDA one: a case whose `inputFile` resolves to no file on disk is also dropped. It
+currently excludes zero cases in all three versions (`Total - CDA excluded = Running` exactly, which
+is how we know), so today "excluded by scope" is CDA and only CDA. But that clause has no census
+line of its own — a corpus bump that added a case with a missing or renamed input file would remove
+it from the denominator with nothing printed and nothing failing. That is the same class of silent
+narrowing E1 was about, one layer out. Giving it a counter (or making it throw) is a small change
+and belongs in whichever PR next touches the runner; it is deliberately not bundled into the
+re-baseline, because changing the runner's behaviour and publishing its number in the same commit is
+how an unfalsifiable figure gets made.
 
 ### 6.6 Falsification for the whole section
 The E1 operator-arm deletion run (suite goes red) is the load-bearing proof. Additional: remove
@@ -628,7 +670,9 @@ base makes it 9 again. D4 is **not** on this list — see its entry in §4 for w
 2. D2 (`repeat()` cap) merged. — tenant-suppliable unbounded loop on the write path. Not yet done.
 3. §3.6 (`%resource`/`%rootResource`/`%context` explicit-binding precedence) merged — 5 shipped
    composite components and the seam's context bridge depend on it. Not yet done.
-4. E1 merged and the suite re-baselined (§6.1); Bar A green; any post-E1 normative reds fixed. Not
+4. E1 merged and the suite re-baselined (§6.1); Bar A green; any post-E1 normative reds fixed.
+   **Re-baseline DONE** (2026-08-24, 2,884/0/16/3 under `Category=OfficialTestSuite`); newly-red
+   set from the fix was empty, so there were no post-E1 normative reds to fix. Merge to `main` not
    yet done.
 5. E2–E4 merged and the parity corpus re-run green with positive counting. **DONE** (`af451067`,
    `40f425ec`) — and this is the fix that surfaced D6 below: once the harness could see Ignixa-side
@@ -690,8 +734,16 @@ base makes it 9 again. D4 is **not** on this list — see its entry in §4 for w
 - Skip/exclusion register for the official suite (§6.3–6.5).
 - gap-analysis.md superseded header (§1.1).
 - **ADR 2608 correction PR to microsoft/fhir-server** (the branch is ADR-only, so this is a text
-  PR): (a) "2906 of 2906" is false — replace with the post-E1 re-baselined figure and the skip
-  register, never a laundered number; (b) the `%context` paragraph is factually inverted
+  PR): (a) "2906 of 2906" is false — replace with the re-baselined figure and the skip register,
+  never a laundered number. **The replacement text now exists** (2026-08-24): 2,884 passed / 0
+  failed / 16 skipped with named reasons / 3 excluded by scope, of 2,903 corpus cases, under
+  `--filter "Category=OfficialTestSuite"` against `fhir-test-cases` 1.7.46 pinned per suite file by
+  SHA-256. Note what the corrected figure implies for the ADR beyond the arithmetic: 2906 was never
+  a pass count at all — it is the *total* under a filter that also sweeps in 6 predicate harness
+  tests, so "2906 of 2906" restated the denominator twice and counted this repository's own tests
+  about the runner as conformance. The corrected claim must carry its filter and its corpus hash or
+  it will drift again. **Nothing in microsoft/fhir-server is changed by this document** — ADR 2608
+  lives in a separate repo and its correction is a separate decision; (b) the `%context` paragraph is factually inverted
   (`src/Core/Ignixa.FhirPath/Evaluation/EvaluationContext.cs:449-451` binds it by name ahead of the dictionary) — and after §3.6 the
   corrected statement is "explicit bindings win"; (c) `resolve()` appears in 75 distinct shipped
   expressions, not 76; (d) the composition snippet passes a schema into `ElementSearchIndexer`,

@@ -269,21 +269,41 @@ Those three changes do not alter runtime indexing behavior.
 
 ## Official HL7 Conformance Baseline
 
-The current checkout's raw official-suite result is:
+The authoritative baseline lives in
+[Official Test Suite Integration](investigations/official-test-suite-integration.md); this section
+records it so a reader of the parity corpus does not have to leave the page, and defers to that
+document on any discrepancy.
+
+**Measured 2026-08-24**, `fhir-test-cases` **1.7.46** pinned per suite file by SHA-256, under
+`--filter "Category=OfficialTestSuite"`:
 
 ```text
-2,896 passed / 4 skipped / 2,900 total
+2,884 passed / 0 failed / 16 skipped with named reasons / 3 excluded by scope (CDA)
+2,900 executed of 2,903 cases in the corpus
 ```
 
-Nine of the 2,896 reported passes catch `NotSupportedException` and return successfully. The audited interpretation is therefore:
+The figures previously recorded here — `2,896 passed / 4 skipped / 2,900 total`, audited down to
+`2,887 genuinely asserted / 9 unsupported pass-throughs / 4 skipped` — are superseded. The audit was
+directionally right and its arithmetic was the best available at the time, but it was a hand
+subtraction performed on top of an instrument that could not produce the number: the runner caught
+`NotSupportedException` and returned, so xunit recorded a pass. That was not limited to the nine
+functions the audit identified — an unimplemented *binary operator* was laundered the same way, which
+was demonstrated by deleting the `xor` arm from the engine and watching the pre-fix runner still
+report a fully green suite. `Passed` now means passed, and the 9 pass-throughs are 9 of the 16
+recorded skips.
 
-```text
-2,887 genuinely asserted / 9 unsupported pass-throughs / 4 skipped
-```
+The provenance concern raised here is also closed. The `.downloaded` marker now records both the
+package version and the archive SHA-256, `VerifyFhirTestCasesProvenance` checks them at test time,
+and `_suiteFileHashes` pins the SHA-256 of each extracted `tests-fhir-{r4,r4b,r5}.xml` — so the
+checkout can now prove which upstream archive produced its cases, including against a hand edit to
+the gitignored extracted tree. Issue #405's 2,908-case figure remains unreconcilable and should not
+be cited.
 
-The `.downloaded` marker records neither source version nor content hash, so the checkout cannot prove which upstream archive produced its 2,900 cases. Forensics independently verified `fhir-test-cases` 1.7.46 at SHA-256 `D89CEC2BD3A22D9968AE91EFCB460B7FAA0802802840E7AC99A0A9D65B091302`, but issue #405's 2,908-case figure cannot be reconciled from repository provenance. Raw xUnit totals must not be presented as 2,896 supported conformance assertions.
+State the filter with the number. On one commit against one corpus, passed counts of
+**2,884 / 2,890 / 2,896** and totals of **2,900 / 2,906 / 2,912** are all reproducible, varying only
+by `--filter`; a figure published without one says nothing.
 
-The skip count was 10 until six `testQuantity9`/`testQuantity10` skips were found to be stale - they passed on R4, R4B and R5 while still being skipped for a Fhir.Metrics limitation that no longer applied to them. Each remaining skip is now routed through a guard that runs the case and fails if it passes, so this figure cannot drift the same way again.
+Four of the 16 skips are version-policy skips (`testPlusDate19` and `testFHIRPathAsFunction21`, on R4 and R4B each). That count was 10 until six `testQuantity9`/`testQuantity10` skips were found to be stale - they passed on R4, R4B and R5 while still being skipped for a Fhir.Metrics limitation that no longer applied to them. Each of the four is now routed through `SkipUnlessTheCaseWouldNowPass`, which runs the case and fails if it passes, so that figure cannot drift the same way again. The other 12 are keyed to a typed not-supported marker and retire through a different guard - see the authoritative document.
 
 ## Running the Suites
 

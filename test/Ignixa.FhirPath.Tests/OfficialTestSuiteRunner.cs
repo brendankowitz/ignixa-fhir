@@ -435,6 +435,16 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         // Version-specific behaviour: R4/R4B truncate fractional seconds to integers, R5 preserves them,
         // and our implementation follows R5 (sub-second precision preserved).
+        //
+        // Unlike testFHIRPathAsFunction21 below, the corpus is right here and HAPI agrees with it.
+        // HAPI ships three version-specific engine copies rather than a runtime flag, and dateAdd's
+        // seconds arm differs between them exactly along this line: org.hl7.fhir.r4 (and r4b)
+        // fhirpath/FHIRPathEngine.java:2752-2756 is result.add(Calendar.SECOND, q.getValue().intValue())
+        // and nothing more, so + 0.1 's' truncates; org.hl7.fhir.r5 :2906-2916 adds the integer seconds
+        // and then re-adds the remainder as (int)(decValue * 1000) milliseconds. So this is not the
+        // "corpus contradicts both engines" case - it is a deliberate choice to ship one engine with R5
+        // semantics rather than three. See docs/features/fhirpath/investigations/
+        // official-test-suite-integration.md for the citation.
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testPlusDate19")
         {
             SkipUnlessTheCaseWouldNowPass(
