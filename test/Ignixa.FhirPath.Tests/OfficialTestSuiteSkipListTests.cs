@@ -1,7 +1,8 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * Guards the two skip lists in OfficialTestSuiteRunner.
+ * Guards the two skip lists in OfficialTestSuiteRunner, and pins the whole observed skip population
+ * against a recorded reason for each entry.
  *
  * Skipping an official invalid-expression case reports as a pass in xunit v2, so the lists themselves
  * need teeth: an entry naming a test that no longer exists upstream would silently defer nothing while
