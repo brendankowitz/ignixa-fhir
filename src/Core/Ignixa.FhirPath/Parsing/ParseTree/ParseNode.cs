@@ -216,8 +216,7 @@ internal sealed record ElementAssignmentParseNode(
 {
     // A helper node the instance-selector visitor reads through its parent, so reaching Accept means
     // the parse tree is malformed. InvalidOperationException, not NotSupportedException: this is a
-    // broken invariant, and NotSupportedException reads as a documented capability limit - which is
-    // exactly how the official-suite harness used to report it, as a conformance pass.
+    // broken invariant, not a capability limit.
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => throw new InvalidOperationException("ElementAssignmentParseNode is not directly visitable; it is read through its parent InstanceSelectorParseNode.");
 }
