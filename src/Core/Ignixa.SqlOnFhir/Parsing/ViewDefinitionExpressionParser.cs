@@ -521,7 +521,7 @@ public static class ViewDefinitionExpressionParser
         }
 
         // Find any referenced variables that are not defined constants
-        // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', 'vs-*', 'rowIndex'
+        // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', 'vs-*', 'ext-*', 'rowIndex'
         var predefinedVariables = new HashSet<string>(StringComparer.Ordinal)
         {
             "context", "resource", "rootResource", "ucum", "sct", "loinc", "rowIndex"
@@ -529,8 +529,14 @@ public static class ViewDefinitionExpressionParser
 
         foreach (var varName in referencedVariables)
         {
-            // Skip predefined variables and VS-* variables
-            if (predefinedVariables.Contains(varName) || varName.StartsWith("vs-", StringComparison.Ordinal))
+            // Skip predefined variables and the vs-/ext- prefix families. The FHIR profile of FHIRPath
+            // defines both (%vs-[name] -> ValueSet URI, %ext-[name] -> extension URI) the same way, so
+            // exempting only "vs-" here was an asymmetry: with the tokenizer fixed to lex the bare
+            // spelling as a single ExternalConstant (issue #438), %ext-x would otherwise start being
+            // rejected as an undefined constant while %vs-x passed.
+            if (predefinedVariables.Contains(varName)
+                || varName.StartsWith("vs-", StringComparison.Ordinal)
+                || varName.StartsWith("ext-", StringComparison.Ordinal))
             {
                 continue;
             }

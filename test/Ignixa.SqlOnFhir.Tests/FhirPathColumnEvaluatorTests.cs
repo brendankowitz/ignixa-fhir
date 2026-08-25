@@ -714,17 +714,55 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Theory]
+    [InlineData("%vs-mine", "http://hl7.org/fhir/ValueSet/mine")]
+    [InlineData("%ext-mine", "http://hl7.org/fhir/StructureDefinition/mine")]
+    public void GivenAViewDefinitionSelectingAStandardPrefixedConstant_WhenEvaluated_ThenItValidatesAndResolves(
+        string expression, string expectedUri)
+    {
+        // Issue #438: no declared constant covers "vs-mine" or "ext-mine", so this exercises
+        // ValidateConstantReferences' exemption for both prefixes (previously only "vs-" was exempted,
+        // and even that was unreachable because the tokenizer split the bare spelling into three tokens)
+        // and confirms the ViewDefinition validates and the value resolves to the expected FHIR URI.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-prefix" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = $$"""
+            {
+              "resource": "Patient",
+              "select": [{ "column": [
+                  { "name": "id", "path": "id" },
+                  { "name": "prefixed", "path": "{{expression}}" }
+              ] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var rows = _evaluator.Evaluate(sourceNode, resource).ToList();
+
+        Assert.Single(rows);
+        Assert.Equal(expectedUri, rows[0]["prefixed"]);
+    }
+
+    [Theory]
     [InlineData("ucum", "http://unitsofmeasure.org")]
     [InlineData("sct", "http://snomed.info/sct")]
     [InlineData("loinc", "http://loinc.org")]
     public void GivenAPredefinedVariableName_WhenOverriddenWithNoDeclaredConstant_ThenItBindsAsAString(
         string predefinedName, string defaultUri)
     {
-        // The three names that genuinely reach the variable loop with no constant to inherit from.
-        // ValidateConstantReferences exempts context, resource, rootResource, ucum, sct, loinc, rowIndex
-        // and the vs- prefix - but of those only these three arrive here untyped: the first three are
-        // answered by TryGetEnvironmentVariable's switch before it consults caller variables, rowIndex
-        // is re-injected afterwards and wins, and %vs-x never parses as a variable reference at all.
+        // Three of several names that genuinely reach the variable loop with no constant to inherit from.
+        // ValidateConstantReferences exempts context, resource, rootResource, ucum, sct, loinc, rowIndex,
+        // and the vs- and ext- prefix families - but of those, context/resource/rootResource are
+        // answered by TryGetEnvironmentVariable's switch before it consults caller variables, and rowIndex
+        // is re-injected afterwards and wins. ucum/sct/loinc and every vs-*/ext-* name (the latter two
+        // now parsing as a single variable reference in bare, unquoted form too - issue #438) do reach
+        // this loop untyped; these three are pinned here, and
+        // GivenAViewDefinitionSelectingAStandardPrefixedConstant above covers vs-*/ext-* resolving
+        // without an override.
         //
         // System.String is the right answer for them, not a gap. FHIRPath defines %ucum, %sct and
         // %loinc as fixed URIs, so a caller-supplied string is already correctly typed - and the engine
