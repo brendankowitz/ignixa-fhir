@@ -862,6 +862,44 @@ public class SqlOnFhirEvaluatorTests
             .ToList());
     }
 
+    [Theory]
+    [InlineData("context")]
+    [InlineData("resource")]
+    [InlineData("rootResource")]
+    [InlineData("rowIndex")]
+    public void GivenAnEngineManagedVariableName_WhenSuppliedByTheCaller_ThenTheCallIsRejected(string name)
+    {
+        // Issue #439: these four names are answered by the engine before a caller-supplied variable is
+        // ever consulted - context/resource/rootResource are intercepted by
+        // EvaluationContext.TryGetEnvironmentVariable's switch, and rowIndex is re-injected by
+        // SqlOnFhirEvaluationVisitor after the variables loop and always wins. Passing any of them today
+        // is accepted and silently discarded: no error, no effect. That is worse than rejecting outright,
+        // so SqlOnFhirEvaluator - the layer that hands the engine variables it cannot honour - now rejects
+        // the call instead of pretending the value was used.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-engine-managed" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+        var variables = new Dictionary<string, string> { [name] = "irrelevant" };
+
+        var thrown = Assert.Throws<ArgumentException>(
+            () => _evaluator.Evaluate(sourceNode, resource, variables).ToList());
+
+        Assert.Equal("variables", thrown.ParamName);
+        Assert.Contains(name, thrown.Message, StringComparison.Ordinal);
+        Assert.Contains("engine-managed", thrown.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void GivenAStringConstant_WhenComparedAgainstAResourceDate_ThenItIsStillATypeError()
     {

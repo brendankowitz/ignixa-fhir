@@ -143,7 +143,11 @@ internal class SqlOnFhirEvaluationVisitor
         //
         // context/resource/rootResource cannot reach here untyped at all - they are answered by
         // TryGetEnvironmentVariable's switch before it consults Environment - and rowIndex is
-        // re-injected below and wins regardless of what this loop binds.
+        // re-injected below and wins regardless of what this loop binds. As of issue #439,
+        // SqlOnFhirEvaluator.ValidateVariables rejects a variables entry using any of these four names
+        // before this method is even reached, so the loop below is now guaranteed never to see them: the
+        // description above documents why an override would have been silently ineffective, not a case
+        // this loop still has to handle.
         //
         // %vs-x and %ext-x used to be unable to reach here as a single variable reference at all: the
         // FhirPathTokenizer's ExternalConstant regex had no hyphen in its bare-identifier alternative, so

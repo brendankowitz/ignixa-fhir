@@ -20,6 +20,14 @@ namespace Ignixa.SqlOnFhir.Evaluation;
 /// </summary>
 public class SqlOnFhirEvaluator
 {
+    // context, resource and rootResource are answered by EvaluationContext.TryGetEnvironmentVariable's
+    // switch before it ever consults a caller-supplied variable; rowIndex is re-injected by
+    // SqlOnFhirEvaluationVisitor after the variables loop and always wins. A variables entry using one of
+    // these names has never had any effect - it was accepted and silently discarded. That silence is the
+    // bug (issue #439): reject the call instead of pretending the value was honoured.
+    private static readonly HashSet<string> EngineManagedVariableNames =
+        new(StringComparer.Ordinal) { "context", "resource", "rootResource", "rowIndex" };
+
     private readonly SqlOnFhirEvaluationVisitor _visitor;
     private readonly Dictionary<string, ViewDefinitionExpression> _compiledViewDefinitions = [];
 
@@ -56,6 +64,7 @@ public class SqlOnFhirEvaluator
     {
         ArgumentNullException.ThrowIfNull(viewDefinitionNode);
         ArgumentNullException.ThrowIfNull(resources);
+        ValidateVariables(variables);
 
         var resourceType = viewDefinitionNode.Children("resource").FirstOrDefault()?.Text ?? "Unknown";
 
@@ -93,5 +102,31 @@ public class SqlOnFhirEvaluator
     public void ClearCache()
     {
         _compiledViewDefinitions.Clear();
+    }
+
+    /// <summary>
+    /// Rejects a <paramref name="variables"/> entry whose name the engine manages itself.
+    /// </summary>
+    /// <remarks>
+    /// Checked here, at the public boundary, and before the try/catch below: doing it inside
+    /// <c>CreateEvaluationContext</c> would let the general <c>catch (Exception ex)</c> rewrap this as an
+    /// <see cref="InvalidOperationException"/> saying evaluation "failed", burying both the exception type
+    /// and the reason a caller needs to fix their own input. This is the only method in the class that
+    /// binds caller-supplied variables into an evaluation - <see cref="Evaluate"/> forwards to
+    /// <see cref="EvaluateBatch"/> rather than duplicating the check - so there is nowhere else a
+    /// <paramref name="variables"/> entry can enter unchecked.
+    /// </remarks>
+    private static void ValidateVariables(IReadOnlyDictionary<string, string>? variables)
+    {
+        if (variables == null)
+            return;
+
+        foreach (var name in variables.Keys)
+        {
+            if (EngineManagedVariableNames.Contains(name))
+                throw new ArgumentException(
+                    $"Variable '{name}' is engine-managed and cannot be supplied by the caller.",
+                    nameof(variables));
+        }
     }
 }
