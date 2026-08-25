@@ -551,6 +551,10 @@ or renamed file under `examples/`, which no hash covers and no marker notices. S
 this document defers, E8 is the one with no compensating control at all — deferring it stays
 defensible on blast radius (it excludes zero cases today, and the `Total - CDA excluded == Running`
 identity makes that checkable), but not on "the hashes would catch it", because they would not.
+"Checkable" here means by a person reading the census line, not by any guard: no test asserts the
+identity, and the line is `Console.WriteLine` output that the default `dotnet test` logger does not
+print — seeing it requires `--logger "console;verbosity=detailed"` (see
+`official-test-suite-integration.md`).
 
 **E2 — `SearchIndexParityHarness` discards Ignixa-side failures. DONE (`af451067`, `40f425ec`).**
 `test/Ignixa.FhirPath.Tests/Evaluation/Parity/SearchIndexParityHarness.cs:44-48` builds the production indexer with `NullLoggerFactory`;
