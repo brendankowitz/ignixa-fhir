@@ -307,6 +307,138 @@ public class OfficialTestSuiteSkipListTests
     }
 
     /// <summary>
+    /// Every case the suite is expected to skip, keyed by <c>version|case name</c>, with a fragment of the
+    /// reason that identifies which mechanism produced the skip.
+    /// </summary>
+    /// <remarks>
+    /// The fragments are the point, not the count. A skip count alone rots the first time a legitimate
+    /// skip is added and removed in the same change, and it cannot tell a feature skip from a
+    /// version-policy skip - which is exactly the confusion a laundered pass hides inside.
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> _expectedSkips = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["R4|testPlusDate19"] = "R4/R4B expect truncation of fractional seconds",
+        ["R4|testFHIRPathAsFunction21"] = "the 'as' singleton rule is enforced from R5 onwards",
+        ["R4|testConformsTo1"] = "'conformsTo' is deliberately not implemented",
+        ["R4|testConformsTo2"] = "'conformsTo' is deliberately not implemented",
+        ["R4|testConformsTo3"] = "'conformsTo' is deliberately not implemented",
+        ["R4B|testPlusDate19"] = "R4/R4B expect truncation of fractional seconds",
+        ["R4B|testFHIRPathAsFunction21"] = "the 'as' singleton rule is enforced from R5 onwards",
+        ["R4B|testConformsTo1"] = "'conformsTo' is deliberately not implemented",
+        ["R4B|testConformsTo2"] = "'conformsTo' is deliberately not implemented",
+        ["R4B|testConformsTo3"] = "'conformsTo' is deliberately not implemented",
+        ["R5|testConformsTo1"] = "'conformsTo' is deliberately not implemented",
+        ["R5|testConformsTo2"] = "'conformsTo' is deliberately not implemented",
+        ["R5|testConformsTo3"] = "'conformsTo' is deliberately not implemented",
+        ["R5|txTest01"] = "'%terminologies' is deliberately not implemented",
+        ["R5|txTest02"] = "'%terminologies' is deliberately not implemented",
+        ["R5|txTest03"] = "'%terminologies' is deliberately not implemented",
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Drives the whole official corpus through the runner and fails unless exactly the recorded cases
+    /// skip, each for the recorded reason.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The skip population is the one number in this suite that can move without anything failing. A case
+    /// converted from skip to pass is invisible - the pass count rises, the skip count falls, and both are
+    /// only written down in a documentation table. That is not hypothetical: reverting the two mechanisms
+    /// that make <c>testConformsTo3</c> skip produced a fully green canonical suite,
+    /// <c>Failed: 0, Passed: 2887, Skipped: 13</c>, with the founding defect restored and nothing red.
+    /// </para>
+    /// <para>
+    /// The mirror probes pin that specific case by construction. This pins the population, which is the
+    /// part that generalises: a skip appearing where none was recorded means the harness stopped asserting
+    /// a case and nobody said so, and one disappearing means either a gap closed - in which case its entry
+    /// belongs in this table's history, not silently absent - or an assertion started passing for a reason
+    /// nobody chose.
+    /// </para>
+    /// <para>
+    /// Non-skip exceptions are deliberately swallowed. Whether a case passes or fails is the suite's job
+    /// and it reports that per case; duplicating it here would turn one red suite into two, with this one
+    /// naming the wrong cause. The cost is a second full corpus evaluation, a few seconds per framework.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GivenTheWholeOfficialCorpus_WhenRunThroughTheRunner_ThenExactlyTheRecordedCasesSkipForTheRecordedReasons()
+    {
+        // Arrange
+        var runner = new OfficialTestSuiteRunner(new NullTestOutputHelper());
+
+        // Act
+        var observed = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (version, testCase) in AllRunnableCases())
+        {
+            var thrown = Record.Exception(() => Run(runner, version, testCase));
+            if (thrown is Xunit.SkipException skip)
+            {
+                observed[$"{version}|{testCase.Name}"] = skip.Message;
+            }
+        }
+
+        // Assert
+        var drift = new List<string>();
+        foreach (var key in observed.Keys.Except(_expectedSkips.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            drift.Add($"'{key}' now skips and is not recorded: {observed[key]}");
+        }
+
+        foreach (var key in _expectedSkips.Keys.Except(observed.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            drift.Add($"'{key}' is recorded as a skip but no longer skips. If its gap closed, remove the entry; if it started passing for another reason, find out which.");
+        }
+
+        foreach (var (key, fragment) in _expectedSkips)
+        {
+            if (observed.TryGetValue(key, out var reason) && !reason.Contains(fragment, StringComparison.Ordinal))
+            {
+                drift.Add($"'{key}' skips for a different reason than recorded. Expected to contain '{fragment}', got: {reason}");
+            }
+        }
+
+        drift.ShouldBeEmpty(string.Join(Environment.NewLine, drift));
+    }
+
+    private static void Run(OfficialTestSuiteRunner runner, string version, FhirPathTestCase testCase)
+    {
+        switch (version)
+        {
+            case "R4":
+                runner.OfficialTestSuite_R4(testCase);
+                break;
+            case "R4B":
+                runner.OfficialTestSuite_R4B(testCase);
+                break;
+            default:
+                runner.OfficialTestSuite_R5(testCase);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The runner's own discovery output, so this guard sees exactly the population the suite runs -
+    /// including anything the discovery filter drops.
+    /// </summary>
+    private static IEnumerable<(string Version, FhirPathTestCase TestCase)> AllRunnableCases()
+    {
+        foreach (var row in OfficialTestSuiteRunner.GetR4TestCases())
+        {
+            yield return ("R4", (FhirPathTestCase)row[0]);
+        }
+
+        foreach (var row in OfficialTestSuiteRunner.GetR4BTestCases())
+        {
+            yield return ("R4B", (FhirPathTestCase)row[0]);
+        }
+
+        foreach (var row in OfficialTestSuiteRunner.GetR5TestCases())
+        {
+            yield return ("R5", (FhirPathTestCase)row[0]);
+        }
+    }
+
+    /// <summary>
     /// A minimal non-predicate case with no input file, so the runner uses its default patient and reaches
     /// evaluation without any corpus dependency. <paramref name="invalidType"/> selects which of the
     /// runner's two arms the probe drives: <see langword="null"/> for the normal path through
