@@ -483,7 +483,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'conformsTo' is not supported. It requires profile validation infrastructure.");
+        throw new FhirPathFunctionNotSupportedException("conformsTo", "Function 'conformsTo' is not supported. It requires profile validation infrastructure.");
     }
 
     /// <summary>
@@ -503,7 +503,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'memberOf' is not supported. It requires terminology service integration.");
+        throw new FhirPathFunctionNotSupportedException("memberOf", "Function 'memberOf' is not supported. It requires terminology service integration.");
     }
 
     /// <summary>
@@ -523,7 +523,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'validateVS' is not supported. It requires terminology service integration.");
+        throw new FhirPathFunctionNotSupportedException("validateVS", "Function 'validateVS' is not supported. It requires terminology service integration.");
     }
 
     /// <summary>
@@ -543,7 +543,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'translate' is not supported. It requires terminology service integration.");
+        throw new FhirPathFunctionNotSupportedException("translate", "Function 'translate' is not supported. It requires terminology service integration.");
     }
 
     /// <summary>
@@ -563,7 +563,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'hasTemplateIdOf' is not supported. CDA support is out of scope.");
+        throw new FhirPathFunctionNotSupportedException("hasTemplateIdOf", "Function 'hasTemplateIdOf' is not supported. CDA support is out of scope.");
     }
 
     #endregion

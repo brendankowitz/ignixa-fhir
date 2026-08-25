@@ -197,11 +197,75 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// </summary>
     public static string ProjectRoot => _projectRoot;
 
-    // Functions that throw NotImplementedException at runtime - tests are run but expected to fail
-    // These functions are explicitly defined to throw for proper test tracking.
-    // Type introspection: conformsTo()
-    // Terminology services: %terminologies.expand, validateVS(), translate(), memberOf()
-    // CDA-specific: hasTemplateIdOf()
+    /// <summary>
+    /// Runs the corpus provenance and per-file hash checks, exposed so a test that parses the suite files
+    /// through <see cref="ProjectRoot"/> is held to the same pin as the three suite entry points.
+    /// </summary>
+    /// <remarks>
+    /// <c>TestData/</c> is gitignored, so nothing but these checks stands between an edited expected
+    /// output and a guard that reports green against it. <see cref="LoadTestCases"/> touches the pin for
+    /// the suite itself; a guard that reaches the same XML by its own path would otherwise make its claim
+    /// against an unverified corpus, and a targeted <c>--filter</c> run would never notice - measured,
+    /// <see cref="OfficialTestSuiteSkipListTests"/> reported all green against a tampered file.
+    /// </remarks>
+    public static void EnsureCorpusProvenance() => _ = _fhirTestCasesProvenanceVerified.Value;
+
+    /// <summary>
+    /// The deliberately unimplemented FHIR-specific features that report a
+    /// <see cref="FhirPathFunctionNotSupportedException"/>, keyed by the
+    /// <see cref="FhirPathFunctionNotSupportedException.FeatureName"/> the engine reports, with the
+    /// reason each one is a choice rather than a gap.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not an inventory of everything this engine chose not to build. <c>htmlChecks</c>,
+    /// <c>subsumes</c> and <c>subsumedBy</c> are also deliberate omissions, but they carry no
+    /// <c>[FhirPathFunction]</c> registration at all, so they fall through the generated dispatcher's
+    /// default arm as a bare <see cref="NotSupportedException"/> and this runner reports them as engine
+    /// gaps. That is the safe direction on every path - <see cref="IsParserSignalledError"/> and
+    /// <see cref="IsEvaluatorSignalledError"/> name the types they accept, so a bare
+    /// <see cref="NotSupportedException"/> fails an <c>invalid</c>-marked case exactly as it fails a
+    /// normal one. No current case reaches them, but a corpus bump that adds one would produce a red
+    /// suite with a misleading cause; the fix then is to give those three a marker and list them here,
+    /// not to widen the allowlists.
+    /// </para>
+    /// <para>
+    /// This list is what makes the type marker discriminating. Catching
+    /// <see cref="FhirPathFunctionNotSupportedException"/> alone would still be scoping by exception type,
+    /// which is the defect being fixed here in a narrower form: a seventh feature could start throwing the
+    /// marker and be recorded as deliberate without anyone having decided it was. A marker whose name is
+    /// not listed here fails the case, exactly as a bare <see cref="NotSupportedException"/> now does.
+    /// </para>
+    /// <para>
+    /// None of these appears in any shipped SearchParameter expression in any supported version, so they
+    /// gate the conformance claim rather than resource indexing. Each is a recorded skip, never a pass:
+    /// "the suite exercised a feature we chose not to build" and "the engine computed the right answer"
+    /// are different results, and a published count has to be able to say which.
+    /// </para>
+    /// <para>
+    /// The list retires itself through
+    /// <see cref="OfficialTestSuiteSkipListTests.GivenTheDeliberatelyUnsupportedFeatures_WhenEachIsInvoked_ThenTheEngineStillRefusesByName"/>,
+    /// which invokes every listed feature and fails if one no longer throws. Implementing
+    /// <c>conformsTo</c> therefore turns that guard red and forces its entry out, rather than leaving an
+    /// allowlist entry that quietly catches nothing - the staleness
+    /// <see cref="AssertDeferralIsStillNeeded"/> exists to prevent on the other list.
+    /// </para>
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> _deliberatelyUnsupportedFeatures = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["conformsTo"] = "profile validation infrastructure is out of scope for the FHIRPath engine; it belongs to Ignixa.Validation",
+        ["memberOf"] = "requires a terminology server, which this engine deliberately does not depend on",
+        ["validateVS"] = "requires a terminology server, which this engine deliberately does not depend on",
+        ["translate"] = "requires a terminology server and ConceptMap resolution, which this engine deliberately does not depend on",
+        ["hasTemplateIdOf"] = "CDA support is out of scope for a FHIR server, consistent with the suite's cda-mode exclusion",
+        ["%terminologies"] = "requires a terminology server, which this engine deliberately does not depend on",
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The deliberately unsupported feature names with their justifications, exposed so
+    /// <see cref="OfficialTestSuiteSkipListTests"/> can prove each one is still refused by the engine.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> DeliberatelyUnsupportedFeatures => _deliberatelyUnsupportedFeatures;
 
     // Default patient resource for tests without input files (matches Firely validator behavior)
     private const string DefaultPatientXml = "<Patient xmlns=\"http://hl7.org/fhir\"><id value=\"pat1\"/></Patient>";
@@ -249,15 +313,63 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
                 archivePath);
         }
 
-        using var archive = File.OpenRead(archivePath);
-        var actualHash = Convert.ToHexString(SHA256.HashData(archive));
-        if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+        using (var archive = File.OpenRead(archivePath))
         {
-            throw new InvalidDataException(
-                $"FHIR test cases archive hash mismatch. Expected {expectedHash}, got {actualHash}. Delete TestData and rebuild.");
+            var actualHash = Convert.ToHexString(SHA256.HashData(archive));
+            if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"FHIR test cases archive hash mismatch. Expected {expectedHash}, got {actualHash}. Delete TestData and rebuild.");
+            }
         }
 
+        VerifySuiteFileHashes(expectedVersion);
         return true;
+    }
+
+    /// <summary>
+    /// The SHA-256 of each per-version suite file as extracted from fhir-test-cases 1.7.46, so a
+    /// conformance claim names the corpus it was measured against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The archive hash above pins what was downloaded. These pin what is actually parsed, which is not
+    /// the same claim: <c>TestData/</c> is gitignored, so the extracted tree is unversioned local state
+    /// that a hand edit, a partial extraction, or a half-finished corpus bump can change without touching
+    /// <c>testcases.zip</c> or the <c>.downloaded</c> marker. Editing an expected output in one of these
+    /// files would move the pass count with nothing to say so.
+    /// </para>
+    /// <para>
+    /// Bytes, not parsed content: extraction does no newline translation, so these are stable across
+    /// machines, and a diff in either direction should be a deliberate corpus bump that updates
+    /// <c>FhirTestCasesVersion</c>, the archive hash, and these three values together.
+    /// </para>
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> _suiteFileHashes = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["r4"] = "BE78B5237322AB0EEFC628676A28FC503F67AFF2524CAF60F8FF5A7ABAE0E570",
+        ["r4b"] = "F812D45BCABB7D90C1BAF9CBF7FC461C7E832BB6AC73A290BB0C12740956F4F3",
+        ["r5"] = "74DF53B7671C2C2B9E5100816BF2A70409F7AD00C0927AC6422C9BEC3B3AA366",
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    private static void VerifySuiteFileHashes(string expectedVersion)
+    {
+        foreach (var (version, expectedHash) in _suiteFileHashes)
+        {
+            var suitePath = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", version, "fhirpath", $"tests-fhir-{version}.xml");
+            if (!File.Exists(suitePath))
+            {
+                throw new FileNotFoundException($"FHIR test suite file is missing: {suitePath}. Delete TestData and rebuild to download fhir-test-cases {expectedVersion}.", suitePath);
+            }
+
+            using var suiteFile = File.OpenRead(suitePath);
+            var actualHash = Convert.ToHexString(SHA256.HashData(suiteFile));
+            if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"FHIR test suite file hash mismatch for {version}. Expected {expectedHash}, got {actualHash} at {suitePath}. The extracted corpus no longer matches fhir-test-cases {expectedVersion}; delete TestData and rebuild, or update the pin deliberately.");
+            }
+        }
     }
 
     private static string GetFhirTestCasesMetadata(string key) =>
@@ -285,6 +397,12 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // Note: Check version directory first, then examples (version may have modified files for tests)
         var filteredTests = testCases
             .Where(tc => tc.Mode != "cda")
+            // KNOWN GAP (release-readiness E8): unlike the CDA clause above, this one has no counter.
+            // A case whose inputFile resolves to no file on disk leaves the denominator with nothing
+            // printed and nothing failing, so a published conformance count would silently shrink.
+            // It excludes zero cases on all three versions today, which is only knowable because
+            // Total - CDA excluded == Running in the census line below. Do not remove this clause
+            // without giving it a counter first.
             .Where(tc => tc.InputFile is null ||
                          File.Exists(Path.Combine(versionDirectory, tc.InputFile)) ||
                          File.Exists(Path.Combine(examplesDirectory, tc.InputFile)));
@@ -294,7 +412,18 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         var predicateTests = testCases.Count(tc => tc.Predicate);
         var runningCount = filteredTests.Count();
 
-        Console.WriteLine($"[OfficialTestSuite-{versionLabel}] Total: {totalTests}, CDA excluded: {cdaTests}, Predicate included: {predicateTests}, Running: {runningCount}");
+        // Untyped outputs are asserted under a weaker rule than the rest, and the count says how much of
+        // the figure that covers. An <output> with no type attribute becomes "unknown", which makes
+        // TypesMatch return true unconditionally - the type assertion is skipped entirely - and routes
+        // ValuesMatch into three fallbacks that exist only in that branch (case-insensitive booleans,
+        // numeric re-parse, @-prefix stripping). The leniency is load-bearing and deliberately left
+        // alone: made strict, 28 currently-passing cases fail, all of them Comparable/HighBoundary/
+        // LowBoundary on R4 and R4B. What was not acceptable was leaving it unstated, so that the same
+        // expressions being asserted strictly on R5 and leniently on R4/R4B - decided by nothing but a
+        // missing XML attribute - showed up nowhere in the numbers this suite publishes.
+        var untypedOutputCases = filteredTests.Count(tc => tc.ExpectedOutputs.Any(output => output.Type == "unknown"));
+
+        Console.WriteLine($"[OfficialTestSuite-{versionLabel}] Total: {totalTests}, CDA excluded: {cdaTests}, Predicate included: {predicateTests}, Running: {runningCount}, Untyped outputs (asserted leniently): {untypedOutputCases}");
 
         foreach (var testCase in filteredTests)
         {
@@ -339,6 +468,16 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         // Version-specific behaviour: R4/R4B truncate fractional seconds to integers, R5 preserves them,
         // and our implementation follows R5 (sub-second precision preserved).
+        //
+        // Unlike testFHIRPathAsFunction21 below, the corpus is right here and HAPI agrees with it.
+        // HAPI ships three version-specific engine copies rather than a runtime flag, and dateAdd's
+        // seconds arm differs between them exactly along this line: org.hl7.fhir.r4 (and r4b)
+        // fhirpath/FHIRPathEngine.java:2752-2756 is result.add(Calendar.SECOND, q.getValue().intValue())
+        // and nothing more, so + 0.1 's' truncates; org.hl7.fhir.r5 :2906-2916 adds the integer seconds
+        // and then re-adds the remainder as (int)(decValue * 1000) milliseconds. So this is not the
+        // "corpus contradicts both engines" case - it is a deliberate choice to ship one engine with R5
+        // semantics rather than three. See docs/features/fhirpath/investigations/
+        // official-test-suite-integration.md for the citation.
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testPlusDate19")
         {
             SkipUnlessTheCaseWouldNowPass(
@@ -350,11 +489,16 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         // Singleton cardinality for 'as'/'as()'. The suite marks Patient.name.as(HumanName) invalid in
         // all three versions, but the rule is only enforceable from R5: HL7's own R4/R4B SearchParameter
-        // definitions spell 58 and 59 casts with the 'as' operator, many of them over 0..* paths, and
-        // rewrote almost all of them to ofType() in R5. Enforcing below R5 would make the indexer throw on those
-        // shipped expressions, so TypeMatcher.EnsureSingletonInput gates on the schema version and this
-        // case is genuinely not signalled on R4/R4B. HAPI draws the line in the same place and for the
-        // same reason (doNotEnforceAsSingletonRule below R5).
+        // definitions lean heavily on the 'as' cast, many of them over 0..* paths, and R5 rewrote almost
+        // all of them to ofType(). Enforcing below R5 would make the indexer throw on those shipped
+        // expressions, so TypeMatcher.EnsureSingletonInput gates on the schema version and this case is
+        // genuinely not signalled on R4/R4B. HAPI draws the line in the same place and for the same
+        // reason (doNotEnforceAsSingletonRule below R5).
+        //
+        // The counts live in official-test-suite-integration.md and only there, with the matching rule
+        // they were measured under. This comment used to carry its own figure, that figure was wrong,
+        // and it was the copy the document quoted - so a second home for the number is what produced the
+        // error, not what would have caught it. Do not restate it here.
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testFHIRPathAsFunction21")
         {
             SkipUnlessTheCaseWouldNowPass(
@@ -474,11 +618,9 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         {
             resultList = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
         }
-        catch (NotSupportedException ex)
+        catch (FhirPathFunctionNotSupportedException ex) when (_deliberatelyUnsupportedFeatures.ContainsKey(ex.FeatureName))
         {
-            // NotSupportedException is expected for unsupported functions (conformsTo, memberOf, etc.)
-            // Log and pass - these are known unsupported features, not bugs
-            _output.WriteLine($"[NOT SUPPORTED] {testCase.Name}: {ex.Message}");
+            SkipDeliberatelyUnsupportedFeature(testCase, ex);
             return;
         }
         catch (Exception ex)
@@ -507,8 +649,18 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// Every <c>Assert.Fail</c> below sits outside a <c>try</c> on purpose. An earlier version wrapped the
     /// whole method body in one, so xunit's own <c>FailException</c> landed in the trailing
     /// <c>catch (Exception)</c> and was logged as <c>[INVALID-OK]</c> - which made every single
-    /// <c>invalid</c>-marked case pass unconditionally. The <c>IsEngineSignalledError</c> filters keep that
-    /// from coming back if this method is ever restructured.
+    /// <c>invalid</c>-marked case pass unconditionally. The <see cref="IsParserSignalledError"/> and
+    /// <see cref="IsEvaluatorSignalledError"/> filters keep that from coming back if this method is ever
+    /// restructured: both are allowlists of engine error types, and <c>FailException</c> is on neither.
+    /// </para>
+    /// <para>
+    /// The marker catch below the evaluation call is what turns <c>testConformsTo3</c> from a pass into a
+    /// skip. The case is marked <c>invalid</c> and expects <c>conformsTo('http://trash')</c> to be refused
+    /// for naming a profile that does not exist; this engine refuses it for not implementing
+    /// <c>conformsTo</c> at all. Both throw, so the case used to pass - on an error it was not testing for.
+    /// Erroring for the wrong reason is not conformance, so it routes to a recorded skip. The allowlists
+    /// would reject the marker on their own, but rejecting it produces a failure, not the skip; only that
+    /// catch produces the skip.
     /// </para>
     /// <para>
     /// The analyzer is consulted last, not first, even though HAPI's runner calls <c>check()</c> before
@@ -533,7 +685,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         {
             expression = _parser.Parse(testCase.Expression);
         }
-        catch (Exception ex) when (IsEngineSignalledError(ex))
+        catch (Exception ex) when (IsParserSignalledError(ex))
         {
             _output.WriteLine($"[INVALID-OK] {testCase.Name}: parse-time error as expected ({invalidType}): {ex.GetType().Name}: {ex.Message}");
             return;
@@ -550,7 +702,12 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             // Force evaluation by iterating results - the evaluator is lazy
             results = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
         }
-        catch (Exception ex) when (IsEngineSignalledError(ex))
+        catch (FhirPathFunctionNotSupportedException ex) when (_deliberatelyUnsupportedFeatures.ContainsKey(ex.FeatureName))
+        {
+            SkipDeliberatelyUnsupportedFeature(testCase, ex);
+            return;
+        }
+        catch (Exception ex) when (IsEvaluatorSignalledError(ex))
         {
             _output.WriteLine($"[INVALID-OK] {testCase.Name}: evaluation error as expected ({invalidType}): {ex.GetType().Name}: {ex.Message}");
             return;
@@ -622,10 +779,18 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// engine now signals, so closing a gap forces the list entry to be removed.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Deliberately re-runs the evaluator only, not <see cref="DescribeAnalyzerRejection"/>. Every remaining
     /// entry is deferred on an evaluator gap, and a gap closed in the analyzer instead has to be retired by
     /// hand - checking both here would fail the entries currently being worked on in parallel rather than
     /// reporting on the one that was fixed.
+    /// </para>
+    /// <para>
+    /// The marker branch mirrors the one in <see cref="ExecuteTestCase"/> and
+    /// <see cref="RunInvalidExpressionTest"/>. It is kept for that symmetry and not described further:
+    /// <see cref="_unsignalledInvalidCases"/> is empty by design, so this whole method is unreachable and
+    /// prose about how its branches interact would document behaviour nothing can execute.
+    /// </para>
     /// </remarks>
     private void AssertDeferralIsStillNeeded(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider, string deferralReason)
     {
@@ -635,7 +800,12 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
             _ = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
         }
-        catch (Exception ex) when (IsEngineSignalledError(ex))
+        catch (FhirPathFunctionNotSupportedException ex) when (_deliberatelyUnsupportedFeatures.ContainsKey(ex.FeatureName))
+        {
+            SkipDeliberatelyUnsupportedFeature(testCase, ex);
+            return;
+        }
+        catch (Exception ex) when (IsParserSignalledError(ex) || IsEvaluatorSignalledError(ex))
         {
             Assert.Fail($"""
                 '{testCase.Name}' is deferred in _unsignalledInvalidCases but the engine now signals the error, so the entry is stale and must be removed.
@@ -661,11 +831,81 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     };
 
     /// <summary>
-    /// Distinguishes an error signalled by the FHIRPath engine from an assertion raised by this harness.
-    /// xunit assertion failures (<see cref="XunitException"/>, including <c>Assert.Fail</c>'s
-    /// <c>FailException</c>) must never be mistaken for the engine reporting an invalid expression.
+    /// The exception the parser raises to mean "this expression is not FHIRPath", which is the only throw
+    /// out of <see cref="FhirPathParser.Parse"/> that lets a <c>syntax</c>-marked case pass.
     /// </summary>
-    private static bool IsEngineSignalledError(Exception exception) => exception is not XunitException;
+    /// <remarks>
+    /// <para>
+    /// An allowlist, not a denylist, and that is the whole point. Named exception types are the engine's
+    /// error signal; everything else reaching one of these catches is the engine falling over, and a
+    /// harness that reads "it threw" as "it correctly refused" cannot fail. This one names
+    /// <see cref="FormatException"/> because <see cref="FhirPathParser.ParseToTree"/> documents and throws
+    /// exactly that for a failed tokenize and a failed parse.
+    /// </para>
+    /// <para>
+    /// <see cref="ArgumentException"/> from the same method is deliberately not here. It reports a null or
+    /// whitespace expression - a caller-contract violation, not a verdict on FHIRPath syntax - and a
+    /// harness that accepted it would record "we passed the parser nothing" as "the parser rejected the
+    /// expression".
+    /// </para>
+    /// </remarks>
+    private static bool IsParserSignalledError(Exception exception) =>
+        exception is FormatException;
+
+    /// <summary>
+    /// The exception the evaluator raises to mean "the FHIRPath specification requires an error here",
+    /// which is the only throw out of <c>Evaluate</c> that lets a <c>semantic</c>/<c>execution</c>-marked
+    /// case pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="FhirPathEvaluationException"/> is the type whose entire reason for existing is this
+    /// distinction - see its own remarks: "the expression is wrong" versus "we are wrong". Its base
+    /// <see cref="InvalidOperationException"/> is not accepted, and that asymmetry is load-bearing: the
+    /// base type is what the engine throws for a broken internal invariant, so accepting it would let an
+    /// engine defect count as conformance on any case the corpus happens to mark invalid.
+    /// </para>
+    /// <para>
+    /// The list is deliberately narrower than the parser's. <see cref="FormatException"/> is a legitimate
+    /// parse-time signal but an evaluation-time defect - <c>BoundaryFunctions</c> and
+    /// <c>TypeConversionFunctions</c> both reach <c>int.Parse</c>/<c>decimal.Parse</c> on values they have
+    /// already pattern-matched, so a <see cref="FormatException"/> out of <c>Evaluate</c> means one of
+    /// those matches is wrong. A single flat list shared across both phases would accept that
+    /// <see cref="FormatException"/> at evaluation time too, which is the defect this split exists to
+    /// catch - but no case in the corpus currently throws <see cref="FormatException"/> from <c>Evaluate</c>,
+    /// so no test distinguishes the two allowlists from one shared list today, and a probe for it is not
+    /// constructible without mutating the engine to make <c>BoundaryFunctions</c> or
+    /// <c>TypeConversionFunctions</c> mis-parse an already-matched value.
+    /// </para>
+    /// <para>
+    /// A bare <see cref="NotSupportedException"/> is not on either list, which is the rule this harness
+    /// was rebuilt around: the generated dispatcher's default arm and the evaluator's binary-operator
+    /// default arm both throw it for "not yet implemented", and an engine that cannot evaluate an
+    /// expression has not refused it. <see cref="FhirPathFunctionNotSupportedException"/> is excluded by
+    /// the same rule - it derives from <see cref="NotSupportedException"/>, not from either allowlisted
+    /// type - and reaches a recorded skip through the marker catches that precede every call to this
+    /// method, never through here.
+    /// </para>
+    /// <para>
+    /// <see cref="OperationCanceledException"/> and <see cref="XunitException"/> fall out for free, which
+    /// the previous denylist had to name or missed. An abandoned run now surfaces as a failure rather than
+    /// as a recorded pass, consistent with <see cref="SkipUnlessTheCaseWouldNowPass"/> re-throwing it, and
+    /// <c>Assert.Fail</c>'s <c>FailException</c> still cannot be mistaken for the engine reporting an
+    /// invalid expression.
+    /// </para>
+    /// </remarks>
+    private static bool IsEvaluatorSignalledError(Exception exception) =>
+        exception is FhirPathEvaluationException;
+
+    /// <summary>
+    /// Records a case the suite exercises through a feature this engine deliberately does not implement.
+    /// </summary>
+    /// <remarks>
+    /// The feature name is repeated into the reason rather than left implicit in the exception message,
+    /// because the name is what the allowlist matched on and what a reader has to check the entry against.
+    /// </remarks>
+    private void SkipDeliberatelyUnsupportedFeature(FhirPathTestCase testCase, FhirPathFunctionNotSupportedException exception) =>
+        SkipTest($"{testCase.Name}: '{exception.FeatureName}' is deliberately not implemented - {_deliberatelyUnsupportedFeatures[exception.FeatureName]} [{exception.Message}]");
 
     /// <summary>
     /// Records that this test case is deliberately not asserted, with the reason, and stops the test.
