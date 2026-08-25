@@ -489,11 +489,16 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         // Singleton cardinality for 'as'/'as()'. The suite marks Patient.name.as(HumanName) invalid in
         // all three versions, but the rule is only enforceable from R5: HL7's own R4/R4B SearchParameter
-        // definitions spell 58 and 59 casts with the 'as' operator, many of them over 0..* paths, and
-        // rewrote almost all of them to ofType() in R5. Enforcing below R5 would make the indexer throw on those
-        // shipped expressions, so TypeMatcher.EnsureSingletonInput gates on the schema version and this
-        // case is genuinely not signalled on R4/R4B. HAPI draws the line in the same place and for the
-        // same reason (doNotEnforceAsSingletonRule below R5).
+        // definitions lean heavily on the 'as' cast, many of them over 0..* paths, and R5 rewrote almost
+        // all of them to ofType(). Enforcing below R5 would make the indexer throw on those shipped
+        // expressions, so TypeMatcher.EnsureSingletonInput gates on the schema version and this case is
+        // genuinely not signalled on R4/R4B. HAPI draws the line in the same place and for the same
+        // reason (doNotEnforceAsSingletonRule below R5).
+        //
+        // The counts live in official-test-suite-integration.md and only there, with the matching rule
+        // they were measured under. This comment used to carry its own figure, that figure was wrong,
+        // and it was the copy the document quoted - so a second home for the number is what produced the
+        // error, not what would have caught it. Do not restate it here.
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testFHIRPathAsFunction21")
         {
             SkipUnlessTheCaseWouldNowPass(
