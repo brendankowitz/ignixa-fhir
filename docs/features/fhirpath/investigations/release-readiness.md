@@ -804,7 +804,7 @@ reused unchanged. New PRs:
 
 Residuals PR 1 (WI-1, #423 sweep) can proceed in parallel with N1–N2; residuals PR 2 (WI-2/3) after
 PR 1; residuals PR 3 (WI-4) before or with N4 as noted. Order-critical chain:
-**N1 → (re-baseline) → any newly-red normative fixes → N3/N4/N5 → N6/N7 → N8 → merge train to
+**N1 → (re-baseline) → N1b → any newly-red normative fixes → N3/N4/N5 → N6/N7 → N8 → merge train to
 main → CI → N9/ADR correction → dispatch `publish-release.yml`.**
 Total new work ≈ 11–16 working days plus residuals' 4–6; call it 3–4 engineer-weeks, long pole
 being N1's unknown (newly-red set) and the two corpus re-runs.
