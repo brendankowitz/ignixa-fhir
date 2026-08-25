@@ -535,7 +535,7 @@ published conformance denominator and every guard in this repo would stay green.
 *Fix (small):* count the second clause and add it to the census line as its own field, or make a
 missing `inputFile` throw rather than filter. Either makes the exclusion visible.
 *Falsify:* rename one `inputFile` referenced by the R4 suite, confirm the new counter reports it (or
-the throw fires); restore the file byte-exactly — the per-file SHA-256 pins will fail otherwise.
+the throw fires); restore the name exactly. Nothing else will tell you if you don't — see below.
 
 *Deliberately not fixed in the re-baseline commit.* Changing the runner's behaviour and publishing
 its number in the same commit is how an unfalsifiable figure gets made; keeping them apart is what
@@ -543,6 +543,14 @@ let the re-baseline be independently reproduced at a later commit and yield the 
 the earlier one. Sequence it into whichever PR next touches the runner, **after** the current figure
 is merged. A pointer comment sits at the clause itself so it cannot be found only by reading this
 document.
+
+*The corpus pin does not cover this, and the deferral should not be read as though it did.*
+`VerifySuiteFileHashes` pins `tests-fhir-{r4,r4b,r5}.xml` and nothing else; the archive hash pins
+`testcases.zip`, which a rename in the *extracted* tree leaves untouched. E8's trigger is a missing
+or renamed file under `examples/`, which no hash covers and no marker notices. So among the gaps
+this document defers, E8 is the one with no compensating control at all — deferring it stays
+defensible on blast radius (it excludes zero cases today, and the `Total - CDA excluded == Running`
+identity makes that checkable), but not on "the hashes would catch it", because they would not.
 
 **E2 — `SearchIndexParityHarness` discards Ignixa-side failures. DONE (`af451067`, `40f425ec`).**
 `test/Ignixa.FhirPath.Tests/Evaluation/Parity/SearchIndexParityHarness.cs:44-48` builds the production indexer with `NullLoggerFactory`;
