@@ -560,6 +560,19 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Recursively collects all variable references from a FHIRPath expression tree.
     /// </summary>
+    /// <remarks>
+    /// The <c>FunctionCallExpression</c> case also catches every one of its subclasses - a C# type-pattern
+    /// <c>case</c> matches subtypes - so <c>BinaryExpression</c>, <c>UnaryExpression</c>,
+    /// <c>IndexerExpression</c> and <c>ChildExpression</c> (member access, <c>a.b</c>) are already covered
+    /// through it, not missed. <c>PropertyAccessExpression</c> needs no case either: both of its
+    /// construction sites (<c>FhirPathGrammar.cs</c> and <c>FhirPathParseTreeGrammar.cs</c>) build it only
+    /// for a bare root-level identifier with <c>Focus: null</c>, so it can never carry a nested reference.
+    /// <c>InstanceSelectorExpression</c> (<c>Coding { system: %name }</c>) is the one real gap: each of its
+    /// <c>Elements</c> carries an arbitrary <c>ValueExpression</c> that this method never visits, so a
+    /// variable referenced only inside an instance-selector element assignment reaches evaluation
+    /// unvalidated instead of failing here. Pre-existing, unrelated to this branch, and tracked as #443
+    /// rather than fixed here.
+    /// </remarks>
     private static void CollectVariableReferences(FhirPath.Expressions.Expression expr, HashSet<(string Name, bool IsDelimited)> variables)
     {
         if (expr == null)
@@ -582,7 +595,8 @@ public static class ViewDefinitionExpressionParser
                 CollectVariableReferences(paren.InnerExpression, variables);
                 break;
 
-            // Other expression types (constants, identifiers, etc.) don't contain variable references
+            // Other expression types (constants, identifiers, scope references, quantities, and
+            // InstanceSelectorExpression - see the remarks above for that last one) don't add a case here.
         }
     }
 
