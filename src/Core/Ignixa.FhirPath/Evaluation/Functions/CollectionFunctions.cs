@@ -496,19 +496,21 @@ internal static class CollectionFunctions
     /// ratio C/N² stays within 0.4% across that range), so 10.8× in comparisons is only √10.8 ≈ 3.3× in nodes.
     /// <b>Bounding a quadratic cost necessarily bounds data. That is the trade this guard is, not a side effect
     /// of it: the accepted-data envelope narrows, deliberately.</b> Measured on that shape with
-    /// <c>repeat(item)</c>, at production thresholds:
+    /// <c>repeat(item)</c>, at production thresholds, in trees <c>RemainingCoverageTests.CreateDeeplyNestedQuestionnaireItems(breadth, depth)</c>
+    /// builds - so a reader can regenerate every row below rather than take it on faith:
     /// <list type="table">
     /// <listheader><term>nodes</term><description>outcome, and the comparison count reached</description></listheader>
-    /// <item><term>1,092 (the control)</term><description>OK - 1,391,754</description></item>
-    /// <item><term>3,279</term><description>OK - 12,545,454</description></item>
-    /// <item><term>3,500</term><description>OK - 14,293,417</description></item>
-    /// <item><term>3,600</term><description><b>throws</b> - hits 15,000,000 at iteration 3,568 of 3,601</description></item>
+    /// <item><term>1,092 (breadth 3, depth 6 - the control)</term><description>OK - 1,391,754</description></item>
+    /// <item><term>3,279 (breadth 3, depth 7)</term><description>OK - 12,545,454</description></item>
+    /// <item><term>5,460 (breadth 4, depth 6)</term><description><b>throws</b> - the comparison-count budget (15,000,000)</description></item>
     /// </list>
     /// and with the comparison budget lifted, so that only the 10,000-iteration cap applies - i.e. the behaviour
-    /// before #435 - the same trees run to completion far past that point: 5,460 nodes at 33,540,780 comparisons
-    /// and 9,840 nodes at 112,968,120, both OK. So the envelope for a navigating <c>repeat()</c> falls from about
-    /// 10,000 nodes, where one dequeue per node made the iteration cap the binding constraint, to between 3,500
-    /// and 3,600. Combined with the all-or-nothing behaviour documented below, an indexer over a tenant expression
+    /// before #435 - the same 5,460-node tree runs to completion at 33,540,780 comparisons, and a 9,840-node tree
+    /// (breadth 3, depth 8) reaches 112,968,120, both OK. So the envelope for a navigating <c>repeat()</c> falls
+    /// from about 10,000 nodes, where one dequeue per node made the iteration cap the binding constraint, to
+    /// somewhere between 3,279 (OK) and 5,460 (throws) - the narrowest bracket reproducible with the generator
+    /// above; no uniform tree of any breadth lands exactly on the boundary in between, so this is stated as a
+    /// bracket rather than a single cutover node count. Combined with the all-or-nothing behaviour documented below, an indexer over a tenant expression
     /// that exceeds this drops the whole search parameter rather than truncating it. The exposure is narrow rather
     /// than absent: <c>descendants()</c> has its own non-deduping implementation and does not route through this
     /// method, and <c>repeat(</c> appears in no generated SearchParameter and in only three shipped invariants, so
