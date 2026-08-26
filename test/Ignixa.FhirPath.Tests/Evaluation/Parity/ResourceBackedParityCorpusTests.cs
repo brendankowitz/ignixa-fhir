@@ -1,3 +1,6 @@
+﻿using Ignixa.Abstractions;
+using Ignixa.Search.Indexing;
+using Ignixa.Specification.Extensions;
 using Xunit.Abstractions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
@@ -199,16 +202,18 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             Firely's ran the same expression, and the contained throw indexed nothing while the
             comparison still scored it as agreement.
             """);
+        AssertConverterGapsAreStillOpen();
         AssertCounts(
             report.IgnixaFailures.Where(failure => !failure.ContainedAThrow).Select(failure => failure.Signature),
             ResourceBackedKnownDivergences.ExpectedIgnixaConverterPipelineSkips,
             """
             The set of elements production ElementSearchIndexer skipped as unindexable moved.
             Both indexers reach that decision through the same Ignixa objects, so this corpus records
-            these and cannot adjudicate them - 186 of them are the canonical converter gap tracked as
-            production work. A new signature is a new unindexable site; a higher count is an existing
-            gap reaching further; a lower count is either a converter landing or a corpus that stopped
-            generating the shape. Say which before re-pinning.
+            these and Ignixa.Search.Tests' registration census adjudicates them. A new signature is a
+            new unindexable site; a higher count is an existing gap reaching further; a lower count is
+            either a converter landing or a corpus that stopped generating the shape - and the
+            UnconvertedPairs assertion that runs immediately before this one is what tells you which,
+            because it reddens only in the first case. Say which before re-pinning.
             """);
 
         var classified = report.Divergences
@@ -228,6 +233,54 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             classified.Select(item => item.Classification!.RootCause),
             ResourceBackedKnownDivergences.ExpectedIndexResourceCounts,
             "The reach of a classified index divergence changed.");
+    }
+
+    /// <summary>
+    /// Asserts every gap <see cref="ResourceBackedKnownDivergences.UnconvertedPairs"/> claims is still
+    /// open really is, against the converter manager production builds, and that every element type the
+    /// skip pin names is covered by that claim.
+    /// </summary>
+    /// <remarks>
+    /// Without this the skip counts are only a measurement of the corpus. A converter landing and a
+    /// corpus that stopped generating the shape both show up as a smaller number, and re-pinning
+    /// absorbs either without a question being asked. This separates them: it reddens for a landed
+    /// converter and stays green for lost coverage.
+    /// </remarks>
+    private static void AssertConverterGapsAreStillOpen()
+    {
+        var converters = SearchIndexerFactory.CreateIndexingComponents(
+            FhirVersion.R4.GetSchemaProvider(),
+            NullFhirBaseUriProvider.Instance).ConverterManager;
+
+        var closed = ResourceBackedKnownDivergences.UnconvertedPairs
+            .Where(pair => converters.TryGetConverter(
+                pair.FhirType,
+                ElementSearchIndexer.GetSearchValueTypeForSearchParamType(pair.ParameterType),
+                out _))
+            .Select(pair =>
+                $"({pair.FhirType} -> {pair.ParameterType}) now resolves to a converter. The skip counts "
+                + "below fall because the gap closed, not because the corpus lost coverage. Remove the "
+                + "pair and the rows it explains together.")
+            .ToArray();
+
+        closed.ShouldBeEmpty(string.Join(Environment.NewLine, closed));
+
+        var claimed = ResourceBackedKnownDivergences.UnconvertedPairs
+            .Select(pair => pair.FhirType)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var unexplained = ResourceBackedKnownDivergences.ExpectedIgnixaConverterPipelineSkips.Keys
+            .Where(signature => signature.StartsWith("FhirElementTypeNotSupported", StringComparison.Ordinal))
+            .Select(signature => signature.Split(" :: ")[2])
+            .Distinct(StringComparer.Ordinal)
+            .Where(elementType => !claimed.Contains(elementType))
+            .Select(elementType =>
+                $"'{elementType}' is pinned as an unindexable element type but is not named in "
+                + "UnconvertedPairs, so nothing asserts that its gap is still open and its rows could "
+                + "fall to zero unnoticed.")
+            .ToArray();
+
+        unexplained.ShouldBeEmpty(string.Join(Environment.NewLine, unexplained));
     }
 
     private static void AssertCounts(
