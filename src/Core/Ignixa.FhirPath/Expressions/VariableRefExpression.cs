@@ -14,15 +14,33 @@ namespace Ignixa.FhirPath.Expressions;
 /// Represents a variable reference in a FhirPath expression.
 /// Examples: %context, %resource, %`ext-patient-birthTime`.
 /// </summary>
-/// <remarks>
-/// <paramref name="isDelimited"/> on the constructor below is an optional parameter appended to an
-/// existing public member of a package built with <c>IsPackable</c>/<c>PackageStability: stable</c>:
-/// source-compatible for callers that recompile, but binary-breaking for one that does not, since the
-/// parameter becomes part of the call site's signature.
-/// </remarks>
 public class VariableRefExpression : Expression
 {
-    public VariableRefExpression(string name, ISourcePositionInfo? location = null, bool isDelimited = false)
+    /// <summary>
+    /// Creates a reference to a bare <c>%name</c>.
+    /// </summary>
+    /// <remarks>
+    /// This overload is what let <see cref="IsDelimited"/> be added without a binary break.
+    /// <c>Ignixa.FhirPath</c> ships as a stable NuGet package (<c>IsPackable</c> /
+    /// <c>PackageStability: stable</c>), and an optional parameter is not an overload: a caller compiled
+    /// against the previous package emitted a call site naming the two-parameter constructor, so
+    /// appending <c>isDelimited</c> to that constructor would have removed it from metadata and left the
+    /// caller throwing <see cref="MissingMethodException"/> at run time without ever recompiling. The
+    /// forwarded value is <see langword="false"/> because before <see cref="IsDelimited"/> existed no
+    /// reference carried the delimited spelling, so bare is the behaviour such a caller already had.
+    /// </remarks>
+    public VariableRefExpression(string name, ISourcePositionInfo? location = null)
+        : this(name, location, isDelimited: false)
+    {
+    }
+
+    /// <summary>
+    /// Creates a reference, recording whether it was written in the backtick-delimited form.
+    /// </summary>
+    /// <param name="name">The variable name, with the leading <c>%</c> and any backticks removed.</param>
+    /// <param name="location">Where the reference appeared in the source expression.</param>
+    /// <param name="isDelimited">Whether the reference was written as <c>%`name`</c>; see <see cref="IsDelimited"/>.</param>
+    public VariableRefExpression(string name, ISourcePositionInfo? location, bool isDelimited)
         : base(location)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));

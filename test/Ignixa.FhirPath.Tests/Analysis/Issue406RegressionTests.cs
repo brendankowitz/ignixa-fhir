@@ -113,4 +113,29 @@ public class Issue406RegressionTests
 
         result.Errors.ShouldContain(message => message.Contains($"'%{expectedName}' not found", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData("vs-administrative-gender")]
+    [InlineData("ext-patient-birthTime")]
+    public void GivenTheOneArgumentOverload_WhenResolvingAPrefixedConstant_ThenItAnswersAsItDidBeforeTheFlagExisted(
+        string name)
+    {
+        // PR #442 standards review, P1/P2. ResolveVariable gained an isDelimited parameter. Adding it as an
+        // optional parameter rather than an overload would have removed ResolveVariable(string) from the
+        // assembly's metadata, so a consumer compiled against the published package would have thrown
+        // MissingMethodException without recompiling; the one-argument form is therefore a real overload,
+        // and this test is what fails if someone later collapses the two back into one optional parameter.
+        // It forwards isDelimited: true, matching its sibling
+        // EvaluationContext.TryGetEnvironmentVariable(string, out object?) and preserving what a
+        // one-argument call returned before the flag existed - the prefix alone was enough. The spelling
+        // still decides for a caller that knows it, which the two-argument assertion below pins.
+        var context = AnalysisContext.Create(FhirVersion.R5.GetSchemaProvider(), "Patient");
+
+        var byNameAlone = context.ResolveVariable(name);
+        byNameAlone.ShouldNotBeNull();
+        byNameAlone.Types.ShouldHaveSingleItem().TypeName.ShouldBe("string");
+
+        context.ResolveVariable(name, isDelimited: false).ShouldBeNull();
+        context.ResolveVariable(name, isDelimited: true).ShouldNotBeNull();
+    }
 }

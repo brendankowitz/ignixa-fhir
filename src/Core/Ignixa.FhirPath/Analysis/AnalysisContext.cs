@@ -354,7 +354,34 @@ public sealed record AnalysisContext
     }
 
     /// <summary>
-    /// Resolves a variable by name.
+    /// Resolves a variable by name alone, expanding the <c>vs-</c> / <c>ext-</c> families.
+    /// </summary>
+    /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
+    /// <remarks>
+    /// <para>
+    /// This overload is what let <paramref name="name"/>'s companion spelling flag be added without a binary
+    /// break. <c>Ignixa.FhirPath</c> ships as a stable NuGet package (<c>IsPackable</c> /
+    /// <c>PackageStability: stable</c>), and an optional parameter is not an overload: a caller compiled
+    /// against the previous package emitted a call site naming the one-parameter method, so appending
+    /// <c>isDelimited</c> to that method would have removed it from metadata and left the caller throwing
+    /// <see cref="MissingMethodException"/> at run time without ever recompiling.
+    /// </para>
+    /// <para>
+    /// It forwards <see langword="true"/>, matching its sibling
+    /// <see cref="EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/> and preserving what a
+    /// one-argument call returned before the flag existed, when the <c>vs-</c>/<c>ext-</c> prefix alone was
+    /// enough to type the reference as a string. Forwarding <see langword="false"/> would have been a silent
+    /// behaviour change for every existing caller, including ones that recompile cleanly. A caller that
+    /// parsed the reference knows the spelling and should pass the expression's own
+    /// <see cref="Expressions.VariableRefExpression.IsDelimited"/> to the two-argument overload instead;
+    /// <see cref="FhirPathAnalyzer"/> does.
+    /// </para>
+    /// </remarks>
+    public FhirPathTypeSet? ResolveVariable(string name)
+        => ResolveVariable(name, isDelimited: true);
+
+    /// <summary>
+    /// Resolves a variable reference whose spelling is known.
     /// </summary>
     /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
     /// <param name="isDelimited">
@@ -372,24 +399,8 @@ public sealed record AnalysisContext
     /// here for the same reason the engine throws on it, rather than by a second copy of the same rule that can
     /// drift from the first.
     /// </para>
-    /// <para>
-    /// The default for <paramref name="isDelimited"/> is deliberately the strict one, <see langword="false"/>,
-    /// the opposite of <see cref="EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/>'s: that
-    /// overload's caller already holds a name it wants resolved regardless of spelling, where here a caller with
-    /// only a bare name has no evidence it came from a delimited reference, and assuming so would let a
-    /// <c>vs-</c>/<c>ext-</c> name resolve on weaker grounds than the engine requires. Callers that parsed the
-    /// reference should pass the expression's own <see cref="Expressions.VariableRefExpression.IsDelimited"/>
-    /// rather than rely on the default.
-    /// </para>
-    /// <para>
-    /// <paramref name="isDelimited"/> is an optional parameter appended to an existing public member of a
-    /// package built with <c>IsPackable</c>/<c>PackageStability: stable</c>: source-compatible for a
-    /// recompiled caller, binary-breaking for one that is not. The one-argument call also stops being
-    /// equivalent to what it returned before this change - a <c>vs-</c>/<c>ext-</c> name now resolves only
-    /// when the caller says it was delimited, where previously the prefix alone was enough.
-    /// </para>
     /// </remarks>
-    public FhirPathTypeSet? ResolveVariable(string name, bool isDelimited = false)
+    public FhirPathTypeSet? ResolveVariable(string name, bool isDelimited)
     {
         if (DefinedVariables.TryGetValue(name, out var definedProps))
         {
