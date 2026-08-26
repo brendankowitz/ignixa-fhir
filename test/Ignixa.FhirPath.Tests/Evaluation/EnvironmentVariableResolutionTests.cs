@@ -94,14 +94,38 @@ public class EnvironmentVariableResolutionTests
     }
 
     [Theory]
-    [InlineData("%vs-mine", "http://hl7.org/fhir/ValueSet/mine")]
-    [InlineData("%ext-mine", "http://hl7.org/fhir/StructureDefinition/mine")]
-    public void GivenABareFixedFhirConstant_WhenReferenced_ThenResolvesToItsUri(string expression, string expected)
+    [InlineData("%vs-mine", "vs-mine")]
+    [InlineData("%ext-mine", "ext-mine")]
+    public void GivenABareVsOrExtConstant_WhenReferenced_ThenItIsAnUndefinedVariableRatherThanAUri(
+        string expression, string expectedName)
     {
-        // Issue #438: the bare (unquoted) spelling of %vs-[name] and %ext-[name] - as opposed to the
-        // pre-existing %`vs-[name]` backtick spelling covered above - must reach GetStandardConstant's
-        // prefix-expansion branch. Before the tokenizer fix this failed at Parse: "%vs-mine" lexed as
-        // ExternalConstant("%vs") / Minus / Identifier("mine"), and %vs alone is not a defined constant.
+        // Issue #438 and its review. Two separate questions got conflated, and they have different answers.
+        //
+        // LEXING: "%vs-mine" must lex as one ExternalConstant token, not ExternalConstant("%vs") / Minus /
+        // Identifier("mine"). #438 fixed that and it stays fixed - HAPI's FHIRLexer takes '-' in the bare
+        // '%' run, and real published cqf-expression content (%p-inactive, in fhir-test-cases) depends on it.
+        // FhirPathTokenizerTests pins the lexing.
+        //
+        // RESOLUTION: the bare spelling must NOT expand to a ValueSet or StructureDefinition URI. The FHIR
+        // profile of FHIRPath writes these two families as %`vs-[name]` and %`ext-[name]` and says the names
+        // "are quoted (just like paths) to allow '-' in the name"; HAPI's FHIRPathEngine expands them only
+        // for the backtick spelling and otherwise falls through to the host resolver and then to an
+        // unknown-constant error. #438's first cut expanded the bare form too, which made Ignixa resolve a
+        // spelling neither reference resolves. So the outcome for a bare name is a clear error naming the
+        // whole hyphenated name - which is only possible because the lexing fix keeps it in one piece.
+        var evaluate = () => _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).ToList();
+
+        var exception = Assert.Throws<FhirPathEvaluationException>(evaluate);
+        Assert.Contains($"undefined environment variable: {expectedName}", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("%`vs-mine`", "http://hl7.org/fhir/ValueSet/mine")]
+    [InlineData("%`ext-mine`", "http://hl7.org/fhir/StructureDefinition/mine")]
+    public void GivenADelimitedVsOrExtConstant_WhenReferenced_ThenResolvesToItsUri(string expression, string expected)
+    {
+        // The conformant counterpart to the test above, for a name that is in neither family's published list:
+        // the expansion is by rule, so any name works, but only in the delimited spelling.
         var result = _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).Single();
 
         Assert.Equal(expected, result.Value);

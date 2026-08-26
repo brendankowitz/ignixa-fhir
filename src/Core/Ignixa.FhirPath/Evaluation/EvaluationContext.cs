@@ -430,8 +430,28 @@ public record EvaluationContext
     /// <c>defineVariable</c> bindings and host-supplied <see cref="Environment"/> entries are consulted before
     /// the fixed FHIRPath constants so a host can override <c>%vs-…</c> / <c>%ext-…</c> with a real value.
     /// </para>
+    /// <para>
+    /// This overload resolves by name alone and therefore expands the <c>vs-</c> / <c>ext-</c> families, which is
+    /// right for a host asking about a name it already holds. The evaluator instead calls the overload taking
+    /// <paramref name="isDelimited"/>, because in an <em>expression</em> the spelling decides: see
+    /// <see cref="GetStandardConstant"/>.
+    /// </para>
     /// </remarks>
     public bool TryGetEnvironmentVariable(string name, out object? value)
+        => TryGetEnvironmentVariable(name, isDelimited: true, out value);
+
+    /// <summary>
+    /// Resolves an environment variable written in a FHIRPath expression, reporting whether the name is defined
+    /// at all.
+    /// </summary>
+    /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
+    /// <param name="isDelimited">
+    /// Whether the reference was written as <c>%`name`</c> rather than bare. Only the delimited spelling expands
+    /// the <c>vs-</c> and <c>ext-</c> families; see <see cref="GetStandardConstant"/> for why.
+    /// </param>
+    /// <param name="value">The bound value: a single <see cref="IElement"/>, a collection of them, or null when the binding is empty.</param>
+    /// <returns><see langword="true"/> when the name is defined, even if its value is empty.</returns>
+    public bool TryGetEnvironmentVariable(string name, bool isDelimited, out object? value)
     {
         ArgumentNullException.ThrowIfNull(name);
 
@@ -477,7 +497,7 @@ public record EvaluationContext
             return true;
         }
 
-        if (GetStandardConstant(name) is { } standardValue)
+        if (GetStandardConstant(name, isDelimited) is { } standardValue)
         {
             value = new StringElement(standardValue);
             return true;
@@ -491,21 +511,39 @@ public record EvaluationContext
     /// Gets the value for a standard FHIRPath external constant.
     /// These are defined by the FHIRPath specification and have fixed values.
     /// </summary>
+    /// <param name="name">The constant's name, without the leading <c>%</c> or any surrounding backticks.</param>
+    /// <param name="isDelimited">
+    /// Whether the reference was written as <c>%`name`</c>. Governs the <c>vs-</c> / <c>ext-</c> families only;
+    /// <c>%sct</c>, <c>%loinc</c> and <c>%ucum</c> are spelled bare in the specification and resolve either way.
+    /// </param>
     /// <remarks>
+    /// <para>
     /// The <c>vs-</c> and <c>ext-</c> families are expanded by rule rather than enumerated: the FHIR profile
     /// of FHIRPath defines <c>%vs-[name]</c> and <c>%ext-[name]</c> for every name in the specification, so
     /// a fixed list of two of them just makes the other several hundred silently unresolvable.
+    /// </para>
+    /// <para>
+    /// <b>Only the delimited spelling expands (#438 review).</b> The specification writes these two families as
+    /// <c>%`vs-[name]`</c> and <c>%`ext-[name]`</c> and says the names "are quoted (just like paths) to allow
+    /// '-' in the name"; HAPI's FHIRPathEngine tests <c>startsWith("%`vs-")</c> and <c>startsWith("%`ext-")</c>,
+    /// so a bare <c>%vs-mine</c> there is not a ValueSet URI - it falls through to the host's constant resolver
+    /// and then to an unknown-constant error. Ignixa's tokenizer accepts <c>-</c> in the bare form because
+    /// HAPI's <em>lexer</em> does and real published cqf-expression content relies on it (<c>%p-inactive</c>),
+    /// but that is a lexical allowance. Expanding the bare form as well would make Ignixa resolve a spelling
+    /// neither the specification nor HAPI resolves, so <paramref name="isDelimited"/> gates it and bare
+    /// <c>%vs-mine</c> reports an undefined variable, exactly as HAPI does.
+    /// </para>
     /// </remarks>
-    private static string? GetStandardConstant(string name)
+    private static string? GetStandardConstant(string name, bool isDelimited)
     {
         return name switch
         {
             "sct" => "http://snomed.info/sct",
             "loinc" => "http://loinc.org",
             "ucum" => "http://unitsofmeasure.org",
-            _ when name.StartsWith("vs-", StringComparison.Ordinal) && name.Length > 3
+            _ when isDelimited && name.StartsWith("vs-", StringComparison.Ordinal) && name.Length > 3
                 => "http://hl7.org/fhir/ValueSet/" + name[3..],
-            _ when name.StartsWith("ext-", StringComparison.Ordinal) && name.Length > 4
+            _ when isDelimited && name.StartsWith("ext-", StringComparison.Ordinal) && name.Length > 4
                 => "http://hl7.org/fhir/StructureDefinition/" + name[4..],
             _ => null
         };

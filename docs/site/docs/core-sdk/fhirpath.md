@@ -247,7 +247,54 @@ The caching is automatic and internal - no configuration needed.
 ```fhirpath
 %resource          // Current resource (set via WithResource())
 %rootResource      // Root resource (set via WithRootResource())
+%context           // Evaluation context node, falling back to %resource
+%this, %index      // Also spelled $this and $index
 ```
+
+The specification's fixed constants resolve without any configuration:
+
+```fhirpath
+%ucum              // http://unitsofmeasure.org
+%sct               // http://snomed.info/sct
+%loinc             // http://loinc.org
+%`vs-[name]`       // http://hl7.org/fhir/ValueSet/[name]
+%`ext-[name]`      // http://hl7.org/fhir/StructureDefinition/[name]
+```
+
+`%terminologies` is recognised but not supported; referencing it throws, because it needs a terminology
+service.
+
+#### Hyphenated variable names must be quoted
+
+The `vs-` and `ext-` families **only** expand in the backtick-delimited spelling. This is what the FHIR
+profile of FHIRPath specifies - it writes both families quoted "to allow `-` in the name" - and what HAPI
+does. A bare ``%vs-mine`` is an ordinary variable name, so unless you bind it yourself it fails with
+`Attempting to access an undefined environment variable: vs-mine`:
+
+```fhirpath
+%`vs-administrative-gender`   // http://hl7.org/fhir/ValueSet/administrative-gender
+%vs-administrative-gender     // error: undefined environment variable
+```
+
+Any name you supply through `WithEnvironmentVariable` can be read either way, since the quoting rule
+applies only to the two specification prefixes.
+
+#### `-` binds into a variable name, so subtraction needs whitespace
+
+Ignixa's tokenizer takes `-` inside an unquoted `%name`, matching HAPI's lexer, so that names like
+``%p-inactive`` - which appear in published `text/fhirpath` cqf-expression content - read as one name.
+The consequence is that a hyphen touching a variable name is part of that name, not an operator:
+
+```fhirpath
+%a-b       // one variable named "a-b"
+%a-1       // one variable named "a-1"
+%a - b     // subtraction: %a minus b
+%a -b      // subtraction: %a minus b
+%a- b      // parse error - the name is "a-" and "b" follows it
+```
+
+Write whitespace **before** the hyphen when you mean subtraction. The failure mode is loud in every case
+above: an unknown name, or a parse error - never a silently different number.
 
 ### Custom Variables
 

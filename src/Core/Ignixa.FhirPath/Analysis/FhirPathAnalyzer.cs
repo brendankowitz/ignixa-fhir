@@ -699,7 +699,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return result;
         }
 
-        var varProps = context.ResolveVariable(name);
+        var varProps = context.ResolveVariable(name, expression.IsDelimited);
         if (varProps != null)
         {
             result.CopyFrom(varProps);

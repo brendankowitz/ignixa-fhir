@@ -1281,7 +1281,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// </remarks>
     public IEnumerable<IElement> VisitVariable(VariableRefExpression expression, EvaluationContext context)
     {
-        if (!context.TryGetEnvironmentVariable(expression.Name, out var value))
+        if (!context.TryGetEnvironmentVariable(expression.Name, expression.IsDelimited, out var value))
         {
             throw new FhirPathEvaluationException(
                 $"Attempting to access an undefined environment variable: {expression.Name}");

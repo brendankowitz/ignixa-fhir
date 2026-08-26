@@ -76,4 +76,22 @@ public class Issue406RegressionTests
         result.Errors.ShouldBeEmpty();
         result.InferredTypes.Types.ShouldHaveSingleItem().TypeName.ShouldBe("string");
     }
+
+    [Theory]
+    [InlineData("%vs-administrative-gender")]
+    [InlineData("%ext-patient-birthTime")]
+    public void GivenBareSpecificationConstant_WhenAnalyzed_ThenReportsItUndefinedLikeTheEngine(string expression)
+    {
+        // #438 review. The analyzer recognises the vs-/ext- families by shape so it does not have to
+        // enumerate several hundred names, but it must recognise them on the same terms the engine resolves
+        // them on - only the backtick spelling, per the FHIR profile of FHIRPath and HAPI. An analyzer that
+        // accepted the bare spelling would report clean and then let evaluation throw, which is worse than
+        // either being consistently strict or consistently lenient. The name in the message is the whole
+        // hyphenated one, which is what #438's lexer fix buys.
+        var analyzer = new FhirPathAnalyzer(FhirVersion.R5.GetSchemaProvider());
+
+        var result = analyzer.Analyze(expression, "Patient");
+
+        result.Errors.ShouldContain(message => message.Contains($"'{expression}' not found", StringComparison.Ordinal));
+    }
 }

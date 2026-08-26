@@ -80,16 +80,32 @@ public static class FhirPathTokenizer
 
                 // External constants: %identifier or %`delimited-identifier`.
                 //
-                // The bare-identifier alternative includes '-' so %vs-[name] and %ext-[name] - the FHIR
-                // profile of FHIRPath's ValueSet/extension URI shorthands - lex as one token without
-                // requiring the backtick-quoted spelling the base spec's ANTLR grammar strictly requires
-                // for a hyphenated name. This matches HAPI's FHIRLexer (org.hl7.fhir.core), whose '%'
-                // handling consumes a single run of identifier characters that already includes '-'
-                // (and ':') for the unquoted form; Ignixa does not add ':' since no name here needs it.
+                // The bare-identifier alternative includes '-' so that a hyphenated name written without
+                // backticks lexes as ONE token rather than as subtraction. This is a statement about
+                // lexing only, and it matches HAPI's FHIRLexer (org.hl7.fhir.core), whose '%' handling
+                // consumes a single run of identifier characters that already includes '-' (and ':') for
+                // the unquoted form.
+                //
+                // It is NOT a statement about what those names resolve to. HAPI's FHIRPathEngine expands
+                // the vs-/ext- shorthands only for the backtick spelling (%`vs-x`), and the FHIR profile
+                // of FHIRPath writes them that way for exactly that reason - "the names of the vs- and
+                // ext- constants are quoted (just like paths) to allow '-' in the name". Ignixa follows
+                // that: VariableRefExpression carries whether the name was delimited, and
+                // EvaluationContext.GetStandardConstant expands only when it was. Lexing %vs-x as one
+                // token therefore buys a clear "undefined environment variable: vs-x" instead of a
+                // confusing parse of "%vs" minus "x" - it does not make the bare form resolve.
+                //
+                // The motivating case is not vs-/ext- at all: names like %p-inactive appear as
+                // text/fhirpath cqf-expression values in published FHIR test content, and before this
+                // regex took '-' they were mis-lexed. Ignixa does not add ':' to the run; no name in any
+                // corpus here needs it, so the tokenizer sits deliberately between the strict spec
+                // grammar and full HAPI rather than at either.
+                //
                 // Because the match is greedy and only extends an already-touching identifier, "%a-b"
                 // written with no surrounding whitespace is one external-constant name, "a-b" - matching
                 // HAPI - while "%a - b" with whitespace around the operator still lexes as subtraction,
-                // since the space breaks contiguity. See FhirPathTokenizerTests for both pinned.
+                // since the space breaks contiguity. See FhirPathTokenizerTests for the edge spellings
+                // pinned.
                 .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_-]*)"),
                        FhirPathTokenKind.ExternalConstant, requireDelimiters: false)
 
@@ -197,16 +213,32 @@ public static class FhirPathTokenizer
 
                 // External constants: %identifier or %`delimited-identifier`.
                 //
-                // The bare-identifier alternative includes '-' so %vs-[name] and %ext-[name] - the FHIR
-                // profile of FHIRPath's ValueSet/extension URI shorthands - lex as one token without
-                // requiring the backtick-quoted spelling the base spec's ANTLR grammar strictly requires
-                // for a hyphenated name. This matches HAPI's FHIRLexer (org.hl7.fhir.core), whose '%'
-                // handling consumes a single run of identifier characters that already includes '-'
-                // (and ':') for the unquoted form; Ignixa does not add ':' since no name here needs it.
+                // The bare-identifier alternative includes '-' so that a hyphenated name written without
+                // backticks lexes as ONE token rather than as subtraction. This is a statement about
+                // lexing only, and it matches HAPI's FHIRLexer (org.hl7.fhir.core), whose '%' handling
+                // consumes a single run of identifier characters that already includes '-' (and ':') for
+                // the unquoted form.
+                //
+                // It is NOT a statement about what those names resolve to. HAPI's FHIRPathEngine expands
+                // the vs-/ext- shorthands only for the backtick spelling (%`vs-x`), and the FHIR profile
+                // of FHIRPath writes them that way for exactly that reason - "the names of the vs- and
+                // ext- constants are quoted (just like paths) to allow '-' in the name". Ignixa follows
+                // that: VariableRefExpression carries whether the name was delimited, and
+                // EvaluationContext.GetStandardConstant expands only when it was. Lexing %vs-x as one
+                // token therefore buys a clear "undefined environment variable: vs-x" instead of a
+                // confusing parse of "%vs" minus "x" - it does not make the bare form resolve.
+                //
+                // The motivating case is not vs-/ext- at all: names like %p-inactive appear as
+                // text/fhirpath cqf-expression values in published FHIR test content, and before this
+                // regex took '-' they were mis-lexed. Ignixa does not add ':' to the run; no name in any
+                // corpus here needs it, so the tokenizer sits deliberately between the strict spec
+                // grammar and full HAPI rather than at either.
+                //
                 // Because the match is greedy and only extends an already-touching identifier, "%a-b"
                 // written with no surrounding whitespace is one external-constant name, "a-b" - matching
                 // HAPI - while "%a - b" with whitespace around the operator still lexes as subtraction,
-                // since the space breaks contiguity. See FhirPathTokenizerTests for both pinned.
+                // since the space breaks contiguity. See FhirPathTokenizerTests for the edge spellings
+                // pinned.
                 .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_-]*)"),
                        FhirPathTokenKind.ExternalConstant, requireDelimiters: false)
 

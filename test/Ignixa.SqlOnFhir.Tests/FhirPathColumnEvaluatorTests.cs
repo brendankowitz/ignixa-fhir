@@ -714,15 +714,16 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Theory]
-    [InlineData("%vs-mine", "http://hl7.org/fhir/ValueSet/mine")]
-    [InlineData("%ext-mine", "http://hl7.org/fhir/StructureDefinition/mine")]
+    [InlineData("%`vs-mine`", "http://hl7.org/fhir/ValueSet/mine")]
+    [InlineData("%`ext-mine`", "http://hl7.org/fhir/StructureDefinition/mine")]
     public void GivenAViewDefinitionSelectingAStandardPrefixedConstant_WhenEvaluated_ThenItValidatesAndResolves(
         string expression, string expectedUri)
     {
         // Issue #438: no declared constant covers "vs-mine" or "ext-mine", so this exercises
-        // ValidateConstantReferences' exemption for both prefixes (previously only "vs-" was exempted,
-        // and even that was unreachable because the tokenizer split the bare spelling into three tokens)
+        // ValidateConstantReferences' exemption for both prefixes - previously only "vs-" was exempted -
         // and confirms the ViewDefinition validates and the value resolves to the expected FHIR URI.
+        // The delimited spelling is the one the exemption covers, because it is the only one the engine
+        // expands; the bare spelling is pinned as rejected by the test below.
         var patientJson = new Dictionary<string, object?>
         {
             { "resourceType", "Patient" },
@@ -748,6 +749,43 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Theory]
+    [InlineData("%vs-mine")]
+    [InlineData("%ext-mine")]
+    public void GivenAViewDefinitionSelectingABarePrefixedConstant_WhenEvaluated_ThenItIsRejectedAsUndeclared(
+        string expression)
+    {
+        // #438 review. The exemption above is spelling-sensitive, and it has to be: EvaluationContext
+        // expands %`vs-x` / %`ext-x` and not %vs-x, following the FHIR profile of FHIRPath (which writes both
+        // families quoted, "to allow '-' in the name") and HAPI, which tests startsWith("%`vs-") before
+        // expanding. If validation exempted the bare spelling anyway, the ViewDefinition would parse and then
+        // fail during evaluation with "undefined environment variable", which is a worse report of the same
+        // problem. Rejecting it here says what is actually wrong: it is an ordinary constant name, and
+        // ordinary constant names must be declared.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-bare-prefix" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = $$"""
+            {
+              "resource": "Patient",
+              "select": [{ "column": [
+                  { "name": "id", "path": "id" },
+                  { "name": "prefixed", "path": "{{expression}}" }
+              ] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var thrown = Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(sourceNode, resource).ToList());
+
+        var cause = thrown.InnerException as InvalidOperationException ?? thrown;
+        Assert.Contains($"undefined constant '{expression}'", cause.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("ucum", "http://unitsofmeasure.org")]
     [InlineData("sct", "http://snomed.info/sct")]
     [InlineData("loinc", "http://loinc.org")]
@@ -756,11 +794,10 @@ public class SqlOnFhirEvaluatorTests
     {
         // Three of several names that genuinely reach the variable loop with no constant to inherit from.
         // ValidateConstantReferences exempts context, resource, rootResource, ucum, sct, loinc, rowIndex,
-        // and the vs- and ext- prefix families - but of those, context/resource/rootResource are
+        // and the delimited vs- and ext- prefix families - but of those, context/resource/rootResource are
         // answered by TryGetEnvironmentVariable's switch before it consults caller variables, and rowIndex
-        // is re-injected afterwards and wins. ucum/sct/loinc and every vs-*/ext-* name (the latter two
-        // now parsing as a single variable reference in bare, unquoted form too - issue #438) do reach
-        // this loop untyped; these three are pinned here, and
+        // is re-injected afterwards and wins. ucum/sct/loinc and every %`vs-*`/%`ext-*` name do reach this
+        // loop untyped; these three are pinned here, and
         // GivenAViewDefinitionSelectingAStandardPrefixedConstant above covers vs-*/ext-* resolving
         // without an override.
         //

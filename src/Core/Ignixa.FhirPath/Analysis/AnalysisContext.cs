@@ -356,13 +356,20 @@ public sealed record AnalysisContext
     /// <summary>
     /// Resolves a variable by name.
     /// </summary>
+    /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
+    /// <param name="isDelimited">
+    /// Whether the reference was written as <c>%`name`</c>. Only the delimited spelling resolves the
+    /// <c>vs-</c> / <c>ext-</c> families, so the analyzer agrees with the engine on the bare one too.
+    /// </param>
     /// <remarks>
-    /// The <c>%vs-…</c> and <c>%ext-…</c> families are recognised by shape rather than enumerated, matching
-    /// <see cref="EvaluationContext.GetEnvironmentVariable"/>: the FHIR profile of FHIRPath defines one for
-    /// every ValueSet and extension in the specification, and reporting the rest as undefined would make the
-    /// analyzer stricter than the engine instead of agreeing with it.
+    /// The <c>%`vs-…`</c> and <c>%`ext-…`</c> families are recognised by shape rather than enumerated, matching
+    /// <see cref="EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>: the FHIR profile of
+    /// FHIRPath defines one for every ValueSet and extension in the specification, and reporting the rest as
+    /// undefined would make the analyzer stricter than the engine instead of agreeing with it. The delimited
+    /// requirement comes from the same place - see <c>EvaluationContext.GetStandardConstant</c> - so a bare
+    /// <c>%vs-mine</c> is reported undefined here for the same reason the engine throws on it.
     /// </remarks>
-    public FhirPathTypeSet? ResolveVariable(string name)
+    public FhirPathTypeSet? ResolveVariable(string name, bool isDelimited = false)
     {
         if (DefinedVariables.TryGetValue(name, out var definedProps))
         {
@@ -374,7 +381,8 @@ public sealed record AnalysisContext
             return props;
         }
 
-        if (name.StartsWith("vs-", StringComparison.Ordinal) || name.StartsWith("ext-", StringComparison.Ordinal))
+        if (isDelimited
+            && (name.StartsWith("vs-", StringComparison.Ordinal) || name.StartsWith("ext-", StringComparison.Ordinal)))
         {
             return CreateStringTypeSet();
         }

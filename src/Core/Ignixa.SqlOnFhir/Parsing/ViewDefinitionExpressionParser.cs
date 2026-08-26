@@ -505,8 +505,9 @@ public static class ViewDefinitionExpressionParser
         // Build set of defined constant names
         var definedConstants = constants.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
 
-        // Collect all variable references from all FHIRPath expressions
-        var referencedVariables = new HashSet<string>(StringComparer.Ordinal);
+        // Collect all variable references from all FHIRPath expressions. The spelling travels with the name
+        // because it decides whether the vs-/ext- exemption below applies - see GetStandardConstant.
+        var referencedVariables = new HashSet<(string Name, bool IsDelimited)>();
 
         // Check WHERE clauses
         foreach (var whereClause in whereClauses)
@@ -521,22 +522,26 @@ public static class ViewDefinitionExpressionParser
         }
 
         // Find any referenced variables that are not defined constants
-        // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', 'vs-*', 'ext-*', 'rowIndex'
+        // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', '`vs-*`', '`ext-*`', 'rowIndex'
         var predefinedVariables = new HashSet<string>(StringComparer.Ordinal)
         {
             "context", "resource", "rootResource", "ucum", "sct", "loinc", "rowIndex"
         };
 
-        foreach (var varName in referencedVariables)
+        foreach (var (varName, isDelimited) in referencedVariables)
         {
             // Skip predefined variables and the vs-/ext- prefix families. The FHIR profile of FHIRPath
-            // defines both (%vs-[name] -> ValueSet URI, %ext-[name] -> extension URI) the same way, so
-            // exempting only "vs-" here was an asymmetry: with the tokenizer fixed to lex the bare
-            // spelling as a single ExternalConstant (issue #438), %ext-x would otherwise start being
-            // rejected as an undefined constant while %vs-x passed.
+            // defines both (%`vs-[name]` -> ValueSet URI, %`ext-[name]` -> extension URI) the same way, so
+            // exempting only "vs-" here was an asymmetry (issue #438). Both are exempted only in the
+            // backtick-delimited spelling, because that is the only spelling the engine expands - a bare
+            // %vs-x is an ordinary constant name and has to be declared like any other, which is what HAPI
+            // does with it too. Exempting the bare form here while the engine refuses to resolve it would
+            // move the failure from a clear parse-time "undefined constant" to an evaluation-time
+            // "undefined environment variable", which is strictly worse.
             if (predefinedVariables.Contains(varName)
-                || varName.StartsWith("vs-", StringComparison.Ordinal)
-                || varName.StartsWith("ext-", StringComparison.Ordinal))
+                || (isDelimited
+                    && (varName.StartsWith("vs-", StringComparison.Ordinal)
+                        || varName.StartsWith("ext-", StringComparison.Ordinal))))
             {
                 continue;
             }
@@ -554,7 +559,7 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Recursively collects all variable references from a FHIRPath expression tree.
     /// </summary>
-    private static void CollectVariableReferences(FhirPath.Expressions.Expression expr, HashSet<string> variables)
+    private static void CollectVariableReferences(FhirPath.Expressions.Expression expr, HashSet<(string Name, bool IsDelimited)> variables)
     {
         if (expr == null)
             return;
@@ -562,7 +567,7 @@ public static class ViewDefinitionExpressionParser
         switch (expr)
         {
             case FhirPath.Expressions.VariableRefExpression varRef:
-                variables.Add(varRef.Name);
+                variables.Add((varRef.Name, varRef.IsDelimited));
                 break;
 
             case FhirPath.Expressions.FunctionCallExpression funcCall:
@@ -583,7 +588,7 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Collects variable references from all FHIRPath expressions in a SELECT group (recursive).
     /// </summary>
-    private static void CollectVariableReferencesFromSelect(SelectExpression select, HashSet<string> variables)
+    private static void CollectVariableReferencesFromSelect(SelectExpression select, HashSet<(string Name, bool IsDelimited)> variables)
     {
         // Check forEach and forEachOrNull
         if (select.ForEach != null)

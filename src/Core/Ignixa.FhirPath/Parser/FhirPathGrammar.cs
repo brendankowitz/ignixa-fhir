@@ -155,10 +155,9 @@ public static class FhirPathGrammar
             {
                 var raw = t.ToStringValue().Substring(1); // Remove '%'
                 // Check if delimited with backticks and remove them
-                var varName = (raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`')
-                    ? raw.Substring(1, raw.Length - 2)
-                    : raw;
-                return (Expression)new VariableRefExpression(varName, CreatePosition(t));
+                var isDelimited = raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`';
+                var varName = isDelimited ? raw.Substring(1, raw.Length - 2) : raw;
+                return (Expression)new VariableRefExpression(varName, CreatePosition(t), isDelimited);
             });
 
     // Parenthesized expression: (expression)
