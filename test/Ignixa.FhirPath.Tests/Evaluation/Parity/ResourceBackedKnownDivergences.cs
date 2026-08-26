@@ -97,8 +97,9 @@ internal static class ResourceBackedKnownDivergences
     /// </item>
     /// <item>
     /// <description>
-    /// Backbone element types under a leaf-typed parameter - <c>Encounter.Location</c>,
-    /// <c>Ingredient.Manufacturer</c>, <c>MedicinalProductDefinition.Contact</c>,
+    /// Backbone element types under a leaf-typed parameter - <c>Encounter.Location</c> (both as
+    /// <c>FhirElementTypeNotSupported</c> and, once more, as <c>CannotInferSearchParamType</c> on the
+    /// same site), <c>Ingredient.Manufacturer</c>, <c>MedicinalProductDefinition.Contact</c>,
     /// <c>SubstanceDefinition.Code</c>, <c>SubstanceDefinition.Name</c>,
     /// <c>SubstanceSpecification.Code</c>, and the two <c>SkippingElementNullOrEmptyInstanceType</c>
     /// sites (28 in total). These are not converter gaps. Every one is a path of the form
