@@ -14,6 +14,12 @@ namespace Ignixa.FhirPath.Expressions;
 /// Represents a variable reference in a FhirPath expression.
 /// Examples: %context, %resource, %`ext-patient-birthTime`.
 /// </summary>
+/// <remarks>
+/// <paramref name="isDelimited"/> on the constructor below is an optional parameter appended to an
+/// existing public member of a package built with <c>IsPackable</c>/<c>PackageStability: stable</c>:
+/// source-compatible for callers that recompile, but binary-breaking for one that does not, since the
+/// parameter becomes part of the call site's signature.
+/// </remarks>
 public class VariableRefExpression : Expression
 {
     public VariableRefExpression(string name, ISourcePositionInfo? location = null, bool isDelimited = false)
