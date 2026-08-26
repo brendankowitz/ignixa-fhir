@@ -4,8 +4,8 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.Converters;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Specification;
-using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Specification.Extensions;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Tests.Indexing;
 

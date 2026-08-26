@@ -45,6 +45,18 @@ internal static class CompositeComponentDefinitionRepairs
     private const string ClinicalCode = "http://hl7.org/fhir/SearchParameter/clinical-code";
     private const string Stu3ObservationCode = "http://hl7.org/fhir/SearchParameter/Observation-code";
 
+    /// <summary>
+    /// The redirects, keyed by version and by the component's URL as written.
+    /// </summary>
+    /// <remarks>
+    /// The key half is a <see langword="string"/> rather than the <see cref="Uri"/> the caller passes,
+    /// deliberately: <see cref="Uri"/> equality is case-insensitive on scheme and host and ignores the
+    /// fragment, which is looseness this table must not have against package data - a repair is a claim
+    /// about one exact canonical URL a package publishes, and matching a near-miss would rewrite a
+    /// reference that was never the one meant. <c>ValueTuple</c> equality uses
+    /// <c>EqualityComparer&lt;string&gt;.Default</c>, so the comparison is ordinal; a tuple key cannot
+    /// take a <see cref="StringComparer"/>, which is why that is stated here rather than passed.
+    /// </remarks>
     private static readonly IReadOnlyDictionary<(FhirVersion Version, string DefinitionUrl), Uri> Redirects =
         new Dictionary<(FhirVersion, string), Uri>
         {
@@ -73,6 +85,6 @@ internal static class CompositeComponentDefinitionRepairs
     /// The repairs defined for a version, so the census can assert each one is still needed and still
     /// lands on a parameter that exists.
     /// </summary>
-    internal static IEnumerable<(FhirVersion Version, string DefinitionUrl, Uri RepairedUrl)> All =>
+    public static IEnumerable<(FhirVersion Version, string DefinitionUrl, Uri RepairedUrl)> All =>
         Redirects.Select(entry => (entry.Key.Version, entry.Key.DefinitionUrl, entry.Value));
 }

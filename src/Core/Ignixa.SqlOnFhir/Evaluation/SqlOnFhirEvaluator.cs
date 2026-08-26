@@ -5,6 +5,7 @@
  * Uses ISourceNavigator for proper handling of FHIR data and visitor pattern for evaluation.
  */
 
+using System.Collections.Frozen;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.SqlOnFhir.Expressions;
@@ -25,8 +26,15 @@ public class SqlOnFhirEvaluator
     // SqlOnFhirEvaluationVisitor after the variables loop and always wins. A variables entry using one of
     // these names has never had any effect - it was accepted and silently discarded. That silence is the
     // bug (issue #439): reject the call instead of pretending the value was honoured.
-    private static readonly HashSet<string> EngineManagedVariableNames =
-        new(StringComparer.Ordinal) { "context", "resource", "rootResource", "rowIndex" };
+    //
+    // One of three overlapping reserved-name lists that answer different questions - do not merge them.
+    // This one is "a caller may not supply this as a variable".
+    // ViewDefinitionExpressionParser's method-local predefinedVariables is "needs no constant declaration
+    // in a ViewDefinition". Ignixa.FhirPath.DefineVariableRules.ReservedVariableNames is
+    // "defineVariable() may not claim this name". A name added to one usually belongs in none of the
+    // others; check all three anyway.
+    private static readonly FrozenSet<string> EngineManagedVariableNames =
+        new[] { "context", "resource", "rootResource", "rowIndex" }.ToFrozenSet(StringComparer.Ordinal);
 
     private readonly SqlOnFhirEvaluationVisitor _visitor;
     private readonly Dictionary<string, ViewDefinitionExpression> _compiledViewDefinitions = [];

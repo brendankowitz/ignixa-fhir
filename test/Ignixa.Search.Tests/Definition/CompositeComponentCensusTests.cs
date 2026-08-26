@@ -1,8 +1,8 @@
 using Ignixa.Abstractions;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Models;
-using Ignixa.Specification.ValueSets.Normative;
 using Ignixa.Specification.Extensions;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.Search.Tests.Definition;
@@ -206,38 +206,45 @@ public class CompositeComponentCensusTests
         composite.Component[0].ResolvedSearchParameter!.Type.ShouldBe(SearchParamType.Token);
     }
 
-    private static IEnumerable<CompositeComponentSite> Unresolved(FhirVersion version)
+    /// <summary>
+    /// Every composite component <paramref name="version"/> ships that resolves to nothing.
+    /// </summary>
+    /// <remarks>
+    /// Eager, deliberately. The <see cref="MinimumComposites"/> floor is the guard that stops this census
+    /// passing on an empty enumeration, and as the last statement of a lazy iterator it ran only for a
+    /// caller that enumerated to the end. Every caller does today, so it fires; one written with
+    /// <c>Any()</c> or <c>First()</c> would skip it in silence, which is exactly the pass-by-being-skipped
+    /// AGENTS.md asks guards not to permit. Materialising first puts the floor ahead of any result being
+    /// handed out at all, so no call shape can get past it.
+    /// </remarks>
+    private static IReadOnlyList<CompositeComponentSite> Unresolved(FhirVersion version)
     {
-        var definitions = Definitions(version);
-        int composites = 0;
+        SearchParameterInfo[] composites =
+        [
+            .. Definitions(version).AllSearchParameters
+                .Where(parameter => parameter.Component is { Count: > 0 })
+                .OrderBy(parameter => parameter.Url.OriginalString, StringComparer.Ordinal)
+        ];
 
-        foreach (SearchParameterInfo parameter in definitions.AllSearchParameters
-                     .Where(parameter => parameter.Component is { Count: > 0 })
-                     .OrderBy(parameter => parameter.Url.OriginalString, StringComparer.Ordinal))
-        {
-            composites++;
-
-            for (int index = 0; index < parameter.Component.Count; index++)
-            {
-                SearchParameterComponentInfo component = parameter.Component[index];
-                if (component.ResolvedSearchParameter is null)
-                {
-                    yield return new CompositeComponentSite(
-                        version,
-                        parameter.Url.OriginalString,
-                        index,
-                        component.DefinitionUrl?.OriginalString ?? "(none)");
-                }
-            }
-        }
-
-        if (composites < MinimumComposites[version])
+        if (composites.Length < MinimumComposites[version])
         {
             throw new InvalidOperationException(
-                $"{version} produced {composites} composite search parameters, below the floor of "
+                $"{version} produced {composites.Length} composite search parameters, below the floor of "
                 + $"{MinimumComposites[version]}. The census would otherwise pass by examining nothing. "
                 + "Raise the floor when the definitions genuinely grow; never lower it to accommodate a loss.");
         }
+
+        return
+        [
+            .. composites.SelectMany(parameter => parameter.Component
+                .Select((component, index) => (component, index))
+                .Where(entry => entry.component.ResolvedSearchParameter is null)
+                .Select(entry => new CompositeComponentSite(
+                    version,
+                    parameter.Url.OriginalString,
+                    entry.index,
+                    entry.component.DefinitionUrl?.OriginalString ?? "(none)")))
+        ];
     }
 
     private static SearchParameterDefinitionManager Definitions(FhirVersion version) =>

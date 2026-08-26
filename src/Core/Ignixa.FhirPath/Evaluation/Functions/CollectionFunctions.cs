@@ -600,10 +600,10 @@ internal static class CollectionFunctions
         // sound because this method is eager - the whole run happens inside this call - so a threshold
         // cannot legitimately change mid-run, and a snapshot also guarantees the number named in the
         // exception message is the one the guard actually compared against.
-        var maxIterations = RepeatGuardLimits.MaxIterations;
-        var maxComparisons = RepeatGuardLimits.MaxComparisons;
+        int maxIterations = RepeatGuardLimits.MaxIterations;
+        long maxComparisons = RepeatGuardLimits.MaxComparisons;
 
-        var iterations = 0;
+        int iterations = 0;
         long comparisons = 0;
 
         while (queue.Count > 0)
@@ -1273,10 +1273,10 @@ internal static class CollectionFunctions
         {
             if (string.Equals(name, "name", StringComparison.OrdinalIgnoreCase))
                 return [FunctionHelpers.CreateString(_name)];
-            
+
             if (string.Equals(name, "namespace", StringComparison.OrdinalIgnoreCase))
                 return [FunctionHelpers.CreateString(_namespace)];
-            
+
             return [];
         }
     }

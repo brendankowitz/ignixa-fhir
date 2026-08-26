@@ -7,8 +7,8 @@
  */
 
 using System.Collections.Immutable;
-using Ignixa.FhirPath;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Parser;
 using Ignixa.SqlOnFhir.Expressions;
 
@@ -507,6 +507,9 @@ public static class ViewDefinitionExpressionParser
 
         // Collect all variable references from all FHIRPath expressions. The spelling travels with the name
         // because it decides whether the vs-/ext- exemption below applies - see GetStandardConstant.
+        // Still ordinal, like definedConstants above and predefinedVariables below: a tuple key cannot take
+        // a StringComparer, and ValueTuple's equality uses EqualityComparer<string>.Default, which is
+        // ordinal. Saying so keeps the intent visible now that the type no longer carries it.
         var referencedVariables = new HashSet<(string Name, bool IsDelimited)>();
 
         // Check WHERE clauses
@@ -523,6 +526,12 @@ public static class ViewDefinitionExpressionParser
 
         // Find any referenced variables that are not defined constants
         // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', '`vs-*`', '`ext-*`', 'rowIndex'
+        //
+        // This is one of three overlapping reserved-name lists, and they answer different questions - do
+        // not merge them. This one is "needs no constant declaration in a ViewDefinition".
+        // SqlOnFhirEvaluator.EngineManagedVariableNames is "a caller may not supply this as a variable".
+        // Ignixa.FhirPath.DefineVariableRules.ReservedVariableNames is "defineVariable() may not claim
+        // this name". A name added to one usually belongs in none of the others; check all three anyway.
         var predefinedVariables = new HashSet<string>(StringComparer.Ordinal)
         {
             "context", "resource", "rootResource", "ucum", "sct", "loinc", "rowIndex"
@@ -595,8 +604,8 @@ public static class ViewDefinitionExpressionParser
                 CollectVariableReferences(paren.InnerExpression, variables);
                 break;
 
-            // Other expression types (constants, identifiers, scope references, quantities, and
-            // InstanceSelectorExpression - see the remarks above for that last one) don't add a case here.
+                // Other expression types (constants, identifiers, scope references, quantities, and
+                // InstanceSelectorExpression - see the remarks above for that last one) don't add a case here.
         }
     }
 
