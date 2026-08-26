@@ -158,8 +158,13 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
                     continue;
                 }
 
-                // Look up component parameter by definition URL
-                if (component.DefinitionUrl != null && UrlLookup.TryGetValue(component.DefinitionUrl, out var componentParameter))
+                // Look up component parameter by definition URL, after repairing the references a
+                // shipped specification points at a SearchParameter it does not publish.
+                Uri definitionUrl = component.DefinitionUrl is null
+                    ? null
+                    : CompositeComponentDefinitionRepairs.Resolve(_modelInfoProvider.Version, component.DefinitionUrl);
+
+                if (definitionUrl != null && UrlLookup.TryGetValue(definitionUrl, out var componentParameter))
                 {
                     component.ResolvedSearchParameter = componentParameter;
                     resolvedCount++;
@@ -169,7 +174,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
                     unresolvedCount++;
                     logger.LogWarning(
                         "Composite search parameter '{ParameterCode}' (URL: {ParameterUrl}) component {ComponentIndex} " +
-                        "references unknown definition URL: {DefinitionUrl}",
+                        "references unknown definition URL: {DefinitionUrl}. The composite will not be indexed.",
                         parameter.Code,
                         parameter.Url,
                         i,

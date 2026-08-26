@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -359,7 +359,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
                     GetSearchValueTypeForSearchParamType(effectiveType),
                     out converter))
                 {
-                    Log.FhirElementTypeNotSupported(_logger, extractedValue.InstanceType);
+                    Log.FhirElementTypeNotSupported(_logger, extractedValue.InstanceType, searchParameterDefinitionUrl);
                     continue;
                 }
             }
@@ -470,7 +470,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
             if (!_fhirElementTypeConverterManager.TryGetConverter(extractedValue.InstanceType, GetSearchValueTypeForSearchParamType(searchParameterType), out IElementToSearchValueConverter converter))
             {
-                Log.FhirElementTypeNotSupported(_logger, extractedValue.InstanceType);
+                Log.FhirElementTypeNotSupported(_logger, extractedValue.InstanceType, searchParameterDefinitionUrl);
 
                 continue;
             }
@@ -689,8 +689,8 @@ public partial class ElementSearchIndexer : ISearchIndexer
         [LoggerMessage(Level = LogLevel.Error, Message = "Converter '{ConverterType}' raised an unexpected error on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. This is not an expected evaluation failure and likely indicates a defect in the converter. Skipping this value.")]
         public static partial void UnexpectedConverterFailure(ILogger logger, Exception ex, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported.")]
-        public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType);
+        [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported for search parameter '{SearchParameterUrl}'.")]
+        public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType, string searchParameterUrl);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot infer SearchParamType from FHIR element type '{FhirElementType}' for composite component of search parameter '{SearchParameterUrl}'. Skipping this value.")]
         public static partial void CannotInferSearchParamType(ILogger logger, string fhirElementType, string searchParameterUrl);
