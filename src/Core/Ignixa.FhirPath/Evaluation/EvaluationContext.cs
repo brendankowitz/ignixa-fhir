@@ -451,7 +451,12 @@ public record EvaluationContext
     /// </param>
     /// <param name="value">The bound value: a single <see cref="IElement"/>, a collection of them, or null when the binding is empty.</param>
     /// <returns><see langword="true"/> when the name is defined, even if its value is empty.</returns>
-    public bool TryGetEnvironmentVariable(string name, bool isDelimited, out object? value)
+    /// <remarks>
+    /// Internal: <paramref name="isDelimited"/> mirrors <see cref="Expressions.VariableRefExpression.IsDelimited"/>,
+    /// an engine-internal parse artifact rather than part of the published evaluation contract. The only caller
+    /// of this overload, <see cref="FhirPathEvaluator"/>, is in this assembly's <c>InternalsVisibleTo</c> set.
+    /// </remarks>
+    internal bool TryGetEnvironmentVariable(string name, bool isDelimited, out object? value)
     {
         ArgumentNullException.ThrowIfNull(name);
 

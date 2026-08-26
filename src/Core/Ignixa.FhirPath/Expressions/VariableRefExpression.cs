@@ -20,14 +20,9 @@ public class VariableRefExpression : Expression
     /// Creates a reference to a bare <c>%name</c>.
     /// </summary>
     /// <remarks>
-    /// This overload is what let <see cref="IsDelimited"/> be added without a binary break.
-    /// <c>Ignixa.FhirPath</c> ships as a stable NuGet package (<c>IsPackable</c> /
-    /// <c>PackageStability: stable</c>), and an optional parameter is not an overload: a caller compiled
-    /// against the previous package emitted a call site naming the two-parameter constructor, so
-    /// appending <c>isDelimited</c> to that constructor would have removed it from metadata and left the
-    /// caller throwing <see cref="MissingMethodException"/> at run time without ever recompiling. The
-    /// forwarded value is <see langword="false"/> because before <see cref="IsDelimited"/> existed no
-    /// reference carried the delimited spelling, so bare is the behaviour such a caller already had.
+    /// Forwards <see langword="false"/> to the internal <paramref name="isDelimited"/>-carrying constructor:
+    /// this public arity predates <see cref="IsDelimited"/>, and a caller reaching it has no delimited
+    /// spelling to report, so bare is the correct - not merely the historical - value here.
     /// </remarks>
     public VariableRefExpression(string name, ISourcePositionInfo? location = null)
         : this(name, location, isDelimited: false)
@@ -40,7 +35,13 @@ public class VariableRefExpression : Expression
     /// <param name="name">The variable name, with the leading <c>%</c> and any backticks removed.</param>
     /// <param name="location">Where the reference appeared in the source expression.</param>
     /// <param name="isDelimited">Whether the reference was written as <c>%`name`</c>; see <see cref="IsDelimited"/>.</param>
-    public VariableRefExpression(string name, ISourcePositionInfo? location, bool isDelimited)
+    /// <remarks>
+    /// Internal: <paramref name="isDelimited"/> is a parse artifact - whether the author typed backticks -
+    /// that only the parser (<see cref="Parser.FhirPathGrammar"/>, <see cref="Parsing.AstBuilder"/>) and the
+    /// engine's own analysis/evaluation (<see cref="Analysis.FhirPathAnalyzer"/>,
+    /// <see cref="Evaluation.FhirPathEvaluator"/>) need to see. It is not part of the published AST contract.
+    /// </remarks>
+    internal VariableRefExpression(string name, ISourcePositionInfo? location, bool isDelimited)
         : base(location)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -63,8 +64,13 @@ public class VariableRefExpression : Expression
     /// Ignixa's lexer accepts <c>-</c> in the bare form so that names like <c>%p-inactive</c>, which appear in
     /// published cqf-expression content, lex as one token the way HAPI's lexer takes them; carrying this flag is
     /// what stops that lexical allowance from silently turning into a resolution rule the spec does not have.
+    /// Internal because it is engine-internal reasoning, not part of the published AST contract: nothing outside
+    /// this assembly's <c>InternalsVisibleTo</c> set (<c>Ignixa.SqlOnFhir</c>, <c>Ignixa.Search</c>,
+    /// <c>Ignixa.FhirPath.Tests</c>) needs it - the engine expands the <c>vs-</c>/<c>ext-</c> families in
+    /// <see cref="Evaluation.EvaluationContext.GetStandardConstant"/> before a host resolver is ever consulted, so
+    /// a host only ever sees names the engine already declined, where this flag is irrelevant.
     /// </remarks>
-    public bool IsDelimited { get; }
+    internal bool IsDelimited { get; }
 
     public override string ToString() => $"Variable(%{Name})";
 

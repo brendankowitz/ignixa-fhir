@@ -359,22 +359,16 @@ public sealed record AnalysisContext
     /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
     /// <remarks>
     /// <para>
-    /// This overload is what let <paramref name="name"/>'s companion spelling flag be added without a binary
-    /// break. <c>Ignixa.FhirPath</c> ships as a stable NuGet package (<c>IsPackable</c> /
-    /// <c>PackageStability: stable</c>), and an optional parameter is not an overload: a caller compiled
-    /// against the previous package emitted a call site naming the one-parameter method, so appending
-    /// <c>isDelimited</c> to that method would have removed it from metadata and left the caller throwing
-    /// <see cref="MissingMethodException"/> at run time without ever recompiling.
+    /// Forwards <see langword="true"/> to the internal <paramref name="name"/>-and-spelling overload, matching
+    /// its sibling <see cref="EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/>: a caller
+    /// reaching this arity has only a name, not a parsed reference, and the <c>vs-</c>/<c>ext-</c> prefix alone
+    /// is enough to type it as a string.
     /// </para>
     /// <para>
-    /// It forwards <see langword="true"/>, matching its sibling
-    /// <see cref="EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/> and preserving what a
-    /// one-argument call returned before the flag existed, when the <c>vs-</c>/<c>ext-</c> prefix alone was
-    /// enough to type the reference as a string. Forwarding <see langword="false"/> would have been a silent
-    /// behaviour change for every existing caller, including ones that recompile cleanly. A caller that
-    /// parsed the reference knows the spelling and should pass the expression's own
-    /// <see cref="Expressions.VariableRefExpression.IsDelimited"/> to the two-argument overload instead;
-    /// <see cref="FhirPathAnalyzer"/> does.
+    /// A caller that has parsed the reference and knows its spelling should use
+    /// <see cref="FhirPathAnalyzer"/>'s handling instead, which reads the expression's own
+    /// <see cref="Expressions.VariableRefExpression.IsDelimited"/> and resolves through the internal overload
+    /// directly.
     /// </para>
     /// </remarks>
     public FhirPathTypeSet? ResolveVariable(string name)
@@ -390,6 +384,11 @@ public sealed record AnalysisContext
     /// </param>
     /// <remarks>
     /// <para>
+    /// Internal: <paramref name="isDelimited"/> mirrors <see cref="Expressions.VariableRefExpression.IsDelimited"/>,
+    /// an engine-internal parse artifact rather than part of the published analysis contract. The only caller of
+    /// this overload, <see cref="FhirPathAnalyzer"/>, is in this assembly's <c>InternalsVisibleTo</c> set.
+    /// </para>
+    /// <para>
     /// The <c>%`vs-…`</c> and <c>%`ext-…`</c> families are recognised by shape rather than enumerated, matching
     /// <see cref="EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>: the FHIR profile of
     /// FHIRPath defines one for every ValueSet and extension in the specification, and reporting the rest as
@@ -400,7 +399,7 @@ public sealed record AnalysisContext
     /// drift from the first.
     /// </para>
     /// </remarks>
-    public FhirPathTypeSet? ResolveVariable(string name, bool isDelimited)
+    internal FhirPathTypeSet? ResolveVariable(string name, bool isDelimited)
     {
         if (DefinedVariables.TryGetValue(name, out var definedProps))
         {
