@@ -51,15 +51,36 @@ public static class SearchIndexerFactory
     {
         var referenceParser = new ReferenceSearchValueParser(fhirSchemaProvider, baseUriProvider);
         var elementResolver = new LightweightReferenceToElementResolver(referenceParser, fhirSchemaProvider);
+
+        return (
+            new FhirElementToSearchValueConverterManager(
+                CreateConverters(fhirSchemaProvider, referenceParser, elementResolver)),
+            elementResolver);
+    }
+
+    /// <summary>
+    /// Discovers and constructs every shipped converter, which is the set
+    /// <see cref="FhirElementToSearchValueConverterManager"/> keys by (FHIR type, search value type).
+    /// </summary>
+    /// <remarks>
+    /// Exposed separately from <see cref="CreateIndexingComponents"/> so the registration census can
+    /// enumerate what production actually registers rather than restating it. The manager answers
+    /// "is this pair covered?" but not "what is covered?", and a census that had to hardcode the second
+    /// question would pass on a table rather than on the code.
+    /// </remarks>
+    internal static IReadOnlyList<IElementToSearchValueConverter> CreateConverters(
+        IFhirSchemaProvider fhirSchemaProvider,
+        ReferenceSearchValueParser referenceParser,
+        IReferenceToElementResolver elementResolver)
+    {
         var codesystems = new CodeSystemResolver(fhirSchemaProvider.Version);
-        IElementToSearchValueConverter[] converters = typeof(ElementSearchIndexer)
+
+        return typeof(ElementSearchIndexer)
             .Assembly
             .ExportedTypes
             .Where(x => typeof(IElementToSearchValueConverter).IsAssignableFrom(x) && !x.IsAbstract && !x.IsGenericType)
             .Select(x => (IElementToSearchValueConverter)CreateTypeWithArguments(x, fhirSchemaProvider, referenceParser, elementResolver, codesystems, fhirSchemaProvider.Version))
             .ToArray();
-
-        return (new FhirElementToSearchValueConverterManager(converters), elementResolver);
     }
 
     private static object CreateTypeWithArguments(Type type, params object[] argOverrides)
