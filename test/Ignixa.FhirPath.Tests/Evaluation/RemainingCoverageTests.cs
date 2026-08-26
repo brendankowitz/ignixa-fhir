@@ -162,16 +162,20 @@ public class RemainingCoverageTests
         // budget - is what trips here. This isolates the iteration-cap code path in milliseconds instead of
         // the ~33 seconds proving it at the real 10,000-iteration scale used to cost.
         const int smallCap = 50;
-        using var scope = new RepeatGuardLimits.Scope(maxIterations: smallCap);
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
 
-        // Act
-        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
+        // Act - the scope covers only the evaluation, not the arrange block. The seam is AsyncLocal-backed
+        // so a wider scope is no longer a cross-class hazard, but holding it no longer than the call it
+        // governs keeps that true of anything the arrange block might later be changed to do.
+        FhirPathEvaluationException exception;
+        using (new RepeatGuardLimits.Scope(maxIterations: smallCap))
+        {
+            exception = Should.Throw<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        }
 
         // Assert - parentheses are load-bearing: ShouldContain is ordinal substring containment, so a bare
         // "50" would also match a stray "150" or "500"; "(50)" is the whole formatted argument.
-        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
         exception.Message.ShouldContain("repeat()");
         exception.Message.ShouldContain("maximum iteration limit");
         exception.Message.ShouldContain($"({smallCap})");
@@ -187,18 +191,61 @@ public class RemainingCoverageTests
         // not the iteration cap - is what trips here. This isolates the comparison-budget code path
         // (added by #435) in milliseconds.
         const long smallBudget = 50;
-        using var scope = new RepeatGuardLimits.Scope(maxComparisons: smallBudget);
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
 
-        // Act
-        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
+        // Act - scoped to the evaluation only, for the same reason as the test above.
+        FhirPathEvaluationException exception;
+        using (new RepeatGuardLimits.Scope(maxComparisons: smallBudget))
+        {
+            exception = Should.Throw<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        }
 
         // Assert
-        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
         exception.Message.ShouldContain("repeat()");
         exception.Message.ShouldContain("maximum comparison-count budget");
         exception.Message.ShouldContain($"({smallBudget})");
+    }
+
+    [Fact]
+    public void GivenAWideFocusOfDeepEqualItems_WhenRepeat_ThenTheProductionIterationCapIsExactlyTenThousand()
+    {
+        // Arrange - before this test, no assertion of the production iteration cap's value existed anywhere
+        // under test/ (#435 review, I4), while a SearchIndexerFailureContainmentTests comment claimed this
+        // class carried one. The comparison budget cannot substitute for it: at production thresholds the
+        // budget trips first on every *constructing* projection (see the test above), so the cap's value was
+        // free to change without reddening anything.
+        //
+        // This shape trips the iteration cap at negligible comparison cost. The focus is a wide row of
+        // mutually deep-equal items, so after the first is added to `processed` every later one matches it on
+        // its very first comparison and is skipped: one dequeue and one comparison per item. Measured, 9,999
+        // items costs 9,999 iterations and 9,998 comparisons - four orders of magnitude below the 15,000,000
+        // budget, so only the iteration cap can decide the outcome here. The empty projection keeps the queue
+        // from growing, so the iteration count is exactly the focus width.
+        //
+        // Both sides are asserted, which is what makes this a cap value pin and not just a guard-fires pin:
+        // 9,999 must pass and 10,001 must throw, so raising the cap reddens the second and lowering it reddens
+        // the first. Total cost of both, measured: under 0.1 seconds.
+        const int justUnder = 9_999;
+        const int justOver = 10_001;
+        var expr = _parser.Parse("item.repeat({})");
+        var underCap = CreateDeepEqualItems(justUnder);
+        var overCap = CreateDeepEqualItems(justOver);
+
+        // Act
+        var under = _evaluator.Evaluate(underCap, expr).ToList();
+        var evaluateOver = () => _evaluator.Evaluate(overCap, expr).ToList();
+
+        // Assert - repeat({}) projects nothing, so the pass case's observable result is an empty collection;
+        // what it proves is that 9,999 dequeues did not trip the guard.
+        under.ShouldBeEmpty();
+
+        // Parentheses are load-bearing for the same ordinal-substring reason as the tests above: a bare
+        // "10000" would also match a stray "110000".
+        var exception = Should.Throw<FhirPathEvaluationException>(evaluateOver);
+        exception.Message.ShouldContain("repeat()");
+        exception.Message.ShouldContain("maximum iteration limit");
+        exception.Message.ShouldContain("(10000)");
     }
 
     [Fact]
@@ -572,6 +619,20 @@ public class RemainingCoverageTests
         };
 
         return new ComplexElement("Patient", "Patient", children);
+    }
+
+    /// <summary>
+    /// A Questionnaire whose <c>item</c> children are all deep-equal to one another, so a <c>repeat()</c>
+    /// over them costs exactly one dequeue and one comparison each - the cheapest shape that reaches a
+    /// given iteration count.
+    /// </summary>
+    private static IElement CreateDeepEqualItems(int width)
+    {
+        var items = new List<IElement>(width);
+        for (var i = 0; i < width; i++)
+            items.Add(new ComplexElement("item", "Questionnaire.item", [new PrimitiveElement("same", "string", "linkId")]));
+
+        return new ComplexElement("Questionnaire", "Questionnaire", items);
     }
 
     /// <summary>

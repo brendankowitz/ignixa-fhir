@@ -478,20 +478,53 @@ internal static class CollectionFunctions
     /// full 10,000-iteration cap measured 149,995,000 - roughly 108× the control's cost for roughly 9× its
     /// iteration count, confirming the per-iteration cost genuinely grows faster than linearly as
     /// <c>processed</c>/<c>result</c> grow. 15,000,000 was chosen as the budget: about 10.8× headroom over the
-    /// measured 1,391,754 control cost (the same order of headroom the iteration cap gives at ~9×), while still
-    /// stopping the branching-factor-1 hazard at roughly a third of its former 10,000-iteration run - and, because
-    /// this is a cost bound rather than an iteration bound, stopping a wider-fan-out hazard at roughly the *same*
-    /// comparison cost rather than at proportionally more wall-clock time the way the iteration-only cap did (one
-    /// extra <c>|</c> branch used to roughly double the 33.4s-vs-63.4s times above; both now stop at the same
-    /// ~15,000,000-comparison budget instead).
+    /// measured 1,391,754 control cost, while still stopping the branching-factor-1 hazard at 3,163 of the 10,000
+    /// iterations it used to run - 3.3 seconds instead of 32.4 - and, because this is a cost bound rather than an
+    /// iteration bound, stopping a wider-fan-out hazard at roughly the *same* cost rather than at proportionally
+    /// more wall-clock time the way the iteration-only cap did. Measured in a single run with the comparison
+    /// budget lifted so only the iteration cap applies, branching factor 1 takes 38.97s and branching factor 2
+    /// takes 76.32s - one extra <c>|</c> branch does roughly double it. In the same shapes at production
+    /// thresholds, branching 1 / 2 / 3 take 4.75s / 5.35s / 4.50s, all three tripping the 15,000,000-comparison
+    /// budget rather than the iteration cap: flat in branching factor, which is what #435 was for.
+    /// </para>
+    /// <para>
+    /// <b>What that costs in data, stated in nodes (#435 review).</b> 10.8× is headroom in <em>comparisons</em>,
+    /// and comparisons grow as roughly the <em>square</em> of the node count, so it is <em>not</em> the same order
+    /// of headroom the 9× iteration cap gives - that equivalence was claimed here originally and is false; it has
+    /// been removed. Measured over the control's breadth-3 <c>Questionnaire.item</c> shape, total comparisons fit
+    /// ~1.167·N² closely (16,860 at N=120; 153,912 at N=363; 1,391,754 at N=1,092; 12,545,454 at N=3,279 - the
+    /// ratio C/N² stays within 0.4% across that range), so 10.8× in comparisons is only √10.8 ≈ 3.3× in nodes.
+    /// <b>Bounding a quadratic cost necessarily bounds data. That is the trade this guard is, not a side effect
+    /// of it: the accepted-data envelope narrows, deliberately.</b> Measured on that shape with
+    /// <c>repeat(item)</c>, at production thresholds:
+    /// <list type="table">
+    /// <listheader><term>nodes</term><description>outcome, and the comparison count reached</description></listheader>
+    /// <item><term>1,092 (the control)</term><description>OK - 1,391,754</description></item>
+    /// <item><term>3,279</term><description>OK - 12,545,454</description></item>
+    /// <item><term>3,500</term><description>OK - 14,293,417</description></item>
+    /// <item><term>3,600</term><description><b>throws</b> - hits 15,000,000 at iteration 3,568 of 3,601</description></item>
+    /// </list>
+    /// and with the comparison budget lifted, so that only the 10,000-iteration cap applies - i.e. the behaviour
+    /// before #435 - the same trees run to completion far past that point: 5,460 nodes at 33,540,780 comparisons
+    /// and 9,840 nodes at 112,968,120, both OK. So the envelope for a navigating <c>repeat()</c> falls from about
+    /// 10,000 nodes, where one dequeue per node made the iteration cap the binding constraint, to between 3,500
+    /// and 3,600. Combined with the all-or-nothing behaviour documented below, an indexer over a tenant expression
+    /// that exceeds this drops the whole search parameter rather than truncating it. The exposure is narrow rather
+    /// than absent: <c>descendants()</c> has its own non-deduping implementation and does not route through this
+    /// method, and <c>repeat(</c> appears in no generated SearchParameter and in only three shipped invariants, so
+    /// what is at risk is a tenant-authored <c>repeat()</c> over a resource of several thousand nodes.
+    /// <b>Do not raise the budget to widen this.</b> The point of #435 was to bound cost; the narrower data
+    /// envelope is the price of that, not a defect in the number.
     /// </para>
     /// <para>
     /// <b>Test seam (#435):</b> both thresholds live on <see cref="RepeatGuardLimits"/>, not as local <c>const</c>s,
     /// specifically so <c>Ignixa.FhirPath.Tests</c> can substitute a small cap via
     /// <see cref="RepeatGuardLimits.Scope"/> and prove either guard trips - same exception type, same message
     /// shape, same log tier - in milliseconds instead of paying the real threshold's full wall-clock cost on every
-    /// CI run. See <see cref="RepeatGuardLimits"/>'s remarks for why this is safe under xUnit's default
-    /// parallelization.
+    /// CI run. Both are read once into locals at the top of this method rather than per comparison: see
+    /// <see cref="RepeatGuardLimits"/>'s remarks for why the seam is <see cref="AsyncLocal{T}"/>-backed (a
+    /// process-wide static was demonstrated to bleed into a concurrently running test class) and why hoisting is
+    /// both necessary and sound.
     /// </para>
     /// <para>
     /// <b>Harmonisation with <see cref="RepeatAll"/>'s 100,000:</b> do not raise this cap toward that figure. The
@@ -559,13 +592,22 @@ internal static class CollectionFunctions
         var processed = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
+        // Read each threshold once per call, not once per iteration and once per comparison:
+        // RepeatGuardLimits backs them with AsyncLocal so a lowered test scope cannot bleed into a
+        // concurrently running test class, and an AsyncLocal read is not a static field read. Hoisting is
+        // sound because this method is eager - the whole run happens inside this call - so a threshold
+        // cannot legitimately change mid-run, and a snapshot also guarantees the number named in the
+        // exception message is the one the guard actually compared against.
+        var maxIterations = RepeatGuardLimits.MaxIterations;
+        var maxComparisons = RepeatGuardLimits.MaxComparisons;
+
         var iterations = 0;
         long comparisons = 0;
 
         while (queue.Count > 0)
         {
-            if (++iterations > RepeatGuardLimits.MaxIterations)
-                throw new FhirPathEvaluationException($"repeat() exceeded maximum iteration limit ({RepeatGuardLimits.MaxIterations}) - possible infinite loop detected");
+            if (++iterations > maxIterations)
+                throw new FhirPathEvaluationException($"repeat() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
 
             var current = queue.Dequeue();
 
@@ -603,8 +645,8 @@ internal static class CollectionFunctions
         {
             foreach (var existing in list)
             {
-                if (++comparisons > RepeatGuardLimits.MaxComparisons)
-                    throw new FhirPathEvaluationException($"repeat() exceeded maximum comparison-count budget ({RepeatGuardLimits.MaxComparisons}) - possible expensive projection detected");
+                if (++comparisons > maxComparisons)
+                    throw new FhirPathEvaluationException($"repeat() exceeded maximum comparison-count budget ({maxComparisons}) - possible expensive projection detected");
 
                 if (FunctionHelpers.AreElementsEqual(existing, candidate))
                     return true;

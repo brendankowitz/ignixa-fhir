@@ -69,10 +69,20 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// It carried no marginal information: <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c> is a pure
 /// type test, both guards throw <c>FhirPathEvaluationException</c>, so nothing it could assert would
 /// distinguish the two - and the two facts it composed are each pinned more cheaply elsewhere.
-/// <c>RemainingCoverageTests</c> pins that <c>Repeat</c>'s guard throws that type (and, since it must pay
-/// the Θ(cap²) cost anyway, that the cap is 10,000); the test above pins that the type routes to Warning.
+/// <c>RemainingCoverageTests</c> pins that <c>Repeat</c>'s guard throws that type; the test above pins that
+/// the type routes to Warning.
 /// Do not restore it: a rewrite that genuinely discriminates the two guards would have to trip
 /// <c>Repeat</c>'s cap, which is where the 35 seconds comes from.
+/// </para>
+/// <para>
+/// An earlier revision of the paragraph above also said <c>RemainingCoverageTests</c> pinned <em>the cap
+/// value</em>, "since it must pay the Θ(cap²) cost anyway". #435 made that false: its comparison-count budget
+/// now trips first on every constructing projection, so nothing there paid the Θ(cap²) cost any more, and the
+/// assertion that had carried the value went with it. The claim is corrected rather than deleted because the
+/// pin is real again -
+/// <c>RemainingCoverageTests.GivenAWideFocusOfDeepEqualItems_WhenRepeat_ThenTheProductionIterationCapIsExactlyTenThousand</c>
+/// asserts the value from both sides - but by a route costing one comparison per iteration instead of Θ(cap²).
+/// The value is covered; that is not a reason to reintroduce an expensive test here.
 /// </para>
 /// </summary>
 public class SearchIndexerFailureContainmentTests
