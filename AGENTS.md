@@ -79,7 +79,7 @@ MergeResources -> commit core data -> PostMergeExtensionUpdater
 
 - Use 4 spaces, no tabs, file-scoped namespaces, and one type per file.
 - Put System usings first and outside namespaces.
-- Use `_camelCase` for private/internal fields, `s_camelCase` for static fields, and PascalCase for constants and static readonly members.
+- Use `_camelCase` for private/internal fields, static ones included, and PascalCase for constants and static readonly members. There is no `s_` prefix in this codebase.
 - Prefer language keywords such as `int` over framework names such as `Int32`.
 - Use explicit types unless the right-hand side makes the type obvious.
 - Keep nullable reference types enabled and avoid unnecessary casts.
