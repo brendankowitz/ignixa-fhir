@@ -25,6 +25,8 @@ internal static class StandardConstantFamilies
 {
     private const string ValueSetPrefix = "vs-";
     private const string ExtensionPrefix = "ext-";
+    private const string ValueSetUrlBase = "http://hl7.org/fhir/ValueSet/";
+    private const string ExtensionUrlBase = "http://hl7.org/fhir/StructureDefinition/";
 
     /// <summary>
     /// Whether <paramref name="name"/> is a reference into the <c>vs-</c> or <c>ext-</c> family: the
@@ -32,26 +34,49 @@ internal static class StandardConstantFamilies
     /// one character of suffix after it. A bare prefix with nothing after it - <c>%`vs-`</c> - is not a
     /// reference to any ValueSet and does not match.
     /// </summary>
+    /// <remarks>
+    /// Defined as "resolves to a URL", not re-derived alongside it, so the recogniser and the expansion
+    /// cannot disagree about what counts as a member of these families.
+    /// </remarks>
     public static bool IsPrefixedConstant(string name, bool isDelimited)
-        => isDelimited && (IsValueSetReference(name) || IsExtensionReference(name));
+        => TryResolveCanonicalUrl(name, isDelimited, out _);
 
     /// <summary>
-    /// Whether <paramref name="name"/>, already known to be delimited, is <c>vs-</c> plus a non-empty
-    /// suffix.
+    /// The canonical URL <paramref name="name"/> stands for, when it is a reference into either family.
     /// </summary>
-    public static bool IsValueSetReference(string name)
-        => name.StartsWith(ValueSetPrefix, StringComparison.Ordinal) && name.Length > ValueSetPrefix.Length;
+    /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
+    /// <param name="isDelimited">Whether the reference was written as <c>%`name`</c> rather than bare.</param>
+    /// <param name="url">The ValueSet or StructureDefinition URL, or <see langword="null"/> when this is not a family reference.</param>
+    /// <returns><see langword="true"/> when <paramref name="url"/> was produced.</returns>
+    /// <remarks>
+    /// The two URL bases live here rather than at the evaluator's call site because they are the other
+    /// half of the same rule: the FHIR profile of FHIRPath defines <c>%`vs-[name]`</c> and
+    /// <c>%`ext-[name]`</c> as shorthands <em>for these URLs</em>. Splitting the naming test from the
+    /// expansion is the smaller version of the drift this class was added to remove - a clause added to
+    /// one and not the other would let a name be recognised as a family member and then expand to
+    /// nothing, or the reverse.
+    /// </remarks>
+    public static bool TryResolveCanonicalUrl(string name, bool isDelimited, out string? url)
+    {
+        url = null;
 
-    /// <summary>
-    /// Whether <paramref name="name"/>, already known to be delimited, is <c>ext-</c> plus a non-empty
-    /// suffix.
-    /// </summary>
-    public static bool IsExtensionReference(string name)
-        => name.StartsWith(ExtensionPrefix, StringComparison.Ordinal) && name.Length > ExtensionPrefix.Length;
+        if (!isDelimited)
+        {
+            return false;
+        }
 
-    /// <summary>The part of <paramref name="name"/> after <c>vs-</c>. Only valid once <see cref="IsValueSetReference"/> is true.</summary>
-    public static string ValueSetSuffix(string name) => name[ValueSetPrefix.Length..];
+        if (HasNonEmptySuffix(name, ValueSetPrefix))
+        {
+            url = ValueSetUrlBase + name[ValueSetPrefix.Length..];
+        }
+        else if (HasNonEmptySuffix(name, ExtensionPrefix))
+        {
+            url = ExtensionUrlBase + name[ExtensionPrefix.Length..];
+        }
 
-    /// <summary>The part of <paramref name="name"/> after <c>ext-</c>. Only valid once <see cref="IsExtensionReference"/> is true.</summary>
-    public static string ExtensionSuffix(string name) => name[ExtensionPrefix.Length..];
+        return url is not null;
+    }
+
+    private static bool HasNonEmptySuffix(string name, string prefix)
+        => name.StartsWith(prefix, StringComparison.Ordinal) && name.Length > prefix.Length;
 }

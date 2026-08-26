@@ -12,12 +12,21 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// <para>
 /// Both thresholds are read-only properties over a <see langword="private"/> <see cref="AsyncLocal{T}"/>
 /// override that falls back to the production constant, so the only way to change either is
-/// <see cref="Scope"/>. That matters because <c>InternalsVisibleTo</c> on this assembly names three
-/// assemblies, not one - <c>Ignixa.SqlOnFhir</c> and <c>Ignixa.Search</c> as well as
-/// <c>Ignixa.FhirPath.Tests</c> - so "only the test assembly can see this type" would be false, and
-/// mutable static fields would have left two production assemblies able to assign them. With the setter
-/// gone, "production code always runs against the real values" holds by construction rather than by
-/// convention.
+/// <see cref="Scope"/>. That narrows the seam; it does not close it. <see cref="Scope"/>'s constructor is
+/// <see langword="internal"/> and <c>InternalsVisibleTo</c> on this assembly names three assemblies, not
+/// one - <c>Ignixa.SqlOnFhir</c> and <c>Ignixa.Search</c> as well as <c>Ignixa.FhirPath.Tests</c> - so
+/// both <em>production</em> assemblies can construct one. Removing the settable properties renamed the
+/// mutator rather than removing it, and "production code always runs against the real values" is a
+/// convention here, not a property of the type.
+/// </para>
+/// <para>
+/// What removing them did buy is unconditional and worth stating exactly: every mutation is now
+/// <em>scoped and self-restoring</em>. No assembly can lower a threshold and leave it lowered, so the
+/// worst a misuse can do is confine itself to one <c>using</c> block. The remaining convention - that no
+/// production code opens such a block at all - is backed by
+/// <c>Ignixa.RepoGuards.Tests.RepeatGuardLimitsSeamGuardTests</c>, which fails the build if any file
+/// under <c>src/</c> other than this one constructs a <see cref="Scope"/>. That is the only enforcement
+/// <c>InternalsVisibleTo</c> granularity permits, and it is a failing build rather than a comment.
 /// </para>
 /// <para>
 /// <b>Why <see cref="AsyncLocal{T}"/> and not a plain static (#435 review):</b> a process-wide static
@@ -59,20 +68,20 @@ internal static class RepeatGuardLimits
     /// </summary>
     private const long ProductionMaxComparisons = 15_000_000;
 
-    private static readonly AsyncLocal<int?> s_maxIterationsOverride = new();
-    private static readonly AsyncLocal<long?> s_maxComparisonsOverride = new();
+    private static readonly AsyncLocal<int?> _maxIterationsOverride = new();
+    private static readonly AsyncLocal<long?> _maxComparisonsOverride = new();
 
     /// <summary>
     /// The iteration cap in force for the calling execution context: <see cref="ProductionMaxIterations"/>
     /// unless an enclosing <see cref="Scope"/> lowered it.
     /// </summary>
-    internal static int MaxIterations => s_maxIterationsOverride.Value ?? ProductionMaxIterations;
+    internal static int MaxIterations => _maxIterationsOverride.Value ?? ProductionMaxIterations;
 
     /// <summary>
     /// The comparison-count budget in force for the calling execution context:
     /// <see cref="ProductionMaxComparisons"/> unless an enclosing <see cref="Scope"/> lowered it.
     /// </summary>
-    internal static long MaxComparisons => s_maxComparisonsOverride.Value ?? ProductionMaxComparisons;
+    internal static long MaxComparisons => _maxComparisonsOverride.Value ?? ProductionMaxComparisons;
 
     /// <summary>
     /// Substitutes either or both thresholds for the scope's lifetime <em>within the calling execution
@@ -83,32 +92,53 @@ internal static class RepeatGuardLimits
     /// without also having to restate the other's production value.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The override flows to work the scope's own execution context starts and is invisible to everything
     /// else, so - unlike the process-wide static this replaced - a scope held in one test class cannot be
     /// observed by a <c>repeat()</c> evaluated concurrently in another. Restoring the captured
     /// <em>previous</em> value rather than the production constant keeps nested scopes correct.
+    /// </para>
+    /// <para>
+    /// <b>The flow is one-way, and it leaks outward.</b> <see cref="Dispose"/> restores the value in the
+    /// disposing flow's execution context, not in the copies that already flowed to work started inside the
+    /// scope, so a task started in the <c>using</c> keeps the lowered threshold after the scope ends.
+    /// Measured with a <c>maxIterations: 11</c> scope: after <see cref="Dispose"/> the disposing flow read
+    /// 10,000 while the escaped task still read 11. That is inherent to <see cref="AsyncLocal{T}"/> and
+    /// harmless for both current callers, which are fully synchronous inside their <c>using</c>. An
+    /// asynchronous one would see it, and would get a confusing pass rather than a failure.
+    /// </para>
+    /// <para>
+    /// <b>Why a class and not a <see langword="readonly"/> <see langword="struct"/>.</b> As a struct,
+    /// <c>new Scope()</c> bound to the struct's implicit parameterless constructor rather than the declared
+    /// one - it omits no optional argument, so overload resolution preferred it - producing a zero-initialised
+    /// value whose <c>_restore</c> fields were both <see langword="null"/> and whose <see cref="Dispose"/>
+    /// therefore cleared the <em>enclosing</em> scope's override. Measured: inside a <c>maxIterations: 50</c>
+    /// scope, disposing an empty inner scope left the threshold at 10,000 rather than 50. A struct cannot
+    /// reject its own default instance; a class has no default instance to reject, and the allocation is
+    /// irrelevant in a seam that runs a handful of times in tests.
+    /// </para>
     /// </remarks>
-    internal readonly struct Scope : IDisposable
+    internal sealed class Scope : IDisposable
     {
         private readonly int? _restoreIterations;
         private readonly long? _restoreComparisons;
 
         internal Scope(int? maxIterations = null, long? maxComparisons = null)
         {
-            _restoreIterations = s_maxIterationsOverride.Value;
-            _restoreComparisons = s_maxComparisonsOverride.Value;
+            _restoreIterations = _maxIterationsOverride.Value;
+            _restoreComparisons = _maxComparisonsOverride.Value;
 
             if (maxIterations.HasValue)
-                s_maxIterationsOverride.Value = maxIterations.Value;
+                _maxIterationsOverride.Value = maxIterations.Value;
 
             if (maxComparisons.HasValue)
-                s_maxComparisonsOverride.Value = maxComparisons.Value;
+                _maxComparisonsOverride.Value = maxComparisons.Value;
         }
 
         public void Dispose()
         {
-            s_maxIterationsOverride.Value = _restoreIterations;
-            s_maxComparisonsOverride.Value = _restoreComparisons;
+            _maxIterationsOverride.Value = _restoreIterations;
+            _maxComparisonsOverride.Value = _restoreComparisons;
         }
     }
 }

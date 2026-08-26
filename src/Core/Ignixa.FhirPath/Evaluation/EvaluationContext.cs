@@ -534,10 +534,11 @@ public record EvaluationContext
     /// <c>%vs-mine</c> reports an undefined variable, exactly as HAPI does.
     /// </para>
     /// <para>
-    /// The prefix-and-suffix test itself lives in <see cref="StandardConstantFamilies"/>, not here: it is
-    /// also what the static analyzer and the SQL-on-FHIR validator use to decide whether a reference is in
-    /// these families, and #442's review found the three had drifted apart on an empty suffix
-    /// (<c>%`vs-`</c>). Delegating keeps this method's answer the one the other two agree with.
+    /// The rule itself lives in <see cref="StandardConstantFamilies"/>, not here - both halves of it: the
+    /// prefix-and-suffix test the static analyzer and the SQL-on-FHIR validator also use to decide whether a
+    /// reference is in these families (#442's review found the three had drifted apart on an empty suffix,
+    /// <c>%`vs-`</c>), and the two canonical URL bases the names expand to. This method asks one question
+    /// and gets both, so a clause added to the family rule cannot leave the expansion behind.
     /// </para>
     /// </remarks>
     private static string? GetStandardConstant(string name, bool isDelimited)
@@ -547,10 +548,7 @@ public record EvaluationContext
             "sct" => "http://snomed.info/sct",
             "loinc" => "http://loinc.org",
             "ucum" => "http://unitsofmeasure.org",
-            _ when isDelimited && StandardConstantFamilies.IsValueSetReference(name)
-                => "http://hl7.org/fhir/ValueSet/" + StandardConstantFamilies.ValueSetSuffix(name),
-            _ when isDelimited && StandardConstantFamilies.IsExtensionReference(name)
-                => "http://hl7.org/fhir/StructureDefinition/" + StandardConstantFamilies.ExtensionSuffix(name),
+            _ when StandardConstantFamilies.TryResolveCanonicalUrl(name, isDelimited, out var url) => url,
             _ => null
         };
     }
