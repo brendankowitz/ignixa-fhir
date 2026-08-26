@@ -362,12 +362,32 @@ public sealed record AnalysisContext
     /// <c>vs-</c> / <c>ext-</c> families, so the analyzer agrees with the engine on the bare one too.
     /// </param>
     /// <remarks>
+    /// <para>
     /// The <c>%`vs-…`</c> and <c>%`ext-…`</c> families are recognised by shape rather than enumerated, matching
     /// <see cref="EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>: the FHIR profile of
     /// FHIRPath defines one for every ValueSet and extension in the specification, and reporting the rest as
-    /// undefined would make the analyzer stricter than the engine instead of agreeing with it. The delimited
-    /// requirement comes from the same place - see <c>EvaluationContext.GetStandardConstant</c> - so a bare
-    /// <c>%vs-mine</c> is reported undefined here for the same reason the engine throws on it.
+    /// undefined would make the analyzer stricter than the engine instead of agreeing with it. The shape test
+    /// itself lives in <see cref="StandardConstantFamilies"/>, the same one <c>EvaluationContext.GetStandardConstant</c>
+    /// uses, so a bare <c>%vs-mine</c> - or a delimited but suffix-empty <c>%`vs-`</c> - is reported undefined
+    /// here for the same reason the engine throws on it, rather than by a second copy of the same rule that can
+    /// drift from the first.
+    /// </para>
+    /// <para>
+    /// The default for <paramref name="isDelimited"/> is deliberately the strict one, <see langword="false"/>,
+    /// the opposite of <see cref="EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/>'s: that
+    /// overload's caller already holds a name it wants resolved regardless of spelling, where here a caller with
+    /// only a bare name has no evidence it came from a delimited reference, and assuming so would let a
+    /// <c>vs-</c>/<c>ext-</c> name resolve on weaker grounds than the engine requires. Callers that parsed the
+    /// reference should pass the expression's own <see cref="Expressions.VariableRefExpression.IsDelimited"/>
+    /// rather than rely on the default.
+    /// </para>
+    /// <para>
+    /// <paramref name="isDelimited"/> is an optional parameter appended to an existing public member of a
+    /// package built with <c>IsPackable</c>/<c>PackageStability: stable</c>: source-compatible for a
+    /// recompiled caller, binary-breaking for one that is not. The one-argument call also stops being
+    /// equivalent to what it returned before this change - a <c>vs-</c>/<c>ext-</c> name now resolves only
+    /// when the caller says it was delimited, where previously the prefix alone was enough.
+    /// </para>
     /// </remarks>
     public FhirPathTypeSet? ResolveVariable(string name, bool isDelimited = false)
     {
@@ -381,8 +401,7 @@ public sealed record AnalysisContext
             return props;
         }
 
-        if (isDelimited
-            && (name.StartsWith("vs-", StringComparison.Ordinal) || name.StartsWith("ext-", StringComparison.Ordinal)))
+        if (StandardConstantFamilies.IsPrefixedConstant(name, isDelimited))
         {
             return CreateStringTypeSet();
         }

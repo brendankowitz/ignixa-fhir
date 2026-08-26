@@ -537,11 +537,12 @@ public static class ViewDefinitionExpressionParser
             // %vs-x is an ordinary constant name and has to be declared like any other, which is what HAPI
             // does with it too. Exempting the bare form here while the engine refuses to resolve it would
             // move the failure from a clear parse-time "undefined constant" to an evaluation-time
-            // "undefined environment variable", which is strictly worse.
+            // "undefined environment variable", which is strictly worse. The prefix-and-suffix test is
+            // StandardConstantFamilies.IsPrefixedConstant, the same rule EvaluationContext.GetStandardConstant
+            // and AnalysisContext.ResolveVariable use, so an empty suffix (%`vs-`) is rejected here exactly
+            // as it is at those two - not by a third copy of the rule that can silently stop matching theirs.
             if (predefinedVariables.Contains(varName)
-                || (isDelimited
-                    && (varName.StartsWith("vs-", StringComparison.Ordinal)
-                        || varName.StartsWith("ext-", StringComparison.Ordinal))))
+                || StandardConstantFamilies.IsPrefixedConstant(varName, isDelimited))
             {
                 continue;
             }

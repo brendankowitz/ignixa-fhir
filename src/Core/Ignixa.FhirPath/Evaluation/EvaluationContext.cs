@@ -533,6 +533,12 @@ public record EvaluationContext
     /// neither the specification nor HAPI resolves, so <paramref name="isDelimited"/> gates it and bare
     /// <c>%vs-mine</c> reports an undefined variable, exactly as HAPI does.
     /// </para>
+    /// <para>
+    /// The prefix-and-suffix test itself lives in <see cref="StandardConstantFamilies"/>, not here: it is
+    /// also what the static analyzer and the SQL-on-FHIR validator use to decide whether a reference is in
+    /// these families, and #442's review found the three had drifted apart on an empty suffix
+    /// (<c>%`vs-`</c>). Delegating keeps this method's answer the one the other two agree with.
+    /// </para>
     /// </remarks>
     private static string? GetStandardConstant(string name, bool isDelimited)
     {
@@ -541,10 +547,10 @@ public record EvaluationContext
             "sct" => "http://snomed.info/sct",
             "loinc" => "http://loinc.org",
             "ucum" => "http://unitsofmeasure.org",
-            _ when isDelimited && name.StartsWith("vs-", StringComparison.Ordinal) && name.Length > 3
-                => "http://hl7.org/fhir/ValueSet/" + name[3..],
-            _ when isDelimited && name.StartsWith("ext-", StringComparison.Ordinal) && name.Length > 4
-                => "http://hl7.org/fhir/StructureDefinition/" + name[4..],
+            _ when isDelimited && StandardConstantFamilies.IsValueSetReference(name)
+                => "http://hl7.org/fhir/ValueSet/" + StandardConstantFamilies.ValueSetSuffix(name),
+            _ when isDelimited && StandardConstantFamilies.IsExtensionReference(name)
+                => "http://hl7.org/fhir/StructureDefinition/" + StandardConstantFamilies.ExtensionSuffix(name),
             _ => null
         };
     }

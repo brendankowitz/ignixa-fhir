@@ -94,4 +94,23 @@ public class Issue406RegressionTests
 
         result.Errors.ShouldContain(message => message.Contains($"'{expression}' not found", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData("%`vs-`", "vs-")]
+    [InlineData("%`ext-`", "ext-")]
+    public void GivenDelimitedEmptySuffixConstant_WhenAnalyzed_ThenReportsItUndefinedLikeTheEngine(
+        string expression, string expectedName)
+    {
+        // PR #442 final review (F4). GetStandardConstant requires a non-empty suffix - name.Length > 3 for
+        // "vs-", > 4 for "ext-" - so %`vs-` and %`ext-` are not ValueSet/StructureDefinition references at
+        // evaluation; they throw "undefined environment variable: vs-"/"ext-". Before this fix
+        // ResolveVariable matched on prefix alone and reported these clean, which is exactly the mismatch
+        // this branch exists to remove: the analyzer silent, the engine throwing. Both now ask
+        // StandardConstantFamilies, which requires the same non-empty suffix.
+        var analyzer = new FhirPathAnalyzer(FhirVersion.R5.GetSchemaProvider());
+
+        var result = analyzer.Analyze(expression, "Patient");
+
+        result.Errors.ShouldContain(message => message.Contains($"'%{expectedName}' not found", StringComparison.Ordinal));
+    }
 }

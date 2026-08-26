@@ -120,6 +120,24 @@ public class EnvironmentVariableResolutionTests
     }
 
     [Theory]
+    [InlineData("%`vs-`", "vs-")]
+    [InlineData("%`ext-`", "ext-")]
+    public void GivenADelimitedButEmptySuffixConstant_WhenReferenced_ThenItIsAnUndefinedVariableRatherThanAUri(
+        string expression, string expectedName)
+    {
+        // PR #442 final review (F4). The delimited spelling alone is not sufficient - the prefix also needs
+        // a non-empty suffix after it, or there is no ValueSet/StructureDefinition name to build a URI from.
+        // GetStandardConstant has always required name.Length > 3 ("vs-") / > 4 ("ext-"), but the analyzer
+        // and the SQL-on-FHIR validator did not check length and reported these clean, so an expression like
+        // this could pass both checks and then throw here - the exact failure shape this branch removes for
+        // the bare spelling. All three now share StandardConstantFamilies, which requires the same suffix.
+        var evaluate = () => _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).ToList();
+
+        var exception = Assert.Throws<FhirPathEvaluationException>(evaluate);
+        Assert.Contains($"undefined environment variable: {expectedName}", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("%`vs-mine`", "http://hl7.org/fhir/ValueSet/mine")]
     [InlineData("%`ext-mine`", "http://hl7.org/fhir/StructureDefinition/mine")]
     public void GivenADelimitedVsOrExtConstant_WhenReferenced_ThenResolvesToItsUri(string expression, string expected)

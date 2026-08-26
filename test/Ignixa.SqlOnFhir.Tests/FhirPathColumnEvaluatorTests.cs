@@ -786,6 +786,44 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Theory]
+    [InlineData("%`vs-`", "vs-")]
+    [InlineData("%`ext-`", "ext-")]
+    public void GivenAViewDefinitionSelectingADelimitedEmptySuffixConstant_WhenEvaluated_ThenItIsRejectedAsUndeclared(
+        string expression, string expectedName)
+    {
+        // PR #442 final review (F4). The exemption above requires the delimited spelling AND a non-empty
+        // suffix - StandardConstantFamilies.IsPrefixedConstant, the same rule EvaluationContext.GetStandardConstant
+        // uses - because a bare prefix with nothing after it is not a ValueSet/StructureDefinition reference.
+        // Before this fix, ValidateConstantReferences matched on prefix and delimiter alone: it exempted
+        // "%`vs-`"/"%`ext-`" from the undeclared-constant check, the ViewDefinition validated clean, and
+        // evaluation then threw "undefined environment variable: vs-"/"ext-" - the same failure shape the
+        // bare-spelling test above pins as unacceptable, now reproduced through the delimited spelling
+        // instead. This must be rejected here, at validation, exactly like the bare form.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-empty-suffix-prefix" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = $$"""
+            {
+              "resource": "Patient",
+              "select": [{ "column": [
+                  { "name": "id", "path": "id" },
+                  { "name": "prefixed", "path": "{{expression}}" }
+              ] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var thrown = Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(sourceNode, resource).ToList());
+
+        var cause = thrown.InnerException as InvalidOperationException ?? thrown;
+        Assert.Contains($"undefined constant '%{expectedName}'", cause.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("ucum", "http://unitsofmeasure.org")]
     [InlineData("sct", "http://snomed.info/sct")]
     [InlineData("loinc", "http://loinc.org")]
