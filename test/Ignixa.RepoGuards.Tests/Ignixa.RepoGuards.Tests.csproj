@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Ignixa.Search.Sql.Generators\Ignixa.Search.Sql.Generators.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
   </ItemGroup>
 
 </Project>

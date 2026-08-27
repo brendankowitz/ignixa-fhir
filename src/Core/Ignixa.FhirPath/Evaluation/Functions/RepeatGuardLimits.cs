@@ -13,20 +13,21 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// Both thresholds are read-only properties over a <see langword="private"/> <see cref="AsyncLocal{T}"/>
 /// override that falls back to the production constant, so the only way to change either is
 /// <see cref="Scope"/>. That narrows the seam; it does not close it. <see cref="Scope"/>'s constructor is
-/// <see langword="internal"/> and <c>InternalsVisibleTo</c> on this assembly names three assemblies, not
-/// one - <c>Ignixa.SqlOnFhir</c> and <c>Ignixa.Search</c> as well as <c>Ignixa.FhirPath.Tests</c> - so
-/// both <em>production</em> assemblies can construct one. Removing the settable properties renamed the
-/// mutator rather than removing it, and "production code always runs against the real values" is a
-/// convention here, not a property of the type.
+/// <see langword="internal"/> and <c>InternalsVisibleTo</c> on this assembly names four assemblies, not
+/// one - <c>Ignixa.SqlOnFhir</c> and <c>Ignixa.Search</c> as well as <c>Ignixa.FhirPath.Tests</c> and
+/// <c>Ignixa.RepoGuards.Tests</c> - so both <em>production</em> assemblies can construct one. Removing
+/// the settable properties renamed the mutator rather than removing it, and "production code always runs
+/// against the real values" is a convention here, not a property of the type.
 /// </para>
 /// <para>
 /// What removing them did buy is unconditional and worth stating exactly: every mutation is now
 /// <em>scoped and self-restoring</em>. No assembly can lower a threshold and leave it lowered, so the
 /// worst a misuse can do is confine itself to one <c>using</c> block. The remaining convention - that no
 /// production code opens such a block at all - is backed by
-/// <c>Ignixa.RepoGuards.Tests.RepeatGuardLimitsSeamGuardTests</c>, which fails the build if any file
-/// under <c>src/</c> other than this one constructs a <see cref="Scope"/>. That is the only enforcement
-/// <c>InternalsVisibleTo</c> granularity permits, and it is a failing build rather than a comment.
+/// <c>Ignixa.RepoGuards.Tests.RepeatGuardLimitsSeamGuardTests</c>, which fails if any file under
+/// <c>src/</c> other than this one names <see cref="Scope"/> outside a doc comment. That is the only
+/// enforcement <c>InternalsVisibleTo</c> granularity permits, and it is a failing test rather than a
+/// comment.
 /// </para>
 /// <para>
 /// <b>Why <see cref="AsyncLocal{T}"/> and not a plain static (#435 review):</b> a process-wide static
