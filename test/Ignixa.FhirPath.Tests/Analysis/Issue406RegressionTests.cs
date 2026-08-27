@@ -123,12 +123,26 @@ public class Issue406RegressionTests
         // PR #442 standards review, P1/P2. ResolveVariable gained an isDelimited parameter. Adding it as an
         // optional parameter rather than an overload would have removed ResolveVariable(string) from the
         // assembly's metadata, so a consumer compiled against the published package would have thrown
-        // MissingMethodException without recompiling; the one-argument form is therefore a real overload,
-        // and this test is what fails if someone later collapses the two back into one optional parameter.
+        // MissingMethodException without recompiling; the one-argument form is therefore a real overload.
         // It forwards isDelimited: true, matching its sibling
         // EvaluationContext.TryGetEnvironmentVariable(string, out object?) and preserving what a
         // one-argument call returned before the flag existed - the prefix alone was enough. The spelling
         // still decides for a caller that knows it, which the two-argument assertion below pins.
+        //
+        // The metadata claim is asserted against metadata, not against a call. An earlier revision of this
+        // comment said the calls below were what fails if someone collapses the two into one optional
+        // parameter; they are not, and that was reproduced - deleting ResolveVariable(string) and rewriting
+        // the other as ResolveVariable(string name, bool isDelimited = true) left this test passing 2/2.
+        // Overload-versus-default is invisible at source level, which is the whole reason the distinction
+        // matters to an already-compiled consumer.
+        typeof(AnalysisContext)
+            .GetMethod(nameof(AnalysisContext.ResolveVariable), [typeof(string)])
+            .ShouldNotBeNull(
+                "AnalysisContext.ResolveVariable(string) is no longer in the assembly's metadata. A "
+                + "consumer compiled against the published package binds to that exact signature, so it "
+                + "would throw MissingMethodException without being recompiled. An optional parameter is "
+                + "source-compatible but not binary-compatible; keep the one-argument overload.");
+
         var context = AnalysisContext.Create(FhirVersion.R5.GetSchemaProvider(), "Patient");
 
         var byNameAlone = context.ResolveVariable(name);
