@@ -258,6 +258,13 @@ internal static class ResourceBackedKnownDivergences
         // The #430 canonical divergence: registered against UriSearchValue, never ReferenceSearchValue.
         ("canonical", SearchParamType.Reference),
 
+        // MessageHeader-event is Token, and its R6 element is a canonical, so it is a second canonical
+        // gap rather than a case of the one above. It was covered by (canonical, Reference) only because
+        // the check that reads this list used to match on the element type and discard the parameter
+        // type - which meant a token converter for canonical would have closed a gap nothing here
+        // claimed, and made the row vanish silently.
+        ("canonical", SearchParamType.Token),
+
         // Backbone types the element model hands to a leaf-typed parameter. Neither codebase has a
         // converter for a backbone, and neither should - the defect is upstream of the converter.
         ("Encounter.Location", SearchParamType.Reference),

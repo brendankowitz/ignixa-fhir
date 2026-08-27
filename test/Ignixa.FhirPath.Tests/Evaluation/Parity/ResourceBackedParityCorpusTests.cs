@@ -1,12 +1,23 @@
 ﻿using Ignixa.Abstractions;
 using Ignixa.Search.Indexing;
 using Ignixa.Specification.Extensions;
+using Ignixa.Specification.ValueSets.Normative;
 using Xunit.Abstractions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
 public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
 {
+    /// <summary>
+    /// The <c>ElementSearchIndexer.Log</c> method whose records name an element type no converter covers.
+    /// </summary>
+    /// <remarks>
+    /// A literal because <c>Log</c> is <see langword="private"/> to the indexer, so there is no symbol to
+    /// bind to. That is exactly why <c>AssertConverterGapsAreStillOpen</c> asserts the filter matched
+    /// something before it concludes anything from what it matched.
+    /// </remarks>
+    private const string FhirElementTypeNotSupportedEvent = "FhirElementTypeNotSupported";
+
     private readonly ITestOutputHelper _output = output;
 
     [Fact]
@@ -202,7 +213,7 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             Firely's ran the same expression, and the contained throw indexed nothing while the
             comparison still scored it as agreement.
             """);
-        AssertConverterGapsAreStillOpen();
+        AssertConverterGapsAreStillOpen(report);
         AssertCounts(
             report.IgnixaFailures.Where(failure => !failure.ContainedAThrow).Select(failure => failure.Signature),
             ResourceBackedKnownDivergences.ExpectedIgnixaConverterPipelineSkips,
@@ -246,7 +257,7 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
     /// absorbs either without a question being asked. This separates them: it reddens for a landed
     /// converter and stays green for lost coverage.
     /// </remarks>
-    private static void AssertConverterGapsAreStillOpen()
+    private static void AssertConverterGapsAreStillOpen(SearchIndexParityReport report)
     {
         var converters = SearchIndexerFactory.CreateIndexingComponents(
             FhirVersion.R4.GetSchemaProvider(),
@@ -265,22 +276,77 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
 
         closed.ShouldBeEmpty(string.Join(Environment.NewLine, closed));
 
-        var claimed = ResourceBackedKnownDivergences.UnconvertedPairs
-            .Select(pair => pair.FhirType)
-            .ToHashSet(StringComparer.Ordinal);
+        var claimed = ResourceBackedKnownDivergences.UnconvertedPairs.ToHashSet();
 
-        var unexplained = ResourceBackedKnownDivergences.ExpectedIgnixaConverterPipelineSkips.Keys
-            .Where(signature => signature.StartsWith("FhirElementTypeNotSupported", StringComparison.Ordinal))
-            .Select(signature => signature.Split(" :: ")[2])
+        var observedGaps = report.IgnixaFailures
+            .Where(failure => string.Equals(
+                failure.Stage,
+                FhirElementTypeNotSupportedEvent,
+                StringComparison.Ordinal))
+            .Select(failure => (failure.Version, failure.ParameterUrl, failure.ElementType))
+            .Distinct()
+            .ToArray();
+
+        observedGaps.ShouldNotBeEmpty(
+            "The sweep recorded no FhirElementTypeNotSupported failure at all, so everything below this "
+            + "line examined nothing and passed. Either every converter gap closed - in which case "
+            + "UnconvertedPairs and the rows it explains should go - or the capture stopped matching the "
+            + "event. This branch has already changed that event's fields once.");
+
+        var unexplained = observedGaps
+            .SelectMany(gap => Unclaimed(gap.Version, gap.ParameterUrl, gap.ElementType, claimed))
             .Distinct(StringComparer.Ordinal)
-            .Where(elementType => !claimed.Contains(elementType))
-            .Select(elementType =>
-                $"'{elementType}' is pinned as an unindexable element type but is not named in "
-                + "UnconvertedPairs, so nothing asserts that its gap is still open and its rows could "
-                + "fall to zero unnoticed.")
             .ToArray();
 
         unexplained.ShouldBeEmpty(string.Join(Environment.NewLine, unexplained));
+    }
+
+    /// <summary>
+    /// Why one observed <c>FhirElementTypeNotSupported</c> gap is not covered by
+    /// <see cref="ResourceBackedKnownDivergences.UnconvertedPairs"/>; empty when it is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keyed on the <em>pair</em>, because that is what <c>UnconvertedPairs</c> is keyed on and what the
+    /// converter manager is keyed on. Matching the element type alone let one claim answer for a gap it
+    /// says nothing about: <c>MessageHeader-event</c> is <c>Token</c>, so its gap is
+    /// <c>(canonical, Token)</c> - which nothing claimed - and the row passed on the strength of
+    /// <c>(canonical, Reference)</c>. Declaring <c>canonical</c> on a token converter then made that row
+    /// disappear while this assertion, the one the count messages send a reader to, stayed green.
+    /// </para>
+    /// <para>
+    /// The parameter's type is resolved in the version the failure happened in rather than across all of
+    /// them, because a URL is not one search parameter. <c>StructureDefinition-base</c> is <c>Uri</c> in
+    /// one version and <c>Reference</c> in another, and only the second ever hands the indexer a
+    /// <c>canonical</c>; demanding a claim for every version would demand <c>(canonical, Uri)</c>, which
+    /// Ignixa converts perfectly well.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<string> Unclaimed(
+        FhirVersion version,
+        string url,
+        string elementType,
+        IReadOnlySet<(string FhirType, SearchParamType ParameterType)> claimed)
+    {
+        SearchParamType? parameterType = SearchIndexParityHarness.ParameterType(version, new Uri(url));
+
+        if (parameterType is null)
+        {
+            yield return
+                $"{version} recorded an unindexable '{elementType}' for '{url}', and {version}'s "
+                + "definitions do not publish that search parameter - so the failure names a parameter "
+                + "the definition manager it came from cannot resolve.";
+            yield break;
+        }
+
+        if (!claimed.Contains((elementType, parameterType.Value)))
+        {
+            yield return
+                $"({elementType} -> {parameterType.Value}), observed under {version} through '{url}', is "
+                + "an open converter gap that UnconvertedPairs does not name. Nothing asserts it is still "
+                + "open, so its rows could fall to zero because a converter landed and be read as the "
+                + "corpus losing coverage.";
+        }
     }
 
     private static void AssertCounts(
