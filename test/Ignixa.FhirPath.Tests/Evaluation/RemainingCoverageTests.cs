@@ -152,22 +152,17 @@ public class RemainingCoverageTests
     [Fact]
     public void GivenASmallIterationCap_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionAtThatCap()
     {
-        // Arrange - same constructing-projection hazard as the full-cost test below (repeat($this & 'x'),
-        // the #433 hazard: every round concatenates a literal onto $this, so the output is never deep-equal
-        // to anything already processed, and only an iteration or comparison cap can stop it) - but driven
-        // through RepeatGuardLimits' test seam (#435) with only MaxIterations lowered. MaxComparisons stays
-        // at its production default (15,000,000): at a 50-iteration cap this expression accumulates on the
-        // order of a few thousand comparisons at most (see CollectionFunctions.Repeat's remarks for the
-        // measured growth curve), nowhere near that default, so the iteration cap - not the comparison
-        // budget - is what trips here. This isolates the iteration-cap code path in milliseconds instead of
-        // the ~33 seconds proving it at the real 10,000-iteration scale used to cost.
+        // Arrange - the #433 constructing-projection hazard (every round concatenates a literal onto
+        // $this, so the output is never deep-equal to anything already processed), driven through
+        // RepeatGuardLimits' test seam (#435) with only MaxIterations lowered. MaxComparisons stays at its
+        // production 15,000,000, which a 50-iteration cap cannot reach, so the iteration cap is what trips
+        // here. Isolates that code path in milliseconds rather than the ~33 seconds it used to cost.
         const int smallCap = 50;
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
 
-        // Act - the scope covers only the evaluation, not the arrange block. The seam is AsyncLocal-backed
-        // so a wider scope is no longer a cross-class hazard, but holding it no longer than the call it
-        // governs keeps that true of anything the arrange block might later be changed to do.
+        // Act - the scope covers only the evaluation, so nothing the arrange block might later be changed
+        // to do can fall inside it.
         FhirPathEvaluationException exception;
         using (new RepeatGuardLimits.Scope(maxIterations: smallCap))
         {
@@ -184,12 +179,9 @@ public class RemainingCoverageTests
     [Fact]
     public void GivenASmallComparisonBudget_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionAtThatBudget()
     {
-        // Arrange - the same hazard again, but with only MaxComparisons lowered via the #435 seam.
-        // MaxIterations stays at its production default (10,000): at a 50-comparison budget this
-        // expression has only dequeued on the order of a handful of times (see CollectionFunctions.Repeat's
-        // remarks for the measured growth curve), nowhere near that default, so the comparison budget -
-        // not the iteration cap - is what trips here. This isolates the comparison-budget code path
-        // (added by #435) in milliseconds.
+        // Arrange - the same hazard again, with only MaxComparisons lowered via the #435 seam.
+        // MaxIterations stays at its production 10,000, which a 50-comparison budget cannot reach, so the
+        // comparison budget is what trips here.
         const long smallBudget = 50;
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
@@ -210,22 +202,18 @@ public class RemainingCoverageTests
     [Fact]
     public void GivenAWideFocusOfDeepEqualItems_WhenRepeat_ThenTheProductionIterationCapIsExactlyTenThousand()
     {
-        // Arrange - before this test, no assertion of the production iteration cap's value existed anywhere
-        // under test/ (#435 review, I4), while a SearchIndexerFailureContainmentTests comment claimed this
-        // class carried one. The comparison budget cannot substitute for it: at production thresholds the
-        // budget trips first on every *constructing* projection (see the test above), so the cap's value was
-        // free to change without reddening anything.
+        // Arrange - the pin on the production iteration cap's *value*. The comparison budget cannot
+        // substitute for it: at production thresholds the budget trips first on every constructing
+        // projection (see the test above), so the cap's value was free to change without reddening
+        // anything.
         //
-        // This shape trips the iteration cap at negligible comparison cost. The focus is a wide row of
-        // mutually deep-equal items, so after the first is added to `processed` every later one matches it on
-        // its very first comparison and is skipped: one dequeue and one comparison per item. Measured, 9,999
-        // items costs 9,999 iterations and 9,998 comparisons - four orders of magnitude below the 15,000,000
-        // budget, so only the iteration cap can decide the outcome here. The empty projection keeps the queue
-        // from growing, so the iteration count is exactly the focus width.
-        //
-        // Both sides are asserted, which is what makes this a cap value pin and not just a guard-fires pin:
-        // 9,999 must pass and 10,001 must throw, so raising the cap reddens the second and lowering it reddens
-        // the first. Total cost of both, measured: under 0.1 seconds.
+        // This shape trips the iteration cap at negligible comparison cost: the focus is a wide row of
+        // mutually deep-equal items, so after the first every later one matches on its first comparison
+        // and is skipped - one dequeue and one comparison each (measured: 9,999 items costs 9,999
+        // iterations and 9,998 comparisons, four orders of magnitude below the budget). The empty
+        // projection keeps the queue from growing, so the iteration count is exactly the focus width.
+        // Both sides are asserted, so raising the cap reddens the 10,001 case and lowering it reddens the
+        // 9,999 one. Measured cost of both: under 0.1 seconds.
         const int justUnder = 9_999;
         const int justOver = 10_001;
         var expr = _parser.Parse("item.repeat({})");
@@ -251,21 +239,12 @@ public class RemainingCoverageTests
     [Fact]
     public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionWithinTheComparisonBudget()
     {
-        // Arrange - repeat($this & 'x') is the constructing-projection hazard from #433: every round
-        // concatenates a literal onto $this, so the output is a fresh, longer string that is never
-        // deep-equal to anything already processed. The dedup check that stops a *navigating* projection
-        // over a finite tree (see the tests above) cannot stop one that *constructs* a new value each
-        // round - only the iteration cap and (since #435) the comparison-count budget can.
-        //
-        // This is the one full-cost test kept end-to-end at production thresholds (#435): the two tests
-        // above already prove each guard's code path and message in milliseconds via the test seam, so this
-        // one exists solely to pin that the *real* defaults (10,000 iterations, 15,000,000 comparisons)
-        // actually terminate this hazard, and in what shape. Before #435 this cost ~33 seconds and tripped
-        // the iteration cap. It now costs a few seconds (per CollectionFunctions.Repeat's remarks, the
-        // comparison budget reaches 15,000,000 at roughly a third of the iteration count the old iteration
-        // cap alone needed) and trips the comparison budget instead - the iteration cap is never reached by
-        // this expression at production scale any more, which is exactly the point of adding a cost bound
-        // alongside a count bound.
+        // Arrange - the #433 constructing-projection hazard, kept end-to-end at production thresholds: the
+        // seam-driven tests above prove each guard's code path in milliseconds, so this one exists to pin
+        // that the real defaults (10,000 iterations, 15,000,000 comparisons) terminate it, and in what
+        // shape. Before #435 it cost ~33 seconds and tripped the iteration cap; the comparison budget now
+        // trips first, at roughly a third of the iteration count, so the iteration cap is never reached
+        // here any more.
         var expr = _parser.Parse("'a'.repeat($this & 'x')");
         var root = CreateIntegerElement(0);
 

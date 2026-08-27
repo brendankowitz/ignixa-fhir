@@ -13,25 +13,16 @@ namespace Ignixa.Search.Tests.Indexing;
 /// <para>
 /// Provenance: <c>microsoft/fhir-server</c> at commit
 /// <c>18e884cd5b53b8fbaa42706e134e5a3b591c44ce</c> (2026-08-25), read from
-/// <c>src/Microsoft.Health.Fhir.Core/Features/Search/Converters</c>. One row per
-/// <c>base(...)</c> FHIR type on each concrete
-/// <c>FhirTypedElementToSearchValueConverter&lt;T&gt;</c>, which is exactly what upstream's
-/// <c>FhirTypedElementToSearchValueConverterManager</c> keys its dictionary by. Ignixa's
-/// <c>FhirElementToSearchValueConverterManager</c> keys the same way, so the two sets are
-/// directly comparable.
+/// <c>src/Microsoft.Health.Fhir.Core/Features/Search/Converters</c>. One row per <c>base(...)</c> FHIR
+/// type on each concrete <c>FhirTypedElementToSearchValueConverter&lt;T&gt;</c>, which is what upstream's
+/// manager keys its dictionary by; Ignixa's manager keys the same way, so the two sets are comparable.
 /// </para>
 /// <para>
-/// This is a vendored snapshot rather than a live fetch on purpose: the census has to be able to
-/// fail in CI without network access, and a table that refreshed itself could never report
-/// "upstream added a converter Ignixa lacks" - it would silently absorb the addition. Refresh it
-/// deliberately, and expect <see cref="KnownConverterDivergences"/> to need an entry or Ignixa to
-/// need a converter when you do.
-/// </para>
-/// <para>
-/// The search value types are written as <c>typeof</c> against Ignixa's own types rather than as
-/// strings, so a rename on either side is a compile error instead of a silently unmatched row.
-/// Upstream's <c>CompositeSearchValue</c> has no row here because no converter produces one;
-/// composites are assembled by the indexer from component values.
+/// Vendored rather than fetched live on purpose: the census has to be able to fail in CI without network
+/// access, and a table that refreshed itself could never report "upstream added a converter Ignixa lacks"
+/// - it would silently absorb the addition. The search value types are written as <c>typeof</c> against
+/// Ignixa's own types, so a rename on either side is a compile error rather than a silently unmatched row.
+/// Upstream's <c>CompositeSearchValue</c> has no row because no converter produces one.
 /// </para>
 /// </remarks>
 internal static class UpstreamConverterRegistrations
@@ -46,21 +37,13 @@ internal static class UpstreamConverterRegistrations
     /// <see cref="SourceCommit"/> being restated in the same change.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Without this, <see cref="SourceCommit"/> is read only to be printed into failure messages -
-    /// nothing binds it to the rows. The rest of the census catches an emptied snapshot, a deleted row and
-    /// an added row for a pair Ignixa lacks, but it compares <em>sets of pairs</em>: a duplicate row, or a
-    /// row whose converter name was edited, changes nothing it can see. This hash makes any such edit
-    /// impossible without also editing the line beside <see cref="SourceCommit"/>. What it cannot do is
-    /// verify the commit itself - a <see cref="SourceCommit"/> bumped while the rows stay put is not
-    /// checkable offline by any means, which is why refreshing is described as one edit below.
-    /// </para>
-    /// <para>
-    /// To refresh: re-read the converters at the new upstream commit, update the rows, run
+    /// Without this, <see cref="SourceCommit"/> is read only to be printed into failure messages, and the
+    /// rest of the census compares <em>sets of pairs</em>, so a duplicate row or an edited converter name
+    /// changes nothing it can see. What the hash cannot do is verify the commit itself: a
+    /// <see cref="SourceCommit"/> bumped while the rows stay put is not checkable offline. To refresh:
+    /// re-read the converters at the new commit, update the rows, run
     /// <c>ConverterRegistrationCensusTests.GivenTheSnapshot_WhenHashed_ThenItMatchesTheRecordedProvenance</c>
-    /// and paste the hash it reports here together with the new <see cref="SourceCommit"/>. Updating the
-    /// hash without updating the commit is the mistake this exists to make visible.
-    /// </para>
+    /// and paste the hash it reports here together with the new <see cref="SourceCommit"/>.
     /// </remarks>
     public const string ContentHash = "6ea7f645cb67673df1e81e0bb823a0464c0c6e60f76f7a7f6e900f651219c9a3";
 

@@ -77,65 +77,41 @@ internal static class ResourceBackedKnownDivergences
     /// it.
     /// </para>
     /// <para>
-    /// The adjudication therefore does not live here. <c>Ignixa.Search.Tests</c> holds a static
-    /// registration census that compares Ignixa's converter registrations against a vendored snapshot
-    /// of <c>microsoft/fhir-server</c>'s, and a composite component census that reads production's
-    /// definition manager directly; between them every site below is either a documented divergence, a
-    /// correct skip that upstream also performs, or a defect recorded against the layer that owns it.
-    /// What remains here is the measurement: how far each site reaches across the corpus.
+    /// The adjudication therefore does not live here. <c>Ignixa.Search.Tests</c> holds a converter
+    /// registration census against a vendored <c>microsoft/fhir-server</c> snapshot and a composite
+    /// component census over production's definition manager; between them every site below is a
+    /// documented divergence, a correct skip upstream also performs, or a defect recorded against the
+    /// layer that owns it. What remains here is the measurement: how far each site reaches.
     /// </para>
     /// <para>
-    /// The classes, by cause rather than by count:
+    /// The classes, by cause:
     /// </para>
     /// <list type="bullet">
-    /// <item>
-    /// <description>
+    /// <item><description>
     /// <c>canonical</c> under 46 <c>Reference</c>-typed parameters (186 sites): the deliberate storage
-    /// divergence tracked as #430. Ignixa registers <c>canonical</c> against <c>UriSearchValue</c>
-    /// only, so those parameters index nothing until it is closed.
-    /// </description>
-    /// </item>
-    /// <item>
-    /// <description>
-    /// Backbone element types under a leaf-typed parameter - <c>Encounter.Location</c> (both as
-    /// <c>FhirElementTypeNotSupported</c> and, once more, as <c>CannotInferSearchParamType</c> on the
-    /// same site), <c>Ingredient.Manufacturer</c>, <c>MedicinalProductDefinition.Contact</c>,
-    /// <c>SubstanceDefinition.Code</c>, <c>SubstanceDefinition.Name</c>,
-    /// <c>SubstanceSpecification.Code</c>, and the two <c>SkippingElementNullOrEmptyInstanceType</c>
-    /// sites (28 in total). These are not converter gaps. Every one is a path of the form
+    /// divergence tracked as #430. Ignixa registers <c>canonical</c> against <c>UriSearchValue</c> only.
+    /// </description></item>
+    /// <item><description>
+    /// Backbone element types under a leaf-typed parameter (28 sites). Not converter gaps: each is a path
     /// <c>X.y.y</c> where a backbone's child shares the backbone's own name, and
-    /// <c>SchemaAwareElement.Children</c> treats that as a recursive backbone and types the child as
-    /// its parent. <c>Encounter.location.location</c> is a <c>Reference</c> in the schema and arrives
-    /// as <c>Encounter.Location</c>, so the reference converter is never asked for. That is an
-    /// <c>Ignixa.Serialization</c> element-model defect, not an indexing one, and it is tracked
-    /// separately; the counts below are what will move when it is fixed.
-    /// </description>
-    /// </item>
-    /// <item>
-    /// <description>
-    /// Correct skips that upstream performs identically: <c>Attachment</c> and <c>base64Binary</c>
-    /// under parameters that cannot represent them, <c>string</c> selected by a date parameter through
-    /// a string-valued choice (<c>CarePlan.activity.detail.scheduledString</c>,
-    /// <c>Procedure.performedString</c>), <c>uri</c> selected by a token parameter through
-    /// <c>event[x]</c>, and <c>DeviceDefinition.udiDeviceIdentifier</c> selected by R6 ballot's
-    /// <c>CanonicalResource-identifier</c>. No converter exists for any of these in either codebase.
-    /// </description>
-    /// </item>
-    /// <item>
-    /// <description>
-    /// <c>Location.Position</c> under <c>Location-near</c> and <c>Location-near-distance</c>: geo
-    /// search is unimplemented, in Ignixa and upstream alike. The parameters index nothing.
-    /// </description>
-    /// </item>
-    /// <item>
-    /// <description>
+    /// <c>SchemaAwareElement.Children</c> types the child as its parent - so
+    /// <c>Encounter.location.location</c>, a <c>Reference</c> in the schema, arrives as
+    /// <c>Encounter.Location</c> and the reference converter is never asked for. An
+    /// <c>Ignixa.Serialization</c> element-model defect, tracked separately.
+    /// </description></item>
+    /// <item><description>
+    /// Correct skips upstream performs identically: <c>Attachment</c> and <c>base64Binary</c> under
+    /// parameters that cannot represent them, <c>string</c> under a date parameter, <c>uri</c> under a
+    /// token parameter, <c>DeviceDefinition.udiDeviceIdentifier</c> under R6 ballot's
+    /// <c>CanonicalResource-identifier</c>, and <c>Location.Position</c> under <c>Location-near</c>,
+    /// where geo search is unimplemented here and upstream alike.
+    /// </description></item>
+    /// <item><description>
     /// <c>ComponentNullResolvedSearchParameter</c>: composites whose component definition URL the
-    /// published HL7 package never publishes. The four STU3 <c>Observation-code-value-*</c> composites
-    /// were in this class and are now repaired in <c>CompositeComponentDefinitionRepairs</c>, which is
-    /// why 44 sites left this dictionary; the R5 and R6 remainder is recorded in
-    /// <c>KnownCompositeComponentDivergences</c> with what upstream chose to do about each.
-    /// </description>
-    /// </item>
+    /// published HL7 package never publishes. The four STU3 <c>Observation-code-value-*</c> composites are
+    /// now repaired in <c>CompositeComponentDefinitionRepairs</c>, which is why 44 sites left this
+    /// dictionary; the R5 and R6 remainder is in <c>KnownCompositeComponentDivergences</c>.
+    /// </description></item>
     /// </list>
     /// <para>
     /// Pinned exactly rather than floored, and by site rather than in total, because each of the three
@@ -148,12 +124,10 @@ internal static class ResourceBackedKnownDivergences
     /// re-pinning.
     /// </para>
     /// <para>
-    /// The signatures carry the search parameter URL because production now logs it.
-    /// <c>Log.FhirElementTypeNotSupported</c> used to record only the element type, which is why an
-    /// earlier revision of this pin had thirteen anonymous <c>FhirElementTypeNotSupported</c> rows and
-    /// a note explaining that the 46-parameter <c>canonical</c> breakdown had to be recovered by
-    /// replaying the lookup outside the indexer. Anyone diagnosing this on a running server hit the
-    /// same wall.
+    /// The signatures carry the search parameter URL because production now logs it;
+    /// <c>Log.FhirElementTypeNotSupported</c> used to record only the element type, so the 46-parameter
+    /// <c>canonical</c> breakdown had to be recovered by replaying the lookup outside the indexer - as
+    /// would anyone diagnosing this on a running server.
     /// </para>
     /// </remarks>
     public static IReadOnlyDictionary<string, int> ExpectedIgnixaConverterPipelineSkips { get; } =
@@ -240,29 +214,22 @@ internal static class ResourceBackedKnownDivergences
     /// <see cref="ExpectedIgnixaConverterPipelineSkips"/> to mean what they say.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This is the assertion that makes a shrinking pin readable. Asserted against the converter
-    /// manager production builds, so it moves for exactly one reason - a converter landed - and it
-    /// names which pair when it does. A count above that falls while every pair here still resolves to
-    /// nothing is the other cause: the corpus stopped generating the shape, and coverage was lost
-    /// rather than a gap closed.
-    /// </para>
-    /// <para>
-    /// Every element type named by a <c>FhirElementTypeNotSupported</c> row appears here, which the
-    /// corpus test checks, so a row cannot be deleted from the pin without also deleting the claim
-    /// that its gap is still open.
-    /// </para>
+    /// This is the assertion that makes a shrinking pin readable. Asserted against the converter manager
+    /// production builds, so it moves for exactly one reason - a converter landed - and names which pair.
+    /// A count in <see cref="ExpectedIgnixaConverterPipelineSkips"/> that falls while every pair here still
+    /// resolves to nothing is the other cause: the corpus stopped generating the shape, so coverage was
+    /// lost rather than a gap closed. The corpus test checks that every element type named by a
+    /// <c>FhirElementTypeNotSupported</c> row appears here, so a row cannot be deleted from the pin without
+    /// also deleting the claim that its gap is still open.
     /// </remarks>
     public static IReadOnlyList<(string FhirType, SearchParamType ParameterType)> UnconvertedPairs { get; } =
     [
         // The #430 canonical divergence: registered against UriSearchValue, never ReferenceSearchValue.
         ("canonical", SearchParamType.Reference),
 
-        // MessageHeader-event is Token, and its R6 element is a canonical, so it is a second canonical
-        // gap rather than a case of the one above. It was covered by (canonical, Reference) only because
-        // the check that reads this list used to match on the element type and discard the parameter
-        // type - which meant a token converter for canonical would have closed a gap nothing here
-        // claimed, and made the row vanish silently.
+        // MessageHeader-event is Token and its R6 element is a canonical, so this is a second canonical
+        // gap rather than a case of the one above. The check that reads this list matches on the parameter
+        // type as well as the element type, so closing one cannot silently make the other's row vanish.
         ("canonical", SearchParamType.Token),
 
         // Backbone types the element model hands to a leaf-typed parameter. Neither codebase has a
@@ -293,22 +260,13 @@ internal static class ResourceBackedKnownDivergences
     /// sweep.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The index half asserted that its divergences were classified and its failure sites pinned.
-    /// Neither says how much was compared, so a change that halved the entries every parameter
-    /// produced satisfied both - the same defect class as an agreement count derived by subtraction,
-    /// one level up and in the half that runs the production indexer over every resource in the
-    /// corpus. A floor rather than an exact pin, for the reason given on
-    /// <see cref="MinimumAgreementsOnValues"/>: it can only be satisfied by holding or gaining
-    /// evidence.
-    /// </para>
-    /// <para>
-    /// Applied to each engine separately rather than to the total, because a total is satisfied by one
-    /// side growing while the other collapses. The two currently sit at 10,745 Firely and 10,756
-    /// Ignixa - the eleven-entry gap is the 11 divergent resources - so the floor is the lower of them.
-    /// Raised from 10,743 when repairing the STU3 Observation composite component references let both
-    /// indexers emit composites they had both been dropping.
-    /// </para>
+    /// The index half asserted that its divergences were classified and its failure sites pinned; neither
+    /// says how much was compared, so halving the entries every parameter produced satisfied both. A floor
+    /// rather than an exact pin, for the reason on <see cref="MinimumAgreementsOnValues"/>. Applied per
+    /// engine rather than to the total, because a total is satisfied by one side growing while the other
+    /// collapses: the two sit at 10,745 Firely and 10,756 Ignixa - the gap is the 11 divergent resources -
+    /// so the floor is the lower. Raised from 10,743 when repairing the STU3 Observation composite
+    /// component references let both indexers emit composites they had both been dropping.
     /// </remarks>
     public const int MinimumIndexEntriesComparedPerEngine = 10745;
 
@@ -330,24 +288,19 @@ internal static class ResourceBackedKnownDivergences
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is legitimate agreement - a search parameter expression that matches nothing on a resource
-    /// is the common case - but it is agreement on absence, so it is much weaker evidence than a
-    /// matched value and it is invisible to every divergence-based assertion. Pinning it exactly means
-    /// the composition of the sweep cannot drift silently: 9,453 of 19,647 evaluations agree on empty;
-    /// the remaining 10,194 compare real values, of which 10,074 agree and 120 are the pinned
-    /// divergences. If an engine change moves this number the pin has to be updated deliberately, with
-    /// the shift understood, rather than absorbed into an unchanged divergence count.
+    /// Legitimate agreement, but agreement on absence: much weaker evidence than a matched value, and
+    /// invisible to every divergence-based assertion. Pinned exactly so the composition of the sweep cannot
+    /// drift silently - 9,453 of 19,647 evaluations agree on empty; the remaining 10,194 compare real
+    /// values, of which 10,074 agree and 120 are the pinned divergences.
     /// </para>
     /// <para>
-    /// Most of what this pin measures is the corpus, not either engine. Of the 9,453, 5,888 (62.3%)
-    /// come from 311 expressions that are never non-empty anywhere in the sweep -
-    /// <c>Resource.meta.profile</c>, <c>Resource.meta.security</c> and <c>Resource.meta.tag</c> at 788
-    /// each, <c>Resource.meta.source</c> at 658, <c>Resource.language</c> at 345 - and only 3,565
-    /// (37.7%) come from expressions that do produce values somewhere. The likeliest cause of this
-    /// number moving is therefore a corpus or <c>SchemaBasedFhirResourceFaker</c> density change, which
-    /// says nothing about conformance: check that direction first, and re-pin only once you can say
-    /// which of the two moved. <see cref="MinimumAgreementsOnValues"/>, not this, is the assertion that
-    /// carries the conformance claim.
+    /// Most of what this measures is the corpus, not either engine: 5,888 of the 9,453 come from 311
+    /// expressions that are never non-empty anywhere in the sweep (<c>Resource.meta.profile</c>,
+    /// <c>.security</c> and <c>.tag</c> at 788 each, <c>.source</c> at 658, <c>Resource.language</c> at
+    /// 345). A corpus or <c>SchemaBasedFhirResourceFaker</c> density change is therefore the likeliest
+    /// cause of this number moving, and says nothing about conformance - check that direction first and
+    /// re-pin only once you can say which of the two moved. <see cref="MinimumAgreementsOnValues"/>
+    /// carries the conformance claim, not this.
     /// </para>
     /// </remarks>
     public const int ExpectedBothEmpty = 9453;
@@ -357,20 +310,12 @@ internal static class ResourceBackedKnownDivergences
     /// bucket that is positive evidence the two agree.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <see cref="ExpectedBothThrew"/> and <see cref="ExpectedBothEmpty"/> pin the agreements that
-    /// establish nothing, and <see cref="ExpectedSelectCounts"/> pins the disagreements. None of them
-    /// floors the evidence base, so today's 10,074 value agreements could halve, <see cref="ExpectedBothEmpty"/>
-    /// could be raised to absorb the difference, and every other assertion here would still pass on half
-    /// the evidence.
-    /// </para>
-    /// <para>
-    /// A floor rather than an exact pin, because the two are not equally safe to update. An exact pin is
-    /// satisfied by any number that has been written down, so losing evidence and gaining it both look
-    /// like a re-pin and neither prompts a question. A floor can only be satisfied by holding or gaining
-    /// evidence: raise it when the sweep genuinely covers more, and never lower it to accommodate a
-    /// regression, because a number below this one is the finding rather than the maintenance.
-    /// </para>
+    /// The other pins do not floor the evidence base: the value agreements could halve,
+    /// <see cref="ExpectedBothEmpty"/> be raised to absorb the difference, and every other assertion still
+    /// pass on half the evidence. A floor rather than an exact pin because an exact pin is satisfied by any
+    /// number that has been written down, so losing evidence and gaining it look alike; a floor can only be
+    /// satisfied by holding or gaining evidence. Raise it when the sweep genuinely covers more; never lower
+    /// it to accommodate a regression.
     /// </remarks>
     public const int MinimumAgreementsOnValues = 10074;
 

@@ -19,21 +19,13 @@ namespace Ignixa.FhirPath.Phase3.Stu3.Tests;
 /// unrelated reasons and now fails on one.
 /// </summary>
 /// <remarks>
-/// <para>
-/// This was the corpus's clearest demonstration that final index equality can give a false answer.
-/// Firely dropped the composite because the shipped date component casts with a capitalised
-/// <c>DateTime</c> and Firely resolves that to <c>System.DateTime</c>; Ignixa selected the date
-/// successfully but its own indexer dropped the same composite because STU3 publishes no
-/// <c>Observation-code</c> for the code component to resolve against. Two independent failures, one
-/// identical empty result, and an index-only comparison reporting agreement.
-/// </para>
-/// <para>
-/// The component reference is now repaired - STU3 publishes that parameter under the multi-resource
-/// <c>clinical-code</c> URL - so Ignixa emits the composite and Firely still does not. The evaluator
-/// divergence that was always there is now visible in the index too, which is the outcome the
-/// double-empty case argued for: comparing <c>Select</c> exposed it before the second failure erased
-/// it, and removing the second failure leaves it exposed without needing the argument.
-/// </para>
+/// The corpus's clearest demonstration that final index equality can give a false answer: Firely dropped
+/// this composite because the shipped date component casts with a capitalised <c>DateTime</c>, while
+/// Ignixa selected the date successfully but dropped the same composite because STU3 publishes no
+/// <c>Observation-code</c> for the code component. Two independent failures, one identical empty result,
+/// and an index-only comparison reporting agreement. The component reference is now repaired - STU3
+/// publishes that parameter under the multi-resource <c>clinical-code</c> URL - so Ignixa emits the
+/// composite and Firely still does not, leaving the evaluator divergence visible in the index too.
 /// </remarks>
 public class Stu3CompositeComponentRepairTests
 {

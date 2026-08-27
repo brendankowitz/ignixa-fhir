@@ -358,18 +358,12 @@ public sealed record AnalysisContext
     /// </summary>
     /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
     /// <remarks>
-    /// <para>
-    /// Forwards <see langword="true"/> to the internal <paramref name="name"/>-and-spelling overload, matching
-    /// its sibling <see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/>:
-    /// a caller reaching this arity has only a name, not a parsed reference, and the <c>vs-</c>/<c>ext-</c> prefix alone
-    /// is enough to type it as a string.
-    /// </para>
-    /// <para>
-    /// A caller that has parsed the reference and knows its spelling should use
-    /// <see cref="FhirPathAnalyzer"/>'s handling instead, which reads the expression's own
-    /// <see cref="Expressions.VariableRefExpression.IsDelimited"/> and resolves through the internal overload
-    /// directly.
-    /// </para>
+    /// Forwards <see langword="true"/> to the internal spelling-aware overload, matching its sibling
+    /// <see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/>: a caller
+    /// reaching this arity has only a name, not a parsed reference, and the prefix alone is enough to type
+    /// it as a string. A caller that has the parsed reference should resolve through
+    /// <see cref="FhirPathAnalyzer"/>, which reads
+    /// <see cref="Expressions.VariableRefExpression.IsDelimited"/>.
     /// </remarks>
     public FhirPathTypeSet? ResolveVariable(string name)
         => ResolveVariable(name, isDelimited: true);
@@ -385,21 +379,18 @@ public sealed record AnalysisContext
     /// <remarks>
     /// <para>
     /// Internal: <paramref name="isDelimited"/> mirrors <see cref="Expressions.VariableRefExpression.IsDelimited"/>,
-    /// an engine-internal parse artifact rather than part of the published analysis contract. Its callers are
-    /// <see cref="FhirPathAnalyzer"/>, which has the parsed reference and so knows the spelling, and the public
-    /// one-argument overload above, which does not and forwards <see langword="true"/>. Both are in this
-    /// assembly, which is why they can see it; <c>InternalsVisibleTo</c> is what additionally lets
-    /// <c>Ignixa.SqlOnFhir</c>, <c>Ignixa.Search</c> and the test assemblies reach it.
+    /// an engine-internal parse artifact rather than part of the published analysis contract. Its callers
+    /// are <see cref="FhirPathAnalyzer"/>, which has the parsed reference and so knows the spelling, and
+    /// the public one-argument overload above, which does not and forwards <see langword="true"/>.
     /// </para>
     /// <para>
-    /// The <c>%`vs-…`</c> and <c>%`ext-…`</c> families are recognised by shape rather than enumerated, matching
-    /// <see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>: the
-    /// FHIR profile of FHIRPath defines one for every ValueSet and extension in the specification, and reporting the rest as
-    /// undefined would make the analyzer stricter than the engine instead of agreeing with it. The shape test
-    /// itself lives in <see cref="StandardConstantFamilies"/>, the same one <c>EvaluationContext.GetStandardConstant</c>
-    /// uses, so a bare <c>%vs-mine</c> - or a delimited but suffix-empty <c>%`vs-`</c> - is reported undefined
-    /// here for the same reason the engine throws on it, rather than by a second copy of the same rule that can
-    /// drift from the first.
+    /// The families are recognised by shape rather than enumerated, matching
+    /// <see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>:
+    /// the FHIR profile of FHIRPath defines one for every ValueSet and extension in the specification, and
+    /// reporting the rest as undefined would make the analyzer stricter than the engine. The shape test
+    /// lives in <see cref="StandardConstantFamilies"/>, so a bare <c>%vs-mine</c> - or a delimited but
+    /// suffix-empty <c>%`vs-`</c> - is reported undefined here for the same reason the engine throws on
+    /// it, rather than by a second copy of the rule that can drift.
     /// </para>
     /// </remarks>
     internal FhirPathTypeSet? ResolveVariable(string name, bool isDelimited)

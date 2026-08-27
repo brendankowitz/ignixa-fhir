@@ -306,21 +306,13 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
     /// <see cref="ResourceBackedKnownDivergences.UnconvertedPairs"/>; empty when it is.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Keyed on the <em>pair</em>, because that is what <c>UnconvertedPairs</c> is keyed on and what the
-    /// converter manager is keyed on. Matching the element type alone let one claim answer for a gap it
-    /// says nothing about: <c>MessageHeader-event</c> is <c>Token</c>, so its gap is
-    /// <c>(canonical, Token)</c> - which nothing claimed - and the row passed on the strength of
-    /// <c>(canonical, Reference)</c>. Declaring <c>canonical</c> on a token converter then made that row
-    /// disappear while this assertion, the one the count messages send a reader to, stayed green.
-    /// </para>
-    /// <para>
-    /// The parameter's type is resolved in the version the failure happened in rather than across all of
-    /// them, because a URL is not one search parameter. <c>StructureDefinition-base</c> is <c>Uri</c> in
-    /// one version and <c>Reference</c> in another, and only the second ever hands the indexer a
-    /// <c>canonical</c>; demanding a claim for every version would demand <c>(canonical, Uri)</c>, which
-    /// Ignixa converts perfectly well.
-    /// </para>
+    /// Keyed on the <em>pair</em>, because that is what <c>UnconvertedPairs</c> and the converter manager
+    /// are keyed on. Matching the element type alone let one claim answer for a gap it says nothing about:
+    /// <c>MessageHeader-event</c> is <c>Token</c>, so its gap is <c>(canonical, Token)</c> - unclaimed -
+    /// yet the row passed on the strength of <c>(canonical, Reference)</c>. The parameter's type is
+    /// resolved in the version the failure happened in, because a URL is not one search parameter:
+    /// <c>StructureDefinition-base</c> is <c>Uri</c> in one version and <c>Reference</c> in another, and
+    /// only the second hands the indexer a <c>canonical</c>.
     /// </remarks>
     private static IEnumerable<string> Unclaimed(
         FhirVersion version,

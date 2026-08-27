@@ -720,8 +720,7 @@ public class SqlOnFhirEvaluatorTests
         string expression, string expectedUri)
     {
         // Issue #438: no declared constant covers "vs-mine" or "ext-mine", so this exercises
-        // ValidateConstantReferences' exemption for both prefixes - previously only "vs-" was exempted -
-        // and confirms the ViewDefinition validates and the value resolves to the expected FHIR URI.
+        // ValidateConstantReferences' exemption for both prefixes - previously only "vs-" was exempted.
         // The delimited spelling is the one the exemption covers, because it is the only one the engine
         // expands; the bare spelling is pinned as rejected by the test below.
         var patientJson = new Dictionary<string, object?>
@@ -754,13 +753,10 @@ public class SqlOnFhirEvaluatorTests
     public void GivenAViewDefinitionSelectingABarePrefixedConstant_WhenEvaluated_ThenItIsRejectedAsUndeclared(
         string expression)
     {
-        // #438 review. The exemption above is spelling-sensitive, and it has to be: EvaluationContext
-        // expands %`vs-x` / %`ext-x` and not %vs-x, following the FHIR profile of FHIRPath (which writes both
-        // families quoted, "to allow '-' in the name") and HAPI, which tests startsWith("%`vs-") before
-        // expanding. If validation exempted the bare spelling anyway, the ViewDefinition would parse and then
-        // fail during evaluation with "undefined environment variable", which is a worse report of the same
-        // problem. Rejecting it here says what is actually wrong: it is an ordinary constant name, and
-        // ordinary constant names must be declared.
+        // The exemption is spelling-sensitive and has to be: EvaluationContext expands %`vs-x` and not
+        // %vs-x, following the FHIR profile of FHIRPath and HAPI. Exempting the bare spelling would let the
+        // ViewDefinition parse and then fail at evaluation with "undefined environment variable"; rejecting
+        // it here says what is actually wrong - an ordinary constant name that must be declared.
         var patientJson = new Dictionary<string, object?>
         {
             { "resourceType", "Patient" },
@@ -791,14 +787,10 @@ public class SqlOnFhirEvaluatorTests
     public void GivenAViewDefinitionSelectingADelimitedEmptySuffixConstant_WhenEvaluated_ThenItIsRejectedAsUndeclared(
         string expression, string expectedName)
     {
-        // PR #442 final review (F4). The exemption above requires the delimited spelling AND a non-empty
-        // suffix - StandardConstantFamilies.IsPrefixedConstant, the same rule EvaluationContext.GetStandardConstant
-        // uses - because a bare prefix with nothing after it is not a ValueSet/StructureDefinition reference.
-        // Before this fix, ValidateConstantReferences matched on prefix and delimiter alone: it exempted
-        // "%`vs-`"/"%`ext-`" from the undeclared-constant check, the ViewDefinition validated clean, and
-        // evaluation then threw "undefined environment variable: vs-"/"ext-" - the same failure shape the
-        // bare-spelling test above pins as unacceptable, now reproduced through the delimited spelling
-        // instead. This must be rejected here, at validation, exactly like the bare form.
+        // The exemption requires the delimited spelling AND a non-empty suffix, via
+        // StandardConstantFamilies.IsPrefixedConstant - the same rule GetStandardConstant uses. Matching
+        // on prefix and delimiter alone let "%`vs-`" validate clean and then throw "undefined environment
+        // variable: vs-" at evaluation, the same failure shape the bare-spelling test above rejects.
         var patientJson = new Dictionary<string, object?>
         {
             { "resourceType", "Patient" },
@@ -830,14 +822,10 @@ public class SqlOnFhirEvaluatorTests
     public void GivenAPredefinedVariableName_WhenOverriddenWithNoDeclaredConstant_ThenItBindsAsAString(
         string predefinedName, string defaultUri)
     {
-        // Three of several names that genuinely reach the variable loop with no constant to inherit from.
-        // ValidateConstantReferences exempts context, resource, rootResource, ucum, sct, loinc, rowIndex,
-        // and the delimited vs- and ext- prefix families - but of those, context/resource/rootResource are
-        // answered by TryGetEnvironmentVariable's switch before it consults caller variables, and rowIndex
-        // is re-injected afterwards and wins. ucum/sct/loinc and every %`vs-*`/%`ext-*` name do reach this
-        // loop untyped; these three are pinned here, and
-        // GivenAViewDefinitionSelectingAStandardPrefixedConstant above covers vs-*/ext-* resolving
-        // without an override.
+        // Three of the names that genuinely reach the variable loop with no constant to inherit from.
+        // ucum/sct/loinc and every %`vs-*`/%`ext-*` name do; context/resource/rootResource and rowIndex do
+        // not - see SqlOnFhirEvaluationVisitor. vs-*/ext-* resolving without an override is covered by
+        // GivenAViewDefinitionSelectingAStandardPrefixedConstant above.
         //
         // System.String is the right answer for them, not a gap. FHIRPath defines %ucum, %sct and
         // %loinc as fixed URIs, so a caller-supplied string is already correctly typed - and the engine
@@ -945,12 +933,9 @@ public class SqlOnFhirEvaluatorTests
     public void GivenAnEngineManagedVariableName_WhenSuppliedByTheCaller_ThenTheCallIsRejected(string name)
     {
         // Issue #439: these four names are answered by the engine before a caller-supplied variable is
-        // ever consulted - context/resource/rootResource are intercepted by
-        // EvaluationContext.TryGetEnvironmentVariable's switch, and rowIndex is re-injected by
-        // SqlOnFhirEvaluationVisitor after the variables loop and always wins. Passing any of them today
-        // is accepted and silently discarded: no error, no effect. That is worse than rejecting outright,
-        // so SqlOnFhirEvaluator - the layer that hands the engine variables it cannot honour - now rejects
-        // the call instead of pretending the value was used.
+        // consulted - context/resource/rootResource by EvaluationContext.TryGetEnvironmentVariable's
+        // switch, rowIndex by SqlOnFhirEvaluationVisitor re-injecting it afterwards. Passing any of them
+        // used to be accepted and silently discarded, so SqlOnFhirEvaluator now rejects the call.
         var patientJson = new Dictionary<string, object?>
         {
             { "resourceType", "Patient" },

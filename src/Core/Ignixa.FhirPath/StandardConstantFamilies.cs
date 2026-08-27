@@ -15,11 +15,10 @@ namespace Ignixa.FhirPath;
 /// Three call sites need this exact question answered - <see cref="Evaluation.EvaluationContext"/> to
 /// resolve the value, <see cref="Analysis.AnalysisContext"/> to type the reference, and
 /// <c>Ignixa.SqlOnFhir.Parsing.ViewDefinitionExpressionParser</c> to exempt it from "must be a defined
-/// constant" - and PR #442's final review found the three had drifted: two of them accepted an empty
-/// suffix (<c>%`vs-`</c>, <c>%`ext-`</c>) that the third rejects, so an expression could pass analysis
-/// or SQL-on-FHIR validation clean and then throw "undefined environment variable" at evaluation - the
-/// exact failure shape this branch exists to remove. Each site now asks this class instead of repeating
-/// the prefix-and-length test, so there is one place left to get it right.
+/// constant" - and independently re-deriving it let them drift: two accepted an empty suffix
+/// (<c>%`vs-`</c>, <c>%`ext-`</c>) that the third rejected, so an expression could pass analysis or
+/// SQL-on-FHIR validation clean and then throw "undefined environment variable" at evaluation. Each site
+/// asks this class instead of repeating the prefix-and-length test.
 /// </remarks>
 internal static class StandardConstantFamilies
 {
@@ -29,15 +28,11 @@ internal static class StandardConstantFamilies
     private const string ExtensionUrlBase = "http://hl7.org/fhir/StructureDefinition/";
 
     /// <summary>
-    /// Whether <paramref name="name"/> is a reference into the <c>vs-</c> or <c>ext-</c> family: the
-    /// backtick-delimited spelling (<paramref name="isDelimited"/>), the matching prefix, and at least
-    /// one character of suffix after it. A bare prefix with nothing after it - <c>%`vs-`</c> - is not a
-    /// reference to any ValueSet and does not match.
+    /// Whether <paramref name="name"/> is a reference into the <c>vs-</c> or <c>ext-</c> family: delimited
+    /// spelling, matching prefix, and at least one character of suffix. A bare prefix - <c>%`vs-`</c> - is
+    /// not a reference to any ValueSet and does not match. Defined as "resolves to a URL" rather than
+    /// re-derived, so the recogniser and the expansion cannot disagree.
     /// </summary>
-    /// <remarks>
-    /// Defined as "resolves to a URL", not re-derived alongside it, so the recogniser and the expansion
-    /// cannot disagree about what counts as a member of these families.
-    /// </remarks>
     public static bool IsPrefixedConstant(string name, bool isDelimited)
         => TryResolveCanonicalUrl(name, isDelimited, out _);
 
@@ -52,9 +47,7 @@ internal static class StandardConstantFamilies
     /// The two URL bases live here rather than at the evaluator's call site because they are the other
     /// half of the same rule: the FHIR profile of FHIRPath defines <c>%`vs-[name]`</c> and
     /// <c>%`ext-[name]`</c> as shorthands <em>for these URLs</em>. Splitting the naming test from the
-    /// expansion is the smaller version of the drift this class was added to remove - a clause added to
-    /// one and not the other would let a name be recognised as a family member and then expand to
-    /// nothing, or the reverse.
+    /// expansion would let a name be recognised as a family member and then expand to nothing.
     /// </remarks>
     public static bool TryResolveCanonicalUrl(string name, bool isDelimited, out string? url)
     {

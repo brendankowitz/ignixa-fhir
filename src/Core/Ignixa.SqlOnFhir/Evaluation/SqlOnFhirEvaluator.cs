@@ -22,17 +22,15 @@ namespace Ignixa.SqlOnFhir.Evaluation;
 public class SqlOnFhirEvaluator
 {
     // context, resource and rootResource are answered by EvaluationContext.TryGetEnvironmentVariable's
-    // switch before it ever consults a caller-supplied variable; rowIndex is re-injected by
-    // SqlOnFhirEvaluationVisitor after the variables loop and always wins. A variables entry using one of
-    // these names has never had any effect - it was accepted and silently discarded. That silence is the
-    // bug (issue #439): reject the call instead of pretending the value was honoured.
+    // switch before it consults a caller-supplied variable, and rowIndex is re-injected by
+    // SqlOnFhirEvaluationVisitor afterwards and always wins. A variables entry using one of these names
+    // was accepted and silently discarded; that silence is the bug (issue #439).
     //
-    // One of three overlapping reserved-name lists that answer different questions - do not merge them.
-    // This one is "a caller may not supply this as a variable".
-    // ViewDefinitionExpressionParser's method-local predefinedVariables is "needs no constant declaration
-    // in a ViewDefinition". Ignixa.FhirPath.DefineVariableRules.ReservedVariableNames is
-    // "defineVariable() may not claim this name". A name added to one usually belongs in none of the
-    // others; check all three anyway.
+    // One of three overlapping reserved-name lists answering different questions - do not merge them.
+    // This one is "a caller may not supply this as a variable"; ViewDefinitionExpressionParser's
+    // predefinedVariables is "needs no constant declaration in a ViewDefinition";
+    // Ignixa.FhirPath.DefineVariableRules.ReservedVariableNames is "defineVariable() may not claim this
+    // name". A name added to one usually belongs in none of the others; check all three anyway.
     private static readonly FrozenSet<string> EngineManagedVariableNames =
         new[] { "context", "resource", "rootResource", "rowIndex" }.ToFrozenSet(StringComparer.Ordinal);
 
@@ -116,13 +114,11 @@ public class SqlOnFhirEvaluator
     /// Rejects a <paramref name="variables"/> entry whose name the engine manages itself.
     /// </summary>
     /// <remarks>
-    /// Checked here, at the public boundary, and before the try/catch below: doing it inside
-    /// <c>CreateEvaluationContext</c> would let the general <c>catch (Exception ex)</c> rewrap this as an
-    /// <see cref="InvalidOperationException"/> saying evaluation "failed", burying both the exception type
-    /// and the reason a caller needs to fix their own input. This is the only method in the class that
-    /// binds caller-supplied variables into an evaluation - <see cref="Evaluate"/> forwards to
-    /// <see cref="EvaluateBatch"/> rather than duplicating the check - so there is nowhere else a
-    /// <paramref name="variables"/> entry can enter unchecked.
+    /// Checked at the public boundary and before the try/catch below: inside
+    /// <c>CreateEvaluationContext</c> the general <c>catch (Exception ex)</c> would rewrap it as an
+    /// <see cref="InvalidOperationException"/> saying evaluation "failed", burying the reason a caller
+    /// needs to fix their own input. <see cref="Evaluate"/> forwards to <see cref="EvaluateBatch"/>, so
+    /// this is the only entry point where a <paramref name="variables"/> entry can arrive.
     /// </remarks>
     private static void ValidateVariables(IReadOnlyDictionary<string, string>? variables)
     {

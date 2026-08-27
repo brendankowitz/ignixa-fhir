@@ -12,16 +12,15 @@ namespace Ignixa.Search.Tests.Definition;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A composite whose component cannot be resolved indexes nothing, and the search that uses it
-/// returns an empty bundle with HTTP 200. That is indistinguishable from "no matches" at the API, and
-/// it was invisible to the resource-backed parity corpus for a structural reason: the corpus hands
-/// one definition manager to both of its indexers, so both sides drop the same composite and the
-/// entry-list comparison scores it as agreement.
+/// A composite whose component cannot be resolved indexes nothing, and the search that uses it returns an
+/// empty bundle with HTTP 200 - indistinguishable from "no matches" at the API. It was invisible to the
+/// resource-backed parity corpus for a structural reason: that corpus hands one definition manager to
+/// both of its indexers, so both sides drop the same composite and the comparison scores it as agreement.
 /// </para>
 /// <para>
-/// This census reads the production definition manager directly instead. Every component either
-/// resolves or is named in <see cref="KnownCompositeComponentDivergences"/> with a reason, and the
-/// table is checked against live state in both directions so it cannot outlive what it describes.
+/// This census reads the production definition manager directly instead. Every component either resolves
+/// or is named in <see cref="KnownCompositeComponentDivergences"/> with a reason, and the table is checked
+/// against live state in both directions so it cannot outlive what it describes.
 /// </para>
 /// </remarks>
 public class CompositeComponentCensusTests
@@ -94,7 +93,7 @@ public class CompositeComponentCensusTests
     /// <summary>
     /// Each entry claims the definition URL is absent from the shipped definitions. Checking that
     /// separately from resolution keeps the reason honest: a component could stop resolving for a
-    /// different cause, and the entry would then be describing something that is no longer true.
+    /// different cause, leaving the entry describing something no longer true.
     /// </summary>
     [Theory]
     [MemberData(nameof(Versions))]
@@ -117,17 +116,15 @@ public class CompositeComponentCensusTests
     }
 
     /// <summary>
-    /// Every reason has to say something this entry's own. An entry reduced to a placeholder documents
-    /// nothing and turns the table back into a suppression list.
+    /// Every reason has to say something this entry's own; an entry reduced to a placeholder turns the
+    /// table back into a suppression list.
     /// </summary>
     /// <remarks>
-    /// Measured after stripping <see cref="KnownCompositeComponentDivergences.SharedPreambles"/>, which
-    /// is what makes this able to fail at all. Every entry interpolates one of those preambles, each
-    /// around 140 characters, so an earlier revision measuring <c>Reason</c> whole handed every entry
-    /// more than the entire 80-character budget before it said anything of its own: reducing eleven
-    /// entries to nothing but their preamble left it green. Measured own-lengths across the 31 entries
-    /// run 59 to 497, so the floor is set at 50 - below the shortest, so a rewording does not redden it,
-    /// and far above a placeholder.
+    /// Measured after stripping <see cref="KnownCompositeComponentDivergences.SharedPreambles"/>, which is
+    /// what makes this able to fail at all: each preamble is around 140 characters, so measuring
+    /// <c>Reason</c> whole gave every entry more than the budget before it said anything of its own. Own
+    /// lengths across the 31 entries run 59 to 497, so the floor sits at 50 - below the shortest, and far
+    /// above a placeholder.
     /// </remarks>
     [Fact]
     public void GivenTheDivergenceTable_WhenCensused_ThenEveryReasonIsSubstantive()
@@ -157,9 +154,9 @@ public class CompositeComponentCensusTests
     }
 
     /// <summary>
-    /// Every repair must still be needed and must still land somewhere. A repair whose target URL is
-    /// itself unpublished would silently do nothing, and one whose source URL the specification has
-    /// since published is dead weight that hides a real change in the data.
+    /// Every repair must still be needed and must still land somewhere: a repair whose target URL is
+    /// itself unpublished silently does nothing, and one whose source URL has since been published is
+    /// dead weight hiding a real change in the data.
     /// </summary>
     [Fact]
     public void GivenTheRepairTable_WhenCensused_ThenEveryRepairIsStillNeededAndStillLands()
@@ -244,12 +241,10 @@ public class CompositeComponentCensusTests
     /// Every composite component <paramref name="version"/> ships that resolves to nothing.
     /// </summary>
     /// <remarks>
-    /// Eager, deliberately. The <see cref="MinimumComposites"/> floor is the guard that stops this census
-    /// passing on an empty enumeration, and as the last statement of a lazy iterator it ran only for a
-    /// caller that enumerated to the end. Every caller does today, so it fires; one written with
-    /// <c>Any()</c> or <c>First()</c> would skip it in silence, which is exactly the pass-by-being-skipped
-    /// AGENTS.md asks guards not to permit. Materialising first puts the floor ahead of any result being
-    /// handed out at all, so no call shape can get past it.
+    /// Eager, deliberately: the <see cref="MinimumComposites"/> floor is what stops this census passing on
+    /// an empty enumeration, and as the last statement of a lazy iterator it would run only for a caller
+    /// that enumerated to the end - a caller written with <c>Any()</c> or <c>First()</c> would skip it in
+    /// silence. Materialising first puts the floor ahead of any result being handed out.
     /// </remarks>
     private static IReadOnlyList<CompositeComponentSite> Unresolved(FhirVersion version)
     {

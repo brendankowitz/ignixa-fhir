@@ -82,12 +82,11 @@ public class Issue406RegressionTests
     [InlineData("%ext-patient-birthTime")]
     public void GivenBareSpecificationConstant_WhenAnalyzed_ThenReportsItUndefinedLikeTheEngine(string expression)
     {
-        // #438 review. The analyzer recognises the vs-/ext- families by shape so it does not have to
-        // enumerate several hundred names, but it must recognise them on the same terms the engine resolves
-        // them on - only the backtick spelling, per the FHIR profile of FHIRPath and HAPI. An analyzer that
-        // accepted the bare spelling would report clean and then let evaluation throw, which is worse than
-        // either being consistently strict or consistently lenient. The name in the message is the whole
-        // hyphenated one, which is what #438's lexer fix buys.
+        // The analyzer recognises the vs-/ext- families by shape rather than enumerating several hundred
+        // names, but has to recognise them on the same terms the engine resolves them on - the backtick
+        // spelling only. An analyzer that accepted the bare spelling would report clean and then let
+        // evaluation throw. The name in the message is the whole hyphenated one, which #438's lexer fix
+        // is what buys.
         var analyzer = new FhirPathAnalyzer(FhirVersion.R5.GetSchemaProvider());
 
         var result = analyzer.Analyze(expression, "Patient");
@@ -101,12 +100,10 @@ public class Issue406RegressionTests
     public void GivenDelimitedEmptySuffixConstant_WhenAnalyzed_ThenReportsItUndefinedLikeTheEngine(
         string expression, string expectedName)
     {
-        // PR #442 final review (F4). GetStandardConstant requires a non-empty suffix - name.Length > 3 for
-        // "vs-", > 4 for "ext-" - so %`vs-` and %`ext-` are not ValueSet/StructureDefinition references at
-        // evaluation; they throw "undefined environment variable: vs-"/"ext-". Before this fix
-        // ResolveVariable matched on prefix alone and reported these clean, which is exactly the mismatch
-        // this branch exists to remove: the analyzer silent, the engine throwing. Both now ask
-        // StandardConstantFamilies, which requires the same non-empty suffix.
+        // GetStandardConstant requires a non-empty suffix, so %`vs-` and %`ext-` are not
+        // ValueSet/StructureDefinition references at evaluation - they throw "undefined environment
+        // variable: vs-". ResolveVariable used to match on prefix alone and report them clean: analyzer
+        // silent, engine throwing. Both now ask StandardConstantFamilies.
         var analyzer = new FhirPathAnalyzer(FhirVersion.R5.GetSchemaProvider());
 
         var result = analyzer.Analyze(expression, "Patient");
@@ -120,21 +117,14 @@ public class Issue406RegressionTests
     public void GivenTheOneArgumentOverload_WhenResolvingAPrefixedConstant_ThenItAnswersAsItDidBeforeTheFlagExisted(
         string name)
     {
-        // PR #442 standards review, P1/P2. ResolveVariable gained an isDelimited parameter. Adding it as an
-        // optional parameter rather than an overload would have removed ResolveVariable(string) from the
-        // assembly's metadata, so a consumer compiled against the published package would have thrown
-        // MissingMethodException without recompiling; the one-argument form is therefore a real overload.
-        // It forwards isDelimited: true, matching its sibling
-        // EvaluationContext.TryGetEnvironmentVariable(string, out object?) and preserving what a
-        // one-argument call returned before the flag existed - the prefix alone was enough. The spelling
-        // still decides for a caller that knows it, which the two-argument assertion below pins.
+        // ResolveVariable(string) is a real overload, not an optional parameter: an optional parameter
+        // would remove that signature from the assembly's metadata, and a consumer compiled against the
+        // published package would throw MissingMethodException without recompiling. It forwards
+        // isDelimited: true, preserving what a one-argument call returned before the flag existed.
         //
-        // The metadata claim is asserted against metadata, not against a call. An earlier revision of this
-        // comment said the calls below were what fails if someone collapses the two into one optional
-        // parameter; they are not, and that was reproduced - deleting ResolveVariable(string) and rewriting
-        // the other as ResolveVariable(string name, bool isDelimited = true) left this test passing 2/2.
-        // Overload-versus-default is invisible at source level, which is the whole reason the distinction
-        // matters to an already-compiled consumer.
+        // The claim is asserted against metadata rather than against a call, because overload-versus-
+        // default is invisible at source level: collapsing the two into one optional parameter was
+        // reproduced and left the calls below passing 2/2.
         typeof(AnalysisContext)
             .GetMethod(nameof(AnalysisContext.ResolveVariable), [typeof(string)])
             .ShouldNotBeNull(

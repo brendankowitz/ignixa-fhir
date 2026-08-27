@@ -506,10 +506,8 @@ public static class ViewDefinitionExpressionParser
         var definedConstants = constants.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
 
         // Collect all variable references from all FHIRPath expressions. The spelling travels with the name
-        // because it decides whether the vs-/ext- exemption below applies - see GetStandardConstant.
-        // Still ordinal, like definedConstants above and predefinedVariables below: a tuple key cannot take
-        // a StringComparer, and ValueTuple's equality uses EqualityComparer<string>.Default, which is
-        // ordinal. Saying so keeps the intent visible now that the type no longer carries it.
+        // because it decides whether the vs-/ext- exemption below applies. Still ordinal: a tuple key cannot
+        // take a StringComparer, and ValueTuple equality uses EqualityComparer<string>.Default.
         var referencedVariables = new HashSet<(string Name, bool IsDelimited)>();
 
         // Check WHERE clauses
@@ -539,17 +537,14 @@ public static class ViewDefinitionExpressionParser
 
         foreach (var (varName, isDelimited) in referencedVariables)
         {
-            // Skip predefined variables and the vs-/ext- prefix families. The FHIR profile of FHIRPath
-            // defines both (%`vs-[name]` -> ValueSet URI, %`ext-[name]` -> extension URI) the same way, so
-            // exempting only "vs-" here was an asymmetry (issue #438). Both are exempted only in the
-            // backtick-delimited spelling, because that is the only spelling the engine expands - a bare
-            // %vs-x is an ordinary constant name and has to be declared like any other, which is what HAPI
-            // does with it too. Exempting the bare form here while the engine refuses to resolve it would
-            // move the failure from a clear parse-time "undefined constant" to an evaluation-time
-            // "undefined environment variable", which is strictly worse. The prefix-and-suffix test is
-            // StandardConstantFamilies.IsPrefixedConstant, the same rule EvaluationContext.GetStandardConstant
-            // and AnalysisContext.ResolveVariable use, so an empty suffix (%`vs-`) is rejected here exactly
-            // as it is at those two - not by a third copy of the rule that can silently stop matching theirs.
+            // Skip predefined variables and the vs-/ext- prefix families, which the FHIR profile of
+            // FHIRPath defines identically (%`vs-[name]` -> ValueSet URI, %`ext-[name]` -> extension URI);
+            // exempting only "vs-" was an asymmetry (#438). Both are exempted only in the delimited
+            // spelling, because that is the only spelling the engine expands - exempting the bare form here
+            // would move the failure from a clear parse-time "undefined constant" to an evaluation-time
+            // "undefined environment variable". The test is StandardConstantFamilies.IsPrefixedConstant,
+            // the same rule the evaluator and analyzer use, so an empty suffix (%`vs-`) is rejected here
+            // exactly as it is there.
             if (predefinedVariables.Contains(varName)
                 || StandardConstantFamilies.IsPrefixedConstant(varName, isDelimited))
             {
@@ -570,22 +565,15 @@ public static class ViewDefinitionExpressionParser
     /// Recursively collects all variable references from a FHIRPath expression tree.
     /// </summary>
     /// <remarks>
-    /// The <c>FunctionCallExpression</c> case also catches every one of its subclasses - a C# type-pattern
-    /// <c>case</c> matches subtypes - so <c>BinaryExpression</c>, <c>UnaryExpression</c>,
-    /// <c>IndexerExpression</c> and <c>ChildExpression</c> (member access, <c>a.b</c>) are already covered
-    /// through it, not missed. <c>PropertyAccessExpression</c> needs no case either, but the reason is one
-    /// level up from where it looks. On the path this parser uses the expression is built by
-    /// <c>AstBuilder.VisitPropertyAccess</c>, which forwards whatever focus the parse node carries
-    /// (<c>node.Focus?.Accept(this, context)</c>) and imposes nothing itself. The only place a
-    /// <c>PropertyAccessParseNode</c> is constructed is <c>FhirPathParseTreeGrammar</c>'s bare-identifier
-    /// rule, and it passes <see langword="null"/> - so every such expression arriving here has
-    /// <c>Focus: null</c> and cannot carry a nested reference. The guarantee is the grammar's, not the
-    /// builder's, and it would lapse silently if that rule ever began supplying a focus.
-    /// <c>InstanceSelectorExpression</c> (<c>Coding { system: %name }</c>) is the one real gap: each of its
-    /// <c>Elements</c> carries an arbitrary <c>ValueExpression</c> that this method never visits, so a
-    /// variable referenced only inside an instance-selector element assignment reaches evaluation
-    /// unvalidated instead of failing here. Pre-existing, unrelated to this branch, and tracked as #443
-    /// rather than fixed here.
+    /// A C# type-pattern <c>case</c> matches subtypes, so the <c>FunctionCallExpression</c> case already
+    /// covers <c>BinaryExpression</c>, <c>UnaryExpression</c>, <c>IndexerExpression</c> and
+    /// <c>ChildExpression</c>. <c>PropertyAccessExpression</c> needs no case because the only construction
+    /// site for a <c>PropertyAccessParseNode</c> is <c>FhirPathParseTreeGrammar</c>'s bare-identifier rule,
+    /// which passes <see langword="null"/> for the focus; the guarantee is the grammar's, not
+    /// <c>AstBuilder</c>'s, and it would lapse silently if that rule ever began supplying one.
+    /// <c>InstanceSelectorExpression</c> (<c>Coding { system: %name }</c>) is a real gap: its
+    /// <c>Elements</c> carry <c>ValueExpression</c>s this method never visits, so a variable referenced
+    /// only there reaches evaluation unvalidated. Pre-existing and tracked as #443.
     /// </remarks>
     private static void CollectVariableReferences(FhirPath.Expressions.Expression expr, HashSet<(string Name, bool IsDelimited)> variables)
     {

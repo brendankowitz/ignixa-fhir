@@ -7,19 +7,13 @@ namespace Ignixa.Search.Tests.Indexing;
 /// <see cref="UpstreamConverterRegistrations"/>, with the reason.
 /// </summary>
 /// <remarks>
-/// <para>
-/// This table is the point of the census. A census that simply demanded parity with upstream would
-/// fail on storage decisions this codebase has taken deliberately, and the only way to make it pass
-/// would be to adopt a storage model Ignixa does not use. So every difference is allowed - once
-/// somebody writes down which it is.
-/// </para>
-/// <para>
-/// The table cannot lie in either direction. <see cref="ConverterRegistrationCensusTests"/> fails if
-/// a pair listed in <see cref="MissingFromIgnixa"/> is actually registered (the divergence closed and
-/// the entry is stale), if a pair listed in <see cref="AdditionalInIgnixa"/> is not registered or is
-/// present upstream too (the entry describes something that is not a divergence), and if any pair on
-/// either side is absent from both the snapshot and this table.
-/// </para>
+/// This table is the point of the census. Demanding outright parity with upstream would fail on storage
+/// decisions this codebase has taken deliberately, and the only way to make it pass would be to adopt a
+/// storage model Ignixa does not use - so every difference is allowed, once somebody writes down which it
+/// is. The table cannot lie in either direction: <see cref="ConverterRegistrationCensusTests"/> fails if a
+/// pair in <see cref="MissingFromIgnixa"/> is actually registered, if a pair in
+/// <see cref="AdditionalInIgnixa"/> is not registered or is present upstream too, or if any pair is absent
+/// from both the snapshot and this table.
 /// </remarks>
 internal static class KnownConverterDivergences
 {

@@ -99,20 +99,17 @@ public class EnvironmentVariableResolutionTests
     public void GivenABareVsOrExtConstant_WhenReferenced_ThenItIsAnUndefinedVariableRatherThanAUri(
         string expression, string expectedName)
     {
-        // Issue #438 and its review. Two separate questions got conflated, and they have different answers.
+        // Issue #438 conflated two questions with different answers.
         //
-        // LEXING: "%vs-mine" must lex as one ExternalConstant token, not ExternalConstant("%vs") / Minus /
-        // Identifier("mine"). #438 fixed that and it stays fixed - HAPI's FHIRLexer takes '-' in the bare
-        // '%' run, and real published cqf-expression content (%p-inactive, in fhir-test-cases) depends on it.
-        // FhirPathTokenizerTests pins the lexing.
+        // LEXING: "%vs-mine" must lex as one ExternalConstant token, matching HAPI's FHIRLexer, because
+        // published cqf-expression content (%p-inactive, in fhir-test-cases) depends on '-' in the bare
+        // '%' run. FhirPathTokenizerTests pins that.
         //
         // RESOLUTION: the bare spelling must NOT expand to a ValueSet or StructureDefinition URI. The FHIR
-        // profile of FHIRPath writes these two families as %`vs-[name]` and %`ext-[name]` and says the names
-        // "are quoted (just like paths) to allow '-' in the name"; HAPI's FHIRPathEngine expands them only
-        // for the backtick spelling and otherwise falls through to the host resolver and then to an
-        // unknown-constant error. #438's first cut expanded the bare form too, which made Ignixa resolve a
-        // spelling neither reference resolves. So the outcome for a bare name is a clear error naming the
-        // whole hyphenated name - which is only possible because the lexing fix keeps it in one piece.
+        // profile of FHIRPath writes these families as %`vs-[name]` / %`ext-[name]` ("quoted, just like
+        // paths, to allow '-' in the name") and HAPI's FHIRPathEngine expands only the backtick spelling.
+        // #438's first cut expanded the bare form too. The outcome for a bare name is a clear error naming
+        // the whole hyphenated name - possible only because the lexing fix keeps it in one piece.
         var evaluate = () => _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).ToList();
 
         var exception = Assert.Throws<FhirPathEvaluationException>(evaluate);
@@ -125,12 +122,10 @@ public class EnvironmentVariableResolutionTests
     public void GivenADelimitedButEmptySuffixConstant_WhenReferenced_ThenItIsAnUndefinedVariableRatherThanAUri(
         string expression, string expectedName)
     {
-        // PR #442 final review (F4). The delimited spelling alone is not sufficient - the prefix also needs
-        // a non-empty suffix after it, or there is no ValueSet/StructureDefinition name to build a URI from.
-        // GetStandardConstant has always required name.Length > 3 ("vs-") / > 4 ("ext-"), but the analyzer
-        // and the SQL-on-FHIR validator did not check length and reported these clean, so an expression like
-        // this could pass both checks and then throw here - the exact failure shape this branch removes for
-        // the bare spelling. All three now share StandardConstantFamilies, which requires the same suffix.
+        // The delimited spelling alone is not sufficient - the prefix needs a non-empty suffix, or there
+        // is no name to build a URI from. GetStandardConstant has always required that, but the analyzer
+        // and the SQL-on-FHIR validator did not check length and reported these clean, so an expression
+        // could pass both and then throw here. All three now share StandardConstantFamilies.
         var evaluate = () => _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).ToList();
 
         var exception = Assert.Throws<FhirPathEvaluationException>(evaluate);

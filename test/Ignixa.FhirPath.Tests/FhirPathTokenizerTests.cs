@@ -205,11 +205,9 @@ public class FhirPathTokenizerTests
     [InlineData("%ext-mine")]
     public void GivenBareExternalConstantWithHyphen_WhenTokenizing_ThenProducesSingleExternalConstantToken(string expression)
     {
-        // Issue #438: the FHIR profile of FHIRPath defines %vs-[name] and %ext-[name] as bare (unquoted)
-        // identifiers containing a hyphen. Before the fix, the bare-identifier alternative of the
-        // ExternalConstant regex had no hyphen, so this split into ExternalConstant("%vs") / Minus / Identifier
-        // ("mine") - three tokens, not one - and GetStandardConstant's prefix-expansion branch for these names
-        // could never be reached this way (only via the pre-existing backtick-quoted spelling).
+        // Issue #438: before the fix the bare-identifier alternative of the ExternalConstant regex had no
+        // hyphen, so "%vs-mine" split into ExternalConstant("%vs") / Minus / Identifier("mine") and
+        // GetStandardConstant's prefix expansion was reachable only through the backtick spelling.
         var tokens = Tokenize(expression);
 
         Assert.Single(tokens);
@@ -220,13 +218,10 @@ public class FhirPathTokenizerTests
     [Fact]
     public void GivenExternalConstantMinusIdentifierWithNoWhitespace_WhenTokenizing_ThenTheHyphenIsPartOfTheName()
     {
-        // Pins the resolution of the genuine ambiguity #438 introduces: adding '-' to the bare identifier
-        // alternative means "%a-b" with no intervening whitespace can no longer mean "the external constant
-        // %a, minus the value of b" - it is one identifier, "a-b". This matches HAPI's FHIRLexer (the
-        // reference implementation, per this project's precedence rules), whose '%' handling consumes a
-        // uniform run of [A-Za-z0-9:_-] with no whitespace-insensitive split between the identifier and a
-        // following operator. A caller who wants subtraction must separate the tokens with whitespace (see
-        // the guard test below), exactly as HAPI requires.
+        // Pins the ambiguity #438 introduces: with '-' in the bare identifier alternative, "%a-b" with no
+        // intervening whitespace is one identifier "a-b", not "%a minus b". This matches HAPI's FHIRLexer,
+        // whose '%' handling consumes a uniform run of [A-Za-z0-9:_-]. Subtraction requires whitespace -
+        // see the guard test below - exactly as HAPI requires.
         var tokens = Tokenize("%a-b");
 
         Assert.Single(tokens);
@@ -240,11 +235,10 @@ public class FhirPathTokenizerTests
     public void GivenExternalConstantMinusIdentifierSeparatedByWhitespace_WhenTokenizing_ThenSubtractionIsUnaffected(
         string expression)
     {
-        // Guards the other half of the #438 ambiguity resolution: legitimate subtraction of an identifier
-        // from an external constant is unaffected as long as whitespace separates it from the constant's
-        // name, since the hyphen only extends a match that is already touching the preceding identifier
-        // characters. Whitespace *after* the hyphen does not help - see the theory below - so the
-        // separator that matters is the one before it, which is why both spacings here are pinned.
+        // The other half of the #438 ambiguity: subtraction is unaffected as long as whitespace separates
+        // the identifier from the constant's name, since the hyphen only extends an already-touching
+        // match. Whitespace *after* the hyphen does not help - see the theory below - so both spacings
+        // are pinned here.
         var tokens = Tokenize(expression);
 
         Assert.Equal(3, tokens.Length);
@@ -262,19 +256,16 @@ public class FhirPathTokenizerTests
     public void GivenExternalConstantWithATrailingHyphen_WhenTokenizing_ThenTheHyphenStaysInTheName(
         string expression, string expectedConstant, int expectedTokenCount)
     {
-        // #438 review, M3: the three edge spellings the original pair of tests did not reach. The regex's
+        // #438 review, M3: the three edge spellings the original pair of tests did not reach. The
         // continuation class is [a-zA-Z0-9_-] with no restriction on where the hyphen sits, so it takes a
-        // trailing one and it takes a digit after one:
+        // trailing one and a digit after one:
         //
         //   %a-1    -> ExternalConstant "%a-1"                  (before #438: %a minus 1)
         //   %a-     -> ExternalConstant "%a-"
         //   %a- b   -> ExternalConstant "%a-" + Identifier "b"   (before #438: subtraction; now a parse error)
         //
-        // All three match HAPI's FHIRLexer, whose '%' run is likewise a uniform [A-Za-z0-9:_-] with no
-        // trailing-character rule. They are pinned rather than fixed because the failure mode is loud:
-        // "%a-b" evaluates to "Attempting to access an undefined environment variable: a-b", and "%a- b"
-        // fails to parse - neither silently computes a different number. What would be unacceptable is a
-        // wrong answer, and none of these produces one.
+        // All three match HAPI's FHIRLexer. Pinned rather than fixed because every failure mode is loud -
+        // an undefined-environment-variable error or a parse error, never a different number.
         var tokens = Tokenize(expression);
 
         Assert.Equal(expectedTokenCount, tokens.Length);

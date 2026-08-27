@@ -15,17 +15,16 @@ namespace Ignixa.Search.Tests.Indexing;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This exists because a differential corpus structurally cannot answer the question. The
-/// resource-backed parity harness hands one converter manager, one definition manager and one set of
-/// indexer statics to both of its indexers, so when both sides skip an element that is one object
-/// deciding once - a missing converter and a correct skip look identical to it. That blind spot is
-/// how the <c>canonical</c> gap survived until somebody switched a logger on, and it is why 115
-/// recorded skips sat unadjudicated behind a pin that measured them without judging them.
+/// A differential corpus structurally cannot answer this question: the resource-backed parity harness
+/// hands one converter manager, one definition manager and one set of indexer statics to both of its
+/// indexers, so when both sides skip an element that is one object deciding once - a missing converter
+/// and a correct skip look identical to it. That blind spot is how the <c>canonical</c> gap survived
+/// until somebody switched a logger on, and why 115 recorded skips sat unadjudicated.
 /// </para>
 /// <para>
-/// A registration census has no such blind spot, because it compares two independently authored sets
-/// rather than one set with itself. It answers the question once for the whole class, it fails when
-/// upstream adds a converter Ignixa lacks, and it needs nobody to notice a log line.
+/// A registration census compares two independently authored sets rather than one set with itself, so it
+/// answers the question for the whole class, fails when upstream adds a converter Ignixa lacks, and needs
+/// nobody to notice a log line.
 /// </para>
 /// </remarks>
 public class ConverterRegistrationCensusTests
@@ -46,13 +45,12 @@ public class ConverterRegistrationCensusTests
             NullFhirBaseUriProvider.Instance).ConverterManager;
 
     /// <summary>
-    /// Floor on the vendored snapshot's size, so an emptied or gutted table cannot satisfy every
-    /// assertion below with nothing to compare against.
+    /// Floor on the vendored snapshot's size, so an emptied table cannot satisfy every assertion below
+    /// with nothing to compare against.
     /// </summary>
     /// <remarks>
-    /// Not redundant with <see cref="UpstreamConverterRegistrations.ContentHash"/>: the hash pins this
-    /// exact snapshot and is re-stated on every deliberate refresh, so it says nothing across refreshes.
-    /// This floor survives them, and says the refresh did not silently lose most of the table.
+    /// Not redundant with <see cref="UpstreamConverterRegistrations.ContentHash"/>: the hash is re-stated
+    /// on every deliberate refresh, so it says nothing across refreshes. This floor survives them.
     /// </remarks>
     private const int MinimumUpstreamRegistrations = 47;
 
@@ -61,9 +59,8 @@ public class ConverterRegistrationCensusTests
     /// </summary>
     /// <remarks>
     /// <see cref="UpstreamConverterRegistrations.SourceCommit"/> is otherwise only printed into failure
-    /// messages, so a row added by hand for a pair Ignixa already covers - or a commit bumped without
-    /// re-reading upstream - changes nothing any other assertion can see. Refreshing the snapshot means
-    /// changing both, in the same edit, which is the point.
+    /// messages, so a row added by hand - or a commit bumped without re-reading upstream - would change
+    /// nothing any other assertion can see. Refreshing means changing both in the same edit.
     /// </remarks>
     [Fact]
     public void GivenTheSnapshot_WhenHashed_ThenItMatchesTheRecordedProvenance()
@@ -191,8 +188,8 @@ public class ConverterRegistrationCensusTests
     /// <remarks>
     /// Upstream has no inference table at all - <c>TypedElementSearchIndexer</c> looks the converter up
     /// against the search parameter's declared type and skips on a miss. Ignixa's table is an addition
-    /// that recovers composite components whose declared type disagrees with the element the expression
-    /// actually selects, so the census checks it against itself rather than against upstream.
+    /// recovering composite components whose declared type disagrees with the element selected, so the
+    /// census checks it against itself rather than against upstream.
     /// </remarks>
     [Theory]
     [InlineData("Reference")]

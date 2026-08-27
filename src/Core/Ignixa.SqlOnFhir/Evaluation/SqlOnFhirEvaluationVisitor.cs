@@ -130,43 +130,31 @@ internal class SqlOnFhirEvaluationVisitor
         // value[x] and overriding its value at runtime is therefore the supported way to pass a typed
         // variable.
         //
-        // SCOPE, measured rather than assumed. An earlier revision of this comment claimed the untyped
-        // path was unreachable because ValidateConstantReferences requires every %name to be a declared
-        // constant. That is false: it exempts context, resource, rootResource, ucum, sct, loinc,
-        // rowIndex, and the vs- and ext- prefix families in their delimited spelling. Of those,
-        // ucum/sct/loinc and every %`vs-*`/%`ext-*` name reach this loop untyped, binding the caller's
-        // string with no constant to inherit from -
-        // and System.String is the correct type for them, not a defect: FHIRPath defines all of them as
-        // fixed URIs, so a caller-supplied string is already the right thing. `birthDate < %ucum`
-        // throwing "Cannot compare 'date' with 'string'" is the correct answer to putting a date in a
-        // URI slot, not a typing failure. The engine's override of those names is a deliberate,
-        // documented feature (EvaluationContext's remarks) and is left working.
+        // SCOPE, measured rather than assumed. ValidateConstantReferences does not require every %name to
+        // be a declared constant: it exempts context, resource, rootResource, ucum, sct, loinc, rowIndex,
+        // and the vs-/ext- families in their delimited spelling. Of those, ucum/sct/loinc and every
+        // %`vs-*`/%`ext-*` name reach this loop untyped, binding the caller's string with no constant to
+        // inherit from - and System.String is correct for them, not a defect: FHIRPath defines all of them
+        // as fixed URIs. `birthDate < %ucum` throwing "Cannot compare 'date' with 'string'" is the correct
+        // answer to putting a date in a URI slot, not a typing failure. The engine's override of those
+        // names is a deliberate, documented feature (EvaluationContext's remarks) and is left working.
         //
-        // context/resource/rootResource cannot reach here untyped at all - they are answered by
-        // TryGetEnvironmentVariable's switch before it consults Environment - and rowIndex is
-        // re-injected below and wins regardless of what this loop binds. As of issue #439,
-        // SqlOnFhirEvaluator.ValidateVariables rejects a variables entry using any of these four names
-        // before this method is even reached, so the loop below is now guaranteed never to see them: the
-        // description above documents why an override would have been silently ineffective, not a case
-        // this loop still has to handle.
+        // context/resource/rootResource cannot reach here untyped - TryGetEnvironmentVariable's switch
+        // answers them before it consults Environment - and rowIndex is re-injected below and wins. As of
+        // issue #439, SqlOnFhirEvaluator.ValidateVariables rejects a variables entry using any of those
+        // four before this method runs, so the paragraph above records why such an override was silently
+        // ineffective, not a case this loop still has to handle.
         //
-        // The vs-/ext- families reach here only in their backtick-delimited spelling, %`vs-x`, which the
-        // ExternalConstant regex has always accepted. Bare "%vs-x" used to lex as ExternalConstant("%vs") /
-        // Minus / Identifier("x"), and validation rejected the truncated "%vs" as undefined (issue #438);
-        // the tokenizer now takes '-' in the bare form so it lexes as one token, matching HAPI's FHIRLexer.
-        // That is a lexical change only. HAPI's engine expands these two families for the backtick spelling
-        // alone, and so does GetStandardConstant, so a bare %vs-x is an ordinary undeclared constant name -
-        // ValidateConstantReferences rejects it up front rather than letting it fail later as an undefined
-        // environment variable.
+        // The vs-/ext- families reach here only in their delimited spelling. The tokenizer now lexes a
+        // bare "%vs-x" as one token rather than %vs / minus / x (issue #438), but that is a lexical change
+        // only: HAPI's engine and GetStandardConstant both expand for the backtick spelling alone, so a
+        // bare %vs-x is an ordinary undeclared constant name that ValidateConstantReferences rejects up
+        // front rather than letting it fail later as an undefined environment variable.
         //
-        // A caller who does want a typed value under one of these names does not need the signature
-        // widened: declaring a constant of that name with the right value[x] and overriding its value
-        // works, because the inheritance above then applies. The predefined names are pinned by the
-        // GivenAPredefinedVariableName_* tests; that %`vs-x` / %`ext-x` resolve through this path is pinned
-        // in this project by SqlOnFhirEvaluatorTests
-        // .GivenAViewDefinitionSelectingAStandardPrefixedConstant (declared in the file
-        // FhirPathColumnEvaluatorTests.cs), and the engine-level resolution behind it by
-        // Ignixa.FhirPath.Tests' EnvironmentVariableResolutionTests.
+        // A caller wanting a typed value under one of these names declares a constant of that name and
+        // overrides its value, as above. Pinned by the GivenAPredefinedVariableName_* tests, by
+        // SqlOnFhirEvaluatorTests.GivenAViewDefinitionSelectingAStandardPrefixedConstant (declared in
+        // FhirPathColumnEvaluatorTests.cs), and by Ignixa.FhirPath.Tests' EnvironmentVariableResolutionTests.
         if (variables != null)
         {
             // Built with the indexer, not ToDictionary: two constants sharing a name is malformed input

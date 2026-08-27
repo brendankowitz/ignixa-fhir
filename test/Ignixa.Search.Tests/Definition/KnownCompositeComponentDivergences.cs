@@ -8,29 +8,17 @@ namespace Ignixa.Search.Tests.Definition;
 /// <remarks>
 /// <para>
 /// All of these are dangling references in the published HL7 packages: the package ships a composite
-/// whose component names a canonical URL that the same package never publishes as a
-/// <c>SearchParameter</c>. That was verified against <c>hl7.fhir.r5.core#5.0.0</c> and
-/// <c>hl7.fhir.r6.core#6.0.0-ballot2</c> directly, not inferred from the failure. Ignixa's generated
-/// definitions faithfully reproduce the packages, so the dangling reference arrives with the data.
-/// </para>
-/// <para>
-/// The consequence is uniform and worth stating plainly: each composite listed here indexes nothing,
-/// so a search on it returns an empty bundle with HTTP 200 rather than an error. That is the same
-/// shape of failure as an unindexed parameter, and it is why <c>Observation-code-value-*</c> under
+/// whose component names a canonical URL the same package never publishes as a <c>SearchParameter</c>.
+/// Verified against <c>hl7.fhir.r5.core#5.0.0</c> and <c>hl7.fhir.r6.core#6.0.0-ballot2</c> directly, not
+/// inferred from the failure. Each composite listed here indexes nothing, so a search on it returns an
+/// empty bundle with HTTP 200 rather than an error - which is why <c>Observation-code-value-*</c> under
 /// STU3 was repaired in <c>CompositeComponentDefinitionRepairs</c> instead of being listed here.
 /// </para>
 /// <para>
-/// Repairing the rest is not the same kind of edit, and upstream takes no single position on them.
-/// <c>Observation-code-value-string</c> under R5 needs the search parameter the package deleted to be
-/// reintroduced, which changes R5's supported parameter surface - and that is what
-/// <c>microsoft/fhir-server</c> does. It drops the <c>ResearchStudy</c>, <c>Ingredient</c> and
-/// <c>Encounter-location-period</c> composites from its curated bundle entirely; it carries the
-/// <c>TestScript-scope-artifact-*</c> group but names it in a hard-coded <c>_missingExpressionsInR5</c>
-/// exclusion list; and it <em>repoints</em> <c>DeviceDefinition-specification-version</c>'s component at
-/// <c>CanonicalResource-version</c>. No R6 row has an upstream position at all, because
-/// <c>microsoft/fhir-server</c> ships no R6 bundle. Each is a product decision rather than a defect fix,
-/// so each entry records what upstream did and leaves the call deliberate. Read the entry rather than
-/// this summary for any particular row.
+/// Repairing the rest is a different kind of edit, and upstream takes no single position:
+/// <c>microsoft/fhir-server</c> variously drops the composite, excludes it by name, or repoints its
+/// component, and it ships no R6 bundle at all. Each is a product decision rather than a defect fix, so
+/// each entry records what upstream did and leaves the call deliberate. Read the entry, not this summary.
 /// </para>
 /// </remarks>
 internal static class KnownCompositeComponentDivergences
@@ -52,9 +40,9 @@ internal static class KnownCompositeComponentDivergences
     /// top of it rather than what it inherits.
     /// </summary>
     /// <remarks>
-    /// Each of these is around 140 characters - more than any plausible floor on its own - so an entry
-    /// reduced to nothing but its preamble still passes a check that measures <c>Reason</c> whole. The
-    /// substantive-reason census strips these first for that reason.
+    /// Each preamble is around 140 characters - more than any plausible floor on its own - so an entry
+    /// reduced to nothing but its preamble would still pass a check that measured <c>Reason</c> whole.
+    /// The substantive-reason census strips these first.
     /// </remarks>
     public static IReadOnlyList<string> SharedPreambles { get; } = [R5SpecOmission, R6SpecOmission];
 

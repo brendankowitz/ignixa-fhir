@@ -431,9 +431,9 @@ public record EvaluationContext
     /// the fixed FHIRPath constants so a host can override <c>%vs-…</c> / <c>%ext-…</c> with a real value.
     /// </para>
     /// <para>
-    /// This overload resolves by name alone and therefore expands the <c>vs-</c> / <c>ext-</c> families, which is
-    /// right for a host asking about a name it already holds. The evaluator instead calls the overload taking
-    /// <c>isDelimited</c>, because in an <em>expression</em> the spelling decides: see
+    /// This overload resolves by name alone and therefore expands the <c>vs-</c> / <c>ext-</c> families,
+    /// which is right for a host asking about a name it already holds. The evaluator instead calls the
+    /// overload taking <c>isDelimited</c>, because in an <em>expression</em> the spelling decides: see
     /// <see cref="GetStandardConstant"/>.
     /// </para>
     /// </remarks>
@@ -453,11 +453,9 @@ public record EvaluationContext
     /// <returns><see langword="true"/> when the name is defined, even if its value is empty.</returns>
     /// <remarks>
     /// Internal: <paramref name="isDelimited"/> mirrors <see cref="Expressions.VariableRefExpression.IsDelimited"/>,
-    /// an engine-internal parse artifact rather than part of the published evaluation contract. Its callers are
-    /// <see cref="FhirPathEvaluator"/>, which has the parsed reference and so knows the spelling, and the public
-    /// two-argument overload above, which does not and forwards <see langword="true"/>. Both are in this
-    /// assembly, which is why they can see it; <c>InternalsVisibleTo</c> is what additionally lets
-    /// <c>Ignixa.SqlOnFhir</c>, <c>Ignixa.Search</c> and the test assemblies reach it.
+    /// an engine-internal parse artifact rather than part of the published evaluation contract. Its callers
+    /// are <see cref="FhirPathEvaluator"/>, which has the parsed reference and so knows the spelling, and
+    /// the public two-argument overload above, which does not and forwards <see langword="true"/>.
     /// </remarks>
     internal bool TryGetEnvironmentVariable(string name, bool isDelimited, out object? value)
     {
@@ -531,22 +529,18 @@ public record EvaluationContext
     /// a fixed list of two of them just makes the other several hundred silently unresolvable.
     /// </para>
     /// <para>
-    /// <b>Only the delimited spelling expands (#438 review).</b> The specification writes these two families as
-    /// <c>%`vs-[name]`</c> and <c>%`ext-[name]`</c> and says the names "are quoted (just like paths) to allow
-    /// '-' in the name"; HAPI's FHIRPathEngine tests <c>startsWith("%`vs-")</c> and <c>startsWith("%`ext-")</c>,
-    /// so a bare <c>%vs-mine</c> there is not a ValueSet URI - it falls through to the host's constant resolver
-    /// and then to an unknown-constant error. Ignixa's tokenizer accepts <c>-</c> in the bare form because
-    /// HAPI's <em>lexer</em> does and real published cqf-expression content relies on it (<c>%p-inactive</c>),
-    /// but that is a lexical allowance. Expanding the bare form as well would make Ignixa resolve a spelling
-    /// neither the specification nor HAPI resolves, so <paramref name="isDelimited"/> gates it and bare
-    /// <c>%vs-mine</c> reports an undefined variable, exactly as HAPI does.
+    /// <b>Only the delimited spelling expands.</b> The specification writes these families as
+    /// <c>%`vs-[name]`</c> / <c>%`ext-[name]`</c> because the names "are quoted (just like paths) to allow
+    /// '-' in the name", and HAPI's FHIRPathEngine tests <c>startsWith("%`vs-")</c>, so a bare
+    /// <c>%vs-mine</c> is not a ValueSet URI there - it falls through to an unknown-constant error.
+    /// Ignixa's tokenizer accepts <c>-</c> in the bare form only as a lexical allowance, so
+    /// <paramref name="isDelimited"/> gates expansion and bare <c>%vs-mine</c> reports an undefined
+    /// variable, as HAPI does.
     /// </para>
     /// <para>
-    /// The rule itself lives in <see cref="StandardConstantFamilies"/>, not here - both halves of it: the
-    /// prefix-and-suffix test the static analyzer and the SQL-on-FHIR validator also use to decide whether a
-    /// reference is in these families (#442's review found the three had drifted apart on an empty suffix,
-    /// <c>%`vs-`</c>), and the two canonical URL bases the names expand to. This method asks one question
-    /// and gets both, so a clause added to the family rule cannot leave the expansion behind.
+    /// Both halves of the rule - the prefix-and-suffix test the static analyzer and the SQL-on-FHIR
+    /// validator also use, and the canonical URL bases the names expand to - live in
+    /// <see cref="StandardConstantFamilies"/>, so a clause added to one cannot leave the other behind.
     /// </para>
     /// </remarks>
     private static string? GetStandardConstant(string name, bool isDelimited)

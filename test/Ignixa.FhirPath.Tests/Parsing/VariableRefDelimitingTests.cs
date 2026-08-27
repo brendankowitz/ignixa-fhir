@@ -14,21 +14,15 @@ namespace Ignixa.FhirPath.Tests.Parsing;
 /// Pins that <c>%`name`</c> and <c>%name</c> reach the AST as different things, in both grammars.
 /// </summary>
 /// <remarks>
-/// <para>
 /// <see cref="VariableRefExpression.IsDelimited"/> is what stops Ignixa's lexical allowance for <c>-</c>
-/// in a bare <c>%name</c> from becoming a resolution rule the specification does not have: only the
-/// delimited spelling expands the <c>vs-</c> / <c>ext-</c> families. The analyzer, the evaluator and the
-/// SQL-on-FHIR validator each have their own pin on that behaviour, but every one of them reaches the
-/// flag through <c>FhirPathParser</c>, so all four covered one of the two places the flag is computed.
-/// </para>
-/// <para>
-/// <see cref="FhirPathGrammar"/> builds an AST directly and duplicates the external-constant rule of
-/// <c>FhirPathParseTreeGrammar</c> with no shared code between them, and nothing inside the repo calls
-/// <see cref="FhirPathGrammar.Expression"/> - so inverting its backtick test broke no test at all. It is
-/// public surface on a shipped assembly, where the absence of an internal caller says nothing about
-/// external ones, so it is covered rather than deleted. Same reasoning as
+/// in a bare <c>%name</c> from becoming a resolution rule the specification does not have. The analyzer,
+/// evaluator and SQL-on-FHIR validator each pin that behaviour, but all of them reach the flag through
+/// <c>FhirPathParser</c> - so none covered the second place it is computed.
+/// <see cref="FhirPathGrammar"/> builds an AST directly, duplicating
+/// <c>FhirPathParseTreeGrammar</c>'s external-constant rule with no shared code, and nothing in the repo
+/// calls <see cref="FhirPathGrammar.Expression"/>: inverting its backtick test broke no test at all. It
+/// is public surface on a shipped assembly, so it is covered rather than deleted - the same reasoning as
 /// <c>TemporalLiteralClassificationTests.GivenTheDirectGrammar_WhenParsingATemporalLiteral_ThenItAgreesWithTheParseTreeGrammar</c>.
-/// </para>
 /// </remarks>
 public class VariableRefDelimitingTests
 {
