@@ -163,9 +163,10 @@ internal class SqlOnFhirEvaluationVisitor
         // widened: declaring a constant of that name with the right value[x] and overriding its value
         // works, because the inheritance above then applies. The predefined names are pinned by the
         // GivenAPredefinedVariableName_* tests; that %`vs-x` / %`ext-x` resolve through this path is pinned
-        // in this project by FhirPathColumnEvaluatorTests
-        // .GivenAViewDefinitionSelectingAStandardPrefixedConstant, and the engine-level resolution behind
-        // it by Ignixa.FhirPath.Tests' EnvironmentVariableResolutionTests.
+        // in this project by SqlOnFhirEvaluatorTests
+        // .GivenAViewDefinitionSelectingAStandardPrefixedConstant (declared in the file
+        // FhirPathColumnEvaluatorTests.cs), and the engine-level resolution behind it by
+        // Ignixa.FhirPath.Tests' EnvironmentVariableResolutionTests.
         if (variables != null)
         {
             // Built with the indexer, not ToDictionary: two constants sharing a name is malformed input

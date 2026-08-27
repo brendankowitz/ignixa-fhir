@@ -115,12 +115,14 @@ The 10,074 is the count the conformance claim rests on, and it is floored rather
 
 The index comparison runs Firely for `Select` only. Everything downstream - the search parameter definitions, `InferSearchParamTypeFromFhirType`, `GetSearchValueTypeForSearchParamType` and the converter manager - is a single set of Ignixa objects that `SearchIndexParityHarness` constructs once and hands to both indexers. When both sides skip an element, that is one object making one decision, not two implementations agreeing, so **no entry-list comparison over this corpus can detect a gap in the converter pipeline.**
 
-Capturing the production indexer's contained failures - it catches per search parameter, logs and continues, and the harness previously gave it a null logger - surfaced 302 of them per sweep, split by what the corpus can adjudicate:
+Capturing the production indexer's contained failures - it catches per search parameter, logs and continues, and the harness previously gave it a null logger - surfaces 258 of them per sweep, split by what the corpus can adjudicate:
 
 | Class | Count | Status |
 |---|---:|---|
 | Contained throws (`ExpectedIgnixaEvaluationFailures`) | 1 | Adjudicable. Ignixa's `NotSupportedException` for `hasExtension()`, already pinned on the `Select` side. |
-| Classification skips (`ExpectedIgnixaConverterPipelineSkips`) | 301 | Recorded here, adjudicated by the census in `Ignixa.Search.Tests`. |
+| Classification skips (`ExpectedIgnixaConverterPipelineSkips`) | 257 | Recorded here, adjudicated by the census in `Ignixa.Search.Tests`. |
+
+These counts were 302 and 301 when the classification skips were first captured. Repairing the STU3 `Observation-code-value-*` component references (`CompositeComponentDefinitionRepairs`) removed 44 of them, because those composites now resolve their components instead of skipping. The paragraphs below describe the pre-repair population of 301.
 
 Of the 301, 229 were converter-manager misses and **186 are `canonical` under 46 shipped SearchParameters** - 45 `Reference`-typed plus `MessageHeader-event`. Ignixa registers `canonical` against `UriSearchValue` only, so those 46 parameters index nothing: `QuestionnaireResponse-questionnaire`, `MeasureReport-measure`, `StructureDefinition-base`, `PlanDefinition-definition`, the `instantiates-canonical` family across nine resource types, the `-depends-on` family, and eight `ConceptMap` parameters among them.
 

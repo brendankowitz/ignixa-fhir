@@ -342,9 +342,9 @@ public sealed record AnalysisContext
     /// </summary>
     /// <remarks>
     /// Used for the operands of <c>|</c> and for the arguments of the functions that evaluate per item, which
-    /// are the two scope boundaries <see cref="EvaluationContext.ForkVariableScope"/> and
-    /// <see cref="EvaluationContext.PushThis"/> enforce at runtime. Analysis has to draw them in the same
-    /// places or it stays silent about an expression the evaluator will refuse.
+    /// are the two scope boundaries <see cref="Evaluation.EvaluationContext.ForkVariableScope"/> and
+    /// <see cref="Evaluation.EvaluationContext.PushThis"/> enforce at runtime. Analysis has to draw them in
+    /// the same places or it stays silent about an expression the evaluator will refuse.
     /// </remarks>
     public AnalysisContext ForkVariableScope()
     {
@@ -360,8 +360,8 @@ public sealed record AnalysisContext
     /// <remarks>
     /// <para>
     /// Forwards <see langword="true"/> to the internal <paramref name="name"/>-and-spelling overload, matching
-    /// its sibling <see cref="EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/>: a caller
-    /// reaching this arity has only a name, not a parsed reference, and the <c>vs-</c>/<c>ext-</c> prefix alone
+    /// its sibling <see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/>:
+    /// a caller reaching this arity has only a name, not a parsed reference, and the <c>vs-</c>/<c>ext-</c> prefix alone
     /// is enough to type it as a string.
     /// </para>
     /// <para>
@@ -385,13 +385,16 @@ public sealed record AnalysisContext
     /// <remarks>
     /// <para>
     /// Internal: <paramref name="isDelimited"/> mirrors <see cref="Expressions.VariableRefExpression.IsDelimited"/>,
-    /// an engine-internal parse artifact rather than part of the published analysis contract. The only caller of
-    /// this overload, <see cref="FhirPathAnalyzer"/>, is in this assembly's <c>InternalsVisibleTo</c> set.
+    /// an engine-internal parse artifact rather than part of the published analysis contract. Its callers are
+    /// <see cref="FhirPathAnalyzer"/>, which has the parsed reference and so knows the spelling, and the public
+    /// one-argument overload above, which does not and forwards <see langword="true"/>. Both are in this
+    /// assembly, which is why they can see it; <c>InternalsVisibleTo</c> is what additionally lets
+    /// <c>Ignixa.SqlOnFhir</c>, <c>Ignixa.Search</c> and the test assemblies reach it.
     /// </para>
     /// <para>
     /// The <c>%`vs-…`</c> and <c>%`ext-…`</c> families are recognised by shape rather than enumerated, matching
-    /// <see cref="EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>: the FHIR profile of
-    /// FHIRPath defines one for every ValueSet and extension in the specification, and reporting the rest as
+    /// <see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>: the
+    /// FHIR profile of FHIRPath defines one for every ValueSet and extension in the specification, and reporting the rest as
     /// undefined would make the analyzer stricter than the engine instead of agreeing with it. The shape test
     /// itself lives in <see cref="StandardConstantFamilies"/>, the same one <c>EvaluationContext.GetStandardConstant</c>
     /// uses, so a bare <c>%vs-mine</c> - or a delimited but suffix-empty <c>%`vs-`</c> - is reported undefined

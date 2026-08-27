@@ -573,9 +573,14 @@ public static class ViewDefinitionExpressionParser
     /// The <c>FunctionCallExpression</c> case also catches every one of its subclasses - a C# type-pattern
     /// <c>case</c> matches subtypes - so <c>BinaryExpression</c>, <c>UnaryExpression</c>,
     /// <c>IndexerExpression</c> and <c>ChildExpression</c> (member access, <c>a.b</c>) are already covered
-    /// through it, not missed. <c>PropertyAccessExpression</c> needs no case either: both of its
-    /// construction sites (<c>FhirPathGrammar.cs</c> and <c>FhirPathParseTreeGrammar.cs</c>) build it only
-    /// for a bare root-level identifier with <c>Focus: null</c>, so it can never carry a nested reference.
+    /// through it, not missed. <c>PropertyAccessExpression</c> needs no case either, but the reason is one
+    /// level up from where it looks. On the path this parser uses the expression is built by
+    /// <c>AstBuilder.VisitPropertyAccess</c>, which forwards whatever focus the parse node carries
+    /// (<c>node.Focus?.Accept(this, context)</c>) and imposes nothing itself. The only place a
+    /// <c>PropertyAccessParseNode</c> is constructed is <c>FhirPathParseTreeGrammar</c>'s bare-identifier
+    /// rule, and it passes <see langword="null"/> - so every such expression arriving here has
+    /// <c>Focus: null</c> and cannot carry a nested reference. The guarantee is the grammar's, not the
+    /// builder's, and it would lapse silently if that rule ever began supplying a focus.
     /// <c>InstanceSelectorExpression</c> (<c>Coding { system: %name }</c>) is the one real gap: each of its
     /// <c>Elements</c> carries an arbitrary <c>ValueExpression</c> that this method never visits, so a
     /// variable referenced only inside an instance-selector element assignment reaches evaluation

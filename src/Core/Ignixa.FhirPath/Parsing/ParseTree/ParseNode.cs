@@ -142,6 +142,7 @@ internal sealed record PropertyAccessParseNode(
 /// (<c>%vs-x</c>). The two spellings do not mean the same thing: per the FHIR profile of FHIRPath only the
 /// delimited form expands to a <c>vs-</c>/<c>ext-</c> URI, so the distinction has to survive lexing.
 /// </param>
+/// <param name="Location">Where the reference appeared in the source expression.</param>
 internal sealed record VariableRefParseNode(
     string Name,
     bool IsDelimited,

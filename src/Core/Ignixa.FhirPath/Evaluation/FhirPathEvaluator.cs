@@ -1276,7 +1276,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// FHIRPath §1.9 makes reading an undefined environment variable an error, and this is the check the
     /// official <c>defineVariable</c> scope cases assert. A bound name whose value is empty is not an error
     /// and still yields an empty collection, which is why this asks
-    /// <see cref="EvaluationContext.TryGetEnvironmentVariable"/> rather than testing the value for null.
+    /// <see cref="EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/> rather than
+    /// testing the value for null.
     /// <see cref="Analysis.FhirPathAnalyzer"/> already reports the same condition statically.
     /// </remarks>
     public IEnumerable<IElement> VisitVariable(VariableRefExpression expression, EvaluationContext context)

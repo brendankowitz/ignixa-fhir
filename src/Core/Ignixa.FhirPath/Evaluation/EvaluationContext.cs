@@ -406,7 +406,7 @@ public record EvaluationContext
     /// <remarks>
     /// A null return conflates "no such variable" with "bound to an empty collection". Callers that must
     /// tell those apart - FHIRPath makes the first an error and the second a value - use
-    /// <see cref="TryGetEnvironmentVariable"/>.
+    /// <see cref="TryGetEnvironmentVariable(string, out object?)"/>.
     /// </remarks>
     public object? GetEnvironmentVariable(string name)
     {
@@ -433,7 +433,7 @@ public record EvaluationContext
     /// <para>
     /// This overload resolves by name alone and therefore expands the <c>vs-</c> / <c>ext-</c> families, which is
     /// right for a host asking about a name it already holds. The evaluator instead calls the overload taking
-    /// <paramref name="isDelimited"/>, because in an <em>expression</em> the spelling decides: see
+    /// <c>isDelimited</c>, because in an <em>expression</em> the spelling decides: see
     /// <see cref="GetStandardConstant"/>.
     /// </para>
     /// </remarks>
@@ -453,8 +453,11 @@ public record EvaluationContext
     /// <returns><see langword="true"/> when the name is defined, even if its value is empty.</returns>
     /// <remarks>
     /// Internal: <paramref name="isDelimited"/> mirrors <see cref="Expressions.VariableRefExpression.IsDelimited"/>,
-    /// an engine-internal parse artifact rather than part of the published evaluation contract. The only caller
-    /// of this overload, <see cref="FhirPathEvaluator"/>, is in this assembly's <c>InternalsVisibleTo</c> set.
+    /// an engine-internal parse artifact rather than part of the published evaluation contract. Its callers are
+    /// <see cref="FhirPathEvaluator"/>, which has the parsed reference and so knows the spelling, and the public
+    /// two-argument overload above, which does not and forwards <see langword="true"/>. Both are in this
+    /// assembly, which is why they can see it; <c>InternalsVisibleTo</c> is what additionally lets
+    /// <c>Ignixa.SqlOnFhir</c>, <c>Ignixa.Search</c> and the test assemblies reach it.
     /// </remarks>
     internal bool TryGetEnvironmentVariable(string name, bool isDelimited, out object? value)
     {

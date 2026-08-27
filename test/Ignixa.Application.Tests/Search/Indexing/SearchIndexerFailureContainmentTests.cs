@@ -71,8 +71,10 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// distinguish the two - and the two facts it composed are each pinned more cheaply elsewhere.
 /// <c>RemainingCoverageTests</c> pins that <c>Repeat</c>'s guard throws that type; the test above pins that
 /// the type routes to Warning.
-/// Do not restore it: a rewrite that genuinely discriminates the two guards would have to trip
-/// <c>Repeat</c>'s cap, which is where the 35 seconds comes from.
+/// Do not restore it - but not because of the clock. The 35 seconds is historical: it is what tripping
+/// <c>Repeat</c>'s <em>iteration</em> cap cost while that cap was the only guard. #435's
+/// comparison-count budget now trips first on a constructing projection, so the same test would cost a
+/// few seconds today. What is missing is still the information, not the time.
 /// </para>
 /// <para>
 /// An earlier revision of the paragraph above also said <c>RemainingCoverageTests</c> pinned <em>the cap

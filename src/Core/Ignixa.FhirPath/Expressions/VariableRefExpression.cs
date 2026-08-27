@@ -20,7 +20,7 @@ public class VariableRefExpression : Expression
     /// Creates a reference to a bare <c>%name</c>.
     /// </summary>
     /// <remarks>
-    /// Forwards <see langword="false"/> to the internal <paramref name="isDelimited"/>-carrying constructor:
+    /// Forwards <see langword="false"/> to the internal <c>isDelimited</c>-carrying constructor:
     /// this public arity predates <see cref="IsDelimited"/>, and a caller reaching it has no delimited
     /// spelling to report, so bare is the correct - not merely the historical - value here.
     /// </remarks>
@@ -64,11 +64,16 @@ public class VariableRefExpression : Expression
     /// Ignixa's lexer accepts <c>-</c> in the bare form so that names like <c>%p-inactive</c>, which appear in
     /// published cqf-expression content, lex as one token the way HAPI's lexer takes them; carrying this flag is
     /// what stops that lexical allowance from silently turning into a resolution rule the spec does not have.
-    /// Internal because it is engine-internal reasoning, not part of the published AST contract: nothing outside
-    /// this assembly's <c>InternalsVisibleTo</c> set (<c>Ignixa.SqlOnFhir</c>, <c>Ignixa.Search</c>,
-    /// <c>Ignixa.FhirPath.Tests</c>) needs it - the engine expands the <c>vs-</c>/<c>ext-</c> families in
-    /// <see cref="Evaluation.EvaluationContext.GetStandardConstant"/> before a host resolver is ever consulted, so
-    /// a host only ever sees names the engine already declined, where this flag is irrelevant.
+    /// Internal because it records how the expression was <em>written</em>, and the published AST contract
+    /// describes what an expression <em>means</em>. <b>That has a cost, and the cost is not that the two
+    /// spellings are equivalent - they are not.</b> Host-supplied
+    /// <see cref="Evaluation.EvaluationContext.Environment"/> bindings resolve <em>before</em> the fixed FHIRPath
+    /// constants, so a host that binds <c>vs-x</c> is what bare <c>%vs-x</c> resolves to while
+    /// <c>%`vs-x`</c> still expands to the ValueSet URL. An out-of-assembly
+    /// <see cref="Visitors.IFhirPathExpressionVisitor{TContext, TOutput}"/> therefore sees two references it
+    /// cannot distinguish. That only bites a consumer reimplementing constant resolution outside the engine -
+    /// which is the drift <c>StandardConstantFamilies</c> exists to stop - so the rule stays in one place and
+    /// this flag stays with it.
     /// </remarks>
     internal bool IsDelimited { get; }
 

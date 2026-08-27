@@ -21,12 +21,13 @@ namespace Ignixa.Search.Definition;
 /// </para>
 /// <para>
 /// Only redirects that are unambiguous belong here. Each one is a URL whose intended parameter is
-/// identified by the specification's own naming - the STU3 entries all point at
-/// <c>Observation-code</c>, which STU3 publishes under the multi-resource <c>clinical-code</c> URL
-/// with the same code, the same <c>token</c> type and an expression that includes
-/// <c>Observation.code</c>. Nothing is guessed by matching codes at runtime: a heuristic that bound
-/// whatever parameter happened to share a code would silently bind the wrong one the first time two
-/// parameters collided, which is the failure mode this table exists to remove rather than relocate.
+/// identified by the specification's own naming - the single STU3 entry redirects
+/// <c>Observation-code</c>, which all four <c>Observation-code-value-*</c> composites reference, to the
+/// multi-resource <c>clinical-code</c> URL STU3 publishes it under, with the same code, the same
+/// <c>token</c> type and an expression that includes <c>Observation.code</c>. Nothing is guessed by
+/// matching codes at runtime: a heuristic that bound whatever parameter happened to share a code would
+/// silently bind the wrong one the first time two parameters collided, which is the failure mode this
+/// table exists to remove rather than relocate.
 /// </para>
 /// <para>
 /// <c>microsoft/fhir-server</c> solves the same problem by curating its embedded

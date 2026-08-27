@@ -508,10 +508,14 @@ internal static class CollectionFunctions
     /// before #435 - the same 5,460-node tree runs to completion at 33,540,780 comparisons, and a 9,840-node tree
     /// (breadth 3, depth 8) reaches 112,968,120, both OK. So the envelope for a navigating <c>repeat()</c> falls
     /// from about 10,000 nodes, where one dequeue per node made the iteration cap the binding constraint, to
-    /// somewhere between 3,279 (OK) and 5,460 (throws) - the narrowest bracket reproducible with the generator
-    /// above; no uniform tree of any breadth lands exactly on the boundary in between, so this is stated as a
-    /// bracket rather than a single cutover node count. Combined with the all-or-nothing behaviour documented below, an indexer over a tenant expression
-    /// that exceeds this drops the whole search parameter rather than truncating it. The exposure is narrow rather
+    /// somewhere between 3,279 (OK) and 5,460 (throws) <em>for the breadth-3 and breadth-4 shapes the control
+    /// uses</em>. That bracket is not a cutover: because the guard bounds <em>cost</em>, not node count, no
+    /// single node count is the boundary - a tree's shape decides how many comparisons its nodes cost. Measured
+    /// on the same generator at depth 1, where every item is a sibling: 3,872 nodes completes and 3,873 throws
+    /// the comparison budget. So a wide shallow tree is refused at 3,873 nodes while a breadth-3 tree of 3,279
+    /// passes, and the bracket above describes those two shapes rather than the envelope's edge. Combined
+    /// with the all-or-nothing behaviour documented below, an indexer over a tenant expression that
+    /// exceeds this drops the whole search parameter rather than truncating it. The exposure is narrow rather
     /// than absent: <c>descendants()</c> has its own non-deduping implementation and does not route through this
     /// method, and <c>repeat(</c> appears in no generated SearchParameter and in only three shipped invariants, so
     /// what is at risk is a tenant-authored <c>repeat()</c> over a resource of several thousand nodes.
