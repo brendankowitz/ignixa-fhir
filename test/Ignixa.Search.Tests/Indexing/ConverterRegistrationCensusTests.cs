@@ -45,6 +45,44 @@ public class ConverterRegistrationCensusTests
             FhirVersion.R4.GetSchemaProvider(),
             NullFhirBaseUriProvider.Instance).ConverterManager;
 
+    /// <summary>
+    /// Floor on the vendored snapshot's size, so an emptied or gutted table cannot satisfy every
+    /// assertion below with nothing to compare against.
+    /// </summary>
+    /// <remarks>
+    /// Not redundant with <see cref="UpstreamConverterRegistrations.ContentHash"/>: the hash pins this
+    /// exact snapshot and is re-stated on every deliberate refresh, so it says nothing across refreshes.
+    /// This floor survives them, and says the refresh did not silently lose most of the table.
+    /// </remarks>
+    private const int MinimumUpstreamRegistrations = 47;
+
+    /// <summary>
+    /// Binds the snapshot's rows to the commit it claims to have been read from.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="UpstreamConverterRegistrations.SourceCommit"/> is otherwise only printed into failure
+    /// messages, so a row added by hand for a pair Ignixa already covers - or a commit bumped without
+    /// re-reading upstream - changes nothing any other assertion can see. Refreshing the snapshot means
+    /// changing both, in the same edit, which is the point.
+    /// </remarks>
+    [Fact]
+    public void GivenTheSnapshot_WhenHashed_ThenItMatchesTheRecordedProvenance()
+    {
+        UpstreamConverterRegistrations.All.Count.ShouldBeGreaterThanOrEqualTo(
+            MinimumUpstreamRegistrations,
+            "The vendored upstream snapshot has fewer rows than the floor. Every comparison in this "
+            + "census is against that table, so a shrinking table quietly shrinks the census. Raise the "
+            + "floor when upstream genuinely grows; never lower it to accommodate a loss.");
+
+        UpstreamConverterRegistrations.ComputeContentHash().ShouldBe(
+            UpstreamConverterRegistrations.ContentHash,
+            $"The vendored snapshot's rows no longer hash to the value recorded beside "
+            + $"SourceCommit '{UpstreamConverterRegistrations.SourceCommit}'. If the rows were refreshed "
+            + "from a newer upstream commit, update SourceCommit and ContentHash together. If they were "
+            + "not, a row was edited without the provenance being restated - which is how a snapshot "
+            + "stops describing the commit it names.");
+    }
+
     [Fact]
     public void GivenUpstreamRegistrations_WhenCensused_ThenEveryPairIsCoveredOrDocumented()
     {

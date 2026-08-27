@@ -20,12 +20,17 @@ namespace Ignixa.Search.Tests.Definition;
 /// STU3 was repaired in <c>CompositeComponentDefinitionRepairs</c> instead of being listed here.
 /// </para>
 /// <para>
-/// Repairing the rest is not the same kind of edit. <c>Observation-value-string</c> under R5 needs a
-/// search parameter the package deleted to be reintroduced, which changes R5's supported parameter
-/// surface; the <c>ResearchStudy</c>, <c>Ingredient</c> and <c>Device</c> entries need the same, and
-/// <c>microsoft/fhir-server</c> handles them by dropping the composites from its curated bundle
-/// entirely. Both are product decisions rather than defect fixes, so they are recorded here with what
-/// upstream did and left for a deliberate call.
+/// Repairing the rest is not the same kind of edit, and upstream takes no single position on them.
+/// <c>Observation-code-value-string</c> under R5 needs the search parameter the package deleted to be
+/// reintroduced, which changes R5's supported parameter surface - and that is what
+/// <c>microsoft/fhir-server</c> does. It drops the <c>ResearchStudy</c>, <c>Ingredient</c> and
+/// <c>Encounter-location-period</c> composites from its curated bundle entirely; it carries the
+/// <c>TestScript-scope-artifact-*</c> group but names it in a hard-coded <c>_missingExpressionsInR5</c>
+/// exclusion list; and it <em>repoints</em> <c>DeviceDefinition-specification-version</c>'s component at
+/// <c>CanonicalResource-version</c>. No R6 row has an upstream position at all, because
+/// <c>microsoft/fhir-server</c> ships no R6 bundle. Each is a product decision rather than a defect fix,
+/// so each entry records what upstream did and leaves the call deliberate. Read the entry rather than
+/// this summary for any particular row.
 /// </para>
 /// </remarks>
 internal static class KnownCompositeComponentDivergences
@@ -41,6 +46,17 @@ internal static class KnownCompositeComponentDivergences
         hl7.fhir.r6.core#6.0.0-ballot2 ships this composite but does not publish the component's
         SearchParameter, so the reference dangles in the package itself.
         """;
+
+    /// <summary>
+    /// The boilerplate every entry's reason opens with, so a census can measure what the entry adds on
+    /// top of it rather than what it inherits.
+    /// </summary>
+    /// <remarks>
+    /// Each of these is around 140 characters - more than any plausible floor on its own - so an entry
+    /// reduced to nothing but its preamble still passes a check that measures <c>Reason</c> whole. The
+    /// substantive-reason census strips these first for that reason.
+    /// </remarks>
+    public static IReadOnlyList<string> SharedPreambles { get; } = [R5SpecOmission, R6SpecOmission];
 
     public static IReadOnlyList<CompositeComponentDivergence> All { get; } =
     [

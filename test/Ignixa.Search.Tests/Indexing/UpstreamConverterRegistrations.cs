@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using Ignixa.Search.Indexing.SearchValues;
 
 namespace Ignixa.Search.Tests.Indexing;
@@ -37,6 +40,29 @@ internal static class UpstreamConverterRegistrations
 
     public const string SourcePath =
         "microsoft/fhir-server src/Microsoft.Health.Fhir.Core/Features/Search/Converters";
+
+    /// <summary>
+    /// SHA-256 over <see cref="All"/>, so no row can be added, removed or edited without
+    /// <see cref="SourceCommit"/> being restated in the same change.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this, <see cref="SourceCommit"/> is read only to be printed into failure messages -
+    /// nothing binds it to the rows. The rest of the census catches an emptied snapshot, a deleted row and
+    /// an added row for a pair Ignixa lacks, but it compares <em>sets of pairs</em>: a duplicate row, or a
+    /// row whose converter name was edited, changes nothing it can see. This hash makes any such edit
+    /// impossible without also editing the line beside <see cref="SourceCommit"/>. What it cannot do is
+    /// verify the commit itself - a <see cref="SourceCommit"/> bumped while the rows stay put is not
+    /// checkable offline by any means, which is why refreshing is described as one edit below.
+    /// </para>
+    /// <para>
+    /// To refresh: re-read the converters at the new upstream commit, update the rows, run
+    /// <c>ConverterRegistrationCensusTests.GivenTheSnapshot_WhenHashed_ThenItMatchesTheRecordedProvenance</c>
+    /// and paste the hash it reports here together with the new <see cref="SourceCommit"/>. Updating the
+    /// hash without updating the commit is the mistake this exists to make visible.
+    /// </para>
+    /// </remarks>
+    public const string ContentHash = "6ea7f645cb67673df1e81e0bb823a0464c0c6e60f76f7a7f6e900f651219c9a3";
 
     public static IReadOnlyList<ConverterRegistration> All { get; } =
     [
@@ -91,4 +117,21 @@ internal static class UpstreamConverterRegistrations
 
     public static IReadOnlySet<ConverterPair> Pairs { get; } =
         All.Select(registration => registration.Pair).ToHashSet();
+
+    /// <summary>
+    /// The hash <see cref="ContentHash"/> is expected to hold: SHA-256, lower-case hex, over the rows
+    /// rendered one per line in ordinal order, so the value does not depend on declaration order.
+    /// </summary>
+    public static string ComputeContentHash()
+    {
+        string rendered = string.Join(
+            '\n',
+            All
+                .Select(registration => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{registration.ConverterName}|{registration.FhirType}|{registration.SearchValueType.Name}"))
+                .Order(StringComparer.Ordinal));
+
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(rendered)));
+    }
 }

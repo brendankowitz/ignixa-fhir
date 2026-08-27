@@ -26,6 +26,11 @@ namespace Ignixa.Search.Tests.Definition;
 /// </remarks>
 public class CompositeComponentCensusTests
 {
+    /// <summary>
+    /// The floor on what an entry's reason contributes beyond the shared preamble, in characters.
+    /// </summary>
+    private const int MinimumOwnReasonLength = 50;
+
     public static TheoryData<FhirVersion> Versions =>
         new(FhirVersion.Stu3, FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5, FhirVersion.R6);
 
@@ -111,15 +116,44 @@ public class CompositeComponentCensusTests
         wrong.ShouldBeEmpty(string.Join(Environment.NewLine + Environment.NewLine, wrong));
     }
 
+    /// <summary>
+    /// Every reason has to say something this entry's own. An entry reduced to a placeholder documents
+    /// nothing and turns the table back into a suppression list.
+    /// </summary>
+    /// <remarks>
+    /// Measured after stripping <see cref="KnownCompositeComponentDivergences.SharedPreambles"/>, which
+    /// is what makes this able to fail at all. Every entry interpolates one of those preambles, each
+    /// around 140 characters, so an earlier revision measuring <c>Reason</c> whole handed every entry
+    /// more than the entire 80-character budget before it said anything of its own: reducing eleven
+    /// entries to nothing but their preamble left it green. Measured own-lengths across the 31 entries
+    /// run 59 to 497, so the floor is set at 50 - below the shortest, so a rewording does not redden it,
+    /// and far above a placeholder.
+    /// </remarks>
     [Fact]
     public void GivenTheDivergenceTable_WhenCensused_ThenEveryReasonIsSubstantive()
     {
         var thin = KnownCompositeComponentDivergences.All
-            .Where(divergence => divergence.Reason.Trim().Length < 80)
-            .Select(divergence => $"{divergence} - reason is too short to be a reason.")
+            .Select(divergence => (Divergence: divergence, Own: OwnReason(divergence.Reason)))
+            .Where(entry => entry.Own.Length < MinimumOwnReasonLength)
+            .Select(entry =>
+                $"{entry.Divergence} - {entry.Own.Length} characters beyond the shared preamble is not a "
+                + $"reason: '{entry.Own}'.")
             .ToArray();
 
         thin.ShouldBeEmpty(string.Join(Environment.NewLine, thin));
+    }
+
+    /// <summary>
+    /// What an entry's reason says beyond the preamble every entry inherits.
+    /// </summary>
+    private static string OwnReason(string reason)
+    {
+        foreach (string preamble in KnownCompositeComponentDivergences.SharedPreambles)
+        {
+            reason = reason.Replace(preamble, string.Empty, StringComparison.Ordinal);
+        }
+
+        return reason.Trim();
     }
 
     /// <summary>
