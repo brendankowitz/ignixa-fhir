@@ -39,6 +39,13 @@ public class CompiledVersusInterpretedDifferentialTests
         "contact.period.start < contact.period.end",
         "telecom.where(system = 'phone')",
         "gender = 'male'",
+
+        // exists(criteria) compiled to a criteria-less exists() and answered true where the interpreter
+        // answered false. The differential theory alone cannot hold the fix: it returns early when
+        // TryCompile declines, so repairing this by refusing to compile would read as green there while
+        // silently costing the compiled path. Pinned here so the criteria form has to keep compiling.
+        "name.exists(use = 'official')",
+        "telecom.exists(system = 'fax')",
     };
 
     /// <summary>
@@ -97,6 +104,8 @@ public class CompiledVersusInterpretedDifferentialTests
             "contact.period.start < contact.period.end",
             "telecom.where(system = 'phone')",
             "gender = 'male'",
+            "name.exists(use = 'official')",
+            "telecom.exists(system = 'fax')",
         ];
 
         var actual = new List<string>();
