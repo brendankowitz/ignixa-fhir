@@ -22,8 +22,13 @@ internal sealed class SearchParserTestContext
     private readonly Dictionary<string, List<SearchParameterInfo>> _searchParametersByResourceType = new(StringComparer.OrdinalIgnoreCase);
 
     public SearchParserTestContext()
+        : this(new R4CoreSchemaProvider())
     {
-        SchemaProvider = new R4CoreSchemaProvider();
+    }
+
+    public SearchParserTestContext(IFhirSchemaProvider schemaProvider)
+    {
+        SchemaProvider = schemaProvider;
         DefinitionManager = Substitute.For<ISearchParameterDefinitionManager>();
         ValueParser = new SearchParameterExpressionParser(new ReferenceSearchValueParser(SchemaProvider, NullFhirBaseUriProvider.Instance), SchemaProvider);
         Parser = new ExpressionParser(() => DefinitionManager, ValueParser, SchemaProvider);
@@ -34,7 +39,7 @@ internal sealed class SearchParserTestContext
         DefinitionManager.SearchParameterHashMap.Returns(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 
-    public R4CoreSchemaProvider SchemaProvider { get; }
+    public IFhirSchemaProvider SchemaProvider { get; }
 
     public ISearchParameterDefinitionManager DefinitionManager { get; }
 
@@ -48,7 +53,8 @@ internal sealed class SearchParserTestContext
         SearchParamType type,
         string[]? targets = null,
         SearchParameterComponentInfo[]? components = null,
-        Uri? url = null)
+        Uri? url = null,
+        string? expression = null)
     {
         var parameter = new SearchParameterInfo(
             name: code,
@@ -57,7 +63,8 @@ internal sealed class SearchParserTestContext
             components: components!,
             targetResourceTypes: targets!,
             baseResourceTypes: new[] { resourceType },
-            url: url ?? new Uri($"http://ignixa.test/SearchParameter/{resourceType}-{code}"));
+            url: url ?? new Uri($"http://ignixa.test/SearchParameter/{resourceType}-{code}"),
+            expression: expression);
 
         Register(resourceType, parameter);
 
