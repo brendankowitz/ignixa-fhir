@@ -14,12 +14,25 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.FhirPath.Phase3.Stu3.Tests;
 
-public class Stu3CompositeDoubleEmptyTests
+/// <summary>
+/// The STU3 <c>Observation-code-value-date</c> composite, which used to fail on both sides for
+/// unrelated reasons and now fails on one.
+/// </summary>
+/// <remarks>
+/// The corpus's clearest demonstration that final index equality can give a false answer: Firely dropped
+/// this composite because the shipped date component casts with a capitalised <c>DateTime</c>, while
+/// Ignixa selected the date successfully but dropped the same composite because STU3 publishes no
+/// <c>Observation-code</c> for the code component. Two independent failures, one identical empty result,
+/// and an index-only comparison reporting agreement. The component reference is now repaired - STU3
+/// publishes that parameter under the multi-resource <c>clinical-code</c> URL - so Ignixa emits the
+/// composite and Firely still does not, leaving the evaluator divergence visible in the index too.
+/// </remarks>
+public class Stu3CompositeComponentRepairTests
 {
     private const string ObservationJson = """
         {
           "resourceType": "Observation",
-          "id": "stu3-double-empty-probe",
+          "id": "stu3-composite-repair-probe",
           "status": "final",
           "code": {
             "coding": [
@@ -37,7 +50,7 @@ public class Stu3CompositeDoubleEmptyTests
     private static readonly IFhirSchemaProvider Schema = FhirVersion.Stu3.GetSchemaProvider();
 
     [Fact]
-    public void GivenCodedObservation_WhenCompositeIndexed_ThenIndependentFailuresProduceTheSameEmptyIndexResult()
+    public void GivenCodedObservation_WhenCompositeIndexed_ThenTheRepairedComponentLetsIgnixaEmitTheEntryFirelyCannot()
     {
         // Arrange
         var definitions = new SearchParameterDefinitionManager(
@@ -79,11 +92,17 @@ public class Stu3CompositeDoubleEmptyTests
             .Select(result => $"{result.InstanceType}|{result.Value}")
             .ShouldBe(["dateTime|2024-06-15T08:00:00Z"]);
 
-        // The independent failure is unresolved component metadata, not date evaluation.
-        composite.Component[0].ResolvedSearchParameter.ShouldBeNull();
+        // The code component now resolves: STU3 publishes it under the multi-resource clinical-code
+        // URL, which is what CompositeComponentDefinitionRepairs redirects the dangling reference to.
+        composite.Component[0].ResolvedSearchParameter.ShouldNotBeNull();
+        composite.Component[0].ResolvedSearchParameter.Url.OriginalString
+            .ShouldBe("http://hl7.org/fhir/SearchParameter/clinical-code");
 
-        // Consequently the production Ignixa indexer also emits no composite entry.
-        finalCompositeEntries.ShouldBeEmpty();
+        // So the production Ignixa indexer emits the composite entry, where Firely's empty date
+        // component leaves it with nothing to emit.
+        finalCompositeEntries.Length.ShouldBe(1);
+        finalCompositeEntries[0].Value.ToString()
+            .ShouldBe("(http://loinc.org|29463-7) $ (2024-06-15T08:00:00+00:00)");
     }
 
     private static ITypedElement ParseNativeInput() =>

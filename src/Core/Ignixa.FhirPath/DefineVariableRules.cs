@@ -27,11 +27,21 @@ internal static class DefineVariableRules
     /// <c>dvCantOverwriteSystemVar</c>: <c>defineVariable('context', 'oops')</c>).
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// One of three overlapping reserved-name lists that answer different questions - do not merge them.
+    /// This one is "<c>defineVariable()</c> may not claim this name".
+    /// <c>Ignixa.SqlOnFhir.Evaluation.SqlOnFhirEvaluator.EngineManagedVariableNames</c> is "a caller may
+    /// not supply this as a variable", and <c>ViewDefinitionExpressionParser</c>'s method-local
+    /// <c>predefinedVariables</c> is "needs no constant declaration in a ViewDefinition". A name added to
+    /// one usually belongs in none of the others; check all three anyway.
+    /// </para>
+    /// <para>
     /// Ordinal, so the guard is exactly as wide as the thing it guards. The engine resolves these names
     /// with a case-sensitive switch and <c>StartsWith(StringComparison.Ordinal)</c>
-    /// (<see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable"/>), so <c>%Context</c> never
-    /// reaches the system binding and <c>defineVariable('Context', …)</c> collides with nothing. Rejecting
+    /// (<see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>),
+    /// so <c>%Context</c> never reaches the system binding and <c>defineVariable('Context', …)</c> collides with nothing. Rejecting
     /// it anyway would refuse a legal name on the strength of a collision that cannot happen.
+    /// </para>
     /// </remarks>
     public static readonly FrozenSet<string> ReservedVariableNames = new[]
     {

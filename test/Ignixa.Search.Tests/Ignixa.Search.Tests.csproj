@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    This project exists because AGENTS.md's convention already calls for it: "test/ mirrors
+    production projects" and "place tests in the matching test/Ignixa.*.Tests project". It is
+    the matching project for src/Core/Ignixa.Search, the same way Ignixa.Search.Sql.Tests already
+    mirrors Ignixa.Search.Sql - it did not need to be invented for this branch, only created.
+
+    Search tests are split across two projects. Tests that exercise Ignixa.Search directly - the
+    search parameter definition manager, the converter registrations, and the composite component
+    census - belong here, and this project references only Ignixa.Search. Tests that exercise the
+    Application-layer search indexing pipeline (SearchIndexer, its handlers, and end-to-end
+    composite search behavior) stay in test/Ignixa.Application.Tests/Search/, where that
+    infrastructure already lives.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Shouldly" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
+  </ItemGroup>
+
+</Project>

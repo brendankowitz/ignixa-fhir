@@ -463,8 +463,43 @@ internal static class CollectionFunctions
     /// (<c>RemainingCoverageTests</c>, nested-Questionnaire case) uses a 1,092-item tree and genuinely dequeues
     /// roughly 1,093 times; a 1,000 iteration cap would reject that legitimate data. 10,000 gives approximately
     /// 9× headroom over that observed real shape. The residual gap - bounding actual per-projection cost, which
-    /// depends on fan-out - requires a work budget (comparison count) alongside the iteration cap; that is tracked
-    /// separately and is deliberately not implemented here.
+    /// depends on fan-out - is closed by the comparison-count budget below.
+    /// </para>
+    /// <para>
+    /// <b>Comparison-count budget (#435):</b> <see cref="RepeatGuardLimits.MaxComparisons"/> caps total
+    /// <see cref="FunctionHelpers.AreElementsEqual"/> calls across the run; whichever of it and
+    /// <see cref="RepeatGuardLimits.MaxIterations"/> trips first throws the same exception type at the same
+    /// log tier. Unlike the iteration cap this is a <em>cost</em> budget, so it catches the fan-out hazard:
+    /// a wider projection reaches the same comparison total in fewer iterations and is stopped at roughly
+    /// the same cost. Measured - the control (1,092-item nested Questionnaire, 1,093 iterations) costs
+    /// 1,391,754 comparisons, and <c>repeat($this &amp; 'x')</c> run to the full 10,000-iteration cap costs
+    /// 149,995,000. 15,000,000 gives ~10.8× headroom over the control, stops that hazard at 3,163
+    /// iterations (3.3s rather than 32.4s), and is flat in branching factor: 1/2/3 branches take
+    /// 4.75s/5.35s/4.50s and all trip the comparison budget, where the iteration-only cap took 38.97s and
+    /// 76.32s for one and two branches.
+    /// </para>
+    /// <para>
+    /// <b>Bounding a quadratic cost necessarily bounds data; that is the trade this guard is, not a side
+    /// effect of it.</b> Comparisons fit ~1.167·N² over the control's breadth-3 <c>Questionnaire.item</c>
+    /// shape (C/N² within 0.4% from N=120 to N=3,279), so 10.8× headroom in comparisons is only √10.8 ≈
+    /// 3.3× in nodes - <em>not</em> the same order of headroom as the iteration cap's 9×. The accepted-data
+    /// envelope narrows deliberately: from about 10,000 nodes, where one dequeue per node made the
+    /// iteration cap binding, to between 3,279 (OK) and 5,460 (throws) for the control's breadth-3 and
+    /// breadth-4 shapes. That bracket is not a cutover - the guard bounds cost, so shape decides; at depth
+    /// 1, where every item is a sibling, the boundary is 3,872 OK / 3,873 throws. Regenerate any of it with
+    /// <c>RemainingCoverageTests.CreateDeeplyNestedQuestionnaireItems(breadth, depth)</c> under
+    /// <c>repeat(item)</c>. Exposure is narrow - <c>descendants()</c> does not route through this method,
+    /// and <c>repeat(</c> appears in no generated SearchParameter and in three shipped invariants - so what
+    /// is at risk is a tenant-authored <c>repeat()</c> over several thousand nodes, which given the
+    /// all-or-nothing behaviour documented below loses the whole search parameter.
+    /// <b>Do not raise the budget to widen this</b>; bounding cost was the point of #435.
+    /// </para>
+    /// <para>
+    /// <b>Test seam (#435):</b> both thresholds live on <see cref="RepeatGuardLimits"/> rather than local
+    /// <c>const</c>s so <c>Ignixa.FhirPath.Tests</c> can substitute a small cap via
+    /// <see cref="RepeatGuardLimits.Scope"/> and prove either guard trips - same exception type, message
+    /// shape and log tier - in milliseconds. See that type's remarks for why the seam is
+    /// <see cref="AsyncLocal{T}"/>-backed and why this method hoists both into locals.
     /// </para>
     /// <para>
     /// <b>Harmonisation with <see cref="RepeatAll"/>'s 100,000:</b> do not raise this cap toward that figure. The
@@ -532,8 +567,14 @@ internal static class CollectionFunctions
         var processed = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
-        const int maxIterations = 10_000;
-        var iterations = 0;
+        // Read each threshold once per call rather than once per comparison: RepeatGuardLimits backs them
+        // with AsyncLocal, which is not a static field read. Sound because this method is eager, so a
+        // threshold cannot change mid-run, and the snapshot is the number the exception message names.
+        int maxIterations = RepeatGuardLimits.MaxIterations;
+        long maxComparisons = RepeatGuardLimits.MaxComparisons;
+
+        int iterations = 0;
+        long comparisons = 0;
 
         while (queue.Count > 0)
         {
@@ -543,7 +584,7 @@ internal static class CollectionFunctions
             var current = queue.Dequeue();
 
             // Check if we've already processed this element using deep equality comparison
-            if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, current)))
+            if (!ContainsElement(processed, current))
             {
                 processed.Add(current);
 
@@ -553,13 +594,13 @@ internal static class CollectionFunctions
                 foreach (var item in projected)
                 {
                     // Add projection results to the output result set (avoiding duplicates)
-                    if (!result.Any(r => FunctionHelpers.AreElementsEqual(r, item)))
+                    if (!ContainsElement(result, item))
                     {
                         result.Add(item);
                     }
 
                     // If this is a new item, add it to queue for further processing
-                    if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, item)))
+                    if (!ContainsElement(processed, item))
                     {
                         queue.Enqueue(item);
                     }
@@ -568,6 +609,22 @@ internal static class CollectionFunctions
         }
 
         return result;
+
+        // Counts each deep-equality comparison as it happens rather than once per O(n) scan, so a single
+        // wide scan cannot overrun the budget.
+        bool ContainsElement(List<IElement> list, IElement candidate)
+        {
+            foreach (var existing in list)
+            {
+                if (++comparisons > maxComparisons)
+                    throw new FhirPathEvaluationException($"repeat() exceeded maximum comparison-count budget ({maxComparisons}) - possible expensive projection detected");
+
+                if (FunctionHelpers.AreElementsEqual(existing, candidate))
+                    return true;
+            }
+
+            return false;
+        }
     }
 
     /// <summary>
@@ -1185,10 +1242,10 @@ internal static class CollectionFunctions
         {
             if (string.Equals(name, "name", StringComparison.OrdinalIgnoreCase))
                 return [FunctionHelpers.CreateString(_name)];
-            
+
             if (string.Equals(name, "namespace", StringComparison.OrdinalIgnoreCase))
                 return [FunctionHelpers.CreateString(_namespace)];
-            
+
             return [];
         }
     }

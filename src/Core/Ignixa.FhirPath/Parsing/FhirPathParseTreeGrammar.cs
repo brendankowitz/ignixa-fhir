@@ -105,10 +105,9 @@ internal static class FhirPathParseTreeGrammar
             {
                 var raw = t.ToStringValue().Substring(1); // Remove '%'
                 // Check if delimited with backticks and remove them
-                var varName = (raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`')
-                    ? raw.Substring(1, raw.Length - 2)
-                    : raw;
-                return (ParseNode)new VariableRefParseNode(varName, Loc(t));
+                var isDelimited = raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`';
+                var varName = isDelimited ? raw.Substring(1, raw.Length - 2) : raw;
+                return (ParseNode)new VariableRefParseNode(varName, isDelimited, Loc(t));
             });
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> ParenthesizedExpression =

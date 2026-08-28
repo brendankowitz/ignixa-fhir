@@ -88,7 +88,7 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
     public virtual Expression VisitVariable(VariableRefParseNode node, AstBuildContext context)
     {
         var location = CreateLocation(node.Location);
-        return new VariableRefExpression(node.Name, location);
+        return new VariableRefExpression(node.Name, location, node.IsDelimited);
     }
 
     public virtual Expression VisitIndexer(IndexerParseNode node, AstBuildContext context)

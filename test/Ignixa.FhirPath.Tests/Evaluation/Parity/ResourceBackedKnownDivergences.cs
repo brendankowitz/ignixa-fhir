@@ -1,4 +1,5 @@
-using Ignixa.Abstractions;
+﻿using Ignixa.Abstractions;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
@@ -61,7 +62,7 @@ internal static class ResourceBackedKnownDivergences
 
     /// <summary>
     /// The elements production <c>ElementSearchIndexer</c> classified as unindexable and skipped,
-    /// which this corpus records but cannot adjudicate.
+    /// which this corpus records but cannot adjudicate on its own.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -73,52 +74,67 @@ internal static class ResourceBackedKnownDivergences
     /// <em>both</em> indexers. The reference indexer resolves converters through the same instance
     /// production does. So when both sides skip an element that is one object making one decision, not
     /// two implementations agreeing, and no entry-list comparison over this corpus can detect a gap in
-    /// it. An earlier revision of this comment claimed the reference indexer performs the matching
-    /// skips "exactly as production does" and offered that as corroboration. It is a structural
-    /// guarantee, and it was false as a claim about agreement.
+    /// it.
     /// </para>
     /// <para>
-    /// What the skips are, measured by replaying the converter lookup with the parameter identity
-    /// production does not log: 229 of the 301 are <c>FhirElementTypeNotSupported</c>, a converter
-    /// manager miss, and 186 of those are <c>canonical</c> under 46 shipped SearchParameters - 45
-    /// <c>Reference</c>-typed plus <c>MessageHeader-event</c>. Ignixa registers <c>canonical</c>
-    /// against <c>UriSearchValue</c> only, so those 46 parameters index nothing. Among them are
-    /// <c>QuestionnaireResponse-questionnaire</c>, <c>MeasureReport-measure</c>,
-    /// <c>StructureDefinition-base</c>, <c>PlanDefinition-definition</c>, the
-    /// <c>instantiates-canonical</c> family across nine resource types, the <c>-depends-on</c> family,
-    /// and eight <c>ConceptMap</c> parameters.
+    /// The adjudication therefore does not live here. <c>Ignixa.Search.Tests</c> holds a converter
+    /// registration census against a vendored <c>microsoft/fhir-server</c> snapshot and a composite
+    /// component census over production's definition manager; between them every site below is a
+    /// documented divergence, a correct skip upstream also performs, or a defect recorded against the
+    /// layer that owns it. What remains here is the measurement: how far each site reaches.
     /// </para>
     /// <para>
-    /// microsoft/fhir-server, which this indexer was ported from, additionally ships
-    /// <c>CanonicalToReferenceSearchValueConverter</c>, <c>IdToReferenceSearchValueConverter</c>,
-    /// <c>IdentifierToStringSearchValueConverter</c> and <c>ReferenceToUriSearchValueConverter</c>.
-    /// The first is what closes the 186. Writing them is <c>Ignixa.Search</c> production work, tracked
-    /// separately as release-blocking and deliberately out of scope for a FHIRPath change; what
-    /// belongs here is that the corpus stops implying it has cleared them. When the converters land
-    /// these counts drop, and this pin is what says by how much.
+    /// The classes, by cause:
     /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// <c>canonical</c> under 46 <c>Reference</c>-typed parameters (186 sites): the deliberate storage
+    /// divergence tracked as #430. Ignixa registers <c>canonical</c> against <c>UriSearchValue</c> only.
+    /// </description></item>
+    /// <item><description>
+    /// Backbone element types under a leaf-typed parameter (28 sites). Not converter gaps: each is a path
+    /// <c>X.y.y</c> where a backbone's child shares the backbone's own name, and
+    /// <c>SchemaAwareElement.Children</c> types the child as its parent - so
+    /// <c>Encounter.location.location</c>, a <c>Reference</c> in the schema, arrives as
+    /// <c>Encounter.Location</c> and the reference converter is never asked for. An
+    /// <c>Ignixa.Serialization</c> element-model defect, tracked separately.
+    /// </description></item>
+    /// <item><description>
+    /// Correct skips upstream performs identically: <c>Attachment</c> and <c>base64Binary</c> under
+    /// parameters that cannot represent them, <c>string</c> under a date parameter, <c>uri</c> under a
+    /// token parameter, <c>DeviceDefinition.udiDeviceIdentifier</c> under R6 ballot's
+    /// <c>CanonicalResource-identifier</c>, and <c>Location.Position</c> under <c>Location-near</c>,
+    /// where geo search is unimplemented here and upstream alike.
+    /// </description></item>
+    /// <item><description>
+    /// <c>ComponentNullResolvedSearchParameter</c>: composites whose component definition URL the
+    /// published HL7 package never publishes. The four STU3 <c>Observation-code-value-*</c> composites are
+    /// now repaired in <c>CompositeComponentDefinitionRepairs</c>, which is why 44 sites left this
+    /// dictionary; the R5 and R6 remainder is in <c>KnownCompositeComponentDivergences</c>.
+    /// </description></item>
+    /// </list>
     /// <para>
     /// Pinned exactly rather than floored, and by site rather than in total, because each of the three
     /// ways a number can move means something different. A new signature is a new unindexable site. A
     /// count that rises is an existing gap spreading. A count that falls is either a converter landing
-    /// or a corpus that stopped generating the shape - and the two must not be indistinguishable.
+    /// or a corpus that stopped generating the shape - and those two must not be indistinguishable.
+    /// <see cref="UnconvertedPairs"/> is what separates them: it asserts against the live converter
+    /// manager, so a converter landing reddens it by name while a corpus that stopped producing the
+    /// shape leaves it green and moves only the count here. Read both failures together before
+    /// re-pinning.
     /// </para>
     /// <para>
-    /// <c>FhirElementTypeNotSupported</c> signatures carry no parameter identity because production
-    /// logs only the element type for that event. That is a gap in production logging; it is recorded
-    /// here rather than worked around, since inventing an identity the log does not carry would make
-    /// the pin say more than the evidence does. The 46-parameter breakdown above was recovered by
-    /// replaying the lookup outside the indexer, not read out of these signatures.
+    /// The signatures carry the search parameter URL because production now logs it;
+    /// <c>Log.FhirElementTypeNotSupported</c> used to record only the element type, so the 46-parameter
+    /// <c>canonical</c> breakdown had to be recovered by replaying the lookup outside the indexer - as
+    /// would anyone diagnosing this on a running server.
     /// </para>
     /// </remarks>
     public static IReadOnlyDictionary<string, int> ExpectedIgnixaConverterPipelineSkips { get; } =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
             ["CannotInferSearchParamType :: http://hl7.org/fhir/SearchParameter/Encounter-location :: Encounter.Location :: "] = 1,
-            ["ComponentNullResolvedSearchParameter :: code-value-concept ::  :: "] = 11,
-            ["ComponentNullResolvedSearchParameter :: code-value-date ::  :: "] = 11,
-            ["ComponentNullResolvedSearchParameter :: code-value-quantity ::  :: "] = 11,
-            ["ComponentNullResolvedSearchParameter :: code-value-string ::  :: "] = 22,
+            ["ComponentNullResolvedSearchParameter :: code-value-string ::  :: "] = 11,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-actual ::  :: "] = 2,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-period ::  :: "] = 2,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-period-actual ::  :: "] = 2,
@@ -126,44 +142,133 @@ internal static class ResourceBackedKnownDivergences
             ["ComponentNullResolvedSearchParameter :: scope-artifact-phase ::  :: "] = 1,
             ["ComponentNullResolvedSearchParameter :: specification-version ::  :: "] = 1,
             ["ComponentNullResolvedSearchParameter :: version-type ::  :: "] = 3,
-            ["FhirElementTypeNotSupported ::  :: Attachment :: "] = 2,
-            ["FhirElementTypeNotSupported ::  :: DeviceDefinition.UdiDeviceIdentifier :: "] = 1,
-            ["FhirElementTypeNotSupported ::  :: Encounter.Location :: "] = 8,
-            ["FhirElementTypeNotSupported ::  :: Ingredient.Manufacturer :: "] = 4,
-            ["FhirElementTypeNotSupported ::  :: Location.Position :: "] = 6,
-            ["FhirElementTypeNotSupported ::  :: MedicinalProductDefinition.Contact :: "] = 4,
-            ["FhirElementTypeNotSupported ::  :: SubstanceDefinition.Code :: "] = 3,
-            ["FhirElementTypeNotSupported ::  :: SubstanceDefinition.Name :: "] = 2,
-            ["FhirElementTypeNotSupported ::  :: SubstanceSpecification.Code :: "] = 2,
-            ["FhirElementTypeNotSupported ::  :: base64Binary :: "] = 1,
-            ["FhirElementTypeNotSupported ::  :: canonical :: "] = 186,
-            ["FhirElementTypeNotSupported ::  :: string :: "] = 7,
-            ["FhirElementTypeNotSupported ::  :: uri :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ActivityDefinition-depends-on :: canonical :: "] = 2,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CanonicalResource-identifier :: DeviceDefinition.UdiDeviceIdentifier :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CapabilityStatement-guide :: canonical :: "] = 7,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CapabilityStatement-resource-profile :: canonical :: "] = 7,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CapabilityStatement-supported-profile :: canonical :: "] = 11,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CarePlan-activity-date :: string :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CarePlan-instantiates-canonical :: canonical :: "] = 7,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CodeSystem-supplements :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Communication-instantiates-canonical :: canonical :: "] = 6,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-other :: canonical :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-other-map :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-source :: canonical :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-source-group-system :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-source-scope :: canonical :: "] = 2,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-target :: canonical :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-target-group-system :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-target-scope :: canonical :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Consent-source :: Attachment :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Consent-source-reference :: Attachment :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Device-udi-carrier :: base64Binary :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/DeviceRequest-instantiates-canonical :: canonical :: "] = 5,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Encounter-location :: Encounter.Location :: "] = 8,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/FamilyMemberHistory-instantiates-canonical :: canonical :: "] = 6,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ImplementationGuide-depends-on :: canonical :: "] = 8,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ImplementationGuide-global :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Ingredient-manufacturer :: Ingredient.Manufacturer :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Location-near :: Location.Position :: "] = 5,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Location-near-distance :: Location.Position :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Measure-depends-on :: canonical :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MeasureReport-measure :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-contact :: MedicinalProductDefinition.Contact :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageDefinition-event :: uri :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageDefinition-parent :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageHeader-event :: canonical :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageHeader-event :: uri :: "] = 2,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MetadataResource-depends-on :: canonical :: "] = 9,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/NutritionOrder-instantiates-canonical :: canonical :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/OperationDefinition-base :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/OperationDefinition-input-profile :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/OperationDefinition-output-profile :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/PlanDefinition-definition :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/PlanDefinition-depends-on :: canonical :: "] = 2,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Procedure-instantiates-canonical :: canonical :: "] = 6,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-questionnaire :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/RequestGroup-instantiates-canonical :: canonical :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/RequestOrchestration-instantiates-canonical :: canonical :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/RequestOrchestration-participant :: canonical :: "] = 5,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Requirements-actor :: canonical :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Requirements-derived-from :: canonical :: "] = 2,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ResearchDefinition-depends-on :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ResearchElementDefinition-depends-on :: canonical :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SearchParameter-component :: canonical :: "] = 7,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SearchParameter-derived-from :: canonical :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ServiceRequest-instantiates-canonical :: canonical :: "] = 6,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/StructureDefinition-base :: canonical :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceDefinition-code :: SubstanceDefinition.Code :: "] = 3,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceDefinition-name :: SubstanceDefinition.Name :: "] = 2,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceSpecification-code :: SubstanceSpecification.Code :: "] = 2,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestReport-testscript :: canonical :: "] = 2,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestScript-artifact :: canonical :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact :: canonical :: "] = 1,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/clinical-date :: string :: "] = 3,
             ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/Encounter-location ::  :: "] = 2,
             ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/InventoryReport-item ::  :: "] = 2,
         };
+
+    /// <summary>
+    /// The <c>(FHIR type, search parameter type)</c> pairs that must still resolve to no converter for
+    /// the <c>FhirElementTypeNotSupported</c> rows of
+    /// <see cref="ExpectedIgnixaConverterPipelineSkips"/> to mean what they say.
+    /// </summary>
+    /// <remarks>
+    /// This is the assertion that makes a shrinking pin readable. Asserted against the converter manager
+    /// production builds, so it moves for exactly one reason - a converter landed - and names which pair.
+    /// A count in <see cref="ExpectedIgnixaConverterPipelineSkips"/> that falls while every pair here still
+    /// resolves to nothing is the other cause: the corpus stopped generating the shape, so coverage was
+    /// lost rather than a gap closed. The corpus test checks that every element type named by a
+    /// <c>FhirElementTypeNotSupported</c> row appears here, so a row cannot be deleted from the pin without
+    /// also deleting the claim that its gap is still open.
+    /// </remarks>
+    public static IReadOnlyList<(string FhirType, SearchParamType ParameterType)> UnconvertedPairs { get; } =
+    [
+        // The #430 canonical divergence: registered against UriSearchValue, never ReferenceSearchValue.
+        ("canonical", SearchParamType.Reference),
+
+        // MessageHeader-event is Token and its R6 element is a canonical, so this is a second canonical
+        // gap rather than a case of the one above. The check that reads this list matches on the parameter
+        // type as well as the element type, so closing one cannot silently make the other's row vanish.
+        ("canonical", SearchParamType.Token),
+
+        // Backbone types the element model hands to a leaf-typed parameter. Neither codebase has a
+        // converter for a backbone, and neither should - the defect is upstream of the converter.
+        ("Encounter.Location", SearchParamType.Reference),
+        ("Ingredient.Manufacturer", SearchParamType.Reference),
+        ("MedicinalProductDefinition.Contact", SearchParamType.Reference),
+        ("SubstanceDefinition.Code", SearchParamType.Token),
+        ("SubstanceDefinition.Name", SearchParamType.String),
+        ("SubstanceSpecification.Code", SearchParamType.Token),
+        ("DeviceDefinition.UdiDeviceIdentifier", SearchParamType.Token),
+
+        // Correct skips: the element genuinely cannot be represented as the parameter's value type.
+        ("Attachment", SearchParamType.Reference),
+        ("base64Binary", SearchParamType.String),
+        ("string", SearchParamType.Date),
+        ("uri", SearchParamType.Token),
+
+        // Geo search, unimplemented here and upstream. Location-near is Token under STU3 and Special
+        // from R4 onward; Location-near-distance is Quantity.
+        ("Location.Position", SearchParamType.Token),
+        ("Location.Position", SearchParamType.Special),
+        ("Location.Position", SearchParamType.Quantity),
+    ];
 
     /// <summary>
     /// Lower bound on the canonicalised index entries each engine contributes across the whole index
     /// sweep.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The index half asserted that its divergences were classified and its failure sites pinned.
-    /// Neither says how much was compared, so a change that halved the entries every parameter
-    /// produced satisfied both - the same defect class as an agreement count derived by subtraction,
-    /// one level up and in the half that runs the production indexer over every resource in the
-    /// corpus. A floor rather than an exact pin, for the reason given on
-    /// <see cref="MinimumAgreementsOnValues"/>: it can only be satisfied by holding or gaining
-    /// evidence.
-    /// </para>
-    /// <para>
-    /// Applied to each engine separately rather than to the total, because a total is satisfied by one
-    /// side growing while the other collapses. The two currently sit at 10,743 Firely and 10,753
-    /// Ignixa - the ten-entry gap is the 11 divergent resources - so the floor is the lower of them.
-    /// </para>
+    /// The index half asserted that its divergences were classified and its failure sites pinned; neither
+    /// says how much was compared, so halving the entries every parameter produced satisfied both. A floor
+    /// rather than an exact pin, for the reason on <see cref="MinimumAgreementsOnValues"/>. Applied per
+    /// engine rather than to the total, because a total is satisfied by one side growing while the other
+    /// collapses: the two sit at 10,745 Firely and 10,756 Ignixa - the gap is the 11 divergent resources -
+    /// so the floor is the lower. Raised from 10,743 when repairing the STU3 Observation composite
+    /// component references let both indexers emit composites they had both been dropping.
     /// </remarks>
-    public const int MinimumIndexEntriesComparedPerEngine = 10743;
+    public const int MinimumIndexEntriesComparedPerEngine = 10745;
 
     /// <summary>
     /// Lower bound on resources reaching the index sweep, so a corpus that stopped generating them
@@ -183,24 +288,19 @@ internal static class ResourceBackedKnownDivergences
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is legitimate agreement - a search parameter expression that matches nothing on a resource
-    /// is the common case - but it is agreement on absence, so it is much weaker evidence than a
-    /// matched value and it is invisible to every divergence-based assertion. Pinning it exactly means
-    /// the composition of the sweep cannot drift silently: 9,453 of 19,647 evaluations agree on empty;
-    /// the remaining 10,194 compare real values, of which 10,074 agree and 120 are the pinned
-    /// divergences. If an engine change moves this number the pin has to be updated deliberately, with
-    /// the shift understood, rather than absorbed into an unchanged divergence count.
+    /// Legitimate agreement, but agreement on absence: much weaker evidence than a matched value, and
+    /// invisible to every divergence-based assertion. Pinned exactly so the composition of the sweep cannot
+    /// drift silently - 9,453 of 19,647 evaluations agree on empty; the remaining 10,194 compare real
+    /// values, of which 10,074 agree and 120 are the pinned divergences.
     /// </para>
     /// <para>
-    /// Most of what this pin measures is the corpus, not either engine. Of the 9,453, 5,888 (62.3%)
-    /// come from 311 expressions that are never non-empty anywhere in the sweep -
-    /// <c>Resource.meta.profile</c>, <c>Resource.meta.security</c> and <c>Resource.meta.tag</c> at 788
-    /// each, <c>Resource.meta.source</c> at 658, <c>Resource.language</c> at 345 - and only 3,565
-    /// (37.7%) come from expressions that do produce values somewhere. The likeliest cause of this
-    /// number moving is therefore a corpus or <c>SchemaBasedFhirResourceFaker</c> density change, which
-    /// says nothing about conformance: check that direction first, and re-pin only once you can say
-    /// which of the two moved. <see cref="MinimumAgreementsOnValues"/>, not this, is the assertion that
-    /// carries the conformance claim.
+    /// Most of what this measures is the corpus, not either engine: 5,888 of the 9,453 come from 311
+    /// expressions that are never non-empty anywhere in the sweep (<c>Resource.meta.profile</c>,
+    /// <c>.security</c> and <c>.tag</c> at 788 each, <c>.source</c> at 658, <c>Resource.language</c> at
+    /// 345). A corpus or <c>SchemaBasedFhirResourceFaker</c> density change is therefore the likeliest
+    /// cause of this number moving, and says nothing about conformance - check that direction first and
+    /// re-pin only once you can say which of the two moved. <see cref="MinimumAgreementsOnValues"/>
+    /// carries the conformance claim, not this.
     /// </para>
     /// </remarks>
     public const int ExpectedBothEmpty = 9453;
@@ -210,20 +310,12 @@ internal static class ResourceBackedKnownDivergences
     /// bucket that is positive evidence the two agree.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <see cref="ExpectedBothThrew"/> and <see cref="ExpectedBothEmpty"/> pin the agreements that
-    /// establish nothing, and <see cref="ExpectedSelectCounts"/> pins the disagreements. None of them
-    /// floors the evidence base, so today's 10,074 value agreements could halve, <see cref="ExpectedBothEmpty"/>
-    /// could be raised to absorb the difference, and every other assertion here would still pass on half
-    /// the evidence.
-    /// </para>
-    /// <para>
-    /// A floor rather than an exact pin, because the two are not equally safe to update. An exact pin is
-    /// satisfied by any number that has been written down, so losing evidence and gaining it both look
-    /// like a re-pin and neither prompts a question. A floor can only be satisfied by holding or gaining
-    /// evidence: raise it when the sweep genuinely covers more, and never lower it to accommodate a
-    /// regression, because a number below this one is the finding rather than the maintenance.
-    /// </para>
+    /// The other pins do not floor the evidence base: the value agreements could halve,
+    /// <see cref="ExpectedBothEmpty"/> be raised to absorb the difference, and every other assertion still
+    /// pass on half the evidence. A floor rather than an exact pin because an exact pin is satisfied by any
+    /// number that has been written down, so losing evidence and gaining it look alike; a floor can only be
+    /// satisfied by holding or gaining evidence. Raise it when the sweep genuinely covers more; never lower
+    /// it to accommodate a regression.
     /// </remarks>
     public const int MinimumAgreementsOnValues = 10074;
 

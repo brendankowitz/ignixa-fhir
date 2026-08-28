@@ -7,8 +7,8 @@
  */
 
 using System.Collections.Immutable;
-using Ignixa.FhirPath;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath;
 using Ignixa.FhirPath.Parser;
 using Ignixa.SqlOnFhir.Expressions;
 
@@ -505,8 +505,10 @@ public static class ViewDefinitionExpressionParser
         // Build set of defined constant names
         var definedConstants = constants.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
 
-        // Collect all variable references from all FHIRPath expressions
-        var referencedVariables = new HashSet<string>(StringComparer.Ordinal);
+        // Collect all variable references from all FHIRPath expressions. The spelling travels with the name
+        // because it decides whether the vs-/ext- exemption below applies. Still ordinal: a tuple key cannot
+        // take a StringComparer, and ValueTuple equality uses EqualityComparer<string>.Default.
+        var referencedVariables = new HashSet<(string Name, bool IsDelimited)>();
 
         // Check WHERE clauses
         foreach (var whereClause in whereClauses)
@@ -521,16 +523,30 @@ public static class ViewDefinitionExpressionParser
         }
 
         // Find any referenced variables that are not defined constants
-        // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', 'vs-*', 'rowIndex'
+        // Exclude special predefined variables like 'resource', 'rootResource', 'context', 'ucum', 'sct', 'loinc', '`vs-*`', '`ext-*`', 'rowIndex'
+        //
+        // This is one of three overlapping reserved-name lists, and they answer different questions - do
+        // not merge them. This one is "needs no constant declaration in a ViewDefinition".
+        // SqlOnFhirEvaluator.EngineManagedVariableNames is "a caller may not supply this as a variable".
+        // Ignixa.FhirPath.DefineVariableRules.ReservedVariableNames is "defineVariable() may not claim
+        // this name". A name added to one usually belongs in none of the others; check all three anyway.
         var predefinedVariables = new HashSet<string>(StringComparer.Ordinal)
         {
             "context", "resource", "rootResource", "ucum", "sct", "loinc", "rowIndex"
         };
 
-        foreach (var varName in referencedVariables)
+        foreach (var (varName, isDelimited) in referencedVariables)
         {
-            // Skip predefined variables and VS-* variables
-            if (predefinedVariables.Contains(varName) || varName.StartsWith("vs-", StringComparison.Ordinal))
+            // Skip predefined variables and the vs-/ext- prefix families, which the FHIR profile of
+            // FHIRPath defines identically (%`vs-[name]` -> ValueSet URI, %`ext-[name]` -> extension URI);
+            // exempting only "vs-" was an asymmetry (#438). Both are exempted only in the delimited
+            // spelling, because that is the only spelling the engine expands - exempting the bare form here
+            // would move the failure from a clear parse-time "undefined constant" to an evaluation-time
+            // "undefined environment variable". The test is StandardConstantFamilies.IsPrefixedConstant,
+            // the same rule the evaluator and analyzer use, so an empty suffix (%`vs-`) is rejected here
+            // exactly as it is there.
+            if (predefinedVariables.Contains(varName)
+                || StandardConstantFamilies.IsPrefixedConstant(varName, isDelimited))
             {
                 continue;
             }
@@ -548,7 +564,18 @@ public static class ViewDefinitionExpressionParser
     /// <summary>
     /// Recursively collects all variable references from a FHIRPath expression tree.
     /// </summary>
-    private static void CollectVariableReferences(FhirPath.Expressions.Expression expr, HashSet<string> variables)
+    /// <remarks>
+    /// A C# type-pattern <c>case</c> matches subtypes, so the <c>FunctionCallExpression</c> case already
+    /// covers <c>BinaryExpression</c>, <c>UnaryExpression</c>, <c>IndexerExpression</c> and
+    /// <c>ChildExpression</c>. <c>PropertyAccessExpression</c> needs no case because the only construction
+    /// site for a <c>PropertyAccessParseNode</c> is <c>FhirPathParseTreeGrammar</c>'s bare-identifier rule,
+    /// which passes <see langword="null"/> for the focus; the guarantee is the grammar's, not
+    /// <c>AstBuilder</c>'s, and it would lapse silently if that rule ever began supplying one.
+    /// <c>InstanceSelectorExpression</c> (<c>Coding { system: %name }</c>) is a real gap: its
+    /// <c>Elements</c> carry <c>ValueExpression</c>s this method never visits, so a variable referenced
+    /// only there reaches evaluation unvalidated. Pre-existing and tracked as #443.
+    /// </remarks>
+    private static void CollectVariableReferences(FhirPath.Expressions.Expression expr, HashSet<(string Name, bool IsDelimited)> variables)
     {
         if (expr == null)
             return;
@@ -556,7 +583,7 @@ public static class ViewDefinitionExpressionParser
         switch (expr)
         {
             case FhirPath.Expressions.VariableRefExpression varRef:
-                variables.Add(varRef.Name);
+                variables.Add((varRef.Name, varRef.IsDelimited));
                 break;
 
             case FhirPath.Expressions.FunctionCallExpression funcCall:
@@ -570,14 +597,15 @@ public static class ViewDefinitionExpressionParser
                 CollectVariableReferences(paren.InnerExpression, variables);
                 break;
 
-            // Other expression types (constants, identifiers, etc.) don't contain variable references
+                // Other expression types (constants, identifiers, scope references, quantities, and
+                // InstanceSelectorExpression - see the remarks above for that last one) don't add a case here.
         }
     }
 
     /// <summary>
     /// Collects variable references from all FHIRPath expressions in a SELECT group (recursive).
     /// </summary>
-    private static void CollectVariableReferencesFromSelect(SelectExpression select, HashSet<string> variables)
+    private static void CollectVariableReferencesFromSelect(SelectExpression select, HashSet<(string Name, bool IsDelimited)> variables)
     {
         // Check forEach and forEachOrNull
         if (select.ForEach != null)

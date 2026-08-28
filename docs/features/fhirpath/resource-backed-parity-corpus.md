@@ -109,28 +109,64 @@ The reverse corpus evaluated 19,647 expression/resource pairs per engine over 78
 | Both engines threw | 0 |
 | Divergent | 120 |
 
-The 10,074 is the count the conformance claim rests on, and it is floored rather than pinned so it can only be satisfied by holding or gaining evidence. It used to be derived by subtracting the other three from the total, which meant a both-threw counter that stopped incrementing would have inflated it and made its own floor easier to satisfy; all four are now counted where they are observed. The index half compares 10,743 Firely and 10,753 Ignixa canonicalized entries, each floored per engine.
+The 10,074 is the count the conformance claim rests on, and it is floored rather than pinned so it can only be satisfied by holding or gaining evidence. It used to be derived by subtracting the other three from the total, which meant a both-threw counter that stopped incrementing would have inflated it and made its own floor easier to satisfy; all four are now counted where they are observed. The index half compares 10,745 Firely and 10,756 Ignixa canonicalized entries, each floored per engine.
 
 ### What the index half cannot see
 
 The index comparison runs Firely for `Select` only. Everything downstream - the search parameter definitions, `InferSearchParamTypeFromFhirType`, `GetSearchValueTypeForSearchParamType` and the converter manager - is a single set of Ignixa objects that `SearchIndexParityHarness` constructs once and hands to both indexers. When both sides skip an element, that is one object making one decision, not two implementations agreeing, so **no entry-list comparison over this corpus can detect a gap in the converter pipeline.**
 
-Capturing the production indexer's contained failures - it catches per search parameter, logs and continues, and the harness previously gave it a null logger - surfaced 302 of them per sweep, split by what the corpus can adjudicate:
+Capturing the production indexer's contained failures - it catches per search parameter, logs and continues, and the harness previously gave it a null logger - surfaces 258 of them per sweep, split by what the corpus can adjudicate:
 
 | Class | Count | Status |
 |---|---:|---|
 | Contained throws (`ExpectedIgnixaEvaluationFailures`) | 1 | Adjudicable. Ignixa's `NotSupportedException` for `hasExtension()`, already pinned on the `Select` side. |
-| Classification skips (`ExpectedIgnixaConverterPipelineSkips`) | 301 | Recorded, not adjudicable. |
+| Classification skips (`ExpectedIgnixaConverterPipelineSkips`) | 257 | Recorded here, adjudicated by the census in `Ignixa.Search.Tests`. |
 
-Of the 301, 229 are converter-manager misses and **186 are `canonical` under 46 shipped SearchParameters** - 45 `Reference`-typed plus `MessageHeader-event`. Ignixa registers `canonical` against `UriSearchValue` only, so those 46 parameters index nothing: `QuestionnaireResponse-questionnaire`, `MeasureReport-measure`, `StructureDefinition-base`, `PlanDefinition-definition`, the `instantiates-canonical` family across nine resource types, the `-depends-on` family, and eight `ConceptMap` parameters among them.
+These counts were 302 and 301 when the classification skips were first captured. Repairing the STU3 `Observation-code-value-*` component references (`CompositeComponentDefinitionRepairs`) removed 44 of them, because those composites now resolve their components instead of skipping. The paragraphs below describe the pre-repair population of 301.
+
+Of the 301, 229 were converter-manager misses and **186 are `canonical` under 46 shipped SearchParameters** - 45 `Reference`-typed plus `MessageHeader-event`. Ignixa registers `canonical` against `UriSearchValue` only, so those 46 parameters index nothing: `QuestionnaireResponse-questionnaire`, `MeasureReport-measure`, `StructureDefinition-base`, `PlanDefinition-definition`, the `instantiates-canonical` family across nine resource types, the `-depends-on` family, and eight `ConceptMap` parameters among them.
 
 microsoft/fhir-server, which this indexer was ported from, additionally ships `CanonicalToReferenceSearchValueConverter`, `IdToReferenceSearchValueConverter`, `IdentifierToStringSearchValueConverter` and `ReferenceToUriSearchValueConverter`. The first closes the 186. That is `Ignixa.Search` production work tracked separately as release-blocking, not a FHIRPath change; the counts are pinned exactly here so that when the converters land this corpus says by how much they moved.
+
+### How the 301 were adjudicated
+
+They were not adjudicated by running this corpus harder, because it structurally cannot answer the question. The instrument is a **static registration census** in `Ignixa.Search.Tests`, which compares two independently authored sets instead of one set with itself:
+
+- `ConverterRegistrationCensusTests` checks every `(FHIR type, search value type)` pair a vendored snapshot of microsoft/fhir-server registers against what Ignixa's manager resolves. Each pair is either covered or named in `KnownConverterDivergences` with a reason, and the table is checked in both directions so it cannot claim a divergence that does not exist or outlive one that has closed. The snapshot is vendored rather than fetched so that "upstream added a converter Ignixa lacks" is a failure rather than a silent absorption.
+- `CompositeComponentCensusTests` reads production's `SearchParameterDefinitionManager` and requires every composite component in every shipped version to resolve or be named in `KnownCompositeComponentDivergences`.
+
+The divergence tables are the point, not an escape hatch. Ignixa is deliberately different from upstream in two places - `canonical` lives in `UriSearchParam` rather than `ReferenceSearchParam` (#430), and `:identifier` is a derived token parameter rather than upstream's `IdentifierToStringSearchValueConverter` (#421) - so a census demanding parity would have pressed this codebase toward a storage model it does not use. Those two are the table's first entries.
+
+What the census established about the 115 non-`canonical` skips:
+
+| Cause | Sites | Adjudication |
+|---|---:|---|
+| Composite component references the published package never publishes | 67 | The four STU3 `Observation-code-value-*` composites are **fixed** - see below. The R5/R6 remainder is documented, with what upstream chose for each. |
+| Backbone element handed to a leaf-typed parameter | 28 | **Not a converter gap.** One `Ignixa.Serialization` element-model defect, described below. |
+| Element genuinely unrepresentable as the parameter's value type | 14 | Correct skip; upstream skips identically. `Attachment` and `base64Binary` under parameters that cannot carry them, `string` reached by a date parameter through a string-valued choice, `uri` reached by a token parameter through `event[x]`, and R6 ballot's `CanonicalResource-identifier` selecting `DeviceDefinition.udiDeviceIdentifier`. |
+| `Location.Position` under `Location-near` / `Location-near-distance` | 6 | Geo search is unimplemented here and upstream. Both parameters index nothing. |
+
+The census also found something the skips did not show: `InferSearchParamTypeFromFhirType` maps `ResourceReference` to `SearchParamType.Reference`, and no converter registered that spelling, so the inference row could only ever be followed by a skip. `ResourceReferenceToReferenceSearchValueConverter` now registers both spellings, matching the three other places in the pipeline that already treat them as one type.
+
+### The STU3 `Observation?code-value-*` composites indexed nothing
+
+STU3's four `Observation-code-value-*` composites name their code component as `http://hl7.org/fhir/SearchParameter/Observation-code`, and `hl7.fhir.r3.core#3.0.2` never publishes that URL - STU3 publishes the Observation `code` parameter under the multi-resource `clinical-code` URL. An unresolvable component makes the indexer drop the whole composite, so `Observation?code-value-quantity=` returned **an empty bundle with HTTP 200** under STU3: indistinguishable from "no matches" at the API.
+
+`CompositeComponentDefinitionRepairs` redirects the four references, which is what microsoft/fhir-server does in the data by curating its embedded `search-parameters.json`. R4, R4B and R6 were never affected; R5 loses only `code-value-string`, because R5 deleted `Observation-value-string` while keeping the composite that references it, and reintroducing a deleted search parameter changes R5's supported surface rather than repairing a dangling reference. Note that `SearchParameterInfo` hashing does not include component resolution, so the repair does not move any resource type's search parameter hash and existing STU3 indexes need an explicit reindex to gain the entries.
+
+### `X.y.y` paths are mistyped as their own backbone
+
+`Encounter.location.location` is a `Reference` in every shipped schema. Ignixa's element model returns it typed `Encounter.Location`. `SchemaAwareElement.Children` detects recursive backbones - `Questionnaire.item.item` really is a `Questionnaire.Item` - by comparing the child's name with the last segment of the parent's type name, case-insensitively, and that test also matches every backbone whose child happens to share the backbone's name. The child's declared type is available at that point and is ignored.
+
+The consequence is that six shipped search parameters index nothing on every FHIR version: `Encounter-location`, `Ingredient-manufacturer`, `MedicinalProductDefinition-contact`, `SubstanceDefinition-code`, `SubstanceDefinition-name` and `SubstanceSpecification-code`, plus the two `SkippingElementNullOrEmptyInstanceType` sites reached through the same mistyped node. A schema walk finds roughly ninety such sites across STU3 through R6, split cleanly by whether the child's declared type is a real FHIR type (`Reference`, `CodeableConcept`, `string`, `Money`, `Dosage`, `Identifier`, `CodeableReference`) or the element's own name, which is how the schema marks genuine recursion.
+
+This is an `Ignixa.Serialization` element-model defect, not a search-indexer or FHIRPath-evaluator one: the indexer asked for a reference converter and was handed a backbone. It is recorded here because this corpus is where it surfaced, and it is deliberately not fixed here because the fix changes element typing for every consumer - FHIRPath, de-identification, validation and SQL-on-FHIR alike - and deserves its own change with its own evidence.
 
 The earlier `8 Select / 9 indexed` typed-choice count and `2 Select / 2 indexed` instant count are not valid Phase 3 numbers. Native Firely probes split each bucket into production-confirmed, harness-only, and unverifiable portions:
 
 | Class | Phase 3 status | Evidence |
 |---|---|---|
-| STU3 capitalised casts | Confirmed production divergence: 11/11 evaluator, 10 final-index | Every shipped mis-cased primitive cast returns empty in Firely and its populated primitive in Ignixa. Ten non-composite parameters produce an Ignixa index entry and no Firely entry; the composite is the independently pinned double-empty case below. |
+| STU3 capitalised casts | Confirmed production divergence: 11/11 evaluator, 10 final-index | Every shipped mis-cased primitive cast returns empty in Firely and its populated primitive in Ignixa. Ten non-composite parameters produce an Ignixa index entry and no Firely entry; the composite is the independently pinned STU3 composite case below. |
 | R4 `code-value-date` capitalised cast | Confirmed production evaluator divergence; Ignixa composite index confirmed, Firely's inferred | Native `Observation.valueDateTime` with `value.as(DateTime) \| value.as(Period)` returns empty in Firely and one `dateTime` in Ignixa. The real Ignixa indexer emits the composite entry shown below; Firely's missing entry is inferred from its empty date component, not observed — see the section below. |
 | R4B `code-value-date` capitalised cast | Confirmed production evaluator divergence; Ignixa composite index confirmed, Firely's inferred | The same native-POCO probe produces the same evaluator and composite outcome under R4B, with the same inferred Firely half. |
 | Broader R4/R4B adapter-mediated choice cases | Harness artifacts; original counts remain invalid | Properly cased native choice casts agree. The reverse corpus's broader count came from presenting Ignixa choice metadata to Firely, not from native Firely input. |
@@ -173,11 +209,13 @@ This is a deliberate pre-R5 compatibility rule, not general case-insensitive mat
 
 A naive scan also finds `as(Quantity)` seven times in STU3 and 19 times in each of R4 and R4B. Those casts are intentionally excluded from the alias count: `Quantity` is the genuine PascalCase FHIR type and matches it directly, while FHIR's date primitive is lowercase `date`, making capitalised `Date` an alias for the distinct `System.Date`. The spelling `Quantity` is genuinely ambiguous between the FHIR and System models and is resolved by the normal FHIR-first rule; it is not a mis-cased FHIR primitive.
 
-### Why `Select` Comparison Is Mandatory: STU3 Double-Empty
+### Why `Select` Comparison Is Mandatory: The STU3 Composite
 
-The STU3 `Observation-code-value-date` composite is the concrete case where final index equality gives a false answer. Firely drops the composite because `value.as(DateTime)` returns empty. Ignixa selects the date successfully, but its production indexer independently drops the same composite because the referenced `Observation-code` component cannot be resolved. Both providers therefore finish with an empty `SearchIndexEntry` set for unrelated reasons. `Stu3CompositeDoubleEmptyTests` pins all four links in that chain: Firely's empty date component, Ignixa's populated date component, the unresolved code component, and the absent production Ignixa composite entry.
+The STU3 `Observation-code-value-date` composite was the concrete case where final index equality gave a false answer. Firely dropped the composite because `value.as(DateTime)` returns empty. Ignixa selected the date successfully, but its production indexer independently dropped the same composite because the referenced `Observation-code` component could not be resolved. Both providers finished with an empty `SearchIndexEntry` set for unrelated reasons, and an index-only corpus would have reported agreement while concealing both failures.
 
-An index-only corpus would report agreement and conceal both failures. Comparing `Select` outcomes exposes the evaluator divergence before the independent component-resolution defect erases it. This is why empty, thrown, and value-returning evaluations must remain distinct even when their final index sets happen to match.
+Comparing `Select` outcomes exposed the evaluator divergence before the independent component-resolution defect erased it, which is how the second defect was found at all. With the component reference repaired, Ignixa emits the composite and Firely still does not, so the evaluator divergence is now visible in the index too. `Stu3CompositeComponentRepairTests` pins the whole chain: Firely's empty date component, Ignixa's populated date component, the resolved code component, and the production Ignixa composite entry Firely has no counterpart for.
+
+The argument survives its own example. Empty, thrown, and value-returning evaluations must remain distinct even when their final index sets happen to match, because the next pair of independent failures will not announce itself either.
 
 ### R4/R4B `code-value-date`
 

@@ -134,10 +134,18 @@ internal sealed record PropertyAccessParseNode(
 
 /// <summary>
 /// Represents a variable reference in the parse tree.
-/// Examples: %context, %resource, %ext-id
+/// Examples: %context, %resource, %`ext-id`
 /// </summary>
+/// <param name="Name">The variable name with the leading <c>%</c> and any backticks removed.</param>
+/// <param name="IsDelimited">
+/// Whether the name was written in the backtick-delimited form (<c>%`vs-x`</c>) rather than bare
+/// (<c>%vs-x</c>). The two spellings do not mean the same thing: per the FHIR profile of FHIRPath only the
+/// delimited form expands to a <c>vs-</c>/<c>ext-</c> URI, so the distinction has to survive lexing.
+/// </param>
+/// <param name="Location">Where the reference appeared in the source expression.</param>
 internal sealed record VariableRefParseNode(
     string Name,
+    bool IsDelimited,
     SourceLocation Location) : ParseNode(Location)
 {
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)

@@ -76,4 +76,70 @@ public class Issue406RegressionTests
         result.Errors.ShouldBeEmpty();
         result.InferredTypes.Types.ShouldHaveSingleItem().TypeName.ShouldBe("string");
     }
+
+    [Theory]
+    [InlineData("%vs-administrative-gender")]
+    [InlineData("%ext-patient-birthTime")]
+    public void GivenBareSpecificationConstant_WhenAnalyzed_ThenReportsItUndefinedLikeTheEngine(string expression)
+    {
+        // The analyzer recognises the vs-/ext- families by shape rather than enumerating several hundred
+        // names, but has to recognise them on the same terms the engine resolves them on - the backtick
+        // spelling only. An analyzer that accepted the bare spelling would report clean and then let
+        // evaluation throw. The name in the message is the whole hyphenated one, which #438's lexer fix
+        // is what buys.
+        var analyzer = new FhirPathAnalyzer(FhirVersion.R5.GetSchemaProvider());
+
+        var result = analyzer.Analyze(expression, "Patient");
+
+        result.Errors.ShouldContain(message => message.Contains($"'{expression}' not found", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("%`vs-`", "vs-")]
+    [InlineData("%`ext-`", "ext-")]
+    public void GivenDelimitedEmptySuffixConstant_WhenAnalyzed_ThenReportsItUndefinedLikeTheEngine(
+        string expression, string expectedName)
+    {
+        // GetStandardConstant requires a non-empty suffix, so %`vs-` and %`ext-` are not
+        // ValueSet/StructureDefinition references at evaluation - they throw "undefined environment
+        // variable: vs-". ResolveVariable used to match on prefix alone and report them clean: analyzer
+        // silent, engine throwing. Both now ask StandardConstantFamilies.
+        var analyzer = new FhirPathAnalyzer(FhirVersion.R5.GetSchemaProvider());
+
+        var result = analyzer.Analyze(expression, "Patient");
+
+        result.Errors.ShouldContain(message => message.Contains($"'%{expectedName}' not found", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("vs-administrative-gender")]
+    [InlineData("ext-patient-birthTime")]
+    public void GivenTheOneArgumentOverload_WhenResolvingAPrefixedConstant_ThenItAnswersAsItDidBeforeTheFlagExisted(
+        string name)
+    {
+        // ResolveVariable(string) is a real overload, not an optional parameter: an optional parameter
+        // would remove that signature from the assembly's metadata, and a consumer compiled against the
+        // published package would throw MissingMethodException without recompiling. It forwards
+        // isDelimited: true, preserving what a one-argument call returned before the flag existed.
+        //
+        // The claim is asserted against metadata rather than against a call, because overload-versus-
+        // default is invisible at source level: collapsing the two into one optional parameter was
+        // reproduced and left the calls below passing 2/2.
+        typeof(AnalysisContext)
+            .GetMethod(nameof(AnalysisContext.ResolveVariable), [typeof(string)])
+            .ShouldNotBeNull(
+                "AnalysisContext.ResolveVariable(string) is no longer in the assembly's metadata. A "
+                + "consumer compiled against the published package binds to that exact signature, so it "
+                + "would throw MissingMethodException without being recompiled. An optional parameter is "
+                + "source-compatible but not binary-compatible; keep the one-argument overload.");
+
+        var context = AnalysisContext.Create(FhirVersion.R5.GetSchemaProvider(), "Patient");
+
+        var byNameAlone = context.ResolveVariable(name);
+        byNameAlone.ShouldNotBeNull();
+        byNameAlone.Types.ShouldHaveSingleItem().TypeName.ShouldBe("string");
+
+        context.ResolveVariable(name, isDelimited: false).ShouldBeNull();
+        context.ResolveVariable(name, isDelimited: true).ShouldNotBeNull();
+    }
 }

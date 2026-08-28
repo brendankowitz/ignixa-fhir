@@ -1,4 +1,5 @@
 using System.Globalization;
+using Ignixa.Abstractions;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
@@ -28,8 +29,11 @@ namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 /// </param>
 /// <param name="ParameterUrl">
 /// The search parameter being indexed, falling back to its code for the composite-component events that
-/// log the code instead. Empty for <c>FhirElementTypeNotSupported</c>, which is the one event that
-/// carries no parameter identity at all - a gap in production's logging, not in this capture.
+/// log the code instead. Populated for every event, <c>FhirElementTypeNotSupported</c> included: that one
+/// used to record the element type alone, so a signature naming an unindexable type could not say which
+/// parameter carried it. <c>ElementSearchIndexer.Log.FhirElementTypeNotSupported</c> now emits
+/// <c>SearchParameterUrl</c> as well, which is what lets the pinned skip signatures name a parameter -
+/// and what anyone diagnosing the warning on a running server needs.
 /// </param>
 /// <param name="FailingExpression">
 /// The expression that was being evaluated. For a composite component this is the component fragment
@@ -44,6 +48,19 @@ internal sealed record IgnixaEvaluationFailure(
     string ElementType,
     string ExceptionType)
 {
+    /// <summary>
+    /// The FHIR version whose harness produced this failure.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not part of <see cref="Signature"/>: the pinned counts aggregate a site across
+    /// versions and re-keying them by version would be a re-pin, not a fix. It is carried because a
+    /// search parameter URL is not one search parameter - <c>Location-near</c> is <c>Token</c> under STU3
+    /// and <c>Special</c> from R4 - so resolving what a failure's parameter <em>was</em> needs the version
+    /// it happened in. Set by <see cref="SearchIndexParityHarness.Compare"/>, which is the only place that
+    /// knows it.
+    /// </remarks>
+    public FhirVersion Version { get; init; }
+
     private const string ParameterUrlKey = "SearchParameterUrl";
     private const string ParameterCodeKey = "SearchParameterCode";
     private const string ExpressionKey = "FhirPathExpression";

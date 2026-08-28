@@ -1,9 +1,23 @@
+﻿using Ignixa.Abstractions;
+using Ignixa.Search.Indexing;
+using Ignixa.Specification.Extensions;
+using Ignixa.Specification.ValueSets.Normative;
 using Xunit.Abstractions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
 public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
 {
+    /// <summary>
+    /// The <c>ElementSearchIndexer.Log</c> method whose records name an element type no converter covers.
+    /// </summary>
+    /// <remarks>
+    /// A literal because <c>Log</c> is <see langword="private"/> to the indexer, so there is no symbol to
+    /// bind to. That is exactly why <c>AssertConverterGapsAreStillOpen</c> asserts the filter matched
+    /// something before it concludes anything from what it matched.
+    /// </remarks>
+    private const string FhirElementTypeNotSupportedEvent = "FhirElementTypeNotSupported";
+
     private readonly ITestOutputHelper _output = output;
 
     [Fact]
@@ -199,16 +213,18 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             Firely's ran the same expression, and the contained throw indexed nothing while the
             comparison still scored it as agreement.
             """);
+        AssertConverterGapsAreStillOpen(report);
         AssertCounts(
             report.IgnixaFailures.Where(failure => !failure.ContainedAThrow).Select(failure => failure.Signature),
             ResourceBackedKnownDivergences.ExpectedIgnixaConverterPipelineSkips,
             """
             The set of elements production ElementSearchIndexer skipped as unindexable moved.
             Both indexers reach that decision through the same Ignixa objects, so this corpus records
-            these and cannot adjudicate them - 186 of them are the canonical converter gap tracked as
-            production work. A new signature is a new unindexable site; a higher count is an existing
-            gap reaching further; a lower count is either a converter landing or a corpus that stopped
-            generating the shape. Say which before re-pinning.
+            these and Ignixa.Search.Tests' registration census adjudicates them. A new signature is a
+            new unindexable site; a higher count is an existing gap reaching further; a lower count is
+            either a converter landing or a corpus that stopped generating the shape - and the
+            UnconvertedPairs assertion that runs immediately before this one is what tells you which,
+            because it reddens only in the first case. Say which before re-pinning.
             """);
 
         var classified = report.Divergences
@@ -228,6 +244,101 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             classified.Select(item => item.Classification!.RootCause),
             ResourceBackedKnownDivergences.ExpectedIndexResourceCounts,
             "The reach of a classified index divergence changed.");
+    }
+
+    /// <summary>
+    /// Asserts every gap <see cref="ResourceBackedKnownDivergences.UnconvertedPairs"/> claims is still
+    /// open really is, against the converter manager production builds, and that every element type the
+    /// skip pin names is covered by that claim.
+    /// </summary>
+    /// <remarks>
+    /// Without this the skip counts are only a measurement of the corpus. A converter landing and a
+    /// corpus that stopped generating the shape both show up as a smaller number, and re-pinning
+    /// absorbs either without a question being asked. This separates them: it reddens for a landed
+    /// converter and stays green for lost coverage.
+    /// </remarks>
+    private static void AssertConverterGapsAreStillOpen(SearchIndexParityReport report)
+    {
+        var converters = SearchIndexerFactory.CreateIndexingComponents(
+            FhirVersion.R4.GetSchemaProvider(),
+            NullFhirBaseUriProvider.Instance).ConverterManager;
+
+        var closed = ResourceBackedKnownDivergences.UnconvertedPairs
+            .Where(pair => converters.TryGetConverter(
+                pair.FhirType,
+                ElementSearchIndexer.GetSearchValueTypeForSearchParamType(pair.ParameterType),
+                out _))
+            .Select(pair =>
+                $"({pair.FhirType} -> {pair.ParameterType}) now resolves to a converter. The skip counts "
+                + "below fall because the gap closed, not because the corpus lost coverage. Remove the "
+                + "pair and the rows it explains together.")
+            .ToArray();
+
+        closed.ShouldBeEmpty(string.Join(Environment.NewLine, closed));
+
+        var claimed = ResourceBackedKnownDivergences.UnconvertedPairs.ToHashSet();
+
+        var observedGaps = report.IgnixaFailures
+            .Where(failure => string.Equals(
+                failure.Stage,
+                FhirElementTypeNotSupportedEvent,
+                StringComparison.Ordinal))
+            .Select(failure => (failure.Version, failure.ParameterUrl, failure.ElementType))
+            .Distinct()
+            .ToArray();
+
+        observedGaps.ShouldNotBeEmpty(
+            "The sweep recorded no FhirElementTypeNotSupported failure at all, so everything below this "
+            + "line examined nothing and passed. Either every converter gap closed - in which case "
+            + "UnconvertedPairs and the rows it explains should go - or the capture stopped matching the "
+            + "event. This branch has already changed that event's fields once.");
+
+        var unexplained = observedGaps
+            .SelectMany(gap => Unclaimed(gap.Version, gap.ParameterUrl, gap.ElementType, claimed))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        unexplained.ShouldBeEmpty(string.Join(Environment.NewLine, unexplained));
+    }
+
+    /// <summary>
+    /// Why one observed <c>FhirElementTypeNotSupported</c> gap is not covered by
+    /// <see cref="ResourceBackedKnownDivergences.UnconvertedPairs"/>; empty when it is.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the <em>pair</em>, because that is what <c>UnconvertedPairs</c> and the converter manager
+    /// are keyed on. Matching the element type alone let one claim answer for a gap it says nothing about:
+    /// <c>MessageHeader-event</c> is <c>Token</c>, so its gap is <c>(canonical, Token)</c> - unclaimed -
+    /// yet the row passed on the strength of <c>(canonical, Reference)</c>. The parameter's type is
+    /// resolved in the version the failure happened in, because a URL is not one search parameter:
+    /// <c>StructureDefinition-base</c> is <c>Uri</c> in one version and <c>Reference</c> in another, and
+    /// only the second hands the indexer a <c>canonical</c>.
+    /// </remarks>
+    private static IEnumerable<string> Unclaimed(
+        FhirVersion version,
+        string url,
+        string elementType,
+        IReadOnlySet<(string FhirType, SearchParamType ParameterType)> claimed)
+    {
+        SearchParamType? parameterType = SearchIndexParityHarness.ParameterType(version, new Uri(url));
+
+        if (parameterType is null)
+        {
+            yield return
+                $"{version} recorded an unindexable '{elementType}' for '{url}', and {version}'s "
+                + "definitions do not publish that search parameter - so the failure names a parameter "
+                + "the definition manager it came from cannot resolve.";
+            yield break;
+        }
+
+        if (!claimed.Contains((elementType, parameterType.Value)))
+        {
+            yield return
+                $"({elementType} -> {parameterType.Value}), observed under {version} through '{url}', is "
+                + "an open converter gap that UnconvertedPairs does not name. Nothing asserts it is still "
+                + "open, so its rows could fall to zero because a converter landed and be read as the "
+                + "corpus losing coverage.";
+        }
     }
 
     private static void AssertCounts(

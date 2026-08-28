@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
@@ -19,6 +19,8 @@
   <ItemGroup>
     <!-- The parity reference projection reuses production converter construction and min/max behavior. -->
     <InternalsVisibleTo Include="Ignixa.FhirPath.Tests" />
+    <!-- The registration census enumerates production converter construction rather than restating it. -->
+    <InternalsVisibleTo Include="Ignixa.Search.Tests" />
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
     <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />

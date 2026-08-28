@@ -130,33 +130,31 @@ internal class SqlOnFhirEvaluationVisitor
         // value[x] and overriding its value at runtime is therefore the supported way to pass a typed
         // variable.
         //
-        // SCOPE, measured rather than assumed. An earlier revision of this comment claimed the untyped
-        // path was unreachable because ValidateConstantReferences requires every %name to be a declared
-        // constant. That is false: it exempts context, resource, rootResource, ucum, sct, loinc,
-        // rowIndex and the vs- prefix. Of those, exactly three reach this loop untyped -
+        // SCOPE, measured rather than assumed. ValidateConstantReferences does not require every %name to
+        // be a declared constant: it exempts context, resource, rootResource, ucum, sct, loinc, rowIndex,
+        // and the vs-/ext- families in their delimited spelling. Of those, ucum/sct/loinc and every
+        // %`vs-*`/%`ext-*` name reach this loop untyped, binding the caller's string with no constant to
+        // inherit from - and System.String is correct for them, not a defect: FHIRPath defines all of them
+        // as fixed URIs. `birthDate < %ucum` throwing "Cannot compare 'date' with 'string'" is the correct
+        // answer to putting a date in a URI slot, not a typing failure. The engine's override of those
+        // names is a deliberate, documented feature (EvaluationContext's remarks) and is left working.
         //
-        //   ucum, sct, loinc   bind the caller's string with no constant to inherit from
+        // context/resource/rootResource cannot reach here untyped - TryGetEnvironmentVariable's switch
+        // answers them before it consults Environment - and rowIndex is re-injected below and wins. As of
+        // issue #439, SqlOnFhirEvaluator.ValidateVariables rejects a variables entry using any of those
+        // four before this method runs, so the paragraph above records why such an override was silently
+        // ineffective, not a case this loop still has to handle.
         //
-        // - and for those three System.String is the correct type, not a defect: FHIRPath defines them
-        // as fixed URIs, so a caller-supplied string is already the right thing. `birthDate < %ucum`
-        // throwing "Cannot compare 'date' with 'string'" is the correct answer to putting a date in a
-        // URI slot, not a typing failure. The engine's override of those names is a deliberate,
-        // documented feature (EvaluationContext's remarks) and is left working.
+        // The vs-/ext- families reach here only in their delimited spelling. The tokenizer now lexes a
+        // bare "%vs-x" as one token rather than %vs / minus / x (issue #438), but that is a lexical change
+        // only: HAPI's engine and GetStandardConstant both expand for the backtick spelling alone, so a
+        // bare %vs-x is an ordinary undeclared constant name that ValidateConstantReferences rejects up
+        // front rather than letting it fail later as an undefined environment variable.
         //
-        // The rest cannot reach here untyped at all: context/resource/rootResource are answered by
-        // TryGetEnvironmentVariable's switch before it consults Environment, rowIndex is re-injected below
-        // and wins, and %vs-x / %ext-x never parse as variable references in the first place - the
-        // FhirPathTokenizer's ExternalConstant regex (src/Core/Ignixa.FhirPath/Parser/FhirPathTokenizer.cs)
-        // has no hyphen in its identifier pattern, so these lex as multiple tokens; validation then rejects
-        // the truncated '%vs' / '%ext' as undefined. Only %vs- has a StartsWith exemption in ValidateConstantReferences;
-        // %ext- is rejected identically. That tokenizer truncation is a separate pre-existing bug; it is recorded
-        // here only because it is why the vs- exemption is unreachable, and it is deliberately not fixed as a side effect.
-        // GetStandardConstant in EvaluationContext.cs contains unreachable prefix-expansion logic for both.
-        //
-        // A caller who does want a typed value under one of the three does not need the signature
-        // widened: declaring a constant of that name with the right value[x] and overriding its value
-        // works, because the inheritance above then applies. All of this is pinned by the
-        // GivenAPredefinedVariableName_* tests.
+        // A caller wanting a typed value under one of these names declares a constant of that name and
+        // overrides its value, as above. Pinned by the GivenAPredefinedVariableName_* tests, by
+        // SqlOnFhirEvaluatorTests.GivenAViewDefinitionSelectingAStandardPrefixedConstant (declared in
+        // FhirPathColumnEvaluatorTests.cs), and by Ignixa.FhirPath.Tests' EnvironmentVariableResolutionTests.
         if (variables != null)
         {
             // Built with the indexer, not ToDictionary: two constants sharing a name is malformed input

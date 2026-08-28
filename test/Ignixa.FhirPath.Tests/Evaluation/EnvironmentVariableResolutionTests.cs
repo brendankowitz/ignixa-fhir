@@ -93,6 +93,57 @@ public class EnvironmentVariableResolutionTests
         Assert.Equal(expected, result.Value);
     }
 
+    [Theory]
+    [InlineData("%vs-mine", "vs-mine")]
+    [InlineData("%ext-mine", "ext-mine")]
+    public void GivenABareVsOrExtConstant_WhenReferenced_ThenItIsAnUndefinedVariableRatherThanAUri(
+        string expression, string expectedName)
+    {
+        // Issue #438 conflated two questions with different answers.
+        //
+        // LEXING: "%vs-mine" must lex as one ExternalConstant token, matching HAPI's FHIRLexer, because
+        // published cqf-expression content (%p-inactive, in fhir-test-cases) depends on '-' in the bare
+        // '%' run. FhirPathTokenizerTests pins that.
+        //
+        // RESOLUTION: the bare spelling must NOT expand to a ValueSet or StructureDefinition URI. The FHIR
+        // profile of FHIRPath writes these families as %`vs-[name]` / %`ext-[name]` ("quoted, just like
+        // paths, to allow '-' in the name") and HAPI's FHIRPathEngine expands only the backtick spelling.
+        // #438's first cut expanded the bare form too. The outcome for a bare name is a clear error naming
+        // the whole hyphenated name - possible only because the lexing fix keeps it in one piece.
+        var evaluate = () => _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).ToList();
+
+        var exception = Assert.Throws<FhirPathEvaluationException>(evaluate);
+        Assert.Contains($"undefined environment variable: {expectedName}", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("%`vs-`", "vs-")]
+    [InlineData("%`ext-`", "ext-")]
+    public void GivenADelimitedButEmptySuffixConstant_WhenReferenced_ThenItIsAnUndefinedVariableRatherThanAUri(
+        string expression, string expectedName)
+    {
+        // The delimited spelling alone is not sufficient - the prefix needs a non-empty suffix, or there
+        // is no name to build a URI from. GetStandardConstant has always required that, but the analyzer
+        // and the SQL-on-FHIR validator did not check length and reported these clean, so an expression
+        // could pass both and then throw here. All three now share StandardConstantFamilies.
+        var evaluate = () => _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).ToList();
+
+        var exception = Assert.Throws<FhirPathEvaluationException>(evaluate);
+        Assert.Contains($"undefined environment variable: {expectedName}", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("%`vs-mine`", "http://hl7.org/fhir/ValueSet/mine")]
+    [InlineData("%`ext-mine`", "http://hl7.org/fhir/StructureDefinition/mine")]
+    public void GivenADelimitedVsOrExtConstant_WhenReferenced_ThenResolvesToItsUri(string expression, string expected)
+    {
+        // The conformant counterpart to the test above, for a name that is in neither family's published list:
+        // the expansion is by rule, so any name works, but only in the delimited spelling.
+        var result = _evaluator.Evaluate(CreateElement("x"), _parser.Parse(expression)).Single();
+
+        Assert.Equal(expected, result.Value);
+    }
+
     [Fact]
     public void GivenAHostSuppliedValueSetVariable_WhenReferenced_ThenOverridesTheGeneratedUri()
     {

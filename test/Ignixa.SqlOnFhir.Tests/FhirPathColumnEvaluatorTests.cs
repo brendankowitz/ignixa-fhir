@@ -714,17 +714,118 @@ public class SqlOnFhirEvaluatorTests
     }
 
     [Theory]
+    [InlineData("%`vs-mine`", "http://hl7.org/fhir/ValueSet/mine")]
+    [InlineData("%`ext-mine`", "http://hl7.org/fhir/StructureDefinition/mine")]
+    public void GivenAViewDefinitionSelectingAStandardPrefixedConstant_WhenEvaluated_ThenItValidatesAndResolves(
+        string expression, string expectedUri)
+    {
+        // Issue #438: no declared constant covers "vs-mine" or "ext-mine", so this exercises
+        // ValidateConstantReferences' exemption for both prefixes - previously only "vs-" was exempted.
+        // The delimited spelling is the one the exemption covers, because it is the only one the engine
+        // expands; the bare spelling is pinned as rejected by the test below.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-prefix" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = $$"""
+            {
+              "resource": "Patient",
+              "select": [{ "column": [
+                  { "name": "id", "path": "id" },
+                  { "name": "prefixed", "path": "{{expression}}" }
+              ] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var rows = _evaluator.Evaluate(sourceNode, resource).ToList();
+
+        Assert.Single(rows);
+        Assert.Equal(expectedUri, rows[0]["prefixed"]);
+    }
+
+    [Theory]
+    [InlineData("%vs-mine")]
+    [InlineData("%ext-mine")]
+    public void GivenAViewDefinitionSelectingABarePrefixedConstant_WhenEvaluated_ThenItIsRejectedAsUndeclared(
+        string expression)
+    {
+        // The exemption is spelling-sensitive and has to be: EvaluationContext expands %`vs-x` and not
+        // %vs-x, following the FHIR profile of FHIRPath and HAPI. Exempting the bare spelling would let the
+        // ViewDefinition parse and then fail at evaluation with "undefined environment variable"; rejecting
+        // it here says what is actually wrong - an ordinary constant name that must be declared.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-bare-prefix" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = $$"""
+            {
+              "resource": "Patient",
+              "select": [{ "column": [
+                  { "name": "id", "path": "id" },
+                  { "name": "prefixed", "path": "{{expression}}" }
+              ] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var thrown = Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(sourceNode, resource).ToList());
+
+        var cause = thrown.InnerException as InvalidOperationException ?? thrown;
+        Assert.Contains($"undefined constant '{expression}'", cause.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("%`vs-`", "vs-")]
+    [InlineData("%`ext-`", "ext-")]
+    public void GivenAViewDefinitionSelectingADelimitedEmptySuffixConstant_WhenEvaluated_ThenItIsRejectedAsUndeclared(
+        string expression, string expectedName)
+    {
+        // The exemption requires the delimited spelling AND a non-empty suffix, via
+        // StandardConstantFamilies.IsPrefixedConstant - the same rule GetStandardConstant uses. Matching
+        // on prefix and delimiter alone let "%`vs-`" validate clean and then throw "undefined environment
+        // variable: vs-" at evaluation, the same failure shape the bare-spelling test above rejects.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-empty-suffix-prefix" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = $$"""
+            {
+              "resource": "Patient",
+              "select": [{ "column": [
+                  { "name": "id", "path": "id" },
+                  { "name": "prefixed", "path": "{{expression}}" }
+              ] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var thrown = Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(sourceNode, resource).ToList());
+
+        var cause = thrown.InnerException as InvalidOperationException ?? thrown;
+        Assert.Contains($"undefined constant '%{expectedName}'", cause.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("ucum", "http://unitsofmeasure.org")]
     [InlineData("sct", "http://snomed.info/sct")]
     [InlineData("loinc", "http://loinc.org")]
     public void GivenAPredefinedVariableName_WhenOverriddenWithNoDeclaredConstant_ThenItBindsAsAString(
         string predefinedName, string defaultUri)
     {
-        // The three names that genuinely reach the variable loop with no constant to inherit from.
-        // ValidateConstantReferences exempts context, resource, rootResource, ucum, sct, loinc, rowIndex
-        // and the vs- prefix - but of those only these three arrive here untyped: the first three are
-        // answered by TryGetEnvironmentVariable's switch before it consults caller variables, rowIndex
-        // is re-injected afterwards and wins, and %vs-x never parses as a variable reference at all.
+        // Three of the names that genuinely reach the variable loop with no constant to inherit from.
+        // ucum/sct/loinc and every %`vs-*`/%`ext-*` name do; context/resource/rootResource and rowIndex do
+        // not - see SqlOnFhirEvaluationVisitor. vs-*/ext-* resolving without an override is covered by
+        // GivenAViewDefinitionSelectingAStandardPrefixedConstant above.
         //
         // System.String is the right answer for them, not a gap. FHIRPath defines %ucum, %sct and
         // %loinc as fixed URIs, so a caller-supplied string is already correctly typed - and the engine
@@ -822,6 +923,41 @@ public class SqlOnFhirEvaluatorTests
         Assert.Single(_evaluator
             .Evaluate(sourceNode, resource, new Dictionary<string, string> { ["ucum"] = "1990-01-01" })
             .ToList());
+    }
+
+    [Theory]
+    [InlineData("context")]
+    [InlineData("resource")]
+    [InlineData("rootResource")]
+    [InlineData("rowIndex")]
+    public void GivenAnEngineManagedVariableName_WhenSuppliedByTheCaller_ThenTheCallIsRejected(string name)
+    {
+        // Issue #439: these four names are answered by the engine before a caller-supplied variable is
+        // consulted - context/resource/rootResource by EvaluationContext.TryGetEnvironmentVariable's
+        // switch, rowIndex by SqlOnFhirEvaluationVisitor re-injecting it afterwards. Passing any of them
+        // used to be accepted and silently discarded, so SqlOnFhirEvaluator now rejects the call.
+        var patientJson = new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p-engine-managed" }
+        };
+        var resource = CreateTypedElement(patientJson);
+
+        var viewJson = """
+            {
+              "resource": "Patient",
+              "select": [{ "column": [{ "name": "id", "path": "id" }] }]
+            }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+        var variables = new Dictionary<string, string> { [name] = "irrelevant" };
+
+        var thrown = Assert.Throws<ArgumentException>(
+            () => _evaluator.Evaluate(sourceNode, resource, variables).ToList());
+
+        Assert.Equal("variables", thrown.ParamName);
+        Assert.Contains(name, thrown.Message, StringComparison.Ordinal);
+        Assert.Contains("engine-managed", thrown.Message, StringComparison.Ordinal);
     }
 
     [Fact]

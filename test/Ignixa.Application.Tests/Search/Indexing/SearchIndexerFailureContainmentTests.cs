@@ -69,10 +69,15 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// It carried no marginal information: <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c> is a pure
 /// type test, both guards throw <c>FhirPathEvaluationException</c>, so nothing it could assert would
 /// distinguish the two - and the two facts it composed are each pinned more cheaply elsewhere.
-/// <c>RemainingCoverageTests</c> pins that <c>Repeat</c>'s guard throws that type (and, since it must pay
-/// the Θ(cap²) cost anyway, that the cap is 10,000); the test above pins that the type routes to Warning.
-/// Do not restore it: a rewrite that genuinely discriminates the two guards would have to trip
-/// <c>Repeat</c>'s cap, which is where the 35 seconds comes from.
+/// <c>RemainingCoverageTests</c> pins that <c>Repeat</c>'s guard throws that type; the test above pins that
+/// the type routes to Warning.
+/// Do not restore it - but not because of the clock. The 35 seconds is historical: it is what tripping
+/// <c>Repeat</c>'s <em>iteration</em> cap cost while that cap was the only guard, and #435's
+/// comparison-count budget now trips first on a constructing projection. What is missing is the
+/// information, not the time. The cap's <em>value</em> is pinned by
+/// <c>RemainingCoverageTests.GivenAWideFocusOfDeepEqualItems_WhenRepeat_ThenTheProductionIterationCapIsExactlyTenThousand</c>,
+/// from both sides and at one comparison per iteration - not, as this comment once claimed, as a
+/// by-product of paying the Θ(cap²) cost, which nothing there does any more.
 /// </para>
 /// </summary>
 public class SearchIndexerFailureContainmentTests
