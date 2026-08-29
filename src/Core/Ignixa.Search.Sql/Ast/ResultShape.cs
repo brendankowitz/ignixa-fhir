@@ -2,7 +2,8 @@ namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// What a compiled statement returns. The cases are the terminal shapes <see cref="Builders.SqlBuilder"/> can
-/// emit and a plan is exactly one of them, so match, count and include-only semantics cannot be combined.
+/// emit and a plan is exactly one of them, so match, count, include-only, and operation-specific semantics
+/// cannot be combined.
 /// </summary>
 public abstract record ResultShape
 {
@@ -86,6 +87,17 @@ public abstract record ResultShape
     /// </summary>
     /// <param name="Resume">The last include row of the previous page, or null to start at the first.</param>
     public sealed record IncludesPage(IncludeBoundary? Resume = null) : ResultShape
+    {
+        private protected override void ThisUnionIsClosed()
+        {
+        }
+    }
+
+    /// <summary>
+    /// The Observation <c>$lastn</c> terminal shape. The ordinary match graph defines its candidate set,
+    /// then <see cref="Spec"/> groups equivalent codes and applies a tie-inclusive rank per group.
+    /// </summary>
+    public sealed record LastN(LastNSpec Spec) : ResultShape
     {
         private protected override void ThisUnionIsClosed()
         {

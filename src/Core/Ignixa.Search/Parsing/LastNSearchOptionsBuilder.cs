@@ -105,7 +105,9 @@ public sealed class LastNSearchOptionsBuilder
             filters,
             maximum,
             _searchParameterDefinitionManager.GetSearchParameter("Observation", "code"),
-            _searchParameterDefinitionManager.GetSearchParameter("Observation", "date"));
+            _searchParameterDefinitionManager.GetSearchParameter("Observation", "date"),
+            parameters.Any(parameter => parameter.Category == ParameterCategory.Count),
+            parameters.Any(parameter => parameter.Category == ParameterCategory.ContinuationToken));
     }
 
     private static int ParseMaximum(string value)

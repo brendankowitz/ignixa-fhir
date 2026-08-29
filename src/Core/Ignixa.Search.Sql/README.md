@@ -219,6 +219,15 @@ new ResultShape.Count.CurrentSortPhase();           // ...restricted to the segm
 new ResultShape.IncludesPage(Resume: null);         // $includes: the include stages only, as one stream
 ```
 
+`CreateLastNPlanAsync(LastNSearchOptions)` produces the operation-specific
+`ResultShape.LastN`. The existing match CTE remains the candidate set; the terminal
+shape then computes transitive components across co-occurring
+`Observation.code` codings, assigns each component its stable identity node
+ordinal, and emits coded groups before case-sensitive text-only groups. Within a
+group, dated observations are newest first with `RANK()` tie expansion. Missing
+effective dates follow dated rows and use descending surrogate id only among the
+missing rows. Ordinary sorting, paging, `_include`, and `_revinclude` are rejected.
+
 Paging hangs off `Matches` because that is the only shape that pages. A count reads the whole match set, and
 an includes page carries its own boundary in `IncludesPage.Resume` — so neither has a second paging
 coordinate that could contradict it.

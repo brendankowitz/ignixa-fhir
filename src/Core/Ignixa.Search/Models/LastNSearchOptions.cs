@@ -19,11 +19,15 @@ public sealed record LastNSearchOptions
     /// <param name="maximum">The maximum number of effective-time ranks to retain per code group.</param>
     /// <param name="codeParameter">The version-specific Observation code search parameter.</param>
     /// <param name="effectiveDateParameter">The version-specific Observation effective-date search parameter.</param>
+    /// <param name="countSpecified">Whether the request explicitly supplied the unsupported ordinary <c>_count</c> control.</param>
+    /// <param name="continuationSpecified">Whether the request explicitly supplied an unsupported continuation control.</param>
     public LastNSearchOptions(
         SearchOptions filters,
         int maximum,
         SearchParameterInfo codeParameter,
-        SearchParameterInfo effectiveDateParameter)
+        SearchParameterInfo effectiveDateParameter,
+        bool countSpecified = false,
+        bool continuationSpecified = false)
     {
         ArgumentNullException.ThrowIfNull(filters);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 1);
@@ -34,6 +38,8 @@ public sealed record LastNSearchOptions
         Maximum = maximum;
         CodeParameter = codeParameter;
         EffectiveDateParameter = effectiveDateParameter;
+        CountSpecified = countSpecified;
+        ContinuationSpecified = continuationSpecified;
     }
 
     /// <summary>Gets the ordinary Observation filters that select the candidate set.</summary>
@@ -47,4 +53,10 @@ public sealed record LastNSearchOptions
 
     /// <summary>Gets the version-specific Observation effective-date search parameter.</summary>
     public SearchParameterInfo EffectiveDateParameter { get; }
+
+    /// <summary>Gets whether the request explicitly supplied the ordinary <c>_count</c> control.</summary>
+    public bool CountSpecified { get; }
+
+    /// <summary>Gets whether the request explicitly supplied an ordinary continuation control.</summary>
+    public bool ContinuationSpecified { get; }
 }

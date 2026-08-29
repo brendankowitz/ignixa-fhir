@@ -24,6 +24,47 @@ namespace Ignixa.Search.Tests.Parsing;
 public class LastNSearchOptionsBuilderTests
 {
     [Fact]
+    public void GivenAnExplicitCount_WhenBuildingLastNOptions_ThenRecordsThatTheControlWasSpecified()
+    {
+        // Arrange
+        var context = CreateObservationContext();
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        LastNSearchOptions options = builder.Build(
+        [
+            new QueryParameter("subject", "Patient/1"),
+            new QueryParameter("code", "http://loinc.org|1234-5"),
+            new QueryParameter("_count", "10"),
+        ]);
+
+        // Assert
+        options.CountSpecified.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenAnEmptyContinuationControl_WhenBuildingLastNOptions_ThenRecordsThatTheControlWasSpecified()
+    {
+        var context = CreateObservationContext();
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        LastNSearchOptions options = builder.Build(
+        [
+            new QueryParameter("subject", "Patient/1"),
+            new QueryParameter("code", "http://loinc.org|1234-5"),
+            new QueryParameter("after", string.Empty),
+        ]);
+
+        options.ContinuationSpecified.ShouldBeTrue();
+    }
+
+    [Fact]
     public void GivenNoMax_WhenBuildingLastNOptions_ThenDefaultsMaximumToOne()
     {
         // Arrange
