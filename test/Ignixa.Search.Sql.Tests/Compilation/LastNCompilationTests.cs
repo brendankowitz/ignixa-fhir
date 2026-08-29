@@ -79,12 +79,11 @@ public class LastNCompilationTests
         compiled.Sql.ShouldContain("FROM cte0 m");
         compiled.Sql.ShouldContain("SearchParamId = 212");
         compiled.Sql.ShouldContain("AND candidate.T1 = 104");
-        compiled.Sql.ShouldContain("COALESCE(codeRow.CodeOverflow, codeRow.Code) AS CodeValue");
+        compiled.Sql.ShouldContain("codeRow.SystemId, CONCAT(codeRow.Code, codeRow.CodeOverflow)) AS NodeId");
         compiled.Sql.ShouldContain("INTO #code_edges");
-        compiled.Sql.ShouldContain("CREATE TABLE #code_reach");
-        compiled.Sql.ShouldContain("PRIMARY KEY (RootNodeId, NodeId)");
-        compiled.Sql.ShouldContain("node_components AS");
-        compiled.Sql.ShouldContain("NOT EXISTS (\n");
+        compiled.Sql.ShouldContain("membership.NodeId AS ComponentId");
+        compiled.Sql.ShouldContain("SET ComponentId = neighbors.ComponentId");
+        compiled.Sql.ShouldNotContain("#code_reach");
         compiled.Sql.ShouldContain("textRow.Text COLLATE Latin1_General_100_CS_AS");
         compiled.Sql.ShouldContain("dateRow.IsMax = 1");
         compiled.Sql.ShouldContain(
@@ -100,7 +99,7 @@ public class LastNCompilationTests
     }
 
     [Fact]
-    public void GivenACyclicCodeGraph_WhenCompiled_ThenClosureStoresEachReachablePairOnce()
+    public void GivenACyclicCodeGraph_WhenCompiled_ThenClosureStoresOneComponentLabelPerCodeNode()
     {
         // Arrange
         var plan = new SearchPlan
@@ -116,12 +115,17 @@ public class LastNCompilationTests
         string sql = plan.Compile().Sql;
 
         // Assert
-        sql.ShouldContain("PRIMARY KEY (RootNodeId, NodeId)");
-        sql.ShouldContain("WHERE NOT EXISTS");
+        sql.ShouldContain("membership.NodeId AS ComponentId");
+        sql.ShouldContain("SET ComponentId = neighbors.ComponentId");
+        sql.ShouldContain("WHERE neighbors.ComponentId < target.ComponentId");
+        sql.ShouldContain("toCode.NodeId AS ToNodeId");
+        sql.ShouldContain("node.NodeId = membership.NodeId");
+        sql.ShouldNotContain("fromNode.SystemId");
         sql.ShouldContain("WHILE");
-        sql.ShouldNotContain("Visited");
+        sql.ShouldNotContain("#code_reach");
+        sql.ShouldNotContain("RootNodeId");
         sql.ShouldNotContain("OPTION (MAXRECURSION 0)");
-        sql.ShouldContain("DROP TABLE #code_reach, #code_edges, #code_nodes, #coded_membership, #lastn_candidates");
+        sql.ShouldContain("DROP TABLE #code_edges, #code_nodes, #coded_membership, #lastn_candidates");
         Ast.SqlGrammar.AssertValid(sql);
     }
 
@@ -234,7 +238,7 @@ public class LastNCompilationTests
         string golden = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(sql)));
 
-        golden.ShouldBe("FFEC1BDD2616968A8E6DE1F364FD4C0687F9B0EFD3354555A9650C7664FD45F2");
+        golden.ShouldBe("9778EC2D58FF08E7AED6A7C02DFEDFAE6D23F9E4EA1B47FE0A60EA65E3854146");
     }
 
     [Fact]

@@ -1,7 +1,7 @@
 # Investigation: Direct $lastn Search
 
 **Feature**: search
-**Status**: In Progress
+**Status**: Rejected
 **Created**: 2026-08-28
 
 ## Problem Statement
@@ -291,6 +291,66 @@ implicit status filter.
   function for include truncation, but the compiler has no existing
   `RANK()`, `ROW_NUMBER()`, or `PARTITION BY` abstraction.
 
+### Live SQL Server benchmark
+
+The repeatable, opt-in fixture is
+`test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/LastNSqlBenchmarkTests.cs`.
+It runs when `RUN_LASTN_BENCHMARK=1` and `TEST_SQL_CONNECTION_STRING` points
+at a live database. The fixture deploys the current schema, seeds all data in
+a transaction, performs five warm-up executions, measures 30 warm executions,
+captures actual execution plans with `SET STATISTICS XML`, and rolls the data
+back.
+
+The measured workload contains:
+
+- 10,000 current Observation candidates for one patient/category-shaped result
+  set;
+- 400 independent code groups;
+- one, two, or three codings per Observation;
+- explicit `a -> b -> c -> d` transitive bridges within every group; and
+- one effective-date row per Observation.
+
+The accepted exact closure representation assigns a dense numeric node id to
+each full `(SystemId, Code + CodeOverflow)` identity, stores one mutable
+component label per node, and repeatedly propagates the minimum neighboring
+label until convergence. This replaces the all-root reachability relation,
+whose storage can grow as O(V²), with O(V) component-label storage plus the
+required membership and edge relations.
+
+Measurement on 2026-08-29 UTC used SQL Server 2025 Enterprise Developer
+17.0.1125.2, database compatibility level 170, 16 logical CPUs, and 65,484 MB
+visible memory:
+
+| Metric | Result |
+|--------|--------|
+| Warm-up executions | 5 |
+| Measured warm executions | 30 |
+| P50 | 430.208 ms |
+| P95 | 625.414 ms |
+| Maximum | 634.397 ms |
+| Candidate rows | 10,000 |
+| Coded-membership rows | 19,999 |
+| Code nodes / component labels | 1,600 / 1,600 |
+| Distinct code edges | 4,800 |
+| Final components | 400 |
+| Command timeout | None (30-second command timeout) |
+| Actual-plan spill marker | None |
+
+Command:
+
+```powershell
+$env:TEST_SQL_CONNECTION_STRING = 'Server=localhost;Database=LastNFinalReview;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False'
+$env:RUN_LASTN_BENCHMARK = '1'
+dotnet test test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.csproj --filter "FullyQualifiedName~LastNSqlBenchmarkTests" --framework net10.0 --no-restore --logger "console;verbosity=detailed"
+```
+
+The 625.414 ms P95 is 6.25 times the sub-100 ms target. A second exact
+identity-mapping variant that avoided the wide `DENSE_RANK` sort removed spill
+risk but regressed to 927.872 ms P95; it was not retained. The failure is not
+the former quadratic closure table: component-label cardinality remains
+exactly one row per node. The dominant cost is deriving and joining the
+query-time identity/membership graph for every request.
+
 ### External prior art
 
 - [Microsoft FHIR Server issue #1694](https://github.com/microsoft/fhir-server/issues/1694)
@@ -351,11 +411,17 @@ the query-time transitive-closure design.
 
 ## Verdict
 
-*Pending evaluation.*
+**Rejected for production execution.**
 
-The direct-layer design is viable and should use an operation-specific Search
-model plus a terminal Search.Sql result shape. Acceptance depends on proving
-that exact transitive code grouping can execute within the performance target
-against realistic patient/category result sets. A simplified single-coding
-partition is not an acceptable fallback because it violates an explicit FHIR
-grouping requirement.
+The operation-specific Search model and terminal Search.Sql shape are sound,
+and the component-label propagation algorithm is the accepted bounded exact
+closure representation for this prototype. The direct query-time design does
+not meet the required latency target: its measured warm P95 is 625.414 ms
+against a sub-100 ms target.
+
+Do not weaken transitive grouping or ship this query-time path. Continue with
+the documented `materialized-observation-code-groups` investigation: maintain
+an exact code-equivalence mapping during direct indexing, then make `$lastn`
+an indexed partition/rank query over that mapping. Production wiring remains
+blocked until that design demonstrates the same semantics and meets the
+latency target.

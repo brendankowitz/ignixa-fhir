@@ -32,8 +32,10 @@ internal static class LastNEmitter
             "INTO #lastn_candidates\n" +
             "FROM lastn_candidates;\n" +
             "CREATE UNIQUE CLUSTERED INDEX IX_LastNCandidates ON #lastn_candidates (T1, Sid1);\n\n" +
-            "SELECT DISTINCT candidate.T1, candidate.Sid1, codeRow.SystemId,\n" +
-            "       COALESCE(codeRow.CodeOverflow, codeRow.Code) AS CodeValue\n" +
+            "SELECT DISTINCT candidate.T1, candidate.Sid1,\n" +
+            "       DENSE_RANK() OVER (\n" +
+            "           ORDER BY CASE WHEN codeRow.SystemId IS NULL THEN 0 ELSE 1 END,\n" +
+            "                    codeRow.SystemId, CONCAT(codeRow.Code, codeRow.CodeOverflow)) AS NodeId\n" +
             "INTO #coded_membership\n" +
             "FROM #lastn_candidates candidate\n" +
             "    INNER JOIN dbo.TokenSearchParam codeRow\n" +
@@ -42,58 +44,38 @@ internal static class LastNEmitter
             $"       AND codeRow.SearchParamId = {spec.CodeSearchParamId}\n" +
             $"       AND candidate.T1 = {spec.ResourceTypeId};\n" +
             "CREATE CLUSTERED INDEX IX_CodedMembership ON #coded_membership (T1, Sid1);\n\n" +
-            "SELECT DENSE_RANK() OVER (\n" +
-            "           ORDER BY CASE WHEN SystemId IS NULL THEN 0 ELSE 1 END, SystemId, CodeValue) AS NodeId,\n" +
-            "       SystemId, CodeValue\n" +
+            "SELECT membership.NodeId, membership.NodeId AS ComponentId\n" +
             "INTO #code_nodes\n" +
-            "FROM (SELECT DISTINCT SystemId, CodeValue FROM #coded_membership) nodes;\n" +
+            "FROM #coded_membership membership\n" +
+            "GROUP BY membership.NodeId;\n" +
             "CREATE UNIQUE CLUSTERED INDEX IX_CodeNodes ON #code_nodes (NodeId);\n\n" +
-            "SELECT DISTINCT fromNode.NodeId AS FromNodeId, toNode.NodeId AS ToNodeId\n" +
+            "SELECT DISTINCT fromCode.NodeId AS FromNodeId, toCode.NodeId AS ToNodeId\n" +
             "INTO #code_edges\n" +
             "FROM #coded_membership fromCode\n" +
             "INNER JOIN #coded_membership toCode\n" +
-            "    ON toCode.T1 = fromCode.T1 AND toCode.Sid1 = fromCode.Sid1\n" +
-            "INNER JOIN #code_nodes fromNode\n" +
-            "    ON (fromNode.SystemId = fromCode.SystemId OR (fromNode.SystemId IS NULL AND fromCode.SystemId IS NULL))\n" +
-            "   AND fromNode.CodeValue = fromCode.CodeValue\n" +
-            "INNER JOIN #code_nodes toNode\n" +
-            "    ON (toNode.SystemId = toCode.SystemId OR (toNode.SystemId IS NULL AND toCode.SystemId IS NULL))\n" +
-            "   AND toNode.CodeValue = toCode.CodeValue;\n" +
+            "    ON toCode.T1 = fromCode.T1 AND toCode.Sid1 = fromCode.Sid1;\n" +
             "CREATE UNIQUE CLUSTERED INDEX IX_CodeEdges ON #code_edges (FromNodeId, ToNodeId);\n\n" +
-            "CREATE TABLE #code_reach (\n" +
-            "    RootNodeId bigint NOT NULL,\n" +
-            "    NodeId bigint NOT NULL,\n" +
-            "    PRIMARY KEY (RootNodeId, NodeId)\n" +
-            ");\n" +
-            "INSERT INTO #code_reach (RootNodeId, NodeId)\n" +
-            "SELECT NodeId, NodeId FROM #code_nodes;\n\n" +
-            "DECLARE @lastnRowsInserted int = 1;\n" +
-            "WHILE @lastnRowsInserted > 0\n" +
+            "DECLARE @lastnLabelsChanged int = 1;\n" +
+            "WHILE @lastnLabelsChanged > 0\n" +
             "BEGIN\n" +
-            "    INSERT INTO #code_reach (RootNodeId, NodeId)\n" +
-            "    SELECT DISTINCT reach.RootNodeId, edge.ToNodeId\n" +
-            "    FROM #code_reach reach\n" +
-            "    INNER JOIN #code_edges edge ON edge.FromNodeId = reach.NodeId\n" +
-            "    WHERE NOT EXISTS (\n" +
-            "        SELECT 1\n" +
-            "        FROM #code_reach existing\n" +
-            "        WHERE existing.RootNodeId = reach.RootNodeId\n" +
-            "          AND existing.NodeId = edge.ToNodeId);\n" +
-            "    SET @lastnRowsInserted = @@ROWCOUNT;\n" +
+            "    UPDATE target\n" +
+            "    SET ComponentId = neighbors.ComponentId\n" +
+            "    FROM #code_nodes target\n" +
+            "    INNER JOIN (\n" +
+            "        SELECT edge.ToNodeId AS NodeId, MIN(source.ComponentId) AS ComponentId\n" +
+            "        FROM #code_edges edge\n" +
+            "        INNER JOIN #code_nodes source ON source.NodeId = edge.FromNodeId\n" +
+            "        GROUP BY edge.ToNodeId\n" +
+            "    ) neighbors ON neighbors.NodeId = target.NodeId\n" +
+            "    WHERE neighbors.ComponentId < target.ComponentId;\n" +
+            "    SET @lastnLabelsChanged = @@ROWCOUNT;\n" +
             "END;\n\n" +
             ";WITH " +
-            "node_components AS (\n" +
-            "    SELECT RootNodeId AS NodeId, MIN(NodeId) AS CodeGroupId\n" +
-            "    FROM #code_reach\n" +
-            "    GROUP BY RootNodeId\n" +
-            "),\n" +
             "coded_groups AS (\n" +
-            "    SELECT DISTINCT membership.T1, membership.Sid1, component.CodeGroupId\n" +
+            "    SELECT DISTINCT membership.T1, membership.Sid1, node.ComponentId AS CodeGroupId\n" +
             "    FROM #coded_membership membership\n" +
             "    INNER JOIN #code_nodes node\n" +
-            "        ON (node.SystemId = membership.SystemId OR (node.SystemId IS NULL AND membership.SystemId IS NULL))\n" +
-            "       AND node.CodeValue = membership.CodeValue\n" +
-            "    INNER JOIN node_components component ON component.NodeId = node.NodeId\n" +
+            "        ON node.NodeId = membership.NodeId\n" +
             "),\n" +
             "text_groups AS (\n" +
             $"    SELECT DISTINCT candidate.T1, candidate.Sid1, textRow.Text COLLATE {CaseSensitiveCollation} AS TextCode\n" +
@@ -143,6 +125,6 @@ internal static class LastNEmitter
             "GROUP BY T1, Sid1\n" +
             "ORDER BY MIN(GroupKind), MIN(CodeGroupId),\n" +
             $"         MIN(TextCode) COLLATE {CaseSensitiveCollation}, MIN(EffectiveRank), Sid1 DESC;\n" +
-            "DROP TABLE #code_reach, #code_edges, #code_nodes, #coded_membership, #lastn_candidates;");
+            "DROP TABLE #code_edges, #code_nodes, #coded_membership, #lastn_candidates;");
     }
 }

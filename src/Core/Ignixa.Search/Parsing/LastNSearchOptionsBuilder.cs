@@ -88,14 +88,20 @@ public sealed class LastNSearchOptionsBuilder
             _schemaProvider,
             outcomes);
 
-        if (_schemaProvider.Version is FhirVersion.R4 or FhirVersion.R4B or FhirVersion.R5 &&
-            !outcomes.Any(HasSubject))
+        bool requiresInputs = _schemaProvider.Version switch
+        {
+            FhirVersion.Stu3 => false,
+            FhirVersion.R4 or FhirVersion.R4B or FhirVersion.R5 or FhirVersion.R6 or FhirVersion.Unspecified => true,
+            _ => throw new NotSupportedException(
+                $"The '$lastn' operation does not define required-input validation for FHIR version {(byte)_schemaProvider.Version}."),
+        };
+
+        if (requiresInputs && !outcomes.Any(HasSubject))
         {
             throw new BadSearchRequestException("The '$lastn' operation requires a patient or subject parameter.");
         }
 
-        if (_schemaProvider.Version is FhirVersion.R4 or FhirVersion.R4B or FhirVersion.R5 &&
-            !outcomes.Any(IsCategoryOrCodeBearing))
+        if (requiresInputs && !outcomes.Any(IsCategoryOrCodeBearing))
         {
             throw new BadSearchRequestException(
                 "The '$lastn' operation requires a category parameter or a search parameter that resolves to a CodeableConcept or Coding.");

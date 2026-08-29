@@ -302,6 +302,85 @@ public class LastNSearchOptionsBuilderTests
     }
 
     [Fact]
+    public void GivenNoSubjectFilterForR6_WhenBuildingLastNOptions_ThenRejectsTheRequest()
+    {
+        // Arrange
+        var context = CreateObservationContext(new R6CoreSchemaProvider());
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        BadSearchRequestException exception = Should.Throw<BadSearchRequestException>(() => builder.Build(
+        [
+            new QueryParameter("code", "http://loinc.org|1234-5"),
+        ]));
+
+        // Assert
+        exception.Message.ShouldContain("subject");
+    }
+
+    [Fact]
+    public void GivenNoCategoryOrCodeBearingFilterForR6_WhenBuildingLastNOptions_ThenRejectsTheRequest()
+    {
+        // Arrange
+        var context = CreateObservationContext(new R6CoreSchemaProvider());
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        BadSearchRequestException exception = Should.Throw<BadSearchRequestException>(() => builder.Build(
+        [
+            new QueryParameter("subject", "Patient/1"),
+        ]));
+
+        // Assert
+        exception.Message.ShouldContain("category");
+    }
+
+    [Fact]
+    public void GivenAnUnknownFutureFhirVersion_WhenBuildingLastNOptions_ThenRejectsRatherThanWeakeningValidation()
+    {
+        // Arrange
+        var searchOptionsBuilder = Substitute.For<ISearchOptionsBuilder>();
+        searchOptionsBuilder
+            .Build(
+                "Observation",
+                Arg.Any<IReadOnlyList<QueryParameter>>(),
+                Arg.Any<ISchema>(),
+                Arg.Any<IList<ParameterTrace>>())
+            .Returns(new SearchOptions());
+        var definitionManager = Substitute.For<ISearchParameterDefinitionManager>();
+        definitionManager.GetSearchParameter("Observation", "code").Returns(
+            new SearchParameterInfo(
+                "code",
+                "code",
+                SearchParamType.Token,
+                new Uri("http://hl7.org/fhir/SearchParameter/Observation-code")));
+        definitionManager.GetSearchParameter("Observation", "date").Returns(
+            new SearchParameterInfo(
+                "date",
+                "date",
+                SearchParamType.Date,
+                new Uri("http://hl7.org/fhir/SearchParameter/Observation-date")));
+        var schemaProvider = Substitute.For<IFhirSchemaProvider>();
+        schemaProvider.Version.Returns((FhirVersion)70);
+        var builder = new LastNSearchOptionsBuilder(
+            searchOptionsBuilder,
+            definitionManager,
+            schemaProvider);
+
+        // Act
+        NotSupportedException exception = Should.Throw<NotSupportedException>(() => builder.Build([]));
+
+        // Assert
+        exception.Message.ShouldContain("70");
+    }
+
+    [Fact]
     public void GivenNoCategoryOrCodeBearingFilterForR4_WhenBuildingLastNOptions_ThenRejectsTheRequest()
     {
         // Arrange

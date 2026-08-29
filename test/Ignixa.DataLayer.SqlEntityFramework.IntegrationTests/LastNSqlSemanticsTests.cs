@@ -124,6 +124,36 @@ public class LastNSqlSemanticsTests
         result.ShouldBe([1]);
     }
 
+    [SkippableFact]
+    public async Task GivenLongCodesWithTheSamePrefixAndDifferentSuffixes_WhenLastNExecutes_ThenTheyRemainDistinctGroups()
+    {
+        string prefix = new('a', 256);
+
+        IReadOnlyList<int> result = await ExecuteAsync(
+            maximum: 1,
+            [
+                new(1, Effective(1), [prefix + "-first"]),
+                new(2, Effective(2), [prefix + "-second"]),
+            ]);
+
+        result.Order().ShouldBe([1, 2]);
+    }
+
+    [SkippableFact]
+    public async Task GivenLongCodesWithDifferentPrefixesAndTheSameSuffix_WhenLastNExecutes_ThenTheyRemainDistinctGroups()
+    {
+        string suffix = "-shared-suffix";
+
+        IReadOnlyList<int> result = await ExecuteAsync(
+            maximum: 1,
+            [
+                new(1, Effective(1), [new string('a', 256) + suffix]),
+                new(2, Effective(2), [new string('b', 256) + suffix]),
+            ]);
+
+        result.Order().ShouldBe([1, 2]);
+    }
+
     private static DateTime Effective(int day)
         => new(2026, 1, day, 0, 0, 0, DateTimeKind.Utc);
 
@@ -221,19 +251,22 @@ public class LastNSqlSemanticsTests
 
         foreach (string code in observation.Codes)
         {
+            string codePrefix = code[..Math.Min(code.Length, 256)];
+            string? codeOverflow = code.Length > 256 ? code[256..] : null;
             await using var token = new SqlCommand(
                 """
                 INSERT INTO dbo.TokenSearchParam (
-                    ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code)
+                    ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code, CodeOverflow)
                 VALUES (
-                    @resourceTypeId, @surrogateId, @searchParamId, 1, @code);
+                    @resourceTypeId, @surrogateId, @searchParamId, 1, @code, @codeOverflow);
                 """,
                 connection,
                 transaction);
             token.Parameters.AddWithValue("@resourceTypeId", ObservationResourceTypeId);
             token.Parameters.AddWithValue("@surrogateId", surrogateId);
             token.Parameters.AddWithValue("@searchParamId", CodeSearchParamId);
-            token.Parameters.AddWithValue("@code", code);
+            token.Parameters.AddWithValue("@code", codePrefix);
+            token.Parameters.AddWithValue("@codeOverflow", (object?)codeOverflow ?? DBNull.Value);
             await token.ExecuteNonQueryAsync();
         }
 
