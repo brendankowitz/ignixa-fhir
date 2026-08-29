@@ -80,9 +80,9 @@ public class LastNCompilationTests
         compiled.Sql.ShouldContain("SearchParamId = 212");
         compiled.Sql.ShouldContain("AND candidate.T1 = 104");
         compiled.Sql.ShouldContain("COALESCE(codeRow.CodeOverflow, codeRow.Code) AS CodeValue");
-        compiled.Sql.ShouldContain("code_edges AS");
-        compiled.Sql.ShouldContain("code_reach AS");
-        compiled.Sql.ShouldContain("CHARINDEX");
+        compiled.Sql.ShouldContain("INTO #code_edges");
+        compiled.Sql.ShouldContain("CREATE TABLE #code_reach");
+        compiled.Sql.ShouldContain("PRIMARY KEY (RootNodeId, NodeId)");
         compiled.Sql.ShouldContain("node_components AS");
         compiled.Sql.ShouldContain("NOT EXISTS (\n");
         compiled.Sql.ShouldContain("textRow.Text COLLATE Latin1_General_100_CS_AS");
@@ -97,6 +97,55 @@ public class LastNCompilationTests
         compiled.Parameters.Select(parameter => parameter.Value).ShouldBe(["final", 3]);
         plan.Query.Explain().ShouldContain("lastN = LastNSpec(type=104, code=210, date=211, max=@p1)");
         Ast.SqlGrammar.AssertValid(compiled.Sql);
+    }
+
+    [Fact]
+    public void GivenACyclicCodeGraph_WhenCompiled_ThenClosureStoresEachReachablePairOnce()
+    {
+        // Arrange
+        var plan = new SearchPlan
+        {
+            Query = new QueryPlan(
+                [new CteDefinition.ResourceSource(104)],
+                new MatchPageSpec(
+                    new CteRef(0),
+                    Shape: new ResultShape.LastN(new LastNSpec(104, 210, 211, 1)))),
+        };
+
+        // Act
+        string sql = plan.Compile().Sql;
+
+        // Assert
+        sql.ShouldContain("PRIMARY KEY (RootNodeId, NodeId)");
+        sql.ShouldContain("WHERE NOT EXISTS");
+        sql.ShouldContain("WHILE");
+        sql.ShouldNotContain("Visited");
+        sql.ShouldNotContain("OPTION (MAXRECURSION 0)");
+        sql.ShouldContain("DROP TABLE #code_reach, #code_edges, #code_nodes, #coded_membership, #lastn_candidates");
+        Ast.SqlGrammar.AssertValid(sql);
+    }
+
+    [Fact]
+    public void GivenHistoryOnlyVisibility_WhenCompiled_ThenTextGroupingUsesResourceIdentityWithoutATokenTextHistoryPredicate()
+    {
+        // Arrange
+        var plan = new SearchPlan
+        {
+            Query = new QueryPlan(
+                [new CteDefinition.ResourceSource(104)],
+                new MatchPageSpec(
+                    new CteRef(0),
+                    Shape: new ResultShape.LastN(new LastNSpec(104, 210, 211, 1))),
+                Visibility: new ResourceVisibility(IsHistory: true, IsDeleted: false)),
+        };
+
+        // Act
+        string sql = plan.Compile().Sql;
+
+        // Assert
+        sql.ShouldContain("IsHistory = 1");
+        sql.ShouldNotContain("textRow.IsHistory");
+        Ast.SqlGrammar.AssertValid(sql);
     }
 
     [Theory]
@@ -185,7 +234,7 @@ public class LastNCompilationTests
         string golden = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(sql)));
 
-        golden.ShouldBe("9E07B3008107D04A1BE631AE329B364AC20DE8F0990CE3E3DEA5D691DBC3D68F");
+        golden.ShouldBe("FFEC1BDD2616968A8E6DE1F364FD4C0687F9B0EFD3354555A9650C7664FD45F2");
     }
 
     [Fact]

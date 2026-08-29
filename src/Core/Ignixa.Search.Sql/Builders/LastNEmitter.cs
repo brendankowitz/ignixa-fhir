@@ -19,73 +19,85 @@ internal static class LastNEmitter
         LastNSpec spec = shape.Spec;
         CteBody candidates = MatchPageEmitter.EmitMatchPage(plan.MatchSpec, parameters);
         string maximum = EmitParam(new SqlParameterRef(spec.Maximum), parameters);
-        string textHistory = plan.EffectiveVisibility.IsHistory switch
-        {
-            false => " AND textRow.IsHistory = 0",
-            true => " AND textRow.IsHistory = 1",
-            null => string.Empty,
-        };
+        string textHistory = plan.EffectiveVisibility.IsHistory == false
+            ? " AND textRow.IsHistory = 0"
+            : string.Empty;
 
         WriteCteHeader(writer, plan, cteBodies);
         writer.Append(
             ",\nlastn_candidates AS (\n" +
             candidates.Text +
-            "\n),\n" +
-            "coded_membership AS (\n" +
-            "    SELECT DISTINCT candidate.T1, candidate.Sid1, codeRow.SystemId,\n" +
-            "           COALESCE(codeRow.CodeOverflow, codeRow.Code) AS CodeValue\n" +
-            "    FROM lastn_candidates candidate\n" +
+            "\n)\n" +
+            "SELECT T1, Sid1\n" +
+            "INTO #lastn_candidates\n" +
+            "FROM lastn_candidates;\n" +
+            "CREATE UNIQUE CLUSTERED INDEX IX_LastNCandidates ON #lastn_candidates (T1, Sid1);\n\n" +
+            "SELECT DISTINCT candidate.T1, candidate.Sid1, codeRow.SystemId,\n" +
+            "       COALESCE(codeRow.CodeOverflow, codeRow.Code) AS CodeValue\n" +
+            "INTO #coded_membership\n" +
+            "FROM #lastn_candidates candidate\n" +
             "    INNER JOIN dbo.TokenSearchParam codeRow\n" +
             "        ON codeRow.ResourceTypeId = candidate.T1\n" +
             "       AND codeRow.ResourceSurrogateId = candidate.Sid1\n" +
             $"       AND codeRow.SearchParamId = {spec.CodeSearchParamId}\n" +
-            $"       AND candidate.T1 = {spec.ResourceTypeId}\n" +
-            "),\n" +
-            "code_nodes AS (\n" +
-            "    SELECT DENSE_RANK() OVER (\n" +
-            "               ORDER BY CASE WHEN SystemId IS NULL THEN 0 ELSE 1 END, SystemId, CodeValue) AS NodeId,\n" +
-            "           SystemId, CodeValue\n" +
-            "    FROM (SELECT DISTINCT SystemId, CodeValue FROM coded_membership) nodes\n" +
-            "),\n" +
-            "code_edges AS (\n" +
-            "    SELECT DISTINCT fromNode.NodeId AS FromNodeId, toNode.NodeId AS ToNodeId\n" +
-            "    FROM coded_membership fromCode\n" +
-            "    INNER JOIN coded_membership toCode\n" +
-            "        ON toCode.T1 = fromCode.T1 AND toCode.Sid1 = fromCode.Sid1\n" +
-            "    INNER JOIN code_nodes fromNode\n" +
-            "        ON (fromNode.SystemId = fromCode.SystemId OR (fromNode.SystemId IS NULL AND fromCode.SystemId IS NULL))\n" +
-            "       AND fromNode.CodeValue = fromCode.CodeValue\n" +
-            "    INNER JOIN code_nodes toNode\n" +
-            "        ON (toNode.SystemId = toCode.SystemId OR (toNode.SystemId IS NULL AND toCode.SystemId IS NULL))\n" +
-            "       AND toNode.CodeValue = toCode.CodeValue\n" +
-            "),\n" +
-            "code_reach AS (\n" +
-            "    SELECT NodeId AS RootNodeId, NodeId,\n" +
-            "           CAST(',' + CONVERT(varchar(20), NodeId) + ',' AS varchar(max)) AS Visited\n" +
-            "    FROM code_nodes\n" +
-            "    UNION ALL\n" +
-            "    SELECT reach.RootNodeId, edge.ToNodeId,\n" +
-            "           CAST(reach.Visited + CONVERT(varchar(20), edge.ToNodeId) + ',' AS varchar(max))\n" +
-            "    FROM code_reach reach\n" +
-            "    INNER JOIN code_edges edge ON edge.FromNodeId = reach.NodeId\n" +
-            "    WHERE CHARINDEX(',' + CONVERT(varchar(20), edge.ToNodeId) + ',', reach.Visited) = 0\n" +
-            "),\n" +
+            $"       AND candidate.T1 = {spec.ResourceTypeId};\n" +
+            "CREATE CLUSTERED INDEX IX_CodedMembership ON #coded_membership (T1, Sid1);\n\n" +
+            "SELECT DENSE_RANK() OVER (\n" +
+            "           ORDER BY CASE WHEN SystemId IS NULL THEN 0 ELSE 1 END, SystemId, CodeValue) AS NodeId,\n" +
+            "       SystemId, CodeValue\n" +
+            "INTO #code_nodes\n" +
+            "FROM (SELECT DISTINCT SystemId, CodeValue FROM #coded_membership) nodes;\n" +
+            "CREATE UNIQUE CLUSTERED INDEX IX_CodeNodes ON #code_nodes (NodeId);\n\n" +
+            "SELECT DISTINCT fromNode.NodeId AS FromNodeId, toNode.NodeId AS ToNodeId\n" +
+            "INTO #code_edges\n" +
+            "FROM #coded_membership fromCode\n" +
+            "INNER JOIN #coded_membership toCode\n" +
+            "    ON toCode.T1 = fromCode.T1 AND toCode.Sid1 = fromCode.Sid1\n" +
+            "INNER JOIN #code_nodes fromNode\n" +
+            "    ON (fromNode.SystemId = fromCode.SystemId OR (fromNode.SystemId IS NULL AND fromCode.SystemId IS NULL))\n" +
+            "   AND fromNode.CodeValue = fromCode.CodeValue\n" +
+            "INNER JOIN #code_nodes toNode\n" +
+            "    ON (toNode.SystemId = toCode.SystemId OR (toNode.SystemId IS NULL AND toCode.SystemId IS NULL))\n" +
+            "   AND toNode.CodeValue = toCode.CodeValue;\n" +
+            "CREATE UNIQUE CLUSTERED INDEX IX_CodeEdges ON #code_edges (FromNodeId, ToNodeId);\n\n" +
+            "CREATE TABLE #code_reach (\n" +
+            "    RootNodeId bigint NOT NULL,\n" +
+            "    NodeId bigint NOT NULL,\n" +
+            "    PRIMARY KEY (RootNodeId, NodeId)\n" +
+            ");\n" +
+            "INSERT INTO #code_reach (RootNodeId, NodeId)\n" +
+            "SELECT NodeId, NodeId FROM #code_nodes;\n\n" +
+            "DECLARE @lastnRowsInserted int = 1;\n" +
+            "WHILE @lastnRowsInserted > 0\n" +
+            "BEGIN\n" +
+            "    INSERT INTO #code_reach (RootNodeId, NodeId)\n" +
+            "    SELECT DISTINCT reach.RootNodeId, edge.ToNodeId\n" +
+            "    FROM #code_reach reach\n" +
+            "    INNER JOIN #code_edges edge ON edge.FromNodeId = reach.NodeId\n" +
+            "    WHERE NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM #code_reach existing\n" +
+            "        WHERE existing.RootNodeId = reach.RootNodeId\n" +
+            "          AND existing.NodeId = edge.ToNodeId);\n" +
+            "    SET @lastnRowsInserted = @@ROWCOUNT;\n" +
+            "END;\n\n" +
+            ";WITH " +
             "node_components AS (\n" +
             "    SELECT RootNodeId AS NodeId, MIN(NodeId) AS CodeGroupId\n" +
-            "    FROM code_reach\n" +
+            "    FROM #code_reach\n" +
             "    GROUP BY RootNodeId\n" +
             "),\n" +
             "coded_groups AS (\n" +
             "    SELECT DISTINCT membership.T1, membership.Sid1, component.CodeGroupId\n" +
-            "    FROM coded_membership membership\n" +
-            "    INNER JOIN code_nodes node\n" +
+            "    FROM #coded_membership membership\n" +
+            "    INNER JOIN #code_nodes node\n" +
             "        ON (node.SystemId = membership.SystemId OR (node.SystemId IS NULL AND membership.SystemId IS NULL))\n" +
             "       AND node.CodeValue = membership.CodeValue\n" +
             "    INNER JOIN node_components component ON component.NodeId = node.NodeId\n" +
             "),\n" +
             "text_groups AS (\n" +
             $"    SELECT DISTINCT candidate.T1, candidate.Sid1, textRow.Text COLLATE {CaseSensitiveCollation} AS TextCode\n" +
-            "    FROM lastn_candidates candidate\n" +
+            "    FROM #lastn_candidates candidate\n" +
             "    INNER JOIN dbo.TokenText textRow\n" +
             "        ON textRow.ResourceTypeId = candidate.T1\n" +
             "       AND textRow.ResourceSurrogateId = candidate.Sid1\n" +
@@ -130,7 +142,7 @@ internal static class LastNEmitter
             $"WHERE EffectiveRank <= {maximum}\n" +
             "GROUP BY T1, Sid1\n" +
             "ORDER BY MIN(GroupKind), MIN(CodeGroupId),\n" +
-            $"         MIN(TextCode) COLLATE {CaseSensitiveCollation}, MIN(EffectiveRank), Sid1 DESC\n" +
-            "OPTION (MAXRECURSION 0)");
+            $"         MIN(TextCode) COLLATE {CaseSensitiveCollation}, MIN(EffectiveRank), Sid1 DESC;\n" +
+            "DROP TABLE #code_reach, #code_edges, #code_nodes, #coded_membership, #lastn_candidates;");
     }
 }
