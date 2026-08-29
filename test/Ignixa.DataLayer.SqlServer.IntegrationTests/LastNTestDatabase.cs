@@ -1,9 +1,5 @@
 using System.Data;
-using Ignixa.Domain.Abstractions;
-using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -36,14 +32,14 @@ internal sealed class LastNTestDatabase : IAsyncDisposable
         try
         {
             SchemaDeployer deployer = new(
-                new SingleTenantStore(connectionString),
-                new FakeHostEnvironment(),
+                new LastNSingleTenantStore(connectionString),
+                new LastNFakeHostEnvironment(),
                 Options.Create(new SqlServerOptions
                 {
                     AutomaticSchemaDeploymentEnabled = true,
                     AllowIncompatiblePlatform = true,
                 }),
-                new ThrowingSchemaVersionResolver(),
+                new LastNThrowingSchemaVersionResolver(),
                 NullLogger<SchemaDeployer>.Instance);
             await deployer.DeployIfEmptyAsync(1, cancellationToken);
 
@@ -211,6 +207,28 @@ internal sealed class LastNTestDatabase : IAsyncDisposable
             INNER JOIN sys.columns AS columnDefinition ON columnDefinition.object_id = typeDefinition.type_table_object_id
             WHERE typeDefinition.name = @typeName
             ORDER BY columnDefinition.column_id;
+            """,
+            typeName,
+            cancellationToken);
+
+    public Task<IReadOnlyList<string>> ReadTableTypePrimaryKeyColumnsAsync(
+        string typeName,
+        CancellationToken cancellationToken = default)
+        => ReadStringsForTableTypeAsync(
+            """
+            SELECT columnDefinition.name
+            FROM sys.table_types AS typeDefinition
+            INNER JOIN sys.indexes AS indexDefinition
+                ON indexDefinition.object_id = typeDefinition.type_table_object_id
+            INNER JOIN sys.index_columns AS indexColumnDefinition
+                ON indexColumnDefinition.object_id = indexDefinition.object_id
+                AND indexColumnDefinition.index_id = indexDefinition.index_id
+            INNER JOIN sys.columns AS columnDefinition
+                ON columnDefinition.object_id = indexColumnDefinition.object_id
+                AND columnDefinition.column_id = indexColumnDefinition.column_id
+            WHERE typeDefinition.name = @typeName
+                AND indexDefinition.is_primary_key = 1
+            ORDER BY indexColumnDefinition.key_ordinal;
             """,
             typeName,
             cancellationToken);
@@ -438,39 +456,4 @@ internal sealed class LastNTestDatabase : IAsyncDisposable
         return values;
     }
 
-    private sealed class SingleTenantStore(string connectionString) : ITenantConfigurationStore
-    {
-        private readonly TenantConfiguration _tenant = new()
-        {
-            TenantId = 1,
-            DisplayName = "Test Tenant",
-            FhirVersion = "4.0",
-            Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = connectionString },
-        };
-
-        public TenantMode Mode => TenantMode.Isolated;
-
-        public ValueTask<TenantConfiguration?> GetTenantConfigurationAsync(int tenantId, CancellationToken cancellationToken = default)
-            => new(tenantId == 1 ? _tenant : null);
-
-        public ValueTask<IReadOnlyList<TenantConfiguration>> GetAllTenantsAsync(CancellationToken cancellationToken = default)
-            => new((IReadOnlyList<TenantConfiguration>)[_tenant]);
-
-        public ValueTask<TenantConfiguration?> ResolveByHostAsync(string host, CancellationToken cancellationToken = default)
-            => new((TenantConfiguration?)null);
-    }
-
-    private sealed class FakeHostEnvironment : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = "Production";
-        public string ApplicationName { get; set; } = "Ignixa.DataLayer.SqlServer.IntegrationTests";
-        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
-    }
-
-    private sealed class ThrowingSchemaVersionResolver : ISchemaVersionResolver
-    {
-        public Task<int> GetCurrentVersionAsync(int tenantId, CancellationToken cancellationToken)
-            => throw new InvalidOperationException("Not expected to be called by DeployIfEmptyAsync.");
-    }
 }

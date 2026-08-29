@@ -78,6 +78,11 @@ public class LastNSchemaDeploymentTests
             "SearchParamId",
             "ResourceSurrogateId",
         ]);
+        (await database.ReadTableTypePrimaryKeyColumnsAsync("LastNResourceScopeList")).ShouldBe([
+            "ResourceTypeId",
+            "SearchParamId",
+            "ResourceSurrogateId",
+        ]);
 
         (await database.ReadPrimaryKeyColumnsAsync("LastNCodeIdentity"))
             .ShouldBe(["CodeIdentityId"]);
@@ -97,6 +102,11 @@ public class LastNSchemaDeploymentTests
             "IX_LastNCodeIdentity_Lookup",
             "UX_LastNCodeIdentity_Id_Scope",
         ]);
+        (await database.ReadIndexColumnsAsync("LastNCodeIdentity", "UX_LastNCodeIdentity_Id_Scope")).ShouldBe([
+            "CodeIdentityId",
+            "ResourceTypeId",
+            "SearchParamId",
+        ]);
         (await database.ReadIndexColumnsAsync("LastNCodeIdentity", "IX_LastNCodeIdentity_Lookup")).ShouldBe([
             "ResourceTypeId",
             "SearchParamId",
@@ -105,12 +115,38 @@ public class LastNSchemaDeploymentTests
             "INCLUDE:Code",
             "INCLUDE:CodeOverflow",
         ]);
+        (await database.ReadIndexColumnsAsync("LastNCodeIdentity", "IX_LastNCodeIdentity_Component")).ShouldBe([
+            "ResourceTypeId",
+            "SearchParamId",
+            "ComponentCodeIdentityId",
+            "CodeIdentityId",
+        ]);
         (await database.ReadIndexNamesAsync("LastNObservationCodeMembership"))
             .ShouldBe(["IX_LastNObservationCodeMembership_Code"]);
+        (await database.ReadIndexColumnsAsync("LastNObservationCodeMembership", "IX_LastNObservationCodeMembership_Code")).ShouldBe([
+            "ResourceTypeId",
+            "SearchParamId",
+            "CodeIdentityId",
+            "ResourceSurrogateId",
+        ]);
         (await database.ReadIndexNamesAsync("LastNCodeEdge"))
             .ShouldBe(["IX_LastNCodeEdge_Right"]);
+        (await database.ReadIndexColumnsAsync("LastNCodeEdge", "IX_LastNCodeEdge_Right")).ShouldBe([
+            "ResourceTypeId",
+            "SearchParamId",
+            "RightCodeIdentityId",
+            "LeftCodeIdentityId",
+        ]);
         (await database.ReadIndexNamesAsync("LastNObservationCodeGroup"))
-            .ShouldContain("IX_LastNObservationCodeGroup_Rank");
+            .ShouldBe(["IX_LastNObservationCodeGroup_Rank"]);
+        (await database.ReadIndexColumnsAsync("LastNObservationCodeGroup", "IX_LastNObservationCodeGroup_Rank")).ShouldBe([
+            "ResourceTypeId",
+            "SearchParamId",
+            "GroupKind",
+            "CodeGroupId",
+            "TextCode",
+            "ResourceSurrogateId",
+        ]);
 
         (await database.ReadCheckDefinitionsAsync("LastNCodeEdge"))
             .ShouldContain(definition => definition.Contains("[LeftCodeIdentityId]<[RightCodeIdentityId]"));
