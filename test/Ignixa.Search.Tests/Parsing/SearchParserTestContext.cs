@@ -1,6 +1,6 @@
 // -------------------------------------------------------------------------------------------------
 // Copyright (c) Ignixa Contributors. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
 #nullable enable
@@ -15,26 +15,40 @@ using Ignixa.Specification.Generated;
 using Ignixa.Specification.ValueSets.Normative;
 using NSubstitute;
 
-namespace Ignixa.Application.Tests.Search.Expressions.Parsers;
+namespace Ignixa.Search.Tests.Parsing;
 
 internal sealed class SearchParserTestContext
 {
     private readonly Dictionary<string, List<SearchParameterInfo>> _searchParametersByResourceType = new(StringComparer.OrdinalIgnoreCase);
 
     public SearchParserTestContext()
+        : this(new R4CoreSchemaProvider())
     {
-        SchemaProvider = new R4CoreSchemaProvider();
+    }
+
+    public SearchParserTestContext(IFhirSchemaProvider schemaProvider)
+    {
+        SchemaProvider = schemaProvider;
         DefinitionManager = Substitute.For<ISearchParameterDefinitionManager>();
         ValueParser = new SearchParameterExpressionParser(new ReferenceSearchValueParser(SchemaProvider, NullFhirBaseUriProvider.Instance), SchemaProvider);
         Parser = new ExpressionParser(() => DefinitionManager, ValueParser, SchemaProvider);
 
         DefinitionManager.GetSearchParameters(Arg.Any<string>()).Returns(callInfo => GetSearchParameters(callInfo.ArgAt<string>(0)));
         DefinitionManager.GetSearchParameter(Arg.Any<string>(), Arg.Any<string>()).Returns(callInfo => GetSearchParameter(callInfo.ArgAt<string>(0), callInfo.ArgAt<string>(1))!);
+        DefinitionManager.TryGetSearchParameter(Arg.Any<string>(), Arg.Any<string>(), out Arg.Any<SearchParameterInfo>())
+            .Returns(callInfo =>
+            {
+                SearchParameterInfo? parameter = GetSearchParameter(
+                    callInfo.ArgAt<string>(0),
+                    callInfo.ArgAt<string>(1));
+                callInfo[2] = parameter!;
+                return parameter is not null;
+            });
         DefinitionManager.AllSearchParameters.Returns(_ => _searchParametersByResourceType.Values.SelectMany(parameters => parameters).ToArray());
         DefinitionManager.SearchParameterHashMap.Returns(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 
-    public R4CoreSchemaProvider SchemaProvider { get; }
+    public IFhirSchemaProvider SchemaProvider { get; }
 
     public ISearchParameterDefinitionManager DefinitionManager { get; }
 
@@ -48,7 +62,8 @@ internal sealed class SearchParserTestContext
         SearchParamType type,
         string[]? targets = null,
         SearchParameterComponentInfo[]? components = null,
-        Uri? url = null)
+        Uri? url = null,
+        string? expression = null)
     {
         var parameter = new SearchParameterInfo(
             name: code,
@@ -57,7 +72,8 @@ internal sealed class SearchParserTestContext
             components: components!,
             targetResourceTypes: targets!,
             baseResourceTypes: new[] { resourceType },
-            url: url ?? new Uri($"http://ignixa.test/SearchParameter/{resourceType}-{code}"));
+            url: url ?? new Uri($"http://ignixa.test/SearchParameter/{resourceType}-{code}"),
+            expression: expression);
 
         Register(resourceType, parameter);
 

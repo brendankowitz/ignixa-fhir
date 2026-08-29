@@ -5,9 +5,9 @@
 
 #nullable enable
 
-using Ignixa.Application.Tests.Search.Expressions.Parsers;
 using Ignixa.Abstractions;
 using Ignixa.Search.Exceptions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Specification.Generated;
@@ -15,7 +15,7 @@ using Ignixa.Specification.ValueSets.Normative;
 using NSubstitute;
 using Shouldly;
 
-namespace Ignixa.Application.Tests.Search.Parsing;
+namespace Ignixa.Search.Tests.Parsing;
 
 public class LastNSearchOptionsBuilderTests
 {
@@ -322,6 +322,147 @@ public class LastNSearchOptionsBuilderTests
 
         // Assert
         options.Maximum.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenACodeValueConceptComposite_WhenBuildingLastNOptions_ThenTreatsItsCodeComponentAsCodeBearing()
+    {
+        // Arrange
+        var context = CreateObservationContext();
+        var codeComponent = new SearchParameterComponentInfo(
+            new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"),
+            "code")
+        {
+            ResolvedSearchParameter = new SearchParameterInfo(
+                "code",
+                "code",
+                SearchParamType.Token,
+                expression: "Observation.code"),
+        };
+        var valueComponent = new SearchParameterComponentInfo(
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"),
+            "value.as(CodeableConcept)")
+        {
+            ResolvedSearchParameter = new SearchParameterInfo(
+                "value-concept",
+                "value-concept",
+                SearchParamType.Token,
+                expression: "Observation.value.as(CodeableConcept)"),
+        };
+        context.Add(
+            "Observation",
+            "code-value-concept",
+            SearchParamType.Composite,
+            components: [codeComponent, valueComponent],
+            expression: "Observation");
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        LastNSearchOptions options = builder.Build(
+        [
+            new QueryParameter("subject", "Patient/1"),
+            new QueryParameter("code-value-concept", "http://loinc.org|1234-5$http://snomed.info/sct|123"),
+        ]);
+
+        // Assert
+        options.Maximum.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAValueConceptFilterWithoutCode_WhenBuildingLastNOptions_ThenRejectsTheRequest()
+    {
+        // Arrange
+        var context = CreateObservationContext();
+        context.Add(
+            "Observation",
+            "combo-value-concept",
+            SearchParamType.Token,
+            expression: "(Observation.value as CodeableConcept) | (Observation.component.value as CodeableConcept)");
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        BadSearchRequestException exception = Should.Throw<BadSearchRequestException>(() => builder.Build(
+        [
+            new QueryParameter("subject", "Patient/1"),
+            new QueryParameter("combo-value-concept", "http://snomed.info/sct|123"),
+        ]));
+
+        // Assert
+        exception.Message.ShouldContain("category");
+    }
+
+    [Fact]
+    public void GivenAnUnsupportedSubjectModifier_WhenBuildingLastNOptions_ThenRejectsTheRequest()
+    {
+        // Arrange
+        var context = CreateObservationContext();
+        context.Add("Observation", "category", SearchParamType.Token, expression: "Observation.category");
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        BadSearchRequestException exception = Should.Throw<BadSearchRequestException>(() => builder.Build(
+        [
+            new QueryParameter("subject:unsupported", "Patient/1"),
+            new QueryParameter("category", "laboratory"),
+        ]));
+
+        // Assert
+        exception.Message.ShouldContain("subject");
+    }
+
+    [Fact]
+    public void GivenAnUnsupportedCategoryModifier_WhenBuildingLastNOptions_ThenRejectsTheRequest()
+    {
+        // Arrange
+        var context = CreateObservationContext();
+        context.Add("Observation", "category", SearchParamType.Token, expression: "Observation.category");
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        BadSearchRequestException exception = Should.Throw<BadSearchRequestException>(() => builder.Build(
+        [
+            new QueryParameter("subject", "Patient/1"),
+            new QueryParameter("category:unsupported", "laboratory"),
+        ]));
+
+        // Assert
+        exception.Message.ShouldContain("category");
+    }
+
+    [Fact]
+    public void GivenAnUnknownParameterBeforeCode_WhenBuildingLastNOptions_ThenPreservesOrdinaryParserHandling()
+    {
+        // Arrange
+        var context = CreateObservationContext();
+        context.DefinitionManager.GetSearchParameter("Observation", "unknown")
+            .Returns(_ => throw new SearchParameterNotSupportedException("Observation", "unknown"));
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        LastNSearchOptions options = builder.Build(
+        [
+            new QueryParameter("unknown", "ignored"),
+            new QueryParameter("subject", "Patient/1"),
+            new QueryParameter("code", "http://loinc.org|1234-5"),
+        ]);
+
+        // Assert
+        options.Filters.UnsupportedParams.ShouldContain("unknown");
     }
 
     [Fact]
