@@ -1,7 +1,7 @@
 # Investigation: Materialized Observation Code Groups
 
 **Feature**: search
-**Status**: Pending evaluation
+**Status**: In Progress
 **Created**: 2026-08-28
 
 ## Problem Statement
