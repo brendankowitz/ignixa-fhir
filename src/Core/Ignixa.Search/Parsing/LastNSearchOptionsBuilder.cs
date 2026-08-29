@@ -148,6 +148,9 @@ public sealed class LastNSearchOptionsBuilder
 
     private sealed class CodeElementDetector : DefaultFhirPathExpressionVisitor<bool, bool>
     {
+        public override bool VisitIdentifier(IdentifierExpression expression, bool context) =>
+            string.Equals(expression.Name, "code", StringComparison.Ordinal);
+
         public override bool VisitBinary(BinaryExpression expression, bool context) =>
             expression.Left.AcceptVisitor(this, context) ||
             expression.Right.AcceptVisitor(this, context);

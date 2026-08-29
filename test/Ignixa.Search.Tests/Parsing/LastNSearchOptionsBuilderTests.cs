@@ -6,12 +6,16 @@
 #nullable enable
 
 using Ignixa.Abstractions;
+using Ignixa.Search.Definition;
+using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Exceptions;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Specification.Generated;
 using Ignixa.Specification.ValueSets.Normative;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 
@@ -328,37 +332,18 @@ public class LastNSearchOptionsBuilderTests
     public void GivenACodeValueConceptComposite_WhenBuildingLastNOptions_ThenTreatsItsCodeComponentAsCodeBearing()
     {
         // Arrange
-        var context = CreateObservationContext();
-        var codeComponent = new SearchParameterComponentInfo(
-            new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"),
-            "code")
-        {
-            ResolvedSearchParameter = new SearchParameterInfo(
-                "code",
-                "code",
-                SearchParamType.Token,
-                expression: "Observation.code"),
-        };
-        var valueComponent = new SearchParameterComponentInfo(
-            new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"),
-            "value.as(CodeableConcept)")
-        {
-            ResolvedSearchParameter = new SearchParameterInfo(
-                "value-concept",
-                "value-concept",
-                SearchParamType.Token,
-                expression: "Observation.value.as(CodeableConcept)"),
-        };
-        context.Add(
-            "Observation",
-            "code-value-concept",
-            SearchParamType.Composite,
-            components: [codeComponent, valueComponent],
-            expression: "Observation");
+        var schemaProvider = new R4CoreSchemaProvider();
+        var definitionManager = new SearchParameterDefinitionManager(
+            schemaProvider,
+            NullLogger<SearchParameterDefinitionManager>.Instance);
+        var valueParser = new SearchParameterExpressionParser(
+            new ReferenceSearchValueParser(schemaProvider, NullFhirBaseUriProvider.Instance),
+            schemaProvider);
+        var parser = new ExpressionParser(() => definitionManager, valueParser, schemaProvider);
         var builder = new LastNSearchOptionsBuilder(
-            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
-            context.DefinitionManager,
-            context.SchemaProvider);
+            new SearchOptionsBuilder(parser, definitionManager),
+            definitionManager,
+            schemaProvider);
 
         // Act
         LastNSearchOptions options = builder.Build(
