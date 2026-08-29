@@ -120,6 +120,58 @@ internal class SchemaAwareElement : IElement
     /// </summary>
     private readonly record struct ChildResolution(IType? Definition, string? QualifiedInstanceType);
 
+    // OPTIMIZATION: The wrapper elements themselves are cached against the source node that backs them.
+    //
+    // Resolution caching above removed the schema work from a navigation hop but not the wrappers: every
+    // Children() call still built a fresh List and a fresh SchemaAwareElement per child, so walking
+    // "component.valueQuantity.value" allocated a new object at each level on every evaluation, and an
+    // indexing pass that runs a hundred expressions over one resource rebuilt the same tree a hundred
+    // times. Anchoring the wrappers to the source node instead makes the second and later walks free.
+    //
+    // The source layer already works this way - JsonNodeSourceNode snapshots its children into
+    // _cachedNodes on first navigation and hands back the same navigator instances forever - so this
+    // extends an existing lifetime rather than inventing one, and the elements it caches are documented
+    // immutable snapshots of exactly those nodes (see the class remarks).
+    //
+    // Mutation stays correct without an explicit invalidation hook: ResourceJsonNode.InvalidateCaches()
+    // drops _cachedSourceNode, so a patched document is re-derived from new navigators, which key a new
+    // and empty entry here. The stale wrappers become unreachable with the navigators they wrapped.
+    //
+    // The key carries the schema and the parent's instance type as well as the child name: one source
+    // node can legitimately be wrapped by more than one element - under a different schema, or typed
+    // differently through a choice element - and those wrappings have different children.
+    private static readonly ConditionalWeakTable<ISourceNavigator, ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>> SharedChildElements = new();
+
+    /// <summary>
+    /// Identifies one materialized child list for a given source node: which schema typed it, what the
+    /// parent's instance type resolved to, and which child name was asked for (null meaning "all").
+    /// </summary>
+    private readonly struct ChildListKey : IEquatable<ChildListKey>
+    {
+        private readonly ISchema _schema;
+        private readonly string? _parentInstanceType;
+        private readonly string? _name;
+
+        public ChildListKey(ISchema schema, string? parentInstanceType, string? name)
+        {
+            _schema = schema;
+            _parentInstanceType = parentInstanceType;
+            _name = name;
+        }
+
+        public bool Equals(ChildListKey other) =>
+            ReferenceEquals(_schema, other._schema)
+            && string.Equals(_parentInstanceType, other._parentInstanceType, StringComparison.Ordinal)
+            && string.Equals(_name, other._name, StringComparison.Ordinal);
+
+        public override bool Equals(object? obj) => obj is ChildListKey other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(
+            RuntimeHelpers.GetHashCode(_schema),
+            _parentInstanceType is null ? 0 : StringComparer.Ordinal.GetHashCode(_parentInstanceType),
+            _name is null ? 0 : StringComparer.Ordinal.GetHashCode(_name));
+    }
+
     // OPTIMIZATION: FHIR primitive type mapping (static to avoid repeated allocations)
     // Reference: http://hl7.org/fhir/datatypes.html
     // Most FHIR primitive types use lowercase names, but a few require special casing preservation.
@@ -335,6 +387,27 @@ internal class SchemaAwareElement : IElement
 
     public IReadOnlyList<IElement> Children(string? name)
     {
+        var childCache = SharedChildElements.GetValue(
+            _source,
+            static _ => new ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>());
+
+        var cacheKey = new ChildListKey(_schema, _instanceType, name);
+
+        if (childCache.TryGetValue(cacheKey, out var cachedChildren))
+        {
+            return cachedChildren;
+        }
+
+        var materialized = MaterializeChildren(name);
+
+        // A losing race produces an equivalent list; discarding it costs one wasted materialization and
+        // keeps every caller on a single instance, which matters because these are handed out as shared
+        // immutable snapshots.
+        return childCache.GetOrAdd(cacheKey, materialized);
+    }
+
+    private IReadOnlyList<IElement> MaterializeChildren(string? name)
+    {
         // Handle polymorphic properties (value[x] in FHIR spec)
         // According to FHIRPath N1 spec section 3.2, accessing "value" should match
         // "valueCode", "valueString", "valueQuantity", etc.
@@ -401,7 +474,10 @@ internal class SchemaAwareElement : IElement
             result.Add(new SchemaAwareElement(child, _schema, childDef, childInstanceType));
         }
 
-        return result;
+        // Frozen to an array before being cached. The list is now handed to every caller that navigates
+        // this node, and an IReadOnlyList<T> that is really a List<T> can be cast back to a mutable one.
+        // An empty result is the common case for a name a document does not carry, so it costs nothing.
+        return result.Count == 0 ? Array.Empty<IElement>() : result.ToArray();
     }
 
     /// <summary>

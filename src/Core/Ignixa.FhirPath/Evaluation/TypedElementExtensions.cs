@@ -14,9 +14,18 @@ namespace Ignixa.FhirPath.Evaluation;
 
 /// <summary>
 /// Extension methods for evaluating FhirPath expressions on IElement.
-/// Integrates both AST caching and compiled delegate caching for optimal performance.
-/// Compiled delegates provide 7x speedup for common patterns; complex expressions fall back to interpreter.
 /// </summary>
+/// <remarks>
+/// Parsing and delegate compilation are both cached, keyed on the expression string, so a repeated
+/// expression is parsed once per process. Expressions the compiler declines fall back to the
+/// interpreter, and that decision is cached too, so an unsupported expression is not re-attempted on
+/// every evaluation. Hosts that know their expression set can pay compilation at startup instead of on
+/// a user's first request - see <see cref="Precompile"/>.
+///
+/// An earlier version of this summary promised a "7x speedup for common patterns". That figure came
+/// from a pre-implementation design estimate rather than a measurement and is not restated here; the
+/// benchmarks under <c>bench/</c> are the source of truth for what this path costs.
+/// </remarks>
 public static class TypedElementExtensions
 {
     /// <summary>
@@ -45,6 +54,29 @@ public static class TypedElementExtensions
 
     // Shared evaluator instance
     private static readonly FhirPathEvaluator _evaluator = new FhirPathEvaluator();
+
+    /// <summary>
+    /// Parses and compiles an expression into the shared caches ahead of its first evaluation.
+    /// </summary>
+    /// <remarks>
+    /// Compilation costs roughly four orders of magnitude more than a cached evaluation, so whichever
+    /// request first touches an expression pays for every request after it. A host that knows its
+    /// expression set - a server with a search parameter catalogue, most obviously - can pay that cost
+    /// at startup instead, where it is measured rather than charged to a user. Doing so also surfaces an
+    /// unparseable expression at startup rather than on first use.
+    ///
+    /// Idempotent and safe to call concurrently: it populates the same generational caches
+    /// <see cref="Select"/> reads, so a duplicate call is a cache hit.
+    /// </remarks>
+    /// <param name="expression">The FHIRPath expression to pre-compile.</param>
+    /// <exception cref="ArgumentException">The expression is null, empty or whitespace.</exception>
+    public static void Precompile(string expression)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expression);
+
+        var ast = CompileExpressionToAst(expression);
+        _ = CompileExpressionToDelegate(ast, expression);
+    }
 
     /// <summary>
     /// Parses and caches a FhirPath expression string to AST.
@@ -108,11 +140,16 @@ public static class TypedElementExtensions
         ArgumentNullException.ThrowIfNull(input);
         ArgumentException.ThrowIfNullOrWhiteSpace(expression);
 
-        context ??= new EvaluationContext();
-
         // Set the Resource and RootResource for FHIR-specific functions like getResourceKey()
         // If input is the root resource element, set both to the input (immutable pattern)
-        if (context.Resource is null || context.RootResource is null)
+        if (context is null)
+        {
+            // Built with the values in place. Constructing an empty context and then `with`-copying it
+            // to fill these two fields allocated a second context on every call that omitted one, which
+            // is every call taking the default.
+            context = new EvaluationContext { Resource = input, RootResource = input };
+        }
+        else if (context.Resource is null || context.RootResource is null)
         {
             context = context with
             {
@@ -121,20 +158,25 @@ public static class TypedElementExtensions
             };
         }
 
-        // 1. Parse expression to AST (cached)
-        var ast = CompileExpressionToAst(expression);
-
-        // 2. Try to compile to delegate (cached, may return null)
-        var compiledDelegate = CompileExpressionToDelegate(ast, expression);
-
-        // 3. If compiled, execute delegate; otherwise fall back to interpreter
-        if (compiledDelegate != null)
+        // The delegate cache is consulted before the AST, because a compiled expression never needs the
+        // AST and this is the overwhelmingly common path. Asking for the AST first also meant that an
+        // expression whose AST entry had been evicted while its delegate survived paid a full re-parse
+        // whose result was then discarded.
+        if (_delegateCache.TryGetValue(expression, out var cachedDelegate))
         {
-            return compiledDelegate(input, context);
+            return cachedDelegate != null
+                ? cachedDelegate(input, context)
+                : _evaluator.Evaluate(input, CompileExpressionToAst(expression), context);
         }
 
-        // Fallback: Use interpreted evaluation
-        return _evaluator.Evaluate(input, ast, context);
+        // Cold path: parse, then compile and cache the result (null included, so an expression the
+        // compiler declines is not re-attempted on every evaluation).
+        var ast = CompileExpressionToAst(expression);
+        var compiledDelegate = CompileExpressionToDelegate(ast, expression);
+
+        return compiledDelegate != null
+            ? compiledDelegate(input, context)
+            : _evaluator.Evaluate(input, ast, context);
     }
 
     /// <summary>

@@ -1,24 +1,37 @@
 ```
 
-BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.6725)
-Intel Core i7-14700K, 1 CPU, 28 logical and 20 physical cores
-.NET SDK 9.0.201
-  [Host]   : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
-  .NET 9.0 : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.9106/25H2/2025Update/HudsonValley2) (Hyper-V)
+AMD EPYC 7763 2.44GHz, 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.303
+  [Host]    : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+  .NET 10.0 : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
 
-Job=.NET 9.0  Runtime=.NET 9.0  
+Job=.NET 10.0  Runtime=.NET 10.0  
 
 ```
-| Method                                                  | Mean         | Error       | StdDev      | Rank | Gen0    | Gen1   | Allocated |
-|-------------------------------------------------------- |-------------:|------------:|------------:|-----:|--------:|-------:|----------:|
-| &#39;Ignixa: Array indexing (Patient.name[0].given)&#39;        |     484.0 ns |     5.18 ns |     4.85 ns |    3 |  0.0911 |      - |   1.54 KB |
-| &#39;Firely: Array indexing (Patient.name[0].given)&#39;        | 297,918.3 ns | 5,763.79 ns | 6,861.39 ns |    8 |  5.8594 | 2.9297 | 100.16 KB |
-| &#39;Ignixa: Compile FHIRPath expression&#39;                   | 109,748.4 ns |   580.18 ns |   514.31 ns |    7 |  2.1973 |      - |  38.17 KB |
-| &#39;Ignixa: Complex navigation (where + first)&#39;            |     675.9 ns |     6.51 ns |     6.09 ns |    4 |  0.1345 |      - |   2.27 KB |
-| &#39;Firely: Complex navigation (where + first)&#39;            | 293,352.8 ns | 2,861.76 ns | 2,676.89 ns |    8 |  5.8594 | 2.9297 | 102.18 KB |
-| &#39;Ignixa: Scalar extraction (Patient.birthDate)&#39;         |     244.3 ns |     4.71 ns |     4.41 ns |    1 |  0.1013 |      - |   1.71 KB |
-| &#39;Firely: Scalar extraction (Patient.birthDate)&#39;         | 285,309.3 ns | 4,963.13 ns | 4,642.51 ns |    8 |  5.3711 | 2.4414 |  96.99 KB |
-| &#39;Ignixa: Search parameter extraction (component value)&#39; |   1,508.7 ns |     7.65 ns |     6.78 ns |    5 |  0.2689 |      - |   4.56 KB |
-| &#39;Firely: Search parameter extraction (component value)&#39; |  71,422.8 ns |   457.95 ns |   428.37 ns |    6 | 14.7705 | 3.2959 | 249.39 KB |
-| &#39;Ignixa: Simple FHIRPath (Patient.name.family)&#39;         |     345.0 ns |     2.21 ns |     2.07 ns |    2 |  0.0658 |      - |   1.11 KB |
-| &#39;Firely: Simple FHIRPath (Patient.name.family)&#39;         | 283,911.5 ns | 3,601.12 ns | 3,368.49 ns |    8 |  5.3711 | 2.4414 |  97.18 KB |
+| Method                                                             | Mean         | Error        | StdDev       | Median       | Rank | Gen0    | Gen1   | Allocated |
+|------------------------------------------------------------------- |-------------:|-------------:|-------------:|-------------:|-----:|--------:|-------:|----------:|
+| &#39;Ignixa: Parse (no optimizations)&#39;                                 | 174,882.4 ns |  7,192.44 ns | 21,207.07 ns | 172,354.2 ns |   13 |  2.9297 |      - |   55249 B |
+| &#39;Ignixa: Parse (with optimizations)&#39;                               | 163,752.5 ns |  6,576.50 ns | 19,287.74 ns | 158,366.1 ns |   13 |  2.9297 |      - |   55313 B |
+| &#39;Firely: Compile FHIRPath expression&#39;                              | 332,638.9 ns |  7,623.02 ns | 21,748.91 ns | 329,930.1 ns |   14 | 38.5742 | 9.7656 |  648776 B |
+| &#39;Ignixa: Eval complex (pre-compiled, eval only)&#39;                   |     535.4 ns |     10.72 ns |     14.31 ns |     532.8 ns |    4 |  0.0381 |      - |     648 B |
+| &#39;Firely: Eval complex (pre-compiled, eval only)&#39;                   |   6,461.7 ns |    130.49 ns |    384.76 ns |   6,399.1 ns |   11 |  0.5646 |      - |    9496 B |
+| &#39;Ignixa: Eval searchparam (pre-compiled, eval only)&#39;               |   1,547.0 ns |     30.65 ns |     65.32 ns |   1,536.8 ns |    9 |  0.0744 |      - |    1248 B |
+| &#39;Firely: Eval searchparam (pre-compiled, eval only)&#39;               |  11,117.0 ns |    221.79 ns |    607.15 ns |  10,870.6 ns |   12 |  1.0529 |      - |   17696 B |
+| &#39;Ignixa: Eval simple (pre-compiled, eval only)&#39;                    |     242.8 ns |      4.86 ns |     11.93 ns |     242.2 ns |    2 |  0.0148 |      - |     248 B |
+| &#39;Firely: Eval simple (pre-compiled, eval only)&#39;                    |   2,082.5 ns |     44.79 ns |    126.33 ns |   2,066.3 ns |   10 |  0.2670 |      - |    4520 B |
+| &#39;Ignixa: Array indexing (Patient.name[0].given)&#39;                   |     747.1 ns |     16.78 ns |     48.68 ns |     736.0 ns |    6 |  0.0820 |      - |    1376 B |
+| &#39;Firely: Array indexing (Patient.name[0].given)&#39;                   | 852,778.4 ns | 22,507.08 ns | 64,938.07 ns | 834,537.6 ns |   15 |  3.9063 | 1.9531 |   84854 B |
+| &#39;Hybrid: Array indexing (Firely parse + Ignixa eval)&#39;              |     690.4 ns |     12.57 ns |     31.77 ns |     687.0 ns |    5 |  0.0849 |      - |    1424 B |
+| &#39;Ignixa: Complex navigation (where + first)&#39;                       |     657.5 ns |     16.19 ns |     47.49 ns |     641.9 ns |    5 |  0.0525 |      - |     880 B |
+| &#39;Firely: Complex navigation (where + first)&#39;                       | 886,910.7 ns | 25,981.95 ns | 75,790.57 ns | 875,793.4 ns |   15 |  3.9063 | 1.9531 |   85750 B |
+| &#39;Hybrid: Complex navigation (Firely parse + Ignixa eval)&#39;          |     536.7 ns |     10.82 ns |     27.14 ns |     532.7 ns |    4 |  0.0563 |      - |     952 B |
+| &#39;Ignixa: Scalar extraction (Patient.birthDate)&#39;                    |     220.9 ns |      4.23 ns |      9.38 ns |     218.6 ns |    2 |  0.0248 |      - |     416 B |
+| &#39;Firely: Scalar extraction (Patient.birthDate)&#39;                    | 791,821.9 ns | 14,992.66 ns | 16,664.30 ns | 787,323.7 ns |   15 |  3.9063 | 1.9531 |   80688 B |
+| &#39;Hybrid: Scalar extraction (Firely parse + Ignixa eval)&#39;           |     152.1 ns |      3.10 ns |      8.00 ns |     150.8 ns |    1 |  0.0262 |      - |     440 B |
+| &#39;Ignixa: Search parameter extraction (component value)&#39;            |   1,455.5 ns |     32.28 ns |     93.65 ns |   1,427.6 ns |    8 |  0.0877 |      - |    1480 B |
+| &#39;Firely: Search parameter extraction (component value)&#39;            | 155,289.7 ns |  4,373.28 ns | 12,547.77 ns | 150,923.3 ns |   13 | 12.6953 | 2.9297 |  222307 B |
+| &#39;Hybrid: Search parameter extraction (Firely parse + Ignixa eval)&#39; |   1,007.5 ns |     19.78 ns |     17.54 ns |   1,007.7 ns |    7 |  0.0954 |      - |    1608 B |
+| &#39;Ignixa: Simple FHIRPath (Patient.name.family)&#39;                    |     286.2 ns |      5.75 ns |     11.88 ns |     285.3 ns |    3 |  0.0286 |      - |     480 B |
+| &#39;Firely: Simple FHIRPath (Patient.name.family)&#39;                    | 799,983.0 ns | 15,265.30 ns | 14,279.17 ns | 798,313.5 ns |   15 |  3.9063 | 1.9531 |   80824 B |
+| &#39;Hybrid: Simple FHIRPath (Firely parse + Ignixa eval)&#39;             |     235.9 ns |      6.39 ns |     18.02 ns |     233.4 ns |    2 |  0.0315 |      - |     528 B |

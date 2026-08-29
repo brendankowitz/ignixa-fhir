@@ -93,17 +93,30 @@ public record EvaluationContext
     }
 
     /// <summary>
+    /// The empty environment every default context starts from.
+    /// </summary>
+    /// <remarks>
+    /// Ordinal for the same reason as VariableScope: host-supplied names are read back through the same
+    /// case-sensitive %name syntax, a few lines below the ordinal switch that resolves %resource and
+    /// friends. A lenient comparer here would make %v and %V collide for hosts only, which is a
+    /// difference no caller asked for rather than a convenience.
+    ///
+    /// Hoisted to a static because <c>Empty.WithComparers(...)</c> builds a new dictionary and a new
+    /// comparers holder each time it runs, and it used to run once per context construction to produce a
+    /// value that is immutable and always identical. Sharing it is safe precisely because it is empty and
+    /// immutable: every mutation returns a new instance.
+    /// </remarks>
+    private static readonly ImmutableDictionary<string, ImmutableList<IElement>> EmptyOrdinalEnvironment =
+        ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.Ordinal);
+
+    /// <summary>
     /// Creates a new empty evaluation context.
     /// </summary>
     public EvaluationContext() : this(
         ImmutableList<IElement>.Empty,
         ImmutableStack<IElement>.Empty,
         ImmutableStack<IElement>.Empty,
-        // Ordinal for the same reason as VariableScope: host-supplied names are read back through the same
-        // case-sensitive %name syntax, a few lines below the ordinal switch that resolves %resource and
-        // friends. A lenient comparer here would make %v and %V collide for hosts only, which is a
-        // difference no caller asked for rather than a convenience.
-        ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.Ordinal),
+        EmptyOrdinalEnvironment,
         null,
         null,
         null)

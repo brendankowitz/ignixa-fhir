@@ -14,6 +14,8 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Search.Definition;
 using Ignixa.Serialization;
 using Medino;
 using Microsoft.Extensions.DependencyInjection;
@@ -292,9 +294,20 @@ public class TenantPackagePreloadService : BackgroundService
                     }
 
                     // Accessing the manager triggers eager loading of package SearchParameters
+                    ISearchParameterDefinitionManager searchParameterManager;
                     using (startupTiming.StartPhase($"SearchParamManager.Tenant{tenant.TenantId}"))
                     {
-                        _ = fhirVersionContext.GetSearchParameterDefinitionManager(fhirVersion, tenant.TenantId);
+                        searchParameterManager = fhirVersionContext.GetSearchParameterDefinitionManager(fhirVersion, tenant.TenantId);
+                    }
+
+                    // Loading the definitions does not compile the FHIRPath they carry, so without this
+                    // the first write touching each parameter paid its compilation - two orders of
+                    // magnitude more than the evaluation itself - and that cost landed on a user's
+                    // request. The caches are process-wide, so tenants on the same FHIR version share
+                    // the work and the second tenant's pass is almost entirely cache hits.
+                    using (startupTiming.StartPhase($"FhirPathPrecompile.Tenant{tenant.TenantId}"))
+                    {
+                        PrecompileSearchParameterExpressions(searchParameterManager, tenant.TenantId);
                     }
 
                     _logger.LogInformation(
@@ -314,6 +327,55 @@ public class TenantPackagePreloadService : BackgroundService
 
             await Task.CompletedTask; // Required for async lambda
         });
+    }
+
+    /// <summary>
+    /// Compiles every search parameter's FHIRPath expression into the shared expression caches.
+    /// </summary>
+    /// <remarks>
+    /// A malformed expression is logged and skipped rather than allowed to fail startup: it would have
+    /// thrown on first use anyway, and refusing to start the whole server over one bad parameter in one
+    /// tenant's package trades a narrow failure for a total one. Surfacing it here means an operator
+    /// sees it in startup logs instead of in a user's failed write.
+    /// </remarks>
+    private void PrecompileSearchParameterExpressions(
+        ISearchParameterDefinitionManager searchParameterManager,
+        int tenantId)
+    {
+        var compiled = 0;
+        var failed = 0;
+
+        foreach (var searchParameter in searchParameterManager.AllSearchParameters)
+        {
+            var expression = searchParameter.Expression;
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                continue;
+            }
+
+            try
+            {
+                TypedElementExtensions.Precompile(expression);
+                compiled++;
+            }
+            catch (Exception ex)
+            {
+                failed++;
+                _logger.LogWarning(
+                    ex,
+                    "Could not pre-compile FHIRPath for search parameter {Url} on tenant {TenantId}: {Expression}. "
+                    + "It will be retried, and will fail the same way, on first use.",
+                    searchParameter.Url,
+                    tenantId,
+                    expression);
+            }
+        }
+
+        _logger.LogInformation(
+            "Pre-compiled {Compiled} search parameter expression(s) for tenant {TenantId} ({Failed} failed)",
+            compiled,
+            tenantId,
+            failed);
     }
 
     /// <summary>

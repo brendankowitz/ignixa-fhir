@@ -1,8 +1,26 @@
 # Assembly Code Comparison: Ignixa vs Firely FHIRPath
 
 **Date:** 2026-01-11
+**Status:** Superseded on timing; native code-size analysis stands
 **Expression:** `name.family`
 **Platform:** .NET 9.0.11, X64 RyuJIT x86-64-v3
+
+---
+
+> **The "3,220x faster" and "85.02 ns" figures below are not reproducible and should not be quoted.**
+>
+> The benchmark class that produced them, `FhirPathILBenchmarks`, no longer exists in the repository, and
+> the Firely denominator was dominated by a per-call POCO conversion rather than evaluation - see
+> [fhirpath-performance-analysis.md](fhirpath-performance-analysis.md) for the mechanism. Notably,
+> "Why the measured gap exceeds the estimate" below already observed that the measured Firely time was
+> 234x higher than this document's own estimate and speculated that Firely "might be parsing JSON each
+> iteration". That speculation was correct, and the headline should have changed then.
+>
+> The like-for-like figure is **7-12x** faster and **14-18x** leaner; see
+> [the feature readme](../readme.md#performance-comparison-ignixa-vs-firely).
+>
+> The native code-size comparison, and the disassembly showing compiled delegates against Firely's
+> `Invokee` chain, do not depend on the timing denominator and remain valid.
 
 ---
 
