@@ -76,6 +76,136 @@ public class LastNCodeGroupMaintenanceTests
     }
 
     [SkippableFact]
+    public async Task GivenAnExistingContribution_WhenAddRunsAgain_ThenSupportAndRowsAreUnchanged()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await SeedObservationAsync(database, 1, ["a", "b"]);
+        await MaintainAsync(database, "Add", [1]);
+
+        // Act
+        await MaintainAsync(database, "Add", [1]);
+
+        // Assert
+        (await ReadSupportCountAsync(database, "a", "b")).ShouldBe(1);
+        (await ReadCountAsync(database, "dbo.LastNObservationCodeMembership")).ShouldBe(2);
+        (await ReadCountAsync(database, "dbo.LastNObservationCodeGroup")).ShouldBe(1);
+    }
+
+    [SkippableFact]
+    public async Task GivenTwoExistingComponents_WhenABridgeIsAdded_ThenPriorGroupsUseTheMergedMinimum()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await SeedObservationAsync(database, 1, ["a", "b"]);
+        await SeedObservationAsync(database, 2, ["c", "d"]);
+        await MaintainAsync(database, "Add", [1, 2]);
+        await SeedObservationAsync(database, 3, ["b", "c"]);
+
+        // Act
+        await MaintainAsync(database, "Add", [3]);
+
+        // Assert
+        long minimumIdentityId = await ReadMinimumIdentityIdAsync(database, ["a", "b", "c", "d"]);
+        (await ReadComponentLabelsAsync(database, ["a", "b", "c", "d"]))
+            .ShouldAllBe(label => label == minimumIdentityId);
+        (await ReadGroupCodeIdAsync(database, 1)).ShouldBe(minimumIdentityId);
+        (await ReadGroupCodeIdAsync(database, 2)).ShouldBe(minimumIdentityId);
+        (await ReadGroupCodeIdAsync(database, 3)).ShouldBe(minimumIdentityId);
+    }
+
+    [SkippableFact]
+    public async Task GivenABridgeBetweenTwoSupportedComponents_WhenItIsRemoved_ThenLabelsAndPriorGroupsUseEachMinimum()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await SeedObservationAsync(database, 1, ["a", "b"]);
+        await SeedObservationAsync(database, 2, ["b", "c"]);
+        await SeedObservationAsync(database, 3, ["c", "d"]);
+        await MaintainAsync(database, "Add", [1, 2, 3]);
+
+        // Act
+        await MaintainAsync(database, "Remove", [2]);
+
+        // Assert
+        long leftMinimum = await ReadMinimumIdentityIdAsync(database, ["a", "b"]);
+        long rightMinimum = await ReadMinimumIdentityIdAsync(database, ["c", "d"]);
+        (await ReadComponentLabelAsync(database, "a")).ShouldBe(leftMinimum);
+        (await ReadComponentLabelAsync(database, "b")).ShouldBe(leftMinimum);
+        (await ReadComponentLabelAsync(database, "c")).ShouldBe(rightMinimum);
+        (await ReadComponentLabelAsync(database, "d")).ShouldBe(rightMinimum);
+        rightMinimum.ShouldNotBe(leftMinimum);
+        (await ReadGroupCodeIdAsync(database, 1)).ShouldBe(leftMinimum);
+        (await ReadGroupCodeIdAsync(database, 3)).ShouldBe(rightMinimum);
+    }
+
+    [SkippableFact]
+    public async Task GivenConcurrentAddsOnIndependentConnections_WhenTheySupportTheSameEdge_ThenBothContributionsAreCounted()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await SeedObservationAsync(database, 1, ["a", "b"]);
+        await SeedObservationAsync(database, 2, ["a", "b"]);
+        await using SqlConnection firstConnection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using SqlConnection secondConnection = await database.OpenConnectionAsync(CancellationToken.None);
+
+        // Act
+        await Task.WhenAll(
+            MaintainAsync(firstConnection, null, "Add", [1], CancellationToken.None),
+            MaintainAsync(secondConnection, null, "Add", [2], CancellationToken.None));
+
+        // Assert
+        (await ReadSupportCountAsync(database, "a", "b")).ShouldBe(2);
+    }
+
+    [SkippableFact]
+    public async Task GivenMaintenanceRunsInsideAnOuterTransaction_WhenTheOuterTransactionRollsBack_ThenMaintenanceIsNotCommitted()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await SeedObservationAsync(database, 1, ["a", "b"]);
+        await using SqlTransaction transaction = (SqlTransaction)await database.Connection.BeginTransactionAsync();
+
+        // Act
+        await MaintainAsync(database.Connection, transaction, "Add", [1], CancellationToken.None);
+        await transaction.RollbackAsync();
+
+        // Assert
+        (await ReadCountAsync(database, "dbo.LastNCodeIdentity")).ShouldBe(0);
+        (await ReadCountAsync(database, "dbo.LastNObservationCodeMembership")).ShouldBe(0);
+        (await ReadCountAsync(database, "dbo.LastNCodeEdge")).ShouldBe(0);
+        (await ReadCountAsync(database, "dbo.LastNObservationCodeGroup")).ShouldBe(0);
+    }
+
+    [SkippableFact]
+    public async Task GivenMaintenanceFailsInsideAnOuterTransaction_WhenTheSavepointRollsBack_ThenTheOuterTransactionRemainsCommittable()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await SeedTextOnlyObservationAsync(database, 1, "Alpha");
+        await database.SeedTokenTextAsync(ResourceTypeId, 1, SearchParamId, "alpha", false, CancellationToken.None);
+        await using SqlTransaction transaction = (SqlTransaction)await database.Connection.BeginTransactionAsync();
+
+        // Act
+        SqlException exception = await Should.ThrowAsync<SqlException>(
+            () => MaintainAsync(database.Connection, transaction, "Add", [1], CancellationToken.None));
+        await ExecuteNonQueryAsync(
+            database.Connection,
+            transaction,
+            "INSERT INTO dbo.ResourceType (Name) VALUES ('savepoint-proof');",
+            CancellationToken.None);
+        await transaction.CommitAsync();
+
+        // Assert
+        exception.Number.ShouldBe(50402);
+        (await ReadCountAsync(database, "dbo.LastNObservationCodeGroup")).ShouldBe(0);
+        (await ReadScalarAsync<int>(
+            database,
+            "SELECT COUNT(*) FROM dbo.ResourceType WHERE Name = 'savepoint-proof';",
+            CancellationToken.None)).ShouldBe(1);
+    }
+
+    [SkippableFact]
     public async Task GivenAContributionWasAlreadyRemoved_WhenRemoveRunsAgain_ThenTheOperationIsIdempotent()
     {
         // Arrange
@@ -348,6 +478,19 @@ public class LastNCodeGroupMaintenanceTests
         LastNTestDatabase database,
         string mode,
         IReadOnlyList<long> resourceSurrogateIds)
+        => await MaintainAsync(
+            database.Connection,
+            null,
+            mode,
+            resourceSurrogateIds,
+            CancellationToken.None);
+
+    private static async Task MaintainAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string mode,
+        IReadOnlyList<long> resourceSurrogateIds,
+        CancellationToken cancellationToken)
     {
         using DataTable resources = new();
         resources.Columns.Add("ResourceTypeId", typeof(short));
@@ -368,10 +511,13 @@ public class LastNCodeGroupMaintenanceTests
             Value = resources,
         };
 
-        await database.ExecuteStoredProcedureAsync(
-            "dbo.MaintainLastNCodeGroups",
-            [modeParameter, resourcesParameter],
-            CancellationToken.None);
+        await using SqlCommand command = connection.CreateCommand();
+        command.CommandText = "dbo.MaintainLastNCodeGroups";
+        command.CommandType = CommandType.StoredProcedure;
+        command.Transaction = transaction;
+        command.Parameters.Add(modeParameter);
+        command.Parameters.Add(resourcesParameter);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static Task<int> ReadCountAsync(LastNTestDatabase database, string tableName)
@@ -547,11 +693,25 @@ public class LastNCodeGroupMaintenanceTests
         string commandText,
         CancellationToken cancellationToken,
         params SqlParameter[] parameters)
+        => await ExecuteNonQueryAsync(
+            database.Connection,
+            null,
+            commandText,
+            cancellationToken,
+            parameters);
+
+    private static async Task ExecuteNonQueryAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string commandText,
+        CancellationToken cancellationToken,
+        params SqlParameter[] parameters)
     {
-        await using SqlCommand command = database.Connection.CreateCommand();
+        await using SqlCommand command = connection.CreateCommand();
 #pragma warning disable CA2100
         command.CommandText = commandText;
 #pragma warning restore CA2100
+        command.Transaction = transaction;
         command.Parameters.AddRange(parameters);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

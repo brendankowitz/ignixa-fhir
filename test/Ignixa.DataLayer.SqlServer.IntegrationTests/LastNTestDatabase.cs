@@ -19,6 +19,21 @@ internal sealed class LastNTestDatabase : IAsyncDisposable
 
     public SqlConnection Connection { get; }
 
+    public async Task<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken)
+    {
+        SqlConnection connection = new(BuildConnectionString(_baseConnectionString, _databaseName));
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
     public static async Task<LastNTestDatabase> CreateAndDeployAsync(CancellationToken cancellationToken = default)
     {
         string baseConnectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")

@@ -427,7 +427,7 @@ BEGIN
                     AND existingMember.ResourceSurrogateId = desiredMember.ResourceSurrogateId
                     AND existingMember.CodeIdentityId = desiredMember.CodeIdentityId);
 
-            UPDATE edge
+            UPDATE edge WITH (UPDLOCK, HOLDLOCK)
             SET SupportCount = edge.SupportCount + addedPair.SupportToAdd
             FROM dbo.LastNCodeEdge AS edge
             INNER JOIN #addedPairs AS addedPair
