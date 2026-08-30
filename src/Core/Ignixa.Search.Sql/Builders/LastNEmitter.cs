@@ -21,7 +21,18 @@ internal static class LastNEmitter
         string maximum = EmitParam(new SqlParameterRef(spec.Maximum), parameters);
 
         writer.Append(
-            "IF NOT EXISTS (\n" +
+            "SET XACT_ABORT ON;\n" +
+            "BEGIN TRY\n" +
+            "    BEGIN TRANSACTION;\n\n" +
+            "    DECLARE @lastnLockResult int;\n" +
+            "    EXEC @lastnLockResult = sys.sp_getapplock\n" +
+            $"        @Resource = 'LastNCodeGroup:{spec.ResourceTypeId}:{spec.CodeSearchParamId}',\n" +
+            "        @LockMode = 'Shared',\n" +
+            "        @LockOwner = 'Transaction',\n" +
+            "        @LockTimeout = 15000;\n" +
+            "    IF @lastnLockResult < 0\n" +
+            "        THROW 50410, 'Unable to acquire LastN code-group scope lock.', 1;\n\n" +
+            "    IF NOT EXISTS (\n" +
             "    SELECT 1\n" +
             "    FROM dbo.LastNCodeGroupGeneration\n" +
             $"    WHERE ResourceTypeId = {spec.ResourceTypeId}\n" +
@@ -66,6 +77,13 @@ internal static class LastNEmitter
             $"WHERE EffectiveRank <= {maximum}\n" +
             "GROUP BY T1, Sid1\n" +
             "ORDER BY MIN(GroupKind), MIN(CodeGroupId),\n" +
-            $"         MIN(TextCode) COLLATE {CaseSensitiveCollation}, MIN(EffectiveRank), Sid1 DESC;");
+            $"         MIN(TextCode) COLLATE {CaseSensitiveCollation}, MIN(EffectiveRank), Sid1 DESC;\n\n" +
+            "    COMMIT TRANSACTION;\n" +
+            "END TRY\n" +
+            "BEGIN CATCH\n" +
+            "    IF XACT_STATE() <> 0\n" +
+            "        ROLLBACK TRANSACTION;\n" +
+            "    THROW;\n" +
+            "END CATCH;");
     }
 }

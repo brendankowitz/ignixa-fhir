@@ -1,9 +1,15 @@
 using System.Data;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
 using Ignixa.Search.Sql;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
+using Ignixa.Search.Sql.Symbols;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -83,6 +89,56 @@ public class LastNSearchExecutorTests
         AssertParameter(execution.Command.Parameters[3], "@p3", SqlDbType.NVarChar, 5, "final");
         AssertParameter(execution.Command.Parameters[4], "@p4", SqlDbType.DateTime2, 0, dateTime);
         AssertParameter(execution.Command.Parameters[5], "@p5", SqlDbType.DateTimeOffset, 0, dateTimeOffset);
+    }
+
+    [Theory]
+    [InlineData(SearchParamType.Number)]
+    [InlineData(SearchParamType.Quantity)]
+    public async Task GivenACompiledNumericLastNFilter_WhenExecuted_ThenDecimalParametersMatchTheSearchSchema(
+        SearchParamType searchParamType)
+    {
+        // Arrange
+        const decimal searchValue = 5.4m;
+        SearchParameterInfo parameter = new(
+            "value",
+            "value",
+            searchParamType,
+            new Uri($"http://example.org/SearchParameter/Observation-{searchParamType}"));
+        ISearchValue value = searchParamType == SearchParamType.Number
+            ? new NumberSearchValue(searchValue)
+            : new QuantitySearchValue(system: null!, code: null!, searchValue);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter,
+            SearchComparator.Eq,
+            modifier: null,
+            value);
+        var resolver = new LastNSymbolResolver(parameter);
+        var options = new LastNSearchOptions(
+            new SearchOptions
+            {
+                Expression = new SearchParameterExpression(parameter, predicate),
+            },
+            2,
+            LastNSymbolResolver.CodeParameter,
+            LastNSymbolResolver.DateParameter);
+        SearchPlan plan = await new SearchSqlCompiler(resolver).CreateLastNPlanAsync(options);
+        CompiledSearch compiled = plan.Compile();
+        var execution = new RecordingSqlExecutionService([]);
+        var executor = new LastNSearchExecutor(execution);
+
+        // Act
+        await executor.ExecuteAsync(
+            42,
+            compiled,
+            reader => reader.GetInt64(0),
+            CancellationToken.None);
+
+        // Assert
+        compiled.Parameters.Select(parameter => parameter.Value).ShouldBe([5.35m, 5.45m, 2]);
+        execution.Command!.Parameters.Count.ShouldBe(3);
+        AssertDecimalParameter(execution.Command.Parameters[0], "@p0", 5.35m);
+        AssertDecimalParameter(execution.Command.Parameters[1], "@p1", 5.45m);
+        AssertParameter(execution.Command.Parameters[2], "@p2", SqlDbType.Int, 0, 2);
     }
 
     [Fact]
@@ -171,6 +227,13 @@ public class LastNSearchExecutorTests
         parameter.Value.ShouldBe(value);
     }
 
+    private static void AssertDecimalParameter(SqlParameter parameter, string name, decimal value)
+    {
+        AssertParameter(parameter, name, SqlDbType.Decimal, 0, value);
+        parameter.Precision.ShouldBe((byte)36);
+        parameter.Scale.ShouldBe((byte)18);
+    }
+
     private static SqlException CreateSqlException(int number)
     {
         const BindingFlags instanceFlags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -235,5 +298,50 @@ public class LastNSearchExecutorTests
 
         [DoesNotReturn]
         public static void ThrowSqlException(SqlException exception) => throw exception;
+    }
+
+    private sealed class LastNSymbolResolver : ISymbolResolver
+    {
+        public static readonly SearchParameterInfo CodeParameter = new(
+            "code",
+            "code",
+            SearchParamType.Token,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+
+        public static readonly SearchParameterInfo DateParameter = new(
+            "date",
+            "date",
+            SearchParamType.Date,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-date"));
+
+        private readonly SearchParameterInfo _candidateParameter;
+
+        public LastNSymbolResolver(SearchParameterInfo candidateParameter)
+        {
+            _candidateParameter = candidateParameter;
+        }
+
+        public Task<short?> GetSearchParamIdAsync(
+            SearchParameterInfo parameter,
+            CancellationToken cancellationToken)
+        {
+            short? id = parameter.Url == CodeParameter.Url
+                ? (short)210
+                : parameter.Url == DateParameter.Url
+                    ? (short)211
+                    : parameter.Url == _candidateParameter.Url
+                        ? (short)212
+                        : null;
+            return Task.FromResult(id);
+        }
+
+        public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
+            => Task.FromResult<short?>(resourceType == "Observation" ? (short)104 : null);
+
+        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
+
+        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
     }
 }

@@ -78,6 +78,18 @@ public class LastNCompilationTests
         // Assert
         compiled.Sql.ShouldContain("FROM cte0 m");
         compiled.Sql.ShouldContain("SearchParamId = 212");
+        compiled.Sql.ShouldStartWith(
+            "SET XACT_ABORT ON;\n" +
+            "BEGIN TRY\n" +
+            "    BEGIN TRANSACTION;\n\n" +
+            "    DECLARE @lastnLockResult int;\n" +
+            "    EXEC @lastnLockResult = sys.sp_getapplock\n" +
+            "        @Resource = 'LastNCodeGroup:104:210',\n" +
+            "        @LockMode = 'Shared',\n" +
+            "        @LockOwner = 'Transaction',\n" +
+            "        @LockTimeout = 15000;\n" +
+            "    IF @lastnLockResult < 0\n" +
+            "        THROW 50410, 'Unable to acquire LastN code-group scope lock.', 1;\n\n");
         compiled.Sql.ShouldContain("THROW 50403, '$lastn materialization is not ready for this scope.', 1");
         compiled.Sql.ShouldContain("INNER JOIN dbo.LastNObservationCodeGroup groupRow");
         compiled.Sql.ShouldContain("groupRow.ResourceTypeId = candidate.T1");
@@ -96,6 +108,14 @@ public class LastNCompilationTests
         compiled.Sql.ShouldNotContain("#coded_membership");
         compiled.Sql.ShouldNotContain("WHILE");
         compiled.Sql.ShouldNotContain("INDEX(");
+        compiled.Sql.ShouldEndWith(
+            "    COMMIT TRANSACTION;\n" +
+            "END TRY\n" +
+            "BEGIN CATCH\n" +
+            "    IF XACT_STATE() <> 0\n" +
+            "        ROLLBACK TRANSACTION;\n" +
+            "    THROW;\n" +
+            "END CATCH;");
         compiled.Parameters.Select(parameter => parameter.Value).ShouldBe(["final", 3]);
         plan.Query.Explain().ShouldContain("lastN = LastNSpec(type=104, code=210, date=211, max=@p1)");
         Ast.SqlGrammar.AssertValid(compiled.Sql);
@@ -237,7 +257,7 @@ public class LastNCompilationTests
         string golden = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(sql)));
 
-        golden.ShouldBe("8468AABE63D4483B5B719E9F676189C033CBBB7A141FF86C6698C3656239941C");
+        golden.ShouldBe("99C35EC5F0B00A7C06436E56FB71E6F7130A40DD05D7A21628872B011ABEF4D6");
     }
 
     [Fact]

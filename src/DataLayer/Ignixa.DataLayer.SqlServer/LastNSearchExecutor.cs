@@ -60,6 +60,12 @@ public sealed class LastNSearchExecutor : ILastNSearchExecutor
             short value => new SqlParameter(emittedParameter.Name, SqlDbType.SmallInt) { Value = value },
             int value => new SqlParameter(emittedParameter.Name, SqlDbType.Int) { Value = value },
             long value => new SqlParameter(emittedParameter.Name, SqlDbType.BigInt) { Value = value },
+            decimal value => new SqlParameter(emittedParameter.Name, SqlDbType.Decimal)
+            {
+                Precision = 36,
+                Scale = 18,
+                Value = value,
+            },
             string value => new SqlParameter(emittedParameter.Name, SqlDbType.NVarChar, value.Length) { Value = value },
             DateTime value => new SqlParameter(emittedParameter.Name, SqlDbType.DateTime2) { Value = value },
             DateTimeOffset value => new SqlParameter(emittedParameter.Name, SqlDbType.DateTimeOffset) { Value = value },
