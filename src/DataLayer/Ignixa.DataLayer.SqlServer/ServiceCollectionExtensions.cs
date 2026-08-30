@@ -16,6 +16,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISqlExecutionService, SqlExecutionService>();
         services.AddSingleton<ISqlResourceIndexWriter, SqlResourceIndexWriter>();
         services.AddSingleton<ILastNCodeGroupBackfillService, LastNCodeGroupBackfillService>();
+        services.AddSingleton<ILastNSearchExecutor, LastNSearchExecutor>();
         return services;
     }
 }

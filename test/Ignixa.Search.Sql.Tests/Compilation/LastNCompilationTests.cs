@@ -78,13 +78,11 @@ public class LastNCompilationTests
         // Assert
         compiled.Sql.ShouldContain("FROM cte0 m");
         compiled.Sql.ShouldContain("SearchParamId = 212");
-        compiled.Sql.ShouldContain("AND candidate.T1 = 104");
-        compiled.Sql.ShouldContain("codeRow.SystemId, CONCAT(codeRow.Code, codeRow.CodeOverflow)) AS NodeId");
-        compiled.Sql.ShouldContain("INTO #code_edges");
-        compiled.Sql.ShouldContain("membership.NodeId AS ComponentId");
-        compiled.Sql.ShouldContain("SET ComponentId = neighbors.ComponentId");
-        compiled.Sql.ShouldNotContain("#code_reach");
-        compiled.Sql.ShouldContain("textRow.Text COLLATE Latin1_General_100_CS_AS");
+        compiled.Sql.ShouldContain("THROW 50403, '$lastn materialization is not ready for this scope.', 1");
+        compiled.Sql.ShouldContain("INNER JOIN dbo.LastNObservationCodeGroup groupRow");
+        compiled.Sql.ShouldContain("groupRow.ResourceTypeId = candidate.T1");
+        compiled.Sql.ShouldContain("groupRow.SearchParamId = 210");
+        compiled.Sql.ShouldContain("groupRow.ResourceSurrogateId = candidate.Sid1");
         compiled.Sql.ShouldContain("dateRow.IsMax = 1");
         compiled.Sql.ShouldContain(
             "RANK() OVER (\n" +
@@ -93,13 +91,18 @@ public class LastNCompilationTests
             "                     EffectiveStart DESC,\n" +
             "                     CASE WHEN EffectiveStart IS NULL THEN Sid1 END DESC)");
         compiled.Sql.ShouldContain("WHERE EffectiveRank <= @p1");
+        compiled.Sql.ShouldNotContain("#code_nodes");
+        compiled.Sql.ShouldNotContain("#code_edges");
+        compiled.Sql.ShouldNotContain("#coded_membership");
+        compiled.Sql.ShouldNotContain("WHILE");
+        compiled.Sql.ShouldNotContain("INDEX(");
         compiled.Parameters.Select(parameter => parameter.Value).ShouldBe(["final", 3]);
         plan.Query.Explain().ShouldContain("lastN = LastNSpec(type=104, code=210, date=211, max=@p1)");
         Ast.SqlGrammar.AssertValid(compiled.Sql);
     }
 
     [Fact]
-    public void GivenACyclicCodeGraph_WhenCompiled_ThenClosureStoresOneComponentLabelPerCodeNode()
+    public void GivenAResolvedLastNScope_WhenCompiled_ThenReadinessUsesDeterministicCatalogLiterals()
     {
         // Arrange
         var plan = new SearchPlan
@@ -115,17 +118,13 @@ public class LastNCompilationTests
         string sql = plan.Compile().Sql;
 
         // Assert
-        sql.ShouldContain("membership.NodeId AS ComponentId");
-        sql.ShouldContain("SET ComponentId = neighbors.ComponentId");
-        sql.ShouldContain("WHERE neighbors.ComponentId < target.ComponentId");
-        sql.ShouldContain("toCode.NodeId AS ToNodeId");
-        sql.ShouldContain("node.NodeId = membership.NodeId");
-        sql.ShouldNotContain("fromNode.SystemId");
-        sql.ShouldContain("WHILE");
-        sql.ShouldNotContain("#code_reach");
-        sql.ShouldNotContain("RootNodeId");
-        sql.ShouldNotContain("OPTION (MAXRECURSION 0)");
-        sql.ShouldContain("DROP TABLE #code_edges, #code_nodes, #coded_membership, #lastn_candidates");
+        sql.ShouldContain(
+            "FROM dbo.LastNCodeGroupGeneration\n" +
+            "    WHERE ResourceTypeId = 104\n" +
+            "      AND SearchParamId = 210\n" +
+            "      AND State = 'Ready'");
+        sql.ShouldContain("groupRow.ResourceTypeId = candidate.T1");
+        sql.ShouldContain("groupRow.SearchParamId = 210");
         Ast.SqlGrammar.AssertValid(sql);
     }
 
@@ -238,7 +237,7 @@ public class LastNCompilationTests
         string golden = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(sql)));
 
-        golden.ShouldBe("9778EC2D58FF08E7AED6A7C02DFEDFAE6D23F9E4EA1B47FE0A60EA65E3854146");
+        golden.ShouldBe("8468AABE63D4483B5B719E9F676189C033CBBB7A141FF86C6698C3656239941C");
     }
 
     [Fact]
