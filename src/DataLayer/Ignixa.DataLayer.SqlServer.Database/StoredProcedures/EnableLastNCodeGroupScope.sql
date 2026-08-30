@@ -18,10 +18,10 @@ BEGIN
         IF @@ROWCOUNT = 0
         BEGIN
             INSERT INTO dbo.LastNCodeGroupGeneration
-                (ResourceTypeId, SearchParamId, Generation, State, SnapshotHighWaterSurrogateId,
+                (ResourceTypeId, SearchParamId, Generation, AttemptId, State, SnapshotHighWaterSurrogateId,
                  StartedDateTime, CompletedDateTime, FailureReason)
             VALUES
-                (@ResourceTypeId, @SearchParamId, 0, 'Pending', NULL,
+                (@ResourceTypeId, @SearchParamId, 0, NULL, 'Pending', NULL,
                  SYSUTCDATETIME(), NULL, NULL);
         END;
 

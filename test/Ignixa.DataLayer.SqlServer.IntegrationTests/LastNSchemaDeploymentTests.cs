@@ -61,6 +61,7 @@ public class LastNSchemaDeploymentTests
             "ResourceTypeId",
             "SearchParamId",
             "Generation",
+            "AttemptId",
             "State",
             "SnapshotHighWaterSurrogateId",
             "StartedDateTime",

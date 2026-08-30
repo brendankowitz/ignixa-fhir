@@ -33,10 +33,11 @@ public sealed class LastNCodeGroupBackfillService : ILastNCodeGroupBackfillServi
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
 
+        Guid attemptId = Guid.NewGuid();
         LastNCodeGroupGenerationStatus? generation = null;
         try
         {
-            generation = await StartAsync(tenantId, scope, cancellationToken);
+            generation = await StartAsync(tenantId, scope, attemptId, cancellationToken);
             if (generation.SnapshotHighWaterSurrogateId is long highWater)
             {
                 long? minimum = await ReadMinimumCurrentSurrogateIdAsync(
@@ -61,6 +62,23 @@ public sealed class LastNCodeGroupBackfillService : ILastNCodeGroupBackfillServi
         }
         catch (Exception exception)
         {
+            if (generation is null)
+            {
+                try
+                {
+                    generation = await ReadGenerationByAttemptAsync(
+                        tenantId,
+                        scope,
+                        attemptId,
+                        CancellationToken.None);
+                }
+                catch (Exception reconciliationException)
+                {
+                    exception.Data["LastNCodeGroupStartReconciliationException"] =
+                        reconciliationException;
+                }
+            }
+
             if (generation is not null)
             {
                 string failureReason = exception is OperationCanceledException
@@ -72,6 +90,7 @@ public sealed class LastNCodeGroupBackfillService : ILastNCodeGroupBackfillServi
                         tenantId,
                         scope,
                         generation.Generation,
+                        attemptId,
                         failureReason,
                         CancellationToken.None);
                 }
@@ -88,9 +107,14 @@ public sealed class LastNCodeGroupBackfillService : ILastNCodeGroupBackfillServi
     private async Task<LastNCodeGroupGenerationStatus> StartAsync(
         int tenantId,
         LastNCodeGroupScope scope,
+        Guid attemptId,
         CancellationToken cancellationToken)
     {
         using SqlCommand command = CreateScopeCommand("dbo.StartLastNCodeGroupGeneration", scope);
+        command.Parameters.Add(new SqlParameter("@AttemptId", SqlDbType.UniqueIdentifier)
+        {
+            Value = attemptId,
+        });
         SqlParameter generation = AddOutputParameter(command, "@StartedGeneration", SqlDbType.BigInt);
         SqlParameter state = AddOutputParameter(command, "@StartedState", SqlDbType.VarChar, 16);
         SqlParameter highWater = AddOutputParameter(
@@ -105,10 +129,51 @@ public sealed class LastNCodeGroupBackfillService : ILastNCodeGroupBackfillServi
             disableRetries: true);
 
         return new LastNCodeGroupGenerationStatus(
+            attemptId,
             Convert.ToInt64(generation.Value),
             Convert.ToString(state.Value, System.Globalization.CultureInfo.InvariantCulture)
                 ?? throw new InvalidOperationException("Generation start did not return a state."),
             highWater.Value is DBNull ? null : Convert.ToInt64(highWater.Value));
+    }
+
+    private async Task<LastNCodeGroupGenerationStatus?> ReadGenerationByAttemptAsync(
+        int tenantId,
+        LastNCodeGroupScope scope,
+        Guid attemptId,
+        CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand(
+            """
+            SELECT AttemptId, Generation, State, SnapshotHighWaterSurrogateId
+            FROM dbo.LastNCodeGroupGeneration
+            WHERE ResourceTypeId = @ResourceTypeId
+                AND SearchParamId = @SearchParamId
+                AND AttemptId = @AttemptId;
+            """);
+        command.Parameters.Add(new SqlParameter("@ResourceTypeId", SqlDbType.SmallInt)
+        {
+            Value = scope.ResourceTypeId,
+        });
+        command.Parameters.Add(new SqlParameter("@SearchParamId", SqlDbType.SmallInt)
+        {
+            Value = scope.SearchParamId,
+        });
+        command.Parameters.Add(new SqlParameter("@AttemptId", SqlDbType.UniqueIdentifier)
+        {
+            Value = attemptId,
+        });
+
+        IReadOnlyList<LastNCodeGroupGenerationStatus> statuses =
+            await _executionService.ExecuteReaderAsync(
+                tenantId,
+                command,
+                reader => new LastNCodeGroupGenerationStatus(
+                    reader.GetGuid(0),
+                    reader.GetInt64(1),
+                    reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetInt64(3)),
+                cancellationToken);
+        return statuses.SingleOrDefault();
     }
 
     private async Task<long?> ReadMinimumCurrentSurrogateIdAsync(
@@ -155,10 +220,7 @@ public sealed class LastNCodeGroupBackfillService : ILastNCodeGroupBackfillServi
         long currentStart = start;
         while (currentStart <= highWater)
         {
-            long batchOffset = (long)batchSize - 1;
-            long currentEnd = highWater - currentStart < batchOffset
-                ? highWater
-                : checked(currentStart + batchOffset);
+            long currentEnd = CalculateBatchEnd(currentStart, highWater, batchSize);
 
             using SqlCommand command = CreateScopeCommand("dbo.BackfillLastNCodeGroupBatch", scope);
             command.Parameters.Add(new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation });
@@ -173,6 +235,15 @@ public sealed class LastNCodeGroupBackfillService : ILastNCodeGroupBackfillServi
 
             currentStart = checked(currentEnd + 1);
         }
+    }
+
+    internal static long CalculateBatchEnd(long currentStart, long highWater, int batchSize)
+    {
+        long batchOffset = (long)batchSize - 1;
+        long uncappedEnd = currentStart > long.MaxValue - batchOffset
+            ? long.MaxValue
+            : currentStart + batchOffset;
+        return Math.Min(uncappedEnd, highWater);
     }
 
     private async Task CompleteAsync(
@@ -194,11 +265,13 @@ public sealed class LastNCodeGroupBackfillService : ILastNCodeGroupBackfillServi
         int tenantId,
         LastNCodeGroupScope scope,
         long generation,
+        Guid attemptId,
         string failureReason,
         CancellationToken cancellationToken)
     {
         using SqlCommand command = CreateScopeCommand("dbo.FailLastNCodeGroupGeneration", scope);
         command.Parameters.Add(new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation });
+        command.Parameters.Add(new SqlParameter("@AttemptId", SqlDbType.UniqueIdentifier) { Value = attemptId });
         command.Parameters.Add(new SqlParameter("@FailureReason", SqlDbType.VarChar, -1) { Value = failureReason });
         await _executionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
     }

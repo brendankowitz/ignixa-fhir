@@ -2,6 +2,7 @@ CREATE PROCEDURE dbo.FailLastNCodeGroupGeneration
     @ResourceTypeId SMALLINT,
     @SearchParamId SMALLINT,
     @Generation BIGINT,
+    @AttemptId UNIQUEIDENTIFIER,
     @FailureReason VARCHAR(MAX)
 AS
 BEGIN
@@ -30,6 +31,7 @@ BEGIN
         WHERE ResourceTypeId = @ResourceTypeId
             AND SearchParamId = @SearchParamId
             AND Generation = @Generation
+            AND AttemptId = @AttemptId
             AND State = 'Building';
 
         COMMIT TRANSACTION;

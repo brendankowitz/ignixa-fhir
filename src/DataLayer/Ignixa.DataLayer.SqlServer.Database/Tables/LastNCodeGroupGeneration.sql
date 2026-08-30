@@ -2,6 +2,7 @@ CREATE TABLE dbo.LastNCodeGroupGeneration (
     ResourceTypeId SMALLINT NOT NULL,
     SearchParamId SMALLINT NOT NULL,
     Generation BIGINT NOT NULL,
+    AttemptId UNIQUEIDENTIFIER NULL,
     State VARCHAR(16) NOT NULL,
     SnapshotHighWaterSurrogateId BIGINT NULL,
     StartedDateTime DATETIME2(7) NOT NULL,

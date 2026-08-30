@@ -25,6 +25,7 @@ public class LastNCodeGroupBackfillTests
 
         // Assert
         LastNCodeGroupGenerationStatus status = await ReadGenerationAsync(database);
+        status.AttemptId.ShouldBeNull();
         status.Generation.ShouldBe(0);
         status.State.ShouldBe("Pending");
         status.SnapshotHighWaterSurrogateId.ShouldBeNull();
@@ -136,7 +137,7 @@ public class LastNCodeGroupBackfillTests
         await EnableAsync(database);
         await SeedObservationAsync(database, 10, "current");
         LastNCodeGroupGenerationStatus first = await StartAsync(database);
-        await FailAsync(database, first.Generation, "first attempt");
+        await FailAsync(database, first, "first attempt");
         LastNCodeGroupGenerationStatus second = await StartAsync(database);
         await InsertDirtyAsync(database, first.Generation, 999);
         await InsertDirtyAsync(database, second.Generation, 10);
@@ -204,18 +205,142 @@ public class LastNCodeGroupBackfillTests
     }
 
     [SkippableFact]
+    public async Task GivenACommittedStartWithAnAmbiguousClientFailure_WhenReconciled_ThenTheExactAttemptIsFailed()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        ISqlExecutionService execution = new ThrowAfterCommittedGenerationStartExecutionService(
+            CreateExecutionService(database));
+        ILastNCodeGroupBackfillService service = new LastNCodeGroupBackfillService(execution);
+        await service.EnableScopeAsync(1, Scope, CancellationToken.None);
+
+        // Act
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => service.BuildAsync(1, Scope, 100, CancellationToken.None));
+
+        // Assert
+        exception.Message.ShouldBe("Simulated ambiguous generation start.");
+        LastNCodeGroupGenerationStatus status = await ReadGenerationAsync(database);
+        status.AttemptId.ShouldNotBeNull();
+        status.Generation.ShouldBe(1);
+        status.State.ShouldBe("Failed");
+        (await ReadFailureReasonAsync(database)).ShouldBe("Simulated ambiguous generation start.");
+    }
+
+    [SkippableFact]
+    public async Task GivenTheSameAttemptStartsTwice_WhenTheFirstStartCommitted_ThenTheGenerationIsReused()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await EnableAsync(database);
+        Guid attemptId = Guid.Parse("b409b256-2945-437b-8bea-e1a876e1934c");
+        LastNCodeGroupGenerationStatus first = await StartAsync(database, attemptId);
+
+        // Act
+        LastNCodeGroupGenerationStatus second = await StartAsync(database, attemptId);
+
+        // Assert
+        second.ShouldBe(first);
+        second.AttemptId.ShouldBe(attemptId);
+        second.Generation.ShouldBe(1);
+        second.State.ShouldBe("Building");
+    }
+
+    [SkippableFact]
+    public async Task GivenANullAttemptId_WhenGenerationStartIsRequested_ThenThePendingScopeIsUnchanged()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await EnableAsync(database);
+        await using SqlCommand command = database.Connection.CreateCommand();
+        command.CommandText = "dbo.StartLastNCodeGroupGeneration";
+        command.CommandType = CommandType.StoredProcedure;
+        AddScopeParameters(command);
+        command.Parameters.Add("@AttemptId", SqlDbType.UniqueIdentifier).Value = DBNull.Value;
+
+        // Act
+        SqlException exception = await Should.ThrowAsync<SqlException>(
+            () => command.ExecuteNonQueryAsync(CancellationToken.None));
+
+        // Assert
+        exception.Number.ShouldBe(50426);
+        LastNCodeGroupGenerationStatus status = await ReadGenerationAsync(database);
+        status.AttemptId.ShouldBeNull();
+        status.Generation.ShouldBe(0);
+        status.State.ShouldBe("Pending");
+    }
+
+    [SkippableFact]
+    public async Task GivenANewerAttemptStartsBeforeAmbiguousReconciliation_WhenTheOldAttemptReconciles_ThenTheNewerGenerationIsUnchanged()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        Guid newerAttemptId = Guid.Parse("b9e78d20-1b45-4d94-92df-a4f3af2906c2");
+        ISqlExecutionService execution = new ThrowAfterCommittedGenerationStartExecutionService(
+            CreateExecutionService(database),
+            async command =>
+            {
+                Guid originalAttemptId = (Guid)command.Parameters["@AttemptId"].Value;
+                long originalGeneration = Convert.ToInt64(command.Parameters["@StartedGeneration"].Value);
+                LastNCodeGroupGenerationStatus original = new(
+                    originalAttemptId,
+                    originalGeneration,
+                    "Building",
+                    null);
+                await FailAsync(database, original, "superseded");
+                LastNCodeGroupGenerationStatus newer = await StartAsync(database, newerAttemptId);
+                await CompleteAsync(database, newer.Generation);
+            });
+        ILastNCodeGroupBackfillService service = new LastNCodeGroupBackfillService(execution);
+        await service.EnableScopeAsync(1, Scope, CancellationToken.None);
+
+        // Act
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => service.BuildAsync(1, Scope, 100, CancellationToken.None));
+
+        // Assert
+        exception.Message.ShouldBe("Simulated ambiguous generation start.");
+        LastNCodeGroupGenerationStatus status = await ReadGenerationAsync(database);
+        status.AttemptId.ShouldBe(newerAttemptId);
+        status.Generation.ShouldBe(2);
+        status.State.ShouldBe("Ready");
+        (await ReadFailureReasonAsync(database)).ShouldBeNull();
+    }
+
+    [SkippableFact]
+    public async Task GivenAStartedGeneration_WhenFailureUsesAnotherAttemptId_ThenTheGenerationRemainsBuilding()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await EnableAsync(database);
+        LastNCodeGroupGenerationStatus generation = await StartAsync(database);
+
+        // Act
+        await FailAsync(
+            database,
+            generation with { AttemptId = Guid.Parse("b2dd363c-0bda-44c1-850e-ccf920f86d4b") },
+            "wrong attempt");
+
+        // Assert
+        LastNCodeGroupGenerationStatus status = await ReadGenerationAsync(database);
+        status.ShouldBe(generation);
+        status.State.ShouldBe("Building");
+        (await ReadFailureReasonAsync(database)).ShouldBeNull();
+    }
+
+    [SkippableFact]
     public async Task GivenAFailedGeneration_WhenAnotherAttemptStarts_ThenGenerationIncrementsAndFailureClears()
     {
         // Arrange
         await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
         await EnableAsync(database);
         LastNCodeGroupGenerationStatus first = await StartAsync(database);
-        await FailAsync(database, first.Generation, new string('x', 1200));
+        await FailAsync(database, first, new string('x', 1200));
         (await ReadFailureReasonAsync(database)).ShouldNotBeNull().Length.ShouldBe(1000);
 
         // Act
         LastNCodeGroupGenerationStatus second = await StartAsync(database);
-        await FailAsync(database, first.Generation, "stale failure");
+        await FailAsync(database, first, "stale failure");
 
         // Assert
         second.Generation.ShouldBe(first.Generation + 1);
@@ -259,12 +384,18 @@ public class LastNCodeGroupBackfillTests
     private static Task EnableAsync(LastNTestDatabase database)
         => ExecuteProcedureAsync(database, "dbo.EnableLastNCodeGroupScope");
 
-    private static async Task<LastNCodeGroupGenerationStatus> StartAsync(LastNTestDatabase database)
+    private static Task<LastNCodeGroupGenerationStatus> StartAsync(LastNTestDatabase database)
+        => StartAsync(database, Guid.NewGuid());
+
+    private static async Task<LastNCodeGroupGenerationStatus> StartAsync(
+        LastNTestDatabase database,
+        Guid attemptId)
     {
         await using SqlCommand command = database.Connection.CreateCommand();
         command.CommandText = "dbo.StartLastNCodeGroupGeneration";
         command.CommandType = CommandType.StoredProcedure;
         AddScopeParameters(command);
+        command.Parameters.Add("@AttemptId", SqlDbType.UniqueIdentifier).Value = attemptId;
         await using SqlDataReader reader = await command.ExecuteReaderAsync(CancellationToken.None);
         (await reader.ReadAsync(CancellationToken.None)).ShouldBeTrue();
         return ReadStatus(reader);
@@ -288,11 +419,15 @@ public class LastNCodeGroupBackfillTests
             "dbo.CompleteLastNCodeGroupGeneration",
             new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation });
 
-    private static Task FailAsync(LastNTestDatabase database, long generation, string reason)
+    private static Task FailAsync(
+        LastNTestDatabase database,
+        LastNCodeGroupGenerationStatus generation,
+        string reason)
         => ExecuteProcedureAsync(
             database,
             "dbo.FailLastNCodeGroupGeneration",
-            new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation },
+            new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation.Generation },
+            new SqlParameter("@AttemptId", SqlDbType.UniqueIdentifier) { Value = generation.AttemptId },
             new SqlParameter("@FailureReason", SqlDbType.VarChar, -1) { Value = reason });
 
     private static async Task ExecuteProcedureAsync(
@@ -314,7 +449,7 @@ public class LastNCodeGroupBackfillTests
     {
         await using SqlCommand command = database.Connection.CreateCommand();
         command.CommandText = """
-            SELECT Generation, State, SnapshotHighWaterSurrogateId
+            SELECT Generation, State, SnapshotHighWaterSurrogateId, AttemptId
             FROM dbo.LastNCodeGroupGeneration
             WHERE ResourceTypeId = @ResourceTypeId AND SearchParamId = @SearchParamId;
             """;
@@ -326,6 +461,7 @@ public class LastNCodeGroupBackfillTests
 
     private static LastNCodeGroupGenerationStatus ReadStatus(SqlDataReader reader)
         => new(
+            reader.IsDBNull(3) ? null : reader.GetGuid(3),
             reader.GetInt64(0),
             reader.GetString(1),
             reader.IsDBNull(2) ? null : reader.GetInt64(2));
@@ -562,6 +698,45 @@ public class LastNCodeGroupBackfillTests
             if (command.CommandText == "dbo.StartLastNCodeGroupGeneration")
             {
                 await cancellation.CancelAsync();
+            }
+
+            return result;
+        }
+    }
+
+    private sealed class ThrowAfterCommittedGenerationStartExecutionService(
+        ISqlExecutionService inner,
+        Func<SqlCommand, Task>? afterCommittedStart = null) : ISqlExecutionService
+    {
+        private bool _hasThrown;
+
+        public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
+            int tenantId,
+            SqlCommand command,
+            Func<SqlDataReader, TResult> readRow,
+            CancellationToken cancellationToken)
+            => inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken);
+
+        public async Task<int> ExecuteNonQueryAsync(
+            int tenantId,
+            SqlCommand command,
+            CancellationToken cancellationToken,
+            bool disableRetries = false)
+        {
+            int result = await inner.ExecuteNonQueryAsync(
+                tenantId,
+                command,
+                cancellationToken,
+                disableRetries);
+            if (!_hasThrown && command.CommandText == "dbo.StartLastNCodeGroupGeneration")
+            {
+                _hasThrown = true;
+                if (afterCommittedStart is not null)
+                {
+                    await afterCommittedStart(command);
+                }
+
+                throw new InvalidOperationException("Simulated ambiguous generation start.");
             }
 
             return result;
