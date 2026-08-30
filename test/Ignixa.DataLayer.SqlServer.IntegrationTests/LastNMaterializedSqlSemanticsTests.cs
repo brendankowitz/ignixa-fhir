@@ -6,7 +6,6 @@ using Ignixa.Search.Sql;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Catalog;
-using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient;
 using Shouldly;
@@ -445,31 +444,4 @@ public sealed class LastNMaterializedSqlSemanticsTests
         bool IsHistory = false,
         bool IsDeleted = false);
 
-    private sealed class LastNSymbolResolver : ISymbolResolver
-    {
-        public Task<short?> GetSearchParamIdAsync(
-            SearchParameterInfo parameter,
-            CancellationToken cancellationToken)
-            => Task.FromResult<short?>(parameter.Url?.ToString() switch
-            {
-                CodeSearchParameterUrl => CodeSearchParamId,
-                EffectiveSearchParameterUrl => EffectiveSearchParamId,
-                AuthorizationSearchParameterUrl => AuthorizationSearchParamId,
-                _ => null,
-            });
-
-        public Task<short?> GetResourceTypeIdAsync(
-            string resourceType,
-            CancellationToken cancellationToken)
-            => Task.FromResult<short?>(
-                string.Equals(resourceType, "Observation", StringComparison.Ordinal)
-                    ? ObservationResourceTypeId
-                    : null);
-
-        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
-            => Task.FromResult<int?>(null);
-
-        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
-            => Task.FromResult<int?>(null);
-    }
 }
