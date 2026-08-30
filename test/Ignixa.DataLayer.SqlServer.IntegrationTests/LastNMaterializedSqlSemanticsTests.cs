@@ -1,8 +1,13 @@
 using System.Data;
+using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
 using Ignixa.Search.Sql;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Catalog;
+using Ignixa.Search.Sql.Symbols;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient;
 using Shouldly;
 
@@ -15,6 +20,27 @@ public sealed class LastNMaterializedSqlSemanticsTests
     private const short EffectiveSearchParamId = 211;
     private const short FilterSearchParamId = 212;
     private const short AuthorizationSearchParamId = 213;
+    private const string CodeSearchParameterUrl = "http://hl7.org/fhir/SearchParameter/Observation-code";
+    private const string EffectiveSearchParameterUrl = "http://hl7.org/fhir/SearchParameter/Observation-date";
+    private const string AuthorizationSearchParameterUrl = "http://example.org/fhir/SearchParameter/Observation-authorization";
+
+    private static readonly SearchParameterInfo CodeSearchParameter = new(
+        "code",
+        "code",
+        SearchParamType.Token,
+        new Uri(CodeSearchParameterUrl));
+
+    private static readonly SearchParameterInfo EffectiveSearchParameter = new(
+        "date",
+        "date",
+        SearchParamType.Date,
+        new Uri(EffectiveSearchParameterUrl));
+
+    private static readonly SearchParameterInfo AuthorizationSearchParameter = new(
+        "authorization",
+        "authorization",
+        SearchParamType.Token,
+        new Uri(AuthorizationSearchParameterUrl));
 
     [SkippableFact]
     public async Task GivenAnOrdinaryFilter_WhenLastNExecutes_ThenFilteringOccursBeforeGrouping()
@@ -41,9 +67,24 @@ public sealed class LastNMaterializedSqlSemanticsTests
                 new(2, Effective(2), ["a"], AuthorizationCode: "denied"),
             ]);
 
-        IReadOnlyList<long> result = await ExecuteAsync(
-            database,
-            CreateFilteredPlan(AuthorizationSearchParamId, "allowed", maximum: 1));
+        SearchParameterPredicateExpression authorizationPredicate = new(
+            AuthorizationSearchParameter,
+            SearchComparator.Eq,
+            modifier: null,
+            new TokenSearchValue(system: null, code: "allowed", text: null));
+        SearchOptions filters = new()
+        {
+            AccessConstraints = [new AccessConstraint("Observation", authorizationPredicate)],
+        };
+        LastNSearchOptions options = new(
+            filters,
+            1,
+            CodeSearchParameter,
+            EffectiveSearchParameter);
+        SearchPlan plan = await new SearchSqlCompiler(new LastNSymbolResolver())
+            .CreateLastNPlanAsync(options);
+
+        IReadOnlyList<long> result = await ExecuteAsync(database, plan);
 
         result.ShouldBe([1]);
     }
@@ -403,4 +444,32 @@ public sealed class LastNMaterializedSqlSemanticsTests
         string? AuthorizationCode = null,
         bool IsHistory = false,
         bool IsDeleted = false);
+
+    private sealed class LastNSymbolResolver : ISymbolResolver
+    {
+        public Task<short?> GetSearchParamIdAsync(
+            SearchParameterInfo parameter,
+            CancellationToken cancellationToken)
+            => Task.FromResult<short?>(parameter.Url?.ToString() switch
+            {
+                CodeSearchParameterUrl => CodeSearchParamId,
+                EffectiveSearchParameterUrl => EffectiveSearchParamId,
+                AuthorizationSearchParameterUrl => AuthorizationSearchParamId,
+                _ => null,
+            });
+
+        public Task<short?> GetResourceTypeIdAsync(
+            string resourceType,
+            CancellationToken cancellationToken)
+            => Task.FromResult<short?>(
+                string.Equals(resourceType, "Observation", StringComparison.Ordinal)
+                    ? ObservationResourceTypeId
+                    : null);
+
+        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
+
+        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
+    }
 }

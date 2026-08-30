@@ -821,7 +821,7 @@ public class LastNCodeGroupMaintenanceTests
     {
         // Arrange
         await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
-        await ConfigureScopeAsync(database, SearchParamId);
+        await ConfigureScopeAsync(database, SearchParamId, state: "Building");
         await ExecuteNonQueryAsync(
             database,
             """
@@ -860,7 +860,7 @@ public class LastNCodeGroupMaintenanceTests
             "deadlock",
             1,
             1,
-            [(SearchParamId, "first")]);
+            [(SearchParamId, "first"), (SearchParamId, "second")]);
 #pragma warning restore CA2025
         await WaitUntilBlockedAsync(database, victimSessionId);
 
@@ -871,19 +871,29 @@ public class LastNCodeGroupMaintenanceTests
             SearchParamId,
             timeout: 5000);
         SqlException exception = await Should.ThrowAsync<SqlException>(() => victimWrite);
+
+        blockerLockResult.ShouldBeGreaterThanOrEqualTo(0);
+        exception.Number.ShouldBe(1205);
+        (await ReadResourceCountAsync(database, "deadlock")).ShouldBe(0);
+        (await ReadMembershipCodesAsync(database, 1)).ShouldBeEmpty();
+        (await ReadCountAsync(database, "dbo.LastNObservationCodeGroup")).ShouldBe(0);
+        (await ReadCountAsync(database, "dbo.LastNCodeEdge")).ShouldBe(0);
+        (await ReadDirtyIdsAsync(database)).ShouldBeEmpty();
+
         await blockerTransaction.RollbackAsync();
         await ExecuteMergeWrapperAsync(
             database.Connection,
             "deadlock",
             1,
             1,
-            [(SearchParamId, "first")]);
+            [(SearchParamId, "first"), (SearchParamId, "second")]);
 
         // Assert
-        blockerLockResult.ShouldBeGreaterThanOrEqualTo(0);
-        exception.Number.ShouldBe(1205);
         (await ReadCurrentVersionAsync(database, "deadlock")).ShouldBe(1);
-        (await ReadMembershipCodesAsync(database, 1)).ShouldBe(["first"]);
+        (await ReadMembershipCodesAsync(database, 1)).ShouldBe(["first", "second"]);
+        (await ReadCountAsync(database, "dbo.LastNObservationCodeGroup")).ShouldBe(1);
+        (await ReadSupportCountAsync(database, "first", "second")).ShouldBe(1);
+        (await ReadDirtyIdsAsync(database)).ShouldBe([1]);
     }
 
     [SkippableFact]
