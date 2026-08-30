@@ -68,7 +68,10 @@ public interface IElement
     string Name { get; }
 
     /// <summary>
-    /// Primitive value (typed: bool, int, decimal, string, DateTimeOffset)
+    /// Primitive value for primitive types, null for complex types.
+    /// boolean/integer/decimal map to bool/int/decimal; date/dateTime/instant/time map to
+    /// FhirTemporal (falling back to the wire string if unparseable); every other primitive
+    /// is its FHIR wire-format string.
     /// </summary>
     object? Value { get; }
 
@@ -102,6 +105,26 @@ public interface IElement
 :::note ISourceNavigator vs IElement
 `ISourceNavigator` is for raw JSON navigation (parsing). `IElement` is for typed operations (FHIRPath, validation). Convert with `sourceNavigator.ToElement(schema)`.
 :::
+
+#### The `Value` contract is a union
+
+`IElement.Value` is `object?`, and callers need to handle more than one shape:
+
+- `bool`, `int`, `decimal` for `boolean`, `integer`/`unsignedInt`/`positiveInt`, and `decimal`.
+- [`FhirTemporal`](#fhirtemporal) for `date`, `dateTime`, `instant`, and `time` — the wire literal and
+  its parsed precision together, not a bare `string`. If the literal fails to parse, the value
+  falls back to the raw wire `string` instead of dropping the element.
+- The FHIR wire-format `string` for every other primitive (including `integer64` and `base64Binary`,
+  which are not yet promoted to `long`/`byte[]`).
+
+Third-party `IElement` implementations may also hand back a bare `DateTimeOffset` or `DateTime` for a
+temporal instead of `FhirTemporal`. Code that needs to work across implementations should not assume
+`FhirTemporal` is the only typed shape a temporal can arrive in.
+
+Calling `.ToString()` on any of these — including `FhirTemporal` — returns the value's wire literal
+verbatim, not a culture-formatted or re-rendered string. For a temporal specifically, `FhirTemporal.ToString()`
+always returns `FhirTemporal.Literal`, so a partial-precision value like `"1974"` round-trips exactly rather
+than being expanded into a full timestamp.
 
 ### IType
 
@@ -189,13 +212,68 @@ var birthDate = element.Select("birthDate.toDateTime()").FirstOrDefault();
 
 ## Value Objects
 
-### ResourceIdentifier
+### FhirTemporal
+
+The typed value `IElement.Value` returns for `date`, `dateTime`, `instant`, and `time` primitives.
+Carries the wire literal and its parsed precision together, so it is typed without losing partial-precision
+fidelity (`"1974"` is not forced into a full `DateTimeOffset`):
 
 ```csharp
-public record ResourceIdentifier(string ResourceType, string Id)
+public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTemporal>
 {
-    public static ResourceIdentifier Parse(string reference);
-    public string ToReference(); // "Patient/123"
+    public string Literal { get; }              // Wire text verbatim, "@" sigil stripped
+    public FhirTemporalPrecision Precision { get; }
+    public FhirPrimitive Kind { get; }           // Date, DateTime, Instant, or Time
+    public bool HasTimezone { get; }
+
+    public static bool TryParse(string? literal, FhirPrimitive kind, out FhirTemporal? result);
+    public static int? Compare(FhirTemporal? left, FhirTemporal? right); // FHIRPath tri-state ordering
+}
+```
+
+There is deliberately no resolved-instant member. One would have to be `null` at year/month precision
+and for every `time`, because materializing a `DateTimeOffset` there fabricates data the source never
+supplied — which is the same ambiguous null this type exists to remove, sitting one dereference from
+`IElement.Value`. Use `Literal` for the source text and `Precision` for how much of it is real. Code
+needing a `DateTimeOffset` has to say *which* one it means — the lower bound, the upper bound, or a
+UTC normalization — so it belongs on a member named for that answer rather than a bare `Value` whose
+meaning changes with precision. See [ADR-2610](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/features/typed-models/adr-2610-typed-temporal-values.md).
+
+`Compare` returns `null` for an indeterminate FHIRPath ordering (e.g. `@2012 > @2012-01`, or comparing
+a timezone-bearing value against a timezone-less one) rather than an arbitrary `true`/`false` — use it
+instead of `CompareTo`, which is a total order for collections and does not carry FHIRPath semantics.
+
+### ResourceKey
+
+Identifies a FHIR resource by type, ID, and optional version/tenant (`Ignixa.Abstractions`):
+
+```csharp
+public record ResourceKey(
+    string ResourceType,
+    string Id,
+    string? VersionId = null,
+    int? TenantId = null)
+{
+    public override string ToString(); // "Patient/123", "Patient/123/_history/2", or "1/Patient/123" (tenant-scoped)
+}
+```
+
+### ResourceReference
+
+Represents a FHIR reference found while walking a resource — the element it was found at, the raw
+reference value, and (when parseable) the resource type/ID it points to. Declared in namespace
+`Ignixa.Serialization.Models` despite living in the Abstractions project:
+
+```csharp
+public sealed class ResourceReference
+{
+    public required string ElementPath { get; init; }         // e.g. "subject", "generalPractitioner"
+    public required string Value { get; init; }                // e.g. "Patient/123", "urn:uuid:..."
+    public required IReadOnlyList<string> TargetResourceTypes { get; init; } // empty = any type allowed
+    public bool IsCollection { get; init; }
+    public ReferenceType Type { get; init; }                   // Relative, Absolute, or Logical
+    public string? ResourceType { get; init; }                 // null for logical/absolute references
+    public string? ResourceId { get; init; }                   // null if unparseable
 }
 ```
 

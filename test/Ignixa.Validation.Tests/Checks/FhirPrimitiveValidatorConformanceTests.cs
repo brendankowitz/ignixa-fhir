@@ -26,19 +26,13 @@ public class FhirPrimitiveValidatorConformanceTests
         var json = JsonNode.Parse($@"{{ ""{fhirPropertyName}"": {jsonValue} }}");
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", allowedTypes);
-        return check.Validate(
-            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
-            new ValidationSettings(),
-            new ValidationState());
+        return check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), new ValidationSettings(), ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     private static ValidationResult ValidateNode(JsonObject json, string[] allowedTypes)
     {
         var sourceNode = JsonNodeSourceNode.Create(json);
-        return new ChoiceElementCheck("value", allowedTypes).Validate(
-            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
-            new ValidationSettings(),
-            new ValidationState());
+        return new ChoiceElementCheck("value", allowedTypes).Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), new ValidationSettings(), ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     [Theory]
@@ -288,10 +282,7 @@ public class FhirPrimitiveValidatorConformanceTests
         var json = JsonNode.Parse($@"{{ ""resourceType"": ""Observation"", ""{property}"": {valueJson}, ""_{property}"": {shadowJson} }}");
         var sourceNode = JsonNodeSourceNode.Create(json!);
         var check = new ChoiceElementCheck("value", allowedTypes);
-        return check.Validate(
-            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
-            new ValidationSettings(),
-            new ValidationState());
+        return check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), new ValidationSettings(), ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     [Fact]

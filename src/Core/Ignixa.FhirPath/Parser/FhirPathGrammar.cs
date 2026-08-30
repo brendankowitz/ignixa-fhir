@@ -9,6 +9,7 @@ using Ignixa.FhirPath.Expressions;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
+using System.Globalization;
 
 namespace Ignixa.FhirPath.Parser;
 
@@ -48,7 +49,7 @@ public static class FhirPathGrammar
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> IntegerLiteral =
         Token.EqualTo(FhirPathTokenKind.IntegerLiteral)
             .Select(t => new ConstantExpression(
-                int.Parse(t.ToStringValue()),
+                int.Parse(t.ToStringValue(), CultureInfo.InvariantCulture),
                 CreatePosition(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> LongLiteral =
@@ -59,14 +60,14 @@ public static class FhirPathGrammar
                 // Remove the 'L' or 'l' suffix before parsing
                 var numericPart = value.Substring(0, value.Length - 1);
                 return new ConstantExpression(
-                    long.Parse(numericPart),
+                    long.Parse(numericPart, CultureInfo.InvariantCulture),
                     CreatePosition(t));
             });
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> DecimalLiteral =
         Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
             .Select(t => new ConstantExpression(
-                decimal.Parse(t.ToStringValue()),
+                decimal.Parse(t.ToStringValue(), CultureInfo.InvariantCulture),
                 CreatePosition(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> BooleanLiteral =
@@ -77,20 +78,20 @@ public static class FhirPathGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> DateLiteral =
         Token.EqualTo(FhirPathTokenKind.DateLiteral)
-            .Select(t => new ConstantExpression(
-                t.ToStringValue(), // Store as string for now
+            .Select(t => (ConstantExpression)new TemporalConstantExpression(
+                t.ToStringValue(),
                 CreatePosition(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> DateTimeLiteral =
         Token.EqualTo(FhirPathTokenKind.DateTimeLiteral)
-            .Select(t => new ConstantExpression(
-                t.ToStringValue(), // Store as string for now
+            .Select(t => (ConstantExpression)new TemporalConstantExpression(
+                t.ToStringValue(),
                 CreatePosition(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> TimeLiteral =
         Token.EqualTo(FhirPathTokenKind.TimeLiteral)
-            .Select(t => new ConstantExpression(
-                t.ToStringValue(), // Store as string for now
+            .Select(t => (ConstantExpression)new TemporalConstantExpression(
+                t.ToStringValue(),
                 CreatePosition(t)));
 
     // Quantity: number followed by unit string (e.g., 5 'mg', 37.5 'Cel')
@@ -100,7 +101,7 @@ public static class FhirPathGrammar
             .Or(Token.EqualTo(FhirPathTokenKind.IntegerLiteral))
         from unitToken in Token.EqualTo(FhirPathTokenKind.StringLiteral)
         select new QuantityExpression(
-            decimal.Parse(valueToken.ToStringValue()),
+            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
             UnescapeString(unitToken.ToStringValue()),
             CreatePosition(valueToken, unitToken));
 
@@ -117,7 +118,7 @@ public static class FhirPathGrammar
                 return Types.CalendarDuration.IsCalendarKeyword(keyword);
             })
         select new QuantityExpression(
-            decimal.Parse(valueToken.ToStringValue()),
+            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
             keywordToken.ToStringValue(),  // Preserve keyword form (year, week, etc.)
             CreatePosition(valueToken, keywordToken));
 
@@ -154,10 +155,9 @@ public static class FhirPathGrammar
             {
                 var raw = t.ToStringValue().Substring(1); // Remove '%'
                 // Check if delimited with backticks and remove them
-                var varName = (raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`')
-                    ? raw.Substring(1, raw.Length - 2)
-                    : raw;
-                return (Expression)new VariableRefExpression(varName, CreatePosition(t));
+                var isDelimited = raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`';
+                var varName = isDelimited ? raw.Substring(1, raw.Length - 2) : raw;
+                return (Expression)new VariableRefExpression(varName, CreatePosition(t), isDelimited);
             });
 
     // Parenthesized expression: (expression)

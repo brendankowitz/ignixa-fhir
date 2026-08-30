@@ -42,8 +42,9 @@ public class ContainedResourceValidationTests
         }
 
         var settings = new ValidationSettings { Depth = depth };
-        var state = new ValidationState();
-        return schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+        return schema.Validate(element, settings, state);
     }
 
     #region Valid Contained Resources

@@ -88,6 +88,28 @@ public class ConditionalUpdateTests : CapabilityDrivenTestBase
     }
 
     /// <summary>
+    /// Tests conditional update criteria carrying a modifier the server does not support.
+    /// Expected: Returns 400 Bad Request rather than silently widening the update criteria.
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 SHALL-rejects an unsupported modifier (see Search.Modifiers.UnsupportedModifierTests for
+    /// the plain-search case). Conditional update must reject it too -- dropping the modifier would
+    /// widen the match set, which for an update means the wrong resource could be updated.
+    /// </remarks>
+    [Fact]
+    public async Task GivenAnUnsupportedModifier_WhenConditionalUpdate_ThenReturnsBadRequest()
+    {
+        // Arrange
+        var patient = CreatePatient().WithFamilyName("UnsupportedModifierUpdate").Build();
+
+        // Act - PUT /Patient?_id:above=abc (:above is not a supported modifier for _id)
+        var response = await Harness.PutResourceWithQueryAsync(patient, "_id:above=abc");
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "server should reject rather than silently widen update criteria");
+    }
+
+    /// <summary>
     /// Tests conditional update when no match exists but client provides an ID in the resource body.
     /// Expected: Creates a new resource with the client-provided ID (201 Created).
     /// </summary>

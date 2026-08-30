@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Hl7.Fhir.R4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ignixa core only. None of these reference Hl7.Fhir, so the 5.11.4 pin above is unopposed. -->
+    <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\Ignixa.Benchmarks\TestData\*.json" LinkBase="TestData" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compile the production adapters against the Firely 5.11.4 seam without introducing the SDK 6 package reference. -->
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\FirelyPrimitiveValues.cs" Link="FirelySdkAdapters\FirelyPrimitiveValues.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs" Link="FirelySdkAdapters\IgnixaElementAdapter.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaExtensions.cs" Link="FirelySdkAdapters\IgnixaExtensions.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\TypedElementAdapter.cs" Link="FirelySdkAdapters\TypedElementAdapter.cs" />
+  </ItemGroup>
+
+</Project>

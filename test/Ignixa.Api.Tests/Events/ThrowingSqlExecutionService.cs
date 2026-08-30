@@ -20,6 +20,6 @@ internal sealed class ThrowingSqlExecutionService : ISqlExecutionService
         CancellationToken cancellationToken)
         => throw new InvalidOperationException("execution service is deliberately unusable in this test");
 
-    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken)
+    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, bool disableRetries = false)
         => throw new InvalidOperationException("execution service is deliberately unusable in this test");
 }

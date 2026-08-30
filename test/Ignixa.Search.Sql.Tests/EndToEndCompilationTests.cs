@@ -846,7 +846,7 @@ public class EndToEndCompilationTests
         // which only applies at the true top level), the ChainJoin's InnerMatch is that ResourceSource directly
         // (no Intersect needed since _id was the target expression's only predicate).
         plan.Explain().ShouldBe(
-            "cte0 = ResourceSource[105] WHERE ResourceId = @p1\n" +
+            "cte0 = ResourceSource[105] WHERE ResourceId = @p0\n" +
             "root = ChainJoin(cte0, ref=55, inner=105, output=[103], Forward)");
         emitted.Sql.ShouldNotContain("org-1");
     }
@@ -872,7 +872,7 @@ public class EndToEndCompilationTests
 
         // Assert -- identical mechanism to the forward case, just on the referencing (inner) side this time
         plan.Explain().ShouldBe(
-            "cte0 = ResourceSource[106] WHERE ResourceId = @p1\n" +
+            "cte0 = ResourceSource[106] WHERE ResourceId = @p0\n" +
             "root = ChainJoin(cte0, ref=77, inner=106, output=[103], Reverse)");
         emitted.Sql.ShouldNotContain("obs-1");
     }
@@ -910,7 +910,7 @@ public class EndToEndCompilationTests
         // (ResourceSource left, ordinary match right) before feeding ChainJoin's InnerMatch.
         plan.Explain().ShouldBe(
             "cte0 = StringSearchParam[105,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
-            "cte1 = ResourceSource[105] WHERE ResourceId = @p2\n" +
+            "cte1 = ResourceSource[105] WHERE ResourceId = @p1\n" +
             "cte2 = Intersect(cte1, cte0)\n" +
             "root = ChainJoin(cte2, ref=55, inner=105, output=[103], Forward)");
         emitted.Sql.ShouldNotContain("org-1");
@@ -991,7 +991,8 @@ public class EndToEndCompilationTests
         // `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI), same as every other
         // unmodified `name` predicate in this file (e.g. GivenAForwardChainQuery above) -- not a plain Equal.
         plan.Explain().ShouldBe(
-            "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI top 50\n" +
+            "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "matchPage = MatchPageCte(top=50, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 
         var emitted = SqlBuilder.Run(plan);
@@ -1025,6 +1026,7 @@ public class EndToEndCompilationTests
         // Assert -- same StringLoweringRule default-arm shape as the forward-include test above.
         plan.Explain().ShouldBe(
             "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=77, seedTypes=[103], outputTypes=[104], seeds=[match], limit=1000, Reverse)");
 
         var emitted = SqlBuilder.Run(plan);
@@ -1052,7 +1054,8 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Explain().ShouldBe(
-            "root = ResourceSource[103] top 50\n" +
+            "root = ResourceSource[103]\n" +
+            "matchPage = MatchPageCte(top=50, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 
         var emitted = SqlBuilder.Run(plan);
@@ -1138,6 +1141,7 @@ public class EndToEndCompilationTests
         // Assert -- non-iterate always sorts first regardless of its position in the input list.
         plan.Explain().ShouldBe(
             "root = ResourceSource[103]\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)\n" +
             "inc1 = IncludeStage(ref=66, seedTypes=[105], outputTypes=[105], seeds=[inc0], limit=1000 iterate, Forward)");
 

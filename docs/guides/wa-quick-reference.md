@@ -4,10 +4,10 @@
 
 | Command | Focus | Use Case |
 |---------|-------|----------|
-| `/wa-review` | **All 5 Pillars** | Full assessment, pre-production checks |
-| `/wa-security` | 🔒 **Security** | Security audits, compliance, auth/authz |
-| `/wa-performance` | ⚡ **Performance** | Bottlenecks, optimization, slow queries |
-| `/wa-reliability` | 🛡️ **Reliability** | Error handling, resilience, availability |
+| `/wa-full-review` | **All 5 Pillars** | Full assessment, pre-production checks |
+| `/wa-security-review` | 🔒 **Security** | Security audits, compliance, auth/authz |
+| `/wa-performance-review` | ⚡ **Performance** | Bottlenecks, optimization, slow queries |
+| `/wa-reliability-review` | 🛡️ **Reliability** | Error handling, resilience, availability |
 
 ---
 
@@ -173,19 +173,19 @@ Grep: pattern="CancellationToken|timeout" -i=true output_mode="content"
 
 ### Before Committing
 ```bash
-/wa-security  # If touching auth/authz
-/wa-performance  # If changing queries/APIs
+/wa-security-review  # If touching auth/authz
+/wa-performance-review  # If changing queries/APIs
 ```
 
 ### Before PR Review
 ```bash
-/wa-review  # Full check for feature work
+/wa-full-review  # Full check for feature work
 ```
 
 ### Before Production
 ```bash
 # Full readiness check
-Use well-architected-agent to assess production readiness:
+Use review:well-architected-agent to assess production readiness:
 - Reliability: Health checks, error handling, monitoring
 - Security: Secrets externalized, auth/authz complete
 - Operational Excellence: Logging, metrics, runbooks
@@ -193,7 +193,7 @@ Use well-architected-agent to assess production readiness:
 
 ### After Incident
 ```bash
-/wa-reliability  # Post-mortem analysis
+/wa-reliability-review  # Post-mortem analysis
 ```
 
 ---
@@ -202,13 +202,13 @@ Use well-architected-agent to assess production readiness:
 
 ### Simple Feature Review
 ```
-Use well-architected-agent to review src/Ignixa.Application/Features/Patient/SearchPatientHandler.cs
+Use review:well-architected-agent to review src/Ignixa.Application/Features/Patient/SearchPatientHandler.cs
 focusing on Performance and Reliability pillars.
 ```
 
 ### Security Audit
 ```
-/wa-security
+/wa-security-review
 
 Focus on PHI data handling in the Patient export feature.
 Verify encryption, authorization, and audit logging.
@@ -216,7 +216,7 @@ Verify encryption, authorization, and audit logging.
 
 ### Performance Investigation
 ```
-/wa-performance
+/wa-performance-review
 
 Investigate slow response times in Patient search.
 Check for N+1 queries, missing indexes, and caching opportunities.
@@ -224,7 +224,7 @@ Check for N+1 queries, missing indexes, and caching opportunities.
 
 ### Production Readiness
 ```
-/wa-review
+/wa-full-review
 
 Assess FHIR Subscriptions feature for production deployment.
 Focus on Reliability and Operational Excellence.
@@ -235,9 +235,9 @@ Focus on Reliability and Operational Excellence.
 ## 📚 Resources
 
 - **Full Guide:** `docs/guides/well-architected-agent-guide.md`
-- **Agent Config:** `.claude/agents/well-architected-agent.md`
+- **Agent Config:** `review@agent-marketplace`
 - **Azure WAF Docs:** https://learn.microsoft.com/en-us/azure/well-architected/
-- **Project Standards:** `CLAUDE.md`
+- **Project Standards:** `AGENTS.md`
 
 ---
 
@@ -245,14 +245,14 @@ Focus on Reliability and Operational Excellence.
 
 | Workflow | Agent Sequence |
 |----------|----------------|
-| **Feature Development** | `adr-analyzer` → `coding-agent` → `well-architected-agent` |
-| **Security Compliance** | `well-architected-agent` (security) → `coding-agent` (fixes) |
-| **Performance Optimization** | `well-architected-agent` (performance) → `coding-agent` (optimizations) |
-| **Production Readiness** | `adr-analyzer` → `well-architected-agent` → approval |
+| **Feature Development** | `decide:adr-analyzer` → `build:coding-agent` → `review:well-architected-agent` |
+| **Security Compliance** | `review:well-architected-agent` (security) → `build:coding-agent` (fixes) |
+| **Performance Optimization** | `review:well-architected-agent` (performance) → `build:coding-agent` (optimizations) |
+| **Production Readiness** | `decide:adr-analyzer` → `review:well-architected-agent` → approval |
 
 ---
 
-**Pro Tip:** Run `/wa-review` weekly during active development to catch issues early!
+**Pro Tip:** Run `/wa-full-review` weekly during active development to catch issues early!
 
 ---
 

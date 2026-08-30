@@ -40,7 +40,7 @@ internal static class FhirSpecificFunctions
         // Equivalent to: .extension.where(url = <urlValue>)
 
         if (arguments.Count == 0)
-            throw new ArgumentException("extension() requires a url argument");
+            throw new FhirPathEvaluationException("extension() requires a url argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var urlArgument = arguments[0];
@@ -70,8 +70,14 @@ internal static class FhirSpecificFunctions
 
     /// <summary>
     /// resolve() - Takes a Reference element and resolves it to the actual resource.
-    /// Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
-    /// Per FHIR spec: resolve() returns empty on failure (does not throw).
+    /// Tries in-instance resolution first (contained resources by <c>#id</c>, sibling Bundle/Parameters
+    /// entries by <c>fullUrl</c> or <c>Type/id</c>, and bare <c>#</c> when currently evaluating from
+    /// inside one of the root's contained resources - see <see cref="ReferenceIndex.ResolveContainerScope"/>),
+    /// then falls back to the caller-supplied <see cref="FhirEvaluationContext.ElementResolver"/>.
+    /// Returns empty when a reference does not resolve, per the FHIR spec's resolve() contract - but
+    /// that contract covers a reference failing to resolve, not a defect in our own engine: a failure
+    /// while building or querying the in-instance index (a broken <see cref="IElement"/> implementation)
+    /// propagates rather than being reported as an empty result.
     /// </summary>
     [FhirPathFunction("resolve",
         SupportedContexts = "Reference-Resource",
@@ -86,69 +92,139 @@ internal static class FhirSpecificFunctions
     {
         // resolve() : collection
         // Takes a Reference element and resolves it to the actual resource.
-        // Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
-        // Per FHIR spec: resolve() returns empty on failure (does not throw).
+        // In-instance resolution (contained/bundle/parameters, via ReferenceIndex) is tried first,
+        // matching the bare-'#' short-circuit in Firely's ScopedNodeExtensions.Resolve<T>; the host
+        // ElementResolver is a fallback, not the only path, so contained and intra-Bundle references
+        // resolve with no external resolver at all. A reference that fails to resolve returns empty
+        // per spec; a defect in our own in-instance resolution propagates instead of being masked as
+        // "not found".
 
         var results = new List<IElement>();
 
-        if (context is not FhirEvaluationContext fhirContext || fhirContext.ElementResolver == null)
+        // The root the in-instance index is built from. Bare '#' does NOT resolve to this
+        // unconditionally: it resolves relative to context.Resource's containment scope (see
+        // ReferenceIndex.ResolveContainerScope). Firely's ScopedNodeExtensions.Resolve<T> (via its
+        // local locateContainer function) returns the container only from inside a contained
+        // resource's own scope, and null at root/Bundle-entry scope - its own ScopedNodeOnBaseTests
+        // asserts Resolve("#") is null for both a Bundle and a Bundle entry resource (verified
+        // against Firely 5.13.1 and 6.0.1, 2026-08).
+        var root = context.RootResource ?? context.Resource;
+        var referenceIndex = context.ReferenceIndexCache.GetOrBuild(root);
+        var elementResolver = (context as FhirEvaluationContext)?.ElementResolver;
+
+        if (referenceIndex is null && elementResolver is null)
         {
-            // No resolver available - return empty (this is expected during indexing)
             return results;
         }
 
         foreach (var element in focus)
         {
-            string? referenceValue = null;
-
-            // resolve() works on Reference types
-            if (element.InstanceType == "Reference" || element.InstanceType == "ResourceReference")
-            {
-                // Try to extract the reference string from the "reference" child element
-                referenceValue = element.Scalar("reference") as string;
-
-                // If no nested child, check if Value is the reference string directly
-                // This happens when navigating to .reference which returns the Reference with its value
-                if (string.IsNullOrEmpty(referenceValue) && element.Value is string valueStr)
-                {
-                    referenceValue = valueStr;
-                }
-            }
-            // Also handle string values directly (common in FHIRPath expressions like entry.reference.where(resolve() is ...))
-            else if (element.InstanceType is "string" or "uri" or "canonical" or "url" && element.Value is string strValue)
-            {
-                referenceValue = strValue;
-            }
-            else
-            {
-                // Not a reference - skip
-                continue;
-            }
+            var referenceValue = ExtractReferenceValue(element);
             if (string.IsNullOrEmpty(referenceValue))
             {
-                // No reference value - skip
                 continue;
             }
 
-            // Call the ElementResolver to resolve the reference
-            try
+            var resolved = ResolveReferenceValue(referenceValue, referenceIndex, elementResolver, context.Resource, element.Location);
+            if (resolved is not null)
             {
-                var resolved = fhirContext.ElementResolver(referenceValue);
-                if (resolved != null)
-                {
-                    results.Add(resolved);
-                }
-                // If resolved is null, the reference couldn't be resolved - skip silently
-            }
-            catch
-            {
-                // If resolution fails, skip silently (FHIR spec: resolve() returns empty on failure)
-                continue;
+                results.Add(resolved);
             }
         }
 
         return results;
     }
+
+    /// <summary>
+    /// Extracts the reference string that <c>resolve()</c> should look up from a focus element,
+    /// covering a <c>Reference</c>/<c>ResourceReference</c> with a <c>reference</c> child, a
+    /// <c>Reference</c> whose <see cref="IElement.Value"/> is the string directly (navigating to
+    /// <c>.reference</c> yields the Reference with its value), and a bare
+    /// <c>string</c>/<c>uri</c>/<c>canonical</c>/<c>url</c> value.
+    /// </summary>
+    private static string? ExtractReferenceValue(IElement element)
+    {
+        if (element.InstanceType is "Reference" or "ResourceReference")
+        {
+            var referenceValue = element.Scalar("reference") as string;
+            if (string.IsNullOrEmpty(referenceValue) && element.Value is string valueStr)
+            {
+                referenceValue = valueStr;
+            }
+
+            return referenceValue;
+        }
+
+        if (element.InstanceType is "string" or "uri" or "canonical" or "url" && element.Value is string strValue)
+        {
+            return strValue;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves a single reference value: in-instance first, then the host resolver. An in-instance
+    /// lookup failure (a defect in our own engine, e.g. a broken <see cref="IElement"/> implementation)
+    /// propagates rather than being swallowed - only a HOST resolver failure is treated as "not found",
+    /// because <see cref="FhirEvaluationContext.ElementResolver"/> is caller-supplied code we do not
+    /// control, unlike <paramref name="referenceIndex"/>. A bare <c>#</c> is scope-dependent (see
+    /// <see cref="ReferenceIndex.ResolveContainerScope"/>): when an in-instance index exists it is
+    /// decided entirely in-instance and never falls through to the host resolver - agreeing with
+    /// Firely and HAPI for this one case, though the two diverge everywhere else: Firely's
+    /// <c>ScopedNodeExtensions.Resolve&lt;T&gt;</c> still consults the host resolver for an
+    /// unresolved <c>#id</c>, while HAPI's <c>FHIRPathEngine.funcResolve</c> short-circuits every
+    /// <c>#</c>-prefixed reference and never does. Ignixa follows Firely here (see
+    /// <c>GivenUnresolvedFragmentReference_WhenElementResolverCanResolveIt_ThenFallsBackToResolver</c>).
+    /// When there is no in-instance index at all (no <see cref="EvaluationContext.Resource"/> /
+    /// <see cref="EvaluationContext.RootResource"/>), there is no scope to decide bare <c>#</c>
+    /// from, so it falls through to the host resolver like any other reference. Every other
+    /// reference shape tries in-instance first, then falls back to the host resolver if no
+    /// in-instance result is found.
+    /// </summary>
+    private static IElement? ResolveReferenceValue(
+        string referenceValue,
+        ReferenceIndex? referenceIndex,
+        Func<string, IElement?>? elementResolver,
+        IElement? currentResource,
+        string? focusLocation)
+    {
+        if (referenceValue == "#" && referenceIndex is not null)
+        {
+            return referenceIndex.ResolveContainerScope(currentResource);
+        }
+
+        var resolved = referenceIndex?.Resolve(referenceValue, focusLocation);
+
+        if (resolved is not null || elementResolver is null)
+        {
+            return resolved;
+        }
+
+        try
+        {
+            return elementResolver(referenceValue);
+        }
+        catch (Exception ex) when (!IsCancellationOrOutOfMemory(ex))
+        {
+            // WHY: the host resolver is a trust boundary (caller-supplied code), so an ordinary
+            // failure there is "reference not found" per spec - but cancellation/OOM are not that,
+            // and must propagate rather than being reported as an empty resolve() result.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// True for a direct <see cref="OperationCanceledException"/>/<see cref="OutOfMemoryException"/>,
+    /// or one wrapped in an <see cref="AggregateException"/> - which is exactly the shape a
+    /// sync-over-async host resolver (<c>.Result</c>/<c>.Wait()</c> over a cancelled or OOM-failing
+    /// task) produces, and which a plain <c>is not OperationCanceledException</c> filter would miss
+    /// because <see cref="AggregateException"/> does not derive from it.
+    /// </summary>
+    private static bool IsCancellationOrOutOfMemory(Exception ex) =>
+        ex is OperationCanceledException or OutOfMemoryException
+        || (ex is AggregateException aggregate
+            && aggregate.Flatten().InnerExceptions.Any(inner => inner is OperationCanceledException or OutOfMemoryException));
 
     /// <summary>
     /// getResourceKey() - SQL on FHIR v2 function that returns resourceType/id for the ROOT resource.
@@ -361,8 +437,8 @@ internal static class FhirSpecificFunctions
     /// </summary>
     private static string? ExtractUnitFromQuantity(IElement element)
     {
-        // Handle Quantity type from our Types namespace
-        if (element.Value is Quantity qty)
+        // Handle the FhirQuantity value carried by a FHIRPath quantity literal
+        if (element.Value is FhirQuantity qty)
         {
             return qty.Unit;
         }
@@ -407,7 +483,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'conformsTo' is not supported. It requires profile validation infrastructure.");
+        throw new FhirPathFunctionNotSupportedException("conformsTo", "Function 'conformsTo' is not supported. It requires profile validation infrastructure.");
     }
 
     /// <summary>
@@ -427,7 +503,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'memberOf' is not supported. It requires terminology service integration.");
+        throw new FhirPathFunctionNotSupportedException("memberOf", "Function 'memberOf' is not supported. It requires terminology service integration.");
     }
 
     /// <summary>
@@ -447,7 +523,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'validateVS' is not supported. It requires terminology service integration.");
+        throw new FhirPathFunctionNotSupportedException("validateVS", "Function 'validateVS' is not supported. It requires terminology service integration.");
     }
 
     /// <summary>
@@ -467,7 +543,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'translate' is not supported. It requires terminology service integration.");
+        throw new FhirPathFunctionNotSupportedException("translate", "Function 'translate' is not supported. It requires terminology service integration.");
     }
 
     /// <summary>
@@ -487,7 +563,7 @@ internal static class FhirSpecificFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        throw new NotSupportedException("Function 'hasTemplateIdOf' is not supported. CDA support is out of scope.");
+        throw new FhirPathFunctionNotSupportedException("hasTemplateIdOf", "Function 'hasTemplateIdOf' is not supported. CDA support is out of scope.");
     }
 
     #endregion

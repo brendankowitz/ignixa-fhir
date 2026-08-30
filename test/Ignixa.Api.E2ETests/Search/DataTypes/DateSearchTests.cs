@@ -299,6 +299,15 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
     /// obs[7] is a Period, so it appears in the eq rows above only for search values at month precision
     /// or coarser (1980, 1980-05), the only ones wide enough to contain May 16 through May 17.
     /// </summary>
+    /// <remarks>
+    /// This is deliberately not an <c>eq</c> query. "The row's range covers this instant" is an overlap, and
+    /// <c>eq</c> is containment the other way round — a two-day period is never contained in an instant, so
+    /// <c>date=&lt;instant&gt;</c> correctly returns nothing here. The prefix pair below is how the spec
+    /// expresses overlap: <c>le</c> gives "target starts at or before" and <c>ge</c> "target ends at or
+    /// after", and their conjunction is exactly the set of rows spanning the instant. The expected
+    /// observations are unchanged from when this asserted an overlap-shaped <c>eq</c>, because the intent
+    /// was always overlap; only the query needed to say so.
+    /// </remarks>
     [Theory]
     [InlineData("1980-05-16T16:32:15.500")] // Falls inside obs[7]'s period but contains none of it; obs[1] and obs[2] are coarser still
     public async Task GivenADateTimeSearchParam_WhenSearchedAgainstAPeriod_ThenCorrectBundleShouldBeReturned(
@@ -309,7 +318,9 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
         RequireSearchParameter("Observation", "date");
 
         // Act
-        var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&date={queryValue}");
+        var results = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={_fixture.Tag}&date=le{queryValue}&date=ge{queryValue}");
 
         // Assert
         var expectedObservations = expectedIndices.Select(i => _fixture.Observations[i]).ToArray();

@@ -582,7 +582,7 @@ Change it to:
 ```
 
 (The pre-existing `// No profile-specific attributes for Amsterdam` comment is dropped rather than
-re-homed — it stated the obvious once `Attributes` is simply absent from the call, and CLAUDE.md's
+re-homed — it stated the obvious once `Attributes` is simply absent from the call, and AGENTS.md's
 comment rule is why-not-what.)
 
 - [ ] **Step 4: Run test to verify it passes**

@@ -36,7 +36,7 @@ public class SchemaDeployerUpgradeTests
             => new((IReadOnlyList<TenantConfiguration>)new List<TenantConfiguration> { _tenant });
 
         public ValueTask<TenantConfiguration?> ResolveByHostAsync(string host, CancellationToken cancellationToken = default)
-            => new(_tenant.Hostnames.Contains(host, StringComparer.OrdinalIgnoreCase) ? _tenant : null);
+            => new((TenantConfiguration?)null);
     }
 
     // IHostEnvironment.EnvironmentName is settable but the concrete HostingEnvironment
@@ -56,8 +56,8 @@ public class SchemaDeployerUpgradeTests
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
         if (string.IsNullOrEmpty(connectionString))
         {
-            throw new InvalidOperationException(
-                "TEST_SQL_CONNECTION_STRING must be set to run this test (see docker-compose.test.yml).");
+            throw new SkipException(
+                "TEST_SQL_CONNECTION_STRING is not set (see docker-compose.test.yml) -- skipping, not failing.");
         }
 
         return connectionString;
@@ -128,15 +128,22 @@ public class SchemaDeployerUpgradeTests
         return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
+    /// <summary>
+    /// The schema targets Azure SQL Database (see the .sqlproj's DSP), so publishing it to the
+    /// box SQL Server container these tests run against is a platform mismatch DacFx blocks by
+    /// default. Production never needs this -- it deploys Azure-to-Azure.
+    /// </summary>
+    private static DacDeployOptions TestDeployOptions() => new() { AllowIncompatiblePlatform = true };
+
     private static SchemaDeployer CreateDeployer(string connectionString, bool automaticSchemaDeploymentEnabled = true)
         => new(
             new SingleTenantStore(connectionString),
             new FakeHostEnvironment { EnvironmentName = "Production" },
-            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = automaticSchemaDeploymentEnabled }),
+            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = automaticSchemaDeploymentEnabled, AllowIncompatiblePlatform = true }),
             new SchemaVersionResolver(new SingleTenantStore(connectionString), NullLogger<SchemaVersionResolver>.Instance),
             NullLogger<SchemaDeployer>.Instance);
 
-    [Fact]
+    [SkippableFact]
     public async Task GivenATenantAlreadyAtCurrentVersion_WhenUpgradeIfNeededAsyncCalled_ThenDoesNothing()
     {
         // Arrange -- deploy fresh via DeployIfEmptyAsync (stamps CurrentVersion per Task 1).
@@ -171,17 +178,26 @@ public class SchemaDeployerUpgradeTests
         }
     }
 
-    // Built from commit 0db642e3 (Phase B, before Task 9's terminology tables) via:
-    //   git worktree add /tmp/ignixa-phase-c-old-schema 0db642e3
-    //   dotnet build /tmp/ignixa-phase-c-old-schema/src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
-    // then copied into this project's Fixtures directory so the test is runnable without git
-    // history archaeology or a scratch worktree still being present. Structurally missing
-    // TermCodeSystem/TermConcept/etc and the SchemaVersion table itself (both predate this
-    // commit) -- a real schema gap, not a synthetic fixture, used to prove the upgrade
-    // *mechanism* works, not a genuine version-1-to-version-2 transition (none exists yet).
+    // A Phase-B-era build of this project's .sqlproj, committed as a binary fixture so the test is
+    // runnable without git archaeology or a scratch worktree still being present. It is structurally
+    // missing the terminology tables (TermCodeSystem/TermConcept/etc) and the SchemaVersion table
+    // itself -- a real schema gap, not a synthetic fixture, used to prove the upgrade *mechanism*
+    // works, not a genuine version-1-to-version-2 transition (none exists yet).
+    //
+    // To regenerate: delete Tables/Term*.sql and Tables/SchemaVersion.sql from a scratch copy of
+    // Ignixa.DataLayer.SqlServer.Database, build it --configuration Release, and copy the resulting
+    // .dacpac here. (Deliberately described by content rather than by a commit hash: this branch
+    // has been rebased, so any hash cited here would not survive.)
+    //
+    // The scratch copy MUST keep the real project's <DSP>. The dacpac records its target platform,
+    // and DacFx refuses to publish across a platform mismatch unless explicitly allowed -- a
+    // fixture built against a different target than the project fails at deploy time with
+    // DeploymentCompatibilityException rather than testing anything. Verify after regenerating:
+    // the DspName in the dacpac's model.xml must match the .sqlproj's DSP
+    // (Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider).
     private const string OldDacpacFixtureFileName = "phase-b-pre-task9-schema.dacpac";
 
-    [Fact]
+    [SkippableFact]
     public async Task GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenUpgradesToCurrentAndStampsTheVersion()
     {
         // Arrange -- a real, empty, freshly-created database.
@@ -200,7 +216,7 @@ public class SchemaDeployerUpgradeTests
             using (var oldPackage = DacPackage.Load(oldDacpacStream))
             {
                 var oldDacServices = new DacServices(connectionString);
-                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, cancellationToken: CancellationToken.None);
+                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, options: TestDeployOptions(), cancellationToken: CancellationToken.None);
             }
 
             var tableNamesAfterOldDeploy = await GetTableNamesAsync(connectionString, CancellationToken.None);
@@ -237,7 +253,45 @@ public class SchemaDeployerUpgradeTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
+    public async Task GivenATenantOnAnOlderRealSchemaAndAutomaticDeploymentDisabled_WhenUpgradeIfNeededAsyncCalled_ThenThrowsAndDoesNotModifySchema()
+    {
+        // Arrange -- a real, empty, freshly-created database on the OLD (pre-Phase-C, version 0)
+        // schema, exactly like GivenATenantOnAnOlderRealSchema_.../ThenUpgradesToCurrentAndStampsTheVersion,
+        // but with automatic deployment disabled. Bootstrapping the SchemaVersion table is not exempt
+        // from AutomaticSchemaDeploymentEnabled -- an operator who opted out must be told to use the
+        // CLI even for a tenant that predates schema versioning.
+        var databaseName = $"SchemaDeployerUpgradeTest_{Guid.NewGuid():N}";
+        var connectionString = BuildConnectionStringForDatabase(databaseName);
+        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
+
+        try
+        {
+            var oldDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", OldDacpacFixtureFileName);
+            using (var oldDacpacStream = File.OpenRead(oldDacpacPath))
+            using (var oldPackage = DacPackage.Load(oldDacpacStream))
+            {
+                var oldDacServices = new DacServices(connectionString);
+                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, options: TestDeployOptions(), cancellationToken: CancellationToken.None);
+            }
+
+            var deployer = CreateDeployer(connectionString, automaticSchemaDeploymentEnabled: false);
+
+            // Act / Assert
+            await Should.ThrowAsync<InvalidOperationException>(
+                () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
+
+            var tableNamesAfterAttempt = await GetTableNamesAsync(connectionString, CancellationToken.None);
+            tableNamesAfterAttempt.ShouldNotContain("SchemaVersion");
+            tableNamesAfterAttempt.ShouldNotContain("TermCodeSystem");
+        }
+        finally
+        {
+            await DropDatabaseAsync(databaseName, CancellationToken.None);
+        }
+    }
+
+    [SkippableFact]
     public async Task GivenATenantWithAGenuinelyDestructiveDiffPending_WhenUpgradeIfNeededAsyncCalled_ThenThrowsAndDoesNotModifySchema()
     {
         // Arrange -- a real, empty, freshly-created database, deployed to the current dacpac's

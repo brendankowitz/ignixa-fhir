@@ -61,9 +61,6 @@ public partial class SearchParameter : DomainResourceJsonNode
     public MutableJsonList<ContactDetail> Contact => GetListProperty<ContactDetail>("contact");
 
     [JsonIgnore]
-    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
-
-    [JsonIgnore]
     public PrimitiveElement<string> DateElement => new(MutableNode, "date");
 
     [JsonIgnore]
@@ -111,26 +108,10 @@ public partial class SearchParameter : DomainResourceJsonNode
     }
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
-
-    [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
-
-    [JsonIgnore]
     public MutableJsonList<CodeableConcept> Jurisdiction => GetListProperty<CodeableConcept>("jurisdiction");
 
     [JsonIgnore]
     public MutablePrimitiveList<string> Modifier => GetPrimitiveListProperty<string>("modifier");
-
-    [JsonIgnore]
-    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
     [JsonIgnore]
     public bool? MultipleAnd
@@ -185,13 +166,6 @@ public partial class SearchParameter : DomainResourceJsonNode
 
     [JsonIgnore]
     public MutablePrimitiveList<string> Target => GetPrimitiveListProperty<string>("target");
-
-    [JsonIgnore]
-    public Narrative? Text
-    {
-        get => GetComplexProperty<Narrative>("text");
-        set => SetProperty("text", value?.MutableNode);
-    }
 
     [JsonIgnore]
     public SearchParamType? Type

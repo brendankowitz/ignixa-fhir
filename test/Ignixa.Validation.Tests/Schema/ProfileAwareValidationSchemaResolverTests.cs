@@ -242,7 +242,7 @@ public class ProfileAwareValidationSchemaResolverTests
         schema.ShouldNotBeNull();
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(element);
         var result = schema!.Validate(element, settings, state);
 
         result.Issues.ShouldContain(

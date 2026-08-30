@@ -41,12 +41,8 @@ var element = sourceNode.ToElement(schemaProvider);
 // Validate the resource
 var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
 
-// ValidationState is optional - omit for simple scenarios
+// Omit the state and the schema roots one at this element for you
 var result = schema.Validate(element, settings);
-
-// Or provide your own state for advanced scenarios (tracking, caching, etc.)
-// var state = new ValidationState();
-// var result = schema.Validate(element, settings, state);
 
 if (!result.IsValid)
 {
@@ -59,32 +55,52 @@ if (!result.IsValid)
 
 ## Validation State
 
-The `ValidationState` parameter is optional and can be omitted for simple scenarios. A default state will be created automatically.
+`ValidationState` carries the resource a validation is rooted at. That root is what `%resource` and
+`%rootResource` resolve to, so every state must have one — there is no public constructor, and
+`ValidationState.ForRoot(element)` is the only way to make one. The two-argument `Validate` overload
+calls it for you, which is why most callers never name the type.
+
+:::warning A state is rooted at one resource
+Never share one `ValidationState` across several resources — `ForRoot` binds `%resource` to the element
+you pass it, and nothing re-roots it for you. The two-argument overload avoids this by construction (it
+roots a fresh state per call), so this only matters if you implement a custom `IValidationCheck` (below)
+that builds or forwards a `ValidationState` itself. Get it wrong and invariants evaluate against the
+*wrong* resource silently, and only at `ValidationDepth.Full`, where invariants actually run.
+:::
 
 ### When to Provide ValidationState
 
-Provide your own `ValidationState` when you need:
+Never, from outside the SDK. `ValidationSchema.Validate(element, settings, state)` — the overload that
+takes an explicit `ValidationState` — is `internal`. External callers only ever see the two-argument
+overload shown above, which roots a fresh state at the element you pass it; there is no public way to
+supply your own state, and so no public way to mis-root one.
 
-1. **Shared cache across validations** - Reuse expensive computations (e.g., compiled FHIRPath expressions)
-2. **Resource tracking** - Track which resources have been validated in a batch operation
-3. **Context information** - Pass resource type, ID, and location context through nested validations
+The internal overload exists so validation of a nested element can carry its enclosing validation's scope
+down, and different checks need different disciplines: `ContainedResourceCheck` re-roots — `%resource`
+moves to the contained resource while `%rootResource` stays on the container — while
+`NestedComplexTypeCheck` and `ChoiceVariantNestedCheck` deliberately do not re-root, because a nested
+datatype is not a resource and `%resource` must keep pointing at the one enclosing it. An external caller
+has no way to know which discipline a given case wants, which is why the overload isn't exposed rather
+than documented with a warning.
+
+To validate many resources, root a fresh state per resource by calling the two-argument overload once per
+resource — it does this for you:
 
 ```csharp
-// Create state with shared cache for multiple validations
-var state = new ValidationState();
-
-// Validate multiple resources with shared state
 foreach (var resource in resources)
 {
     var element = resource.ToElement(schemaProvider);
-    var result = schema.Validate(element, settings, state);
-
-    // Expensive FHIRPath expressions are cached in state.Global.Cache
-    // state.Global.ResourcesValidated is automatically incremented
+    var result = schema.Validate(element, settings);
 }
-
-Console.WriteLine($"Validated {state.Global.ResourcesValidated} resources");
 ```
+
+:::note No run-level caching today
+`ValidationState.Global` exposes a `Cache` dictionary and a `ResourcesValidated` counter, but nothing
+in the SDK currently reads or writes either — sharing a `GlobalState` across validations buys you
+nothing at present. Each constraint parses its FHIRPath expression once per check instance and the
+checks live on the schema, so reuse comes from caching the *schema* (see `CachedSchemaResolver` above),
+not from reusing a state.
+:::
 
 ### State Levels
 

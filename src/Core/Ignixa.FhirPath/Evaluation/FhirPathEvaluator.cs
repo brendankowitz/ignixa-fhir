@@ -6,10 +6,13 @@
  * Uses immutable EvaluationContext for pure functional evaluation.
  */
 
+using System.Collections.Frozen;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation.Functions;
+using Ignixa.FhirPath.Types;
 using Ignixa.FhirPath.Visitors;
 
 namespace Ignixa.FhirPath.Evaluation;
@@ -41,17 +44,39 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// <summary>
     /// Evaluates a FhirPath expression against an input element and returns matching elements.
     /// </summary>
-    /// <param name="input">The root element to evaluate against</param>
+    /// <param name="input">The node to evaluate against - not necessarily a resource</param>
     /// <param name="expression">The parsed FhirPath expression</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>Collection of elements that match the expression</returns>
     /// <remarks>
+    /// <para>
+    /// <b><c>%context</c> is filled in from <paramref name="input"/>; <c>%resource</c> is not.</b> The FHIRPath
+    /// specification defines <c>%context</c> as "the original node that was passed to the evaluation engine",
+    /// which is exactly this argument, whereas FHIR defines <c>%resource</c> as "the resource that contains the
+    /// original node that is in %context" - a node this method has no way to find, because
+    /// <see cref="IElement"/> carries no parent link. The host binds it or it resolves to empty.
+    /// </para>
+    /// <para>
+    /// This is why <see cref="TypedElementExtensions.Select"/> defaults <c>%resource</c> and this method does
+    /// not: that overload's contract names its input "the root element", while this one's callers routinely
+    /// pass a sub-element. See the remarks on that method for the full reasoning; the two are deliberately
+    /// different, not accidentally inconsistent.
+    /// </para>
+    /// <para>
     /// For best performance, use a <see cref="Parser.FhirPathParser"/> with <see cref="Parsing.CompilationOptions.Optimize"/>
     /// set to true to optimize expressions at parse-time rather than evaluation-time.
+    /// </para>
     /// </remarks>
     public IEnumerable<IElement> Evaluate(IElement input, Expression expression, EvaluationContext? context = null)
     {
         context ??= new EvaluationContext();
+
+        // %context is "the original node that was passed to the evaluation engine", so this is the only
+        // place that can know it. A caller that set it explicitly keeps its own choice.
+        if (context.ContextNode is null)
+        {
+            context = context.WithContextNode(input);
+        }
 
         // Push the root element onto the $this stack so $this resolves correctly throughout evaluation
         context = context.PushThis(input);
@@ -142,7 +167,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         if (expression.Arguments.Count is < 1 or > 2)
         {
-            throw new InvalidOperationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
+            throw new FhirPathEvaluationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
         }
 
         var nameExpr = expression.Arguments[0];
@@ -163,7 +188,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (string.IsNullOrEmpty(variableName))
         {
-            throw new InvalidOperationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
+            throw new FhirPathEvaluationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
         }
 
         ImmutableList<IElement> value;
@@ -177,7 +202,18 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             value = focus.ToImmutableList();
         }
 
-        context.DefinedVariables[variableName] = value;
+        if (DefineVariableRules.ReservedVariableNames.Contains(variableName))
+        {
+            throw new FhirPathEvaluationException(
+                $"defineVariable cannot redefine the system variable '%{variableName}'");
+        }
+
+        if (DefineVariableRules.IsAlreadyDefinedEarlierInSameChain(expression, variableName))
+        {
+            throw new FhirPathEvaluationException($"Variable '%{variableName}' is already defined");
+        }
+
+        context.Variables.Define(variableName, value);
 
         return focus;
     }
@@ -236,9 +272,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             // For union operator, each branch should have isolated variable scope
             // Variables defined in one branch should NOT be visible in sibling branches
-            // Use ForkForBranch() to give each branch its own copy of DefinedVariables
-            var leftContext = context.ForkForBranch();
-            var rightContext = context.ForkForBranch();
+            var leftContext = context.ForkVariableScope();
+            var rightContext = context.ForkVariableScope();
 
             var left = EvaluateExpression(context.Focus, expression.Left, leftContext).ToList();
             var right = EvaluateExpression(context.Focus, expression.Right, rightContext).ToList();
@@ -246,24 +281,29 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return EvaluateUnion(left, right);
         }
 
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        var operatorName = expression.Operator.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+        if (operatorName is "and" or "or" or "implies")
+        {
+            return EvaluateShortCircuitingLogic(operatorName, expression, context);
+        }
+
         var leftResult = EvaluateExpression(context.Focus, expression.Left, context).ToList();
         var rightResult = EvaluateExpression(context.Focus, expression.Right, context).ToList();
 
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        return expression.Operator.ToLowerInvariant() switch
-#pragma warning restore CA1308 // Normalize strings to uppercase
+        if (operatorName is "+" or "-" or "*" or "/" or "div" or "mod")
         {
-            "+" => EvaluateAddition(leftResult, rightResult),
-            "-" => EvaluateSubtraction(leftResult, rightResult),
-            "*" => EvaluateMultiplication(leftResult, rightResult),
-            "/" => EvaluateDivision(leftResult, rightResult),
-            "div" => EvaluateIntegerDivision(leftResult, rightResult),
-            "mod" => EvaluateModulo(leftResult, rightResult),
+            return EvaluateArithmetic(operatorName, leftResult, rightResult);
+        }
 
+        return operatorName switch
+        {
             "&" => EvaluateStringConcatenation(leftResult, rightResult),
 
-            "is" => EvaluateTypeIs(leftResult, expression.Right),
-            "as" => EvaluateTypeAs(leftResult, expression.Right),
+            "is" => EvaluateTypeIs(leftResult, expression.Right, context),
+            "as" => EvaluateTypeAs(leftResult, expression.Right, context),
 
             "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: true)),
             "contains" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: false)),
@@ -277,14 +317,66 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "<" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: false)),
             "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: true)),
 
-            "and" => EvaluateAnd(leftResult, rightResult),
-            "or" => EvaluateOr(leftResult, rightResult),
-            "xor" => EvaluateXor(leftResult, rightResult),
-            "implies" => EvaluateImplies(leftResult, rightResult),
+            "xor" => EvaluateXor(GetBooleanValue(leftResult, "xor"), GetBooleanValue(rightResult, "xor")),
 
             _ => throw new NotSupportedException($"Binary operator '{expression.Operator}' is not yet implemented")
         };
     }
+
+    /// <summary>
+    /// Evaluates <c>and</c>, <c>or</c> and <c>implies</c>, evaluating the right operand only when the
+    /// left one has not already decided the answer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every operand of a FHIRPath expression can signal an error, so whether an operand is evaluated at
+    /// all is observable behaviour, not an optimisation. R4's <c>tim-9</c> is the case that forces this:
+    /// <c>offset.empty() or (when.exists() and ((when in (…)).not()))</c> is written so that the guard on
+    /// the left makes the ill-formed right side unreachable, and evaluating both operands eagerly defeats
+    /// the guard.
+    /// </para>
+    /// <para>
+    /// Only the three cells that hold across the whole row of the spec's truth tables (§6.5 Boolean logic)
+    /// are short-circuited - see <see cref="DecideFromLeftOperand"/>. Empty is a distinct third state and
+    /// never decides a result on its own, so it always evaluates the right operand and falls through to
+    /// the full three-valued tables below.
+    /// </para>
+    /// </remarks>
+    private IEnumerable<IElement> EvaluateShortCircuitingLogic(string operatorName, BinaryExpression expression, EvaluationContext context)
+    {
+        var left = GetBooleanValue(EvaluateExpression(context.Focus, expression.Left, context).ToList(), operatorName);
+
+        if (DecideFromLeftOperand(operatorName, left) is { } decided)
+        {
+            return FunctionHelpers.ReturnBoolean(decided);
+        }
+
+        var right = GetBooleanValue(EvaluateExpression(context.Focus, expression.Right, context).ToList(), operatorName);
+
+        return operatorName switch
+        {
+            "and" => EvaluateAnd(left, right),
+            "or" => EvaluateOr(left, right),
+            _ => EvaluateImplies(left, right)
+        };
+    }
+
+    /// <summary>
+    /// Returns the result the left operand alone determines, or null when the right operand is still needed.
+    /// </summary>
+    /// <remarks>
+    /// The three cases are exactly the rows of the spec's truth tables whose cells are constant across
+    /// <c>true</c>, <c>false</c> and empty: <c>false and *</c> is always false, <c>true or *</c> is always
+    /// true, and <c>false implies *</c> is always true. No other row is constant, and in particular no
+    /// row keyed by an empty left operand is.
+    /// </remarks>
+    private static bool? DecideFromLeftOperand(string operatorName, bool? left) => (operatorName, left) switch
+    {
+        ("and", false) => false,
+        ("or", true) => true,
+        ("implies", false) => true,
+        _ => null
+    };
 
 
     private IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
@@ -296,11 +388,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Evaluates the AND operator with FHIRPath three-valued logic.
     /// Returns false if either is false, empty if either is empty and neither is false, otherwise true.
     /// </summary>
-    private IEnumerable<IElement> EvaluateAnd(List<IElement> left, List<IElement> right)
+    private static IEnumerable<IElement> EvaluateAnd(bool? leftBool, bool? rightBool)
     {
-        var leftBool = GetBooleanValue(left);
-        var rightBool = GetBooleanValue(right);
-
         // false AND anything = false
         if (leftBool == false || rightBool == false)
             return FunctionHelpers.ReturnBoolean(false);
@@ -317,11 +406,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Evaluates the OR operator with FHIRPath three-valued logic.
     /// Returns true if either is true, empty if either is empty and neither is true, otherwise false.
     /// </summary>
-    private IEnumerable<IElement> EvaluateOr(List<IElement> left, List<IElement> right)
+    private static IEnumerable<IElement> EvaluateOr(bool? leftBool, bool? rightBool)
     {
-        var leftBool = GetBooleanValue(left);
-        var rightBool = GetBooleanValue(right);
-
         // true OR anything = true
         if (leftBool == true || rightBool == true)
             return FunctionHelpers.ReturnBoolean(true);
@@ -338,11 +424,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Evaluates the XOR operator with FHIRPath three-valued logic.
     /// Returns empty if either is empty, otherwise true if exactly one is true.
     /// </summary>
-    private IEnumerable<IElement> EvaluateXor(List<IElement> left, List<IElement> right)
+    private static IEnumerable<IElement> EvaluateXor(bool? leftBool, bool? rightBool)
     {
-        var leftBool = GetBooleanValue(left);
-        var rightBool = GetBooleanValue(right);
-
         // If either is empty, result is empty
         if (leftBool == null || rightBool == null)
             return [];
@@ -355,11 +438,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Evaluates the IMPLIES operator with FHIRPath three-valued logic.
     /// Returns true if left is false or right is true, empty if cannot determine, otherwise false.
     /// </summary>
-    private IEnumerable<IElement> EvaluateImplies(List<IElement> left, List<IElement> right)
+    private static IEnumerable<IElement> EvaluateImplies(bool? leftBool, bool? rightBool)
     {
-        var leftBool = GetBooleanValue(left);
-        var rightBool = GetBooleanValue(right);
-
         // false IMPLIES anything = true
         if (leftBool == false)
             return FunctionHelpers.ReturnBoolean(true);
@@ -377,22 +457,139 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     }
 
     /// <summary>
-    /// Converts a collection to a boolean value for use in logical operators (and, or, xor, implies).
-    /// Per FHIRPath spec:
-    /// - Empty collection returns null (unknown)
-    /// - Single boolean element returns that boolean value
-    /// - Non-empty collection (including non-boolean values) returns true (truthy/exists)
+    /// Applies FHIRPath's Singleton Evaluation of Collections to one operand of a boolean operator,
+    /// returning <see langword="null"/> for the empty collection (the third state of the truth tables).
     /// </summary>
-    private static bool? GetBooleanValue(List<IElement> elements)
+    /// <remarks>
+    /// <para>
+    /// §Boolean logic: "For all boolean operators, the collections passed as operands are first evaluated
+    /// as Booleans (as described in Singleton Evaluation of Collections)." That algorithm has exactly one
+    /// case that is not a value: a collection of more than one item, where "the evaluation will end and
+    /// signal an error to the calling environment". The spec works the case through by name -
+    /// <c>Patient.active and Patient.gender and Patient.telecom</c> "will result in an error because of
+    /// the multiple telecom elements" - so the multi-item arm is a mandated error, not a truthiness test.
+    /// A single non-boolean item does evaluate to true; that arm is the "expected input type is Boolean"
+    /// branch of the same algorithm and stays.
+    /// </para>
+    /// <para>
+    /// This is called at the point an operand is actually consumed, never before, which is what keeps the
+    /// rule from colliding with short-circuiting: <see cref="EvaluateShortCircuitingLogic"/> only reaches
+    /// the right operand once the left has failed to decide the result, so <c>false and (1 | 2)</c> is
+    /// still false rather than an error. Hoisting the check to the top of the operator would make the
+    /// three short-circuited rows throw and silently break R4's <c>tim-9</c>.
+    /// </para>
+    /// <para>
+    /// <c>not()</c> has enforced the same rule since <c>testNotInvalid</c> (see
+    /// <see cref="Functions.BooleanFunctions.Not"/>); erroring here is what stops the operators and the
+    /// function reading the same clause two different ways.
+    /// </para>
+    /// </remarks>
+    private static bool? GetBooleanValue(List<IElement> elements, string operatorName)
     {
         if (elements.Count == 0)
             return null;
 
-        if (elements.Count == 1 && elements[0].Value is bool b)
-            return b;
+        if (elements.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"Operator '{operatorName}' requires singleton operands, but was given a collection of {elements.Count} items.");
+        }
 
-        // Non-empty collection (non-boolean or multiple elements) is truthy
-        return true;
+        return elements[0].Value is bool b ? b : true;
+    }
+
+    private static bool IsTemporalInstanceType(string? instanceType)
+        => instanceType is "date" or "dateTime" or "instant" or "time";
+
+    private static bool IsTemporalElement(IElement element)
+        => IsTemporalInstanceType(element.InstanceType) || element.Value is FhirTemporal;
+
+    /// <summary>
+    /// Enforces the FHIRPath rule that the other operand of <c>+</c>/<c>-</c> on a Date, DateTime or Time
+    /// must be a Quantity with a time-valued unit; anything else signals an error rather than producing a
+    /// value (FHIRPath 3.0 "Date/Time Arithmetic", official test <c>testPlus6</c>: <c>@1974-12-25 + 7</c>).
+    /// </summary>
+    /// <remarks>
+    /// Only reached once both operands are known to be single items, so the spec's empty-propagation rule
+    /// (<c>1 + {}</c> is empty, not an error) is already satisfied by the arity guard in the callers.
+    /// </remarks>
+    private static void ThrowIfTemporalWithoutQuantity(IElement left, IElement right, string operatorSymbol)
+    {
+        if (!IsTemporalElement(left) && !IsTemporalElement(right))
+        {
+            return;
+        }
+
+        var temporal = IsTemporalElement(left) ? left : right;
+        var other = ReferenceEquals(temporal, left) ? right : left;
+
+        throw new FhirPathEvaluationException(
+            $"Operator '{operatorSymbol}' on a {temporal.InstanceType} requires a Quantity with a time-valued unit, " +
+            $"but the other operand was of type '{other.InstanceType ?? "unknown"}'.");
+    }
+
+    /// <summary>
+    /// Builds the error for a math operator applied to operands whose types it is not defined for. FHIRPath's
+    /// Math preamble requires both operands to be of the same or compatible types and makes anything else an
+    /// error, not an empty result (official test <c>testMinus4</c>: <c>'a' - 'b'</c>).
+    /// </summary>
+    /// <remarks>
+    /// Only reached once both operands are known to be single items, so the spec's empty-propagation rule
+    /// (<c>1 * {}</c> is empty) and its divide-by-zero rule (<c>1 / 0</c> is empty) are already satisfied by
+    /// the guards above every call site.
+    /// </remarks>
+    /// <remarks>
+    /// Internal so that <see cref="QuantityEvaluator"/> raises the identical error for the identical
+    /// situation. Its arithmetic used to <c>return []</c> for every shape it did not implement, so
+    /// <c>1 'mg' + 5</c> answered empty while the structurally identical <c>1 + 'mg'</c> four lines below
+    /// threw - the Quantity branch sits above this one and swallowed it.
+    /// </remarks>
+    internal static FhirPathEvaluationException UndefinedForOperandTypes(IElement left, IElement right, string operatorSymbol)
+        => new($"Operator '{operatorSymbol}' is not defined for operands of type " +
+               $"'{DescribeOperandType(left)}' and '{DescribeOperandType(right)}'.");
+
+    internal static string DescribeOperandType(IElement element)
+        => element.InstanceType ?? element.Value?.GetType().Name ?? "unknown";
+
+    /// <summary>
+    /// Dispatches the six math operators, turning an arithmetic overflow into an empty collection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §Math: "Operations that cause arithmetic overflow or underflow will result in empty ({ })." The
+    /// six operators below reach overflow in two distinct ways - the <c>decimal</c> accumulation itself
+    /// (<c>1e28 * 1e28</c>) and the narrowing <c>(int)</c> casts that re-type an integer result
+    /// (<c>2147483647 + 1</c>), which .NET always checks whether or not the assembly is compiled
+    /// <c>/checked</c>. Neither was caught, so both escaped as a raw <see cref="OverflowException"/>:
+    /// not merely the wrong answer, but an exception type from outside this engine's error surface,
+    /// which callers like <c>FhirPathInvariantCheck</c> can only classify as an unexpected internal
+    /// fault. <see cref="VisitUnary"/> has always had this catch; putting it on one router rather than
+    /// on six evaluators is what stops the next operator being added without it.
+    /// </para>
+    /// <para>
+    /// Catching only <see cref="OverflowException"/> keeps the deliberate errors intact: the math
+    /// preamble's "incompatible items" rule still surfaces as <see cref="FhirPathEvaluationException"/>
+    /// from <see cref="UndefinedForOperandTypes"/>, which this does not intercept.
+    /// </para>
+    /// </remarks>
+    private IEnumerable<IElement> EvaluateArithmetic(string operatorName, List<IElement> left, List<IElement> right)
+    {
+        try
+        {
+            return operatorName switch
+            {
+                "+" => EvaluateAddition(left, right),
+                "-" => EvaluateSubtraction(left, right),
+                "*" => EvaluateMultiplication(left, right),
+                "/" => EvaluateDivision(left, right),
+                "div" => EvaluateIntegerDivision(left, right),
+                _ => EvaluateModulo(left, right)
+            };
+        }
+        catch (OverflowException)
+        {
+            return [];
+        }
     }
 
     private IEnumerable<IElement> EvaluateAddition(List<IElement> left, List<IElement> right)
@@ -404,24 +601,26 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime/Time + Quantity
-        if (leftValue is string leftDateStr && rightValue is Types.Quantity rightQty)
+        if (IsTemporalElement(left[0]) && WireValue.AsWireString(leftValue) is { } leftDateStr && rightValue is FhirQuantity rightQty)
         {
             return EvaluateDateTimeArithmetic(leftDateStr, rightQty, add: true, left[0].InstanceType);
         }
 
         // Quantity + Date/DateTime/Time
-        if (leftValue is Types.Quantity leftQty && rightValue is string rightDateStr)
+        if (leftValue is FhirQuantity leftQty && IsTemporalElement(right[0]) && WireValue.AsWireString(rightValue) is { } rightDateStr)
         {
             return EvaluateDateTimeArithmetic(rightDateStr, leftQty, add: true, right[0].InstanceType);
         }
 
-        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "+", right);
         }
 
+        ThrowIfTemporalWithoutQuantity(left[0], right[0], "+");
+
         // String concatenation via + operator
-        if (leftValue is string leftStringVal && rightValue is string rightStringVal)
+        if (WireValue.AsWireString(leftValue) is { } leftStringVal && WireValue.AsWireString(rightValue) is { } rightStringVal)
         {
             return [CreateString(leftStringVal + rightStringVal)];
         }
@@ -434,7 +633,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 : [CreateDecimal(result)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "+");
     }
 
     private IEnumerable<IElement> EvaluateSubtraction(List<IElement> left, List<IElement> right)
@@ -446,15 +645,17 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime/Time - Quantity
-        if (leftValue is string leftStr && rightValue is Types.Quantity qty)
+        if (IsTemporalElement(left[0]) && WireValue.AsWireString(leftValue) is { } leftStr && rightValue is FhirQuantity qty)
         {
             return EvaluateDateTimeArithmetic(leftStr, qty, add: false, left[0].InstanceType);
         }
 
-        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "-", right);
         }
+
+        ThrowIfTemporalWithoutQuantity(left[0], right[0], "-");
 
         if (FunctionHelpers.TryConvertToDecimal(leftValue, out var leftDecimal) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rightDecimal))
         {
@@ -464,7 +665,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 : [CreateDecimal(result)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "-");
     }
 
     private IEnumerable<IElement> EvaluateMultiplication(List<IElement> left, List<IElement> right)
@@ -475,7 +676,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "*", right);
         }
@@ -488,7 +689,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 : [CreateDecimal(result)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "*");
     }
 
     private IEnumerable<IElement> EvaluateDivision(List<IElement> left, List<IElement> right)
@@ -499,7 +700,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "/", right);
         }
@@ -512,7 +713,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [CreateDecimal(leftDecimal / rightDecimal)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "/");
     }
 
     private IEnumerable<IElement> EvaluateIntegerDivision(List<IElement> left, List<IElement> right)
@@ -528,7 +729,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [CreateInteger((int)Math.Truncate(leftDecimal / rightDecimal))];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "div");
     }
 
     private IEnumerable<IElement> EvaluateModulo(List<IElement> left, List<IElement> right)
@@ -544,45 +745,111 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [CreateDecimal(leftDecimal % rightDecimal)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "mod");
     }
 
+    /// <summary>
+    /// Evaluates <c>&amp;</c>, which concatenates two Strings and treats an empty operand as the empty
+    /// string.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The operator is a subsection of §Math, so it inherits that preamble: "If there is more than one
+    /// item, or incompatible items, the evaluation of the expression will end and signal an error to the
+    /// calling environment." Its own text defines it only "For strings", and the conversion table makes
+    /// Integer-to-String an <i>explicit</i> conversion, not an implicit one - so a non-String operand is
+    /// an incompatible item. Coercing through <c>ToString()</c> instead made <c>1 &amp; 'a'</c> answer
+    /// <c>'1a'</c>, silently performing a conversion the language reserves for <c>toString()</c>.
+    /// </para>
+    /// <para>
+    /// The multi-item rule comes from the same preamble and is what official test <c>testConcatenate4</c>
+    /// (<c>(1 | 2 | 3) &amp; 'b'</c>) encodes. Emptiness is checked before type, because
+    /// <c>'ABC' &amp; { } &amp; 'DEF'</c> is the spec's own worked example of the empty-as-empty-string
+    /// rule and must not be reinterpreted as an incompatible operand.
+    /// </para>
+    /// </remarks>
     private IEnumerable<IElement> EvaluateStringConcatenation(List<IElement> left, List<IElement> right)
     {
-        // FHIRPath spec: Empty collections are treated as empty strings for concatenation
-        // '1' & {} = '1', {} & 'b' = 'b'
         if (left.Count > 1 || right.Count > 1)
-            return [];
+        {
+            throw new FhirPathEvaluationException(
+                $"Operator '&' requires singleton operands, but was given {left.Count} item(s) on the left and {right.Count} item(s) on the right.");
+        }
 
-        var leftStr = left.Count == 1 ? (left[0].Value?.ToString() ?? string.Empty) : string.Empty;
-        var rightStr = right.Count == 1 ? (right[0].Value?.ToString() ?? string.Empty) : string.Empty;
-
-        return [new PrimitiveElement(leftStr + rightStr, "string")];
+        return [CreateString(AsConcatenationOperand(left, "left") + AsConcatenationOperand(right, "right"))];
     }
 
-    private IEnumerable<IElement> EvaluateTypeIs(List<IElement> left, Expression typeExpr)
+    /// <remarks>
+    /// A temporal is rejected even though this engine happens to carry <c>@2024-01-15</c> as a CLR
+    /// <see cref="string"/>: what makes an operand compatible is its FHIRPath type, not its storage, and
+    /// Date-to-String is no more implicit than Integer-to-String. Firely rejects <c>@2024-01-15 &amp; 'x'</c>
+    /// for the same reason, so testing storage alone would have left this one case silently divergent.
+    /// </remarks>
+    private static string AsConcatenationOperand(List<IElement> operand, string side)
     {
-        if (left.Count != 1)
-            return [];
+        if (operand.Count == 0)
+            return string.Empty;
 
+        if (operand[0].Value is string text && !IsTemporalElement(operand[0]))
+            return text;
+
+        throw new FhirPathEvaluationException(
+            $"Operator '&' is defined for String operands, but the {side} operand was of type " +
+            $"'{DescribeOperandType(operand[0])}'.");
+    }
+
+    private IEnumerable<IElement> EvaluateTypeIs(List<IElement> left, Expression typeExpr, EvaluationContext context)
+    {
         var typeName = TypeMatcher.ExtractTypeName(typeExpr);
         if (string.IsNullOrEmpty(typeName))
             return [];
 
-        return FunctionHelpers.ReturnBoolean(TypeMatcher.IsTypeMatch(left[0], typeName));
-    }
+        // Both of these are mandated by the same two sentences of the spec, and both are checked before
+        // the empty-input exit for the same reason 'as' checks them first: whether the identifier names a
+        // type, and whether the operand is a collection, are facts about the expression, so hiding them
+        // behind the data would let a nonsense type sit undetected until a resource happened to populate
+        // the path. See TypeMatcher.EnsureSingletonTypeTestInput for why this one is not version gated
+        // while the matching rule on 'as' is.
+        TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "operator 'is'");
+        TypeMatcher.EnsureSingletonTypeTestInput(left.Count, "operator 'is'");
 
-    private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr)
-    {
-        if (left.Count != 1)
+        // Empty input yields empty, NOT false. The specs disagree here and the disagreement is real:
+        // FHIRPath N1 (2.0.0), which every published FHIR version normatively references, ends the
+        // paragraph "In all other cases this operator returns the empty collection", while the 3.0.0
+        // build changed that sentence to "returns false". Empty is deliberate - it matches N1 and both
+        // reference engines. Do not "fix" it to false without also deciding to target 3.0.0.
+        if (left.Count == 0)
             return [];
 
+        return FunctionHelpers.ReturnBoolean(
+            TypeMatcher.IsTypeMatch(left[0], typeName, TypeMatchMode.TypeTest, context.Schema));
+    }
+
+    private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr, EvaluationContext context)
+    {
         var typeName = TypeMatcher.ExtractTypeName(typeExpr);
         if (string.IsNullOrEmpty(typeName))
             return [];
 
-        var strippedTypeName = TypeMatcher.StripNamespace(typeName);
-        return TypeMatcher.MatchesType(left[0], strippedTypeName) ? [left[0]] : [];
+        // Whether the identifier names a type does not depend on the data, so this is checked before the
+        // cardinality guard below - otherwise 'as' would quietly accept a nonsense type on empty input.
+        TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "operator 'as'");
+
+        TypeMatcher.EnsureSingletonInput(left.Count, context.Schema, "operator 'as'");
+
+        // Reached with more than one item only below R5, where EnsureSingletonInput does not throw.
+        // Filtering element-wise rather than returning empty is what makes the operator agree with the
+        // as() function, with Firely on every version, and with what HL7 meant by 'as' in the R4
+        // SearchParameter expressions - which they rewrote to ofType() in R5, the version where the
+        // singleton rule starts being enforced here. Returning empty instead made
+        // Observation.component.value as Quantity yield nothing for a blood pressure, so
+        // combo-value-quantity and component-value-quantity silently indexed no values at all.
+        //
+        // Calling the same helper CollectionFunctions.As uses, rather than reimplementing its body, is
+        // what stops the operator and the function drifting apart again - which is the defect this line
+        // exists to fix. FilterByType is subclass-aware over complex types, so this now agrees with
+        // 'is' on an Age: both see a Quantity. It stays exact over primitives; see TypeMatcher.
+        return TypeMatcher.FilterByType(left, typeName, context.Schema);
     }
 
     private bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn)
@@ -594,184 +861,296 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return null;
 
         if (singleItem.Count != 1)
+        {
+            // 'in' explicitly errors on a non-singleton left operand (official test testIn5:
+            // ('a' | 'c' | 'd') in 'b'). 'contains' shares this helper but its singleton is the right
+            // operand and the spec states no such rule for it, so it keeps returning empty.
+            if (isIn)
+            {
+                throw new FhirPathEvaluationException(
+                    $"The left operand of 'in' must be a single item, but was a collection of {singleItem.Count} items.");
+            }
+
             return null;
+        }
 
         if (collection.Count == 0)
             return false;
 
-        var itemValue = singleItem[0].Value;
-        return collection.Any(c => FunctionHelpers.AreEqual(c.Value, itemValue));
+        var item = singleItem[0];
+        return collection.Any(c => FunctionHelpers.AreElementsEqual(c, item));
     }
 
     private bool? CompareEquivalence(List<IElement> left, List<IElement> right, bool equivalent)
     {
-        if (left.Count == 0 && right.Count == 0)
-            return equivalent;
+        return AreCollectionsEquivalent(left, right, matchNames: false) == equivalent;
+    }
 
+    /// <summary>
+    /// Marks a right-hand item that no left-hand item currently holds.
+    /// </summary>
+    private const int Unpaired = -1;
+
+    /// <summary>
+    /// Determines whether two collections are equivalent, which is to say some one-to-one pairing of
+    /// their items makes every pair equivalent.
+    /// </summary>
+    /// <param name="left">The left collection.</param>
+    /// <param name="right">The right collection.</param>
+    /// <param name="matchNames">
+    /// Whether a pair must also agree on <see cref="IElement.Name"/>. Set when descending into the
+    /// children of a complex value, where position carries no meaning but the element name does.
+    /// </param>
+    /// <returns><see langword="true"/> when such a pairing exists.</returns>
+    /// <remarks>
+    /// <para>
+    /// The pairing is a <b>maximum</b> bipartite matching (Kuhn's augmenting-path algorithm), not a greedy
+    /// first-fit. Greedy is only sound when equivalence is transitive, and FHIRPath equivalence is not:
+    /// it compares decimals rounded to the <i>lesser</i> of the two stated precisions, so
+    /// <c>1.0 ~ 0.96</c> and <c>1.04 ~ 1.0</c> both hold while <c>1.04 ~ 0.96</c> does not. First-fit
+    /// pairs <c>1.0</c> with <c>1.0</c>, strands <c>1.04</c> against <c>0.96</c>, and reports two
+    /// collections as inequivalent even though the pairing <c>1.0-0.96, 1.04-1.0</c> exists - so the
+    /// answer depended on the order the operands happened to arrive in, which the spec forbids for a
+    /// collection operator. No sort or pre-ordering repairs this, because non-transitivity is intrinsic
+    /// to the rule; only a matching that can un-pair and re-pair is correct.
+    /// </para>
+    /// <para>
+    /// Adjacency is materialised up front so that <see cref="AreElementsEquivalent"/> - which recurses
+    /// over entire subtrees - is asked about each pair exactly once, however many times the augmenting
+    /// search revisits it. That keeps the comparison count at O(n^2), as before; only the pointer
+    /// chasing over the precomputed rows is O(n^3), and it is free by comparison. Collections here are
+    /// FHIR repeating elements, and no generated search-parameter expression uses <c>~</c> or <c>!~</c>.
+    /// </para>
+    /// <para>
+    /// The descent carries no depth guard, and deliberately so. A stack overflow cannot be caught, so
+    /// one here would falsify <c>ElementSearchIndexer</c>'s containment ladder rather than be reported
+    /// by it - but measured out-of-process, the floor is around 3,900 nested levels, and nothing can
+    /// arrive that deep. Every element tree the evaluator sees is parsed through
+    /// <c>JsonSourceNodeFactory</c>, whose <c>MaxDepth</c> is System.Text.Json's default of 64 and is
+    /// overridden nowhere in <c>src/</c>; <c>Utf8JsonWriter</c>'s non-configurable 1,000-level ceiling
+    /// means nothing deeper can be stored or returned even if it were built in memory. Guarding only
+    /// here would buy nothing in any case: <see cref="AreElementsEquivalent"/> calls
+    /// <c>FunctionHelpers.AreElementsEqual</c> on its first rung, whose equally unguarded descent
+    /// predates this method and reaches the same floor from <c>=</c>, <c>in</c>, <c>contains</c>,
+    /// <c>distinct()</c>, <c>|</c>, <c>intersect</c> and <c>exclude</c> - which generated search
+    /// parameters do use. <c>EquivalenceRecursionDepthTests</c> pins the parser ceiling that holds both.
+    /// </para>
+    /// </remarks>
+    private bool AreCollectionsEquivalent(
+        IReadOnlyList<IElement> left,
+        IReadOnlyList<IElement> right,
+        bool matchNames)
+    {
         if (left.Count != right.Count)
-            return !equivalent;
+            return false;
 
-        if (left.Count == 1 && right.Count == 1)
+        var candidates = new List<int>[left.Count];
+
+        for (var leftIndex = 0; leftIndex < left.Count; leftIndex++)
         {
-            // Try to extract quantities from elements (handles FHIR Quantity complex types)
-            var leftQty = TryExtractQuantity(left[0]);
-            var rightQty = TryExtractQuantity(right[0]);
+            var row = new List<int>();
 
-            if (leftQty != null && rightQty != null)
+            for (var rightIndex = 0; rightIndex < right.Count; rightIndex++)
             {
-                var isEquiv = AreEquivalent(leftQty, rightQty);
-                return isEquiv == equivalent;
+                if ((!matchNames || string.Equals(left[leftIndex].Name, right[rightIndex].Name, StringComparison.Ordinal))
+                    && AreElementsEquivalent(left[leftIndex], right[rightIndex]))
+                {
+                    row.Add(rightIndex);
+                }
             }
 
-            var isEquivValue = AreEquivalent(left[0].Value, right[0].Value);
-            return isEquivValue == equivalent;
+            // An item with no partner at all cannot be paired by any matching, so stopping here spares
+            // the remaining rows - each of which costs a full recursive descent per candidate.
+            if (row.Count == 0)
+                return false;
+
+            candidates[leftIndex] = row;
         }
 
-        var leftSorted = left.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
-        var rightSorted = right.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
+        var pairedWith = new int[right.Count];
+        Array.Fill(pairedWith, Unpaired);
+        var visited = new bool[right.Count];
 
-        for (int i = 0; i < leftSorted.Count; i++)
+        for (var leftIndex = 0; leftIndex < left.Count; leftIndex++)
         {
-            if (!AreEquivalent(leftSorted[i].Value, rightSorted[i].Value))
-                return !equivalent;
+            Array.Clear(visited);
+
+            // The counts are equal, so a matching that leaves any left item unpaired is not perfect,
+            // and a maximum matching that is not perfect proves no perfect one exists.
+            if (!TryPair(leftIndex, candidates, pairedWith, visited))
+                return false;
         }
 
-        return equivalent;
+        return true;
     }
 
     /// <summary>
-    /// Extracts a Quantity from an IElement, handling both FhirPath Quantity literals
-    /// and FHIR Quantity elements (which have value/unit/code children).
+    /// Pairs one left item, displacing already-paired items along an augmenting path where necessary.
     /// </summary>
-    private Types.Quantity? TryExtractQuantity(IElement element)
+    /// <param name="leftIndex">The left item to pair.</param>
+    /// <param name="candidates">For each left item, the right items it is equivalent to.</param>
+    /// <param name="pairedWith">
+    /// For each right item, the left item holding it, or <see cref="Unpaired"/>. Updated in place.
+    /// </param>
+    /// <param name="visited">
+    /// The right items already considered on this search, which is what stops it cycling. Reset by the
+    /// caller before each new left item.
+    /// </param>
+    /// <returns><see langword="true"/> when the item was paired without unpairing anyone permanently.</returns>
+    /// <remarks>
+    /// The displaced holder is asked to find another partner before the claim is honoured, so an earlier
+    /// pairing is only ever surrendered for one that still leaves its owner paired. This is the step
+    /// first-fit lacks, and the reason the result cannot depend on operand order.
+    /// </remarks>
+    private static bool TryPair(int leftIndex, List<int>[] candidates, int[] pairedWith, bool[] visited)
     {
-        // If the value is already a Quantity (FhirPath literal), return it directly
-        if (element.Value is Types.Quantity qty)
-            return qty;
-
-        // If it's a FHIR Quantity element, extract value and unit from children
-#pragma warning disable CA1308 // Normalize strings to uppercase - FHIR type names are case-insensitive
-        var instanceType = element.InstanceType?.ToLowerInvariant();
-#pragma warning restore CA1308 // Normalize strings to uppercase
-        if (instanceType == "quantity" || instanceType == "age" || instanceType == "distance" || 
-            instanceType == "duration" || instanceType == "count" || instanceType == "simplequantity" ||
-            instanceType == "moneyquantity")
+        foreach (var rightIndex in candidates[leftIndex])
         {
-            return ExtractQuantityFromFhirElement(element);
+            if (visited[rightIndex])
+                continue;
+
+            visited[rightIndex] = true;
+
+            if (pairedWith[rightIndex] == Unpaired
+                || TryPair(pairedWith[rightIndex], candidates, pairedWith, visited))
+            {
+                pairedWith[rightIndex] = leftIndex;
+                return true;
+            }
         }
 
-        return null;
+        return false;
     }
 
     /// <summary>
-    /// Extracts value and unit from a FHIR Quantity element's children.
+    /// Determines whether two single items are equivalent, descending into children when neither carries
+    /// a primitive value of its own.
     /// </summary>
-    private static Types.Quantity? ExtractQuantityFromFhirElement(IElement element)
+    /// <param name="left">The left item.</param>
+    /// <param name="right">The right item.</param>
+    /// <returns><see langword="true"/> when the two are equivalent.</returns>
+    /// <remarks>
+    /// The ladder is ordered so that the loosest rule that applies wins: an exact match settles it, then
+    /// the quantity rule (which converts units), then the primitive rule (which rounds decimals and
+    /// truncates temporals to the lesser precision), and only then a structural descent. A resource-backed
+    /// complex element - <c>CodeableConcept</c>, <c>HumanName</c>, <c>Address</c> - has a null
+    /// <see cref="IElement.Value"/> and carries its content in children, so the descent is what stops any
+    /// two such collections of equal length answering <see langword="true"/>, which was issue #411.
+    /// The descent matches children by name rather than by position, because repeating children have no
+    /// meaningful order.
+    /// </remarks>
+    private bool AreElementsEquivalent(IElement left, IElement right)
     {
-        decimal? value = null;
-        string? unit = null;
+        if (FunctionHelpers.AreElementsEqual(left, right))
+            return true;
 
-        var children = element.Children();
-        foreach (var child in children)
+        var leftQuantity = TryExtractQuantity(left);
+        var rightQuantity = TryExtractQuantity(right);
+
+        if (leftQuantity is not null || rightQuantity is not null)
         {
-            if (child.Name == "value" && child.Value != null)
-            {
-                if (child.Value is decimal d)
-                    value = d;
-                else if (child.Value is int i)
-                    value = i;
-                else if (child.Value is long l)
-                    value = l;
-                else if (child.Value is double dbl)
-                    value = (decimal)dbl;
-                else if (child.Value is string s && decimal.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
-                    value = parsed;
-            }
-            else if (child.Name == "code" && child.Value is string code)
-            {
-                // Prefer 'code' over 'unit' as it's the UCUM code
-                unit = code;
-            }
-            else if (child.Name == "unit" && child.Value is string unitVal && unit == null)
-            {
-                // Fall back to 'unit' if 'code' not present
-                unit = unitVal;
-            }
+            return leftQuantity is not null
+                && rightQuantity is not null
+                && AreEquivalent(leftQuantity, rightQuantity, left.InstanceType, right.InstanceType);
         }
 
-        if (value.HasValue)
-        {
-            return new Types.Quantity(value.Value, unit ?? "1");
-        }
+        if (left.Value is not null || right.Value is not null)
+            return AreEquivalent(left.Value, right.Value, left.InstanceType, right.InstanceType);
 
-        return null;
+        return AreCollectionsEquivalent(left.Children(), right.Children(), matchNames: true);
     }
 
-    private bool AreEquivalent(object? left, object? right)
+    /// <summary>
+    /// Reads an operand as a Quantity for equivalence, where a bare number is not one.
+    /// </summary>
+    /// <remarks>
+    /// The reading itself is <see cref="ValueOrdering.AsQuantity"/>, shared with the ordering operators,
+    /// equality and the aggregates. This used to be a second reader that differed from it in exactly one
+    /// respect - the unit it gave a Quantity element that declares none - and that difference was the
+    /// whole of why <c>~</c> and <c>=</c> disagreed about such an element.
+    /// <see cref="ValueOrdering.IsQuantity"/> still gates it, because the implicit Integer-to-Quantity
+    /// conversion <see cref="ValueOrdering.AsQuantity"/> applies would route plain numbers away from the
+    /// decimal-precision rule equivalence defines for them.
+    /// </remarks>
+    private static FhirQuantity? TryExtractQuantity(IElement element)
+    {
+        return ValueOrdering.IsQuantity(element) ? ValueOrdering.AsQuantity(element) : null;
+    }
+
+    /// <summary>
+    /// Determines whether two primitive values are equivalent, routing temporals by declared type.
+    /// </summary>
+    /// <param name="left">The left value.</param>
+    /// <param name="right">The right value.</param>
+    /// <param name="leftType">The left operand's declared instance type, or <see langword="null"/>.</param>
+    /// <param name="rightType">The right operand's declared instance type, or <see langword="null"/>.</param>
+    /// <remarks>
+    /// The types have to be threaded in rather than recovered from the values. A temporal literal's
+    /// value is a plain string once the parser has stripped the sigil, and a string literal keeps
+    /// whatever it was written with, so <c>@2013</c> arrives as <c>"2013"</c> and <c>'@2013'</c> as
+    /// <c>"@2013"</c>. Deciding temporality from that string treated the String as the temporal and the
+    /// Date as an ordinary string, which is how <c>'@2013' ~ @2013</c> came to answer true.
+    /// </remarks>
+    private bool AreEquivalent(object? left, object? right, string? leftType, string? rightType)
     {
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
 
         // Handle quantity equivalence with unit conversion
-        if (left is Types.Quantity leftQty && right is Types.Quantity rightQty)
+        if (left is FhirQuantity leftQty && right is FhirQuantity rightQty)
         {
-            // Try to compare after converting to same unit
-            var converter = Types.QuantityUnitConverter.Instance;
-            if (!converter.IsCompatible(leftQty.Unit, rightQty.Unit))
-                return false;
-
-            var convertedRight = rightQty.ConvertTo(leftQty.Unit, converter);
-            if (convertedRight == null)
+            // Incompatible units are false here rather than empty: equivalence has no third state, and
+            // the conversion itself is ValueOrdering's so that ~, = and < cannot disagree about which
+            // units relate.
+            if (!ValueOrdering.TryAlignUnits(leftQty, rightQty, out var leftValue, out var rightValue))
                 return false;
 
             // For quantities, equivalence (~) uses precision-based comparison per FHIRPath 3.0 spec:
             // "For Quantity values, equivalence compares values with respect to their stated precision."
             // Compare values when rounded to the lesser precision (fewer decimal places).
-            int precision1 = GetDecimalPrecision(leftQty.Value);
-            int precision2 = GetDecimalPrecision(convertedRight.Value);
+            int precision1 = GetDecimalPrecision(leftValue);
+            int precision2 = GetDecimalPrecision(rightValue);
             int minPrecision = Math.Min(Math.Min(precision1, precision2), 28); // Clamp to max decimal precision
 
-            decimal rounded1 = Math.Round(leftQty.Value, minPrecision, MidpointRounding.AwayFromZero);
-            decimal rounded2 = Math.Round(convertedRight.Value, minPrecision, MidpointRounding.AwayFromZero);
+            decimal rounded1 = Math.Round(leftValue, minPrecision, MidpointRounding.AwayFromZero);
+            decimal rounded2 = Math.Round(rightValue, minPrecision, MidpointRounding.AwayFromZero);
             return rounded1 == rounded2;
         }
 
-        if (left is string leftStr && right is string rightStr)
+        if (WireValue.AsWireString(left) is { } leftStr && WireValue.AsWireString(right) is { } rightStr)
         {
-            // Check if these are datetime strings (start with @ or look like dates/times)
-            if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
+            if (IsTemporalOperand(left, leftType) && IsTemporalOperand(right, rightType))
             {
-                // Normalize @ prefix and millisecond precision for datetime equivalence
-                var normalizedLeft = NormalizeMillisecondPrecision(leftStr.StartsWith('@') ? leftStr.Substring(1) : leftStr);
-                var normalizedRight = NormalizeMillisecondPrecision(rightStr.StartsWith('@') ? rightStr.Substring(1) : rightStr);
+                var normalizedLeft = NormalizeMillisecondPrecision(leftStr);
+                var normalizedRight = NormalizeMillisecondPrecision(rightStr);
 
                 // Per FHIRPath §6.5: For Date, DateTime, and Time values, comparison is done
                 // at the precision of the least precise operand. Trailing components are ignored.
                 // Only truncate when both operands are the same category (both Date or both DateTime).
-                var leftPrecision = GetDateTimePrecision(normalizedLeft);
-                var rightPrecision = GetDateTimePrecision(normalizedRight);
+                var leftPrecision = FhirTemporal.GetLiteralPrecision(normalizedLeft);
+                var rightPrecision = FhirTemporal.GetLiteralPrecision(normalizedRight);
 
                 // Date type has precision ≤ Day; DateTime/Time has precision ≥ Hour.
                 // Date vs DateTime are different types and never equivalent.
-                bool leftIsDateOnly = leftPrecision <= DateTimePrecision.Day;
-                bool rightIsDateOnly = rightPrecision <= DateTimePrecision.Day;
+                bool leftIsDateOnly = leftPrecision <= FhirTemporalPrecision.Day;
+                bool rightIsDateOnly = rightPrecision <= FhirTemporalPrecision.Day;
 
                 if (leftIsDateOnly != rightIsDateOnly)
                 {
                     return false;
                 }
 
-                if (leftPrecision != DateTimePrecision.Invalid && rightPrecision != DateTimePrecision.Invalid
+                if (leftPrecision != FhirTemporalPrecision.Invalid && rightPrecision != FhirTemporalPrecision.Invalid
                     && leftPrecision != rightPrecision)
                 {
                     // Treat Millisecond as Second — fractional seconds are part of the second value,
                     // not a separate trailing component per the FHIRPath spec.
-                    var effectiveLeft = leftPrecision == DateTimePrecision.Millisecond ? DateTimePrecision.Second : leftPrecision;
-                    var effectiveRight = rightPrecision == DateTimePrecision.Millisecond ? DateTimePrecision.Second : rightPrecision;
+                    var effectiveLeft = leftPrecision == FhirTemporalPrecision.Millisecond ? FhirTemporalPrecision.Second : leftPrecision;
+                    var effectiveRight = rightPrecision == FhirTemporalPrecision.Millisecond ? FhirTemporalPrecision.Second : rightPrecision;
 
                     if (effectiveLeft != effectiveRight)
                     {
-                        var minPrecision = (DateTimePrecision)Math.Min((int)effectiveLeft, (int)effectiveRight);
+                        var minPrecision = (FhirTemporalPrecision)Math.Min((int)effectiveLeft, (int)effectiveRight);
                         normalizedLeft = TruncateToDateTimePrecision(normalizedLeft, minPrecision);
                         normalizedRight = TruncateToDateTimePrecision(normalizedRight, minPrecision);
                     }
@@ -845,33 +1224,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return 0;
     }
 
-    /// <summary>
-    /// Determines if a string value appears to be a FHIRPath date/time value.
-    /// </summary>
-    private static bool IsDateTimeString(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return false;
-
-        // Starts with @ prefix
-        if (value.StartsWith('@'))
-            return true;
-
-        // Time-only format (starts with T)
-        if (value.StartsWith('T') && value.Length >= 3 && char.IsDigit(value[1]))
-            return true;
-
-        // Date/DateTime format (starts with 4-digit year)
-        if (value.Length >= 4 && char.IsDigit(value[0]) && char.IsDigit(value[1]) && char.IsDigit(value[2]) && char.IsDigit(value[3]))
-        {
-            // Check for date pattern (YYYY or YYYY-MM or YYYY-MM-DD)
-            if (value.Length == 4) return true;
-            if (value.Length >= 5 && value[4] == '-') return true;
-        }
-
-        return false;
-    }
-
     private string NormalizeWhitespace(string str)
     {
         return System.Text.RegularExpressions.Regex.Replace(str.Trim(), @"\s+", " ");
@@ -917,11 +1269,26 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
     }
 
+    /// <summary>
+    /// Resolves <c>%name</c>, signalling an error when nothing defines the name.
+    /// </summary>
+    /// <remarks>
+    /// FHIRPath §1.9 makes reading an undefined environment variable an error, and this is the check the
+    /// official <c>defineVariable</c> scope cases assert. A bound name whose value is empty is not an error
+    /// and still yields an empty collection, which is why this asks
+    /// <see cref="EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/> rather than
+    /// testing the value for null.
+    /// <see cref="Analysis.FhirPathAnalyzer"/> already reports the same condition statically.
+    /// </remarks>
     public IEnumerable<IElement> VisitVariable(VariableRefExpression expression, EvaluationContext context)
     {
-        var value = context.GetEnvironmentVariable(expression.Name);
+        if (!context.TryGetEnvironmentVariable(expression.Name, expression.IsDelimited, out var value))
+        {
+            throw new FhirPathEvaluationException(
+                $"Attempting to access an undefined environment variable: {expression.Name}");
+        }
 
-        if (value == null)
+        if (value is null)
             return [];
 
         return value switch
@@ -932,47 +1299,32 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         };
     }
 
+    /// <summary>
+    /// Builds the element a literal denotes, typing temporal literals from the node the parser produced.
+    /// </summary>
+    /// <remarks>
+    /// The <c>@</c> sigil cannot decide this. A string literal keeps whatever characters it was written
+    /// with, so <c>'@2013'</c> and <c>@2013</c> arrive carrying the same CLR string; typing on the sigil
+    /// built a <c>date</c> element out of the string literal, which made <c>'@2013'.length()</c> answer 4
+    /// and <c>'@x' as String</c> answer empty. The sigil and the time literal's <c>T</c> marker are
+    /// FHIRPath syntax rather than part of the value, so
+    /// <see cref="TemporalConstantExpression.ElementValue"/> has already removed them.
+    /// </remarks>
     public IEnumerable<IElement> VisitConstant(ConstantExpression expression, EvaluationContext context)
     {
+        if (expression is TemporalConstantExpression temporal)
+        {
+            return [new PrimitiveElement(temporal.ElementValue, temporal.TemporalTypeName)];
+        }
+
         return expression.Value switch
         {
             int i => [CreateInteger(i)],
             decimal d => [CreateDecimal(d)],
             bool b => [CreateBoolean(b)],
-            string s => [CreateDateTimeOrString(s)],
+            string s => [CreateString(s)],
             _ => [CreateConstant(expression.Value)]
         };
-    }
-
-    /// <summary>
-    /// Creates a typed element from a string value.
-    /// Detects date/time literals (@YYYY, @YYYY-MM-DD, @YYYY-MM-DDTHH:MM:SS, @THH:MM:SS)
-    /// and creates elements with appropriate types (date, dateTime, time).
-    /// </summary>
-    private IElement CreateDateTimeOrString(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return CreateString(value);
-
-        if (!value.StartsWith("@", StringComparison.Ordinal))
-            return CreateString(value);
-
-        var dateTimeValue = value.Substring(1);
-
-        if (dateTimeValue.StartsWith("T", StringComparison.Ordinal))
-        {
-            // Strip T prefix - it's FHIRPath syntax, not part of the value
-            // FHIR time format is HH:mm:ss, not THH:mm:ss
-            // This matches Firely SDK and fhirpath.js behavior
-            return new PrimitiveElement(dateTimeValue.Substring(1), "time");
-        }
-
-        if (dateTimeValue.Contains('T', StringComparison.Ordinal))
-        {
-            return new PrimitiveElement(dateTimeValue, "dateTime");
-        }
-
-        return new PrimitiveElement(dateTimeValue, "date");
     }
 
     public IEnumerable<IElement> VisitIndexer(IndexerExpression expression, EvaluationContext context)
@@ -1013,36 +1365,111 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [];
     }
 
+    /// <summary>
+    /// Evaluates unary <c>+</c>/<c>-</c>, which the spec types as taking "a single item input operand of
+    /// type Integer, Long, Decimal, or Quantity" and makes an error for anything else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three arms, each backed by a different sentence of the same clause. A non-numeric single operand is
+    /// an error ("Using with any incompatible type will end and signal an error to the calling
+    /// environment"), which the official <c>testLiteralIntegerNegative1Invalid</c>, <c>testPrecedence1</c>
+    /// and <c>testLiteralDecimalNegative01Invalid</c> all encode - they parse as <c>-(&lt;boolean&gt;)</c>
+    /// because <c>.</c> binds tighter than unary minus. An empty operand is empty ("If the input collection
+    /// is empty, the result is empty"). A multi-item operand is an error, from "a single item input
+    /// operand" and from the precedence section's worked example, which annotates <c>-(7.combine(3))</c>
+    /// as <c>// ERROR</c> and gives the reason: "unary negation cannot be applied to a list".
+    /// </para>
+    /// <para>
+    /// The multi-item arm previously fell into the same pass-through as unary <c>+</c>, so
+    /// <c>-(7.combine(3))</c> returned <c>7, 3</c> un-negated - a silently wrong value rather than the
+    /// mandated error. Unary <c>+</c> is a pass-through by definition ("returns the value of its operand
+    /// unchanged") but is typed by the same sentence, so <c>+true</c> is an error too, not the <c>true</c>
+    /// it used to yield.
+    /// </para>
+    /// <para>
+    /// Note the clause is new in 3.0.0 and marked STU - under 2.0.0 only the precedence example backs it -
+    /// but no engine reads it the lenient way; Firely and HAPI both error. The typed switch in
+    /// <see cref="NegateNumeric"/> must stay: before it, <c>Convert.ToDecimal(true)</c> made <c>-true</c>
+    /// evaluate to <c>-1</c>, which is worse than either empty or an error.
+    /// </para>
+    /// </remarks>
     public IEnumerable<IElement> VisitUnary(UnaryExpression expression, EvaluationContext context)
     {
         var operand = EvaluateExpression(context.Focus, expression.Operand, context).ToList();
 
-        if (expression.Operator != "-" || operand.Count != 1)
+        if (expression.Operator is not ("-" or "+") || operand.Count == 0)
             return operand;
 
-        var value = operand[0].Value;
+        if (operand.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"Unary '{expression.Operator}' is defined for a single item operand, but was given a collection of {operand.Count} items.");
+        }
+
+        EnsureNumericUnaryOperand(operand[0], expression.Operator);
+
+        if (expression.Operator == "+")
+            return operand;
+
         try
         {
-            return value switch
-            {
-                int i => [CreateInteger(checked(-i))],
-                long l when l >= int.MinValue && l <= int.MaxValue => [CreateInteger(checked(-(int)l))],
-                long l => [CreateDecimal(-(decimal)l)],
-                decimal d => [CreateDecimal(-d)],
-                double d => [CreateDecimal(-(decimal)d)],
-                float f => [CreateDecimal(-(decimal)f)],
-                Types.Quantity q => [FunctionHelpers.CreateQuantity(new Types.Quantity(-q.Value, q.Unit))],
-                _ => [] // non-numeric operand: undefined per FHIRPath spec → empty
-            };
+            return [NegateNumeric(operand[0])];
         }
         catch (OverflowException)
         {
+            // "If the result of negating the number cannot be represented, the result is empty ({ })."
             return [];
         }
     }
 
+    private static void EnsureNumericUnaryOperand(IElement operand, string operatorSymbol)
+    {
+        if (operand.Value is int or long or decimal or double or float or FhirQuantity)
+            return;
 
-    private bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals)
+        throw new FhirPathEvaluationException(
+            $"Unary '{operatorSymbol}' is only defined for Integer, Long, Decimal and Quantity, " +
+            $"but the operand was of type '{DescribeOperandType(operand)}'.");
+    }
+
+    private IElement NegateNumeric(IElement operand) => operand.Value switch
+    {
+        int i => CreateInteger(checked(-i)),
+        long l when l >= int.MinValue && l <= int.MaxValue => CreateInteger(checked(-(int)l)),
+        long l => CreateDecimal(-(decimal)l),
+        decimal d => CreateDecimal(-d),
+        double d => CreateDecimal(-(decimal)d),
+        float f => CreateDecimal(-(decimal)f),
+        FhirQuantity q => FunctionHelpers.CreateQuantity(new FhirQuantity(-q.Value, q.Unit)),
+        _ => throw new UnreachableException($"EnsureNumericUnaryOperand admitted '{DescribeOperandType(operand)}'.")
+    };
+
+
+    /// <summary>
+    /// Applies FHIRPath <c>=</c> / <c>!=</c> semantics to two evaluated operand collections.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Internal rather than private because <see cref="FhirPathDelegateCompiler"/> calls it. The compiled
+    /// fast path once carried its own ordinal string comparison, which answered <c>false</c> for
+    /// <c>birthDate = @1974-12-25</c> while this method answered <c>true</c>. Sharing the one
+    /// implementation is what makes the two evaluation paths incapable of drifting apart again.
+    /// </para>
+    /// <para>
+    /// <b>No same-type guard here, deliberately.</b> The ordering operators throw on operand types
+    /// FHIRPath does not relate (see <c>IncomparableOperandTypes</c> and the remarks at the ordering
+    /// comparison), and the asymmetry is a decision rather than an oversight: §Equals states the
+    /// same-type requirement and then says nothing about what happens when it is violated, so the
+    /// engines split - HAPI's <c>doEquals</c> reaches <c>Base.equals(primitiveValue(), ...)</c> with no
+    /// type check and answers <c>'2013' = @2013</c> true, while Firely answers false. HAPI was followed
+    /// because it outranks Firely in the precedence this engine uses. Adding a guard here to match the
+    /// ordering operators would silently change that. It is pinned by
+    /// <c>ComparisonTypeRoutingTests.GivenAStringEqualToATemporalsWireText_*</c>, whose comment carries
+    /// the full argument.
+    /// </para>
+    /// </remarks>
+    internal bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals)
     {
         // Per FHIRPath official tests: {} = {} and {} != {} both return empty
         // Any comparison involving empty collection returns empty (three-valued logic)
@@ -1063,7 +1490,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
             // Handle quantity comparisons (both FhirPath literals and FHIR Quantity elements)
-            if (leftVal is Types.Quantity || rightVal is Types.Quantity ||
+            if (leftVal is FhirQuantity || rightVal is FhirQuantity ||
                 IsQuantityType(leftType) || IsQuantityType(rightType))
             {
                 var result = QuantityEvaluator.EvaluateComparison(left, equals ? "=" : "!=", right);
@@ -1080,10 +1507,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 }
             }
 
-            if ((leftType == "date" || leftType == "datetime" || leftType == "instant") &&
-                (rightType == "date" || rightType == "datetime" || rightType == "instant"))
+            if (IsTemporalOperand(leftVal, leftType) && IsTemporalOperand(rightVal, rightType))
             {
-                return CompareDateTimeEquality(leftVal, rightVal, equals);
+                return CompareDateTimeEquality(leftVal, rightVal, leftType, rightType, equals);
             }
         }
 
@@ -1096,8 +1522,27 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return true;
     }
 
-    private bool? CompareDateTimeEquality(object? leftValue, object? rightValue, bool equals)
+    private bool? CompareDateTimeEquality(object? leftValue, object? rightValue, string? leftType, string? rightType, bool equals)
     {
+        // Prefer the typed FhirTemporal path whenever both operands resolve to a temporal. It expresses
+        // the FHIRPath indeterminacy of a timezone-bearing value compared to a timezone-less one (e.g.
+        // @...T15:00:00Z = @...T10:00:00, official testEquality23/testNEquality17): AsTemporal routes
+        // string operands through FhirTemporal.TryParse, which records timezone presence from the literal,
+        // and FhirTemporal.Compare returns null on a timezone mismatch. This agrees with the string
+        // fallback below, so it is safe for all operands, not only when one is already a FhirTemporal.
+        // TemporalOperand.AreEqual is the same call FunctionHelpers.AreElementsEqual makes, which is what
+        // stops this operator and the collection functions answering differently.
+        if (AsTemporal(leftValue, leftType) is { } leftTemporal
+            && AsTemporal(rightValue, rightType) is { } rightTemporal)
+        {
+            return TemporalOperand.AreEqual(leftTemporal, rightTemporal) switch
+            {
+                null => null,
+                true => equals,
+                false => !equals
+            };
+        }
+
         var leftStr = leftValue switch
         {
             string s => s,
@@ -1125,10 +1570,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         leftStr = NormalizeMillisecondPrecision(leftStr);
         rightStr = NormalizeMillisecondPrecision(rightStr);
 
-        var leftPrecision = GetDateTimePrecision(leftStr);
-        var rightPrecision = GetDateTimePrecision(rightStr);
+        var leftPrecision = FhirTemporal.GetLiteralPrecision(leftStr);
+        var rightPrecision = FhirTemporal.GetLiteralPrecision(rightStr);
 
-        if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
+        if (leftPrecision == FhirTemporalPrecision.Invalid || rightPrecision == FhirTemporalPrecision.Invalid)
             return null;
 
         // Per FHIRPath spec: when comparing dates with different precision, the result is uncertain
@@ -1186,7 +1631,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             TryParseFhirDateTime(rightStr, out var rightDt))
         {
             // For date/time with at least hour precision
-            if (leftPrecision >= DateTimePrecision.Hour)
+            if (leftPrecision >= FhirTemporalPrecision.Hour)
             {
                 // If both have explicit timezones, compare in UTC
                 if (leftHasTz && rightHasTz)
@@ -1262,7 +1707,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return value;
     }
 
-        private bool? CompareOrder(List<IElement> left, List<IElement> right, bool greater, bool orEqual)
+        /// <summary>
+        /// Applies FHIRPath ordering semantics to two evaluated operand collections.
+        /// </summary>
+        /// <remarks>
+        /// Internal for the same reason as <see cref="CompareEquality"/>: the compiled path shares it.
+        /// The <see cref="Nullable{T}"/> return is load-bearing — partial precision makes some orderings
+        /// undecidable (<c>@2012 &gt; @2012-01</c>), and FHIRPath requires that to surface as an empty
+        /// collection rather than as <c>false</c>.
+        /// </remarks>
+        internal bool? CompareOrder(List<IElement> left, List<IElement> right, bool greater, bool orEqual)
         {
             if (left.Count == 0 || right.Count == 0)
                 return null;
@@ -1279,7 +1733,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
             // Handle quantity comparisons (both FhirPath literals and FHIR Quantity elements)
-            if (leftValue is Types.Quantity || rightValue is Types.Quantity ||
+            if (leftValue is FhirQuantity || rightValue is FhirQuantity ||
                 IsQuantityType(leftType) || IsQuantityType(rightType))
             {
                 var op = (greater, orEqual) switch
@@ -1292,28 +1746,39 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 return QuantityEvaluator.EvaluateComparison(left, op, right);
             }
     
-            if ((leftType == "date" || leftType == "datetime" || leftType == "time") &&
-                (rightType == "date" || rightType == "datetime" || rightType == "time"))
+            var leftIsTemporal = IsTemporalOperand(leftValue, leftType);
+            var rightIsTemporal = IsTemporalOperand(rightValue, rightType);
+
+            // FHIRPath requires comparison operands to be of the same type, or implicitly convertible to
+            // it, and signals an error otherwise. Two rows of the conversion table land here and neither
+            // offers a conversion: String to Date is Explicit-only, and Date/DateTime to Time has no
+            // entry in either direction. Only the first is visible from IsTemporalOperand, which answers
+            // true for a time of day and for a calendar value alike.
+            if (leftIsTemporal != rightIsTemporal)
             {
+                throw IncomparableOperandTypes(left[0], right[0]);
+            }
+
+            if (leftIsTemporal && rightIsTemporal)
+            {
+                // Resolving both is what separates a type error from a genuine partial-precision empty.
+                // @2013-01-01T10:00:00 < @2013-01-01 must stay empty - Date to DateTime is Implicit, so
+                // those two are one type compared at overlapping precisions. A time of day against
+                // either is not. An operand that fails to resolve is left to the comparison below rather
+                // than reported as a type error, since its type is not what is wrong with it.
+                if (AsTemporal(leftValue, leftType) is { } leftTemporal
+                    && AsTemporal(rightValue, rightType) is { } rightTemporal
+                    && !TemporalOperand.AreComparableKinds(leftTemporal, rightTemporal))
+                {
+                    throw IncomparableOperandTypes(left[0], right[0]);
+                }
+
                 return CompareDateTimesWithPrecision(leftValue, rightValue, leftType, rightType, greater, orEqual);
             }
-    
-                    if (leftValue is string leftStr && rightValue is string rightStr)
-                    {
-                        // Try to treat as typed dates first if they look like dates
-                        // This handles cases where type info is lost or implicit conversion is expected
-                        if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
-                        {
-                             // Date comparison - if result is null (uncertain), don't fall through to string comparison
-                             return CompareDateTimesWithPrecision(leftValue, rightValue, null, null, greater, orEqual);
-                        }
-            
-                        var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
-                        return greater
-                            ? (orEqual ? comparison >= 0 : comparison > 0)
-                            : (orEqual ? comparison <= 0 : comparison < 0);
-                    }
-            // Handle mixed numeric comparison (e.g. 1.5 > 1)
+
+            // Handle mixed numeric comparison (e.g. 1.5 > 1). Must stay above the wire-string branch
+            // below: if WireValue.AsWireString ever covers a numeric type, a numeric pair would reach
+            // that branch first and be ordered as text, where "10" sorts before "9".
             if ((leftValue is int || leftValue is decimal || leftValue is long) &&
                 (rightValue is int || rightValue is decimal || rightValue is long))
             {
@@ -1325,26 +1790,90 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                         : (orEqual ? comparison <= 0 : comparison < 0);
                 }
             }
-    
+
+            if (WireValue.AsWireString(leftValue) is { } leftStr && WireValue.AsWireString(rightValue) is { } rightStr)
+            {
+                var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
+                return greater
+                    ? (orEqual ? comparison >= 0 : comparison > 0)
+                    : (orEqual ? comparison <= 0 : comparison < 0);
+            }
+
             if (leftValue is IComparable leftComparable && rightValue is IComparable rightComparable)
             {
+                int comparison;
                 try
                 {
-                    var comparison = leftComparable.CompareTo(rightComparable);
-                    return greater
-                        ? (orEqual ? comparison >= 0 : comparison > 0)
-                        : (orEqual ? comparison <= 0 : comparison < 0);
+                    comparison = leftComparable.CompareTo(rightComparable);
                 }
-                catch
+                catch (ArgumentException ex)
                 {
-                    return null;
+                    // CompareTo rejects the pair only when the operands are of genuinely different
+                    // primitive types (e.g. decimal vs string). FHIRPath requires comparison operands to be
+                    // of the same type and signals an error otherwise - swallowing this into an empty
+                    // collection hid a real type error (official testLiteralDecimalLessThanInvalid:
+                    // Observation.value.value < 'test'). Undecidable-but-well-typed comparisons, such as
+                    // partial-precision dates, are handled above and still return null.
+                    throw IncomparableOperandTypes(left[0], right[0], ex);
                 }
+
+                return greater
+                    ? (orEqual ? comparison >= 0 : comparison > 0)
+                    : (orEqual ? comparison <= 0 : comparison < 0);
             }
-    
+
             return null;
         }
+    private static FhirTemporal? AsTemporal(object? value, string? instanceType)
+        => TemporalOperand.AsTemporal(value, instanceType);
+
+    /// <summary>
+    /// Builds the error FHIRPath requires when comparison operands are of types it does not relate.
+    /// </summary>
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    /// <param name="inner">
+    /// The exception that revealed the mismatch, when one did. The <c>IComparable</c> fallback below
+    /// learns of the mismatch only by catching <see cref="ArgumentException"/> from <c>CompareTo</c>, and
+    /// used to rebuild this message inline purely because this helper could not carry that exception.
+    /// </param>
+    /// <returns>The exception to throw.</returns>
+    /// <remarks>
+    /// The operands are described by <see cref="ValueOrdering.Describe"/> rather than by
+    /// <see cref="IElement.InstanceType"/> alone. Two operands with no declared type produced
+    /// "Cannot compare 'unknown' with 'unknown'", which names nothing a reader can act on; Describe falls
+    /// back to the CLR type name and appends it when the declared type and the representation disagree,
+    /// so a decimal that arrived as text reads "decimal (String)". It deliberately stops at type names:
+    /// these operands are patient data, and this message reaches logs and OperationOutcome.
+    /// </remarks>
+    private static FhirPathEvaluationException IncomparableOperandTypes(
+        IElement left, IElement right, Exception? inner = null)
+    {
+        var message =
+            $"Cannot compare '{ValueOrdering.Describe(left)}' with '{ValueOrdering.Describe(right)}': " +
+            "comparison operands must be of the same type.";
+
+        return inner is null ? new(message) : new(message, inner);
+    }
+
     private bool? CompareDateTimesWithPrecision(object? leftValue, object? rightValue, string? leftType, string? rightType, bool greater, bool orEqual)
     {
+        // Prefer the typed path whenever both operands resolve to a temporal, for the same reason as
+        // CompareDateTimeEquality: FhirTemporal.Compare now returns null on timezone-vs-no-timezone, so
+        // the typed path agrees with the string fallback and no longer needs to be gated to a FhirTemporal
+        // operand.
+        if (AsTemporal(leftValue, leftType) is { } leftTemporal
+            && AsTemporal(rightValue, rightType) is { } rightTemporal)
+        {
+            return FhirTemporal.Compare(leftTemporal, rightTemporal) switch
+            {
+                null => null,
+                var comparison => greater
+                    ? (orEqual ? comparison >= 0 : comparison > 0)
+                    : (orEqual ? comparison <= 0 : comparison < 0)
+            };
+        }
+
         var leftStr = leftValue switch
         {
             string s => s,
@@ -1377,19 +1906,19 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         leftStr = NormalizeMillisecondPrecision(leftStr);
         rightStr = NormalizeMillisecondPrecision(rightStr);
 
-        var leftPrecision = GetDateTimePrecision(leftStr);
-        var rightPrecision = GetDateTimePrecision(rightStr);
+        var leftPrecision = FhirTemporal.GetLiteralPrecision(leftStr);
+        var rightPrecision = FhirTemporal.GetLiteralPrecision(rightStr);
 
-        if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
+        if (leftPrecision == FhirTemporalPrecision.Invalid || rightPrecision == FhirTemporalPrecision.Invalid)
             return null;
 
         // Per FHIRPath spec: When comparing dates with different precision,
         // the result is null unless one interval completely precedes/follows the other.
         // For ordering (not equality), we use interval comparison semantics.
-        var leftLower = GetDateTimeLowerBound(leftStr, leftPrecision);
-        var leftUpper = GetDateTimeUpperBound(leftStr, leftPrecision);
-        var rightLower = GetDateTimeLowerBound(rightStr, rightPrecision);
-        var rightUpper = GetDateTimeUpperBound(rightStr, rightPrecision);
+        var leftLower = FhirTemporal.GetLowerBound(leftStr, leftPrecision);
+        var leftUpper = FhirTemporal.GetUpperBound(leftStr, leftPrecision);
+        var rightLower = FhirTemporal.GetLowerBound(rightStr, rightPrecision);
+        var rightUpper = FhirTemporal.GetUpperBound(rightStr, rightPrecision);
 
         if (!leftLower.HasValue || !leftUpper.HasValue || !rightLower.HasValue || !rightUpper.HasValue)
             return null;
@@ -1440,93 +1969,160 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
     }
 
-    private enum DateTimePrecision
+    /// <summary>
+    /// Every unit FHIRPath accepts as time-valued, in both the calendar-keyword and UCUM-code spellings.
+    /// A unit outside this set (<c>'cm'</c>, <c>'kg'</c>, ...) is not a duration at all, which is a
+    /// different failure from a duration that is merely too fine for the operand's precision.
+    /// </summary>
+    private static readonly FrozenSet<string> _timeValuedUnits = new[]
     {
-        Invalid,
-        Year,
-        Month,
-        Day,
-        Hour,
-        Minute,
-        Second,
-        Millisecond
+        "a", "year", "years",
+        "mo", "month", "months",
+        "wk", "week", "weeks",
+        "d", "day", "days",
+        "h", "hour", "hours",
+        "min", "minute", "minutes",
+        "s", "second", "seconds",
+        "ms", "millisecond", "milliseconds"
+    }.ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The UCUM definite-duration units that have no calendar equivalent: <c>'a'</c> is a fixed 365.25 days
+    /// and <c>'mo'</c> a fixed twelfth of that, so neither lands where the calendar keywords
+    /// <c>year</c>/<c>month</c> do. Every other UCUM time unit ('wk', 'd', 'h', 'min', 's', 'ms') is both
+    /// definite and unambiguous, so only these two are rejected.
+    /// </summary>
+    private static readonly FrozenSet<string> _calendarIncompatibleDurationUnits = new[] { "a", "mo" }
+        .ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Enforces the FHIRPath rule that <c>'a'</c> and <c>'mo'</c> signal an error in Date, DateTime and Time
+    /// arithmetic (FHIRPath 3.0 "Date/Time Arithmetic": the year row reads "using 'a' will signal an error"
+    /// and the month row "using 'mo' will signal an error"; official cases <c>testPlusDate14</c>,
+    /// <c>testPlusDate16</c> and <c>testPlusDate17</c>).
+    /// </summary>
+    private static void ThrowIfCalendarIncompatibleUnit(string instanceType, FhirQuantity quantity)
+    {
+        if (!IsTemporalInstanceType(instanceType) || !_calendarIncompatibleDurationUnits.Contains(quantity.Unit))
+        {
+            return;
+        }
+
+        var keyword = quantity.Unit == "a" ? "year" : "month";
+        throw new FhirPathEvaluationException(
+            $"'{quantity}' uses the UCUM definite-duration unit '{quantity.Unit}', which has no calendar " +
+            $"equivalent, so it cannot be used in {instanceType} arithmetic; use the calendar keyword " +
+            $"'{keyword}' instead.");
     }
 
-    private DateTimePrecision GetDateTimePrecision(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return DateTimePrecision.Invalid;
-
-        if (value.StartsWith("T", StringComparison.Ordinal))
-        {
-            var timePart = value.Substring(1);
-            var colonCount = timePart.Count(c => c == ':');
-            if (colonCount == 0) return DateTimePrecision.Hour;
-            if (colonCount == 1) return DateTimePrecision.Minute;
-
-            return timePart.Contains('.', StringComparison.Ordinal) ? DateTimePrecision.Millisecond : DateTimePrecision.Second;
-        }
-
-        if (value.Length >= 4 && value.Length <= 10)
-        {
-            var parts = value.Split('-');
-            return parts.Length switch
-            {
-                1 => DateTimePrecision.Year,
-                2 => DateTimePrecision.Month,
-                3 => DateTimePrecision.Day,
-                _ => DateTimePrecision.Invalid
-            };
-        }
-
-        if (value.Contains('T', StringComparison.Ordinal))
-        {
-            var timePart = value.Split('T')[1];
-            timePart = timePart.TrimEnd('Z');
-            if (timePart.Contains('+', StringComparison.Ordinal) || timePart.Contains('-', StringComparison.Ordinal))
-            {
-                var tzIndex = Math.Max(timePart.LastIndexOf('+'), timePart.LastIndexOf('-'));
-                timePart = timePart.Substring(0, tzIndex);
-            }
-
-            var colonCount = timePart.Count(c => c == ':');
-            if (colonCount == 0) return DateTimePrecision.Hour;
-            if (colonCount == 1) return DateTimePrecision.Minute;
-
-            return timePart.Contains('.', StringComparison.Ordinal) ? DateTimePrecision.Millisecond : DateTimePrecision.Second;
-        }
-
-        return DateTimePrecision.Invalid;
-    }
-
-    private static DateTimePrecision MaxPrecision(DateTimePrecision left, DateTimePrecision right)
-        => left >= right ? left : right;
-
-    private static DateTimePrecision? GetDateTimeArithmeticUnitPrecision(string instanceType, string unit)
+    /// <summary>
+    /// Maps an operand type and unit onto the precision the unit operates at, or <see langword="null"/> when
+    /// the type does not accept the unit at all. The pairs are exactly the FHIRPath "Date/Time Arithmetic"
+    /// table's Datatype/Quantity Unit rows: years through days for <c>Date</c>, everything for
+    /// <c>DateTime</c>, and hours through milliseconds for <c>Time</c>. <c>instant</c> shares
+    /// <c>dateTime</c>'s wire format and is a fixed point on the calendar, so it takes the same units.
+    /// </summary>
+    private static FhirTemporalPrecision? GetDateTimeArithmeticUnitPrecision(string instanceType, string unit)
         => (instanceType, unit) switch
         {
-            ("date", "a" or "year" or "years") => DateTimePrecision.Year,
-            ("date", "mo" or "month" or "months") => DateTimePrecision.Month,
-            ("date", "wk" or "week" or "weeks") => DateTimePrecision.Day,
-            ("date", "d" or "day" or "days") => DateTimePrecision.Day,
-            ("dateTime", "a" or "year" or "years") => DateTimePrecision.Year,
-            ("dateTime", "mo" or "month" or "months") => DateTimePrecision.Month,
-            ("dateTime", "wk" or "week" or "weeks") => DateTimePrecision.Day,
-            ("dateTime", "d" or "day" or "days") => DateTimePrecision.Day,
-            ("dateTime", "h" or "hour" or "hours") => DateTimePrecision.Hour,
-            ("dateTime", "min" or "minute" or "minutes") => DateTimePrecision.Minute,
-            ("dateTime", "s" or "second" or "seconds") => DateTimePrecision.Second,
-            ("dateTime", "ms" or "millisecond" or "milliseconds") => DateTimePrecision.Millisecond,
-            ("time", "h" or "hour" or "hours") => DateTimePrecision.Hour,
-            ("time", "min" or "minute" or "minutes") => DateTimePrecision.Minute,
-            ("time", "s" or "second" or "seconds") => DateTimePrecision.Second,
-            ("time", "ms" or "millisecond" or "milliseconds") => DateTimePrecision.Millisecond,
+            ("date", "year" or "years") => FhirTemporalPrecision.Year,
+            ("date", "month" or "months") => FhirTemporalPrecision.Month,
+            ("date", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
+            ("date", "d" or "day" or "days") => FhirTemporalPrecision.Day,
+            ("dateTime" or "instant", "year" or "years") => FhirTemporalPrecision.Year,
+            ("dateTime" or "instant", "month" or "months") => FhirTemporalPrecision.Month,
+            ("dateTime" or "instant", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
+            ("dateTime" or "instant", "d" or "day" or "days") => FhirTemporalPrecision.Day,
+            ("dateTime" or "instant", "h" or "hour" or "hours") => FhirTemporalPrecision.Hour,
+            ("dateTime" or "instant", "min" or "minute" or "minutes") => FhirTemporalPrecision.Minute,
+            ("dateTime" or "instant", "s" or "second" or "seconds") => FhirTemporalPrecision.Second,
+            ("dateTime" or "instant", "ms" or "millisecond" or "milliseconds") => FhirTemporalPrecision.Millisecond,
+            ("time", "h" or "hour" or "hours") => FhirTemporalPrecision.Hour,
+            ("time", "min" or "minute" or "minutes") => FhirTemporalPrecision.Minute,
+            ("time", "s" or "second" or "seconds") => FhirTemporalPrecision.Second,
+            ("time", "ms" or "millisecond" or "milliseconds") => FhirTemporalPrecision.Millisecond,
             _ => null
         };
 
-    private static string TruncateToDateTimePrecision(string value, DateTimePrecision precision)
+    private static bool IsWeekUnit(string unit) => unit is "wk" or "week" or "weeks";
+
+    /// <summary>
+    /// Enforces the FHIRPath rule that a unit the operand type cannot take signals an error rather than an
+    /// empty result: "If there is more than one item, an item of an incompatible type, or an unsupported unit
+    /// for the type, the evaluation of the expression will end and signal an error to the calling
+    /// environment. This includes attempting to add date components to a Time." Firely 6.0.1 throws for the
+    /// same inputs (<c>@2014-01-01 + 1 hour</c>, <c>@T12:00:00 + 1 day</c>), so this is the interoperable
+    /// reading as well as the specified one.
+    /// </summary>
+    /// <remarks>
+    /// Non-temporal operands reach the arithmetic path only because the caller routes any lexical value
+    /// paired with a Quantity through it, so they fall through unchanged rather than erroring here.
+    /// </remarks>
+    private static void ThrowIfUnsupportedUnit(string instanceType, FhirQuantity quantity)
     {
-        if (string.IsNullOrEmpty(value) || precision == DateTimePrecision.Invalid)
+        if (!IsTemporalInstanceType(instanceType))
+        {
+            return;
+        }
+
+        // The two failures are distinct: 'cm' is not a duration at all (official testMinus6), whereas
+        // 'h' is a perfectly good duration that a Date simply has no component to receive.
+        var message = _timeValuedUnits.Contains(quantity.Unit)
+            ? $"'{quantity}' is not a unit that {instanceType} arithmetic supports."
+            : $"'{quantity}' is not a time-valued quantity, so it cannot be used in {instanceType} arithmetic.";
+
+        throw new FhirPathEvaluationException(message);
+    }
+
+    /// <summary>
+    /// Converts a time-valued quantity to the precision the operation runs at.
+    /// </summary>
+    /// <remarks>
+    /// Two FHIRPath rules meet here. "The decimal portion of the time-valued quantity is only applied for
+    /// second or millisecond precisions; for all other precisions, the decimal portion is ignored" governs
+    /// the quantity as written, and the partial-precision rule - "converting the time-valued quantity to the
+    /// highest precision in the partial (truncating any decimal fraction)" - governs the step down to a
+    /// coarser operand, using the spec's calendar conversion factors (1 year = 12 months or 365 days,
+    /// 1 month = 30 days, 1 day = 24 hours, 1 hour = 60 minutes, 1 minute = 60 seconds). Days convert
+    /// straight to years at 365 rather than chaining through months, which the spec calls out explicitly
+    /// ("If the date/time value only has years present then when adding month quantities; use the direct
+    /// conversion from months to years, otherwise convert the quantity to days, then to years"). Chaining
+    /// through months instead would put a year at 360 days, so <c>@2016 + 360 days</c> would wrongly reach
+    /// <c>@2017</c>.
+    /// </remarks>
+    private static double ConvertQuantityToPrecision(
+        double value,
+        FhirTemporalPrecision unitPrecision,
+        int unitsPerQuantity,
+        FhirTemporalPrecision target)
+    {
+        var amount = DropIgnoredFraction(value, unitPrecision) * unitsPerQuantity;
+        var current = unitPrecision;
+
+        while (current > target)
+        {
+            (amount, current) = current switch
+            {
+                FhirTemporalPrecision.Millisecond => (amount / 1000, FhirTemporalPrecision.Second),
+                FhirTemporalPrecision.Second => (amount / 60, FhirTemporalPrecision.Minute),
+                FhirTemporalPrecision.Minute => (amount / 60, FhirTemporalPrecision.Hour),
+                FhirTemporalPrecision.Hour => (amount / 24, FhirTemporalPrecision.Day),
+                FhirTemporalPrecision.Day when target == FhirTemporalPrecision.Year => (amount / 365, FhirTemporalPrecision.Year),
+                FhirTemporalPrecision.Day => (amount / 30, FhirTemporalPrecision.Month),
+                FhirTemporalPrecision.Month => (amount / 12, FhirTemporalPrecision.Year),
+                _ => (amount, target)
+            };
+        }
+
+        return DropIgnoredFraction(amount, target);
+    }
+
+    private static double DropIgnoredFraction(double value, FhirTemporalPrecision precision)
+        => precision >= FhirTemporalPrecision.Second ? value : Math.Truncate(value);
+
+    private static string TruncateToDateTimePrecision(string value, FhirTemporalPrecision precision)
+    {
+        if (string.IsNullOrEmpty(value) || precision == FhirTemporalPrecision.Invalid)
             return value;
 
         // Extract timezone suffix if present (for DateTime values)
@@ -1556,11 +2152,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         return precision switch
         {
-            DateTimePrecision.Year => dateComponents[0],
-            DateTimePrecision.Month => dateComponents.Length >= 2
+            FhirTemporalPrecision.Year => dateComponents[0],
+            FhirTemporalPrecision.Month => dateComponents.Length >= 2
                 ? $"{dateComponents[0]}-{dateComponents[1]}"
                 : datePart,
-            DateTimePrecision.Day => dateComponents.Length >= 3
+            FhirTemporalPrecision.Day => dateComponents.Length >= 3
                 ? $"{dateComponents[0]}-{dateComponents[1]}-{dateComponents[2]}"
                 : datePart,
             _ when tIndex < 0 => datePart,
@@ -1568,7 +2164,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         };
     }
 
-    private static string TruncateTimePortion(string value, string datePart, string tzSuffix, DateTimePrecision precision)
+    private static string TruncateTimePortion(string value, string datePart, string tzSuffix, FhirTemporalPrecision precision)
     {
         var tIndex = value.IndexOf('T', StringComparison.Ordinal);
         var rawTime = value.Substring(tIndex + 1);
@@ -1579,15 +2175,18 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var timeComponents = rawTime.Split(':');
         var result = precision switch
         {
-            DateTimePrecision.Hour => $"{datePart}T{timeComponents[0]}",
-            DateTimePrecision.Minute when timeComponents.Length >= 2
+            FhirTemporalPrecision.Hour => $"{datePart}T{timeComponents[0]}",
+            FhirTemporalPrecision.Minute when timeComponents.Length >= 2
                 => $"{datePart}T{timeComponents[0]}:{timeComponents[1]}",
-            DateTimePrecision.Second when timeComponents.Length >= 3
+            FhirTemporalPrecision.Second when timeComponents.Length >= 3
                 => $"{datePart}T{timeComponents[0]}:{timeComponents[1]}:{timeComponents[2].Split('.')[0]}",
             _ => value,
         };
         return string.IsNullOrEmpty(tzSuffix) ? result : result + tzSuffix;
     }
+
+    private static bool IsTemporalOperand(object? value, string? typeName)
+        => TemporalOperand.IsTemporal(value, typeName);
 
     /// <summary>
     /// Checks if a type name represents a FHIR Quantity type (or subtype).
@@ -1684,56 +2283,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out result);
     }
 
-        private DateTime? GetDateTimeLowerBound(string value, DateTimePrecision precision)
-        {
-            try
-            {
-                return precision switch
-                {
-                    DateTimePrecision.Year => new DateTime(int.Parse(value), 1, 1, 0, 0, 0, DateTimeKind.Utc),
-                    DateTimePrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime(),
-                    _ => TryParseFhirDateTime(value, out var dt) ? dt.UtcDateTime : null
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
-    
-        private DateTime? GetDateTimeUpperBound(string value, DateTimePrecision precision)
-        {
-            try
-            {
-                if (precision == DateTimePrecision.Year)
-                    return new DateTime(int.Parse(value), 12, 31, 23, 59, 59, 999, DateTimeKind.Utc);
-    
-                if (precision == DateTimePrecision.Month)
-                    return DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime().AddMonths(1).AddMilliseconds(-1);
-    
-                if (!TryParseFhirDateTime(value, out var dtOffset))
-                    return null;
-    
-                var dt = dtOffset.UtcDateTime;
-    
-                return precision switch
-                {
-                    DateTimePrecision.Day => dt.Date.AddDays(1).AddMilliseconds(-1),
-                    DateTimePrecision.Hour => dt.AddHours(1).AddMilliseconds(-1),
-                    DateTimePrecision.Minute => dt.AddMinutes(1).AddMilliseconds(-1),
-                    DateTimePrecision.Second => dt.AddSeconds(1).AddMilliseconds(-1),
-                    DateTimePrecision.Millisecond => dt, // Millisecond precision is exact
-                    _ => dt
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-    private IEnumerable<IElement> EvaluateDateTimeArithmetic(string dateTimeStr, Types.Quantity quantity, bool add, string instanceType)
+    private IEnumerable<IElement> EvaluateDateTimeArithmetic(string dateTimeStr, FhirQuantity quantity, bool add, string instanceType)
     {
+        ThrowIfCalendarIncompatibleUnit(instanceType, quantity);
+
         dateTimeStr = dateTimeStr.StartsWith("@", StringComparison.Ordinal) ? dateTimeStr.Substring(1) : dateTimeStr;
 
         var isTimeOnly = instanceType == "time";
@@ -1741,45 +2294,84 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             ? "T" + dateTimeStr
             : dateTimeStr;
 
-        var precision = GetDateTimePrecision(parseStr);
-        if (precision == DateTimePrecision.Invalid)
-            return [];
-        if (!TryParseFhirDateTime(parseStr, out var dt))
+        var precision = FhirTemporal.GetLiteralPrecision(parseStr);
+        if (precision == FhirTemporalPrecision.Invalid)
             return [];
 
         var unitPrecision = GetDateTimeArithmeticUnitPrecision(instanceType, quantity.Unit);
         if (unitPrecision is null)
+        {
+            ThrowIfUnsupportedUnit(instanceType, quantity);
+            return [];
+        }
+
+        if (!TryParsePartialDateTime(parseStr, precision, out var dt))
             return [];
 
-        var value = (double)quantity.Value * (add ? 1 : -1);
+        // The operation runs at the coarser of the operand's precision and the unit's, so a quantity finer
+        // than the partial is converted down to it rather than promoting the result: @2014 + 24 months is
+        // @2016, not @2016-01-01.
+        var operationPrecision = unitPrecision.Value <= precision ? unitPrecision.Value : precision;
+        var amount = ConvertQuantityToPrecision(
+            (double)quantity.Value * (add ? 1 : -1),
+            unitPrecision.Value,
+            IsWeekUnit(quantity.Unit) ? 7 : 1,
+            operationPrecision);
+
         DateTimeOffset result;
 
         try
         {
-            result = quantity.Unit switch
-            {
-                "a" or "year" or "years" => dt.AddYears((int)Math.Truncate(value)),
-                "mo" or "month" or "months" => dt.AddMonths((int)Math.Truncate(value)),
-                "wk" or "week" or "weeks" => dt.AddDays(Math.Truncate(value) * 7),
-                "d" or "day" or "days" => dt.AddDays(Math.Truncate(value)),
-                "h" or "hour" or "hours" => dt.AddHours(value),
-                "min" or "minute" or "minutes" => dt.AddMinutes(value),
-                "s" or "second" or "seconds" => dt.AddMilliseconds(value * 1000),
-                "ms" or "millisecond" or "milliseconds" => dt.AddMilliseconds(value),
-                _ => throw new InvalidOperationException("Unsupported date/time arithmetic unit.")
-            };
+            result = AddAtPrecision(dt, amount, operationPrecision);
         }
-        catch
+        catch (ArgumentOutOfRangeException)
         {
+            // FHIRPath Math: "Operations that cause arithmetic overflow or underflow will result in empty".
             return [];
         }
 
-        var resultPrecision = MaxPrecision(precision, unitPrecision.Value);
-        var resultStr = FormatDateTimeWithPrecision(result, resultPrecision, dateTimeStr, isTimeOnly);
+        var resultStr = FormatDateTimeWithPrecision(result, precision, dateTimeStr, isTimeOnly);
         return [new PrimitiveElement(resultStr, instanceType)];
     }
 
-    private string FormatDateTimeWithPrecision(DateTimeOffset dt, DateTimePrecision precision, string originalStr, bool isTimeOnly)
+    /// <summary>
+    /// Resolves the operand to the first instant its precision covers. Year- and month-precision literals
+    /// are anchored explicitly because <see cref="DateTimeOffset"/> cannot parse them - <c>"2014"</c> is not
+    /// a date to <see cref="DateTimeOffset.TryParse(string, IFormatProvider, System.Globalization.DateTimeStyles, out DateTimeOffset)"/>,
+    /// which is why year-precision arithmetic used to yield empty. The month and day this fabricates never
+    /// reach the output, which is re-formatted at the operand's own precision.
+    /// </summary>
+    private bool TryParsePartialDateTime(string value, FhirTemporalPrecision precision, out DateTimeOffset result)
+    {
+        if (precision > FhirTemporalPrecision.Month)
+        {
+            return TryParseFhirDateTime(value, out result);
+        }
+
+        var anchor = FhirTemporal.GetLowerBound(value, precision);
+        result = anchor is null ? default : new DateTimeOffset(anchor.Value);
+
+        return anchor is not null;
+    }
+
+    private static DateTimeOffset AddAtPrecision(DateTimeOffset value, double amount, FhirTemporalPrecision precision)
+        => precision switch
+        {
+            FhirTemporalPrecision.Year => value.AddYears(ToWholeUnits(amount)),
+            FhirTemporalPrecision.Month => value.AddMonths(ToWholeUnits(amount)),
+            FhirTemporalPrecision.Day => value.AddDays(amount),
+            FhirTemporalPrecision.Hour => value.AddHours(amount),
+            FhirTemporalPrecision.Minute => value.AddMinutes(amount),
+            FhirTemporalPrecision.Second => value.AddMilliseconds(amount * 1000),
+            _ => value.AddMilliseconds(amount)
+        };
+
+    private static int ToWholeUnits(double amount)
+        => amount is >= int.MinValue and <= int.MaxValue
+            ? (int)amount
+            : throw new ArgumentOutOfRangeException(nameof(amount), amount, "Date/time arithmetic overflowed.");
+
+    private string FormatDateTimeWithPrecision(DateTimeOffset dt, FhirTemporalPrecision precision, string originalStr, bool isTimeOnly)
     {
         // Preserve timezone from original string
         var hasTimeZone = originalStr.Contains('+', StringComparison.Ordinal) ||
@@ -1788,13 +2380,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         var format = precision switch
         {
-            DateTimePrecision.Year => "yyyy",
-            DateTimePrecision.Month => "yyyy-MM",
-            DateTimePrecision.Day => "yyyy-MM-dd",
-            DateTimePrecision.Hour => "yyyy-MM-dd'T'HH",
-            DateTimePrecision.Minute => "yyyy-MM-dd'T'HH:mm",
-            DateTimePrecision.Second => "yyyy-MM-dd'T'HH:mm:ss",
-            DateTimePrecision.Millisecond => "yyyy-MM-dd'T'HH:mm:ss.fff",
+            FhirTemporalPrecision.Year => "yyyy",
+            FhirTemporalPrecision.Month => "yyyy-MM",
+            FhirTemporalPrecision.Day => "yyyy-MM-dd",
+            FhirTemporalPrecision.Hour => "yyyy-MM-dd'T'HH",
+            FhirTemporalPrecision.Minute => "yyyy-MM-dd'T'HH:mm",
+            FhirTemporalPrecision.Second => "yyyy-MM-dd'T'HH:mm:ss",
+            FhirTemporalPrecision.Millisecond => "yyyy-MM-dd'T'HH:mm:ss.fff",
             _ => "o"
         };
 
@@ -1806,7 +2398,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             // Strip T prefix - FHIR time format is HH:mm:ss, not THH:mm:ss
             result = result.Substring(tIndex + 1);
         }
-        else if (hasTimeZone && precision >= DateTimePrecision.Hour)
+        else if (hasTimeZone && precision >= FhirTemporalPrecision.Hour)
         {
             result += dt.ToString("zzz", System.Globalization.CultureInfo.InvariantCulture);
         }
@@ -1837,7 +2429,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Per spec: If input collection has multiple items, signal an error
         if (context.Focus.Count > 1)
         {
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"Instance selector requires a single input item or empty collection, but got {context.Focus.Count} items");
         }
 
@@ -1897,6 +2489,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             decimal => "decimal",
             bool => "boolean",
             DateTime or DateTimeOffset => "dateTime",
+            FhirTemporal temporal => temporal.Kind switch
+            {
+                FhirPrimitive.Date => "date",
+                FhirPrimitive.DateTime => "dateTime",
+                FhirPrimitive.Instant => "instant",
+                FhirPrimitive.Time => "time",
+                _ => "dateTime"
+            },
             _ => "string"
         };
     }
@@ -1911,9 +2511,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         UnorderedCollectionDetection.GetUnorderedNavigationSource(focus);
 
     /// <summary>
-    /// Simple implementation of IElement for primitive values.
+    /// Simple implementation of IElement for primitive values produced by the evaluator.
     /// </summary>
-    private class PrimitiveElement : IElement
+    /// <remarks>Declares <see cref="ISystemValueElement"/>; see that interface for why.</remarks>
+    private class PrimitiveElement : ISystemValueElement
     {
         public PrimitiveElement(object value, string type)
         {

@@ -42,7 +42,7 @@ public sealed record AnalysisContext
         RootType = rootType;
         _issues = issues;
         Variables = variables;
-        DefinedVariables = definedVariables ?? new Dictionary<string, FhirPathTypeSet>(StringComparer.OrdinalIgnoreCase);
+        DefinedVariables = definedVariables ?? new Dictionary<string, FhirPathTypeSet>(StringComparer.Ordinal);
         TypeStack = typeStack;
         ExpressionContextStack = expressionContextStack;
         AggregateTotalStack = aggregateTotalStack;
@@ -122,7 +122,7 @@ public sealed record AnalysisContext
         }
 
         var variables = ImmutableDictionary<string, FhirPathTypeSet>.Empty
-            .WithComparers(StringComparer.OrdinalIgnoreCase)
+            .WithComparers(StringComparer.Ordinal)
             .Add("resource", rootProps)
             .Add("rootResource", rootProps)
             .Add("context", rootProps)
@@ -170,6 +170,28 @@ public sealed record AnalysisContext
     public void AddWarning(string message, Expression? location = null)
     {
         AddIssue(ValidationIssueSeverity.Warning, message, location);
+    }
+
+    /// <summary>
+    /// Adds a warning reporting a subexpression that provably yields empty for every conformant input.
+    /// </summary>
+    public void AddAlwaysEmptyWarning(string message, Expression? location = null)
+    {
+        _issues.Add(ValidationIssue.AlwaysEmpty(
+            message,
+            location?.Location?.ToString(),
+            location?.ToString()));
+    }
+
+    /// <summary>
+    /// Adds a warning that marks the analysis as indeterminate rather than invalid.
+    /// </summary>
+    public void AddIndeterminateWarning(string message, Expression? location = null)
+    {
+        _issues.Add(ValidationIssue.Indeterminate(
+            message,
+            location?.Location?.ToString(),
+            location?.ToString()));
     }
 
     /// <summary>
@@ -315,25 +337,63 @@ public sealed record AnalysisContext
     }
 
     /// <summary>
-    /// Creates a forked context for analyzing a branch expression (e.g., union operands).
-    /// The forked context has its own copy of DefinedVariables so that variables defined
-    /// in one branch don't leak to sibling branches during static analysis.
+    /// Creates a context that analyses a nested <c>defineVariable</c> scope: it sees the variables defined
+    /// so far, and anything defined inside it is invisible once the nested expression is done.
     /// </summary>
     /// <remarks>
-    /// Per FHIRPath spec, defineVariable affects "subsequent expressions on the output collection".
-    /// Union branches are NOT subsequent - they're parallel evaluations from the same input.
+    /// Used for the operands of <c>|</c> and for the arguments of the functions that evaluate per item, which
+    /// are the two scope boundaries <see cref="Evaluation.EvaluationContext.ForkVariableScope"/> and
+    /// <see cref="Evaluation.EvaluationContext.PushThis"/> enforce at runtime. Analysis has to draw them in
+    /// the same places or it stays silent about an expression the evaluator will refuse.
     /// </remarks>
-    public AnalysisContext ForkForBranch()
+    public AnalysisContext ForkVariableScope()
     {
         return new AnalysisContext(Schema, RootType, _issues, Variables,
-            new Dictionary<string, FhirPathTypeSet>(DefinedVariables, StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, FhirPathTypeSet>(DefinedVariables, StringComparer.Ordinal),
             TypeStack, ExpressionContextStack, AggregateTotalStack, CurrentFocus);
     }
 
     /// <summary>
-    /// Resolves a variable by name.
+    /// Resolves a variable by name alone, expanding the <c>vs-</c> / <c>ext-</c> families.
     /// </summary>
+    /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
+    /// <remarks>
+    /// Forwards <see langword="true"/> to the internal spelling-aware overload, matching its sibling
+    /// <see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, out object?)"/>: a caller
+    /// reaching this arity has only a name, not a parsed reference, and the prefix alone is enough to type
+    /// it as a string. A caller that has the parsed reference should resolve through
+    /// <see cref="FhirPathAnalyzer"/>, which reads
+    /// <see cref="Expressions.VariableRefExpression.IsDelimited"/>.
+    /// </remarks>
     public FhirPathTypeSet? ResolveVariable(string name)
+        => ResolveVariable(name, isDelimited: true);
+
+    /// <summary>
+    /// Resolves a variable reference whose spelling is known.
+    /// </summary>
+    /// <param name="name">The variable name, without the leading <c>%</c> or any surrounding backticks.</param>
+    /// <param name="isDelimited">
+    /// Whether the reference was written as <c>%`name`</c>. Only the delimited spelling resolves the
+    /// <c>vs-</c> / <c>ext-</c> families, so the analyzer agrees with the engine on the bare one too.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Internal: <paramref name="isDelimited"/> mirrors <see cref="Expressions.VariableRefExpression.IsDelimited"/>,
+    /// an engine-internal parse artifact rather than part of the published analysis contract. Its callers
+    /// are <see cref="FhirPathAnalyzer"/>, which has the parsed reference and so knows the spelling, and
+    /// the public one-argument overload above, which does not and forwards <see langword="true"/>.
+    /// </para>
+    /// <para>
+    /// The families are recognised by shape rather than enumerated, matching
+    /// <see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable(string, bool, out object?)"/>:
+    /// the FHIR profile of FHIRPath defines one for every ValueSet and extension in the specification, and
+    /// reporting the rest as undefined would make the analyzer stricter than the engine. The shape test
+    /// lives in <see cref="StandardConstantFamilies"/>, so a bare <c>%vs-mine</c> - or a delimited but
+    /// suffix-empty <c>%`vs-`</c> - is reported undefined here for the same reason the engine throws on
+    /// it, rather than by a second copy of the rule that can drift.
+    /// </para>
+    /// </remarks>
+    internal FhirPathTypeSet? ResolveVariable(string name, bool isDelimited)
     {
         if (DefinedVariables.TryGetValue(name, out var definedProps))
         {
@@ -343,6 +403,11 @@ public sealed record AnalysisContext
         if (Variables.TryGetValue(name, out var props))
         {
             return props;
+        }
+
+        if (StandardConstantFamilies.IsPrefixedConstant(name, isDelimited))
+        {
+            return CreateStringTypeSet();
         }
 
         return null;

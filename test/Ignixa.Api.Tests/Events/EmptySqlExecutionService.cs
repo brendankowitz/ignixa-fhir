@@ -17,6 +17,6 @@ internal sealed class EmptySqlExecutionService : ISqlExecutionService
         CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<TResult>>([]);
 
-    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken)
+    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, bool disableRetries = false)
         => Task.FromResult(0);
 }

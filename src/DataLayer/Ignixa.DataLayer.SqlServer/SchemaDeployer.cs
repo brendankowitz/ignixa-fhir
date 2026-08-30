@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using Ignixa.Domain.Abstractions;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Hosting;
@@ -39,7 +40,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
 
     public async Task DeployIfEmptyAsync(int tenantId, CancellationToken cancellationToken)
     {
-        var connectionString = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(
+        var connectionString = await TenantConnectionStringResolver.ResolveAsync(
             _tenantConfigurationStore, tenantId, cancellationToken);
 
         if (_environment.IsDevelopment() && !await CanConnectAsync(connectionString, cancellationToken))
@@ -82,17 +83,22 @@ public sealed class SchemaDeployer : ISchemaDeployer
         // pre-provisioned by ops), so upgradeExisting: false would throw
         // DacServicesException unconditionally, even against an empty target. The actual
         // safety gate is the IsDatabaseEmptyAsync check above, which returns before this
-        // line runs if the database already has schema -- matching the old
-        // DatabaseInitializer's historical safety model (a single emptiness check
-        // immediately before acting, with no deeper DacFx-level backstop).
-        dacServices.Deploy(package, databaseName, upgradeExisting: true, cancellationToken: cancellationToken);
+        // line runs if the database already has schema, backed by the explicit
+        // BlockOnPossibleDataLoss in CreateDeployOptions.
+        var result = await DeployAndStampAsync(
+            dacServices, package, databaseName, connectionString, CreateDeployOptions(),
+            SchemaVersionConstants.CurrentVersion, cancellationToken);
+        if (result.Outcome == SchemaDeployOutcome.AppliedButVersionStampFailed)
+        {
+            ExceptionDispatchInfo.Capture(result.StampException!).Throw();
+        }
+
         _logger.LogInformation("Deployed schema to tenant {TenantId}'s new database '{DatabaseName}'.", tenantId, databaseName);
-        await StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
     }
 
     public async Task UpgradeIfNeededAsync(int tenantId, CancellationToken cancellationToken)
     {
-        var connectionString = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(
+        var connectionString = await TenantConnectionStringResolver.ResolveAsync(
             _tenantConfigurationStore, tenantId, cancellationToken);
 
         if (await IsDatabaseEmptyAsync(connectionString, cancellationToken))
@@ -108,23 +114,16 @@ public sealed class SchemaDeployer : ISchemaDeployer
             return;
         }
 
-        using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream(DacpacResourceName)
-            ?? throw new InvalidOperationException($"Embedded resource '{DacpacResourceName}' not found in {typeof(SchemaDeployer).Assembly.FullName}.");
-        using var package = DacPackage.Load(dacpacStream);
-        var databaseName = new SqlConnectionStringBuilder(connectionString).InitialCatalog;
-        var dacServices = new DacServices(connectionString);
-
-        var deployReportXml = dacServices.GenerateDeployReport(package, databaseName, cancellationToken: cancellationToken);
-
-        if (!DeployReportClassifier.IsAutoSafe(deployReportXml))
-        {
-            throw new InvalidOperationException(
-                $"Tenant {tenantId}'s database is at schema version {currentVersion}, behind the current " +
-                $"version {SchemaVersionConstants.CurrentVersion}, and the pending diff contains changes " +
-                "that are not safe to apply automatically. Review the diff and apply it explicitly using " +
-                "the schema-upgrade CLI tool (tools/Ignixa.SchemaUpgrade.Cli).");
-        }
-
+        // Cheap config gate before the expensive DacFx work below. A deployment that has explicitly
+        // opted out of automatic schema changes shouldn't pay for full deploy-report generation on
+        // every uncached factory creation, nor be taken down by a report-shape problem it has no
+        // interest in -- it needs to be told to use the CLI, and nothing more. This applies
+        // unconditionally, including to the version-0 bootstrap case (no dbo.SchemaVersion table
+        // yet): the pending diff for an existing tenant can include non-trivial operations (e.g. a
+        // table rebuild from a partition function's boundary values changing), so bootstrapping is
+        // treated as exactly the kind of change AutomaticSchemaDeploymentEnabled exists to gate, not
+        // an exception to it. An operator who has opted out must run the CLI once per existing
+        // tenant before this build's first request against it.
         if (!_options.Value.AutomaticSchemaDeploymentEnabled)
         {
             throw new InvalidOperationException(
@@ -133,12 +132,73 @@ public sealed class SchemaDeployer : ISchemaDeployer
                 "Apply the upgrade manually using the schema-upgrade CLI tool, or enable automatic deployment.");
         }
 
-        dacServices.Deploy(package, databaseName, upgradeExisting: true, cancellationToken: cancellationToken);
-        await StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
+        using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream(DacpacResourceName)
+            ?? throw new InvalidOperationException($"Embedded resource '{DacpacResourceName}' not found in {typeof(SchemaDeployer).Assembly.FullName}.");
+        using var package = DacPackage.Load(dacpacStream);
+        var databaseName = new SqlConnectionStringBuilder(connectionString).InitialCatalog;
+        var dacServices = new DacServices(connectionString);
+
+        var deployOptions = CreateDeployOptions();
+
+        var deployReportXml = dacServices.GenerateDeployReport(
+            package, databaseName, options: deployOptions, cancellationToken: cancellationToken);
+
+        var classification = DeployReportClassifier.Classify(deployReportXml);
+        if (!classification.IsAutoSafe)
+        {
+            throw new InvalidOperationException(
+                $"Tenant {tenantId}'s database is at schema version {currentVersion}, behind the current " +
+                $"version {SchemaVersionConstants.CurrentVersion}, and the pending diff is classified as " +
+                $"{classification.Outcome} rather than auto-safe ({classification.ReasonSummary}). Review the diff " +
+                "and apply it explicitly using the schema-upgrade CLI tool (tools/Ignixa.SchemaUpgrade.Cli).");
+        }
+
+        var result = await DeployAndStampAsync(
+            dacServices, package, databaseName, connectionString, deployOptions,
+            SchemaVersionConstants.CurrentVersion, cancellationToken);
+        if (result.Outcome == SchemaDeployOutcome.AppliedButVersionStampFailed)
+        {
+            ExceptionDispatchInfo.Capture(result.StampException!).Throw();
+        }
+
         _logger.LogInformation(
             "Upgraded tenant {TenantId}'s database from schema version {OldVersion} to {NewVersion}.",
             tenantId, currentVersion, SchemaVersionConstants.CurrentVersion);
     }
+
+    /// <summary>
+    /// The deploy options both automatic paths use, for the deploy itself and for the report
+    /// generated to classify it -- the report must be produced under the same options it will be
+    /// applied under, or it describes a different operation than the one that runs.
+    /// <c>BlockOnPossibleDataLoss</c> is set explicitly rather than left to DacFx's default: it is
+    /// the last backstop behind <see cref="DeployReportClassifier"/>, and inheriting it implicitly
+    /// meant any later change that started passing options here would have dropped it silently.
+    /// </summary>
+    /// <summary>
+    /// The deploy options both automatic paths use, for the deploy itself and for the report
+    /// generated to classify it -- the report must be produced under the same options it will be
+    /// applied under, or it describes a different operation than the one that runs.
+    /// <c>BlockOnPossibleDataLoss</c> is set explicitly rather than left to DacFx's default: it is
+    /// the last backstop behind <see cref="DeployReportClassifier"/>, and inheriting it implicitly
+    /// meant any later change that started passing options here would have dropped it silently.
+    /// <para>
+    /// Internal rather than private so the environment predicate can be tested directly. It is
+    /// easy to get subtly wrong -- an earlier revision keyed on <c>IsDevelopment()</c>, which
+    /// silently excluded the E2E host (environment "Test") and would have failed every E2E run.
+    /// </para>
+    /// </summary>
+    internal DacDeployOptions CreateDeployOptions() => new()
+    {
+        BlockOnPossibleDataLoss = true,
+        // The dacpac targets Azure SQL Database, so a box SQL Server is the incompatible side.
+        // Permissive for every non-Production host because they all run box SQL Server: local
+        // development and docker-compose use mssql/server:2022, and the E2E test host runs as
+        // environment "Test" against that same container. Production stays strict -- a production
+        // deploy is Azure-to-Azure and does not need this, so if it ever did, the target is not a
+        // platform this schema is built for and the deploy should fail loudly rather than be
+        // forced through.
+        AllowIncompatiblePlatform = !_environment.IsProduction() || _options.Value.AllowIncompatiblePlatform,
+    };
 
     private static async Task<bool> CanConnectAsync(string connectionString, CancellationToken cancellationToken)
     {
@@ -215,12 +275,80 @@ public sealed class SchemaDeployer : ISchemaDeployer
         return (int)result! == 1;
     }
 
-    private static async Task StampSchemaVersionAsync(string connectionString, int version, CancellationToken cancellationToken)
+    /// <summary>
+    /// Deploys <paramref name="package"/> to <paramref name="databaseName"/> and stamps
+    /// <paramref name="version"/>, as a single paired operation. This is the only way any caller
+    /// in this codebase performs a schema deploy -- including Ignixa.SchemaUpgrade.Cli, the
+    /// operator-run escape hatch for diffs <see cref="DeployReportClassifier"/> refuses to
+    /// auto-apply -- specifically so a deploy is never left unstamped by a caller forgetting a
+    /// separate second call. <paramref name="deployOptions"/> is passed through to
+    /// <see cref="DacServices.Deploy"/> when non-null (e.g. the CLI's <c>--allow-data-loss</c>);
+    /// null uses DacFx's own defaults. Both automatic paths in this class pass explicit options
+    /// from <c>CreateDeployOptions</c> rather than null, so their data-loss backstop is stated
+    /// rather than inherited. A stamp failure
+    /// does not roll back the deploy -- the schema change already committed -- so it is reported
+    /// via the returned result's <see cref="SchemaDeployOutcome.AppliedButVersionStampFailed"/>
+    /// rather than thrown, letting each caller decide how loudly to surface a database that is
+    /// correct but whose version record is not.
+    /// </summary>
+    public static async Task<SchemaDeployResult> DeployAndStampAsync(
+        DacServices dacServices,
+        DacPackage package,
+        string databaseName,
+        string connectionString,
+        DacDeployOptions? deployOptions,
+        int version,
+        CancellationToken cancellationToken)
+    {
+        if (deployOptions is null)
+        {
+            dacServices.Deploy(package, databaseName, upgradeExisting: true, cancellationToken: cancellationToken);
+        }
+        else
+        {
+            dacServices.Deploy(package, databaseName, upgradeExisting: true, options: deployOptions, cancellationToken: cancellationToken);
+        }
+
+        try
+        {
+            await StampSchemaVersionAsync(connectionString, version, cancellationToken);
+            return new SchemaDeployResult(SchemaDeployOutcome.Applied);
+        }
+        catch (SqlException ex)
+        {
+            // Deliberately narrow. An unfiltered catch here also swallowed
+            // OperationCanceledException -- reporting a cancelled stamp as a *failed* one -- along
+            // with any programmer error, both of which must surface rather than be relabelled as a
+            // recognised, recoverable outcome the CLI then reports as "only the version record is
+            // missing".
+            return new SchemaDeployResult(SchemaDeployOutcome.AppliedButVersionStampFailed, ex);
+        }
+    }
+
+    /// <summary>
+    /// Records that a tenant's database has been stamped at <paramref name="version"/>. Called
+    /// only by <see cref="DeployAndStampAsync"/> -- do not call this directly to record a deploy
+    /// that method didn't itself perform; that would recreate the unpaired deploy/stamp gap
+    /// <see cref="DeployAndStampAsync"/> exists to close. Idempotent and safe under concurrency:
+    /// dbo.SchemaVersion has PRIMARY KEY (Version), so a bare INSERT throws (SQL error 2627)
+    /// whenever an already-stamped version is re-stamped -- which is the norm, not the exception,
+    /// on the CLI's re-run path. A plain IF NOT EXISTS guard would fix only the sequential case;
+    /// two connections can both pass it before either inserts, so the check takes a range lock
+    /// (UPDLOCK, HOLDLOCK) inside an explicit transaction to also cover two app instances
+    /// cold-starting the same tenant concurrently.
+    /// </summary>
+    public static async Task StampSchemaVersionAsync(string connectionString, int version, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "INSERT dbo.SchemaVersion (Version) VALUES (@version)";
+        command.CommandText = """
+            SET XACT_ABORT ON;
+            BEGIN TRANSACTION;
+            IF NOT EXISTS (SELECT 1 FROM dbo.SchemaVersion WITH (UPDLOCK, HOLDLOCK) WHERE Version = @version)
+                INSERT dbo.SchemaVersion (Version) VALUES (@version);
+            COMMIT TRANSACTION;
+            """;
         command.Parameters.AddWithValue("@version", version);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

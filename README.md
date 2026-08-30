@@ -208,7 +208,7 @@ published to the [conformance matrix](https://brendankowitz.github.io/ignixa-fhi
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) and the [Developer Guide](CLAUDE.md) for details on setting up your environment and submitting PRs.
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) and the [Developer Guide](AGENTS.md) for details on setting up your environment and submitting PRs.
 
 ## 📄 License
 

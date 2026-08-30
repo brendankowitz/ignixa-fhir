@@ -15,7 +15,7 @@
     <!-- Logging -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 
-    <!-- Schema deployment (Task 4) -->
+    <!-- Schema deployment (SQL Database Project + DacFx-based deployer) -->
     <PackageReference Include="Microsoft.SqlServer.DacFx" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />

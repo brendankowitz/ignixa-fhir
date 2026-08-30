@@ -118,11 +118,58 @@ internal class SqlOnFhirEvaluationVisitor
         var context = new EvaluationContext() with { RootResource = resource };
         foreach (var constant in viewDef.Constants)
             if (constant.Value != null)
-                context = context.WithEnvironmentVariable(constant.Name, new PrimitiveValueElement(constant.Value));
+                context = context.WithEnvironmentVariable(
+                    constant.Name, new PrimitiveValueElement(constant.Value, constant.ValueType));
         // Caller-supplied variables override ViewDefinition constants if names collide (caller wins).
+        //
+        // The caller wins on the *value*; the declared type belongs to the slot, so a variable that
+        // overrides a constant inherits that constant's type. Without this, overriding a valueDate
+        // constant would silently retype it as System.String and reintroduce the comparison failure the
+        // constant path was fixed for - and since variables arrive as IReadOnlyDictionary<string,
+        // string>, the caller has no way to say otherwise. Declaring the constant with the right
+        // value[x] and overriding its value at runtime is therefore the supported way to pass a typed
+        // variable.
+        //
+        // SCOPE, measured rather than assumed. ValidateConstantReferences does not require every %name to
+        // be a declared constant: it exempts context, resource, rootResource, ucum, sct, loinc, rowIndex,
+        // and the vs-/ext- families in their delimited spelling. Of those, ucum/sct/loinc and every
+        // %`vs-*`/%`ext-*` name reach this loop untyped, binding the caller's string with no constant to
+        // inherit from - and System.String is correct for them, not a defect: FHIRPath defines all of them
+        // as fixed URIs. `birthDate < %ucum` throwing "Cannot compare 'date' with 'string'" is the correct
+        // answer to putting a date in a URI slot, not a typing failure. The engine's override of those
+        // names is a deliberate, documented feature (EvaluationContext's remarks) and is left working.
+        //
+        // context/resource/rootResource cannot reach here untyped - TryGetEnvironmentVariable's switch
+        // answers them before it consults Environment - and rowIndex is re-injected below and wins. As of
+        // issue #439, SqlOnFhirEvaluator.ValidateVariables rejects a variables entry using any of those
+        // four before this method runs, so the paragraph above records why such an override was silently
+        // ineffective, not a case this loop still has to handle.
+        //
+        // The vs-/ext- families reach here only in their delimited spelling. The tokenizer now lexes a
+        // bare "%vs-x" as one token rather than %vs / minus / x (issue #438), but that is a lexical change
+        // only: HAPI's engine and GetStandardConstant both expand for the backtick spelling alone, so a
+        // bare %vs-x is an ordinary undeclared constant name that ValidateConstantReferences rejects up
+        // front rather than letting it fail later as an undefined environment variable.
+        //
+        // A caller wanting a typed value under one of these names declares a constant of that name and
+        // overrides its value, as above. Pinned by the GivenAPredefinedVariableName_* tests, by
+        // SqlOnFhirEvaluatorTests.GivenAViewDefinitionSelectingAStandardPrefixedConstant (declared in
+        // FhirPathColumnEvaluatorTests.cs), and by Ignixa.FhirPath.Tests' EnvironmentVariableResolutionTests.
         if (variables != null)
+        {
+            // Built with the indexer, not ToDictionary: two constants sharing a name is malformed input
+            // that the loop above resolves as last-wins rather than rejecting, and ToDictionary would
+            // turn that into a throw from a code path that only exists to supply a type.
+            var declaredTypes = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var constant in viewDef.Constants)
+                declaredTypes[constant.Name] = constant.ValueType;
+
             foreach (var (name, value) in variables)
-                context = context.WithEnvironmentVariable(name, new PrimitiveValueElement(value));
+            {
+                declaredTypes.TryGetValue(name, out var declaredType);
+                context = context.WithEnvironmentVariable(name, new PrimitiveValueElement(value, declaredType));
+            }
+        }
         // rowIndex injected last so it cannot be shadowed by user-defined constants or variables
         context = context.WithEnvironmentVariable("rowIndex", new PrimitiveValueElement(0));
         return context;
@@ -397,15 +444,31 @@ internal class SqlOnFhirEvaluationVisitor
                 yield return name;
     }
 
-    private class PrimitiveValueElement : IElement
+    /// <summary>
+    /// Wraps a value produced by FHIRPath evaluation for consumption by the view runner.
+    /// </summary>
+    /// <remarks>Declares <see cref="ISystemValueElement"/>; see that interface for why.</remarks>
+    private class PrimitiveValueElement : ISystemValueElement
     {
         private readonly object _value;
         private readonly string _type;
 
-        public PrimitiveValueElement(object value)
+        /// <param name="value">The value to wrap.</param>
+        /// <param name="declaredType">
+        /// The FHIRPath type the producer knows the value to have, or <see langword="null"/> to infer it
+        /// from the CLR type.
+        /// </param>
+        /// <remarks>
+        /// Inference is not enough for a ViewDefinition constant. <c>valueDate</c>, <c>valueDateTime</c>,
+        /// <c>valueInstant</c> and <c>valueTime</c> all reach here as a <see cref="string"/>, which infers
+        /// as System.String, so <c>%cutoff</c> in <c>birthDate &lt; %cutoff</c> compared a date against a
+        /// string and threw. The declared type comes off the <c>value[x]</c> suffix, which the parser has
+        /// and the value does not.
+        /// </remarks>
+        public PrimitiveValueElement(object value, string? declaredType = null)
         {
             _value = value;
-            _type = FhirPathEvaluator.GetFhirPathTypeName(value);
+            _type = declaredType ?? FhirPathEvaluator.GetFhirPathTypeName(value);
         }
 
         public string Name => "value";

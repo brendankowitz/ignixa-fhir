@@ -130,7 +130,7 @@ public sealed class CoreProfileOfflineScenarioTests(ITestOutputHelper output)
         var schema = Setup!.SchemaResolver.ResolveForElement(element);
         schema.ShouldNotBeNull();
 
-        var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());
+        var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, ValidationState.ForRoot(element));
 
         Dump(result, "conformant blood-pressure Observation");
         SlicingIssues(result)
@@ -157,7 +157,7 @@ public sealed class CoreProfileOfflineScenarioTests(ITestOutputHelper output)
         var schema = Setup!.SchemaResolver.ResolveForElement(element);
         schema.ShouldNotBeNull();
 
-        var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());
+        var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, ValidationState.ForRoot(element));
 
         Dump(result, "blood-pressure missing diastolic component");
         SlicingIssues(result).ShouldContain(

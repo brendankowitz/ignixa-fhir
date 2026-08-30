@@ -19,16 +19,16 @@ public sealed class SchemaVersionResolver : ISchemaVersionResolver
 
     public async Task<int> GetCurrentVersionAsync(int tenantId, CancellationToken cancellationToken)
     {
-        var connectionString = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(
+        var connectionString = await TenantConnectionStringResolver.ResolveAsync(
             _tenantConfigurationStore, tenantId, cancellationToken);
 
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        // An un-versioned pre-Phase-C tenant (deployed before Task 1 introduced the SchemaVersion
-        // table) has no dbo.SchemaVersion table at all -- querying it directly throws SqlException
-        // "Invalid object name 'dbo.SchemaVersion'" rather than returning a row. Mirrors
-        // SchemaDeployer.IsDatabaseEmptyAsync's own sys.tables existence check.
+        // An un-versioned pre-Phase-C tenant (deployed before the SchemaVersion table was
+        // introduced) has no dbo.SchemaVersion table at all -- querying it directly throws
+        // SqlException "Invalid object name 'dbo.SchemaVersion'" rather than returning a row.
+        // Mirrors SchemaDeployer.IsDatabaseEmptyAsync's own sys.tables existence check.
         if (!await SchemaVersionTableExistsAsync(connection, cancellationToken))
         {
             _logger.LogDebug("Tenant {TenantId} has no SchemaVersion table yet; treating as schema version 0.", tenantId);

@@ -78,7 +78,7 @@ public class SqlCatalogDataLayerTablesTests
     public void GivenADataLayerTable_WhenLookedUp_ThenItResolves(string tableName)
     {
         // Table() throws KeyNotFoundException on a miss, so resolving at all is the assertion. These are the
-        // remaining tables the Phase F ports write against.
+        // tables the SqlServer data-layer hand-writes SQL against.
         Should.NotThrow(() => SqlCatalog.Default.Table(tableName));
     }
 

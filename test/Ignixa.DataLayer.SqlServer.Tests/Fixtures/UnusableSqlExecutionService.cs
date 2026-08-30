@@ -17,7 +17,7 @@ public sealed class UnusableSqlExecutionService : ISqlExecutionService
         CancellationToken cancellationToken)
         => throw Unexpected(command);
 
-    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken)
+    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, bool disableRetries = false)
         => throw Unexpected(command);
 
     private static InvalidOperationException Unexpected(SqlCommand command)

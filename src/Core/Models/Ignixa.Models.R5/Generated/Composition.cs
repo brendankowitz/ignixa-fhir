@@ -40,16 +40,6 @@ public sealed partial class Composition : Ignixa.Models.Composition
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
 
     [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
-
-    [JsonIgnore]
     public PrimitiveElement<string> NameElement => new(MutableNode, "name");
 
     [JsonIgnore]

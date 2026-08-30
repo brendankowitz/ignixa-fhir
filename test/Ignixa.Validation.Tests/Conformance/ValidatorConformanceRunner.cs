@@ -202,7 +202,7 @@ public sealed class ValidatorConformanceRunner(ITestOutputHelper output)
             // so %resource / %rootResource / resolve() engage for dom-*/bdl-* invariants and reference
             // resolution. Without this, invariant evaluation falls back to context-free mode.
             var element = sourceNode.ToElement(Schema);
-            var state = new ValidationState().EnterRootResource(element);
+            var state = ValidationState.ForRoot(element);
             var result = schema.Validate(element, settings, state);
             var errors = result.Issues
                 .Where(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal)

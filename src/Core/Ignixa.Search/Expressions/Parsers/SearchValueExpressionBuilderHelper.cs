@@ -20,7 +20,6 @@ namespace Ignixa.Search.Expressions.Parsers;
 /// </summary>
 internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 {
-    private const decimal ApproximateMultiplier = .1M;
     private SearchComparator _comparator;
     private int? _componentIndex;
     private SearchModifier _modifier;
@@ -42,73 +41,20 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
         if (_modifier != null) ThrowModifierNotSupported();
 
-        // Based on spec here: http://hl7.org/fhir/search.html#prefix
-        // FHIR spec says: eq = "the range of the search value fully contains the range of the target value"
-        // However, Microsoft FHIR Server (and this implementation) uses a practical interpretation:
-        // eq matches when target range OVERLAPS with or CONTAINS the search range.
-        // This means wider-precision values match narrower searches:
-        //   - date=1980-05-11 matches obs with "1980" (year precision) because the year contains the day
-        //   - date=1980-05-11 matches obs with "1980-05" (month) because the month contains the day
-        //   - date=1980-05-11 matches obs with "1980-05-11" (day) - exact match
-        // This is the intuitive behavior for date searches.
-        //
-        // ne (not equals) uses strict FHIR spec: "target is NOT fully contained within search range"
-        // This means ne matches when target extends outside the search boundaries:
-        //   - date=ne1980-05-11 matches obs with "1980" because the year extends beyond May 11
-        //   - date=ne1980-05-11 matches obs with "1980-05" because the month extends beyond May 11
-        //   - date=ne1980-05-11 does NOT match obs with "1980-05-11" because it's fully contained
-        switch (_comparator)
+        // The prefix table lives in DateRangeComparisonSemantics, which the SQL compiler renders too. It
+        // used to be restated here, and the restatement had drifted: eq was an overlap ("practical
+        // interpretation") rather than the spec's containment, which made eq and ne non-complementary --
+        // a month-long Period row satisfied BOTH date=eq<one-day> and date=ne<one-day> -- and ap was a
+        // containment rather than the spec's overlap. Do not reintroduce a local copy to "fix" a prefix.
+        if (!Enum.IsDefined(typeof(SearchComparator), _comparator))
         {
-            case SearchComparator.Eq:
-                // Match if ranges overlap: target.Start <= search.End AND target.End >= search.Start
-                // This includes exact matches, target containing search, and search containing target
-                _outputExpression = Expression.And(
-                    Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End),
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start));
-                break;
-            case SearchComparator.Ne:
-                // ne = target is NOT fully contained within search range
-                // NOT (target.Start >= search.Start AND target.End <= search.End)
-                // = target.Start < search.Start OR target.End > search.End
-                _outputExpression = Expression.Or(
-                    Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start),
-                    Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End));
-                break;
-            case SearchComparator.Lt:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Gt:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Le:
-                _outputExpression = Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Ge:
-                _outputExpression = Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Sa:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeStart, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Eb:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Ap:
-                long startTicks = dateTime.Start.UtcTicks;
-                long endTicks = dateTime.End.UtcTicks;
-
-                long differenceTicks = (long)((DateTimeOffset.UtcNow.Ticks - Math.Max(startTicks, endTicks)) * ApproximateMultiplier);
-
-                DateTimeOffset approximateStart = dateTime.Start.AddTicks(-differenceTicks);
-                DateTimeOffset approximateEnd = dateTime.End.AddTicks(differenceTicks);
-
-                _outputExpression = Expression.And(
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeStart, _componentIndex, approximateStart),
-                    Expression.LessThanOrEqual(FieldName.DateTimeEnd, _componentIndex, approximateEnd));
-                break;
-            default:
-                ThrowComparatorNotSupported();
-                break;
+            ThrowComparatorNotSupported();
+            return;
         }
+
+        _outputExpression = DateRangePredicateExpressionRenderer.Render(
+            DateRangeComparisonSemantics.Build(_comparator, dateTime, DateTimeOffset.UtcNow),
+            _componentIndex);
     }
 
     void ISearchValueVisitor.Visit(NumberSearchValue number)
@@ -346,60 +292,28 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
     }
 
     /// <summary>
-    /// Lowers a comparator over a stored range [<paramref name="lowField"/>, <paramref name="highField"/>] per the
-    /// FHIR prefix table (search.html), which decides both the operator AND which bound it applies to:
-    /// <c>gt: high &gt; v</c>, <c>ge: high &gt;= v</c>, <c>lt: low &lt; v</c>, <c>le: low &lt;= v</c>,
-    /// <c>sa: low &gt; v</c>, <c>eb: high &lt; v</c>. <c>gt</c> and <c>sa</c> emit the same operator against
-    /// DIFFERENT bounds (as do <c>lt</c> and <c>eb</c>), so they cannot share an arm: collapsing them silently
-    /// implements <c>sa</c>/<c>eb</c> for both, which agrees with the spec only where LowValue = HighValue.
-    /// <c>eq</c> is containment of the stored range within the precision-widened search window and <c>ne</c> is
-    /// its exact negation, so the two partition every row; <c>ap</c> is <c>eq</c> over a window widened to
-    /// <c>max(precision, |v| * 0.1)</c>. Ordering comparators do not widen — the spec treats them as having
-    /// arbitrarily high precision.
+    /// Lowers a comparator over a stored range [<paramref name="lowField"/>, <paramref name="highField"/>] by
+    /// rendering <see cref="NumericRangeComparisonSemantics"/>, which the SQL compiler renders too.
     /// </summary>
+    /// <remarks>
+    /// The prefix table used to be restated here, and the restatement had drifted: <c>ap</c> widened the
+    /// window and then asked for containment rather than the spec's overlap, so it under-matched — a row
+    /// whose extent straddled the edge of the tolerance window was dropped. This is the same defect
+    /// <see cref="DateRangeComparisonSemantics"/> closed for dates. Do not reintroduce a local copy to "fix"
+    /// a prefix.
+    /// </remarks>
     private Expression GenerateNumberExpression(FieldName lowField, FieldName highField, decimal number)
     {
-        decimal precision = number.GetPrescisionModifier();
-
-        switch (_comparator)
+        if (!Enum.IsDefined(typeof(SearchComparator), _comparator))
         {
-            case SearchComparator.Eq:
-                return BuildContainedWithin(lowField, highField, number, precision);
-            case SearchComparator.Ne:
-                return BuildNotContainedWithin(lowField, highField, number, precision);
-            case SearchComparator.Ap:
-                return BuildContainedWithin(
-                    lowField,
-                    highField,
-                    number,
-                    Math.Max(precision, Math.Abs(number) * ApproximateMultiplier));
-            case SearchComparator.Gt:
-                return Expression.GreaterThan(highField, _componentIndex, number);
-            case SearchComparator.Ge:
-                return Expression.GreaterThanOrEqual(highField, _componentIndex, number);
-            case SearchComparator.Lt:
-                return Expression.LessThan(lowField, _componentIndex, number);
-            case SearchComparator.Le:
-                return Expression.LessThanOrEqual(lowField, _componentIndex, number);
-            case SearchComparator.Sa:
-                return Expression.GreaterThan(lowField, _componentIndex, number);
-            case SearchComparator.Eb:
-                return Expression.LessThan(highField, _componentIndex, number);
-            default:
-                ThrowComparatorNotSupported();
-                break;
+            ThrowComparatorNotSupported();
+            return null;
         }
 
-        return null;
+        return NumericRangePredicateExpressionRenderer.Render(
+            NumericRangeComparisonSemantics.Build(_comparator, number),
+            lowField,
+            highField,
+            _componentIndex);
     }
-
-    private Expression BuildContainedWithin(FieldName lowField, FieldName highField, decimal number, decimal tolerance)
-        => Expression.And(
-            Expression.GreaterThanOrEqual(lowField, _componentIndex, number - tolerance),
-            Expression.LessThanOrEqual(highField, _componentIndex, number + tolerance));
-
-    private Expression BuildNotContainedWithin(FieldName lowField, FieldName highField, decimal number, decimal tolerance)
-        => Expression.Or(
-            Expression.LessThan(lowField, _componentIndex, number - tolerance),
-            Expression.GreaterThan(highField, _componentIndex, number + tolerance));
 }

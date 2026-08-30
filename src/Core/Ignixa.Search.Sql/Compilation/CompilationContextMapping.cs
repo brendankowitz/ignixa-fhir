@@ -31,9 +31,9 @@ internal static class CompilationContextMapping
     public static FrozenDictionary<string, string> NotApplicable { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [nameof(SearchOptions.MaxItemCount)] =
-            "A page size, not a row cap: the adapter layer pairs it with ProbeExtraRow and a decoded continuation token to build the OffsetSpec on ResultShape.Matches. Forwarding it as a cap as well would apply the same number twice. Row capping is SearchPaging.Keyset.Top on ResultShape.Matches.",
+            "A page size, not a row cap: the adapter layer pairs it with ProbeExtraRow and a decoded continuation token to build either an OffsetSpec or a Top-capped Keyset on ResultShape.Matches. Forwarding it as a cap as well would apply the same number twice. Row capping is SearchPaging.Keyset.Top on ResultShape.Matches.",
         [nameof(SearchOptions.ProbeExtraRow)] =
-            "Reaches the compiler as OffsetSpec.ProbeExtraRow, built by the adapter layer alongside MaxItemCount. The AST models the over-fetch structurally, so there is nothing left for a separate compilation input to say.",
+            "Reaches the compiler structurally, on whichever paging mechanism the adapter chose: OffsetSpec.ProbeExtraRow for an OFFSET/FETCH page, SearchPaging.Keyset.TopIncludesProbeRow for a Top-capped keyset page. Both must be forwarded -- a Top cap built as MaxItemCount + 1 without the flag seeds _include stages from the probe row. The AST models the over-fetch structurally, so there is nothing left for a separate compilation input to say.",
         [nameof(SearchOptions.ContinuationToken)] =
             "Decoding it into a keyset or OFFSET page is adapter logic in a different layer. The decoded result arrives as the SearchPaging on ResultShape.Matches.",
         [nameof(SearchOptions.Elements)] =

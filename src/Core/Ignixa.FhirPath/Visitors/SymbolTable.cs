@@ -81,6 +81,14 @@ internal sealed partial class SymbolTable
     public int FunctionCount => _functions.Count;
 
     /// <summary>
+    /// Gets whether the schema positively identifies a type as a FHIR type.
+    /// </summary>
+    /// <param name="typeName">The declared type name.</param>
+    /// <returns><see langword="true"/> when the configured schema defines the type.</returns>
+    public bool IsKnownFhirType(string typeName) =>
+        _schema?.GetTypeDefinition(typeName) is not null;
+
+    /// <summary>
     /// Registers all standard FhirPath functions.
     /// This method is implemented by the source generator.
     /// </summary>
@@ -137,6 +145,78 @@ internal sealed partial class SymbolTable
 #pragma warning restore CA1002
 
     /// <summary>
+    /// Return type delegate for the boundary of the focus, which is not the focus's own type.
+    /// </summary>
+    /// <remarks>
+    /// The evaluator builds the boundary of a temporal value as a <c>dateTime</c> regardless of whether the
+    /// focus was a <c>date</c>, a <c>dateTime</c> or an <c>instant</c>; only a <c>time</c> focus stays a
+    /// <c>time</c>. Numeric foci widen to <c>decimal</c> and a <c>Quantity</c> focus stays a
+    /// <c>Quantity</c>. Any focus type outside that set is reported as unknown rather than guessed, so a
+    /// boundary case the evaluator grows later cannot become a false always-empty diagnostic.
+    /// </remarks>
+#pragma warning disable CA1002 // Do not expose generic lists
+    public static List<FhirPathType> ReturnsBoundaryOfContext(
+        FunctionDefinition definition,
+        FhirPathTypeSet focus,
+        IEnumerable<FhirPathTypeSet> arguments,
+        ICollection<ValidationIssue> issues)
+    {
+        var isCollection = focus.IsCollection();
+        if (focus.Types.Count == 0)
+        {
+            return [FhirPathType.Unknown(isCollection)];
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var results = new List<FhirPathType>();
+        foreach (var type in focus.Types)
+        {
+            var boundaryTypeName = GetBoundaryTypeName(type.TypeName);
+            if (boundaryTypeName is null)
+            {
+                if (seen.Add("?"))
+                {
+                    results.Add(FhirPathType.Unknown(isCollection));
+                }
+
+                continue;
+            }
+
+            if (seen.Add(boundaryTypeName))
+            {
+                results.Add(new FhirPathType(boundaryTypeName, isCollection));
+            }
+        }
+
+        return results;
+    }
+#pragma warning restore CA1002
+
+    private static string? GetBoundaryTypeName(string focusTypeName) =>
+        focusTypeName switch
+        {
+            "date" or "dateTime" or "instant" => "dateTime",
+            "time" => "time",
+            "decimal" or "integer" or "unsignedInt" or "positiveInt" => "decimal",
+            "Quantity" => "Quantity",
+            _ => null,
+        };
+
+    /// <summary>
+    /// Return type delegate for functions whose runtime result shape cannot be inferred.
+    /// </summary>
+#pragma warning disable CA1002 // Do not expose generic lists
+    public static List<FhirPathType> ReturnsUnknown(
+        FunctionDefinition definition,
+        FhirPathTypeSet focus,
+        IEnumerable<FhirPathTypeSet> arguments,
+        ICollection<ValidationIssue> issues)
+    {
+        return [FhirPathType.Unknown(focus.IsCollection())];
+    }
+#pragma warning restore CA1002
+
+    /// <summary>
     /// Return type delegate that returns types from the first argument (used by select()).
     /// </summary>
 #pragma warning disable CA1002 // Do not expose generic lists
@@ -181,6 +261,11 @@ internal sealed partial class SymbolTable
                 var typeDefinition = _schema.GetTypeDefinition(typeName);
                 if (typeDefinition != null)
                 {
+                    if (typeDefinition.Info.IsAbstract)
+                    {
+                        return new List<FhirPathType> { FhirPathType.Unknown(isCollection) };
+                    }
+
                     return new List<FhirPathType> { new FhirPathType(typeDefinition, isCollection) };
                 }
             }

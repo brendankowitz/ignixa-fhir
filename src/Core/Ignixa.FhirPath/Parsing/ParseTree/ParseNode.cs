@@ -97,7 +97,7 @@ internal sealed record ChildParseNode(
 /// Represents a constant value in the parse tree.
 /// Examples: 42, 3.14, 'hello', true, @2024-01-15
 /// </summary>
-internal sealed record ConstantParseNode(
+internal record ConstantParseNode(
     object Value,
     SourceLocation Location) : ParseNode(Location)
 {
@@ -134,10 +134,18 @@ internal sealed record PropertyAccessParseNode(
 
 /// <summary>
 /// Represents a variable reference in the parse tree.
-/// Examples: %context, %resource, %ext-id
+/// Examples: %context, %resource, %`ext-id`
 /// </summary>
+/// <param name="Name">The variable name with the leading <c>%</c> and any backticks removed.</param>
+/// <param name="IsDelimited">
+/// Whether the name was written in the backtick-delimited form (<c>%`vs-x`</c>) rather than bare
+/// (<c>%vs-x</c>). The two spellings do not mean the same thing: per the FHIR profile of FHIRPath only the
+/// delimited form expands to a <c>vs-</c>/<c>ext-</c> URI, so the distinction has to survive lexing.
+/// </param>
+/// <param name="Location">Where the reference appeared in the source expression.</param>
 internal sealed record VariableRefParseNode(
     string Name,
+    bool IsDelimited,
     SourceLocation Location) : ParseNode(Location)
 {
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
@@ -214,9 +222,11 @@ internal sealed record ElementAssignmentParseNode(
     ParseNode ValueExpression,
     SourceLocation Location) : ParseNode(Location)
 {
-    // This is a helper node, doesn't need Accept method as it's not visited directly
+    // A helper node the instance-selector visitor reads through its parent, so reaching Accept means
+    // the parse tree is malformed. InvalidOperationException, not NotSupportedException: this is a
+    // broken invariant, not a capability limit.
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
-        => throw new NotSupportedException("ElementAssignmentParseNode is not directly visitable");
+        => throw new InvalidOperationException("ElementAssignmentParseNode is not directly visitable; it is read through its parent InstanceSelectorParseNode.");
 }
 
 /// <summary>

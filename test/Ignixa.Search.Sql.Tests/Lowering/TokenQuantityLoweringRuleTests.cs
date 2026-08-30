@@ -27,7 +27,7 @@ public class TokenQuantityLoweringRuleTests
             quantityCodeIds: quantityCodeIds));
 
     private static EmittedSql EmitSql(CteDefinition.ParamSource cte)
-        => SqlBuilder.Run(new QueryPlan([cte], new CteRef(0)));
+        => SqlBuilder.Run(new QueryPlan([cte], new MatchPageSpec(new CteRef(0))));
 
     private static SearchParameterInfo CompositeParameter()
         => new("component-code-value-quantity", "component-code-value-quantity", SearchParamType.Composite,

@@ -24,6 +24,8 @@ public class IgnixaElementAdapter : IElement
     private readonly Hl7.Fhir.ElementModel.ITypedElement _firelyElement;
     private IReadOnlyList<IElement>? _cachedAllChildren;
     private Dictionary<string, IReadOnlyList<IElement>>? _childrenByName;
+    private object? _translatedValue;
+    private volatile bool _translatedValueResolved;
 
     /// <summary>
     /// Creates a new adapter wrapping a Firely SDK ITypedElement.
@@ -38,7 +40,32 @@ public class IgnixaElementAdapter : IElement
     public string Name => _firelyElement.Name;
 
     /// <inheritdoc/>
-    public object? Value => _firelyElement.Value;
+    /// <remarks>
+    /// <inheritdoc path="/remarks/node()"/>
+    /// <para>
+    /// Translated into Ignixa's representation - Firely surfaces the temporal primitives as
+    /// <c>Hl7.Fhir.ElementModel.Types</c> instances; <see cref="FirelyPrimitiveValues.ToIgnixa"/>
+    /// translates them to <see cref="FhirTemporal"/> so Ignixa's evaluators can handle them.
+    /// Memoized so that repeated reads return the same instance rather than re-rendering the
+    /// wire-format string each time. The value is captured on first read: this adapter is a
+    /// snapshot of the wrapped element, not a live view of it, so re-create it after mutating the
+    /// element underneath. The resolved flag is <c>volatile</c> so a concurrent reader cannot see
+    /// it set before the value it guards.
+    /// </para>
+    /// </remarks>
+    public object? Value
+    {
+        get
+        {
+            if (!_translatedValueResolved)
+            {
+                _translatedValue = FirelyPrimitiveValues.ToIgnixa(_firelyElement.Value, _firelyElement.InstanceType);
+                _translatedValueResolved = true;
+            }
+
+            return _translatedValue;
+        }
+    }
 
     /// <inheritdoc/>
     public string InstanceType => _firelyElement.InstanceType ?? string.Empty;
@@ -47,11 +74,16 @@ public class IgnixaElementAdapter : IElement
     public string Location => _firelyElement.Location;
 
     /// <inheritdoc/>
-    public bool HasPrimitiveValue => _firelyElement.Value != null;
+    /// <remarks>
+    /// Derived from <see cref="Value"/> rather than read live off the wrapped element, so the two
+    /// cannot disagree once the value has been snapshotted. Translation never maps a non-null
+    /// value to null, so this is the same answer the wrapped element would give.
+    /// </remarks>
+    public bool HasPrimitiveValue => Value is not null;
 
     /// <inheritdoc/>
     public IType? Type => _firelyElement.Definition != null
-        ? new TypeAdapter(_firelyElement.Definition)
+        ? new TypeAdapter(_firelyElement.Definition, InstanceType)
         : null;
 
     /// <inheritdoc/>
@@ -98,11 +130,13 @@ public class IgnixaElementAdapter : IElement
     private class TypeAdapter : IType
     {
         private readonly FirelyElementDef _definition;
+        private readonly string _instanceType;
         private TypeInfo? _cachedInfo;
 
-        public TypeAdapter(FirelyElementDef definition)
+        public TypeAdapter(FirelyElementDef definition, string instanceType)
         {
             _definition = definition ?? throw new ArgumentNullException(nameof(definition));
+            _instanceType = instanceType;
         }
 
         public TypeInfo Info
@@ -112,7 +146,16 @@ public class IgnixaElementAdapter : IElement
                 if (_cachedInfo.HasValue)
                     return _cachedInfo.Value;
 
-                var typeName = _definition.Type.FirstOrDefault()?.GetTypeName() ?? _definition.ElementName;
+                var selectedChoiceType = _definition.IsChoiceElement
+                    ? _definition.Type.FirstOrDefault(type =>
+                        string.Equals(type.GetTypeName(), _instanceType, StringComparison.Ordinal))
+                    : null;
+
+                // A custom ITypedElement can report an InstanceType absent from its declared choice types.
+                // The definition remains the authority for declared metadata, so preserve the prior first-type
+                // fallback instead of fabricating a declaration from the unmatched runtime value.
+                var typeName = (selectedChoiceType ?? _definition.Type.FirstOrDefault())?.GetTypeName()
+                    ?? _definition.ElementName;
                 var primitive = FhirPrimitiveExtensions.FromTypeString(typeName);
 
                 _cachedInfo = new TypeInfo(

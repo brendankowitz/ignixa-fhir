@@ -15,7 +15,7 @@ namespace Ignixa.Tests.Compatibility.CLI;
 class Program
 {
     private const string ESC = "\x1b";
-    private static Dictionary<string, string> s_traitCache = new();
+    private static Dictionary<string, string> _traitCache = new();
 
     private static class Color
     {
@@ -353,7 +353,7 @@ class Program
                 var className = parts[parts.Length - 2];
 
                 // Check if we have cached traits for this class
-                if (s_traitCache.TryGetValue(className, out var traits))
+                if (_traitCache.TryGetValue(className, out var traits))
                 {
                     return traits;
                 }
@@ -396,7 +396,7 @@ class Program
 
                     if (traits.Count > 0)
                     {
-                        s_traitCache[type.Name] = string.Join(", ", traits);
+                        _traitCache[type.Name] = string.Join(", ", traits);
                     }
                 }
             }

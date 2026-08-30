@@ -494,19 +494,15 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
     #region Edge Cases
 
     /// <summary>
-    /// A type modifier naming something that is not a resource type is an unsupported modifier, and R4 makes
-    /// rejecting it a SHALL: "Server SHALL reject any search request that ... is suffixed by a modifier that
-    /// the server does not support for that parameter ... using an HTTP 400 error with an OperationOutcome".
-    /// <para>
-    /// This previously asserted nothing. Its body guarded a <c>ShouldContain(OperationOutcome)</c> behind
-    /// <c>if (results.Any(… OperationOutcome))</c> — a tautology inside its own condition — and its comment
-    /// stated it "passes regardless of whether server returns empty, OperationOutcome, or resources". So it
-    /// was green while the server ignored the modifier and returned every Observation, which is the outcome
-    /// its name says it was guarding against.
-    /// </para>
+    /// Tests that a type modifier naming something other than a real FHIR resource type is rejected.
+    /// For example, searching performer:InvalidType is a modifier the server does not support for
+    /// that reference parameter, since "InvalidType" is not one of performer's valid target types.
+    /// Per FHIR R4 (https://hl7.org/fhir/R4/search.html#modifiers), a search suffixed by a modifier
+    /// the server does not support for that parameter SHALL be rejected with a 400, not silently
+    /// dropped or ignored -- dropping it would widen the result set instead of narrowing it.
     /// </summary>
     [Fact]
-    public async Task GivenAnInvalidTypeModifierOnAReferenceParameter_WhenSearched_ThenBadRequestIsReturned()
+    public async Task GivenObservationsWithValidPerformerTypes_WhenSearchedWithInvalidTypeModifier_ThenBadRequestReturned()
     {
         // Capability check
         RequireSearchParameter("Observation", "performer");
@@ -518,9 +514,8 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
 
         var practitionerId = scenario.Practitioner.Id!;
 
-        // Act
-        var response = await Client.SendAsync(new HttpRequestMessage(
-            HttpMethod.Get, $"/Observation?performer:InvalidType={practitionerId}&_tag={tag}"));
+        // Act - Search with a type modifier that names a nonexistent FHIR resource type.
+        var response = await Client.GetAsync($"/Observation?performer:InvalidType={practitionerId}&_tag={tag}");
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);

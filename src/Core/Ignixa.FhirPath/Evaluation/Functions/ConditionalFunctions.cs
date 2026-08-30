@@ -35,13 +35,13 @@ internal static class ConditionalFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count < 2)
-            throw new ArgumentException("iif() requires at least criterion and true-result arguments");
+            throw new FhirPathEvaluationException("iif() requires at least criterion and true-result arguments");
 
         var focusList = focus.ToList();
 
         if (focusList.Count > 1)
         {
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"iif() cannot be invoked on a collection with {focusList.Count} items - it requires empty or single item focus");
         }
 
@@ -68,12 +68,12 @@ internal static class ConditionalFunctions
         }
         else if (criterion.Count == 1)
         {
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"iif() condition must evaluate to a Boolean, but got a single {criterion[0].InstanceType ?? "unknown"} value");
         }
         else
         {
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"iif() condition must evaluate to a single Boolean, but got a collection with {criterion.Count} items");
         }
 

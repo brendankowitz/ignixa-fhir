@@ -164,19 +164,30 @@ internal static class UtilityFunctions
     }
 
     /// <summary>
-    /// defineVariable(name, expr) - Evaluates expr and stores result in a variable.
-    /// The variable can be accessed later in the expression using %name.
-    /// Returns the input collection unchanged (pass-through).
+    /// Registration-only declaration for <c>defineVariable(name, expr)</c>. Never invoked.
     /// </summary>
-    /// <param name="focus">Input collection (returned unchanged)</param>
-    /// <param name="arguments">Variable name and optional value expression</param>
-    /// <param name="context">Evaluation context (used to store the variable)</param>
-    /// <param name="evaluateExpression">Function to evaluate expression arguments</param>
-    /// <returns>Focus collection unchanged</returns>
+    /// <param name="focus">Unused. Present so the generated dispatch arm compiles.</param>
+    /// <param name="arguments">Unused. Present so the generated dispatch arm compiles.</param>
+    /// <param name="context">Unused. Present so the generated dispatch arm compiles.</param>
+    /// <param name="evaluateExpression">Unused. Present so the generated dispatch arm compiles.</param>
+    /// <returns>Never returns; always throws.</returns>
+    /// <exception cref="InvalidOperationException">Always, because reaching this method is an engine defect.</exception>
     /// <remarks>
-    /// Note: This function is registered via [FhirPathFunction] but is handled specially
-    /// in FhirPathEvaluator.EvaluateDefineVariable() because it needs to mutate the context.
-    /// The attribute registration enables function discovery and validation.
+    /// <para>
+    /// The attribute here is load-bearing and must stay: <c>FhirPathFunctionGenerator</c> reads it to emit
+    /// the <c>defineVariable</c> entry in <c>SymbolTable.g.cs</c>, which is what makes the analyzer treat
+    /// the function as known and validate its arity. Deleting the method would take that registration with
+    /// it and turn every <c>defineVariable</c> expression into an unknown-function diagnostic.
+    /// </para>
+    /// <para>
+    /// The body, by contrast, was a second implementation that could never run:
+    /// <see cref="FhirPathEvaluator.VisitFunctionCall"/> intercepts <c>defineVariable</c> and routes it to
+    /// <c>EvaluateDefineVariable</c> before <c>DispatchFunctionCall</c> is ever reached. Worse, it could not
+    /// be kept correct even in principle - it receives no <c>FunctionCallExpression</c>, so it structurally
+    /// cannot host the guards the real implementation needs (rejecting redefinition of system variables,
+    /// scope rules for repeated definitions). A duplicate that silently diverges from the live path is a
+    /// maintenance trap, so it is replaced by a loud failure.
+    /// </para>
     /// </remarks>
     [FhirPathFunction("defineVariable",
         SupportedContexts = "any-any",
@@ -192,38 +203,9 @@ internal static class UtilityFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        // Note: Actual implementation is in FhirPathEvaluator.EvaluateDefineVariable()
-        // because it requires mutable context access. This method exists for attribute-based
-        // function discovery. If this method is called directly, fall through to the evaluator.
-        var focusList = focus.ToImmutableList();
-
-        if (arguments.Count < 1 || arguments.Count > 2)
-        {
-            throw new InvalidOperationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
-        }
-
-        // Evaluate the name argument
-        var nameResult = evaluateExpression(focusList, arguments[0], context).ToList();
-        if (nameResult.Count != 1 || nameResult[0].Value is not string variableName)
-        {
-            throw new InvalidOperationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
-        }
-
-        // Evaluate the value expression (or use focus if not provided)
-        ImmutableList<IElement> valueResult;
-        if (arguments.Count == 2)
-        {
-            valueResult = evaluateExpression(focusList, arguments[1], context).ToImmutableList();
-        }
-        else
-        {
-            valueResult = focusList;
-        }
-
-        // Store in context's DefinedVariables dictionary
-        context.DefinedVariables[variableName] = valueResult;
-
-        // Return focus unchanged
-        return focusList;
+        throw new InvalidOperationException(
+            "defineVariable must be evaluated by FhirPathEvaluator.EvaluateDefineVariable, which owns the " +
+            "mutable context and the system-variable guards. Reaching this method means the evaluator's " +
+            "interception in VisitFunctionCall was bypassed.");
     }
 }

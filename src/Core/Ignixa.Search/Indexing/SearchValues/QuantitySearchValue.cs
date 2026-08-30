@@ -131,9 +131,10 @@ public class QuantitySearchValue : ISearchValue
         var sb = new StringBuilder();
 
         if (Low == High)
-            sb.Append(Low);
+            sb.Append(Low?.ToString(CultureInfo.InvariantCulture));
         else
-            sb.Append('[').Append(Low).Append(',').Append(High).Append(')');
+            sb.Append('[').Append(Low?.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(High?.ToString(CultureInfo.InvariantCulture)).Append(')');
 
         if (System != null) sb.Append('|').Append(System.EscapeSearchParameterValue());
 

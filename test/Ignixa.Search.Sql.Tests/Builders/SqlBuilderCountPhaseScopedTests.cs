@@ -16,9 +16,7 @@ public class SqlBuilderCountPhaseScopedTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Sort: sort, Shape: new ResultShape.Count.CurrentSortPhase());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Shape: new ResultShape.Count.CurrentSortPhase()));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -35,16 +33,14 @@ public class SqlBuilderCountPhaseScopedTests
     public void GivenCountPhaseScopedFalse_WhenEmittedAlongsideASort_ThenTheCountQueryIsUnaffectedByTheSort()
     {
         // Regression guard: proves this task did NOT change unscoped CountOnly's existing behavior --
-        // _total=accurate & _sort=X (Phase 9's own tested composition) must still report the TRUE total
-        // match count, ignoring sort entirely, exactly as before this task.
+        // _total=accurate & _sort=X (already covered by ResultShape.Count.AllMatches's own tests) must
+        // still report the TRUE total match count, ignoring sort entirely, exactly as before this task.
 
         // Arrange -- same sorted plan as above, but countPhaseScoped left at its default (false).
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Sort: sort, Shape: new ResultShape.Count.AllMatches());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Shape: new ResultShape.Count.AllMatches()));
 
         // Act
         var emitted = SqlBuilder.Run(plan);

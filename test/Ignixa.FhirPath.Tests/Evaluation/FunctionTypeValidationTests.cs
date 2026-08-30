@@ -25,7 +25,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("Patient", null);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("length", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -40,7 +40,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("integer", 42);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("length", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -73,7 +73,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("Patient", null);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("abs", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -88,7 +88,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("string", "hello");
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("abs", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -121,7 +121,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("Observation", null);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("upper", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -136,7 +136,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("integer", 123);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("upper", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -169,7 +169,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("Encounter", null);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("sqrt", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -184,7 +184,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("string", "not-a-number");
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("sqrt", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -217,7 +217,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("boolean", true);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("lower", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -232,7 +232,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("string", "test");
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("ceiling", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -247,7 +247,7 @@ public class FunctionTypeValidationTests
         var root = new TestElement("Patient", null);
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList());
 
         Assert.Contains("floor", ex.Message, StringComparison.OrdinalIgnoreCase);

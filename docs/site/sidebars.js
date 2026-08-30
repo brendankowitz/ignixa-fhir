@@ -32,6 +32,7 @@ const sidebars = {
         'server/architecture',
         'server/configuration',
         'server/multi-tenancy',
+        'server/schema-upgrade-cli',
       ],
     },
     {

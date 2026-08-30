@@ -78,8 +78,25 @@ public static class FhirPathTokenizer
                 .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""),
                        FhirPathTokenKind.DelimitedIdentifier, requireDelimiters: false) // double-quote (legacy)
 
-                // External constants: %identifier or %`delimited-identifier`
-                .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_]*)"),
+                // External constants: %identifier or %`delimited-identifier`.
+                //
+                // The bare alternative includes '-' so a hyphenated name lexes as ONE token rather than
+                // as subtraction, matching HAPI's FHIRLexer (org.hl7.fhir.core). The match is greedy and
+                // only extends an already-touching identifier, so "%a-b" is the single name "a-b" while
+                // "%a - b" is subtraction: whitespace changes the meaning. FhirPathTokenizerTests pins
+                // the edge spellings.
+                //
+                // This is lexing only, not resolution. HAPI's FHIRPathEngine expands the vs-/ext-
+                // shorthands only for the backtick spelling, and the FHIR profile of FHIRPath writes them
+                // that way for exactly that reason - "quoted (just like paths) to allow '-' in the name".
+                // VariableRefExpression carries whether the name was delimited and
+                // EvaluationContext.GetStandardConstant expands only when it was, so lexing %vs-x as one
+                // token buys a clear "undefined environment variable: vs-x" rather than a confusing parse
+                // of "%vs" minus "x". The motivating names are not vs-/ext- at all but published
+                // cqf-expression content like %p-inactive. ':' is deliberately left out of the run, which
+                // HAPI does allow; no corpus here needs it.
+                // pinned.
+                .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_-]*)"),
                        FhirPathTokenKind.ExternalConstant, requireDelimiters: false)
 
                 // Axis references: $this, $index, $total
@@ -184,8 +201,10 @@ public static class FhirPathTokenizer
                 .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""),
                        FhirPathTokenKind.DelimitedIdentifier, requireDelimiters: false) // double-quote (legacy)
 
-                // External constants: %identifier or %`delimited-identifier`
-                .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_]*)"),
+                // External constants: %identifier or %`delimited-identifier`. See CreateWithTrivia above
+                // for why the bare alternative includes '-'.
+                // pinned.
+                .Match(Span.Regex(@"%(`[^`]*`|[a-zA-Z_][a-zA-Z0-9_-]*)"),
                        FhirPathTokenKind.ExternalConstant, requireDelimiters: false)
 
                 // Axis references: $this, $index, $total

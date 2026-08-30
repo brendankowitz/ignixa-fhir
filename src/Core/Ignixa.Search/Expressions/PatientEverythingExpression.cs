@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using EnsureThat;
 
 namespace Ignixa.Search.Expressions;
@@ -124,12 +125,12 @@ public class PatientEverythingExpression : Expression
         var filters = new List<string>();
         if (StartDate.HasValue)
         {
-            filters.Add($"start={StartDate:yyyy-MM-dd}");
+            filters.Add($"start={StartDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
         }
 
         if (EndDate.HasValue)
         {
-            filters.Add($"end={EndDate:yyyy-MM-dd}");
+            filters.Add($"end={EndDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
         }
 
         if (SinceDate.HasValue)

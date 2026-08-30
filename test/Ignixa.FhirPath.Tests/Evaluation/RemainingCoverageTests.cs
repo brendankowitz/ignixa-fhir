@@ -6,6 +6,7 @@
 
 using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
 
@@ -146,6 +147,136 @@ public class RemainingCoverageTests
 
         // Assert - Per FHIRPath spec, repeat only returns projection results
         Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenASmallIterationCap_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionAtThatCap()
+    {
+        // Arrange - the #433 constructing-projection hazard (every round concatenates a literal onto
+        // $this, so the output is never deep-equal to anything already processed), driven through
+        // RepeatGuardLimits' test seam (#435) with only MaxIterations lowered. MaxComparisons stays at its
+        // production 15,000,000, which a 50-iteration cap cannot reach, so the iteration cap is what trips
+        // here. Isolates that code path in milliseconds rather than the ~33 seconds it used to cost.
+        const int smallCap = 50;
+        var expr = _parser.Parse("'a'.repeat($this & 'x')");
+        var root = CreateIntegerElement(0);
+
+        // Act - the scope covers only the evaluation, so nothing the arrange block might later be changed
+        // to do can fall inside it.
+        FhirPathEvaluationException exception;
+        using (new RepeatGuardLimits.Scope(maxIterations: smallCap))
+        {
+            exception = Should.Throw<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        }
+
+        // Assert - parentheses are load-bearing: ShouldContain is ordinal substring containment, so a bare
+        // "50" would also match a stray "150" or "500"; "(50)" is the whole formatted argument.
+        exception.Message.ShouldContain("repeat()");
+        exception.Message.ShouldContain("maximum iteration limit");
+        exception.Message.ShouldContain($"({smallCap})");
+    }
+
+    [Fact]
+    public void GivenASmallComparisonBudget_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionAtThatBudget()
+    {
+        // Arrange - the same hazard again, with only MaxComparisons lowered via the #435 seam.
+        // MaxIterations stays at its production 10,000, which a 50-comparison budget cannot reach, so the
+        // comparison budget is what trips here.
+        const long smallBudget = 50;
+        var expr = _parser.Parse("'a'.repeat($this & 'x')");
+        var root = CreateIntegerElement(0);
+
+        // Act - scoped to the evaluation only, for the same reason as the test above.
+        FhirPathEvaluationException exception;
+        using (new RepeatGuardLimits.Scope(maxComparisons: smallBudget))
+        {
+            exception = Should.Throw<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        }
+
+        // Assert
+        exception.Message.ShouldContain("repeat()");
+        exception.Message.ShouldContain("maximum comparison-count budget");
+        exception.Message.ShouldContain($"({smallBudget})");
+    }
+
+    [Fact]
+    public void GivenAWideFocusOfDeepEqualItems_WhenRepeat_ThenTheProductionIterationCapIsExactlyTenThousand()
+    {
+        // Arrange - the pin on the production iteration cap's *value*. The comparison budget cannot
+        // substitute for it: at production thresholds the budget trips first on every constructing
+        // projection (see the test above), so the cap's value was free to change without reddening
+        // anything.
+        //
+        // This shape trips the iteration cap at negligible comparison cost: the focus is a wide row of
+        // mutually deep-equal items, so after the first every later one matches on its first comparison
+        // and is skipped - one dequeue and one comparison each (measured: 9,999 items costs 9,999
+        // iterations and 9,998 comparisons, four orders of magnitude below the budget). The empty
+        // projection keeps the queue from growing, so the iteration count is exactly the focus width.
+        // Both sides are asserted, so raising the cap reddens the 10,001 case and lowering it reddens the
+        // 9,999 one. Measured cost of both: under 0.1 seconds.
+        const int justUnder = 9_999;
+        const int justOver = 10_001;
+        var expr = _parser.Parse("item.repeat({})");
+        var underCap = CreateDeepEqualItems(justUnder);
+        var overCap = CreateDeepEqualItems(justOver);
+
+        // Act
+        var under = _evaluator.Evaluate(underCap, expr).ToList();
+        var evaluateOver = () => _evaluator.Evaluate(overCap, expr).ToList();
+
+        // Assert - repeat({}) projects nothing, so the pass case's observable result is an empty collection;
+        // what it proves is that 9,999 dequeues did not trip the guard.
+        under.ShouldBeEmpty();
+
+        // Parentheses are load-bearing for the same ordinal-substring reason as the tests above: a bare
+        // "10000" would also match a stray "110000".
+        var exception = Should.Throw<FhirPathEvaluationException>(evaluateOver);
+        exception.Message.ShouldContain("repeat()");
+        exception.Message.ShouldContain("maximum iteration limit");
+        exception.Message.ShouldContain("(10000)");
+    }
+
+    [Fact]
+    public void GivenAConstructingProjection_WhenRepeatNeverConverges_ThenThrowsFhirPathEvaluationExceptionWithinTheComparisonBudget()
+    {
+        // Arrange - the #433 constructing-projection hazard, kept end-to-end at production thresholds: the
+        // seam-driven tests above prove each guard's code path in milliseconds, so this one exists to pin
+        // that the real defaults (10,000 iterations, 15,000,000 comparisons) terminate it, and in what
+        // shape. Before #435 it cost ~33 seconds and tripped the iteration cap; the comparison budget now
+        // trips first, at roughly a third of the iteration count, so the iteration cap is never reached
+        // here any more.
+        var expr = _parser.Parse("'a'.repeat($this & 'x')");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert - the parentheses are load-bearing for the same ordinal-substring reason as above.
+        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
+        exception.Message.ShouldContain("repeat()");
+        exception.Message.ShouldContain("maximum comparison-count budget");
+        exception.Message.ShouldContain("(15000000)");
+    }
+
+    [Fact]
+    public void GivenDeeplyNestedQuestionnaireItems_WhenRepeatItem_ThenReturnsEveryItemWithoutTrippingTheIterationGuard()
+    {
+        // Arrange - the control for the test above: a Questionnaire.item-shaped tree that *navigates*
+        // rather than constructs. Branching 3 deep 6 yields 1,092 items. Per CollectionFunctions.Repeat's
+        // remarks, this control test legitimately dequeues roughly 1,093 times (1,092-item tree with ~9×
+        // headroom built into the 10,000-iteration cap), proving the cap does not reject real input.
+        const int breadth = 3;
+        const int depth = 6;
+        var expectedItemCount = Enumerable.Range(1, depth).Sum(level => (int)Math.Pow(breadth, level));
+        var questionnaire = CreateDeeplyNestedQuestionnaireItems(breadth, depth);
+        var expr = _parser.Parse("repeat(item)");
+
+        // Act
+        var result = _evaluator.Evaluate(questionnaire, expr).ToList();
+
+        // Assert
+        result.Count.ShouldBe(expectedItemCount);
+        result.Select(e => e.Children("linkId").Single().Value).Distinct().Count().ShouldBe(expectedItemCount);
     }
 
     #endregion
@@ -312,6 +443,21 @@ public class RemainingCoverageTests
         Assert.Empty(result);
     }
 
+    [Fact]
+    public void GivenSelfReferentialProjection_WhenRepeatAllExceedsIterationLimit_ThenThrowsFhirPathEvaluationException()
+    {
+        // Arrange
+        var expr = _parser.Parse("1.repeatAll($this)");
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        var exception = Should.Throw<FhirPathEvaluationException>(evaluate);
+        exception.Message.ShouldContain("maximum iteration limit");
+    }
+
     #endregion
 
     #region Coalesce Function Tests
@@ -452,6 +598,55 @@ public class RemainingCoverageTests
         };
 
         return new ComplexElement("Patient", "Patient", children);
+    }
+
+    /// <summary>
+    /// A Questionnaire whose <c>item</c> children are all deep-equal to one another, so a <c>repeat()</c>
+    /// over them costs exactly one dequeue and one comparison each - the cheapest shape that reaches a
+    /// given iteration count.
+    /// </summary>
+    private static IElement CreateDeepEqualItems(int width)
+    {
+        var items = new List<IElement>(width);
+        for (var i = 0; i < width; i++)
+            items.Add(new ComplexElement("item", "Questionnaire.item", [new PrimitiveElement("same", "string", "linkId")]));
+
+        return new ComplexElement("Questionnaire", "Questionnaire", items);
+    }
+
+    /// <summary>
+    /// Builds a Questionnaire.item-shaped tree, <paramref name="breadth"/> items wide at every level down
+    /// to <paramref name="depth"/> levels deep, each carrying a unique <c>linkId</c> so no two items are
+    /// deep-equal - a real Questionnaire's items are distinguishable the same way, and a false dedup here
+    /// would under-count the control this tree exists to provide.
+    /// </summary>
+    private IElement CreateDeeplyNestedQuestionnaireItems(int breadth, int depth)
+    {
+        IElement BuildItem(string linkId, int remainingDepth)
+        {
+            var children = new List<IElement>
+            {
+                new PrimitiveElement(linkId, "string", "linkId")
+            };
+
+            if (remainingDepth > 0)
+            {
+                for (int i = 0; i < breadth; i++)
+                {
+                    children.Add(BuildItem($"{linkId}.{i}", remainingDepth - 1));
+                }
+            }
+
+            return new ComplexElement("item", "Questionnaire.item", children);
+        }
+
+        var rootItems = new List<IElement>();
+        for (int i = 0; i < breadth; i++)
+        {
+            rootItems.Add(BuildItem($"{i}", depth - 1));
+        }
+
+        return new ComplexElement("Questionnaire", "Questionnaire", rootItems);
     }
 
     private class PrimitiveElement : IElement

@@ -45,14 +45,4 @@ public sealed partial class StructureDefinition : Ignixa.Models.StructureDefinit
         get => FhirVersion2Element.Value;
         set => FhirVersion2Element.Value = value;
     }
-
-    [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
 }

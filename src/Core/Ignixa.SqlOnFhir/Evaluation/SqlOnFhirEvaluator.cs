@@ -5,7 +5,9 @@
  * Uses ISourceNavigator for proper handling of FHIR data and visitor pattern for evaluation.
  */
 
+using System.Collections.Frozen;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.SqlOnFhir.Expressions;
 using Ignixa.SqlOnFhir.Parsing;
 
@@ -19,6 +21,19 @@ namespace Ignixa.SqlOnFhir.Evaluation;
 /// </summary>
 public class SqlOnFhirEvaluator
 {
+    // context, resource and rootResource are answered by EvaluationContext.TryGetEnvironmentVariable's
+    // switch before it consults a caller-supplied variable, and rowIndex is re-injected by
+    // SqlOnFhirEvaluationVisitor afterwards and always wins. A variables entry using one of these names
+    // was accepted and silently discarded; that silence is the bug (issue #439).
+    //
+    // One of three overlapping reserved-name lists answering different questions - do not merge them.
+    // This one is "a caller may not supply this as a variable"; ViewDefinitionExpressionParser's
+    // predefinedVariables is "needs no constant declaration in a ViewDefinition";
+    // Ignixa.FhirPath.DefineVariableRules.ReservedVariableNames is "defineVariable() may not claim this
+    // name". A name added to one usually belongs in none of the others; check all three anyway.
+    private static readonly FrozenSet<string> EngineManagedVariableNames =
+        new[] { "context", "resource", "rootResource", "rowIndex" }.ToFrozenSet(StringComparer.Ordinal);
+
     private readonly SqlOnFhirEvaluationVisitor _visitor;
     private readonly Dictionary<string, ViewDefinitionExpression> _compiledViewDefinitions = [];
 
@@ -55,6 +70,7 @@ public class SqlOnFhirEvaluator
     {
         ArgumentNullException.ThrowIfNull(viewDefinitionNode);
         ArgumentNullException.ThrowIfNull(resources);
+        ValidateVariables(variables);
 
         var resourceType = viewDefinitionNode.Children("resource").FirstOrDefault()?.Text ?? "Unknown";
 
@@ -70,6 +86,14 @@ public class SqlOnFhirEvaluator
 
             return _visitor.EvaluateBatch(viewExpr, resources, variables);
         }
+        catch (FhirPathEvaluationException ex)
+        {
+            // Same message and inner exception as the general case, but the type stays distinguishable
+            // so callers can tell an ill-formed ViewDefinition expression from an engine defect.
+            throw new FhirPathEvaluationException(
+                $"Failed to evaluate ViewDefinition for resource type '{resourceType}'",
+                ex);
+        }
         catch (Exception ex)
         {
             throw new InvalidOperationException(
@@ -84,5 +108,29 @@ public class SqlOnFhirEvaluator
     public void ClearCache()
     {
         _compiledViewDefinitions.Clear();
+    }
+
+    /// <summary>
+    /// Rejects a <paramref name="variables"/> entry whose name the engine manages itself.
+    /// </summary>
+    /// <remarks>
+    /// Checked at the public boundary and before the try/catch below: inside
+    /// <c>CreateEvaluationContext</c> the general <c>catch (Exception ex)</c> would rewrap it as an
+    /// <see cref="InvalidOperationException"/> saying evaluation "failed", burying the reason a caller
+    /// needs to fix their own input. <see cref="Evaluate"/> forwards to <see cref="EvaluateBatch"/>, so
+    /// this is the only entry point where a <paramref name="variables"/> entry can arrive.
+    /// </remarks>
+    private static void ValidateVariables(IReadOnlyDictionary<string, string>? variables)
+    {
+        if (variables == null)
+            return;
+
+        foreach (var name in variables.Keys)
+        {
+            if (EngineManagedVariableNames.Contains(name))
+                throw new ArgumentException(
+                    $"Variable '{name}' is engine-managed and cannot be supplied by the caller.",
+                    nameof(variables));
+        }
     }
 }

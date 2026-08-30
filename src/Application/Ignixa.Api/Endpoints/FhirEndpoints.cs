@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Azure;
@@ -483,7 +484,7 @@ public static class FhirEndpoints
             parsedIfMatch = ConditionalHeaderParser.ParseIfNoneMatch(ifMatchHeader);
 
             // Validate ETag format: must be numeric and >= 1
-            if (parsedIfMatch != null && (!int.TryParse(parsedIfMatch, out var versionId) || versionId < 1))
+            if (parsedIfMatch != null && (!int.TryParse(parsedIfMatch, NumberStyles.Integer, CultureInfo.InvariantCulture, out var versionId) || versionId < 1))
             {
                 logger.LogWarning("Invalid ETag in If-Match header: {IfMatch} - must be numeric and >= 1", ifMatchHeader.SanitizeForLog());
                 throw new BadRequestException($"Invalid ETag value: {ifMatchHeader}. ETag must be a positive integer.");
@@ -604,11 +605,11 @@ public static class FhirEndpoints
         // Build SearchOptions
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
-        // Check for unsupported parameters with handling=strict
-        var handlingResult = CheckSearchParameterHandling(context, searchOptions, resourceType, logger);
-        if (handlingResult is not null)
+        // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
+        var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
+        if (strictResult is not null)
         {
-            return handlingResult;
+            return strictResult;
         }
 
         // Send search query
@@ -695,11 +696,11 @@ public static class FhirEndpoints
         var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
-        // Check for unsupported parameters with handling=strict
-        var handlingResult = CheckSearchParameterHandling(context, searchOptions, resourceType, logger);
-        if (handlingResult is not null)
+        // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
+        var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
+        if (strictResult is not null)
         {
-            return handlingResult;
+            return strictResult;
         }
 
         // Send search query
@@ -1405,7 +1406,7 @@ public static class FhirEndpoints
 
         // Extract _count parameter
         var queryParams = QueryHelpers.ParseQuery(queryString);
-        if (queryParams.TryGetValue("_count", out var countValue) && int.TryParse(countValue.FirstOrDefault(), out var parsedCount))
+        if (queryParams.TryGetValue("_count", out var countValue) && int.TryParse(countValue.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCount))
         {
             count = parsedCount;
 
@@ -1494,11 +1495,11 @@ public static class FhirEndpoints
         // This will search across all resource types (handled by the configured search service)
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
-        // Check for unsupported parameters with handling=strict
-        var handlingResult = CheckSearchParameterHandling(context, searchOptions, null, logger);
-        if (handlingResult is not null)
+        // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
+        var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
+        if (strictResult is not null)
         {
-            return handlingResult;
+            return strictResult;
         }
 
         // Send search query for base-level search (null resourceType means search all types)
@@ -1583,11 +1584,11 @@ public static class FhirEndpoints
         var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
-        // Check for unsupported parameters with handling=strict
-        var handlingResult = CheckSearchParameterHandling(context, searchOptions, null, logger);
-        if (handlingResult is not null)
+        // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
+        var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
+        if (strictResult is not null)
         {
-            return handlingResult;
+            return strictResult;
         }
 
         // Send search query for base-level search (null resourceType means search all types)
@@ -1685,8 +1686,9 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// Applies FHIR R4's two different rules for search parameters the server could not honour, and
-    /// returns a 400 when either one demands it.
+    /// Checks for unsupported search parameters and modifiers.
+    /// Returns a BadRequest result if an unsupported modifier was used, or if strict handling is
+    /// requested and unsupported parameters exist.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1708,28 +1710,64 @@ public static class FhirEndpoints
     /// <param name="resourceType">Optional resource type for error message context.</param>
     /// <param name="logger">Logger for warnings.</param>
     /// <returns>BadRequest result if the request must be rejected, null otherwise.</returns>
-    private static IResult? CheckSearchParameterHandling(
+    private static IResult? CheckStrictHandling(
         HttpContext context,
         SearchOptions searchOptions,
         string? resourceType,
         ILogger logger)
     {
-        IReadOnlyList<string> rejected = ResolveRejectedParameters(context, searchOptions);
-        if (rejected.Count == 0)
+        // FHIR R4 SHALL rejects a search suffixed by a modifier the server does not support for that
+        // parameter (https://hl7.org/fhir/R4/search.html#modifiers), unlike an unsupported *parameter*,
+        // which only SHOULD be rejected and is opt-in via Prefer: handling=strict below. Silently
+        // dropping the modifier would widen the result set instead of narrowing it, so this check is
+        // unconditional -- it does not depend on the Prefer header.
+        if (searchOptions.UnsupportedModifierParams.Count > 0)
+        {
+            logger.LogWarning(
+                "Unsupported search modifier(s) found: {UnsupportedModifierParams}",
+                string.Join(", ", searchOptions.UnsupportedModifierParams.Select(p => p.SanitizeForLog())));
+
+            return BuildUnsupportedParametersResult(searchOptions.UnsupportedModifierParams, resourceType, isModifierRejection: true);
+        }
+
+        if (!PreferHeaderParser.IsStrictHandling(context.Request.Headers) ||
+            searchOptions.UnsupportedParams.Count == 0)
         {
             return null;
         }
 
         logger.LogWarning(
             "Rejecting search: unsupported parameters {UnsupportedParams}",
-            string.Join(", ", rejected.Select(p => p.SanitizeForLog())));
+            string.Join(", ", searchOptions.UnsupportedParams.Select(p => p.SanitizeForLog())));
 
+        return BuildUnsupportedParametersResult(searchOptions.UnsupportedParams, resourceType, isModifierRejection: false);
+    }
+
+    /// <summary>
+    /// Builds the BadRequest <see cref="OperationOutcome"/> for a set of unsupported search parameters.
+    /// </summary>
+    /// <param name="unsupportedParams">The parameter (and, for modifiers, key) names to report.</param>
+    /// <param name="resourceType">Optional resource type for error message context.</param>
+    /// <param name="isModifierRejection">
+    /// True when rejecting a SHALL-mandated unsupported modifier (see <see cref="CheckStrictHandling"/>);
+    /// false for the opt-in, strict-handling unsupported-parameter case. Only affects the diagnostics
+    /// text, so the two are distinguishable to a client instead of reading as the same generic message.
+    /// </param>
+    private static IResult BuildUnsupportedParametersResult(
+        IReadOnlyList<string> unsupportedParams,
+        string? resourceType,
+        bool isModifierRejection)
+    {
         var operationOutcome = new OperationOutcome();
-        foreach (var param in rejected)
+        foreach (var param in unsupportedParams)
         {
-            var diagnostics = resourceType is not null
-                ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
-                : $"Search parameter '{param}' is not supported";
+            var diagnostics = isModifierRejection
+                ? (resourceType is not null
+                    ? $"Search parameter '{param}' uses a modifier that is not supported for resource type '{resourceType}'"
+                    : $"Search parameter '{param}' uses a modifier that is not supported")
+                : (resourceType is not null
+                    ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
+                    : $"Search parameter '{param}' is not supported");
 
             operationOutcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
             {
@@ -1740,23 +1778,6 @@ public static class FhirEndpoints
         }
 
         return Results.BadRequest(operationOutcome.MutableNode);
-    }
-
-    private static IReadOnlyList<string> ResolveRejectedParameters(
-        HttpContext context,
-        SearchOptions searchOptions)
-    {
-        if (PreferHeaderParser.IsStrictHandling(context.Request.Headers))
-        {
-            return searchOptions.UnsupportedParams;
-        }
-
-        if (PreferHeaderParser.IsLenientHandling(context.Request.Headers))
-        {
-            return [];
-        }
-
-        return searchOptions.UnsupportedModifierParams;
     }
 
     /// <summary>

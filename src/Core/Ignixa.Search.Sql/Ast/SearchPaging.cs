@@ -30,7 +30,17 @@ public abstract record SearchPaging
     /// A boundary is representable only here, which is what keeps it out of <see cref="Offset"/>: a seek
     /// predicate and <c>OFFSET … FETCH</c> are two independent paging mechanisms.
     /// </param>
-    public sealed record Keyset(int? Top = null, PageSpec? Boundary = null) : SearchPaging
+    /// <param name="TopIncludesProbeRow">
+    /// True when <paramref name="Top"/> is the caller's page size plus one lookahead row, fetched so the
+    /// caller can tell whether a further page exists. The distinction is load-bearing for _include/_revinclude:
+    /// include stages must seed only from the rows genuinely on the page, or the probe row the caller later
+    /// trims leaves its included resources stranded in the bundle. It is a flag rather than an inference
+    /// because the compiler cannot tell <c>Top: 11</c> meaning "eleven rows" from <c>Top: 11</c> meaning
+    /// "ten rows plus a probe" — callers transform <c>MaxItemCount + 1</c> themselves before compiling.
+    /// Requires <paramref name="Top"/>; see <see cref="OffsetSpec.ProbeExtraRow"/> for the OFFSET/FETCH
+    /// equivalent.
+    /// </param>
+    public sealed record Keyset(int? Top = null, PageSpec? Boundary = null, bool TopIncludesProbeRow = false) : SearchPaging
     {
         private protected override void ThisUnionIsClosed()
         {

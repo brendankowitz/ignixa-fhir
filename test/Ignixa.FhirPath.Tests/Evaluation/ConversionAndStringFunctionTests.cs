@@ -588,7 +588,7 @@ public class ConversionAndStringFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
     }
 
     [Fact]
@@ -599,7 +599,7 @@ public class ConversionAndStringFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
     }
 
     [Fact]
@@ -610,7 +610,7 @@ public class ConversionAndStringFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
     }
 
     #endregion
@@ -1103,7 +1103,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(12m, quantity.Value);
         Assert.Equal("month", quantity.Unit);
@@ -1121,7 +1121,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(30m, quantity.Value);
         Assert.Equal("day", quantity.Unit);
@@ -1139,7 +1139,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(24m, quantity.Value);
         Assert.Equal("hour", quantity.Unit);
@@ -1157,7 +1157,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(60m, quantity.Value);
         Assert.Equal("minute", quantity.Unit);
@@ -1175,7 +1175,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(60m, quantity.Value);
         Assert.Equal("second", quantity.Unit);
@@ -1193,7 +1193,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(365m, quantity.Value);
         Assert.Equal("day", quantity.Unit);
@@ -1211,7 +1211,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(1m, quantity.Value);
         Assert.Equal("week", quantity.Unit);
@@ -1229,7 +1229,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(5m, quantity.Value);
         Assert.Equal("day", quantity.Unit);
@@ -1247,7 +1247,7 @@ public class ConversionAndStringFunctionTests
 
         // Assert
         Assert.Single(result);
-        var quantity = result[0].Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result[0].Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(5m, quantity.Value);
         // Calendar keyword "day" is preserved as-is when no unit conversion requested

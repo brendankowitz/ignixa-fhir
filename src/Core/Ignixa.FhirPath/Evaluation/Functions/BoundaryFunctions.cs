@@ -30,9 +30,14 @@ internal static class BoundaryFunctions
     /// For decimals: Returns value - 0.5 * 10^(-precision), truncated to precision decimal places.
     /// For dates/times: Returns the start of the period at the given precision with UTC+14:00 offset.
     /// </summary>
+    /// <remarks>
+    /// The boundary of a value is a newly constructed value, not the focus element, and it is not always of
+    /// the focus's own type: the boundary of a <c>date</c> is a <c>dateTime</c>. Declaring
+    /// <c>boundaryOfContext</c> gives static analysis both facts.
+    /// </remarks>
     [FhirPathFunction("lowBoundary",
         SupportedContexts = "any-any",
-        ReturnType = "any",
+        ReturnType = "boundaryOfContext",
         MinArguments = 0,
         MaxArguments = 1,
         TakesExpressionArguments = true,
@@ -94,9 +99,12 @@ internal static class BoundaryFunctions
     /// For decimals: Returns value + 0.5 * 10^(-precision), truncated to precision decimal places.
     /// For dates/times: Returns the end of the period at the given precision with UTC-12:00 offset.
     /// </summary>
+    /// <remarks>
+    /// Declared as constructing the boundary of the focus, for the same reason as <see cref="LowBoundary"/>.
+    /// </remarks>
     [FhirPathFunction("highBoundary",
         SupportedContexts = "any-any",
-        ReturnType = "any",
+        ReturnType = "boundaryOfContext",
         MinArguments = 0,
         MaxArguments = 1,
         TakesExpressionArguments = true,
@@ -174,22 +182,15 @@ internal static class BoundaryFunctions
         {
             return DefaultTimePrecision;
         }
-        
-        // Check for date/time string literals (starting with @)
-        if (element.Value is string str)
+
+        // FhirTemporal is returned by IElement.Value for typed date/dateTime/instant/time elements.
+        if (element.Value is FhirTemporal temporal)
         {
-            var cleanStr = str.StartsWith('@') ? str.Substring(1) : str;
-            if (IsDateTimeString(cleanStr))
-            {
-                return DefaultDateTimePrecision;
-            }
-            if (IsTimeString(cleanStr))
-            {
-                return DefaultTimePrecision;
-            }
+            return temporal.Kind == FhirPrimitive.Time ? DefaultTimePrecision : DefaultDateTimePrecision;
         }
         
-        // Default to decimal precision for numeric types
+        // No value-shape fallback: a String is not a boundary-bearing type however it is spelled,
+        // and every genuine temporal is already covered by the declared type or by FhirTemporal above.
         return DefaultDecimalPrecision;
     }
 
@@ -210,17 +211,36 @@ internal static class BoundaryFunctions
 
     private static IElement? CalculateLowBoundary(IElement element, int outputPrecision)
     {
-        // Strip @ prefix from FHIR date/time string values
-        var cleanValue = element.Value is string s && s.StartsWith('@')
-            ? s.Substring(1)
-            : element.Value;
+        // Unwrap FhirTemporal to its wire literal so the string arms below can handle a resource-backed
+        // temporal and a temporal literal uniformly. Whether those arms may fire at all is decided by the
+        // element's type, not by the value's shape: FHIRPath defines lowBoundary()/highBoundary() over
+        // Decimal, Date, DateTime and Time, and a String that reads like a date is still a String.
+        //
+        // "Decimal, Date, DateTime and Time" is the spec sentence, not the set this method accepts. The
+        // Quantity arms below, and the int/long/double arms in the switch, are deliberate Ignixa
+        // extensions past it: a Quantity is a decimal with a unit, so its boundary is the decimal
+        // boundary carrying the unit through, and an integer is a decimal of precision zero. They are
+        // not out-of-spec leftovers to be deleted on the strength of the quoted sentence. Only the
+        // String-versus-temporal line is what the type gate here decides.
+        //
+        // A type mismatch falls through to the switch's null arm and surfaces as an empty, not an error,
+        // so '@2013'.lowBoundary() reads the same as an absent element. That matches
+        // DateTimeFunctions.ParseDateTimeValue and is kept for the reason recorded there: §Comparison
+        // mandates an error for the ordering operators, and nothing mandates one for these.
+        object? cleanValue = element.Value switch
+        {
+            FhirTemporal temporal => temporal.Literal,
+            var other => other
+        };
+
+        var isTemporal = TemporalOperand.IsTemporal(element.Value, element.InstanceType);
 
         // Handle Quantity type (has both value and unit)
-        if (element.Value is Quantity qty)
+        if (element.Value is FhirQuantity qty)
         {
             var inputPrecision = GetDecimalPrecision(qty.Value);
             var boundaryValue = CalculateNumericLowBoundaryWithPrecisions(qty.Value, inputPrecision, outputPrecision);
-            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, qty.Unit));
+            return FunctionHelpers.CreateQuantity(new FhirQuantity(boundaryValue, qty.Unit));
         }
 
         // Handle FHIR Quantity element with decimal value
@@ -229,7 +249,7 @@ internal static class BoundaryFunctions
             var inputPrecision = GetDecimalPrecision(quantityValue);
             var boundaryValue = CalculateNumericLowBoundaryWithPrecisions(quantityValue, inputPrecision, outputPrecision);
             var unit = ExtractUnitFromQuantityElement(element) ?? "1";
-            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, unit));
+            return FunctionHelpers.CreateQuantity(new FhirQuantity(boundaryValue, unit));
         }
 
         return cleanValue switch
@@ -240,11 +260,11 @@ internal static class BoundaryFunctions
             int i => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)i, 0, outputPrecision)),  // integers have 0 precision
             long l => FunctionHelpers.CreateDecimal(CalculateNumericLowBoundaryWithPrecisions((decimal)l, 0, outputPrecision)),
 
-            // DateTime strings (with @ prefix handled above)
-            string str when IsDateTimeString(str) => CalculateDateTimeLowBoundary(str, outputPrecision, element.InstanceType),
+            // Date and dateTime, gated on the declared type
+            string str when isTemporal && FhirTemporal.IsDateOrDateTimeLiteral(str) => CalculateDateTimeLowBoundary(str, outputPrecision, element.InstanceType),
 
-            // Time strings
-            string str when IsTimeString(str) => CalculateTimeLowBoundary(str, outputPrecision),
+            // Time, gated on the declared type
+            string str when isTemporal && IsTimeString(str) => CalculateTimeLowBoundary(str, outputPrecision),
 
             _ => null
         };
@@ -252,17 +272,36 @@ internal static class BoundaryFunctions
 
     private static IElement? CalculateHighBoundary(IElement element, int outputPrecision)
     {
-        // Strip @ prefix from FHIR date/time string values
-        var cleanValue = element.Value is string s && s.StartsWith('@')
-            ? s.Substring(1)
-            : element.Value;
+        // Unwrap FhirTemporal to its wire literal so the string arms below can handle a resource-backed
+        // temporal and a temporal literal uniformly. Whether those arms may fire at all is decided by the
+        // element's type, not by the value's shape: FHIRPath defines lowBoundary()/highBoundary() over
+        // Decimal, Date, DateTime and Time, and a String that reads like a date is still a String.
+        //
+        // "Decimal, Date, DateTime and Time" is the spec sentence, not the set this method accepts. The
+        // Quantity arms below, and the int/long/double arms in the switch, are deliberate Ignixa
+        // extensions past it: a Quantity is a decimal with a unit, so its boundary is the decimal
+        // boundary carrying the unit through, and an integer is a decimal of precision zero. They are
+        // not out-of-spec leftovers to be deleted on the strength of the quoted sentence. Only the
+        // String-versus-temporal line is what the type gate here decides.
+        //
+        // A type mismatch falls through to the switch's null arm and surfaces as an empty, not an error,
+        // so '@2013'.lowBoundary() reads the same as an absent element. That matches
+        // DateTimeFunctions.ParseDateTimeValue and is kept for the reason recorded there: §Comparison
+        // mandates an error for the ordering operators, and nothing mandates one for these.
+        object? cleanValue = element.Value switch
+        {
+            FhirTemporal temporal => temporal.Literal,
+            var other => other
+        };
+
+        var isTemporal = TemporalOperand.IsTemporal(element.Value, element.InstanceType);
 
         // Handle Quantity type (has both value and unit)
-        if (element.Value is Quantity qty)
+        if (element.Value is FhirQuantity qty)
         {
             var inputPrecision = GetDecimalPrecision(qty.Value);
             var boundaryValue = CalculateNumericHighBoundaryWithPrecisions(qty.Value, inputPrecision, outputPrecision);
-            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, qty.Unit));
+            return FunctionHelpers.CreateQuantity(new FhirQuantity(boundaryValue, qty.Unit));
         }
 
         // Handle FHIR Quantity element with decimal value
@@ -271,7 +310,7 @@ internal static class BoundaryFunctions
             var inputPrecision = GetDecimalPrecision(quantityValue);
             var boundaryValue = CalculateNumericHighBoundaryWithPrecisions(quantityValue, inputPrecision, outputPrecision);
             var unit = ExtractUnitFromQuantityElement(element) ?? "1";
-            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, unit));
+            return FunctionHelpers.CreateQuantity(new FhirQuantity(boundaryValue, unit));
         }
 
         return cleanValue switch
@@ -282,11 +321,11 @@ internal static class BoundaryFunctions
             int i => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)i, 0, outputPrecision)),  // integers have 0 precision
             long l => FunctionHelpers.CreateDecimal(CalculateNumericHighBoundaryWithPrecisions((decimal)l, 0, outputPrecision)),
 
-            // DateTime strings (with @ prefix handled above)
-            string str when IsDateTimeString(str) => CalculateDateTimeHighBoundary(str, outputPrecision, element.InstanceType),
+            // Date and dateTime, gated on the declared type
+            string str when isTemporal && FhirTemporal.IsDateOrDateTimeLiteral(str) => CalculateDateTimeHighBoundary(str, outputPrecision, element.InstanceType),
 
-            // Time strings
-            string str when IsTimeString(str) => CalculateTimeHighBoundary(str),
+            // Time, gated on the declared type
+            string str when isTemporal && IsTimeString(str) => CalculateTimeHighBoundary(str),
 
             _ => null
         };
@@ -666,8 +705,11 @@ internal static class BoundaryFunctions
             return $"{parsed.year:D4}";
         }
         
-        // For month: maximize only if output precision is exactly at month level (6) AND input doesn't have month
-        var month = (outputPrecision == 6 && inputPrecision <= 4) ? 12 : parsed.month;
+        // For month: maximize if we're outputting at month level or finer AND input doesn't have month.
+        // This must be >=, not ==, to match every other component below: an unspecified month is still
+        // unspecified when the caller asks for day or millisecond precision, so @2012.highBoundary()
+        // is December 2012, not the 31st of an invented January.
+        var month = (outputPrecision >= 6 && inputPrecision <= 4) ? 12 : parsed.month;
         if (outputPrecision <= 6)
         {
             return $"{parsed.year:D4}-{month:D2}";
@@ -740,35 +782,21 @@ internal static class BoundaryFunctions
 
     private static int GetDateTimePrecision(string dateTimeStr)
     {
-        // Count the precision based on components present
-        // YYYY = 4, YYYY-MM = 6, YYYY-MM-DD = 8, YYYY-MM-DDTHH = 10, etc.
-        var str = dateTimeStr.TrimStart('@');
-        
-        if (!str.Contains('-', StringComparison.Ordinal)) return 4; // Year only
-        
-        var parts = str.Split('T');
-        var datePart = parts[0];
-        var dateComponents = datePart.Split('-').Length;
-        
-        if (dateComponents == 2) return 6; // Year-month
-        if (parts.Length == 1) return 8; // Year-month-day only
-        
-        var timePart = parts[1];
-        // Remove timezone
-        if (timePart.Contains('+', StringComparison.Ordinal)) timePart = timePart.Split('+')[0];
-        if (timePart.Contains('-', StringComparison.Ordinal) && timePart.LastIndexOf('-') > 0) timePart = timePart.Substring(0, timePart.LastIndexOf('-'));
-        if (timePart.EndsWith('Z')) timePart = timePart.TrimEnd('Z');
-        
-        var timeComponents = timePart.Split(':').Length;
-        // Note: Hour-only time (T08) is not valid FHIR, so it's internally converted to T08:00
-        // This means we treat it as minute precision (12), not hour precision (10)
-        if (timeComponents == 1) return 12; // Hour only → treated as hour:minute=00
-        if (timeComponents == 2) return 12; // Hour:minute
-        
-        // Check for milliseconds
-        if (timePart.Contains('.', StringComparison.Ordinal)) return 17;
-        
-        return 14; // Hour:minute:second
+        // Delegate to FhirTemporal, then map to the legacy int representation used by
+        // FormatDateTimeLowBoundary / FormatDateTimeHighBoundary.
+        // RULING: hour-only input (e.g., "2014-01-02T08") is not valid FHIR; internally it
+        // is treated as minute precision (12), the same as an explicit "…T08:00".
+        return FhirTemporal.GetLiteralPrecision(dateTimeStr) switch
+        {
+            FhirTemporalPrecision.Year => 4,
+            FhirTemporalPrecision.Month => 6,
+            FhirTemporalPrecision.Day => 8,
+            FhirTemporalPrecision.Hour => 12,       // hour-only → minute fold (see RULING)
+            FhirTemporalPrecision.Minute => 12,
+            FhirTemporalPrecision.Second => 14,
+            FhirTemporalPrecision.Millisecond => 17,
+            _ => 4
+        };
     }
 
     private static string FormatTimeLowBoundary((int hour, int minute, int second, int millisecond) parsed, int precision)
@@ -789,12 +817,6 @@ internal static class BoundaryFunctions
         var second = inputPrecision >= 6 ? parsed.second : 59;
         var millisecond = inputPrecision >= 9 ? parsed.millisecond : 999;
         return $"{parsed.hour:D2}:{minute:D2}:{second:D2}.{millisecond:D3}";
-    }
-
-    private static bool IsDateTimeString(string value)
-    {
-        // Check if looks like a date or datetime (YYYY or YYYY-MM or YYYY-MM-DD[T...])
-        return Regex.IsMatch(value, @"^\d{4}(-\d{2})?(-\d{2})?([T ]\d{2})?");
     }
 
     private static bool IsTimeString(string value)

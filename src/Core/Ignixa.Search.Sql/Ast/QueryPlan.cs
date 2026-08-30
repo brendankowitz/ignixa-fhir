@@ -1,86 +1,73 @@
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// The compiler's plan output: Lower produces it, Emit consumes it. Each <see cref="Ctes"/> entry becomes a
-/// named CTE, forming a graph <see cref="Match"/> references at any depth. <see cref="OuterPredicate"/> holds
-/// the resource-column filters (_id/_type/_lastUpdated) lifted out of the CTE graph onto the outer join to
-/// dbo.Resource; <see cref="Page"/>, <see cref="SurrogateRange"/>, <see cref="SearchParameterHash"/> and a
-/// MissingPrimary <see cref="Sort"/> each contribute their own outer filter alongside it, subject to
-/// <see cref="Shape"/> — a count ignores <see cref="Page"/> outright and applies <see cref="Sort"/> only when
-/// it is restricted to the sort phase. Base result is (T1, Sid1); <see cref="Includes"/> adds
-/// (IsMatch, IsPartial), and <see cref="Shape"/> can replace it with a count or with include rows alone.
+/// The compiler's plan output: Lower produces it and Emit consumes it. Each <see cref="Ctes"/> entry becomes a
+/// named CTE. <see cref="MatchSpec"/> is the single source of match-page configuration; <see cref="Includes"/>
+/// and <see cref="IncludeSeed"/> carry the include-specific graph configuration.
 /// </summary>
 /// <param name="Ctes">The CTE graph, in declaration order. Each entry becomes one named CTE.</param>
-/// <param name="Match">Which CTE the outer query joins to dbo.Resource to produce the match set.</param>
-/// <param name="Top">
-/// Row cap on the match page, emitted as <c>TOP (Top + 1)</c> so the caller can tell a full page from the
-/// last one. Null means uncapped.
-/// </param>
-/// <param name="OuterPredicate">
-/// Resource-column filters (_id/_type/_lastUpdated) lifted out of the CTE graph onto the outer join.
-/// </param>
+/// <param name="MatchSpec">The canonical configuration for the pre-page match root and its page wrappers.</param>
 /// <param name="Includes">
-/// The _include/_revinclude stages, in dependency order. Null (never an empty list) when the plan includes
-/// nothing, so such a plan emits exactly what it emitted before includes existed.
-/// </param>
-/// <param name="Sort">The _sort keys and the phase they are evaluated in. Null means the default (T1, Sid1) order.</param>
-/// <param name="Page">
-/// The keyset boundary the match page seeks past. Its arity must match the active key count of
-/// <paramref name="Sort"/>'s current phase.
-/// </param>
-/// <param name="Shape">
-/// What the statement returns; null means <see cref="ResultShape.Matches"/>. Read it through
-/// <see cref="EffectiveShape"/>, which resolves the default.
+/// The _include/_revinclude stages, in dependency order. Null or empty when the plan includes nothing, so such a
+/// plan emits exactly what it emitted before includes existed.
 /// </param>
 /// <param name="Visibility">
 /// Which resource versions are in scope; null means <see cref="ResourceVisibility.Current"/>. Read it through
 /// <see cref="EffectiveVisibility"/>.
 /// </param>
 /// <param name="Projection">Extra result columns beyond (T1, Sid1), emitted in declared order.</param>
-/// <param name="SurrogateRange">Bounds the match set by surrogate id, which is how a bulk export shards work.</param>
-/// <param name="SearchParameterHash">
-/// When set, restricts the match set to rows whose dbo.Resource.SearchParamHash differs from this value — the
-/// resources reindex must revisit because their indexed parameters predate the current definition set. A row
-/// with a NULL hash has never been indexed and always qualifies.
-/// </param>
-/// <param name="OffsetPage">
-/// OFFSET/FETCH paging, mutually exclusive with <paramref name="Top"/> and <paramref name="Page"/>: SQL Server
-/// rejects TOP alongside OFFSET (error 10741), and a seek alongside OFFSET applies two paging mechanisms at once.
-/// </param>
+/// <param name="IncludeSeed">The optional match-page wrapper include stages seed from.</param>
 public sealed record QueryPlan(
     IReadOnlyList<CteDefinition> Ctes,
-    CteRef Match,
-    int? Top = null,
-    Predicate? OuterPredicate = null,
+    MatchPageSpec MatchSpec,
     IReadOnlyList<IncludeStage>? Includes = null,
-    SortSpec? Sort = null,
-    PageSpec? Page = null,
-    ResultShape? Shape = null,
     ResourceVisibility? Visibility = null,
     ProjectionSpec? Projection = null,
-    SurrogateIdRange? SurrogateRange = null,
-    SqlParameterRef? SearchParameterHash = null,
-    OffsetSpec? OffsetPage = null)
+    CteRef? IncludeSeed = null)
 {
+    /// <summary>Which CTE produces the pre-page match set.</summary>
+    public CteRef Match => MatchSpec.Root;
+
+    /// <summary>Row cap on the match page, or null when uncapped.</summary>
+    public int? Top => MatchSpec.Top;
+
+    /// <summary>Resource-column filters lifted out of the CTE graph onto the outer join.</summary>
+    public Predicate? OuterPredicate => MatchSpec.OuterPredicate;
+
+    /// <summary>The _sort keys and their evaluation phase, or null for the default order.</summary>
+    public SortSpec? Sort => MatchSpec.Sort;
+
+    /// <summary>The keyset boundary the match page seeks past, or null for the first page.</summary>
+    public PageSpec? Page => MatchSpec.Page;
+
+    /// <summary>What the statement returns, or null for the default match shape.</summary>
+    public ResultShape? Shape => MatchSpec.Shape;
+
+    /// <summary>Bounds the match set by surrogate id, or null when unbounded.</summary>
+    public SurrogateIdRange? SurrogateRange => MatchSpec.SurrogateRange;
+
+    /// <summary>Restricts matches to resources with stale search parameters when present.</summary>
+    public SqlParameterRef? SearchParameterHash => MatchSpec.SearchParameterHash;
+
+    /// <summary>OFFSET/FETCH paging, or null when the page is not offset based.</summary>
+    public OffsetSpec? OffsetPage => MatchSpec.OffsetPage;
+
     /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
     public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;
 
     /// <summary>The plan's result shape, defaulting to <see cref="ResultShape.Matches"/>.</summary>
-    public ResultShape EffectiveShape => Shape ?? ResultShape.Default;
+    public ResultShape EffectiveShape => MatchSpec.EffectiveShape;
 
     /// <summary>True when the statement returns a count rather than rows.</summary>
-    public bool CountOnly => EffectiveShape is ResultShape.Count;
+    public bool CountOnly => MatchSpec.CountOnly;
 
-    /// <summary>True when the statement omits the match page and returns include-stage rows only.</summary>
-    public bool IncludesOnly => EffectiveShape is ResultShape.IncludesPage;
+    /// <summary>True when the statement omits match rows from its final result and returns include-stage rows only.</summary>
+    public bool IncludesOnly => MatchSpec.IncludesOnly;
 
     /// <summary>
-    /// The keyset boundary for later pages of an <see cref="IncludesOnly"/> stream: a predicate over the
-    /// union of every stage's body skips up to and including the last returned row under
-    /// <c>ORDER BY T1 ASC, Sid1 ASC</c>, while each stage's CTE stays unfiltered to remain a valid
-    /// <c>:iterate</c> seed. Null on any other shape, so an ordinary search cannot silently drop include rows.
+    /// The keyset boundary for later pages of an includes-only stream, or null for any other result shape.
     /// </summary>
-    public IncludeBoundary? IncludeBoundary => (EffectiveShape as ResultShape.IncludesPage)?.Resume;
+    public IncludeBoundary? IncludeBoundary => MatchSpec.IncludeBoundary;
 
     public string Explain() => PlanExplainer.Print(this);
 }

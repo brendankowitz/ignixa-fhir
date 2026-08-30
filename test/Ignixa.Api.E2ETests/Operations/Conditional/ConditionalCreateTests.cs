@@ -95,6 +95,34 @@ public class ConditionalCreateTests : CapabilityDrivenTestBase
     }
 
     /// <summary>
+    /// Tests conditional create criteria carrying a modifier the server does not support.
+    /// Expected: Returns 400 Bad Request rather than silently widening the If-None-Exist criteria.
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 SHALL-rejects an unsupported modifier (see Search.Modifiers.UnsupportedModifierTests for
+    /// the plain-search case). Conditional create must reject it too -- dropping the modifier would
+    /// widen the duplicate-check search, which could cause an unwanted create instead of the expected
+    /// 412/200 idempotent response.
+    /// </remarks>
+    [Fact]
+    public async Task GivenAnUnsupportedModifier_WhenConditionalCreate_ThenReturnsBadRequest()
+    {
+        // Arrange
+        var patient = CreatePatient().WithFamilyName("UnsupportedModifierCreate").Build();
+
+        // Act - POST with If-None-Exist: _id:above=abc (:above is not a supported modifier for _id)
+        var response = await Harness.PostResourceWithHeadersAsync(
+            patient,
+            new Dictionary<string, string>
+            {
+                ["If-None-Exist"] = "_id:above=abc"
+            });
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "server should reject rather than silently widen create criteria");
+    }
+
+    /// <summary>
     /// Tests conditional create with _id parameter when no match exists.
     /// Expected: Creates a new resource with server-assigned ID.
     /// </summary>

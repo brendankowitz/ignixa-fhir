@@ -1,0 +1,522 @@
+/*
+ * Copyright (c) 2025, Ignixa Contributors
+ *
+ * Differential harness holding Ignixa's engine against Firely 5.11.4 - the engine ADR 2608
+ * (microsoft/fhir-server) commits to replacing behind a seam.
+ *
+ * The two existing differential harnesses compare Ignixa against itself. This one crosses engines,
+ * which changes what a failure means. Ignixa is not required to match Firely: where Ignixa is more
+ * spec-compliant it keeps its behaviour and the seam adapts. So the output is an inventory, not a
+ * verdict - and the thing that decides whether an entry costs anything is whether a shipped
+ * SearchParameter expression can reach it, because those run on every write.
+ */
+
+using System.IO;
+using Xunit.Abstractions;
+
+namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
+
+/// <summary>
+/// Pins every known disagreement between Firely 5.11.4 and Ignixa on the corpora that matter to the
+/// seam, so a new one fails the build instead of shipping unnoticed.
+/// </summary>
+/// <remarks>
+/// A differential harness detects <em>divergence</em>, never <em>shared wrongness</em>: two engines
+/// that are wrong in the same way agree with each other and produce no signal here. A green run over
+/// this suite means Firely and Ignixa answer identically on the corpus exercised - it is a
+/// migration-risk signal for ADR 2608's seam, telling you where behaviour would change if the seam
+/// swapped providers, not a correctness proof for either engine. The FHIRPath conformance suites
+/// elsewhere in this project are what establish correctness against the spec; this one only compares
+/// the two engines to each other.
+/// </remarks>
+public class FirelyVersusIgnixaDifferentialTests(ITestOutputHelper output)
+{
+    private readonly ITestOutputHelper _output = output;
+
+    /// <summary>
+    /// Sweeps the expressions that actually run in production and pins what they disagree on.
+    /// </summary>
+    [Fact]
+    public void GivenTheShippedSearchParameterCorpus_WhenEvaluatedByBothEngines_ThenOnlyPinnedDivergencesAppear()
+    {
+        // Arrange & Act
+        var corpus = FirelyParityFixture.SearchParameterExpressions;
+        var report = ParitySweep.Run(corpus, "searchparam");
+        _output.WriteLine("searchparam: {0}", report.Describe());
+
+        // Assert
+        AssertPopulation(report, KnownDivergences.SearchParameterPopulation);
+        AssertPinned(report.Divergences, KnownDivergences.SearchParameterSignatures, "searchparam", corpus.Count);
+    }
+
+    /// <summary>
+    /// Sweeps the language constructs this branch changed.
+    /// </summary>
+    [Fact]
+    public void GivenTheChangedConstructs_WhenEvaluatedByBothEngines_ThenOnlyPinnedDivergencesAppear()
+    {
+        // Arrange & Act
+        var corpus = FirelyParityFixture.ConstructCorpus;
+        var report = ParitySweep.Run(corpus, "construct");
+        _output.WriteLine("construct: {0}", report.Describe());
+
+        // Assert
+        AssertPopulation(report, KnownDivergences.ConstructPopulation);
+        AssertPinned(report.Divergences, KnownDivergences.ConstructSignatures, "construct", corpus.Count);
+    }
+
+    /// <summary>
+    /// Pins raw primitive-name divergences <see cref="ParityTypeName"/> normalises away, so
+    /// normalising them does not amount to hiding them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each row also asserts the two conditions that are its reason for existing: the engines still
+    /// spell the type differently, and <see cref="ParityTypeName"/> still reduces both spellings to
+    /// one so <see cref="ParitySweep"/> cannot report it. A row that stops satisfying either fails
+    /// here instead of silently becoming a tautology. That closes the gap which let the
+    /// <c>1 'mg'</c> row be deleted on the belief its divergence had closed: it had not, and nothing
+    /// contradicted the belief. <c>e82f1f03</c> made <c>is System.Quantity</c> true without changing
+    /// the raw <c>InstanceType</c>, which is what this row reads.
+    /// </para>
+    /// <para>
+    /// The list is enumerated by
+    /// <see cref="GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent"/>,
+    /// which asserts the complete expected expression set against a literal written out independently
+    /// of <see cref="NormalisedTypeNames"/>. Deleting a row therefore fails that test rather than
+    /// quietly reducing coverage, which is the defect recorded as issue #425 - a reviewer deleted the
+    /// <c>1 'mg'</c> row and the suite stayed green with four cases.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(NormalisedTypeNames))]
+    public void GivenAnOperatorResult_WhenTypedByBothEngines_ThenFirelyNamesTheSystemTypeAndIgnixaTheFhirType(
+        string expression,
+        string firelyType,
+        string ignixaType)
+    {
+        // Arrange
+        var patient = FirelyParityFixture.Resources[0].Json;
+
+        // Act
+        var firely = FirelyEngine.RawInstanceTypes(FirelyEngine.Parse(patient), expression);
+        var ignixa = IgnixaEngine.RawInstanceTypes(IgnixaEngine.Parse(patient), expression);
+
+        // Assert
+        firely.ShouldBe([firelyType]);
+        ignixa.ShouldBe([ignixaType]);
+
+        var firelyName = firely.ShouldHaveSingleItem();
+        var ignixaName = ignixa.ShouldHaveSingleItem();
+
+        firelyName.ShouldNotBe(
+            ignixaName,
+            $"The engines now agree on the raw type of '{expression}', so this row pins nothing. "
+            + "Retire it, and confirm ParitySweep covers whatever behaviour replaced it.");
+
+        ParityTypeName.Canonical(firelyName).ShouldBe(
+            ParityTypeName.Canonical(ignixaName),
+            $"ParityTypeName no longer collapses the two spellings of '{expression}', so ParitySweep "
+            + "reports this divergence itself and this row has become a duplicate pin.");
+    }
+
+    public static TheoryData<string, string, string> NormalisedTypeNames { get; } = new()
+    {
+        { "active and true", "System.Boolean", "boolean" },
+        { "'a' & 'b'", "System.String", "string" },
+        { "1 + 1", "System.Integer", "integer" },
+        { "birthDate + 1 year", "System.Date", "date" },
+        { "1 'mg'", "System.Quantity", "Quantity" },
+    };
+
+    /// <summary>
+    /// Asserts the acknowledged normalised-divergence set is complete, so a row cannot be removed from
+    /// <see cref="NormalisedTypeNames"/> without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The expected set is written out here as a literal rather than derived from
+    /// <see cref="NormalisedTypeNames"/>, because an inventory computed from the collection it is
+    /// meant to guard agrees with any edit to that collection and asserts nothing. Issue #425 records
+    /// the consequence: a reviewer deleted the <c>1 'mg'</c> row and the theory passed with four cases,
+    /// so a divergence <see cref="ParityTypeName"/> still normalises away silently left the
+    /// acknowledged set. Two independent statements of the same set are what make removal detectable.
+    /// </para>
+    /// <para>
+    /// Scope: these five are the raw primitive-name divergences that <see cref="ParityTypeName"/>
+    /// collapses, which is why <see cref="ParitySweep"/> cannot report them and they have to be pinned
+    /// by hand. This is not an inventory of parity coverage in general - the resource-backed sweep
+    /// counts are pinned by <c>ResourceBackedKnownDivergences</c>, and the version-specific evaluator
+    /// divergences live in the native-Firely probes for each FHIR version.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "'a' & 'b'",
+            "1 'mg'",
+            "1 + 1",
+            "active and true",
+            "birthDate + 1 year",
+        ];
+
+        // Act
+        var actual = NormalisedTypeNames
+            .Select(row => (string)row[0])
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        actual.ShouldBe(
+            expected,
+            "The acknowledged normalised-divergence set changed. A row may only be retired after "
+            + "GivenAnOperatorResult_WhenTypedByBothEngines_ThenFirelyNamesTheSystemTypeAndIgnixaTheFhirType "
+            + "has gone red for it, proving the engines now agree; update this inventory in the same change.");
+    }
+
+    /// <summary>
+    /// ADR 2608 pins this one by name: 5.11.4's <c>Scalar</c> calls <c>Single()</c>, so two results
+    /// throw, where SDK 6 returns null. Ignixa matches SDK 6, so a seam that derived
+    /// <c>Scalar</c> from Ignixa rather than reimplementing 5.11.4's contract would silently stop
+    /// throwing on ambiguous search parameter definitions.
+    /// </summary>
+    [Fact]
+    public void GivenAnExpressionWithTwoResults_WhenTakenAsAScalar_ThenFirelyThrowsAndIgnixaReturnsNull()
+    {
+        // Arrange
+        var patient = FirelyParityFixture.Resources[0].Json;
+
+        // Act
+        var firely = FirelyEngine.ScalarOutcome(FirelyEngine.Parse(patient), "name.family");
+        var ignixa = IgnixaEngine.ScalarOutcome(IgnixaEngine.Parse(patient), "name.family");
+
+        // Assert
+        firely.ShouldBe("threw InvalidOperationException");
+        ignixa.ShouldBe("<null>");
+    }
+
+    /// <summary>
+    /// <c>Predicate</c> and <c>IsTrue</c> disagree with each other on empty within Firely itself.
+    /// This asserts against <see cref="IgnixaEngine.IsTrue"/>, not an Ignixa <c>Predicate</c> -
+    /// <see cref="IgnixaEngine"/> exposes no <c>Predicate</c> wrapper. Ignixa's own <c>Predicate</c>
+    /// methods (two of them, disagreeing with each other) are why ADR 2608 derives <c>Predicate</c>
+    /// in the seam rather than asking the provider for it; see docs/features/fhirpath/firely-parity.md,
+    /// entry 7.
+    /// </summary>
+    [Fact]
+    public void GivenAnEmptyResult_WhenAskedAsPredicateAndAsIsTrue_ThenFirelyDisagreesWithItselfAndIgnixaMatchesIsTrue()
+    {
+        // Arrange
+        var patient = FirelyParityFixture.Resources[0].Json;
+        var firelySubject = FirelyEngine.Parse(patient);
+
+        // Act
+        var predicate = FirelyEngine.Predicate(firelySubject, "missingElement");
+        var firelyIsTrue = FirelyEngine.IsTrue(firelySubject, "missingElement");
+        var ignixaIsTrue = IgnixaEngine.IsTrue(IgnixaEngine.Parse(patient), "missingElement");
+
+        // Assert
+        predicate.ShouldBeTrue();
+        firelyIsTrue.ShouldBeFalse();
+        ignixaIsTrue.ShouldBe(firelyIsTrue);
+    }
+
+    /// <summary>
+    /// Refutes the expectation that Ignixa cannot resolve <c>%resource</c> because
+    /// <c>IElement</c> has no parent link. It resolves, including from inside a Bundle entry - but
+    /// only because the bridge binds it explicitly. This test is what stops that binding being
+    /// dropped as redundant.
+    /// </summary>
+    /// <remarks>
+    /// The floor asserted before the comparison is not decoration: <see cref="ParityOutcome.Describe"/>
+    /// renders both a throw and an empty result as short marker strings, so two engines that both came
+    /// back empty - or both threw - would satisfy the comparison at the end of this test while
+    /// establishing nothing about <c>%resource</c> resolution. Asserting a non-empty, non-throwing
+    /// result on both sides first makes that pass impossible.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(ResourceVariableExpressions))]
+    public void GivenAResourceVariable_WhenResolvedByBothEngines_ThenTheyAgree(string expression)
+    {
+        // Arrange
+        var bundle = FirelyParityFixture.Resources.First(resource => resource.Name == "Bundle").Json;
+
+        // Act
+        var firely = FirelyEngine.Evaluate(FirelyEngine.Parse(bundle), expression);
+        var ignixa = IgnixaEngine.Evaluate(IgnixaEngine.Parse(bundle), expression);
+
+        // Assert
+        firely.Threw.ShouldBeFalse(
+            $"'{expression}' threw on Firely, so the agreement asserted below would compare two throws, "
+            + "not the resolved %resource value this test exists to check.");
+        ignixa.Threw.ShouldBeFalse(
+            $"'{expression}' threw on Ignixa, so the agreement asserted below would compare two throws, "
+            + "not the resolved %resource value this test exists to check.");
+        firely.Results.ShouldNotBeEmpty(
+            $"'{expression}' must resolve to a non-empty value on Firely, or the agreement asserted "
+            + "below is vacuous - both engines returning empty is not evidence %resource resolved.");
+        ignixa.Results.ShouldNotBeEmpty(
+            $"'{expression}' must resolve to a non-empty value on Ignixa, or the agreement asserted "
+            + "below is vacuous - both engines returning empty is not evidence %resource resolved.");
+
+        ignixa.Describe().ShouldBe(firely.Describe());
+    }
+
+    public static TheoryData<string> ResourceVariableExpressions { get; } = new()
+    {
+        "%resource.id",
+        "%rootResource.id",
+        "%context.id",
+        "Bundle.entry.resource.select(%resource.id)",
+        "Bundle.entry.resource.ofType(Patient).name.select(%rootResource.id)",
+    };
+
+    /// <summary>
+    /// Asserts the acknowledged <c>%resource</c>-agreement set is complete, so a row cannot be removed
+    /// from <see cref="ResourceVariableExpressions"/> without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// The expected set is written out here as a literal rather than derived from
+    /// <see cref="ResourceVariableExpressions"/>, for the same reason
+    /// <see cref="GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent"/>
+    /// does: an inventory computed from the collection it is meant to guard agrees with any edit to
+    /// that collection and asserts nothing.
+    /// </remarks>
+    [Fact]
+    public void GivenTheResourceVariableInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "%context.id",
+            "%resource.id",
+            "%rootResource.id",
+            "Bundle.entry.resource.ofType(Patient).name.select(%rootResource.id)",
+            "Bundle.entry.resource.select(%resource.id)",
+        ];
+
+        // Act
+        // TheoryData<string> - unlike the multi-column TheoryData<T1, T2, ...> forms - implements
+        // IEnumerable<string> directly alongside IEnumerable<object[]>, so an unqualified .Select(...)
+        // is ambiguous between the two. The explicit cast picks the strongly-typed row directly.
+        var actual = ((IEnumerable<string>)ResourceVariableExpressions)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        actual.ShouldBe(
+            expected,
+            "The acknowledged %resource-agreement set changed. A row may only be retired after "
+            + "GivenAResourceVariable_WhenResolvedByBothEngines_ThenTheyAgree has gone red for it, "
+            + "proving the engines no longer need to be compared for it; update this inventory in the "
+            + "same change.");
+    }
+
+    /// <summary>
+    /// The high boundary of a year is its December, and both engines now agree on the date.
+    /// </summary>
+    /// <remarks>
+    /// This was a pinned Ignixa defect: FormatDateTimeHighBoundary maximised the month only when the
+    /// requested output precision was exactly month level, so the default full-precision call left an
+    /// unspecified month at its parsed default of January and answered 2012-01-31. Every other
+    /// component in that method already used a "this precision or finer" test; month was the only
+    /// equality check. Nothing but the timezone offset now separates the two engines here, which is
+    /// the same benign difference the other boundary entries carry.
+    /// </remarks>
+    [Fact]
+    public void GivenAYearPrecisionDate_WhenTakingItsHighBoundary_ThenBothEnginesReportDecember()
+    {
+        // Arrange
+        var patient = FirelyParityFixture.Resources[0].Json;
+
+        // Act
+        var firely = FirelyEngine.RawValues(FirelyEngine.Parse(patient), "@2012.highBoundary()");
+        var ignixa = IgnixaEngine.RawValues(IgnixaEngine.Parse(patient), "@2012.highBoundary()");
+
+        // Assert
+        firely.ShouldBe(["2012-12-31T23:59:59.999"]);
+        ignixa.ShouldBe(["2012-12-31T23:59:59.999-12:00"]);
+    }
+
+    /// <summary>
+    /// Guards the neighbours of the year-precision fix: coarser input must not start borrowing the
+    /// month, and finer input must keep the month it was given.
+    /// </summary>
+    /// <remarks>
+    /// This is a unilateral Ignixa pin, not a parity comparison: every row asserts a concrete literal
+    /// against <see cref="IgnixaEngine"/> alone, and Firely never appears here. It has no hollowness
+    /// problem for <see cref="ParityOutcome.Describe"/> to hide behind - a literal cannot pass while
+    /// vacuous the way a Firely/Ignixa comparison can. The enumeration guard below exists only because
+    /// a pinned row set that nothing enumerates can still be silently trimmed, the same defect
+    /// <see cref="NormalisedTypeNames"/> guards against.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(HighBoundaryPrecisionCases))]
+    public void GivenADateOfSomePrecision_WhenTakingItsHighBoundary_ThenMaximisesOnlyUnspecifiedComponents(
+        string expression,
+        string expected)
+    {
+        // Arrange
+        var patient = FirelyParityFixture.Resources[0].Json;
+
+        // Act
+        var ignixa = IgnixaEngine.RawValues(IgnixaEngine.Parse(patient), expression);
+
+        // Assert
+        ignixa.ShouldBe([expected]);
+    }
+
+    public static TheoryData<string, string> HighBoundaryPrecisionCases { get; } = new()
+    {
+        { "@2012.highBoundary()", "2012-12-31T23:59:59.999-12:00" },
+        { "@2012.highBoundary(6)", "2012-12" },
+        { "@2012.highBoundary(8)", "2012-12-31" },
+        { "@2012-06.highBoundary()", "2012-06-30T23:59:59.999-12:00" },
+        { "@2012-02.highBoundary(8)", "2012-02-29" },
+        { "@2011-02.highBoundary(8)", "2011-02-28" },
+        { "@2012-06-15.highBoundary()", "2012-06-15T23:59:59.999-12:00" },
+    };
+
+    /// <summary>
+    /// Asserts the acknowledged high-boundary-precision case set is complete, so a row cannot be
+    /// removed from <see cref="HighBoundaryPrecisionCases"/> without failing the build.
+    /// </summary>
+    /// <remarks>
+    /// The expected set is written out here as a literal rather than derived from
+    /// <see cref="HighBoundaryPrecisionCases"/>, for the same reason
+    /// <see cref="GivenTheNormalisedTypeNameInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent"/>
+    /// does: an inventory computed from the collection it is meant to guard agrees with any edit to
+    /// that collection and asserts nothing.
+    /// </remarks>
+    [Fact]
+    public void GivenTheHighBoundaryPrecisionInventory_WhenEnumerated_ThenEveryPinnedExpressionIsPresent()
+    {
+        // Arrange
+        string[] expected =
+        [
+            "@2011-02.highBoundary(8)",
+            "@2012-02.highBoundary(8)",
+            "@2012-06-15.highBoundary()",
+            "@2012-06.highBoundary()",
+            "@2012.highBoundary()",
+            "@2012.highBoundary(6)",
+            "@2012.highBoundary(8)",
+        ];
+
+        // Act
+        var actual = HighBoundaryPrecisionCases
+            .Select(row => (string)row[0])
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Assert
+        actual.ShouldBe(
+            expected,
+            "The acknowledged high-boundary-precision case set changed. A row may only be retired after "
+            + "GivenADateOfSomePrecision_WhenTakingItsHighBoundary_ThenMaximisesOnlyUnspecifiedComponents "
+            + "has gone red for it, proving the boundary computation changed intentionally; update this "
+            + "inventory in the same change.");
+    }
+
+    /// <summary>
+    /// Asserts the shape of the whole population, not only the disagreements in it.
+    /// </summary>
+    /// <remarks>
+    /// The divergence pins below are satisfied by a sweep in which every remaining evaluation became a
+    /// mutual throw, because a mutual throw is agreement to <see cref="ParityOutcome.Matches"/> and
+    /// never reaches a divergence list. This is the containment that keeps that from passing - the same
+    /// containment <c>ResourceParityReport</c> already had and this sweep never received, even though
+    /// <see cref="KnownDivergences"/> records a live mutual throw in this very corpus.
+    /// </remarks>
+    private static void AssertPopulation(ExpressionParityReport report, ExpressionCorpusExpectations expected)
+    {
+        report.BucketsPartitionEvaluations.ShouldBeTrue(
+            $"""
+            The outcome buckets no longer account for every evaluation exactly once:
+            {report.BothThrew} both threw + {report.BothEmpty} both empty
+            + {report.AgreementsOnValues} agreed on values + {report.DivergentEvaluations} divergent
+            != {report.EvaluationsPerEngine} evaluations, or the divergent count disagrees with the
+            {report.Divergences.Count} divergences collected. That is a defect in ParityOutcomeTally.
+            """);
+        report.EvaluationsPerEngine.ShouldBeGreaterThanOrEqualTo(
+            expected.MinimumEvaluationsPerEngine,
+            """
+            The sweep evaluated fewer expressions per engine than the floor, so the evidence base
+            shrank. Find what removed expressions or subject resources and restore it.
+            Raise this floor when the corpus genuinely grows; never lower it to accommodate a loss.
+            """);
+        report.BothThrew.ShouldBe(
+            expected.ExpectedBothThrew,
+            """
+            The number of evaluations where both engines throw moved. This is not a parity failure -
+            the engines still agree - but a mutual throw compares no values, so a rise is coverage
+            lost and it is invisible to every divergence pin. Identify the expression and confirm the
+            throw is correct for both engines before re-pinning.
+            """);
+        report.BothEmpty.ShouldBe(
+            expected.ExpectedBothEmpty,
+            """
+            The both-empty count moved. Agreement on absence is legitimate but weak evidence, and it
+            is invisible to the divergence pins, so establish whether the corpus or an engine moved
+            before re-pinning.
+            """);
+        report.AgreementsOnValues.ShouldBeGreaterThanOrEqualTo(
+            expected.MinimumAgreementsOnValues,
+            """
+            Fewer evaluations produced matching non-empty values than the floor requires. This is the
+            number the conformance claim rests on, so a drop is a regression until proven otherwise.
+            Fix the regression rather than re-pinning the floor beneath it.
+            """);
+    }
+
+    private static void AssertPinned(
+        IReadOnlyList<ParityDivergence> divergences,
+        IReadOnlyDictionary<string, int> pinned,
+        string source,
+        int expressions)
+    {
+        var report = ParityReport.Render(divergences, expressions, FirelyParityFixture.Resources.Count);
+        var path = Path.Combine(AppContext.BaseDirectory, $"firely-parity-{source}.md");
+        File.WriteAllText(path, report);
+
+        var observed = divergences
+            .GroupBy(divergence => divergence.Signature)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
+        var pinBlock = RenderPinBlock(observed);
+
+        var unpinned = observed.Keys.Where(signature => !pinned.ContainsKey(signature)).ToList();
+        unpinned.ShouldBeEmpty(
+            $"New Firely/Ignixa divergence(s) appeared. Add an inventory entry in "
+            + $"docs/features/fhirpath/firely-parity.md, then paste this into KnownDivergences:\n{pinBlock}\n\nReport at {path}");
+
+        var moved = observed
+            .Where(entry => pinned[entry.Key] != entry.Value)
+            .Select(entry => $"{entry.Key}: pinned {pinned[entry.Key]}, observed {entry.Value}")
+            .ToList();
+        moved.ShouldBeEmpty(
+            $"Divergence reach changed - a known behaviour now affects a different number of subject "
+            + $"resources. Paste into KnownDivergences:\n{pinBlock}\n\nReport at {path}");
+
+        var vanished = pinned.Keys.Where(signature => !observed.ContainsKey(signature)).ToList();
+        vanished.ShouldBeEmpty(
+            $"Pinned divergence(s) no longer occur - remove them from KnownDivergences and from the "
+            + $"inventory. Report at {path}");
+    }
+
+    /// <summary>
+    /// Emits the observed divergences as the C# literal that pins them, so keeping the expectations
+    /// current is a copy-paste rather than a transcription exercise.
+    /// </summary>
+    private static string RenderPinBlock(IReadOnlyDictionary<string, int> observed)
+    {
+        var lines = observed
+            .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+            .Select(entry => $"            [\"{entry.Key.Replace("\"", "\\\"", StringComparison.Ordinal)}\"] = {entry.Value},");
+
+        return string.Join("\n", lines);
+    }
+}

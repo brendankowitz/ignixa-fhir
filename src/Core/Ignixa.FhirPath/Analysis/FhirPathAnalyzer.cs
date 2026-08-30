@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.FhirPath.Visitors;
@@ -59,7 +60,20 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
     private readonly IFhirSchemaProvider _schema;
     private readonly SymbolTable _symbolTable;
+    private readonly SystemTypeConstructionAnalyzer _systemTypeConstructionAnalyzer;
     private readonly FhirPathParser _parser;
+    /// <summary>
+    /// Top-level element names declared by any resource type, used to tell a name this schema knows
+    /// nowhere from one this root simply does not declare.
+    /// </summary>
+    /// <remarks>
+    /// Compared case-insensitively to agree with <see cref="FindChildByName"/>, which resolves properties
+    /// that way. An ordinal set would call a name unknown to every resource that navigation would still
+    /// have resolved, and the two would then disagree about the same expression. The ordinal-exact
+    /// matching this analysis applies elsewhere is about type names at a cast site, where the System and
+    /// FHIR namespaces distinguish <c>Integer</c> from <c>integer</c>; no such pair exists here.
+    /// </remarks>
+    private readonly Lazy<HashSet<string>> _rootPropertyNames;
     private IFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet>? _childVisitor;
 
     /// <summary>
@@ -70,6 +84,18 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _symbolTable = new SymbolTable(schema);
         _parser = new FhirPathParser();
+        _rootPropertyNames = new Lazy<HashSet<string>>(
+            () => _schema.ResourceTypeNames
+                .Select(_schema.GetTypeDefinition)
+                .Where(type => type != null)
+                .SelectMany(type => type!.Children)
+                .Select(child => child.Info.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase),
+            isThreadSafe: true);
+
+        _systemTypeConstructionAnalyzer = new SystemTypeConstructionAnalyzer(
+            _symbolTable,
+            propertyName => _rootPropertyNames.Value.Contains(propertyName));
     }
 
     internal void SetChildVisitor(IFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet> visitor)
@@ -217,8 +243,22 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var propertyFound = false;
         foreach (var focusType in focusTypes.Types)
         {
+            if (focusType.IsUnknown)
+            {
+                result.Types.Add(focusType.WithPath(
+                    $"{focusType.Path}.{expression.PropertyName}"));
+                propertyFound = true;
+                continue;
+            }
+
             if (focusType.Type == null)
             {
+                if (TryAddReflectionMember(result, focusType, expression.PropertyName))
+                {
+                    propertyFound = true;
+                    continue;
+                }
+
                 if (_schema.ResourceTypeNames.Contains(expression.PropertyName))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.PropertyName);
@@ -259,9 +299,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (!propertyFound)
         {
-            context.AddError(
-                $"Property '{expression.PropertyName}' not found on type '{focusTypes.TypeNames()}'",
-                expression);
+            ReportUnresolvedProperty(expression.PropertyName, focusTypes, result, expression, context);
         }
 
         return result;
@@ -291,8 +329,22 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var propertyFound = false;
         foreach (var focusType in focusTypes.Types)
         {
+            if (focusType.IsUnknown)
+            {
+                result.Types.Add(focusType.WithPath(
+                    $"{focusType.Path}.{expression.ChildName}"));
+                propertyFound = true;
+                continue;
+            }
+
             if (focusType.Type == null)
             {
+                if (TryAddReflectionMember(result, focusType, expression.ChildName))
+                {
+                    propertyFound = true;
+                    continue;
+                }
+
                 if (_schema.ResourceTypeNames.Contains(expression.ChildName))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.ChildName);
@@ -333,9 +385,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (!propertyFound)
         {
-            context.AddError(
-                $"Property '{expression.ChildName}' not found on type '{focusTypes.TypeNames()}'",
-                expression);
+            ReportUnresolvedProperty(expression.ChildName, focusTypes, result, expression, context);
         }
 
         return result;
@@ -389,7 +439,10 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         if (funcDef?.TakesExpressionArguments == true)
         {
             var singleItemContext = focusTypes.AsSingle();
-            innerContext = innerContext.WithFocus(singleItemContext).PushExpressionContext(singleItemContext);
+            innerContext = innerContext
+                .WithFocus(singleItemContext)
+                .PushExpressionContext(singleItemContext)
+                .ForkVariableScope();
         }
 
         if (functionName.Equals("ofType", StringComparison.OrdinalIgnoreCase) ||
@@ -451,11 +504,20 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 {
                     result.CopyFrom(focusTypes);
                 }
+
+                if (result.HasUnknown && !focusTypes.HasUnknown)
+                {
+                    context.AddIndeterminateWarning(
+                        $"The return type of function '{functionName}()' cannot be analysed statically; downstream navigation is indeterminate.",
+                        expression);
+                }
             }
             catch (Exception ex)
             {
-                context.AddIssue(ValidationIssueSeverity.Warning, $"Return type calculation failed for function '{functionName}': {ex.Message}", expression);
-                result.CopyFrom(focusTypes); // Fallback to focus types
+                context.AddIndeterminateWarning(
+                    $"Return type calculation failed for function '{functionName}()' and cannot be analysed: {ex.Message}",
+                    expression);
+                result.AddUnknown(focusTypes.IsCollection());
             }
         }
         else
@@ -478,8 +540,8 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var visitor = _childVisitor ?? this;
 
         // For union operator, fork context so defineVariable in one branch doesn't leak to sibling
-        var leftContext = expression.Operator == "|" ? context.ForkForBranch() : context;
-        var rightContext = expression.Operator == "|" ? context.ForkForBranch() : context;
+        var leftContext = expression.Operator == "|" ? context.ForkVariableScope() : context;
+        var rightContext = expression.Operator == "|" ? context.ForkVariableScope() : context;
 
         var leftResult = expression.Left?.AcceptVisitor(visitor, leftContext) ?? new FhirPathTypeSet();
         var rightResult = expression.Right?.AcceptVisitor(visitor, rightContext) ?? new FhirPathTypeSet();
@@ -500,15 +562,16 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                     result.Types.Add(t);
                 foreach (var t in rightResult.Types)
                 {
-                    var existing = result.Types.FirstOrDefault(x => x.TypeName == t.TypeName);
-                    if (existing.TypeName != null && !existing.IsCollection)
-                    {
-                        result.Types.Remove(existing);
-                        result.Types.Add(existing.AsCollection());
-                    }
-                    else if (existing.TypeName == null)
+                    // Matching on TypeName alone cannot tell "absent" from "present but default-valued":
+                    // TypeName never returns null, so the index has to carry the answer.
+                    var existingIndex = IndexOfTypeName(result.Types, t.TypeName);
+                    if (existingIndex < 0)
                     {
                         result.Types.Add(t);
+                    }
+                    else if (!result.Types[existingIndex].IsCollection)
+                    {
+                        result.Types[existingIndex] = result.Types[existingIndex].AsCollection();
                     }
                 }
                 break;
@@ -554,18 +617,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     {
         var result = new FhirPathTypeSet();
 
-        var typeName = expression.Value switch
-        {
-            null => "empty",
-            bool => "boolean",
-            int or long => "integer",
-            decimal or double or float => "decimal",
-            string => "string",
-            DateTime or DateTimeOffset => "dateTime",
-            _ => "string"
-        };
-
-        result.AddPrimitiveType(typeName);
+        result.AddPrimitiveType(SystemTypeConstructionAnalyzer.GetConstantTypeName(expression));
         return result;
     }
 
@@ -576,8 +628,19 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         foreach (var focusType in focusTypes.Types)
         {
+            if (focusType.IsUnknown)
+            {
+                result.Types.Add(focusType.WithPath($"{focusType.Path}.{expression.Name}"));
+                continue;
+            }
+
             if (focusType.Type == null)
             {
+                if (TryAddReflectionMember(result, focusType, expression.Name))
+                {
+                    continue;
+                }
+
                 if (_schema.ResourceTypeNames.Contains(expression.Name))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.Name);
@@ -614,7 +677,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (result.Types.Count == 0)
         {
-            context.AddError($"Property '{expression.Name}' not found on type '{focusTypes.TypeNames()}'", expression);
+            ReportUnresolvedProperty(expression.Name, focusTypes, result, expression, context);
         }
 
         return result;
@@ -636,7 +699,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return result;
         }
 
-        var varProps = context.ResolveVariable(name);
+        var varProps = context.ResolveVariable(name, expression.IsDelimited);
         if (varProps != null)
         {
             result.CopyFrom(varProps);
@@ -750,28 +813,70 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return result;
         }
 
-        var matchingTypes = focusTypes.Types.Where(t =>
-            t.TypeName.Equals(typeName, StringComparison.OrdinalIgnoreCase)).ToList();
+        var matchingTypes = focusTypes.Types
+            .Where(type => TypeMatcher.MatchesCastTypeName(
+                type.TypeName,
+                typeName,
+                _schema,
+                instanceIsSystemValue: false))
+            .ToList();
+        var (baseTypeName, resolvedType, targetType, isPrimitive) = ResolveCastTarget(typeName);
+        var construction = _systemTypeConstructionAnalyzer.Analyze(expression.Focus);
+        IReadOnlyList<string> systemTypeMatches = [];
+        bool hasSystemTypeMatch;
+        if (construction.MayConstructAny)
+        {
+            hasSystemTypeMatch =
+                resolvedType is not null
+                || isPrimitive
+                || FhirPathType.IsPrimitiveTypeName(baseTypeName);
+        }
+        else
+        {
+            systemTypeMatches = GetSystemTypeMatches(construction, typeName);
+            hasSystemTypeMatch = systemTypeMatches.Count > 0;
+        }
 
-        if (matchingTypes.Count > 0)
+        if (matchingTypes.Count > 0 || hasSystemTypeMatch)
         {
             foreach (var type in matchingTypes)
             {
                 result.Types.Add(type);
             }
+
+            if (construction.MayConstructAny)
+            {
+                AddIndeterminateCastTarget(
+                    result,
+                    baseTypeName,
+                    targetType,
+                    isPrimitive || FhirPathType.IsPrimitiveTypeName(baseTypeName),
+                    focusTypes.IsCollection());
+            }
+            else
+            {
+                AddSystemTypeMatches(result, systemTypeMatches, focusTypes.IsCollection());
+            }
         }
         else
         {
-            var targetType = _schema.GetTypeDefinition(typeName);
-            var isPrimitive = FhirPathType.IsPrimitiveTypeName(typeName);
-
-            if (targetType == null && !isPrimitive)
+            if (resolvedType is not null && targetType is null)
+            {
+                if (!focusTypes.HasUnknown)
+                {
+                    context.AddAlwaysEmptyWarning(
+                        $"Type filter '{typeName}' will always be empty. Focus types: {focusTypes.TypeNames()}",
+                        expression);
+                }
+            }
+            else if (targetType == null && !isPrimitive)
             {
                 context.AddError($"Type '{typeName}' is not a valid FHIR type", expression);
             }
-            else if (!focusTypes.CanBeOfType(typeName))
+            else if (!focusTypes.HasUnknown && !focusTypes.CanBeOfType(baseTypeName))
             {
-                context.AddWarning(
+                // An indeterminate focus can hold anything at runtime, so "always empty" is not decidable.
+                context.AddAlwaysEmptyWarning(
                     $"Type filter '{typeName}' will always be empty. Focus types: {focusTypes.TypeNames()}",
                     expression);
             }
@@ -782,28 +887,81 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             }
             else if (isPrimitive)
             {
-                result.AddPrimitiveType(typeName, focusTypes.IsCollection());
+                result.AddPrimitiveType(baseTypeName, focusTypes.IsCollection());
             }
         }
 
         return result;
     }
 
+    /// <summary>
+    /// Resolves a cast target name to the schema type the evaluator would match a value against.
+    /// </summary>
+    /// <remarks>
+    /// The <c>System.</c> and <c>FHIR.</c> prefixes are FHIRPath type syntax rather than part of the type
+    /// name, and <see cref="TypeMatcher.ParseTypeName"/> strips them before matching. The schema lookup has
+    /// to strip them too: leaving them on makes a qualified target unresolvable, so it is reported as an
+    /// invalid FHIR type instead of reaching the always-empty contract an unqualified target of the same
+    /// type gets. <paramref name="typeName"/> keeps its prefix for matching, because the prefix is part of
+    /// what the evaluator was asked for.
+    /// </remarks>
+    private (string BaseTypeName, IType? ResolvedType, IType? TargetType, bool IsPrimitive) ResolveCastTarget(string typeName)
+    {
+        var (baseTypeName, _, _) = TypeMatcher.ParseTypeName(typeName);
+        var resolvedType = _schema.GetTypeDefinition(baseTypeName);
+        var targetType = resolvedType is not null
+            && TypeMatcher.MatchesCastTypeName(resolvedType.Info.Name, typeName, _schema, instanceIsSystemValue: false)
+                ? resolvedType
+                : null;
+        var isPrimitive = resolvedType is null && FhirPathType.IsPrimitiveTypeName(baseTypeName);
+
+        return (baseTypeName, resolvedType, targetType, isPrimitive);
+    }
+
+    /// <summary>
+    /// Records the variable a <c>defineVariable</c> call introduces, and reports the two ways the call can
+    /// be rejected at runtime.
+    /// </summary>
+    /// <remarks>
+    /// Both diagnostics mirror <c>FhirPathEvaluator.EvaluateDefineVariable</c> exactly, via the shared
+    /// <see cref="DefineVariableRules"/>, because an analyzer that stays silent about an expression the
+    /// evaluator throws on is worse than no analyzer: it certifies the expression. The redefinition check
+    /// is the same lexical walk up the invocation chain the evaluator performs, which is why it can be
+    /// applied here at all - it reads the AST, not the runtime variable store.
+    /// </remarks>
     private static void HandleDefineVariable(
         FunctionCallExpression expression,
         FhirPathTypeSet focusTypes,
         List<FhirPathTypeSet> argTypes,
         AnalysisContext context)
     {
-        if (expression.Arguments.Count >= 1 && expression.Arguments[0] is ConstantExpression nameExpr)
+        // Argument count is already validated from the [FhirPathFunction] metadata; only the two rules the
+        // evaluator adds on top of it are handled here.
+        if (expression.Arguments.Count < 1 || expression.Arguments[0] is not ConstantExpression nameExpr)
         {
-            var varName = nameExpr.Value?.ToString();
-            if (!string.IsNullOrEmpty(varName))
-            {
-                var varType = argTypes.Count >= 2 ? argTypes[1] : focusTypes;
-                context.WithDefinedVariable(varName, varType);
-            }
+            return;
         }
+
+        var varName = nameExpr.Value?.ToString();
+        if (string.IsNullOrEmpty(varName))
+        {
+            return;
+        }
+
+        if (DefineVariableRules.ReservedVariableNames.Contains(varName))
+        {
+            context.AddError($"defineVariable cannot redefine the system variable '%{varName}'", expression);
+            return;
+        }
+
+        if (DefineVariableRules.IsAlreadyDefinedEarlierInSameChain(expression, varName))
+        {
+            context.AddError($"Variable '%{varName}' is already defined", expression);
+            return;
+        }
+
+        var varType = argTypes.Count >= 2 ? argTypes[1] : focusTypes;
+        context.WithDefinedVariable(varName, varType);
     }
 
     /// <summary>
@@ -825,8 +983,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
 
         var typeName = ExtractTypeName(expression.Arguments[0]);
-        if (typeName != null && !focusTypes.CanBeOfType(typeName))
+        if (typeName != null && !focusTypes.HasUnknown && !focusTypes.CanBeOfType(typeName))
         {
+            // An indeterminate focus can hold anything at runtime, so "always false" is not decidable.
             context.AddWarning(
                 $"Type check 'is({typeName})' will always be false. Possible types: {focusTypes.TypeNames()}",
                 expression);
@@ -845,8 +1004,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         if (expression.Right is ConstantExpression typeExpr)
         {
             var typeName = typeExpr.Value?.ToString();
-            if (typeName != null && !leftResult.CanBeOfType(typeName))
+            if (typeName != null && !leftResult.HasUnknown && !leftResult.CanBeOfType(typeName))
             {
+                // An indeterminate operand can hold anything at runtime, so "always false" is not decidable.
                 context.AddWarning(
                     $"Type check 'is {typeName}' will always be false. Possible types: {leftResult.TypeNames()}",
                     expression);
@@ -870,31 +1030,76 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             var typeName = typeExpr.Value?.ToString();
             if (typeName != null)
             {
-                if (!leftResult.CanBeOfType(typeName))
+                var (baseTypeName, resolvedType, targetType, isPrimitive) = ResolveCastTarget(typeName);
+
+                if (!leftResult.CanBeOfType(baseTypeName))
                 {
                     context.AddWarning(
                         $"Cast 'as {typeName}' may return empty. Possible types: {leftResult.TypeNames()}",
                         expression);
                 }
 
-                var matchingTypes = leftResult.Types.Where(t =>
-                    t.TypeName.Equals(typeName, StringComparison.OrdinalIgnoreCase)).ToList();
+                var matchingTypes = leftResult.Types
+                    .Where(type => TypeMatcher.MatchesCastTypeName(
+                        type.TypeName,
+                        typeName,
+                        _schema,
+                        instanceIsSystemValue: false))
+                    .ToList();
+                var construction = _systemTypeConstructionAnalyzer.Analyze(expression.Left);
+                IReadOnlyList<string> systemTypeMatches = [];
+                bool hasSystemTypeMatch;
+                if (construction.MayConstructAny)
+                {
+                    hasSystemTypeMatch =
+                        resolvedType is not null
+                        || isPrimitive
+                        || FhirPathType.IsPrimitiveTypeName(baseTypeName);
+                }
+                else
+                {
+                    systemTypeMatches = GetSystemTypeMatches(construction, typeName);
+                    hasSystemTypeMatch = systemTypeMatches.Count > 0;
+                }
 
                 foreach (var t in matchingTypes)
                 {
                     result.Types.Add(t);
                 }
 
-                if (matchingTypes.Count == 0)
+                if (construction.MayConstructAny)
                 {
-                    var targetType = _schema.GetTypeDefinition(typeName);
-                    if (targetType != null)
+                    AddIndeterminateCastTarget(
+                        result,
+                        baseTypeName,
+                        targetType,
+                        isPrimitive || FhirPathType.IsPrimitiveTypeName(baseTypeName),
+                        leftResult.IsCollection());
+                }
+                else
+                {
+                    AddSystemTypeMatches(result, systemTypeMatches, leftResult.IsCollection());
+                }
+
+                if (matchingTypes.Count == 0 && !hasSystemTypeMatch)
+                {
+                    if (resolvedType is not null && targetType is null)
+                    {
+                        if (!leftResult.HasUnknown)
+                        {
+                            context.AddAlwaysEmptyWarning(
+                                $"Cast 'as {typeName}' will always be empty. Possible types: {leftResult.TypeNames()}",
+                                expression);
+                        }
+                    }
+
+                    else if (targetType != null)
                     {
                         result.AddType(targetType);
                     }
-                    else if (FhirPathType.IsPrimitiveTypeName(typeName))
+                    else if (isPrimitive)
                     {
-                        result.AddPrimitiveType(typeName);
+                        result.AddPrimitiveType(baseTypeName);
                     }
                 }
             }
@@ -902,7 +1107,50 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (leftResult.IsCollection())
         {
-            context.AddWarning("Operator 'as' applied to collection - only first item will be cast", expression);
+            context.AddWarning("Operator 'as' applied to collection - the evaluator throws unless the input is a single item", expression);
+        }
+    }
+
+    private IReadOnlyList<string> GetSystemTypeMatches(
+        SystemTypeConstruction construction,
+        string requestedTypeName) =>
+        construction.TypeNames
+            .Where(typeName => TypeMatcher.MatchesCastTypeName(
+                typeName,
+                requestedTypeName,
+                _schema,
+                instanceIsSystemValue: true))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+    private static void AddIndeterminateCastTarget(
+        FhirPathTypeSet result,
+        string baseTypeName,
+        IType? targetType,
+        bool isPrimitive,
+        bool isCollection)
+    {
+        if (targetType is not null)
+        {
+            result.AddType(targetType, isCollection);
+        }
+        else if (isPrimitive)
+        {
+            result.AddPrimitiveType(baseTypeName, isCollection);
+        }
+    }
+
+    private static void AddSystemTypeMatches(
+        FhirPathTypeSet result,
+        IEnumerable<string> systemTypeMatches,
+        bool isCollection)
+    {
+        foreach (string typeName in systemTypeMatches)
+        {
+            if (!result.Types.Any(type => type.TypeName.Equals(typeName, StringComparison.Ordinal)))
+            {
+                result.AddPrimitiveType(typeName, isCollection);
+            }
         }
     }
 
@@ -947,6 +1195,17 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     {
         var path = string.IsNullOrEmpty(focusType.Path) ? propertyName : $"{focusType.Path}.{propertyName}";
         var isCollection = focusType.IsCollection || child.IsCollection;
+
+        if (child is ITypeExtended { ContentReference: { Length: > 1 } contentReference })
+        {
+            var referencePath = contentReference[(contentReference.IndexOf("#", StringComparison.Ordinal) + 1)..];
+            var referencedType = _schema.GetTypeDefinition(referencePath);
+            if (referencedType != null)
+            {
+                result.AddType(referencedType, isCollection, path);
+                return;
+            }
+        }
 
         if (child is ITypeExtended extended && extended.Types?.Count > 0)
         {
@@ -1085,6 +1344,155 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         };
     }
 
+    private static bool TryAddReflectionMember(
+        FhirPathTypeSet result,
+        FhirPathType focusType,
+        string propertyName)
+    {
+        if ((focusType.TypeName.Equals("ClassInfo", StringComparison.OrdinalIgnoreCase) ||
+             focusType.TypeName.Equals("SimpleTypeInfo", StringComparison.OrdinalIgnoreCase)) &&
+            (propertyName.Equals("name", StringComparison.OrdinalIgnoreCase) ||
+             propertyName.Equals("namespace", StringComparison.OrdinalIgnoreCase) ||
+             propertyName.Equals("baseType", StringComparison.OrdinalIgnoreCase)))
+        {
+            result.AddPrimitiveType("string", focusType.IsCollection);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool IsPropertyOnAnotherRootType(string propertyName)
+    {
+        return _rootPropertyNames.Value.Contains(propertyName);
+    }
+
+    /// <summary>
+    /// Reports whether an unresolved name may name one instance of a choice element the focus declares,
+    /// such as <c>occurrenceDateTime</c> for <c>ServiceRequest.occurrence</c>.
+    /// </summary>
+    /// <remarks>
+    /// The test is the evaluator's own: <c>SchemaAwareElement</c> accepts any name that extends a choice
+    /// element's base name, without checking that the suffix spells one of the declared types. Reproducing
+    /// FHIR's suffix spelling here instead would have to be proven complete before it could carry a
+    /// negative, and a gap in it would put the confident always-empty claim back.
+    /// </remarks>
+    private static bool MayBeChoiceElementInstanceName(FhirPathTypeSet focusTypes, string propertyName)
+    {
+        foreach (var focusType in focusTypes.Types)
+        {
+            if (focusType.Type is null)
+            {
+                continue;
+            }
+
+            foreach (var child in focusType.Type.Children)
+            {
+                var childName = child.Info.Name;
+                var hasSuffix = childName.EndsWith("[x]", StringComparison.Ordinal);
+                if (!child.Info.IsChoiceElement && !hasSuffix)
+                {
+                    continue;
+                }
+
+                var baseName = hasSuffix ? childName[..^3] : childName;
+                if (propertyName.Length > baseName.Length &&
+                    propertyName.StartsWith(baseName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static int IndexOfTypeName(IList<FhirPathType> types, string typeName)
+    {
+        for (var i = 0; i < types.Count; i++)
+        {
+            if (string.Equals(types[i].TypeName, typeName, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Reports a property that no focus type declares, choosing between the three answers static analysis
+    /// can actually give: always empty, indeterminate, or invalid.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A root-relative name that some other resource declares is <em>decidable</em> when the root type is
+    /// concrete: the analyzer knows the root type and knows it has no such element, so the navigation is
+    /// always empty rather than unanalysable. Reporting it as indeterminate would be factually wrong and
+    /// would silently downgrade any typo landing in the union of top-level element names across the whole
+    /// specification (<c>status</c>, <c>date</c>, <c>code</c>, <c>subject</c>, ...). Only an abstract
+    /// <em>resource</em> root (<c>Resource</c>, <c>DomainResource</c>) leaves the runtime type genuinely
+    /// unknown, so only that case propagates an indeterminate type. <c>IsAbstract</c> alone is not the
+    /// test: <c>Element</c>, <c>BackboneElement</c>, <c>DataType</c>, <c>BackboneType</c> and
+    /// <c>PrimitiveType</c> are abstract too, and a runtime <c>Element</c> is never an <c>Appointment</c>,
+    /// so a root-property miss on one of those is exactly as decidable as it is on <c>Patient</c>.
+    /// </para>
+    /// <para>
+    /// The always-empty outcome is reached only for a bare, root-relative name. The identical fact
+    /// reported against any qualified focus stays an error: the expression <c>status</c> analysed at root
+    /// <c>Patient</c> warns, while <c>Patient.status</c>, <c>$this.status</c>, <c>%resource.status</c> and
+    /// <c>Patient.where(status='active')</c> all report "Property 'status' not found" — including the
+    /// resource-qualified form most authors would call the same expression. That asymmetry is
+    /// pre-existing: the classifier keys on <see cref="FhirPathTypeSet.IsRoot"/>, not on decidability.
+    /// Reconciling it would reclassify every "property not found" error the analyzer raises, which is its
+    /// principal typo signal, so it is recorded here rather than changed.
+    /// </para>
+    /// <para>
+    /// A choice element's instance names are excluded from the always-empty outcome. Property resolution
+    /// matches declared child names, and the schema declares a choice as a single element (<c>occurrence</c>,
+    /// carrying <c>dateTime|Period|Timing</c>), so <c>occurrenceDateTime</c> never resolves here even though
+    /// the evaluator returns a value for it. Those names would otherwise be decided by whether some
+    /// unrelated resource happens to declare the same spelling as an ordinary element — <c>GuidanceResponse</c>
+    /// does declare <c>occurrenceDateTime</c> — which is a collision, not evidence about the root in hand.
+    /// </para>
+    /// </remarks>
+    private void ReportUnresolvedProperty(
+        string propertyName,
+        FhirPathTypeSet focusTypes,
+        FhirPathTypeSet result,
+        Expression expression,
+        AnalysisContext context)
+    {
+        if (!focusTypes.IsRoot || !IsPropertyOnAnotherRootType(propertyName))
+        {
+            context.AddError(
+                $"Property '{propertyName}' not found on type '{focusTypes.TypeNames()}'",
+                expression);
+            return;
+        }
+
+        if (focusTypes.Types.Any(focusType => focusType.Type?.Info is { IsAbstract: true, IsResource: true }))
+        {
+            result.AddUnknown(path: propertyName);
+            context.AddIndeterminateWarning(
+                $"Property '{propertyName}' is not present on abstract root type '{context.RootType}', so the runtime type cannot be analysed for this root.",
+                expression);
+            return;
+        }
+
+        if (MayBeChoiceElementInstanceName(focusTypes, propertyName))
+        {
+            context.AddError(
+                $"Property '{propertyName}' not found on type '{focusTypes.TypeNames()}'",
+                expression);
+            return;
+        }
+
+        context.AddAlwaysEmptyWarning(
+            $"Property '{propertyName}' will always be empty on root type '{context.RootType}'. It is declared by another resource type, but not by this one.",
+            expression);
+    }
+
     /// <summary>
     /// Validates that the focus type is supported by the function.
     /// Reports an error if the function doesn't support the given context type.
@@ -1105,6 +1513,11 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         // Check each focus type against supported contexts
         foreach (var focusType in focusTypes.Types)
         {
+            if (focusType.IsUnknown)
+            {
+                continue;
+            }
+
             var typeName = focusType.TypeName;
             if (string.IsNullOrEmpty(typeName))
             {

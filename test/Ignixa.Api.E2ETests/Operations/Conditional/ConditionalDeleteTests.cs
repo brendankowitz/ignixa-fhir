@@ -288,6 +288,25 @@ public class ConditionalDeleteTests : CapabilityDrivenTestBase
     }
 
     /// <summary>
+    /// Tests conditional delete criteria carrying a modifier the server does not support.
+    /// Expected: Returns 400 Bad Request rather than silently widening the delete criteria.
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 SHALL-rejects an unsupported modifier (see Search.Modifiers.UnsupportedModifierTests for
+    /// the plain-search case). Conditional delete must reject it too -- dropping the modifier would
+    /// widen the match set, which for a delete means resources the criteria never actually selected.
+    /// </remarks>
+    [Fact]
+    public async Task GivenAnUnsupportedModifier_WhenConditionalDelete_ThenReturnsBadRequest()
+    {
+        // Act - DELETE /Patient?_id:above=abc (:above is not a supported modifier for _id)
+        var response = await Harness.DeleteWithQueryAsync("Patient", "_id:above=abc");
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "server should reject rather than silently widen delete criteria");
+    }
+
+    /// <summary>
     /// Tests conditional delete on Bundle resource type.
     /// Expected: Returns 400 Bad Request.
     /// </summary>

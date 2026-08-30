@@ -34,24 +34,53 @@ public static class SearchIndexerFactory
         var definitionManager = searchParameterDefinitionManager
             ?? new SearchParameterDefinitionManager(fhirSchemaProvider, loggerProvider.CreateLogger<SearchParameterDefinitionManager>());
 
+        var (converterManager, elementResolver) = CreateIndexingComponents(fhirSchemaProvider, baseUriProvider);
+
+        return new ElementSearchIndexer(
+            new SupportedSearchParameterDefinitionManager(definitionManager),
+            converterManager,
+            elementResolver,
+            loggerProvider.CreateLogger<ElementSearchIndexer>());
+    }
+
+    internal static (
+        IElementToSearchValueConverterManager ConverterManager,
+        IReferenceToElementResolver ElementResolver) CreateIndexingComponents(
+            IFhirSchemaProvider fhirSchemaProvider,
+            IFhirBaseUriProvider baseUriProvider)
+    {
         var referenceParser = new ReferenceSearchValueParser(fhirSchemaProvider, baseUriProvider);
         var elementResolver = new LightweightReferenceToElementResolver(referenceParser, fhirSchemaProvider);
+
+        return (
+            new FhirElementToSearchValueConverterManager(
+                CreateConverters(fhirSchemaProvider, referenceParser, elementResolver)),
+            elementResolver);
+    }
+
+    /// <summary>
+    /// Discovers and constructs every shipped converter, which is the set
+    /// <see cref="FhirElementToSearchValueConverterManager"/> keys by (FHIR type, search value type).
+    /// </summary>
+    /// <remarks>
+    /// Exposed separately from <see cref="CreateIndexingComponents"/> so the registration census can
+    /// enumerate what production actually registers rather than restating it. The manager answers
+    /// "is this pair covered?" but not "what is covered?", and a census that had to hardcode the second
+    /// question would pass on a table rather than on the code.
+    /// </remarks>
+    internal static IReadOnlyList<IElementToSearchValueConverter> CreateConverters(
+        IFhirSchemaProvider fhirSchemaProvider,
+        ReferenceSearchValueParser referenceParser,
+        IReferenceToElementResolver elementResolver)
+    {
         var codesystems = new CodeSystemResolver(fhirSchemaProvider.Version);
 
-        IElementToSearchValueConverter[] converters = typeof(ElementSearchIndexer)
+        return typeof(ElementSearchIndexer)
             .Assembly
             .ExportedTypes
             .Where(x => typeof(IElementToSearchValueConverter).IsAssignableFrom(x) && !x.IsAbstract && !x.IsGenericType)
             .Select(x => (IElementToSearchValueConverter)CreateTypeWithArguments(x, fhirSchemaProvider, referenceParser, elementResolver, codesystems, fhirSchemaProvider.Version))
             .ToArray();
-
-        // Manager is now initialized synchronously in constructor with pre-generated search parameters
-
-        return new ElementSearchIndexer(
-            new SupportedSearchParameterDefinitionManager(definitionManager),
-            new FhirElementToSearchValueConverterManager(converters),
-            elementResolver,
-            loggerProvider.CreateLogger<ElementSearchIndexer>());
     }
 
     private static object CreateTypeWithArguments(Type type, params object[] argOverrides)

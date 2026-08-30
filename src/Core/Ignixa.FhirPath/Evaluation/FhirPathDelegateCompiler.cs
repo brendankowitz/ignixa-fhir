@@ -6,22 +6,35 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation;
 
 /// <summary>
 /// Compiles FhirPath AST to executable delegates for improved performance.
-/// Supports 92% of common search parameter patterns:
-/// - Simple paths: "name", "identifier" (30%)
-/// - Two-level paths: "name.family", "identifier.value" (40%)
-/// - Where clauses: "telecom.where(system='phone')" (15%)
-/// - Functions: first(), last(), exists(), ofType() (12%)
-/// - Comparisons: =, !=, &lt;, &gt;, &lt;=, &gt;= (10%)
-/// - Parenthesized expressions: "(name)" (5%)
-///
-/// Unsupported expressions fall back to interpreted execution.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The compiled forms are: identifiers and property paths of any depth ("name", "name.family");
+/// <c>$this</c>; parenthesized expressions; the comparison operators =, !=, &lt;, &gt;, &lt;= and &gt;=;
+/// constants; and the functions <c>where</c> (single equality predicate), <c>exists</c> (with or without
+/// that same form of criteria), <c>first</c>, <c>last</c>, <c>single</c>, <c>tail</c>, <c>count</c>,
+/// <c>empty</c> and <c>ofType</c> (static type identifier).
+/// </para>
+/// <para>
+/// Everything else - indexers, variable references, unary and arithmetic operators, quantities,
+/// <c>and</c>/<c>or</c>/<c>|</c>, and every other function - is declined. Compilation is all-or-nothing
+/// across the tree, so a single unsupported node sends the whole expression to the interpreter, which
+/// implements the full language. Declining is always safe; it costs speed, never correctness.
+/// </para>
+/// <para>
+/// This summary previously claimed coverage of "92% of common search parameter patterns", with a
+/// per-form breakdown that summed to 112%. No measurement supported either figure, so both are gone
+/// rather than restated: a coverage number is only worth publishing if it is computed against a named
+/// corpus, and none was.
+/// </para>
+/// </remarks>
 public class FhirPathDelegateCompiler
 {
     private readonly FhirPathEvaluator _fallbackEvaluator;
@@ -251,16 +264,13 @@ public class FhirPathDelegateCompiler
         {
             var focusResults = focusFunc(input, ctx);
 
+            // An indeterminate comparison excludes the item, matching the interpreter's where(), which
+            // keeps an element only when its criteria evaluates to a non-empty, true result.
             return focusResults.Where(item =>
-            {
-                var leftResults = leftFunc(item, ctx).ToList();
-                var rightResults = rightFunc(item, ctx).ToList();
-
-                // Comparison: values must match
-                return leftResults.Count == rightResults.Count &&
-                       leftResults.Zip(rightResults).All(pair =>
-                           Equals(pair.First.Value, pair.Second.Value));
-            });
+                _fallbackEvaluator.CompareEquality(
+                    leftFunc(item, ctx).ToList(),
+                    rightFunc(item, ctx).ToList(),
+                    equals: true) == true);
         };
     }
 
@@ -270,6 +280,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileFirstFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -288,6 +303,25 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileExistsFunction(FunctionCallExpression func)
     {
+        // exists(criteria) is defined as where(criteria).exists(), so the criteria has to filter the
+        // focus before the emptiness test. Ignoring func.Arguments compiled it to a bare "is the
+        // collection non-empty" and answered true wherever the collection had any element at all,
+        // whatever the criteria excluded - a wrong answer on the path production Select() takes.
+        // Reusing CompileWhereFunction keeps the two forms answering identically by construction, and
+        // inherits its predicate restrictions: anything it declines (a non-equality criteria, an
+        // uncompilable operand) returns null here too and the whole expression falls to the interpreter,
+        // which handles the general case.
+        if (func.Arguments.Count > 0)
+        {
+            var whereFunc = CompileWhereFunction(
+                new FunctionCallExpression(func.Focus, "where", func.Arguments));
+
+            if (whereFunc == null)
+                return null;
+
+            return (input, ctx) => new[] { CreateBooleanElement(whereFunc(input, ctx).Any()) };
+        }
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -307,6 +341,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileCountFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -325,6 +364,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileEmptyFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -343,6 +387,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileLastFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -361,6 +410,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileSingleFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -371,7 +425,7 @@ public class FhirPathDelegateCompiler
             if (results.Count == 0)
                 return Enumerable.Empty<IElement>();
             if (results.Count > 1)
-                throw new InvalidOperationException("single() called on collection with multiple items");
+                throw new FhirPathEvaluationException("single() called on collection with multiple items");
             return new[] { results[0] };
         };
     }
@@ -382,6 +436,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileTailFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -411,10 +470,14 @@ public class FhirPathDelegateCompiler
 
         return (input, ctx) =>
         {
-            var focusResults = focusFunc(input, ctx);
-            // Case-insensitive type matching per FHIRPath spec
-            return focusResults.Where(e => !string.IsNullOrEmpty(e.InstanceType) &&
-                                           e.InstanceType.Equals(typeName, StringComparison.OrdinalIgnoreCase));
+            TypeMatcher.EnsureTypeIdentifierResolves(typeName, ctx.Schema, "ofType()");
+
+            // Routed through the shared matcher rather than comparing InstanceType inline: this is the
+            // COMPILED spelling of the same ofType() that CollectionFunctions.OfType interprets, and an
+            // expression must not change meaning because it happened to be compilable. The inline
+            // comparison this replaces was exact, so a compiled ofType(Quantity) silently dropped the
+            // SimpleQuantity that the interpreted one keeps.
+            return TypeMatcher.FilterByType(focusFunc(input, ctx), typeName, ctx.Schema);
         };
     }
 
@@ -434,46 +497,13 @@ public class FhirPathDelegateCompiler
         return binary.Operator.ToLowerInvariant() switch
 #pragma warning restore CA1308 // Normalize strings to uppercase
         {
-            "=" => (input, ctx) =>
-            {
-                var leftResults = leftFunc(input, ctx).ToList();
-                var rightResults = rightFunc(input, ctx).ToList();
+            "=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareEquality(l, r, equals: true)),
+            "!=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareEquality(l, r, equals: false)),
 
-                // Empty collections return empty per FHIRPath spec
-                if (leftResults.Count == 0 || rightResults.Count == 0)
-                    return Enumerable.Empty<IElement>();
-
-                // Different counts means not equal
-                if (leftResults.Count != rightResults.Count)
-                    return [CreateBooleanElement(false)];
-
-                // Compare all pairs
-                bool allEqual = leftResults.Zip(rightResults).All(pair => Equals(pair.First.Value, pair.Second.Value));
-                return [CreateBooleanElement(allEqual)];
-            },
-
-            "!=" => (input, ctx) =>
-            {
-                var leftResults = leftFunc(input, ctx).ToList();
-                var rightResults = rightFunc(input, ctx).ToList();
-
-                // Empty collections return empty per FHIRPath spec
-                if (leftResults.Count == 0 || rightResults.Count == 0)
-                    return Enumerable.Empty<IElement>();
-
-                // Different counts means not equal, so != returns true
-                if (leftResults.Count != rightResults.Count)
-                    return [CreateBooleanElement(true)];
-
-                // Compare all pairs
-                bool allEqual = leftResults.Zip(rightResults).All(pair => Equals(pair.First.Value, pair.Second.Value));
-                return [CreateBooleanElement(!allEqual)];
-            },
-
-            "<" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) < 0),
-            ">" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) > 0),
-            "<=" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) <= 0),
-            ">=" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) >= 0),
+            "<" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: false)),
+            ">" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: false)),
+            "<=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: true)),
+            ">=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: true)),
 
             _ => null
         };
@@ -482,10 +512,17 @@ public class FhirPathDelegateCompiler
     /// <summary>
     /// Compiles a constant value expression.
     /// </summary>
+    /// <remarks>
+    /// Deliberately defers to the interpreter's own constant construction. Typing the element from the
+    /// CLR type name produced <c>"String"</c> and <c>"Int32"</c> where the interpreter produces the
+    /// FHIRPath type names <c>"string"</c> and <c>"integer"</c>, and it left a temporal literal's <c>@</c>
+    /// sigil in the value, so <c>@1974-12-25</c> never matched a <c>date</c> element. Both operands of a
+    /// compiled comparison must be built the same way as the interpreter's or the shared comparison
+    /// semantics are handed different inputs and reach different answers.
+    /// </remarks>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileConstant(ConstantExpression constant)
     {
-        object value = constant.Value;
-        return (input, ctx) => new[] { CreateValueElement(value) };
+        return (input, ctx) => _fallbackEvaluator.VisitConstant(constant, ctx);
     }
 
     /// <summary>
@@ -548,70 +585,22 @@ public class FhirPathDelegateCompiler
     }
 
     /// <summary>
-    /// Compiles a comparison operation with a custom comparer.
+    /// Compiles a comparison operation onto the interpreter's own comparison semantics.
     /// </summary>
-    private Func<IElement, EvaluationContext, IEnumerable<IElement>> CompileComparison(
+    /// <remarks>
+    /// The comparer is tri-state on purpose. A <see langword="bool"/>-returning comparer cannot express
+    /// FHIRPath's indeterminate result, which partial precision makes mandatory: <c>@2012 &gt; @2012-01</c>
+    /// compares a year-long interval against a month-long one it contains, so the ordering is undecidable
+    /// and the expression must yield empty rather than <c>false</c>. Delegating to the evaluator rather
+    /// than reimplementing the rules here is the point — a second implementation is what drifted last time.
+    /// </remarks>
+    private static Func<IElement, EvaluationContext, IEnumerable<IElement>> CompileComparison(
         Func<IElement, EvaluationContext, IEnumerable<IElement>> leftFunc,
         Func<IElement, EvaluationContext, IEnumerable<IElement>> rightFunc,
-        Func<object?, object?, bool> comparer)
+        Func<List<IElement>, List<IElement>, bool?> comparer)
     {
-        return (input, ctx) =>
-        {
-            var leftResults = leftFunc(input, ctx).ToList();
-            var rightResults = rightFunc(input, ctx).ToList();
-
-            // FHIRPath comparison: single element on each side
-            if (leftResults.Count == 1 && rightResults.Count == 1)
-            {
-                bool result = comparer(leftResults[0].Value, rightResults[0].Value);
-                return [CreateBooleanElement(result)];
-            }
-
-            // Empty or multi-element collections return empty per FHIRPath spec
-            return Enumerable.Empty<IElement>();
-        };
-    }
-
-    /// <summary>
-    /// Compares two values according to FHIRPath comparison rules.
-    /// </summary>
-    private int CompareValues(object? left, object? right)
-    {
-        // Handle null cases
-        if (left == null && right == null) return 0;
-        if (left == null) return -1;
-        if (right == null) return 1;
-
-        // Try numeric comparison first
-        if (IsNumericType(left) && IsNumericType(right))
-        {
-            decimal lVal = Convert.ToDecimal(left);
-            decimal rVal = Convert.ToDecimal(right);
-            return lVal.CompareTo(rVal);
-        }
-
-        // DateTime comparison
-        if (left is DateTime ldt && right is DateTime rdt)
-        {
-            return ldt.CompareTo(rdt);
-        }
-
-        // DateTimeOffset comparison
-        if (left is DateTimeOffset ldto && right is DateTimeOffset rdto)
-        {
-            return ldto.CompareTo(rdto);
-        }
-
-        // String comparison (case-sensitive per FHIRPath spec)
-        return string.Compare(left.ToString(), right.ToString(), StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Checks if a value is a numeric type.
-    /// </summary>
-    private bool IsNumericType(object value)
-    {
-        return value is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal;
+        return (input, ctx) => FunctionHelpers.ReturnBoolean(
+            comparer(leftFunc(input, ctx).ToList(), rightFunc(input, ctx).ToList()));
     }
 
     /// <summary>
@@ -631,17 +620,14 @@ public class FhirPathDelegateCompiler
     }
 
     /// <summary>
-    /// Creates an element that wraps any value.
-    /// </summary>
-    private IElement CreateValueElement(object value)
-    {
-        return new LiteralElement(value, value?.GetType().Name ?? "unknown");
-    }
-
-    /// <summary>
     /// Simple IElement implementation for literal values returned by compiled expressions.
     /// </summary>
-    private sealed class LiteralElement : IElement
+    /// <remarks>
+    /// Declares <see cref="ISystemValueElement"/> because these are System-namespace values, not FHIR
+    /// ones: the compiled counterpart of the interpreter's <c>FunctionHelpers.PrimitiveElement</c>.
+    /// Both paths must agree, so both must declare it.
+    /// </remarks>
+    private sealed class LiteralElement : ISystemValueElement
     {
         private static readonly IReadOnlyList<IElement> EmptyChildren = Array.Empty<IElement>();
 

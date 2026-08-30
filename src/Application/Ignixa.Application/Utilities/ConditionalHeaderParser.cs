@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace Ignixa.Application.Utilities;
 
@@ -45,9 +46,10 @@ public static class ConditionalHeaderParser
             return null;
         }
 
-        // RFC 7232 uses HTTP-date format (IMF-fixdate)
+        // RFC 7232 uses HTTP-date format (IMF-fixdate). RFC 7231 mandates this is always
+        // rendered in English regardless of locale, so parsing must be locale-independent too.
         // Example: "Wed, 17 Oct 2025 14:30:00 GMT"
-        if (DateTimeOffset.TryParse(headerValue, out var date))
+        if (DateTimeOffset.TryParse(headerValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
         {
             return date;
         }

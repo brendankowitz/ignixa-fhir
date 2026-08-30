@@ -32,7 +32,10 @@ internal static class PlanFixtures
     /// <c>SqlBuilder.RejectUnsupportedCombinations</c> refuses because it can only ever return nothing.
     /// </summary>
     public static async Task<QueryPlan> IncoherentPlanAsync()
-        => await SimplePatientSearchAsync() with { Shape = new ResultShape.IncludesPage() };
+    {
+        var plan = await SimplePatientSearchAsync();
+        return plan with { MatchSpec = plan.MatchSpec with { Shape = new ResultShape.IncludesPage() } };
+    }
 
     /// <summary>An expression no query string can produce, standing in for a FHIR operation root.</summary>
     public static Expression EverythingExpression()

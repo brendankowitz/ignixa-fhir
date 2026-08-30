@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Net;
 using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
@@ -119,6 +120,25 @@ public class CompartmentSearchTests : CapabilityDrivenTestBase
             var tags = tagArray?.AsArray().Select(t => t?["code"]?.GetValue<string>());
             tags!.ShouldContain(tag);
         }
+    }
+
+    /// <summary>
+    /// Tests a patient compartment search whose query string carries a modifier the server does not
+    /// support. Expected: Returns 400 Bad Request rather than silently widening the search.
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 SHALL-rejects an unsupported modifier (see Search.Modifiers.UnsupportedModifierTests for
+    /// the plain-search case); compartment search must reject it too. No patient needs to exist for this
+    /// case -- the rejection happens before the compartment query executes.
+    /// </remarks>
+    [Fact]
+    public async Task GivenAnUnsupportedModifier_WhenPatientCompartmentSearched_ThenReturnsBadRequest()
+    {
+        // Act - GET /Patient/{id}/Observation?_id:above=abc (:above is not a supported modifier for _id)
+        var response = await Client.GetAsync("/Patient/nonexistent-patient-id/Observation?_id:above=abc");
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "server should reject rather than silently widen compartment search");
     }
 
     /// <summary>

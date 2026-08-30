@@ -19,7 +19,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$SourceSql = "src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Resources/97.sql",
+    [string]$SourceSql = "test/Ignixa.RepoGuards.Tests/Fixtures/deployed-base-schema-97.sql",
     [string]$OutputRoot = "src/DataLayer/Ignixa.DataLayer.SqlServer.Database"
 )
 

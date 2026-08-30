@@ -11,12 +11,18 @@ public static class SqlRangeKind
     /// <summary>A plan CTE's definition. Joins to the row whose canonical label is <see cref="SqlLabels.CteLabel"/>.</summary>
     public const string Cte = "cte";
 
-    /// <summary>The match-page CTE that applies paging to the match CTE. No row is named for it.</summary>
+    /// <summary>
+    /// The match-page CTE that applies paging to the match CTE, labelled <see cref="SqlLabels.MatchPage"/>.
+    /// Described by <see cref="Ast.PlanRowKind.MatchPageCte"/>'s row, whose own label ("matchPage") is a
+    /// plan-level pseudo-label like <c>sort</c>/<c>page</c>, not the SQL identifier this constant names --
+    /// the two aren't joined by string equality, the same as every other non-CTE row in this list.
+    /// </summary>
     public const string MatchPage = "matchPage";
 
     /// <summary>
     /// The match-seed CTE that trims the has-more probe row off the match page before include stages seed
-    /// from it, labelled <see cref="SqlLabels.MatchSeed"/>. No row is named for it.
+    /// from it, labelled <see cref="SqlLabels.MatchSeed"/>. Described by <see cref="Ast.PlanRowKind.MatchSeedCte"/>'s
+    /// row when an include plan's page over-fetches a probe row; same pseudo-label caveat as <see cref="MatchPage"/>.
     /// </summary>
     public const string MatchSeed = "matchSeed";
 
@@ -49,7 +55,7 @@ public static class SqlRangeKind
     public const string Assembly = "assembly";
 
     /// <summary>
-    /// The outer global-page SELECT of an includes-only page: one <c>TOP (@limit + 1)</c> over the union of
+    /// The outer global-page SELECT of an includes-only page: one <c>TOP (Limit + 1)</c> over the union of
     /// every include stage, applying the row budget once. No row is named for it; the includes-only
     /// counterpart of the per-stage <see cref="IncludeLimit"/>.
     /// </summary>

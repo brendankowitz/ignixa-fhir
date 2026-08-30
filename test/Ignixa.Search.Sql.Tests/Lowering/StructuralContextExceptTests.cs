@@ -25,7 +25,7 @@ public class StructuralContextExceptTests
         var result = context.Except(left, right);
 
         // Assert
-        var plan = new QueryPlan(context.Ctes, result);
+        var plan = new QueryPlan(context.Ctes, new MatchPageSpec(result));
         plan.Ctes[result.Index].ShouldBeOfType<CteDefinition.Except>();
         var exceptCte = (CteDefinition.Except)plan.Ctes[result.Index];
         exceptCte.Left.ShouldBe(left);

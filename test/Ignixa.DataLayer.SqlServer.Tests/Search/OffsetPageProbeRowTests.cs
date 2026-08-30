@@ -148,12 +148,32 @@ public class OffsetPageProbeRowTests
         emitted.Parameters[^1].Value.ShouldBe(expectedFetchCount);
     }
 
+    // The plan is built with the canonical wrapper tail the compiler now requires (#394): a MatchPage CTE
+    // always, and a MatchSeed after it only when the page over-fetches. The include stage seeds from
+    // whichever of the two is last -- that is exactly the distinction these tests assert on.
     private static EmittedSql EmitWithInclude(SearchOptions options)
-        => SqlBuilder.Run(new QueryPlan(
-            [new CteDefinition.ResourceSource(MatchTypeId)],
+    {
+        var spec = new MatchPageSpec(
             new CteRef(0),
+            OffsetPage: SqlServerCompiledSearchService.DefaultOffsetPage(options));
+
+        List<CteDefinition> ctes =
+        [
+            new CteDefinition.ResourceSource(MatchTypeId),
+            new CteDefinition.MatchPage(spec),
+        ];
+
+        if (spec.OffsetPage!.ProbeExtraRow)
+        {
+            ctes.Add(new CteDefinition.MatchSeed(new CteRef(1), spec));
+        }
+
+        return SqlBuilder.Run(new QueryPlan(
+            ctes,
+            spec,
             Includes: [ForwardIncludeStage()],
-            OffsetPage: SqlServerCompiledSearchService.DefaultOffsetPage(options)));
+            IncludeSeed: new CteRef(ctes.Count - 1)));
+    }
 
     private static IncludeStage ForwardIncludeStage()
         => new(

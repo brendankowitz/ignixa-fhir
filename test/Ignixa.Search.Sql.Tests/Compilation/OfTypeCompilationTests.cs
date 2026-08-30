@@ -117,6 +117,27 @@ public class OfTypeCompilationTests
         emitted.Parameters.Select(p => p.Value).ShouldContain("12345");
     }
 
+    [Fact]
+    public async Task GivenAnOfTypeQuery_WhenEmitted_ThenTypeCodeUsesCaseSensitiveCollation()
+    {
+        // Act
+        var emitted = await EmitAsync("identifier:of-type=|MR|12345");
+
+        // Assert
+        emitted.Sql.ShouldContain("IdentifierTypeCode = @p0 COLLATE Latin1_General_100_CS_AS");
+    }
+
+    [Fact]
+    public async Task GivenLowercaseOfTypeCode_WhenEmitted_ThenCodeRemainsLowercaseAndUsesCaseSensitiveCollation()
+    {
+        // Act
+        var emitted = await EmitAsync("identifier:of-type=|mr|12345");
+
+        // Assert - guard that no future normalization upcases the code while still emitting the collation
+        emitted.Parameters.Select(p => p.Value).ShouldContain("mr");
+        emitted.Sql.ShouldContain("IdentifierTypeCode = @p0 COLLATE Latin1_General_100_CS_AS");
+    }
+
     private static async Task<QueryPlan> CompileAsync(string queryString)
     {
         var compiler = new SearchSqlCompiler(new CorpusSymbolResolver(), OptionsBuilder, searchParameterDefinitionManager: Definitions);

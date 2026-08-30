@@ -116,7 +116,7 @@ public class SearchOptionsCopyConstructorTests
     /// transposed one (<c>StartSurrogateId = other.EndSurrogateId</c>) does not slip through two properties
     /// that share a type.
     /// </summary>
-    private static object DistinctValueFor(PropertyInfo property, int ordinal, object? currentDefault)
+    private static object DistinctValueFor(PropertyInfo property, int ordinal, object? defaultValue)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
@@ -131,7 +131,7 @@ public class SearchOptionsCopyConstructorTests
             // this is the only value that can differ from the default whatever the default becomes. It also
             // means a transposition between two bool properties would go unnoticed — unavoidable at this
             // type, and the reason the caller's guard tests distinctness from the default specifically.
-            return !(bool)currentDefault!;
+            return !(bool)defaultValue!;
         }
 
         if (type == typeof(int))
@@ -147,28 +147,22 @@ public class SearchOptionsCopyConstructorTests
         if (type.IsEnum)
         {
             // Rotated by ordinal so two properties sharing an enum type still get different members and a
-            // transposition between them is caught. The rotation is then advanced past the property's own
-            // default: without that, inserting any property earlier in the declaration order shifts every
-            // later ordinal and can land an unrelated enum property on its default, failing the caller's
-            // guard for a reason that has nothing to do with the copy constructor.
-            Array values = Enum.GetValues(type);
-            for (var offset = 0; offset < values.Length; offset++)
-            {
-                int index = (values.Length - 1 - (ordinal + offset) % values.Length + values.Length) % values.Length;
-                object candidate = values.GetValue(index)!;
-                if (!Equals(candidate, currentDefault))
-                {
-                    return candidate;
-                }
-            }
-
-            throw new InvalidOperationException(
-                $"{property.Name} ({type}) has no enum member distinguishable from its default.");
+            // transposition between them is caught. The property's actual default is excluded from the
+            // rotation set rather than assuming it's the enum's zero value -- ResourceVersionTypes, for
+            // example, defaults to Latest, not None -- so this can't land on the default no matter which
+            // ordinal a future property change gives it.
+            object[] nonDefaultValues = Enum.GetValues(type).Cast<object>().Where(v => !Equals(v, defaultValue)).ToArray();
+            return nonDefaultValues[ordinal % nonDefaultValues.Length];
         }
 
         if (type == typeof(Expression))
         {
             return new StringExpression(StringOperator.Equals, FieldName.String, componentIndex: null, "copy-ctor", ignoreCase: false);
+        }
+
+        if (type == typeof(bool))
+        {
+            return true;
         }
 
         // The strategy below assumes every remaining property is a collection; a fresh empty instance is a

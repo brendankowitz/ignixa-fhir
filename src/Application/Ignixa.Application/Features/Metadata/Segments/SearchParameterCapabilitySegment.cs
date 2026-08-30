@@ -103,7 +103,7 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         var allSearchParams = manager.AllSearchParameters
             .Where(sp => sp.IsSupported)
             .Select(sp => sp.Url?.ToString() ?? sp.Code)
-            .OrderBy(url => url)
+            .OrderBy(url => url, StringComparer.Ordinal)
             .ToList();
 
         var hashInput = string.Join("|", allSearchParams);

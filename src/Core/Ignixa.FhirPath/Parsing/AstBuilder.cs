@@ -66,7 +66,9 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
     public virtual Expression VisitConstant(ConstantParseNode node, AstBuildContext context)
     {
         var location = CreateLocation(node.Location);
-        return new ConstantExpression(node.Value, location);
+        return node is TemporalConstantParseNode { Value: string literal }
+            ? new TemporalConstantExpression(literal, location)
+            : new ConstantExpression(node.Value, location);
     }
 
     public virtual Expression VisitIdentifier(IdentifierParseNode node, AstBuildContext context)
@@ -86,7 +88,7 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
     public virtual Expression VisitVariable(VariableRefParseNode node, AstBuildContext context)
     {
         var location = CreateLocation(node.Location);
-        return new VariableRefExpression(node.Name, location);
+        return new VariableRefExpression(node.Name, location, node.IsDelimited);
     }
 
     public virtual Expression VisitIndexer(IndexerParseNode node, AstBuildContext context)

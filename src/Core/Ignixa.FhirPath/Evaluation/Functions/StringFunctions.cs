@@ -39,7 +39,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("indexOf() requires a substring argument");
+            throw new FhirPathEvaluationException("indexOf() requires a substring argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "indexOf", out var str))
             return [];
@@ -72,7 +72,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("lastIndexOf() requires a substring argument");
+            throw new FhirPathEvaluationException("lastIndexOf() requires a substring argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "lastIndexOf", out var str))
             return [];
@@ -110,7 +110,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("substring() requires a start argument");
+            throw new FhirPathEvaluationException("substring() requires a start argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "substring", out var str))
             return [];
@@ -158,7 +158,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("startsWith() requires a prefix argument");
+            throw new FhirPathEvaluationException("startsWith() requires a prefix argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "startsWith", out var str))
             return [];
@@ -188,7 +188,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("endsWith() requires a suffix argument");
+            throw new FhirPathEvaluationException("endsWith() requires a suffix argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "endsWith", out var str))
             return [];
@@ -275,7 +275,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count < 2)
-            throw new ArgumentException("replace() requires pattern and substitution arguments");
+            throw new FhirPathEvaluationException("replace() requires pattern and substitution arguments");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "replace", out var str))
             return [];
@@ -325,7 +325,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("matches() requires a regex argument");
+            throw new FhirPathEvaluationException("matches() requires a regex argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "matches", out var str))
             return [];
@@ -365,7 +365,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("matchesFull() requires a regex argument");
+            throw new FhirPathEvaluationException("matchesFull() requires a regex argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "matchesFull", out var str))
             return [];
@@ -431,7 +431,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count < 2)
-            throw new ArgumentException("replaceMatches() requires pattern and substitution arguments");
+            throw new FhirPathEvaluationException("replaceMatches() requires pattern and substitution arguments");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "replaceMatches", out var str))
             return [];
@@ -512,8 +512,8 @@ internal static class StringFunctions
 
         // Concatenate all string values with the separator
         var strings = focusElements
-            .Where(e => e.Value is string)
-            .Select(e => (string)e.Value!)
+            .Select(e => WireValue.AsWireString(e.Value))
+            .OfType<string>()
             .ToList();
 
         // Per FHIRPath, join() over an empty input collection yields empty ({}),
@@ -564,7 +564,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("split() requires a delimiter argument");
+            throw new FhirPathEvaluationException("split() requires a delimiter argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "split", out var str))
             return [];
@@ -595,7 +595,7 @@ internal static class StringFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("contains() requires a substring argument");
+            throw new FhirPathEvaluationException("contains() requires a substring argument");
 
         if (!FunctionHelpers.TryGetSingleString(focus, "contains", out var str))
             return [];

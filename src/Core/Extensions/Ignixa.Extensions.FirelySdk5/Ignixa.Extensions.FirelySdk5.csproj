@@ -5,8 +5,6 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <RootNamespace>Ignixa.Extensions.FirelySdk</RootNamespace>
-    <!-- Define preprocessor symbol to handle SDK 5.x API differences -->
-    <DefineConstants>FIRELYSDK5</DefineConstants>
   </PropertyGroup>
 
   <!-- NuGet Package Configuration -->
@@ -19,6 +17,7 @@
 
   <!-- Link all source files from FirelySdk6 project (zero duplication) -->
   <ItemGroup>
+    <Compile Include="..\Ignixa.Extensions.FirelySdk6\FirelyPrimitiveValues.cs" Link="FirelyPrimitiveValues.cs" />
     <Compile Include="..\Ignixa.Extensions.FirelySdk6\FirelySdkExtensions.cs" Link="FirelySdkExtensions.cs" />
     <Compile Include="..\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs" Link="IgnixaElementAdapter.cs" />
     <Compile Include="..\Ignixa.Extensions.FirelySdk6\IgnixaExtensions.cs" Link="IgnixaExtensions.cs" />
@@ -38,4 +37,3 @@
     <PackageReference Include="Hl7.Fhir.Base" />
   </ItemGroup>
 </Project>
-

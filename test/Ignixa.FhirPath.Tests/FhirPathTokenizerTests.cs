@@ -200,6 +200,79 @@ public class FhirPathTokenizerTests
         Assert.Equal("%`some-dashed-name`", tokens[0].ToStringValue());
     }
 
+    [Theory]
+    [InlineData("%vs-mine")]
+    [InlineData("%ext-mine")]
+    public void GivenBareExternalConstantWithHyphen_WhenTokenizing_ThenProducesSingleExternalConstantToken(string expression)
+    {
+        // Issue #438: before the fix the bare-identifier alternative of the ExternalConstant regex had no
+        // hyphen, so "%vs-mine" split into ExternalConstant("%vs") / Minus / Identifier("mine") and
+        // GetStandardConstant's prefix expansion was reachable only through the backtick spelling.
+        var tokens = Tokenize(expression);
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal(expression, tokens[0].ToStringValue());
+    }
+
+    [Fact]
+    public void GivenExternalConstantMinusIdentifierWithNoWhitespace_WhenTokenizing_ThenTheHyphenIsPartOfTheName()
+    {
+        // Pins the ambiguity #438 introduces: with '-' in the bare identifier alternative, "%a-b" with no
+        // intervening whitespace is one identifier "a-b", not "%a minus b". This matches HAPI's FHIRLexer,
+        // whose '%' handling consumes a uniform run of [A-Za-z0-9:_-]. Subtraction requires whitespace -
+        // see the guard test below - exactly as HAPI requires.
+        var tokens = Tokenize("%a-b");
+
+        Assert.Single(tokens);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal("%a-b", tokens[0].ToStringValue());
+    }
+
+    [Theory]
+    [InlineData("%a - b")]
+    [InlineData("%a -b")]
+    public void GivenExternalConstantMinusIdentifierSeparatedByWhitespace_WhenTokenizing_ThenSubtractionIsUnaffected(
+        string expression)
+    {
+        // The other half of the #438 ambiguity: subtraction is unaffected as long as whitespace separates
+        // the identifier from the constant's name, since the hyphen only extends an already-touching
+        // match. Whitespace *after* the hyphen does not help - see the theory below - so both spacings
+        // are pinned here.
+        var tokens = Tokenize(expression);
+
+        Assert.Equal(3, tokens.Length);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal("%a", tokens[0].ToStringValue());
+        Assert.Equal(FhirPathTokenKind.Minus, tokens[1].Kind);
+        Assert.Equal(FhirPathTokenKind.Identifier, tokens[2].Kind);
+        Assert.Equal("b", tokens[2].ToStringValue());
+    }
+
+    [Theory]
+    [InlineData("%a-1", "%a-1", 1)]
+    [InlineData("%a-", "%a-", 1)]
+    [InlineData("%a- b", "%a-", 2)]
+    public void GivenExternalConstantWithATrailingHyphen_WhenTokenizing_ThenTheHyphenStaysInTheName(
+        string expression, string expectedConstant, int expectedTokenCount)
+    {
+        // #438 review, M3: the three edge spellings the original pair of tests did not reach. The
+        // continuation class is [a-zA-Z0-9_-] with no restriction on where the hyphen sits, so it takes a
+        // trailing one and a digit after one:
+        //
+        //   %a-1    -> ExternalConstant "%a-1"                  (before #438: %a minus 1)
+        //   %a-     -> ExternalConstant "%a-"
+        //   %a- b   -> ExternalConstant "%a-" + Identifier "b"   (before #438: subtraction; now a parse error)
+        //
+        // All three match HAPI's FHIRLexer. Pinned rather than fixed because every failure mode is loud -
+        // an undefined-environment-variable error or a parse error, never a different number.
+        var tokens = Tokenize(expression);
+
+        Assert.Equal(expectedTokenCount, tokens.Length);
+        Assert.Equal(FhirPathTokenKind.ExternalConstant, tokens[0].Kind);
+        Assert.Equal(expectedConstant, tokens[0].ToStringValue());
+    }
+
     [Fact]
     public void GivenAxisThis_WhenTokenizing_ThenProducesAxisToken()
     {

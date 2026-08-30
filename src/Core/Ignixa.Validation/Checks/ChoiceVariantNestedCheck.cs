@@ -15,12 +15,19 @@ namespace Ignixa.Validation.Checks;
 /// into primitive variants, leaving complex-variant subtrees dark; this closes that gap.
 /// </summary>
 /// <remarks>
-/// The nested schema is run at <see cref="ValidationDepth.Spec"/> (structural tier only), never Full.
-/// A choice variant's own FHIRPath datatype invariants (tim-*, etc.) are deliberately not lit here:
-/// they are not part of the base resource's obligation, and evaluating them across the many choice
-/// variants suite-wide surfaces engine false positives on valid data (e.g. tim-9), which would reject
-/// resources the reference validator accepts. Structural checks (cardinality, type/primitive format,
-/// shape) carry no such risk and are what this fix is for.
+/// The variant subtree is validated at the caller's depth, exactly as
+/// <see cref="NestedComplexTypeCheck"/> validates a non-polymorphic element's subtree. A datatype's
+/// invariants do not become optional because the element carrying it happens to be a choice:
+/// <c>Dosage.timing</c> and <c>ServiceRequest.occurrence[x]</c> both hold a <c>Timing</c>, and tim-9
+/// binds to <c>Timing.repeat</c> in both.
+/// <para>
+/// This previously ran the subtree at <see cref="ValidationDepth.Spec"/> to keep FHIRPath invariants
+/// dark, because R4's tim-9 is ill-formed for a repeating <c>Timing.repeat.when</c> and the engine's
+/// refusal to evaluate it surfaced as a resource error on conformant data. That is now fixed at the
+/// source: <see cref="FhirPathInvariantCheck"/> routes <c>FhirPathEvaluationException</c> to a
+/// non-failing Warning, so an unevaluable constraint can no longer reject a resource and the
+/// demotion is no longer buying anything except a hole.
+/// </para>
 /// </remarks>
 public sealed class ChoiceVariantNestedCheck : IValidationCheck
 {
@@ -44,9 +51,11 @@ public sealed class ChoiceVariantNestedCheck : IValidationCheck
     /// <inheritdoc />
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        // Registered in the profile tier; only engage at Full depth so Compatibility/Spec runs are
-        // untouched. The variant subtree itself is then validated at Spec (see remarks).
-        if (settings.Depth < ValidationDepth.Full)
+        // Registered in the profile tier, which ValidationSchema only runs at Full (Compatibility
+        // runs the ICompatibilityConformanceCheck subset, which this is not). The equality test
+        // states that contract rather than relying on the enum's ordering, where Compatibility
+        // happens to sort above Full.
+        if (settings.Depth != ValidationDepth.Full)
         {
             return ValidationResult.Success();
         }
@@ -57,26 +66,28 @@ public sealed class ChoiceVariantNestedCheck : IValidationCheck
             return ValidationResult.Success();
         }
 
-        var structuralSettings = new ValidationSettings
+        if (!state.TryDescend(out var descended))
         {
-            Depth = ValidationDepth.Spec,
-            SkipTerminologyValidation = settings.SkipTerminologyValidation,
-            TerminologyFailureMode = settings.TerminologyFailureMode,
-            TerminologyService = settings.TerminologyService,
-        };
+            return new ValidationResult(
+                isValid: true,
+                issues: new[] { ValidationIssue.NestingLimitExceeded(state.Location.InstancePath, _variantName) });
+        }
 
+        // Issues propagate regardless of the nested result's validity: gating on !IsValid would
+        // drop every non-failing Warning raised inside the variant, including the engine-refusal
+        // warnings that exist to be reported without failing the resource.
         var issues = new List<ValidationIssue>();
+        var isValid = true;
         for (var i = 0; i < variantNodes.Count; i++)
         {
             var location = _isCollection ? $"{_variantName}[{i}]" : _variantName;
-            var nestedState = state.WithLocation(location);
-            var nestedResult = _variantSchema.Validate(variantNodes[i], structuralSettings, nestedState);
-            if (!nestedResult.IsValid)
-            {
-                issues.AddRange(nestedResult.Issues);
-            }
+            var nestedState = descended.WithLocation(location);
+            var nestedResult = _variantSchema.Validate(variantNodes[i], settings, nestedState);
+            issues.AddRange(nestedResult.IssuesOrSynthesizedFailure(
+                variantNodes[i].Location, $"'{location}' ({_variantSchema.ResourceType})"));
+            isValid &= nestedResult.IsValid;
         }
 
-        return issues.Count > 0 ? ValidationResult.Failure(issues) : ValidationResult.Success();
+        return new ValidationResult(isValid, issues);
     }
 }

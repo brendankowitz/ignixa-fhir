@@ -52,7 +52,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         // Get all resource types from schema provider
         // (ResourceTypeNames contains all concrete FHIR resource types for this version)
         var resourceTypes = schemaProvider.ResourceTypeNames
-            .OrderBy(rt => rt)
+            .OrderBy(rt => rt, StringComparer.Ordinal)
             .ToList();
 
         _logger.LogDebug("Found {Count} resource types for {FhirVersion}", resourceTypes.Count, context.FhirVersion);
@@ -124,7 +124,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
 
         var resourceTypes = schemaProvider.ResourceTypeNames
-            .OrderBy(rt => rt)
+            .OrderBy(rt => rt, StringComparer.Ordinal)
             .ToList();
 
         // InteractionSetRevision participates so that changing the declared interaction set

@@ -70,16 +70,6 @@ public sealed partial class SearchParameter : Ignixa.Models.SearchParameter
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
 
     [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
-
-    [JsonIgnore]
     public SearchProcessingmode? ProcessingMode
     {
         get => EnumUtility.ParseLiteral<SearchProcessingmode>(GetProperty<string>("processingMode"));

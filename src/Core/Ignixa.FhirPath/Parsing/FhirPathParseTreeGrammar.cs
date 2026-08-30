@@ -10,6 +10,7 @@ using Ignixa.FhirPath.Parsing.ParseTree;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
+using System.Globalization;
 
 namespace Ignixa.FhirPath.Parsing;
 
@@ -31,7 +32,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> IntegerLiteral =
         Token.EqualTo(FhirPathTokenKind.IntegerLiteral)
-            .Select(t => new ConstantParseNode(int.Parse(t.ToStringValue()), Loc(t)));
+            .Select(t => new ConstantParseNode(int.Parse(t.ToStringValue(), CultureInfo.InvariantCulture), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> LongLiteral =
         Token.EqualTo(FhirPathTokenKind.LongLiteral)
@@ -40,12 +41,12 @@ internal static class FhirPathParseTreeGrammar
                 var value = t.ToStringValue();
                 // Remove the 'L' or 'l' suffix before parsing
                 var numericPart = value.Substring(0, value.Length - 1);
-                return new ConstantParseNode(long.Parse(numericPart), Loc(t));
+                return new ConstantParseNode(long.Parse(numericPart, CultureInfo.InvariantCulture), Loc(t));
             });
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DecimalLiteral =
         Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
-            .Select(t => new ConstantParseNode(decimal.Parse(t.ToStringValue()), Loc(t)));
+            .Select(t => new ConstantParseNode(decimal.Parse(t.ToStringValue(), CultureInfo.InvariantCulture), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> BooleanLiteral =
         Token.EqualTo(FhirPathTokenKind.BooleanLiteral)
@@ -53,22 +54,22 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DateLiteral =
         Token.EqualTo(FhirPathTokenKind.DateLiteral)
-            .Select(t => new ConstantParseNode(t.ToStringValue(), Loc(t)));
+            .Select(t => (ConstantParseNode)new TemporalConstantParseNode(t.ToStringValue(), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DateTimeLiteral =
         Token.EqualTo(FhirPathTokenKind.DateTimeLiteral)
-            .Select(t => new ConstantParseNode(t.ToStringValue(), Loc(t)));
+            .Select(t => (ConstantParseNode)new TemporalConstantParseNode(t.ToStringValue(), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> TimeLiteral =
         Token.EqualTo(FhirPathTokenKind.TimeLiteral)
-            .Select(t => new ConstantParseNode(t.ToStringValue(), Loc(t)));
+            .Select(t => (ConstantParseNode)new TemporalConstantParseNode(t.ToStringValue(), Loc(t)));
 
     public static readonly TokenListParser<FhirPathTokenKind, QuantityParseNode> Quantity =
         from valueToken in Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
             .Or(Token.EqualTo(FhirPathTokenKind.IntegerLiteral))
         from unitToken in Token.EqualTo(FhirPathTokenKind.StringLiteral)
         select new QuantityParseNode(
-            decimal.Parse(valueToken.ToStringValue()),
+            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
             UnescapeString(unitToken.ToStringValue()),
             Loc(valueToken, unitToken));
 
@@ -78,7 +79,7 @@ internal static class FhirPathParseTreeGrammar
         from keywordToken in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Where(t => Types.CalendarDuration.IsCalendarKeyword(t.ToStringValue()))
         select new QuantityParseNode(
-            decimal.Parse(valueToken.ToStringValue()),
+            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
             keywordToken.ToStringValue(),  // Preserve keyword form (week, year, etc.) for toString()
             Loc(valueToken, keywordToken));
 
@@ -104,10 +105,9 @@ internal static class FhirPathParseTreeGrammar
             {
                 var raw = t.ToStringValue().Substring(1); // Remove '%'
                 // Check if delimited with backticks and remove them
-                var varName = (raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`')
-                    ? raw.Substring(1, raw.Length - 2)
-                    : raw;
-                return (ParseNode)new VariableRefParseNode(varName, Loc(t));
+                var isDelimited = raw.Length >= 2 && raw[0] == '`' && raw[raw.Length - 1] == '`';
+                var varName = isDelimited ? raw.Substring(1, raw.Length - 2) : raw;
+                return (ParseNode)new VariableRefParseNode(varName, isDelimited, Loc(t));
             });
 
     private static readonly TokenListParser<FhirPathTokenKind, ParseNode> ParenthesizedExpression =

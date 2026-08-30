@@ -1,0 +1,13 @@
+{
+  "resourceType": "Appointment",
+  "id": "adapter-input-benchmark",
+  "status": "booked",
+  "participant": [
+    {
+      "actor": {
+        "reference": "Patient/benchmark"
+      },
+      "status": "accepted"
+    }
+  ]
+}

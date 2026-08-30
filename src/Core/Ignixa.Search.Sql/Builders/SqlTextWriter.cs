@@ -16,6 +16,22 @@ internal sealed class SqlTextWriter(bool recordRanges)
 
     public void Append(string text) => _buffer.Append(text);
 
+    public void Append(string text, IReadOnlyList<SqlTextRange>? relativeRanges)
+    {
+        var start = _buffer.Length;
+        _buffer.Append(text);
+
+        if (_ranges is null || relativeRanges is null)
+        {
+            return;
+        }
+
+        foreach (var range in relativeRanges)
+        {
+            _ranges.Add(new SqlTextRange(range.Label, range.Kind, start + range.Start, range.Length));
+        }
+    }
+
     public void AppendJoin(string separator, IReadOnlyList<string> values, Func<int, string> labelFor, string kind)
     {
         for (var i = 0; i < values.Count; i++)

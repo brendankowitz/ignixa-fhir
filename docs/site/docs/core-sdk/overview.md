@@ -192,8 +192,7 @@ var schema = cachedResolver.GetSchema("Patient");
 // Validate
 var element = sourceNode.ToElement(schemaProvider);
 var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-var state = new ValidationState();
-var result = schema.Validate(element, settings, state);
+var result = schema.Validate(element, settings);
 
 if (!result.IsValid)
 {

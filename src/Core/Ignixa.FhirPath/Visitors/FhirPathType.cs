@@ -21,6 +21,16 @@ namespace Ignixa.FhirPath.Visitors;
 public readonly struct FhirPathType : IEquatable<FhirPathType>
 {
     /// <summary>
+    /// The display name of a type whose runtime shape cannot be determined statically.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not a legal FHIR type name and deliberately not <c>"unknown"</c>: that is the string
+    /// <see cref="TypeName"/> falls back to for <c>default(FhirPathType)</c>, and any collision with it lets
+    /// type-name matching mistake a default-valued struct for a genuine indeterminate type.
+    /// </remarks>
+    public const string IndeterminateTypeName = "?";
+
+    /// <summary>
     /// Creates a new FhirPathType from an IType definition.
     /// </summary>
     /// <param name="type">The FHIR type definition from schema</param>
@@ -40,11 +50,17 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// <param name="isCollection">Whether this is a collection</param>
     /// <param name="path">Optional definitional path for error reporting</param>
     public FhirPathType(string typeName, bool isCollection = false, string? path = null)
+        : this(typeName, isCollection, path, isUnknown: false)
+    {
+    }
+
+    private FhirPathType(string typeName, bool isCollection, string? path, bool isUnknown)
     {
         Type = null;
         _typeName = typeName ?? throw new ArgumentNullException(nameof(typeName));
         IsCollection = isCollection;
         Path = path ?? typeName;
+        IsUnknown = isUnknown;
     }
 
     /// <summary>
@@ -62,6 +78,11 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// Whether this represents a collection (max cardinality > 1).
     /// </summary>
     public bool IsCollection { get; }
+
+    /// <summary>
+    /// Gets whether static analysis cannot determine the runtime type.
+    /// </summary>
+    public bool IsUnknown { get; }
 
     /// <summary>
     /// Simple definitional path to the property (e.g., "Patient.name").
@@ -83,7 +104,9 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// Returns a new FhirPathType marked as a collection.
     /// </summary>
     public FhirPathType AsCollection() =>
-        Type != null
+        IsUnknown
+            ? Unknown(isCollection: true, path: Path)
+            : Type != null
             ? new FhirPathType(Type, isCollection: true, path: Path)
             : new FhirPathType(TypeName, isCollection: true, path: Path);
 
@@ -91,7 +114,9 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// Returns a new FhirPathType marked as a single value (not collection).
     /// </summary>
     public FhirPathType AsSingle() =>
-        Type != null
+        IsUnknown
+            ? Unknown(isCollection: false, path: Path)
+            : Type != null
             ? new FhirPathType(Type, isCollection: false, path: Path)
             : new FhirPathType(TypeName, isCollection: false, path: Path);
 
@@ -99,25 +124,34 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// Returns a new FhirPathType with the updated path.
     /// </summary>
     public FhirPathType WithPath(string newPath) =>
-        Type != null
+        IsUnknown
+            ? Unknown(IsCollection, newPath)
+            : Type != null
             ? new FhirPathType(Type, IsCollection, newPath)
             : new FhirPathType(TypeName, IsCollection, newPath);
 
     public bool Equals(FhirPathType other) =>
         TypeName == other.TypeName &&
-        IsCollection == other.IsCollection;
+        IsCollection == other.IsCollection &&
+        IsUnknown == other.IsUnknown;
 
     public override bool Equals(object? obj) =>
         obj is FhirPathType other && Equals(other);
 
     public override int GetHashCode() =>
-        HashCode.Combine(TypeName, IsCollection);
+        HashCode.Combine(TypeName, IsCollection, IsUnknown);
 
     public override string ToString() =>
         IsCollection ? $"{TypeName}[]" : TypeName;
 
     public static bool operator ==(FhirPathType left, FhirPathType right) => left.Equals(right);
     public static bool operator !=(FhirPathType left, FhirPathType right) => !left.Equals(right);
+
+    /// <summary>
+    /// Creates a type whose runtime shape cannot be determined statically.
+    /// </summary>
+    public static FhirPathType Unknown(bool isCollection = false, string? path = null) =>
+        new(IndeterminateTypeName, isCollection, path, isUnknown: true);
 
     public static bool IsPrimitiveTypeName(string typeName)
     {

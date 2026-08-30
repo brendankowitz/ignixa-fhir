@@ -112,7 +112,7 @@ internal static class CollectionFunctions
         Description = "Returns a collection containing only the distinct elements")]
     public static IEnumerable<IElement> Distinct(IEnumerable<IElement> focus)
     {
-        return focus.Distinct(new FunctionHelpers.ElementEqualityComparer());
+        return FunctionHelpers.Distinct(focus);
     }
 
     /// <summary>
@@ -130,8 +130,7 @@ internal static class CollectionFunctions
     public static IEnumerable<IElement> IsDistinct(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
-        var distinctCount = list.Select(e => e.Value).Distinct(new FunctionHelpers.ObjectEqualityComparer()).Count();
-        var isDistinct = distinctCount == list.Count;
+        var isDistinct = FunctionHelpers.Distinct(list).Count == list.Count;
         return [(IElement)FunctionHelpers.CreateBoolean(isDistinct)];
     }
 
@@ -187,7 +186,7 @@ internal static class CollectionFunctions
             return [];
 
         if (list.Count > 1)
-            throw new InvalidOperationException("single() called on collection with multiple items");
+            throw new FhirPathEvaluationException("single() called on collection with multiple items");
 
         return [list[0]];
     }
@@ -226,7 +225,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("skip() requires a num argument");
+            throw new FhirPathEvaluationException("skip() requires a num argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
@@ -254,7 +253,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("take() requires a num argument");
+            throw new FhirPathEvaluationException("take() requires a num argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var numResult = evaluateExpression(context.Focus, arguments[0], context).SingleOrDefault();
@@ -284,7 +283,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("where() requires a criteria argument");
+            throw new FhirPathEvaluationException("where() requires a criteria argument");
 
         var criteria = arguments[0];
         var index = 0;
@@ -319,7 +318,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("select() requires a projection argument");
+            throw new FhirPathEvaluationException("select() requires a projection argument");
 
         var projection = arguments[0];
         var focusList = focus.ToList();
@@ -356,7 +355,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("all() requires a criteria argument");
+            throw new FhirPathEvaluationException("all() requires a criteria argument");
 
         var criteria = arguments[0];
         var index = 0;
@@ -430,9 +429,124 @@ internal static class CollectionFunctions
     /// repeat() - Recursively applies a projection expression until no new elements are found.
     /// Per FHIRPath spec: Returns only the results of the projection, not the original focus items.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ReturnType = "any"</c> rather than <c>"context"</c> because this returns the projection's
+    /// results, never the focus items themselves, so passing the focus type through would name a type the
+    /// evaluator cannot produce. It did: <c>(name.repeat(family)).ofType(string)</c> typed the result as
+    /// <c>HumanName</c> and was reported as provably empty while the evaluator returned two strings
+    /// (#423). Naming the projection's type instead would need a fixpoint over the recursion, which
+    /// <c>descendants()</c> - the same shape of unbounded recursion - already declines to do for the same
+    /// reason. Unknown fails open in the cast and provenance paths, and every site that raises an
+    /// always-empty diagnostic is gated on the focus not being unknown, so widening the type here cannot
+    /// manufacture a claim - it can only drop one. The cost is losing true always-empty diagnostics
+    /// downstream of a <c>repeat()</c>, and downstream of one only: <c>repeat(</c> appears in no generated
+    /// search parameter definition, and in three shipped invariant expressions (R5 and R6 only; two on
+    /// PlanDefinition, one on QuestionnaireResponse), none of which navigates a cast off the result.
+    /// </para>
+    /// <para>
+    /// <b>Iteration guard (#433):</b> the dedup check below only stops a projection that <em>navigates</em>
+    /// an existing finite tree - it never terminates for one that <em>constructs</em> a fresh value each
+    /// round, e.g. <c>repeat($this &amp; 'x')</c>, whose output is never deep-equal to anything already
+    /// processed. <see cref="RepeatAll"/> caps at 100,000 iterations; this cap is 10,000. <b>This is a data-headroom
+    /// choice, not a cost-shape choice.</b> The cap guarantees <em>termination</em> - a constructing projection
+    /// can no longer loop forever - but it does <em>not</em> bound wall-clock cost. Per-iteration cost grows
+    /// with the projection's fan-out (number of <c>|</c> branches): <c>Repeat</c> runs <em>three</em> O(n) scans
+    /// per item - <c>processed.Any(...)</c> twice and <c>result.Any(...)</c> once - each via
+    /// <see cref="FunctionHelpers.AreElementsEqual"/>, which recurses over subtrees. Measured wall time to reach
+    /// the 10,000 cap: <c>repeat($this &amp; 'x')</c> (branching factor 1) reaches 33.4 seconds;
+    /// <c>repeat(($this &amp; 'x') | ($this &amp; 'y'))</c> (branching factor 2) reaches 63.4 seconds.
+    /// One additional <c>|</c> branch roughly doubles the time to reach the same cap.
+    /// </para>
+    /// <para>
+    /// <b>Why 10,000 and not lower:</b> this is a data-headroom budget, not a cost budget. The control test
+    /// (<c>RemainingCoverageTests</c>, nested-Questionnaire case) uses a 1,092-item tree and genuinely dequeues
+    /// roughly 1,093 times; a 1,000 iteration cap would reject that legitimate data. 10,000 gives approximately
+    /// 9× headroom over that observed real shape. The residual gap - bounding actual per-projection cost, which
+    /// depends on fan-out - is closed by the comparison-count budget below.
+    /// </para>
+    /// <para>
+    /// <b>Comparison-count budget (#435):</b> <see cref="RepeatGuardLimits.MaxComparisons"/> caps total
+    /// <see cref="FunctionHelpers.AreElementsEqual"/> calls across the run; whichever of it and
+    /// <see cref="RepeatGuardLimits.MaxIterations"/> trips first throws the same exception type at the same
+    /// log tier. Unlike the iteration cap this is a <em>cost</em> budget, so it catches the fan-out hazard:
+    /// a wider projection reaches the same comparison total in fewer iterations and is stopped at roughly
+    /// the same cost. Measured - the control (1,092-item nested Questionnaire, 1,093 iterations) costs
+    /// 1,391,754 comparisons, and <c>repeat($this &amp; 'x')</c> run to the full 10,000-iteration cap costs
+    /// 149,995,000. 15,000,000 gives ~10.8× headroom over the control, stops that hazard at 3,163
+    /// iterations (3.3s rather than 32.4s), and is flat in branching factor: 1/2/3 branches take
+    /// 4.75s/5.35s/4.50s and all trip the comparison budget, where the iteration-only cap took 38.97s and
+    /// 76.32s for one and two branches.
+    /// </para>
+    /// <para>
+    /// <b>Bounding a quadratic cost necessarily bounds data; that is the trade this guard is, not a side
+    /// effect of it.</b> Comparisons fit ~1.167·N² over the control's breadth-3 <c>Questionnaire.item</c>
+    /// shape (C/N² within 0.4% from N=120 to N=3,279), so 10.8× headroom in comparisons is only √10.8 ≈
+    /// 3.3× in nodes - <em>not</em> the same order of headroom as the iteration cap's 9×. The accepted-data
+    /// envelope narrows deliberately: from about 10,000 nodes, where one dequeue per node made the
+    /// iteration cap binding, to between 3,279 (OK) and 5,460 (throws) for the control's breadth-3 and
+    /// breadth-4 shapes. That bracket is not a cutover - the guard bounds cost, so shape decides; at depth
+    /// 1, where every item is a sibling, the boundary is 3,872 OK / 3,873 throws. Regenerate any of it with
+    /// <c>RemainingCoverageTests.CreateDeeplyNestedQuestionnaireItems(breadth, depth)</c> under
+    /// <c>repeat(item)</c>. Exposure is narrow - <c>descendants()</c> does not route through this method,
+    /// and <c>repeat(</c> appears in no generated SearchParameter and in three shipped invariants - so what
+    /// is at risk is a tenant-authored <c>repeat()</c> over several thousand nodes, which given the
+    /// all-or-nothing behaviour documented below loses the whole search parameter.
+    /// <b>Do not raise the budget to widen this</b>; bounding cost was the point of #435.
+    /// </para>
+    /// <para>
+    /// <b>Test seam (#435):</b> both thresholds live on <see cref="RepeatGuardLimits"/> rather than local
+    /// <c>const</c>s so <c>Ignixa.FhirPath.Tests</c> can substitute a small cap via
+    /// <see cref="RepeatGuardLimits.Scope"/> and prove either guard trips - same exception type, message
+    /// shape and log tier - in milliseconds. See that type's remarks for why the seam is
+    /// <see cref="AsyncLocal{T}"/>-backed and why this method hoists both into locals.
+    /// </para>
+    /// <para>
+    /// <b>Harmonisation with <see cref="RepeatAll"/>'s 100,000:</b> do not raise this cap toward that figure. The
+    /// two functions do not cost the same per iteration: <c>repeatAll</c> is dequeue-evaluate-append, O(1) of
+    /// bookkeeping per item. <c>Repeat</c> does three O(n) deep-equality scans per item with an expensive recursing
+    /// comparator. Raising 10,000 toward 100,000 would multiply an already-33-second worst case by roughly a hundred,
+    /// turning a guard into a hang. This difference is structural and deliberate, not an oversight to be "harmonised"
+    /// away later.
+    /// </para>
+    /// <para>
+    /// <b>Exception type and log tier:</b> the guard throws <see cref="FhirPathEvaluationException"/>,
+    /// matching <see cref="RepeatAll"/>'s guard, so <c>ElementSearchIndexer.IsExpectedEvaluationFailure</c>
+    /// classifies both the same way - expected containment (Warning) rather than an indexer defect (Error).
+    /// That tier was affirmed and pinned for <c>repeatAll</c>'s guard in #428 on the rationale
+    /// that a guard a tenant can trip on demand, against tenant-supplied data, is data, not an indexer bug.
+    /// Two iteration-limit guards reporting at different severities would be worse than either choice, so
+    /// both land in the same one.
+    /// </para>
+    /// <para>
+    /// <b>The guard fails all-or-nothing, deliberately.</b> This method is eager - results accumulate
+    /// into a local list that the throw abandons - so tripping the cap yields no partial collection, and
+    /// a caller indexing a search parameter over this expression drops the whole parameter rather than
+    /// storing a truncated one. That is the intended behaviour: a prefix of a non-terminating projection
+    /// is an arbitrary cut with no meaning, and half an index that reports itself as complete is worse
+    /// than an absent one. Making the method lazy would change this silently, which is why it is written
+    /// down here rather than left to the reader to infer from the absence of a <c>yield</c>.
+    /// </para>
+    /// <para>
+    /// <b>Dedup semantics vs. the spec (considered, not changed):</b> the FHIRPath spec defines
+    /// <c>repeat()</c>'s dedup via the <c>=</c> operator - "only if they are not already in the output
+    /// collection as determined by the equals (<c>=</c>) operator returning <c>true</c> (i.e. <c>false</c>
+    /// and empty both indicate that the values are not equal and thus added)" (continuous build,
+    /// index.md:1016) - while this method dedups via <see cref="FunctionHelpers.AreElementsEqual"/>, a deep
+    /// equality helper. For primitives these coincide. For temporals of mismatched precision, <c>=</c> is
+    /// indeterminate (empty), which per the spec passage above means "not equal, so add" - the same outcome
+    /// a naive deep-equality check might get wrong by treating "can't decide" as "equal enough to drop". In
+    /// this codebase they do not diverge in practice: <see cref="FunctionHelpers.AreElementsEqual"/> routes
+    /// temporal comparisons through <see cref="TemporalOperand.AreSameItem"/>, which was itself built to
+    /// collapse an indeterminate <see cref="TemporalOperand.AreEqual"/> to <see langword="false"/> (see its
+    /// remarks) - i.e. "not the same item" - which is exactly the spec's "not equal, so add". So the
+    /// divergence the spec wording invites is already closed for the case that matters here; this is a
+    /// documented decision, not an unexamined gap, and no dedup behavior changes in this fix.
+    /// </para>
+    /// </remarks>
     [FhirPathFunction("repeat",
         SupportedContexts = "any-any",
-        ReturnType = "context",
+        ReturnType = "any",
         SupportsCollections = true,
         MinArguments = 1,
         MaxArguments = 1,
@@ -446,35 +560,47 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("repeat() requires a projection argument");
+            throw new FhirPathEvaluationException("repeat() requires a projection argument");
 
         var projection = arguments[0];
         var result = new List<IElement>();
         var processed = new List<IElement>();
         var queue = new Queue<IElement>(focus);
 
+        // Read each threshold once per call rather than once per comparison: RepeatGuardLimits backs them
+        // with AsyncLocal, which is not a static field read. Sound because this method is eager, so a
+        // threshold cannot change mid-run, and the snapshot is the number the exception message names.
+        int maxIterations = RepeatGuardLimits.MaxIterations;
+        long maxComparisons = RepeatGuardLimits.MaxComparisons;
+
+        int iterations = 0;
+        long comparisons = 0;
+
         while (queue.Count > 0)
         {
+            if (++iterations > maxIterations)
+                throw new FhirPathEvaluationException($"repeat() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
+
             var current = queue.Dequeue();
-            
+
             // Check if we've already processed this element using deep equality comparison
-            if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, current)))
+            if (!ContainsElement(processed, current))
             {
                 processed.Add(current);
-                
+
                 var innerContext = context.PushThis(current);
                 var projected = evaluateExpression([current], projection, innerContext);
-                
+
                 foreach (var item in projected)
                 {
                     // Add projection results to the output result set (avoiding duplicates)
-                    if (!result.Any(r => FunctionHelpers.AreElementsEqual(r, item)))
+                    if (!ContainsElement(result, item))
                     {
                         result.Add(item);
                     }
 
                     // If this is a new item, add it to queue for further processing
-                    if (!processed.Any(p => FunctionHelpers.AreElementsEqual(p, item)))
+                    if (!ContainsElement(processed, item))
                     {
                         queue.Enqueue(item);
                     }
@@ -483,6 +609,22 @@ internal static class CollectionFunctions
         }
 
         return result;
+
+        // Counts each deep-equality comparison as it happens rather than once per O(n) scan, so a single
+        // wide scan cannot overrun the budget.
+        bool ContainsElement(List<IElement> list, IElement candidate)
+        {
+            foreach (var existing in list)
+            {
+                if (++comparisons > maxComparisons)
+                    throw new FhirPathEvaluationException($"repeat() exceeded maximum comparison-count budget ({maxComparisons}) - possible expensive projection detected");
+
+                if (FunctionHelpers.AreElementsEqual(existing, candidate))
+                    return true;
+            }
+
+            return false;
+        }
     }
 
     /// <summary>
@@ -490,9 +632,25 @@ internal static class CollectionFunctions
     /// Unlike repeat(), does NOT check for duplicates before adding - better performance but allows duplicates.
     /// Per FHIRPath spec: $this is set for each item but $index is undefined.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ReturnType = "any"</c> for the same reason as <see cref="Repeat"/>: the result is the
+    /// projection, not the focus.
+    /// </para>
+    /// <para>
+    /// <b>The iteration guard fails all-or-nothing, deliberately.</b> This method is eager - results
+    /// accumulate into a local list that the throw abandons - so tripping the cap yields no partial
+    /// collection, and a caller indexing a search parameter over this expression drops the whole
+    /// parameter rather than storing a truncated one. That is the intended behaviour: a prefix of a
+    /// non-terminating projection is an arbitrary cut with no meaning, and half an index that reports
+    /// itself as complete is worse than an absent one. Making the method lazy would change this
+    /// silently, which is why it is written down here rather than left to the reader to infer from the
+    /// absence of a <c>yield</c>.
+    /// </para>
+    /// </remarks>
     [FhirPathFunction("repeatAll",
         SupportedContexts = "any-any",
-        ReturnType = "context",
+        ReturnType = "any",
         SupportsCollections = true,
         MinArguments = 1,
         MaxArguments = 1,
@@ -506,7 +664,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("repeatAll() requires a projection argument");
+            throw new FhirPathEvaluationException("repeatAll() requires a projection argument");
 
         var projection = arguments[0];
         var result = new List<IElement>();
@@ -518,7 +676,7 @@ internal static class CollectionFunctions
         while (queue.Count > 0)
         {
             if (++iterations > maxIterations)
-                throw new InvalidOperationException($"repeatAll() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
+                throw new FhirPathEvaluationException($"repeatAll() exceeded maximum iteration limit ({maxIterations}) - possible infinite loop detected");
 
             var current = queue.Dequeue();
 
@@ -556,7 +714,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("coalesce() requires at least one argument");
+            throw new FhirPathEvaluationException("coalesce() requires at least one argument");
 
         // Non-scoped function: evaluate arguments in outer context (don't change $this)
         foreach (var arg in arguments)
@@ -587,7 +745,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("ofType() requires a type argument");
+            throw new FhirPathEvaluationException("ofType() requires a type argument");
 
         string? typeName = null;
 
@@ -608,11 +766,15 @@ internal static class CollectionFunctions
         if (string.IsNullOrEmpty(typeName))
             return [];
 
-        return TypeMatcher.FilterByType(focus, typeName, useInheritance: false);
+        TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "ofType()");
+
+        return TypeMatcher.FilterByType(focus, typeName, context.Schema);
     }
 
     /// <summary>
-    /// as() - Type coercion operator (filters by type).
+    /// as() - Type coercion. Returns the input if it is of the given type, otherwise empty; a multi-item
+    /// input is an error. See <see cref="TypeMatcher.EnsureSingletonInput"/> for why, and for how that
+    /// differs from <c>ofType()</c>.
     /// </summary>
     [FhirPathFunction("as",
         SupportedContexts = "any-any",
@@ -624,16 +786,22 @@ internal static class CollectionFunctions
         Description = "Type coercion operator (filters by type)")]
     public static IEnumerable<IElement> As(
         IEnumerable<IElement> focus,
-        IReadOnlyList<Expression> arguments)
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("as() requires a type argument");
+            throw new FhirPathEvaluationException("as() requires a type argument");
 
         var typeName = TypeMatcher.ExtractTypeName(arguments[0]);
         if (string.IsNullOrEmpty(typeName))
             return [];
 
-        return TypeMatcher.FilterByType(focus, typeName, useInheritance: false);
+        TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "as()");
+
+        var input = focus as IReadOnlyCollection<IElement> ?? focus.ToList();
+        TypeMatcher.EnsureSingletonInput(input.Count, context.Schema, "as()");
+
+        return TypeMatcher.FilterByType(input, typeName, context.Schema);
     }
 
     /// <summary>
@@ -654,7 +822,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("intersect() requires an other argument");
+            throw new FhirPathEvaluationException("intersect() requires an other argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
@@ -662,7 +830,7 @@ internal static class CollectionFunctions
 
         foreach (var item in focus)
         {
-            if (other.Any(o => FunctionHelpers.AreEqual(o.Value, item.Value)) && !result.Any(r => FunctionHelpers.AreEqual(r.Value, item.Value)))
+            if (other.Any(o => FunctionHelpers.AreElementsEqual(o, item)) && !result.Any(r => FunctionHelpers.AreElementsEqual(r, item)))
             {
                 result.Add(item);
             }
@@ -689,7 +857,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("exclude() requires an other argument");
+            throw new FhirPathEvaluationException("exclude() requires an other argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var other = evaluateExpression(context.Focus, arguments[0], context).ToList();
@@ -697,7 +865,7 @@ internal static class CollectionFunctions
 
         foreach (var item in focus)
         {
-            if (!other.Any(o => FunctionHelpers.AreEqual(o.Value, item.Value)))
+            if (!other.Any(o => FunctionHelpers.AreElementsEqual(o, item)))
             {
                 result.Add(item);
             }
@@ -724,7 +892,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("union() requires an other argument");
+            throw new FhirPathEvaluationException("union() requires an other argument");
 
         // Evaluate the argument from $this context if available (e.g., inside select())
         // Otherwise fall back to focus
@@ -752,7 +920,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("combine() requires an other argument");
+            throw new FhirPathEvaluationException("combine() requires an other argument");
 
         // Evaluate the argument from $this context if available (e.g., inside select())
         // Otherwise use the original evaluation context Focus (not the current result collection)
@@ -781,7 +949,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("aggregate() requires an aggregator expression");
+            throw new FhirPathEvaluationException("aggregate() requires an aggregator expression");
 
         // Initialize $total: initial-value if provided, otherwise empty
         // Per spec: init argument is evaluated on the outer context (before $this/$index are set)
@@ -826,7 +994,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("subsetOf() requires an other argument");
+            throw new FhirPathEvaluationException("subsetOf() requires an other argument");
 
         var focusList = focus.ToList();
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -858,7 +1026,7 @@ internal static class CollectionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("supersetOf() requires an other argument");
+            throw new FhirPathEvaluationException("supersetOf() requires an other argument");
 
         var focusList = focus.ToList();
         // Non-scoped function: evaluate argument in outer context (don't change $this)
@@ -893,10 +1061,10 @@ internal static class CollectionFunctions
             string ns = "FHIR";
             string name = typeName;
 
-            // Distinguish between System literals (PrimitiveElement) and FHIR elements (e.g. ElementNode, PocoElement)
-            // This is a heuristic based on the implementing class name.
-            var implType = element.GetType().Name;
-            bool isSystemLiteral = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+            // System literals and engine-produced values declare themselves; FHIR elements (ElementNode,
+            // SchemaAwareElement, PocoElement) do not. See ISystemValueElement for why this is declared
+            // rather than inferred from the implementing class name.
+            bool isSystemLiteral = element is ISystemValueElement;
 
             if (isSystemLiteral)
             {
@@ -974,7 +1142,7 @@ internal static class CollectionFunctions
 
         if (arguments.Count == 0)
         {
-            return list.OrderBy(e => e.Value, new ObjectComparer());
+            return RunSort(list.OrderBy(e => (IElement?)e, ValueOrdering.SortComparer.NullsLow));
         }
 
         // Extract sort key info (expression and direction) for all arguments
@@ -985,17 +1153,20 @@ internal static class CollectionFunctions
             return (Expression: effectiveExpression, IsDescending: isDescending);
         }).ToList();
 
-        // Build key selectors
-        Func<IElement, object?> createKeySelector(Expression expr) => element =>
+        // The key is the element rather than its value: SortComparer needs the declared instance type to
+        // tell a FHIRPath @-literal - still a plain string - from a string that is only a string.
+        Func<IElement, IElement?> createKeySelector(Expression expr) => element =>
         {
             var innerContext = context.PushThis(element);
             var result = evaluateExpression([element], expr, innerContext);
-            return result.FirstOrDefault()?.Value;
+            return result.FirstOrDefault();
         };
 
         // Apply first sort key
         var firstKey = sortKeys[0];
-        IComparer<object?> firstComparer = firstKey.IsDescending ? new ObjectComparerNullsFirst() : new ObjectComparer();
+        var firstComparer = firstKey.IsDescending
+            ? ValueOrdering.SortComparer.NullsHigh
+            : ValueOrdering.SortComparer.NullsLow;
         IOrderedEnumerable<IElement> orderedList = firstKey.IsDescending
             ? list.OrderByDescending(createKeySelector(firstKey.Expression), firstComparer)
             : list.OrderBy(createKeySelector(firstKey.Expression), firstComparer);
@@ -1005,67 +1176,39 @@ internal static class CollectionFunctions
         {
             var key = sortKeys[i];
             var keySelector = createKeySelector(key.Expression);
-            IComparer<object?> keyComparer = key.IsDescending ? new ObjectComparerNullsFirst() : new ObjectComparer();
+            var keyComparer = key.IsDescending
+                ? ValueOrdering.SortComparer.NullsHigh
+                : ValueOrdering.SortComparer.NullsLow;
             orderedList = key.IsDescending
                 ? orderedList.ThenByDescending(keySelector, keyComparer)
                 : orderedList.ThenBy(keySelector, keyComparer);
         }
 
-        return orderedList;
+        return RunSort(orderedList);
     }
 
     /// <summary>
-    /// Standard comparer where null is less than any value (nulls last in descending).
+    /// Runs the sort eagerly so that the comparer's error surfaces as itself.
     /// </summary>
-    private class ObjectComparer : IComparer<object?>
+    /// <remarks>
+    /// <see cref="Array.Sort{T}(T[], IComparer{T})"/> catches anything an <see cref="IComparer{T}"/>
+    /// throws and re-raises it as a bare <see cref="InvalidOperationException"/> whose message is
+    /// "Failed to compare two elements in the array." That erases the one distinction
+    /// <see cref="FhirPathEvaluationException"/> exists to draw - an ill-formed expression versus a defect
+    /// in the engine - so <c>FhirPathInvariantCheck</c> and every other caller filtering on the type would
+    /// classify a mixed-type <c>sort()</c> as an internal fault. Ordering is eager regardless of when it
+    /// is enumerated, so materialising here costs nothing but brings the failure back inside a frame that
+    /// can unwrap it.
+    /// </remarks>
+    private static IEnumerable<IElement> RunSort(IOrderedEnumerable<IElement> ordered)
     {
-        public int Compare(object? x, object? y)
+        try
         {
-            if (x is null && y is null) return 0;
-            if (x is null) return -1;
-            if (y is null) return 1;
-
-            if (x is IComparable comparableX && y is IComparable)
-            {
-                try
-                {
-                    return comparableX.CompareTo(y);
-                }
-                catch
-                {
-                    return 0;
-                }
-            }
-
-            return string.Compare(x.ToString(), y.ToString(), StringComparison.Ordinal);
+            return ordered.ToList();
         }
-    }
-
-    /// <summary>
-    /// Comparer where null is greater than any value (nulls first in descending).
-    /// Used for prototype descending sort with - prefix.
-    /// </summary>
-    private class ObjectComparerNullsFirst : IComparer<object?>
-    {
-        public int Compare(object? x, object? y)
+        catch (InvalidOperationException ex) when (ex.InnerException is FhirPathEvaluationException inner)
         {
-            if (x is null && y is null) return 0;
-            if (x is null) return 1;  // null > any value
-            if (y is null) return -1; // any value < null
-
-            if (x is IComparable comparableX && y is IComparable)
-            {
-                try
-                {
-                    return comparableX.CompareTo(y);
-                }
-                catch
-                {
-                    return 0;
-                }
-            }
-
-            return string.Compare(x.ToString(), y.ToString(), StringComparison.Ordinal);
+            throw new FhirPathEvaluationException(inner.Message, ex);
         }
     }
 
@@ -1099,10 +1242,10 @@ internal static class CollectionFunctions
         {
             if (string.Equals(name, "name", StringComparison.OrdinalIgnoreCase))
                 return [FunctionHelpers.CreateString(_name)];
-            
+
             if (string.Equals(name, "namespace", StringComparison.OrdinalIgnoreCase))
                 return [FunctionHelpers.CreateString(_namespace)];
-            
+
             return [];
         }
     }
@@ -1129,7 +1272,7 @@ internal static class CollectionFunctions
         }
 
         // For primitive types, use value comparison
-        return FunctionHelpers.AreEqual(left.Value, right.Value);
+        return FunctionHelpers.AreElementsEqual(left, right);
     }
 
     /// <summary>

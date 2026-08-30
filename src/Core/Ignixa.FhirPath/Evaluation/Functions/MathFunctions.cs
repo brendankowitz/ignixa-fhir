@@ -21,7 +21,7 @@ internal static class MathFunctions
     /// </summary>
     [FhirPathFunction("round",
         SupportedContexts = "number-number",
-        ReturnType = "context",
+        ReturnType = "constructsFromContext",
         MinArguments = 0,
         MaxArguments = 1,
         Category = "Math",
@@ -72,7 +72,7 @@ internal static class MathFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("power() requires an exponent argument");
+            throw new FhirPathEvaluationException("power() requires an exponent argument");
 
         if (!FunctionHelpers.TryGetSingleNumber(focus, "power", out var baseValue))
             return [];
@@ -157,7 +157,7 @@ internal static class MathFunctions
     /// </summary>
     [FhirPathFunction("abs",
         SupportedContexts = "number-number",
-        ReturnType = "context",
+        ReturnType = "constructsFromContext",
         MinArguments = 0,
         MaxArguments = 0,
         Category = "Math",
@@ -169,12 +169,12 @@ internal static class MathFunctions
             return [];
 
         if (list.Count > 1)
-            throw new InvalidOperationException("abs() requires a single input value");
+            throw new FhirPathEvaluationException("abs() requires a single input value");
 
         // Handle Quantity types
-        if (list[0].Value is Types.Quantity qty)
+        if (list[0].Value is FhirQuantity qty)
         {
-            var absQty = new Types.Quantity(Math.Abs(qty.Value), qty.Unit);
+            var absQty = new FhirQuantity(Math.Abs(qty.Value), qty.Unit);
             return [FunctionHelpers.CreateQuantity(absQty)];
         }
 
@@ -185,7 +185,7 @@ internal static class MathFunctions
             return [FunctionHelpers.CreateDecimal(Math.Abs(value))];
 
         var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
-        throw new InvalidOperationException($"Function 'abs' is not supported on context type '{typeName}'");
+        throw new FhirPathEvaluationException($"Function 'abs' is not supported on context type '{typeName}'");
     }
 
     /// <summary>
@@ -268,7 +268,7 @@ internal static class MathFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count == 0)
-            throw new ArgumentException("log() requires a base argument");
+            throw new FhirPathEvaluationException("log() requires a base argument");
 
         if (!FunctionHelpers.TryGetSingleNumber(focus, "log", out var value))
             return [];
