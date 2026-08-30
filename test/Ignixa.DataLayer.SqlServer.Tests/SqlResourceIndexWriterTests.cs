@@ -189,6 +189,7 @@ public class SqlResourceIndexWriterTests
         // Assert
         AssertSingleSingleton<ISqlExecutionService, SqlExecutionService>(services);
         AssertSingleSingleton<ISqlResourceIndexWriter, SqlResourceIndexWriter>(services);
+        AssertSingleSingleton<ILastNCodeGroupBackfillService, LastNCodeGroupBackfillService>(services);
     }
 
     private static void AssertCommand(

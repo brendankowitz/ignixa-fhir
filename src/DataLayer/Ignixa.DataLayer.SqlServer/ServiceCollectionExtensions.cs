@@ -15,6 +15,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISchemaVersionResolver, SchemaVersionResolver>();
         services.AddSingleton<ISqlExecutionService, SqlExecutionService>();
         services.AddSingleton<ISqlResourceIndexWriter, SqlResourceIndexWriter>();
+        services.AddSingleton<ILastNCodeGroupBackfillService, LastNCodeGroupBackfillService>();
         return services;
     }
 }
