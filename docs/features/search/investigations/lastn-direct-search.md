@@ -293,13 +293,11 @@ implicit status filter.
 
 ### Live SQL Server benchmark
 
-The repeatable, opt-in fixture is
+The historical, repeatable opt-in fixture was
 `test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/LastNSqlBenchmarkTests.cs`.
-It runs when `RUN_LASTN_BENCHMARK=1` and `TEST_SQL_CONNECTION_STRING` points
-at a live database. The fixture deploys the current schema, seeds all data in
-a transaction, performs five warm-up executions, measures 30 warm executions,
-captures actual execution plans with `SET STATISTICS XML`, and rolls the data
-back.
+It was removed after equivalent direct materialized SQL Server acceptance
+coverage passed. The rejected measurements below are retained verbatim as
+historical evidence; they are not an executable benchmark path.
 
 The measured workload contains:
 
@@ -336,7 +334,7 @@ visible memory:
 | Command timeout | None (30-second command timeout) |
 | Actual-plan spill marker | None |
 
-Command:
+Historical command:
 
 ```powershell
 $env:TEST_SQL_CONNECTION_STRING = 'Server=localhost;Database=LastNFinalReview;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False'
@@ -350,6 +348,12 @@ risk but regressed to 927.872 ms P95; it was not retained. The failure is not
 the former quadratic closure table: component-label cardinality remains
 exactly one row per node. The dominant cost is deriving and joining the
 query-time identity/membership graph for every request.
+
+Task 8 also removed the equivalent
+`LastNSqlSemanticsTests.cs` fixture from the EF integration project. Direct
+materialized SQL Server semantics and acceptance benchmarking now provide the
+executable coverage; this investigation remains the historical record of the
+rejected query-time path.
 
 ### External prior art
 

@@ -53,6 +53,24 @@ public class LastNCompilationTests
     }
 
     [Fact]
+    public void GivenALastNPlan_WhenCompiled_ThenNoQueryTimeGraphObjectsAreEmitted()
+    {
+        // Arrange
+        SearchPlan plan = CreateLastNPlan();
+
+        // Act
+        string sql = plan.Compile().Sql;
+
+        // Assert
+        sql.ShouldNotContain("#code_nodes");
+        sql.ShouldNotContain("#code_edges");
+        sql.ShouldNotContain("#coded_membership");
+        sql.ShouldNotContain("#code_reach");
+        sql.ShouldNotContain("WHILE");
+        sql.ShouldContain("dbo.LastNObservationCodeGroup");
+    }
+
+    [Fact]
     public async Task GivenAFilteredLastNRequest_WhenCompiled_ThenEmitsExactGroupingAndTieInclusiveRankingAfterTheCandidateSet()
     {
         // Arrange
@@ -303,5 +321,17 @@ public class LastNCompilationTests
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-subject"] = 213;
         resolver.ResourceTypeIds["Patient"] = 103;
         return resolver;
+    }
+
+    private static SearchPlan CreateLastNPlan()
+    {
+        return new SearchPlan
+        {
+            Query = new QueryPlan(
+                [new CteDefinition.ResourceSource(104)],
+                new MatchPageSpec(
+                    new CteRef(0),
+                    Shape: new ResultShape.LastN(new LastNSpec(104, 210, 211, 1)))),
+        };
     }
 }

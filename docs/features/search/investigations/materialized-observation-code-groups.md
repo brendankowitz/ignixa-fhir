@@ -1,7 +1,7 @@
 # Investigation: Materialized Observation Code Groups
 
 **Feature**: search
-**Status**: In Progress
+**Status**: Implemented
 **Created**: 2026-08-28
 
 ## Problem Statement
@@ -12,20 +12,21 @@ that occur on one Observation translate one another, so an `a`/`b` Observation
 and a `b`/`c` Observation place `a`, `b`, and `c` in one group. The result also
 includes every Observation tied at the requested effective-time boundary.
 
-The direct `$lastn` compiler currently constructs that graph after candidate
+The former direct `$lastn` compiler constructed that graph after candidate
 filtering. Its exact, bounded component-label prototype passed semantic tests
-but did not meet the latency requirement. This investigation defines a
-write-maintained, direct-SQL materialization that moves graph work from reads
-to the resource-indexing boundary. It does not add `$lastn` behavior to
+but did not meet the latency requirement. This implemented write-maintained,
+direct-SQL materialization moves graph work from reads to the
+resource-indexing boundary. It does not add `$lastn` behavior to
 `SqlEntityFrameworkSearchService`.
 
-## Current Architecture and Boundary Gap
+## Implemented Architecture and Remaining Boundary Gap
 
 `LastNSearchOptionsBuilder` and `LastNSearchOptions` make `$lastn` an
 operation-specific `Ignixa.Search` input. `Ignixa.Search.Sql` resolves its
 implicit code and effective-date parameters, lowers a closed
-`ResultShape.LastN`, and `LastNEmitter` currently builds temporary candidate,
-membership, node, and edge tables before applying `RANK()`.
+`ResultShape.LastN`, and `LastNEmitter` retain the candidate set, acquire a
+shared scope lock, validate a `Ready` generation, and join materialized group
+rows before applying `RANK()`.
 
 The direct SQL Server schema already persists the raw index inputs:
 
@@ -39,22 +40,23 @@ The direct SQL Server schema already persists the raw index inputs:
 - `Resource` identifies the current, non-deleted resource by
   `(ResourceTypeId, ResourceSurrogateId)`.
 
-There is no direct writer that owns both a resource-index change and an
-Observation-code graph update. `MergeResources` and
-`UpdateResourceSearchParams` replace search-index rows; `HardDeleteResource`
-removes them. The existing EF merge repository calls `MergeResources` and
-then performs best-effort extension-column updates outside that procedure.
-That extension pattern cannot maintain `$lastn`: a successful resource write
-with a missing graph update would make a read silently wrong.
+`SqlResourceIndexWriter` owns both a direct resource-index change and the
+Observation-code graph update through transaction-owning wrappers.
+`MergeResourcesAndMaintainLastNGroups`,
+`UpdateResourceSearchParamsAndMaintainLastNGroups`, and
+`HardDeleteResourceAndMaintainLastNGroups` preserve their corresponding base
+procedure and TVP contracts while preventing a successful direct write from
+leaving an unmaintained group.
 
 The direct `Ignixa.DataLayer.SqlServer` library supplies tenant-scoped raw
 ADO.NET execution and deploys the SSDT database project through
-`SchemaDeployer`, but it does not yet expose a direct resource-index writer.
-The missing boundary is therefore a transaction-owning direct writer façade
-and its wrapper procedures, not another branch in the legacy EF search
-service.
+`SchemaDeployer`, exposes the direct resource-index writer and generation
+service, and executes compiled `$lastn` SQL through `ILastNSearchExecutor`.
+The remaining boundary gap is deliberate: the legacy EF search service remains
+unchanged, and no Application handler, HTTP endpoint, or capability statement
+serves `$lastn`.
 
-## Decision Under Evaluation
+## Accepted Design
 
 Maintain one exact, current graph for every enabled
 `(ResourceTypeId, CodeSearchParamId)` scope:
@@ -370,7 +372,7 @@ and actual-plan spill markers.
 
 ## Benchmark Evidence
 
-The rejected query-time prototype used the repeatable opt-in fixture
+The rejected query-time prototype used the historical opt-in fixture
 `LastNSqlBenchmarkTests` with 10,000 current Observation candidates, 400
 independent groups, one to three codings per Observation, explicit
 `a -> b -> c -> d` bridges in every group, and five warm-ups followed by 30
@@ -390,8 +392,43 @@ per node rather than a quadratic reachability table, yet measured:
 The P95 is 6.25 times the sub-100 ms acceptance target. A second exact
 identity-mapping variant avoided wide-sort spill risk but regressed to
 927.872 ms P95. The evidence rejects query-time graph derivation, not exact
-transitive grouping. The materialized design must repeat this workload and
-meet the target before the verdict changes.
+transitive grouping. The materialized design repeated this workload and met the
+target; the historical measurements remain here to preserve the rejection
+evidence.
+
+### Materialized direct SQL Server acceptance benchmark
+
+Task 7 ran the required workload through
+`LastNMaterializedSqlBenchmarkTests`: 10,000 current Observation candidates,
+400 independent groups, one to three codings per Observation, an
+`a -> b -> c -> d` transitive bridge in every group, five warm-ups, and 30
+timed compiled reads. The final measured environment was SQL Server 2025
+Enterprise Developer `17.0.1125.2`, database compatibility level `170`, 16
+logical CPUs, and 65,484 MB visible memory. The query command timeout was 30
+seconds.
+
+| Metric | Result |
+|--------|--------|
+| P50 | 37.122 ms |
+| P95 | 43.667 ms |
+| Maximum | 44.892 ms |
+| Candidate rows | 10,000 |
+| Materialized memberships | 19,999 |
+| Identities | 1,600 |
+| Components | 400 |
+| Results | 400 |
+| Actual-plan `SpillToTempDb` marker | false |
+| Actual-plan positive `SpillLevel` | false |
+
+```powershell
+$env:TEST_SQL_CONNECTION_STRING = '<live SQL Server connection string>'
+$env:RUN_LASTN_BENCHMARK = '1'
+dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj --filter "FullyQualifiedName~LastNMaterializedSqlBenchmarkTests" --framework net10.0 --no-restore --logger "console;verbosity=detailed"
+```
+
+The measured P95 is 56.333 ms below the sub-100 ms gate. This result is
+environment-specific and requires production monitoring for data skew and
+same-scope contention; it does not measure full-scope repair duration.
 
 ## Tradeoffs, Risks, and Alignment
 
@@ -410,7 +447,7 @@ meet the target before the verdict changes.
 - [x] Keeps the direct compiler's candidate-filter, authorization, and
   parameter-order invariants.
 - [x] Uses case-sensitive exact code and text comparison where required.
-- [ ] Demonstrates the sub-100 ms P95 target on the materialized implementation.
+- [x] Demonstrates the sub-100 ms P95 target on the materialized implementation.
 
 ## Related Material
 
@@ -425,11 +462,14 @@ meet the target before the verdict changes.
 
 ## Verdict
 
-**Pending evaluation.**
+**Accepted for direct SQL Server materialization.**
 
 Reference-counted graph materialization is the selected design because it
 preserves exact FHIR code equivalence while removing the measured query-time
-cost from `$lastn` reads. It is not accepted for production until schema and
-writer-boundary tests pass, generation readiness prevents stale reads, and the
-materialized indexed query demonstrates warm P95 below 100 ms on the recorded
-workload.
+cost from `$lastn` reads. Task 7's correctness matrix and acceptance benchmark
+passed: the materialized indexed query achieved a 43.667 ms warm P95 with no
+actual-plan spill marker on the recorded workload. The direct SQL Server writer,
+generation service, compiler, and executor are accepted. HTTP production wiring
+remains out of scope: no Application handler, endpoint, or capability statement
+advertises `$lastn` until production Observation writes use the graph-aware
+wrappers in a separately reviewed change.
