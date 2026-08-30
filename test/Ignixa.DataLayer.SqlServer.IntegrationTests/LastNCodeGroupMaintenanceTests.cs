@@ -782,8 +782,174 @@ public class LastNCodeGroupMaintenanceTests
         (await ReadMembershipCodesAsync(database, 1)).ShouldBe(["a"]);
     }
 
+    [SkippableFact]
+    public async Task GivenAnotherScopeIsLocked_WhenAnIndependentScopeWrites_ThenItIsNotMutuallyBlocked()
+    {
+        // Arrange
+        const short independentResourceTypeId = ResourceTypeId + 1;
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await ConfigureScopeAsync(database, ResourceTypeId, SearchParamId);
+        await ConfigureScopeAsync(database, independentResourceTypeId, SearchParamId);
+        await using SqlConnection lockConnection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using SqlTransaction lockTransaction = (SqlTransaction)await lockConnection.BeginTransactionAsync();
+        (await AcquireScopeLockAsync(lockConnection, lockTransaction, ResourceTypeId, SearchParamId, 0))
+            .ShouldBeGreaterThanOrEqualTo(0);
+        await using SqlConnection writerConnection = await database.OpenConnectionAsync(CancellationToken.None);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+
+        // Act
+        await ExecuteMergeWrapperAsync(
+            writerConnection,
+            independentResourceTypeId,
+            "independent",
+            1,
+            1,
+            [(SearchParamId, "independent")],
+            timeout.Token);
+
+        // Assert
+        (await ReadScalarAsync<int>(
+            database,
+            "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceTypeId = @resourceTypeId AND ResourceId = 'independent';",
+            CancellationToken.None,
+            new SqlParameter("@resourceTypeId", SqlDbType.SmallInt) { Value = independentResourceTypeId })).ShouldBe(1);
+        await lockTransaction.RollbackAsync();
+    }
+
+    [SkippableFact]
+    public async Task GivenAWrapperIsChosenAsADeadlockVictim_WhenAFreshWriterCallRetries_ThenTheWriteConverges()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await ConfigureScopeAsync(database, SearchParamId);
+        await ExecuteNonQueryAsync(
+            database,
+            """
+            CREATE TABLE dbo.LastNDeadlockGate (Id int NOT NULL PRIMARY KEY, Value int NOT NULL);
+            INSERT INTO dbo.LastNDeadlockGate VALUES (1, 0);
+            """,
+            CancellationToken.None);
+        await ExecuteNonQueryAsync(
+            database,
+            """
+            CREATE TRIGGER dbo.CreateLastNWrapperDeadlock
+            ON dbo.Resource
+            AFTER INSERT
+            AS
+            IF EXISTS (SELECT 1 FROM inserted WHERE ResourceId = 'deadlock')
+                UPDATE dbo.LastNDeadlockGate SET Value += 1 WHERE Id = 1;
+            """,
+            CancellationToken.None);
+        await using SqlConnection blockerConnection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using SqlTransaction blockerTransaction = (SqlTransaction)await blockerConnection.BeginTransactionAsync();
+        await ExecuteNonQueryAsync(
+            blockerConnection,
+            blockerTransaction,
+            "UPDATE dbo.LastNDeadlockGate SET Value += 1 WHERE Id = 1;",
+            CancellationToken.None);
+        await using SqlConnection victimConnection = await database.OpenConnectionAsync(CancellationToken.None);
+        await ExecuteNonQueryAsync(
+            victimConnection,
+            null,
+            "SET DEADLOCK_PRIORITY LOW;",
+            CancellationToken.None);
+        int victimSessionId = await ReadSessionIdAsync(victimConnection);
+#pragma warning disable CA2025 // The task is awaited before victimConnection is disposed.
+        Task victimWrite = ExecuteMergeWrapperAsync(
+            victimConnection,
+            "deadlock",
+            1,
+            1,
+            [(SearchParamId, "first")]);
+#pragma warning restore CA2025
+        await WaitUntilBlockedAsync(database, victimSessionId);
+
+        // Act
+        int blockerLockResult = await AcquireScopeLockAsync(
+            blockerConnection,
+            blockerTransaction,
+            SearchParamId,
+            timeout: 5000);
+        SqlException exception = await Should.ThrowAsync<SqlException>(() => victimWrite);
+        await blockerTransaction.RollbackAsync();
+        await ExecuteMergeWrapperAsync(
+            database.Connection,
+            "deadlock",
+            1,
+            1,
+            [(SearchParamId, "first")]);
+
+        // Assert
+        blockerLockResult.ShouldBeGreaterThanOrEqualTo(0);
+        exception.Number.ShouldBe(1205);
+        (await ReadCurrentVersionAsync(database, "deadlock")).ShouldBe(1);
+        (await ReadMembershipCodesAsync(database, 1)).ShouldBe(["first"]);
+    }
+
+    [SkippableFact]
+    public async Task GivenAWrapperHasWrittenBaseRowsButNotGroups_WhenAReaderQueriesBoth_ThenNoCommittedGapIsObserved()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await ConfigureScopeAsync(database, SearchParamId);
+        await ExecuteNonQueryAsync(
+            database,
+            """
+            CREATE TRIGGER dbo.DelayLastNConsistencyInsert
+            ON dbo.LastNObservationCodeGroup
+            AFTER INSERT
+            AS
+                WAITFOR DELAY '00:00:03';
+            """,
+            CancellationToken.None);
+        await using SqlConnection writerConnection = await database.OpenConnectionAsync(CancellationToken.None);
+        int writerSessionId = await ReadSessionIdAsync(writerConnection);
+#pragma warning disable CA2025 // Both tasks are awaited before their owning connections are disposed.
+        Task writeTask = ExecuteMergeWrapperAsync(
+            writerConnection,
+            "consistent",
+            1,
+            1,
+            [(SearchParamId, "a")]);
+#pragma warning restore CA2025
+        await WaitForWaitTypeAsync(database, writerSessionId, "WAITFOR");
+        await using SqlConnection readerConnection = await database.OpenConnectionAsync(CancellationToken.None);
+#pragma warning disable CA2025 // Both tasks are awaited before their owning connections are disposed.
+        Task<int> inconsistentCountTask = ReadScalarAsync<int>(
+            readerConnection,
+            null,
+            """
+            SELECT COUNT(*)
+            FROM dbo.Resource AS resource
+            LEFT JOIN dbo.LastNObservationCodeGroup AS codeGroup
+                ON codeGroup.ResourceTypeId = resource.ResourceTypeId
+                AND codeGroup.ResourceSurrogateId = resource.ResourceSurrogateId
+                AND codeGroup.SearchParamId = @searchParamId
+            WHERE resource.ResourceId = 'consistent'
+                AND resource.IsHistory = 0
+                AND codeGroup.ResourceSurrogateId IS NULL;
+            """,
+            CancellationToken.None,
+            new SqlParameter("@searchParamId", SqlDbType.SmallInt) { Value = SearchParamId });
+#pragma warning restore CA2025
+
+        // Act
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+
+        // Assert
+        await writeTask;
+        (await inconsistentCountTask).ShouldBe(0);
+    }
+
     private static Task ConfigureScopeAsync(
         LastNTestDatabase database,
+        short searchParamId,
+        string state = "Ready")
+        => ConfigureScopeAsync(database, ResourceTypeId, searchParamId, state);
+
+    private static Task ConfigureScopeAsync(
+        LastNTestDatabase database,
+        short resourceTypeId,
         short searchParamId,
         string state = "Ready")
         => ExecuteNonQueryAsync(
@@ -794,7 +960,7 @@ public class LastNCodeGroupMaintenanceTests
             VALUES (@resourceTypeId, @searchParamId, 1, @state, SYSUTCDATETIME());
             """,
             CancellationToken.None,
-            new SqlParameter("@resourceTypeId", SqlDbType.SmallInt) { Value = ResourceTypeId },
+            new SqlParameter("@resourceTypeId", SqlDbType.SmallInt) { Value = resourceTypeId },
             new SqlParameter("@searchParamId", SqlDbType.SmallInt) { Value = searchParamId },
             new SqlParameter("@state", SqlDbType.VarChar, 16) { Value = state });
 
@@ -804,6 +970,23 @@ public class LastNCodeGroupMaintenanceTests
         long resourceSurrogateId,
         int version,
         IReadOnlyList<(short SearchParamId, string Code)> tokens)
+        => await ExecuteMergeWrapperAsync(
+            connection,
+            ResourceTypeId,
+            resourceId,
+            resourceSurrogateId,
+            version,
+            tokens,
+            CancellationToken.None);
+
+    private static async Task ExecuteMergeWrapperAsync(
+        SqlConnection connection,
+        short resourceTypeId,
+        string resourceId,
+        long resourceSurrogateId,
+        int version,
+        IReadOnlyList<(short SearchParamId, string Code)> tokens,
+        CancellationToken cancellationToken)
     {
         await using SqlCommand command = connection.CreateCommand();
         command.CommandText = DeclareWriteTvpsSql + """
@@ -845,8 +1028,8 @@ public class LastNCodeGroupMaintenanceTests
                 @TokenStringCompositeSearchParams = @TokenStringCompositeSearchParams,
                 @TokenNumberNumberCompositeSearchParams = @TokenNumberNumberCompositeSearchParams;
             """;
-        AddWriteParameters(command, resourceId, resourceSurrogateId, version, tokens);
-        await command.ExecuteNonQueryAsync(CancellationToken.None);
+        AddWriteParameters(command, resourceTypeId, resourceId, resourceSurrogateId, version, tokens);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<int> ExecuteCompleteMergeWrapperAsync(
@@ -1086,8 +1269,17 @@ public class LastNCodeGroupMaintenanceTests
         long resourceSurrogateId,
         int version,
         IReadOnlyList<(short SearchParamId, string Code)> tokens)
+        => AddWriteParameters(command, ResourceTypeId, resourceId, resourceSurrogateId, version, tokens);
+
+    private static void AddWriteParameters(
+        SqlCommand command,
+        short resourceTypeId,
+        string resourceId,
+        long resourceSurrogateId,
+        int version,
+        IReadOnlyList<(short SearchParamId, string Code)> tokens)
     {
-        command.Parameters.Add("@resourceTypeId", SqlDbType.SmallInt).Value = ResourceTypeId;
+        command.Parameters.Add("@resourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
         command.Parameters.Add("@resourceSurrogateId", SqlDbType.BigInt).Value = resourceSurrogateId;
         command.Parameters.Add("@resourceId", SqlDbType.VarChar, 64).Value = resourceId;
         command.Parameters.Add("@version", SqlDbType.Int).Value = version;
@@ -1104,6 +1296,14 @@ public class LastNCodeGroupMaintenanceTests
         SqlTransaction transaction,
         short searchParamId,
         int timeout)
+        => await AcquireScopeLockAsync(connection, transaction, ResourceTypeId, searchParamId, timeout);
+
+    private static async Task<int> AcquireScopeLockAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        short resourceTypeId,
+        short searchParamId,
+        int timeout)
     {
         await using SqlCommand command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -1118,7 +1318,7 @@ public class LastNCodeGroupMaintenanceTests
                 @LockTimeout = @timeout;
             SELECT @Result;
             """;
-        command.Parameters.Add("@resourceTypeId", SqlDbType.SmallInt).Value = ResourceTypeId;
+        command.Parameters.Add("@resourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
         command.Parameters.Add("@searchParamId", SqlDbType.SmallInt).Value = searchParamId;
         command.Parameters.Add("@timeout", SqlDbType.Int).Value = timeout;
         return (int)(await command.ExecuteScalarAsync(CancellationToken.None)).ShouldNotBeNull();
@@ -1504,8 +1704,22 @@ public class LastNCodeGroupMaintenanceTests
         string commandText,
         CancellationToken cancellationToken,
         params SqlParameter[] parameters)
+        => await ReadScalarAsync<T>(
+            database.Connection,
+            null,
+            commandText,
+            cancellationToken,
+            parameters);
+
+    private static async Task<T> ReadScalarAsync<T>(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string commandText,
+        CancellationToken cancellationToken,
+        params SqlParameter[] parameters)
     {
-        await using SqlCommand command = database.Connection.CreateCommand();
+        await using SqlCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
 #pragma warning disable CA2100
         command.CommandText = commandText;
 #pragma warning restore CA2100
