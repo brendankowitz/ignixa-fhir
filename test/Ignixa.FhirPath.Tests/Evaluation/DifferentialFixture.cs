@@ -128,6 +128,23 @@ internal static class DifferentialFixture
         "name.given.count()",
         "name.exists()",
         "photo.exists()",
+
+        // exists(criteria) is spec-equivalent to where(criteria).exists(). The corpus carried a dozen
+        // argument-less exists() rows and none with a criteria, so CompileExistsFunction ignoring
+        // func.Arguments went unnoticed: the compiled path answered a bare "is the collection non-empty"
+        // and returned true where the interpreter correctly returned false. The matching where() form is
+        // paired with each row so a future divergence names itself.
+        "name.exists(use = 'official')",
+        "name.where(use = 'official').exists()",
+        "name.exists(use = 'nickname')",
+        "name.where(use = 'nickname').exists()",
+        "telecom.exists(system = 'phone')",
+        "telecom.where(system = 'phone').exists()",
+        "telecom.exists(system = 'fax')",
+        "telecom.where(system = 'fax').exists()",
+        "name.exists(family = 'Chalmers')",
+        "missingElement.exists(use = 'official')",
+
         "photo.empty()",
         "name.empty()",
         "identifier.count()",

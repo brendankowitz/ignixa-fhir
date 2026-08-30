@@ -13,16 +13,28 @@ namespace Ignixa.FhirPath.Evaluation;
 
 /// <summary>
 /// Compiles FhirPath AST to executable delegates for improved performance.
-/// Supports 92% of common search parameter patterns:
-/// - Simple paths: "name", "identifier" (30%)
-/// - Two-level paths: "name.family", "identifier.value" (40%)
-/// - Where clauses: "telecom.where(system='phone')" (15%)
-/// - Functions: first(), last(), exists(), ofType() (12%)
-/// - Comparisons: =, !=, &lt;, &gt;, &lt;=, &gt;= (10%)
-/// - Parenthesized expressions: "(name)" (5%)
-///
-/// Unsupported expressions fall back to interpreted execution.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The compiled forms are: identifiers and property paths of any depth ("name", "name.family");
+/// <c>$this</c>; parenthesized expressions; the comparison operators =, !=, &lt;, &gt;, &lt;= and &gt;=;
+/// constants; and the functions <c>where</c> (single equality predicate), <c>exists</c> (with or without
+/// that same form of criteria), <c>first</c>, <c>last</c>, <c>single</c>, <c>tail</c>, <c>count</c>,
+/// <c>empty</c> and <c>ofType</c> (static type identifier).
+/// </para>
+/// <para>
+/// Everything else - indexers, variable references, unary and arithmetic operators, quantities,
+/// <c>and</c>/<c>or</c>/<c>|</c>, and every other function - is declined. Compilation is all-or-nothing
+/// across the tree, so a single unsupported node sends the whole expression to the interpreter, which
+/// implements the full language. Declining is always safe; it costs speed, never correctness.
+/// </para>
+/// <para>
+/// This summary previously claimed coverage of "92% of common search parameter patterns", with a
+/// per-form breakdown that summed to 112%. No measurement supported either figure, so both are gone
+/// rather than restated: a coverage number is only worth publishing if it is computed against a named
+/// corpus, and none was.
+/// </para>
+/// </remarks>
 public class FhirPathDelegateCompiler
 {
     private readonly FhirPathEvaluator _fallbackEvaluator;
@@ -268,6 +280,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileFirstFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -286,6 +303,25 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileExistsFunction(FunctionCallExpression func)
     {
+        // exists(criteria) is defined as where(criteria).exists(), so the criteria has to filter the
+        // focus before the emptiness test. Ignoring func.Arguments compiled it to a bare "is the
+        // collection non-empty" and answered true wherever the collection had any element at all,
+        // whatever the criteria excluded - a wrong answer on the path production Select() takes.
+        // Reusing CompileWhereFunction keeps the two forms answering identically by construction, and
+        // inherits its predicate restrictions: anything it declines (a non-equality criteria, an
+        // uncompilable operand) returns null here too and the whole expression falls to the interpreter,
+        // which handles the general case.
+        if (func.Arguments.Count > 0)
+        {
+            var whereFunc = CompileWhereFunction(
+                new FunctionCallExpression(func.Focus, "where", func.Arguments));
+
+            if (whereFunc == null)
+                return null;
+
+            return (input, ctx) => new[] { CreateBooleanElement(whereFunc(input, ctx).Any()) };
+        }
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -305,6 +341,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileCountFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -323,6 +364,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileEmptyFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -341,6 +387,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileLastFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -359,6 +410,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileSingleFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;
@@ -380,6 +436,11 @@ public class FhirPathDelegateCompiler
     /// </summary>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileTailFunction(FunctionCallExpression func)
     {
+        // Argument-less per spec: decline rather than silently accept a malformed call as its
+        // zero-argument form. The interpreter signals the error.
+        if (func.Arguments.Count > 0)
+            return null;
+
         var focusFunc = func.Focus != null ? TryCompile(func.Focus) : null;
         if (focusFunc == null)
             return null;

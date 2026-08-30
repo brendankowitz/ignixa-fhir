@@ -1,7 +1,26 @@
 # FHIRPath Performance Analysis: Ignixa vs Firely
 
 **Date:** 2026-01-11
-**Analysis:** Comprehensive investigation into why Ignixa's FHIRPath implementation is 2,700-3,000x faster than Firely's
+**Status:** Superseded on the numbers; still useful on architecture
+**Analysis:** Investigation into why Ignixa's FHIRPath implementation outperforms Firely's
+
+---
+
+> **The multipliers in this document are wrong and should not be quoted.**
+>
+> Every "2,700-3,000x" figure below was measured against Firely's `ITypedElement.Select(string)`, which
+> calls `ToPocoNode` and therefore re-deserializes the entire resource into POCOs on every call when the
+> input is source-backed - as it was in that benchmark. The measurement is dominated by that conversion,
+> not by evaluation, which is why every trivial expression cost an identical ~285 µs regardless of
+> complexity. This document's own Section "Why the measured gap exceeds the estimate" noticed the anomaly
+> and attributed it to interpreter overhead instead.
+>
+> The like-for-like figure, with both engines pre-compiled and the model materialized once, is **7-12x**
+> faster and **14-18x** leaner. See the measured table in
+> [the feature readme](../readme.md#performance-comparison-ignixa-vs-firely).
+>
+> The architectural analysis below - two-tier AST plus delegate compilation against Firely's `Invokee`
+> interpreter chain - remains accurate and is why this document is kept.
 
 ---
 

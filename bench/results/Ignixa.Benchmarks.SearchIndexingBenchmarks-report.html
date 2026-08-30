@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Ignixa.Benchmarks.SearchIndexingBenchmarks-20260828-223720</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.9106/25H2/2025Update/HudsonValley2) (Hyper-V)
+AMD EPYC 7763 2.44GHz, 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.303
+  [Host]    : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+  .NET 10.0 : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>Job=.NET 10.0  Runtime=.NET 10.0  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                                     </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Rank</th><th>Gen0</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>&#39;Ignixa: Extract search parameters (Patient)&#39;</td><td>57.58 &mu;s</td><td>1.148 &mu;s</td><td>2.041 &mu;s</td><td>1.00</td><td>0.05</td><td>1</td><td>4.3945</td><td>77.15 KB</td><td>1.00</td>
+</tr><tr><td>&#39;Ignixa: Extract search parameters (Observation)&#39;</td><td>180.82 &mu;s</td><td>3.554 &mu;s</td><td>4.621 &mu;s</td><td>3.14</td><td>0.13</td><td>2</td><td>13.6719</td><td>229.72 KB</td><td>2.98</td>
+</tr></tbody></table>
+</body>
+</html>

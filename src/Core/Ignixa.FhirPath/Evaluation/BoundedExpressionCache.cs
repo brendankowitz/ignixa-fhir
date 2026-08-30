@@ -70,6 +70,34 @@ internal sealed class BoundedExpressionCache<TValue>
         return Store(expression, valueFactory(expression));
     }
 
+    /// <summary>
+    /// Looks up an entry without supplying a factory, promoting a cold hit exactly as
+    /// <see cref="GetOrAdd"/> would.
+    /// </summary>
+    /// <remarks>
+    /// This exists so a caller that already holds the value's dependencies does not have to allocate a
+    /// closure to describe how to compute something the cache almost always already has: a lambda
+    /// capturing a local costs a display class and a delegate on every call, cache hit included. Callers
+    /// that would fall through to a compute step should still prefer <see cref="GetOrAdd"/>.
+    /// </remarks>
+    public bool TryGetValue(string expression, out TValue value)
+    {
+        if (_hot.TryGetValue(expression, out var hit))
+        {
+            value = hit;
+            return true;
+        }
+
+        if (_cold.TryGetValue(expression, out var demoted))
+        {
+            value = Store(expression, demoted);
+            return true;
+        }
+
+        value = default!;
+        return false;
+    }
+
     public void Clear()
     {
         lock (_rotationLock)

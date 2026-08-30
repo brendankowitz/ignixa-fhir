@@ -1,24 +1,24 @@
 
-BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.6725)
-Intel Core i7-14700K, 1 CPU, 28 logical and 20 physical cores
-.NET SDK 9.0.201
-  [Host]   : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
-  .NET 9.0 : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.9106/25H2/2025Update/HudsonValley2) (Hyper-V)
+AMD EPYC 7763 2.44GHz, 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.303
+  [Host]    : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
+  .NET 10.0 : .NET 10.0.11 (10.0.11, 10.0.1126.37416), X64 RyuJIT x86-64-v3
 
-Job=.NET 9.0  Runtime=.NET 9.0  
+Job=.NET 10.0  Runtime=.NET 10.0  
 
- Method                                              | Mean         | Error     | StdDev    | Rank | Gen0     | Gen1    | Allocated  |
----------------------------------------------------- |-------------:|----------:|----------:|-----:|---------:|--------:|-----------:|
- 'Ignixa: Parse large Bundle (JsonSerializer)'       |    70.543 μs | 0.3103 μs | 0.2903 μs |    9 |   2.6855 |       - |   47.05 KB |
- 'Firely: Parse large Bundle (FhirJsonNode)'         |   135.833 μs | 1.9942 μs | 1.8654 μs |   11 |  24.1699 | 15.8691 |  411.28 KB |
- 'Firely: Parse large Bundle (POCO)'                 | 1,010.586 μs | 4.2605 μs | 3.5577 μs |   12 | 121.0938 | 29.2969 | 2070.08 KB |
- 'Ignixa: Parse medium Observation (JsonSerializer)' |     5.799 μs | 0.0238 μs | 0.0223 μs |    4 |   0.2136 |       - |    3.61 KB |
- 'Firely: Parse medium Observation (FhirJsonNode)'   |     8.290 μs | 0.0540 μs | 0.0451 μs |    5 |   1.6327 |  0.1526 |   27.63 KB |
- 'Firely: Parse medium Observation (POCO)'           |    60.676 μs | 0.3766 μs | 0.3523 μs |    8 |   7.3242 |  0.2441 |     125 KB |
- 'Ignixa: Parse small Patient (JsonSerializer)'      |     2.178 μs | 0.0097 μs | 0.0091 μs |    1 |   0.0801 |       - |    1.36 KB |
- 'Firely: Parse small Patient (FhirJsonNode)'        |     3.114 μs | 0.0382 μs | 0.0357 μs |    3 |   0.8163 |  0.0381 |   13.77 KB |
- 'Firely: Parse small Patient (POCO)'                |    22.800 μs | 0.2180 μs | 0.2039 μs |    6 |   2.8076 |       - |   47.52 KB |
- 'Ignixa: Serialize large Bundle'                    |    90.981 μs | 0.3904 μs | 0.3652 μs |   10 |   4.6387 |       - |   79.47 KB |
- 'Firely: Serialize large Bundle (POCO)'             | 1,140.588 μs | 8.3045 μs | 7.7680 μs |   13 | 140.6250 | 35.1563 | 2372.87 KB |
- 'Ignixa: Serialize small Patient'                   |     2.897 μs | 0.0147 μs | 0.0130 μs |    2 |   0.1297 |       - |    2.24 KB |
- 'Firely: Serialize small Patient (POCO)'            |    26.080 μs | 0.2344 μs | 0.2192 μs |    7 |   3.4180 |       - |   58.41 KB |
+ Method                                              | Mean         | Error       | StdDev      | Median       | Rank | Gen0     | Gen1    | Allocated  |
+---------------------------------------------------- |-------------:|------------:|------------:|-------------:|-----:|---------:|--------:|-----------:|
+ 'Ignixa: Parse large Bundle (JsonSerializer)'       |   157.073 μs |   3.6648 μs |   9.9704 μs |   154.171 μs |    7 |   2.9297 |  0.2441 |   48.49 KB |
+ 'Firely: Parse large Bundle (FhirJsonNode)'         |   265.061 μs |   7.8023 μs |  21.8785 μs |   259.732 μs |    9 |  25.1465 | 15.8691 |  411.28 KB |
+ 'Firely: Parse large Bundle (POCO)'                 | 2,331.142 μs | 136.3304 μs | 401.9733 μs | 2,293.098 μs |   10 | 125.0000 | 31.2500 | 2069.29 KB |
+ 'Ignixa: Parse medium Observation (JsonSerializer)' |    16.041 μs |   0.8573 μs |   2.5279 μs |    15.439 μs |    3 |   0.3662 |       - |    6.21 KB |
+ 'Firely: Parse medium Observation (FhirJsonNode)'   |    17.131 μs |   0.4327 μs |   1.2416 μs |    17.002 μs |    3 |   1.6785 |  0.1526 |   27.63 KB |
+ 'Firely: Parse medium Observation (POCO)'           |   137.948 μs |   8.6665 μs |  25.5533 μs |   139.120 μs |    6 |   6.8359 |       - |  124.87 KB |
+ 'Ignixa: Parse small Patient (JsonSerializer)'      |     6.033 μs |   0.1899 μs |   0.5448 μs |     5.861 μs |    1 |   0.2213 |       - |    3.63 KB |
+ 'Firely: Parse small Patient (FhirJsonNode)'        |     6.166 μs |   0.1815 μs |   0.5265 μs |     6.011 μs |    1 |   0.8392 |  0.0381 |   13.77 KB |
+ 'Firely: Parse small Patient (POCO)'                |    37.526 μs |   0.7471 μs |   0.7994 μs |    37.268 μs |    4 |   2.6855 |       - |   47.52 KB |
+ 'Ignixa: Serialize large Bundle'                    |   200.836 μs |   3.7629 μs |  10.1731 μs |   198.476 μs |    8 |   4.8828 |       - |   80.91 KB |
+ 'Firely: Serialize large Bundle (POCO)'             | 2,345.025 μs | 138.6475 μs | 408.8053 μs | 2,165.121 μs |   10 | 140.6250 | 31.2500 | 2372.09 KB |
+ 'Ignixa: Serialize small Patient'                   |     7.474 μs |   0.1797 μs |   0.5039 μs |     7.366 μs |    2 |   0.2441 |       - |    4.52 KB |
+ 'Firely: Serialize small Patient (POCO)'            |    45.658 μs |   0.9046 μs |   1.0054 μs |    45.587 μs |    5 |   3.4180 |       - |   58.42 KB |

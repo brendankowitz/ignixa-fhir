@@ -6,6 +6,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Ignixa.Abstractions;
 
 #pragma warning disable CS0618 // Type or member is obsolete
@@ -58,15 +59,118 @@ internal class SchemaAwareElement : IElement
 
     private volatile object? _cachedTypeDefinition = TypeDefinitionNotComputed;
 
-    // OPTIMIZATION: Cache for child element definitions (avoid repeated lookups)
-    // Key: element name, Value: IType (can be null)
-    // Using ConcurrentDictionary for thread-safe concurrent access.
-    // Allocated on first child lookup rather than through a Lazy: leaf elements never reach
-    // GetCachedChildDefinition, and a Lazy charged every one of them for a Lazy plus its LazyHelper
-    // to describe a dictionary most of them never build. Interlocked.CompareExchange preserves the
-    // exactly-once publication Lazy gave, so a race discards the loser's empty dictionary instead of
-    // splitting subsequent cached lookups across two instances.
-    private ConcurrentDictionary<string, IType?>? _childDefinitionCache;
+    // OPTIMIZATION: Child resolution is cached per (parent type, child name) for the whole process
+    // rather than per element instance.
+    //
+    // Resolving a child answers two questions - which IType defines it, and whether it is a
+    // BackboneElement whose qualified name becomes the child's InstanceType - and both answers depend
+    // only on the parent's IType and the child's name. Neither varies by element instance, yet the
+    // cache used to live on the instance, where it was useless: a navigation hop builds a wrapper,
+    // reads one definition through it and drops it, so the dictionary was allocated (1,016 B on a
+    // 16-core host, since the parameterless ctor sizes its lock array by ProcessorCount) and thrown
+    // away having served a single lookup. Worse, the miss path ran twice per child - once here and
+    // once inside the definition lookup - each time building a "Parent.child" string and probing a
+    // schema that answers null for every leaf property, and the generated providers spend a Split +
+    // per-segment Substring + Join on that miss before returning null.
+    //
+    // The cache is partitioned by ISchema, not merely by IType. Resolution asks the schema to resolve a
+    // qualified "Parent.child" name, and two schemas can hand out the same base IType instances while
+    // answering that question differently - a decorating or profile-aware schema over a core provider
+    // does exactly that. Keying on the type alone would let one schema's answer be served to another.
+    // Within a partition the type instance is still part of the key, which keeps STU3-through-R6
+    // entries apart even though every version calls its type "Patient", and is safe because every
+    // ISchema resolves types from an interned table.
+    //
+    // ConditionalWeakTable anchors the entry's lifetime to the schema: tenant providers are loaded and
+    // dropped at runtime, and a static dictionary would root every one of them forever.
+    private static readonly ConditionalWeakTable<ISchema, ConcurrentDictionary<ChildResolutionKey, ChildResolution>> SharedChildResolutions = new();
+
+    /// <summary>
+    /// Identifies a child resolution within one schema's partition. Reference equality on the parent
+    /// type is deliberate and spelled out rather than inherited: <see cref="IType"/> is an interface, so
+    /// an implementation is free to define value equality, and a type that compared equal by name would
+    /// silently merge entries this key exists to keep apart.
+    /// </summary>
+    private readonly struct ChildResolutionKey : IEquatable<ChildResolutionKey>
+    {
+        private readonly IType _parentType;
+        private readonly string _childName;
+
+        public ChildResolutionKey(IType parentType, string childName)
+        {
+            _parentType = parentType;
+            _childName = childName;
+        }
+
+        public bool Equals(ChildResolutionKey other) =>
+            ReferenceEquals(_parentType, other._parentType)
+            && string.Equals(_childName, other._childName, StringComparison.Ordinal);
+
+        public override bool Equals(object? obj) => obj is ChildResolutionKey other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(
+            RuntimeHelpers.GetHashCode(_parentType),
+            StringComparer.Ordinal.GetHashCode(_childName));
+    }
+
+    /// <summary>
+    /// What resolving a child name against a parent type yields: the child's definition, and the
+    /// qualified instance type when the child is a BackboneElement (null when it is not, leaving the
+    /// instance type to be derived from the child's own source node).
+    /// </summary>
+    private readonly record struct ChildResolution(IType? Definition, string? QualifiedInstanceType);
+
+    // OPTIMIZATION: The wrapper elements themselves are cached against the source node that backs them.
+    //
+    // Resolution caching above removed the schema work from a navigation hop but not the wrappers: every
+    // Children() call still built a fresh List and a fresh SchemaAwareElement per child, so walking
+    // "component.valueQuantity.value" allocated a new object at each level on every evaluation, and an
+    // indexing pass that runs a hundred expressions over one resource rebuilt the same tree a hundred
+    // times. Anchoring the wrappers to the source node instead makes the second and later walks free.
+    //
+    // The source layer already works this way - JsonNodeSourceNode snapshots its children into
+    // _cachedNodes on first navigation and hands back the same navigator instances forever - so this
+    // extends an existing lifetime rather than inventing one, and the elements it caches are documented
+    // immutable snapshots of exactly those nodes (see the class remarks).
+    //
+    // Mutation stays correct without an explicit invalidation hook: ResourceJsonNode.InvalidateCaches()
+    // drops _cachedSourceNode, so a patched document is re-derived from new navigators, which key a new
+    // and empty entry here. The stale wrappers become unreachable with the navigators they wrapped.
+    //
+    // The key carries the schema and the parent's instance type as well as the child name: one source
+    // node can legitimately be wrapped by more than one element - under a different schema, or typed
+    // differently through a choice element - and those wrappings have different children.
+    private static readonly ConditionalWeakTable<ISourceNavigator, ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>> SharedChildElements = new();
+
+    /// <summary>
+    /// Identifies one materialized child list for a given source node: which schema typed it, what the
+    /// parent's instance type resolved to, and which child name was asked for (null meaning "all").
+    /// </summary>
+    private readonly struct ChildListKey : IEquatable<ChildListKey>
+    {
+        private readonly ISchema _schema;
+        private readonly string? _parentInstanceType;
+        private readonly string? _name;
+
+        public ChildListKey(ISchema schema, string? parentInstanceType, string? name)
+        {
+            _schema = schema;
+            _parentInstanceType = parentInstanceType;
+            _name = name;
+        }
+
+        public bool Equals(ChildListKey other) =>
+            ReferenceEquals(_schema, other._schema)
+            && string.Equals(_parentInstanceType, other._parentInstanceType, StringComparison.Ordinal)
+            && string.Equals(_name, other._name, StringComparison.Ordinal);
+
+        public override bool Equals(object? obj) => obj is ChildListKey other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(
+            RuntimeHelpers.GetHashCode(_schema),
+            _parentInstanceType is null ? 0 : StringComparer.Ordinal.GetHashCode(_parentInstanceType),
+            _name is null ? 0 : StringComparer.Ordinal.GetHashCode(_name));
+    }
 
     // OPTIMIZATION: FHIR primitive type mapping (static to avoid repeated allocations)
     // Reference: http://hl7.org/fhir/datatypes.html
@@ -254,22 +358,55 @@ internal class SchemaAwareElement : IElement
         }
     }
 
-    private ConcurrentDictionary<string, IType?> ChildDefinitionCache
+    /// <summary>
+    /// Resolves a child name against a parent type, memoised for the lifetime of that type.
+    /// </summary>
+    /// <remarks>
+    /// The schema is both an argument and the cache partition, so a resolution computed under one
+    /// schema can never be served under another.
+    /// </remarks>
+    private static ChildResolution ResolveChild(IType parentTypeDef, string childName, ISchema schema)
     {
-        get
-        {
-            var cache = Volatile.Read(ref _childDefinitionCache);
-            if (cache is not null)
-            {
-                return cache;
-            }
+        var perSchema = SharedChildResolutions.GetValue(
+            schema,
+            static _ => new ConcurrentDictionary<ChildResolutionKey, ChildResolution>());
 
-            var created = new ConcurrentDictionary<string, IType?>();
-            return Interlocked.CompareExchange(ref _childDefinitionCache, created, null) ?? created;
+        var key = new ChildResolutionKey(parentTypeDef, childName);
+
+        if (perSchema.TryGetValue(key, out var cached))
+        {
+            return cached;
         }
+
+        var resolved = ComputeChildResolution(parentTypeDef, childName, schema);
+
+        // A losing race recomputes an identical value, so TryAdd's discard costs nothing.
+        perSchema.TryAdd(key, resolved);
+        return resolved;
     }
 
     public IReadOnlyList<IElement> Children(string? name)
+    {
+        var childCache = SharedChildElements.GetValue(
+            _source,
+            static _ => new ConcurrentDictionary<ChildListKey, IReadOnlyList<IElement>>());
+
+        var cacheKey = new ChildListKey(_schema, _instanceType, name);
+
+        if (childCache.TryGetValue(cacheKey, out var cachedChildren))
+        {
+            return cachedChildren;
+        }
+
+        var materialized = MaterializeChildren(name);
+
+        // A losing race produces an equivalent list; discarding it costs one wasted materialization and
+        // keeps every caller on a single instance, which matters because these are handed out as shared
+        // immutable snapshots.
+        return childCache.GetOrAdd(cacheKey, materialized);
+    }
+
+    private IReadOnlyList<IElement> MaterializeChildren(string? name)
     {
         // Handle polymorphic properties (value[x] in FHIR spec)
         // According to FHIRPath N1 spec section 3.2, accessing "value" should match
@@ -319,36 +456,11 @@ internal class SchemaAwareElement : IElement
 
             if (cachedTypeDef != null)
             {
-                // For BackboneElements, check if a qualified type exists (e.g., "QuestionnaireResponse.item")
-                var qualifiedName = $"{cachedTypeDef.Info.Name}.{child.Name}";
-                var qualifiedTypeDef = _schema.GetTypeDefinition(qualifiedName);
-
-                if (qualifiedTypeDef != null)
-                {
-                    // This child is a BackboneElement with its own type definition
-                    // Use the qualified typename directly as the instance type
-                    childInstanceType = qualifiedTypeDef.Info.Name;
-                }
-                else
-                {
-                    // Check for recursive BackboneElements (e.g., QuestionnaireResponse.item.item)
-                    // The parent InstanceType might already be the qualified name we need
-                    // Extract last segment of parent's TypeName and compare with child name
-                    var parentTypeName = cachedTypeDef.Info.Name;
-                    var lastSegment = parentTypeName != null && parentTypeName.Contains('.', StringComparison.Ordinal)
-                        ? parentTypeName.Substring(parentTypeName.LastIndexOf('.') + 1)
-                        : parentTypeName;
-
-                    // Case-insensitive comparison for recursion check
-                    if (child.Name.Equals(lastSegment, StringComparison.OrdinalIgnoreCase))
-                    {
-                        // This is a recursive element - use the parent's qualified type
-                        childInstanceType = parentTypeName;
-                    }
-                }
-
-                // Use child definition cache to avoid repeated lookups
-                childDef = GetCachedChildDefinition(child.Name, cachedTypeDef);
+                // One memoised lookup answers both questions. These used to be computed separately,
+                // each re-deriving the same "Parent.child" probe on every navigation.
+                var resolution = ResolveChild(cachedTypeDef, child.Name, _schema);
+                childInstanceType = resolution.QualifiedInstanceType;
+                childDef = resolution.Definition;
             }
 
             // If we didn't already determine the instance type (not a BackboneElement),
@@ -362,32 +474,51 @@ internal class SchemaAwareElement : IElement
             result.Add(new SchemaAwareElement(child, _schema, childDef, childInstanceType));
         }
 
-        return result;
+        // Frozen to an array before being cached. The list is now handed to every caller that navigates
+        // this node, and an IReadOnlyList<T> that is really a List<T> can be cast back to a mutable one.
+        // An empty result is the common case for a name a document does not carry, so it costs nothing.
+        return result.Count == 0 ? Array.Empty<IElement>() : result.ToArray();
     }
 
     /// <summary>
-    /// Gets or creates a cache of child element definitions.
-    /// Avoids repeated lookups of the same child name across multiple navigations.
-    /// Returns null if no definition found (valid - not all elements have definitions).
-    /// Thread-safe: uses ConcurrentDictionary for atomic get-or-add semantics.
+    /// Resolves a child name against its parent type from scratch. Pure, and the only caller is
+    /// <see cref="ResolveChild"/>, which memoises the answer - so the cost here is paid once per
+    /// (schema, parent type, child name) rather than once per navigation.
     /// </summary>
-    private IType? GetCachedChildDefinition(string childName, IType? cachedTypeDef)
+    /// <returns>
+    /// A resolution whose <c>Definition</c> is null when the schema describes no such child, which is
+    /// legitimate - not every element in a document has a definition.
+    /// </returns>
+    private static ChildResolution ComputeChildResolution(IType cachedTypeDef, string childName, ISchema schema)
     {
-        // No type definition? Can't cache anything
-        if (cachedTypeDef == null)
-            return null;
-
-        var cache = ChildDefinitionCache;
-
-        // Return from cache if found (even if value is null, which is valid)
-        if (cache.TryGetValue(childName, out var cachedDef))
-            return cachedDef;
-
-        // Cache miss: Look up definition
         // For BackboneElements, try to get the qualified type definition directly
         // (e.g., schema.GetTypeDefinition("QuestionnaireResponse.item"))
         var qualifiedName = $"{cachedTypeDef.Info.Name}.{childName}";
-        var qualifiedTypeDef = _schema.GetTypeDefinition(qualifiedName);
+        var qualifiedTypeDef = schema.GetTypeDefinition(qualifiedName);
+
+        // A BackboneElement's qualified name is also its instance type.
+        string? qualifiedInstanceType = null;
+        if (qualifiedTypeDef != null)
+        {
+            qualifiedInstanceType = qualifiedTypeDef.Info.Name;
+        }
+        else
+        {
+            // Check for recursive BackboneElements (e.g., QuestionnaireResponse.item.item)
+            // The parent InstanceType might already be the qualified name we need
+            // Extract last segment of parent's TypeName and compare with child name
+            var parentTypeName = cachedTypeDef.Info.Name;
+            var lastSegment = parentTypeName != null && parentTypeName.Contains('.', StringComparison.Ordinal)
+                ? parentTypeName.Substring(parentTypeName.LastIndexOf('.') + 1)
+                : parentTypeName;
+
+            // Case-insensitive comparison for recursion check
+            if (childName.Equals(lastSegment, StringComparison.OrdinalIgnoreCase))
+            {
+                // This is a recursive element - use the parent's qualified type
+                qualifiedInstanceType = parentTypeName;
+            }
+        }
 
         // If we found a qualified type definition for this child (it's a BackboneElement),
         // use it as the definition
@@ -453,9 +584,7 @@ internal class SchemaAwareElement : IElement
             }
         }
 
-        // Cache the result (including null) - ConcurrentDictionary makes this thread-safe
-        cache.TryAdd(childName, childDef);
-        return childDef;
+        return new ChildResolution(childDef, qualifiedInstanceType);
     }
 
     /// <summary>
