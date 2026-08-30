@@ -31,6 +31,13 @@ BEGIN
     DECLARE @LockResult INT;
     DECLARE @LockResource NVARCHAR(255);
     DECLARE @IsRetry BIT = 0;
+    DECLARE @Start DATETIME = GETUTCDATE();
+    DECLARE @RetryMode VARCHAR(200);
+    DECLARE @Existing TABLE (
+        ResourceTypeId SMALLINT NOT NULL,
+        SurrogateId BIGINT NOT NULL,
+        PRIMARY KEY (ResourceTypeId, SurrogateId)
+    );
 
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -80,17 +87,18 @@ BEGIN
                 AND affected.SearchParamId = generation.SearchParamId
                 AND affected.ResourceSurrogateId = currentResource.ResourceSurrogateId);
 
+        INSERT INTO @Existing (ResourceTypeId, SurrogateId)
+        SELECT currentResource.ResourceTypeId, currentResource.ResourceSurrogateId
+        FROM @Resources AS incoming
+        INNER JOIN dbo.Resource AS currentResource
+            ON currentResource.ResourceTypeId = incoming.ResourceTypeId
+            AND currentResource.ResourceSurrogateId = incoming.ResourceSurrogateId
+            AND currentResource.ResourceId = incoming.ResourceId
+            AND currentResource.Version = incoming.Version
+            AND currentResource.IsHistory = 0;
+
         IF EXISTS (SELECT 1 FROM @Resources)
-            AND NOT EXISTS (
-                SELECT 1
-                FROM @Resources AS incoming
-                LEFT JOIN dbo.Resource AS currentResource
-                    ON currentResource.ResourceTypeId = incoming.ResourceTypeId
-                    AND currentResource.ResourceSurrogateId = incoming.ResourceSurrogateId
-                    AND currentResource.ResourceId = incoming.ResourceId
-                    AND currentResource.Version = incoming.Version
-                    AND currentResource.IsHistory = 0
-                WHERE currentResource.ResourceSurrogateId IS NULL)
+            AND (SELECT COUNT(*) FROM @Existing) = (SELECT COUNT(*) FROM @Resources)
             SET @IsRetry = 1;
 
         EXEC dbo.MaintainLastNCodeGroups
@@ -123,7 +131,294 @@ BEGIN
                 @TokenNumberNumberCompositeSearchParams = @TokenNumberNumberCompositeSearchParams;
         END;
         ELSE
+        BEGIN
             SET @AffectedRows = 0;
+
+            INSERT INTO dbo.ResourceWriteClaim (ResourceSurrogateId, ClaimTypeId, ClaimValue)
+            SELECT ResourceSurrogateId, ClaimTypeId, ClaimValue
+            FROM @ResourceWriteClaims AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.ResourceWriteClaim AS currentRow
+                    WHERE currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.ReferenceSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, BaseUri,
+                 ReferenceResourceTypeId, ReferenceResourceId, ReferenceResourceVersion)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, BaseUri,
+                ReferenceResourceTypeId, ReferenceResourceId, ReferenceResourceVersion
+            FROM @ReferenceSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.ReferenceSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.TokenSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code, CodeOverflow)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code, CodeOverflow
+            FROM @TokenSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TokenSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.TokenText
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, Text)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, Text
+            FROM @TokenTexts AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TokenText AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.StringSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, Text, TextOverflow, IsMin, IsMax)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, Text, TextOverflow, IsMin, IsMax
+            FROM @StringSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.StringSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.UriSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, Uri)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, Uri
+            FROM @UriSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.UriSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.NumberSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, SingleValue, LowValue, HighValue)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, SingleValue, LowValue, HighValue
+            FROM @NumberSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.NumberSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.QuantitySearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, QuantityCodeId,
+                 SingleValue, LowValue, HighValue)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, QuantityCodeId,
+                SingleValue, LowValue, HighValue
+            FROM @QuantitySearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.QuantitySearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.DateTimeSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, StartDateTime, EndDateTime,
+                 IsLongerThanADay, IsMin, IsMax)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, StartDateTime, EndDateTime,
+                IsLongerThanADay, IsMin, IsMax
+            FROM @DateTimeSearchParms AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.DateTimeSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.ReferenceTokenCompositeSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, BaseUri1,
+                 ReferenceResourceTypeId1, ReferenceResourceId1, ReferenceResourceVersion1,
+                 SystemId2, Code2, CodeOverflow2)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, BaseUri1,
+                ReferenceResourceTypeId1, ReferenceResourceId1, ReferenceResourceVersion1,
+                SystemId2, Code2, CodeOverflow2
+            FROM @ReferenceTokenCompositeSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.ReferenceTokenCompositeSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.TokenTokenCompositeSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                 CodeOverflow1, SystemId2, Code2, CodeOverflow2)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                CodeOverflow1, SystemId2, Code2, CodeOverflow2
+            FROM @TokenTokenCompositeSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TokenTokenCompositeSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.TokenDateTimeCompositeSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                 CodeOverflow1, StartDateTime2, EndDateTime2, IsLongerThanADay2)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                CodeOverflow1, StartDateTime2, EndDateTime2, IsLongerThanADay2
+            FROM @TokenDateTimeCompositeSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TokenDateTimeCompositeSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.TokenQuantityCompositeSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                 CodeOverflow1, SingleValue2, SystemId2, QuantityCodeId2, LowValue2, HighValue2)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                CodeOverflow1, SingleValue2, SystemId2, QuantityCodeId2, LowValue2, HighValue2
+            FROM @TokenQuantityCompositeSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TokenQuantityCompositeSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.TokenStringCompositeSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                 CodeOverflow1, Text2, TextOverflow2)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                CodeOverflow1, Text2, TextOverflow2
+            FROM @TokenStringCompositeSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TokenStringCompositeSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            INSERT INTO dbo.TokenNumberNumberCompositeSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                 CodeOverflow1, SingleValue2, LowValue2, HighValue2, SingleValue3,
+                 LowValue3, HighValue3, HasRange)
+            SELECT ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1,
+                CodeOverflow1, SingleValue2, LowValue2, HighValue2, SingleValue3,
+                LowValue3, HighValue3, HasRange
+            FROM @TokenNumberNumberCompositeSearchParams AS supplied
+            WHERE EXISTS (
+                    SELECT 1
+                    FROM @Existing AS existing
+                    WHERE existing.ResourceTypeId = supplied.ResourceTypeId
+                        AND existing.SurrogateId = supplied.ResourceSurrogateId)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TokenNumberNumberCompositeSearchParam AS currentRow
+                    WHERE currentRow.ResourceTypeId = supplied.ResourceTypeId
+                        AND currentRow.ResourceSurrogateId = supplied.ResourceSurrogateId);
+            SET @AffectedRows += @@ROWCOUNT;
+
+            IF @IsResourceChangeCaptureEnabled = 1
+                EXEC dbo.CaptureResourceIdsForChanges @Resources;
+
+            IF @TransactionId IS NOT NULL
+                EXEC dbo.MergeResourcesCommitTransaction @TransactionId;
+
+            SET @RetryMode = ISNULL((
+                SELECT 'RT=[' + CONVERT(VARCHAR, MIN(ResourceTypeId))
+                    + ',' + CONVERT(VARCHAR, MAX(ResourceTypeId))
+                    + '] Sur=[' + CONVERT(VARCHAR, MIN(ResourceSurrogateId))
+                    + ',' + CONVERT(VARCHAR, MAX(ResourceSurrogateId))
+                    + '] V=' + CONVERT(VARCHAR, MAX(Version))
+                    + ' Rows=' + CONVERT(VARCHAR, COUNT(*))
+                FROM @Resources), 'Input=Empty');
+            SET @RetryMode += ' E=' + CONVERT(VARCHAR, @RaiseExceptionOnConflict)
+                + ' CC=' + CONVERT(VARCHAR, @IsResourceChangeCaptureEnabled)
+                + ' IT=0 T=' + ISNULL(CONVERT(VARCHAR, @TransactionId), 'NULL')
+                + ' ST=' + CONVERT(VARCHAR, @SingleTransaction)
+                + ' R=1';
+            EXEC dbo.LogEvent
+                @Process = 'MergeResources',
+                @Mode = @RetryMode,
+                @Status = 'End',
+                @Start = @Start,
+                @Rows = @AffectedRows;
+        END;
 
         EXEC dbo.MaintainLastNCodeGroups
             @Mode = 'Add',

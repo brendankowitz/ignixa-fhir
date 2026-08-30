@@ -490,6 +490,42 @@ public class LastNCodeGroupMaintenanceTests
     }
 
     [SkippableFact]
+    public async Task GivenAPartialPriorMerge_WhenWrapperRetries_ThenTheCompleteBaseRetryContractIsPreserved()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await ConfigureScopeAsync(database, SearchParamId);
+        await ExecuteNonQueryAsync(
+            database,
+            "INSERT INTO dbo.Parameters (Id, Char) VALUES ('MergeResources', 'LogEvent');",
+            CancellationToken.None);
+        await ExecuteCompleteMergeWrapperAsync(database.Connection, "partial-retry", 1, 1);
+        await DeleteAllRetryIndexFamiliesAsync(database, 1);
+        long transactionId = await BeginMergeTransactionAsync(database);
+
+        // Act
+        int affectedRows = await ExecuteCompleteMergeWrapperAsync(
+            database.Connection,
+            "partial-retry",
+            1,
+            1,
+            isResourceChangeCaptureEnabled: true,
+            transactionId);
+
+        // Assert
+        affectedRows.ShouldBe(15);
+        (await ReadRetryIndexFamilyCountsAsync(database, 1)).ShouldAllBe(count => count == 1);
+        (await ReadCountAsync(database, "dbo.ResourceChangeData")).ShouldBe(1);
+        (await ReadTransactionCompletionAsync(database, transactionId)).ShouldBe((true, true));
+        (await ReadMembershipCodesAsync(database, 1)).ShouldBe(["retry-code"]);
+        (await ReadCountAsync(database, "dbo.EventLog")).ShouldBe(2);
+        (await ReadScalarAsync<string>(
+            database,
+            "SELECT TOP 1 Mode FROM dbo.EventLog WHERE Process = 'MergeResources' ORDER BY EventId DESC;",
+            CancellationToken.None)).ShouldContain("R=1");
+    }
+
+    [SkippableFact]
     public async Task GivenReindexedCodes_WhenUpdateWrapperSucceeds_ThenOnlyTheNewContributionRemains()
     {
         // Arrange
@@ -536,6 +572,24 @@ public class LastNCodeGroupMaintenanceTests
 
         // Assert
         (await ReadCurrentVersionAsync(database, "observation")).ShouldBe(2);
+        (await ReadMembershipCodesAsync(database, 2)).ShouldBe(["current"]);
+    }
+
+    [SkippableFact]
+    public async Task GivenANullKeepCurrentVersion_WhenHardDeleteWrapperRuns_ThenBaseNullSemanticsAndCurrentMaterializationArePreserved()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await ConfigureScopeAsync(database, SearchParamId);
+        await ExecuteMergeWrapperAsync(database.Connection, "null-delete", 1, 1, [(SearchParamId, "old")]);
+        await ExecuteMergeWrapperAsync(database.Connection, "null-delete", 2, 2, [(SearchParamId, "current")]);
+
+        // Act
+        await ExecuteHardDeleteWrapperAsync(database.Connection, "null-delete", keepCurrentVersion: null);
+
+        // Assert
+        (await ReadResourceCountAsync(database, "null-delete")).ShouldBe(1);
+        (await ReadCurrentVersionAsync(database, "null-delete")).ShouldBe(2);
         (await ReadMembershipCodesAsync(database, 2)).ShouldBe(["current"]);
     }
 
@@ -795,6 +849,96 @@ public class LastNCodeGroupMaintenanceTests
         await command.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
+    private static async Task<int> ExecuteCompleteMergeWrapperAsync(
+        SqlConnection connection,
+        string resourceId,
+        long resourceSurrogateId,
+        int version,
+        bool isResourceChangeCaptureEnabled = false,
+        long? transactionId = null)
+    {
+        await using SqlCommand command = connection.CreateCommand();
+        command.CommandText = DeclareWriteTvpsSql + """
+            INSERT INTO @Resources
+                (ResourceTypeId, ResourceSurrogateId, ResourceId, Version, HasVersionToCompare,
+                 IsDeleted, IsHistory, KeepHistory, RawResource, IsRawResourceMetaSet, RequestMethod,
+                 SearchParamHash)
+            VALUES
+                (@resourceTypeId, @resourceSurrogateId, @resourceId, @version, 1,
+                 0, 0, 1, 0x01, 0, 'PUT', 'complete-hash');
+            INSERT INTO @ResourceWriteClaims VALUES (@resourceSurrogateId, 1, N'retry-claim');
+            INSERT INTO @ReferenceSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 21, NULL, NULL, 'reference-id', NULL);
+            INSERT INTO @TokenSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, @searchParamId, 7, 'retry-code', NULL);
+            INSERT INTO @TokenTexts VALUES
+                (@resourceTypeId, @resourceSurrogateId, 22, N'retry text');
+            INSERT INTO @StringSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 23, N'retry string', NULL, 0, 0);
+            INSERT INTO @UriSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 24, 'https://example.test/retry');
+            INSERT INTO @NumberSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 25, 1, 1, 1);
+            INSERT INTO @QuantitySearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 26, 7, 8, 2, 2, 2);
+            INSERT INTO @DateTimeSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 27,
+                 '2026-08-29T00:00:00+00:00', '2026-08-30T00:00:00+00:00', 0, 0, 0);
+            INSERT INTO @ReferenceTokenCompositeSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 28, NULL, NULL, 'reference-id', NULL,
+                 7, 'reference-token', NULL);
+            INSERT INTO @TokenTokenCompositeSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 29,
+                 7, 'token-one', NULL, 8, 'token-two', NULL);
+            INSERT INTO @TokenDateTimeCompositeSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 30, 7, 'token-date', NULL,
+                 '2026-08-29T00:00:00+00:00', '2026-08-30T00:00:00+00:00', 0);
+            INSERT INTO @TokenQuantityCompositeSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 31, 7, 'token-quantity', NULL,
+                 8, 9, 3, 3, 3);
+            INSERT INTO @TokenStringCompositeSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 32, 7, 'token-string', NULL,
+                 N'composite string', NULL);
+            INSERT INTO @TokenNumberNumberCompositeSearchParams VALUES
+                (@resourceTypeId, @resourceSurrogateId, 33, 7, 'token-number', NULL,
+                 4, 4, 4, 5, 5, 5, 0);
+            DECLARE @AffectedRows INT;
+            EXEC dbo.MergeResourcesAndMaintainLastNGroups
+                @AffectedRows = @AffectedRows OUTPUT,
+                @RaiseExceptionOnConflict = 1,
+                @IsResourceChangeCaptureEnabled = @isResourceChangeCaptureEnabled,
+                @TransactionId = @transactionId,
+                @SingleTransaction = 1,
+                @Resources = @Resources,
+                @ResourceWriteClaims = @ResourceWriteClaims,
+                @ReferenceSearchParams = @ReferenceSearchParams,
+                @TokenSearchParams = @TokenSearchParams,
+                @TokenTexts = @TokenTexts,
+                @StringSearchParams = @StringSearchParams,
+                @UriSearchParams = @UriSearchParams,
+                @NumberSearchParams = @NumberSearchParams,
+                @QuantitySearchParams = @QuantitySearchParams,
+                @DateTimeSearchParms = @DateTimeSearchParams,
+                @ReferenceTokenCompositeSearchParams = @ReferenceTokenCompositeSearchParams,
+                @TokenTokenCompositeSearchParams = @TokenTokenCompositeSearchParams,
+                @TokenDateTimeCompositeSearchParams = @TokenDateTimeCompositeSearchParams,
+                @TokenQuantityCompositeSearchParams = @TokenQuantityCompositeSearchParams,
+                @TokenStringCompositeSearchParams = @TokenStringCompositeSearchParams,
+                @TokenNumberNumberCompositeSearchParams = @TokenNumberNumberCompositeSearchParams;
+            SELECT @AffectedRows;
+            """;
+        command.Parameters.Add("@resourceTypeId", SqlDbType.SmallInt).Value = ResourceTypeId;
+        command.Parameters.Add("@resourceSurrogateId", SqlDbType.BigInt).Value = resourceSurrogateId;
+        command.Parameters.Add("@resourceId", SqlDbType.VarChar, 64).Value = resourceId;
+        command.Parameters.Add("@version", SqlDbType.Int).Value = version;
+        command.Parameters.Add("@searchParamId", SqlDbType.SmallInt).Value = SearchParamId;
+        command.Parameters.Add("@isResourceChangeCaptureEnabled", SqlDbType.Bit).Value =
+            isResourceChangeCaptureEnabled;
+        command.Parameters.Add("@transactionId", SqlDbType.BigInt).Value =
+            transactionId is null ? DBNull.Value : transactionId.Value;
+        return (int)(await command.ExecuteScalarAsync(CancellationToken.None)).ShouldNotBeNull();
+    }
+
     private static async Task ExecuteUpdateWrapperAsync(
         SqlConnection connection,
         string resourceId,
@@ -845,16 +989,95 @@ public class LastNCodeGroupMaintenanceTests
     private static async Task ExecuteHardDeleteWrapperAsync(
         SqlConnection connection,
         string resourceId,
-        bool keepCurrentVersion)
+        bool? keepCurrentVersion)
     {
         await using SqlCommand command = connection.CreateCommand();
         command.CommandText = "dbo.HardDeleteResourceAndMaintainLastNGroups";
         command.CommandType = CommandType.StoredProcedure;
         command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = ResourceTypeId;
         command.Parameters.Add("@ResourceId", SqlDbType.VarChar, 64).Value = resourceId;
-        command.Parameters.Add("@KeepCurrentVersion", SqlDbType.Bit).Value = keepCurrentVersion;
+        command.Parameters.Add("@KeepCurrentVersion", SqlDbType.Bit).Value =
+            keepCurrentVersion is null ? DBNull.Value : keepCurrentVersion.Value;
         command.Parameters.Add("@IsResourceChangeCaptureEnabled", SqlDbType.Bit).Value = false;
         await command.ExecuteNonQueryAsync(CancellationToken.None);
+    }
+
+    private static Task DeleteAllRetryIndexFamiliesAsync(LastNTestDatabase database, long resourceSurrogateId)
+        => ExecuteNonQueryAsync(
+            database,
+            """
+            DELETE FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.ReferenceSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.TokenText WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.StringSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.UriSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.NumberSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.QuantitySearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.DateTimeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.ReferenceTokenCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.TokenTokenCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.TokenDateTimeCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.TokenQuantityCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.TokenStringCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            DELETE FROM dbo.TokenNumberNumberCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId;
+            """,
+            CancellationToken.None,
+            new SqlParameter("@resourceSurrogateId", SqlDbType.BigInt) { Value = resourceSurrogateId });
+
+    private static async Task<IReadOnlyList<int>> ReadRetryIndexFamilyCountsAsync(
+        LastNTestDatabase database,
+        long resourceSurrogateId)
+    {
+        await using SqlCommand command = database.Connection.CreateCommand();
+        command.CommandText = """
+            SELECT (SELECT COUNT(*) FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.ReferenceSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.TokenText WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.StringSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.UriSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.NumberSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.QuantitySearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.DateTimeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.ReferenceTokenCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.TokenTokenCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.TokenDateTimeCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.TokenQuantityCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.TokenStringCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId),
+                   (SELECT COUNT(*) FROM dbo.TokenNumberNumberCompositeSearchParam WHERE ResourceSurrogateId = @resourceSurrogateId);
+            """;
+        command.Parameters.Add("@resourceSurrogateId", SqlDbType.BigInt).Value = resourceSurrogateId;
+        await using SqlDataReader reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        (await reader.ReadAsync(CancellationToken.None)).ShouldBeTrue();
+        return Enumerable.Range(0, reader.FieldCount).Select(reader.GetInt32).ToArray();
+    }
+
+    private static async Task<long> BeginMergeTransactionAsync(LastNTestDatabase database)
+    {
+        await using SqlCommand command = database.Connection.CreateCommand();
+        command.CommandText = """
+            DECLARE @TransactionId BIGINT;
+            EXEC dbo.MergeResourcesBeginTransaction @Count = 1, @TransactionId = @TransactionId OUTPUT;
+            SELECT @TransactionId;
+            """;
+        return (long)(await command.ExecuteScalarAsync(CancellationToken.None)).ShouldNotBeNull();
+    }
+
+    private static async Task<(bool IsCompleted, bool IsSuccess)> ReadTransactionCompletionAsync(
+        LastNTestDatabase database,
+        long transactionId)
+    {
+        await using SqlCommand command = database.Connection.CreateCommand();
+        command.CommandText = """
+            SELECT IsCompleted, IsSuccess
+            FROM dbo.Transactions
+            WHERE SurrogateIdRangeFirstValue = @transactionId;
+            """;
+        command.Parameters.Add("@transactionId", SqlDbType.BigInt).Value = transactionId;
+        await using SqlDataReader reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        (await reader.ReadAsync(CancellationToken.None)).ShouldBeTrue();
+        return (reader.GetBoolean(0), reader.GetBoolean(1));
     }
 
     private static void AddWriteParameters(

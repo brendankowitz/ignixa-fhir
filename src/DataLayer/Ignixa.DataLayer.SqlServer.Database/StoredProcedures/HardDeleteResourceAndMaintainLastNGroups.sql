@@ -19,7 +19,7 @@ BEGIN
     DECLARE @LockResult INT;
     DECLARE @LockResource NVARCHAR(255);
 
-    IF @KeepCurrentVersion = 1
+    IF @KeepCurrentVersion = 1 OR @KeepCurrentVersion IS NULL
     BEGIN
         EXEC dbo.HardDeleteResource
             @ResourceTypeId = @ResourceTypeId,
