@@ -81,13 +81,13 @@ graph.
 | One selected coding or `PARTITION BY SystemId, Code` | Rejected | It loses translations and transitive equivalence, duplicates results, or splits one FHIR code group. |
 | Persist every root-to-node reachability relation | Rejected | Exact but can require O(V²) rows per component and makes edge-removal repair needlessly expensive. |
 | Elasticsearch-style side index | Rejected | Adds another consistency boundary and does not provide an existing compliant implementation to adopt. |
-| Reference-counted direct-SQL graph materialization | Selected for evaluation | Stores O(V + E + M) state, preserves every distinct same-Observation edge once, supports deletion, and leaves the read path as indexed grouping and ranking. |
+| Reference-counted direct-SQL graph materialization | Implemented and accepted | Stores O(V + E + M) state, preserves every distinct same-Observation edge once, supports deletion, and leaves the read path as indexed grouping and ranking. |
 
 Reference counts are required because more than one Observation can support the
 same edge. Removing one Observation decrements its distinct edges but must not
 disconnect codes while another Observation still supports the translation.
 
-## Proposed Schema
+## Implemented Schema
 
 The SSDT project adds the following additive tables. `ResourceTypeId` and
 `SearchParamId` define the materialization scope. They are retained on every

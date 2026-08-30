@@ -287,9 +287,10 @@ implicit status filter.
   stores effective date ranges and the `IsMin`/`IsMax` sort markers.
 - `src/Core/Ignixa.Search.Sql/Builders/AggregatedSortKeyEmitter.cs` already emits
   grouped derived tables.
-- `src/Core/Ignixa.Search.Sql/Builders/ShapeEmitter.cs` already uses a window
-  function for include truncation, but the compiler has no existing
-  `RANK()`, `ROW_NUMBER()`, or `PARTITION BY` abstraction.
+- At the time of this query-time prototype, `ShapeEmitter` used a window
+  function for include truncation, but the compiler had no existing
+  `RANK()`, `ROW_NUMBER()`, or `PARTITION BY` abstraction. The current
+  materialized implementation emits the required `RANK()` shape.
 
 ### Live SQL Server benchmark
 
