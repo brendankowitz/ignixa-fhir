@@ -8,9 +8,6 @@
 using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Analysis;
-using Ignixa.FhirPath.Expressions;
-using Ignixa.FhirPath.Parser;
-using Ignixa.FhirPath.Visitors;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Exceptions;
 using Ignixa.Search.Models;
@@ -28,7 +25,6 @@ public sealed class LastNSearchOptionsBuilder
     private readonly ISearchParameterDefinitionManager _searchParameterDefinitionManager;
     private readonly IFhirSchemaProvider _schemaProvider;
     private readonly FhirPathAnalyzer _fhirPathAnalyzer;
-    private static readonly CodeElementDetector CodeDetector = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LastNSearchOptionsBuilder"/> class.
@@ -143,52 +139,15 @@ public sealed class LastNSearchOptionsBuilder
         string code = parameter.Key.Split(':', 2)[0];
         return _searchParameterDefinitionManager.TryGetSearchParameter("Observation", code, out SearchParameterInfo searchParameter) &&
                (searchParameter.Code == "category" ||
-               (ContainsCodeElement(searchParameter.Expression) ||
-                searchParameter.Component.Any(component => ContainsCodeElement(component.Expression))));
+               (ReturnsCodeBearingType(searchParameter.Expression) ||
+                searchParameter.Component.Any(component => ReturnsCodeBearingType(component.Expression))));
     }
 
-    private bool ContainsCodeElement(string expression)
+    private bool ReturnsCodeBearingType(string expression)
     {
         var analysis = _fhirPathAnalyzer.Analyze(expression, "Observation");
         return analysis.IsValid &&
-               new FhirPathParser().Parse(expression).AcceptVisitor(CodeDetector, false);
-    }
-
-    private sealed class CodeElementDetector : DefaultFhirPathExpressionVisitor<bool, bool>
-    {
-        public override bool VisitIdentifier(IdentifierExpression expression, bool context) =>
-            string.Equals(expression.Name, "code", StringComparison.Ordinal);
-
-        public override bool VisitBinary(BinaryExpression expression, bool context) =>
-            expression.Left.AcceptVisitor(this, context) ||
-            expression.Right.AcceptVisitor(this, context);
-
-        public override bool VisitUnary(UnaryExpression expression, bool context) =>
-            expression.Operand.AcceptVisitor(this, context);
-
-        public override bool VisitFunctionCall(FunctionCallExpression expression, bool context) =>
-            (expression.Focus is not null && expression.Focus.AcceptVisitor(this, context)) ||
-            expression.Arguments.Any(argument => argument.AcceptVisitor(this, context));
-
-        public override bool VisitChild(ChildExpression expression, bool context) =>
-            string.Equals(expression.ChildName, "code", StringComparison.Ordinal) ||
-            (expression.Focus is not null &&
-             expression.Focus.AcceptVisitor(this, context));
-
-        public override bool VisitIndexer(IndexerExpression expression, bool context) =>
-            expression.Collection.AcceptVisitor(this, context) ||
-            expression.Index.AcceptVisitor(this, context);
-
-        public override bool VisitParenthesized(ParenthesizedExpression expression, bool context) =>
-            expression.InnerExpression.AcceptVisitor(this, context);
-
-        public override bool VisitPropertyAccess(PropertyAccessExpression expression, bool context) =>
-            string.Equals(expression.PropertyName, "code", StringComparison.Ordinal) ||
-            (expression.Focus is not null && expression.Focus.AcceptVisitor(this, context));
-
-        public override bool VisitInstanceSelector(InstanceSelectorExpression expression, bool context) =>
-            expression.Elements.Any(element =>
-                element.ValueExpression is not null &&
-                element.ValueExpression.AcceptVisitor(this, context));
+               analysis.InferredTypes.Types.Any(type =>
+                   type.TypeName is "Coding" or "CodeableConcept" or "code");
     }
 }

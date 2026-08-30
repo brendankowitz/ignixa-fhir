@@ -37,15 +37,22 @@ a deadlock rather than assuming an ambiguous transaction was replayed.
 Use `ILastNCodeGroupBackfillService.EnableScopeAsync` to create the scope's
 `Pending` generation row, then call `BuildAsync` with a positive batch size. A
 build starts a distinct attempt, increments the generation, changes the state to
-`Building`, and records its snapshot high-water surrogate id. It processes
-committed ranges, so an interrupted build can be restarted by calling `BuildAsync`
-again; the new attempt receives the next generation.
+`Building`, records its snapshot high-water surrogate id, and takes a one-minute
+lease. Each committed batch atomically advances the durable high-water progress
+and renews that lease. The same attempt can resume immediately; a different
+attempt is rejected while the lease is live. After expiry, one new `BuildAsync`
+caller atomically takes ownership of the same generation and resumes at the first
+uncommitted range. It does not replay committed ranges or capture a new snapshot.
 
 Writes that occur while a generation is `Building` are deduplicated in
 `LastNCodeGroupDirtyObservation`. Completion holds the same exclusive scope lock,
 replays dirty resources until empty, repairs the full scope, validates invariants,
 and atomically marks the generation `Ready`. Cancellation or failure records
-`Failed` with a bounded reason. If starting a generation has an ambiguous
+`Failed` with a bounded reason. Batch, completion, and failure operations match
+both the active generation and its current attempt, so an expired owner cannot
+mutate a generation after takeover. `BuildAsync` obtains lease timestamps from
+its `TimeProvider` (system time by default), allowing deterministic recovery
+tests. If starting a generation has an ambiguous
 connectivity outcome, the service reconciles only its own attempt id before
 recording failure; reconciliation remains best-effort while SQL Server is
 unreachable.

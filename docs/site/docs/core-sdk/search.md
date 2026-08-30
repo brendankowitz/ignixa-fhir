@@ -235,6 +235,18 @@ generation. A missing, pending, building, or failed generation returns an
 explicit unavailable error; the compiler never falls back to query-time graph
 construction.
 
+For R4 and later required-input validation, code-bearing search parameters are
+classified from the version-specific FHIRPath analyzer's inferred result types.
+Direct `Coding`, `CodeableConcept`, and primitive `code` results qualify,
+including composite components and custom parameters whose path does not contain
+a segment named `code`. Traversing through a code-bearing element does not
+qualify when the expression ultimately returns a non-code descendant.
+
+Backfill workers persist committed surrogate-id progress and hold a bounded
+lease. A competing worker is rejected while that lease is live; after expiry, a
+new worker atomically takes over the same snapshot generation and resumes from
+the first uncommitted range.
+
 The initial shape rejects `_sort`, `_count`, continuation tokens, `_include`,
 and `_revinclude`. The server does not advertise an HTTP `$lastn` route until
 the Application handler, endpoint, and capability statement are added in a

@@ -11,6 +11,8 @@ public class LastNCodeGroupBackfillTests
     private const short ResourceTypeId = 104;
     private const short SearchParamId = 210;
     private static readonly LastNCodeGroupScope Scope = new(ResourceTypeId, SearchParamId);
+    private static readonly DateTimeOffset AttemptStart =
+        new(2026, 8, 30, 9, 0, 0, TimeSpan.Zero);
 
     [SkippableFact]
     public async Task GivenAnEnabledPendingScope_WhenEnabledAgain_ThenGenerationAndStateArePreserved()
@@ -29,6 +31,8 @@ public class LastNCodeGroupBackfillTests
         status.Generation.ShouldBe(0);
         status.State.ShouldBe("Pending");
         status.SnapshotHighWaterSurrogateId.ShouldBeNull();
+        status.LastCommittedResourceSurrogateId.ShouldBeNull();
+        status.LeaseExpiresDateTime.ShouldBeNull();
     }
 
     [SkippableFact]
@@ -94,12 +98,12 @@ public class LastNCodeGroupBackfillTests
         await SeedObservationAsync(database, 10, "a");
         await SeedObservationAsync(database, 20, "b");
         LastNCodeGroupGenerationStatus generation = await StartAsync(database);
-        await BackfillBatchAsync(database, generation.Generation, 10, 10);
+        await BackfillBatchAsync(database, generation, 10, 10);
 
         // Act
-        await BackfillBatchAsync(database, generation.Generation, 10, 10);
-        await BackfillBatchAsync(database, generation.Generation, 11, 20);
-        await CompleteAsync(database, generation.Generation);
+        await BackfillBatchAsync(database, generation, 10, 10);
+        await BackfillBatchAsync(database, generation, 11, 20);
+        await CompleteAsync(database, generation);
 
         // Assert
         (await ReadGenerationAsync(database)).State.ShouldBe("Ready");
@@ -116,11 +120,11 @@ public class LastNCodeGroupBackfillTests
         await EnableAsync(database);
         await SeedObservationAsync(database, 50, "old", resourceId: "changing", version: 1);
         LastNCodeGroupGenerationStatus generation = await StartAsync(database);
-        await BackfillBatchAsync(database, generation.Generation, 1, 100);
+        await BackfillBatchAsync(database, generation, 1, 100);
         await ReplaceObservationAndMarkDirtyAsync(database, generation.Generation);
 
         // Act
-        await CompleteAsync(database, generation.Generation);
+        await CompleteAsync(database, generation);
 
         // Assert
         (await ReadGenerationAsync(database)).State.ShouldBe("Ready");
@@ -143,7 +147,7 @@ public class LastNCodeGroupBackfillTests
         await InsertDirtyAsync(database, second.Generation, 10);
 
         // Act
-        await CompleteAsync(database, second.Generation);
+        await CompleteAsync(database, second);
 
         // Assert
         (await ReadGenerationAsync(database)).State.ShouldBe("Ready");
@@ -257,6 +261,9 @@ public class LastNCodeGroupBackfillTests
         command.CommandType = CommandType.StoredProcedure;
         AddScopeParameters(command);
         command.Parameters.Add("@AttemptId", SqlDbType.UniqueIdentifier).Value = DBNull.Value;
+        command.Parameters.Add("@CurrentDateTime", SqlDbType.DateTime2).Value = AttemptStart.UtcDateTime;
+        command.Parameters.Add("@LeaseExpiresDateTime", SqlDbType.DateTime2).Value =
+            AttemptStart.AddMinutes(1).UtcDateTime;
 
         // Act
         SqlException exception = await Should.ThrowAsync<SqlException>(
@@ -286,10 +293,12 @@ public class LastNCodeGroupBackfillTests
                     originalAttemptId,
                     originalGeneration,
                     "Building",
+                    null,
+                    null,
                     null);
                 await FailAsync(database, original, "superseded");
                 LastNCodeGroupGenerationStatus newer = await StartAsync(database, newerAttemptId);
-                await CompleteAsync(database, newer.Generation);
+                await CompleteAsync(database, newer);
             });
         ILastNCodeGroupBackfillService service = new LastNCodeGroupBackfillService(execution);
         await service.EnableScopeAsync(1, Scope, CancellationToken.None);
@@ -362,6 +371,52 @@ public class LastNCodeGroupBackfillTests
         exception.ParamName.ShouldBe("batchSize");
     }
 
+    [SkippableFact]
+    public async Task GivenACommittedBatchAndExpiredLease_WhenANewServiceBuilds_ThenItTakesOverWithoutReplayingCommittedProgress()
+    {
+        // Arrange
+        await using LastNTestDatabase database = await LastNTestDatabase.CreateAndDeployAsync();
+        await EnableAsync(database);
+        await SeedObservationAsync(database, 10, "a");
+        await SeedObservationAsync(database, 20, "b");
+        Guid abandonedAttemptId = Guid.Parse("8dcc61f0-3f43-47e7-b349-70c75aa4e0fc");
+        LastNCodeGroupGenerationStatus abandoned = await StartAsync(
+            database,
+            abandonedAttemptId,
+            AttemptStart);
+        await BackfillBatchAsync(database, abandoned, 10, 10);
+        abandoned = await ReadGenerationAsync(database);
+        abandoned.LastCommittedResourceSurrogateId.ShouldBe(10);
+
+        var liveOwnerClock = new FixedTimeProvider(AttemptStart.AddSeconds(30));
+        ILastNCodeGroupBackfillService competingService = new LastNCodeGroupBackfillService(
+            CreateExecutionService(database),
+            liveOwnerClock);
+        SqlException liveLeaseException = await Should.ThrowAsync<SqlException>(
+            () => competingService.BuildAsync(1, Scope, 10, CancellationToken.None));
+        liveLeaseException.Number.ShouldBe(50425);
+
+        var takeoverClock = new FixedTimeProvider(AttemptStart.AddMinutes(2));
+        var recordingExecution = new RecordingBackfillExecutionService(CreateExecutionService(database));
+        ILastNCodeGroupBackfillService takeoverService = new LastNCodeGroupBackfillService(
+            recordingExecution,
+            takeoverClock);
+
+        // Act
+        await takeoverService.BuildAsync(1, Scope, 10, CancellationToken.None);
+
+        // Assert
+        LastNCodeGroupGenerationStatus completed = await ReadGenerationAsync(database);
+        completed.Generation.ShouldBe(abandoned.Generation);
+        completed.AttemptId.ShouldNotBe(abandonedAttemptId);
+        completed.State.ShouldBe("Ready");
+        completed.LastCommittedResourceSurrogateId.ShouldBe(20);
+        completed.LeaseExpiresDateTime.ShouldBeNull();
+        recordingExecution.BackfillRanges.ShouldBe([(11L, 20L)]);
+        (await ReadMembershipCodesAsync(database, 10)).ShouldBe(["a"]);
+        (await ReadMembershipCodesAsync(database, 20)).ShouldBe(["b"]);
+    }
+
     private static ILastNCodeGroupBackfillService CreateService(LastNTestDatabase database)
         => new LastNCodeGroupBackfillService(CreateExecutionService(database));
 
@@ -385,17 +440,22 @@ public class LastNCodeGroupBackfillTests
         => ExecuteProcedureAsync(database, "dbo.EnableLastNCodeGroupScope");
 
     private static Task<LastNCodeGroupGenerationStatus> StartAsync(LastNTestDatabase database)
-        => StartAsync(database, Guid.NewGuid());
+        => StartAsync(database, Guid.NewGuid(), AttemptStart);
 
     private static async Task<LastNCodeGroupGenerationStatus> StartAsync(
         LastNTestDatabase database,
-        Guid attemptId)
+        Guid attemptId,
+        DateTimeOffset? currentTime = null)
     {
+        DateTimeOffset now = currentTime ?? AttemptStart;
         await using SqlCommand command = database.Connection.CreateCommand();
         command.CommandText = "dbo.StartLastNCodeGroupGeneration";
         command.CommandType = CommandType.StoredProcedure;
         AddScopeParameters(command);
         command.Parameters.Add("@AttemptId", SqlDbType.UniqueIdentifier).Value = attemptId;
+        command.Parameters.Add("@CurrentDateTime", SqlDbType.DateTime2).Value = now.UtcDateTime;
+        command.Parameters.Add("@LeaseExpiresDateTime", SqlDbType.DateTime2).Value =
+            now.AddMinutes(1).UtcDateTime;
         await using SqlDataReader reader = await command.ExecuteReaderAsync(CancellationToken.None);
         (await reader.ReadAsync(CancellationToken.None)).ShouldBeTrue();
         return ReadStatus(reader);
@@ -403,21 +463,29 @@ public class LastNCodeGroupBackfillTests
 
     private static Task BackfillBatchAsync(
         LastNTestDatabase database,
-        long generation,
+        LastNCodeGroupGenerationStatus generation,
         long startId,
         long endId)
         => ExecuteProcedureAsync(
             database,
             "dbo.BackfillLastNCodeGroupBatch",
-            new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation },
+            new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation.Generation },
+            new SqlParameter("@AttemptId", SqlDbType.UniqueIdentifier) { Value = generation.AttemptId },
             new SqlParameter("@StartResourceSurrogateId", SqlDbType.BigInt) { Value = startId },
-            new SqlParameter("@EndResourceSurrogateId", SqlDbType.BigInt) { Value = endId });
+            new SqlParameter("@EndResourceSurrogateId", SqlDbType.BigInt) { Value = endId },
+            new SqlParameter("@LeaseExpiresDateTime", SqlDbType.DateTime2)
+            {
+                Value = AttemptStart.AddMinutes(1).UtcDateTime,
+            });
 
-    private static Task CompleteAsync(LastNTestDatabase database, long generation)
+    private static Task CompleteAsync(
+        LastNTestDatabase database,
+        LastNCodeGroupGenerationStatus generation)
         => ExecuteProcedureAsync(
             database,
             "dbo.CompleteLastNCodeGroupGeneration",
-            new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation });
+            new SqlParameter("@Generation", SqlDbType.BigInt) { Value = generation.Generation },
+            new SqlParameter("@AttemptId", SqlDbType.UniqueIdentifier) { Value = generation.AttemptId });
 
     private static Task FailAsync(
         LastNTestDatabase database,
@@ -449,7 +517,8 @@ public class LastNCodeGroupBackfillTests
     {
         await using SqlCommand command = database.Connection.CreateCommand();
         command.CommandText = """
-            SELECT Generation, State, SnapshotHighWaterSurrogateId, AttemptId
+            SELECT Generation, State, SnapshotHighWaterSurrogateId, AttemptId,
+                   LastCommittedResourceSurrogateId, LeaseExpiresDateTime
             FROM dbo.LastNCodeGroupGeneration
             WHERE ResourceTypeId = @ResourceTypeId AND SearchParamId = @SearchParamId;
             """;
@@ -464,7 +533,11 @@ public class LastNCodeGroupBackfillTests
             reader.IsDBNull(3) ? null : reader.GetGuid(3),
             reader.GetInt64(0),
             reader.GetString(1),
-            reader.IsDBNull(2) ? null : reader.GetInt64(2));
+            reader.IsDBNull(2) ? null : reader.GetInt64(2),
+            reader.IsDBNull(4) ? null : reader.GetInt64(4),
+            reader.IsDBNull(5)
+                ? null
+                : new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc)));
 
     private static async Task<string?> ReadFailureReasonAsync(LastNTestDatabase database)
     {
@@ -741,5 +814,44 @@ public class LastNCodeGroupBackfillTests
 
             return result;
         }
+    }
+
+    private sealed class RecordingBackfillExecutionService(
+        ISqlExecutionService inner) : ISqlExecutionService
+    {
+        public List<(long Start, long End)> BackfillRanges { get; } = [];
+
+        public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
+            int tenantId,
+            SqlCommand command,
+            Func<SqlDataReader, TResult> readRow,
+            CancellationToken cancellationToken)
+            => inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken);
+
+        public async Task<int> ExecuteNonQueryAsync(
+            int tenantId,
+            SqlCommand command,
+            CancellationToken cancellationToken,
+            bool disableRetries = false)
+        {
+            int result = await inner.ExecuteNonQueryAsync(
+                tenantId,
+                command,
+                cancellationToken,
+                disableRetries);
+            if (command.CommandText == "dbo.BackfillLastNCodeGroupBatch")
+            {
+                BackfillRanges.Add((
+                    Convert.ToInt64(command.Parameters["@StartResourceSurrogateId"].Value),
+                    Convert.ToInt64(command.Parameters["@EndResourceSurrogateId"].Value)));
+            }
+
+            return result;
+        }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

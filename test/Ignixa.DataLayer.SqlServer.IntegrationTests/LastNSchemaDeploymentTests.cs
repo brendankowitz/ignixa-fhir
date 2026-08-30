@@ -64,6 +64,8 @@ public class LastNSchemaDeploymentTests
             "AttemptId",
             "State",
             "SnapshotHighWaterSurrogateId",
+            "LastCommittedResourceSurrogateId",
+            "LeaseExpiresDateTime",
             "StartedDateTime",
             "CompletedDateTime",
             "FailureReason",

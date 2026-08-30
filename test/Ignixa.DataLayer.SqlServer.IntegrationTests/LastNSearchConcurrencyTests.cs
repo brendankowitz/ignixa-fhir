@@ -137,6 +137,9 @@ public class LastNSearchConcurrencyTests
         command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = (short)104;
         command.Parameters.Add("@SearchParamId", SqlDbType.SmallInt).Value = (short)210;
         command.Parameters.Add("@AttemptId", SqlDbType.UniqueIdentifier).Value = Guid.NewGuid();
+        DateTime now = DateTime.UtcNow;
+        command.Parameters.Add("@CurrentDateTime", SqlDbType.DateTime2).Value = now;
+        command.Parameters.Add("@LeaseExpiresDateTime", SqlDbType.DateTime2).Value = now.AddMinutes(1);
         return command;
     }
 

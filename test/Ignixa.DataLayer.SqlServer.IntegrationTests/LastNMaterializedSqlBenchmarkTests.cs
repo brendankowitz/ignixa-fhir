@@ -179,13 +179,17 @@ public sealed class LastNMaterializedSqlBenchmarkTests(ITestOutputHelper output)
         }
 
         long generation;
+        Guid attemptId = Guid.NewGuid();
+        DateTime now = DateTime.UtcNow;
         await using (SqlCommand start = connection.CreateCommand())
         {
             start.CommandText = "dbo.StartLastNCodeGroupGeneration";
             start.CommandType = CommandType.StoredProcedure;
             start.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = ObservationResourceTypeId;
             start.Parameters.Add("@SearchParamId", SqlDbType.SmallInt).Value = CodeSearchParamId;
-            start.Parameters.Add("@AttemptId", SqlDbType.UniqueIdentifier).Value = Guid.NewGuid();
+            start.Parameters.Add("@AttemptId", SqlDbType.UniqueIdentifier).Value = attemptId;
+            start.Parameters.Add("@CurrentDateTime", SqlDbType.DateTime2).Value = now;
+            start.Parameters.Add("@LeaseExpiresDateTime", SqlDbType.DateTime2).Value = now.AddMinutes(1);
             SqlParameter generationParameter = start.Parameters.Add("@StartedGeneration", SqlDbType.BigInt);
             generationParameter.Direction = ParameterDirection.Output;
             start.CommandTimeout = SetupCommandTimeoutSeconds;
@@ -197,11 +201,13 @@ public sealed class LastNMaterializedSqlBenchmarkTests(ITestOutputHelper output)
             connection,
             "dbo.BackfillLastNCodeGroupBatch",
             generation,
+            attemptId,
             includeRange: true);
         await ExecuteGenerationProcedureAsync(
             connection,
             "dbo.CompleteLastNCodeGroupGeneration",
             generation,
+            attemptId,
             includeRange: false);
     }
 
@@ -209,6 +215,7 @@ public sealed class LastNMaterializedSqlBenchmarkTests(ITestOutputHelper output)
         SqlConnection connection,
         string procedureName,
         long generation,
+        Guid attemptId,
         bool includeRange)
     {
         await using SqlCommand command = connection.CreateCommand();
@@ -219,10 +226,12 @@ public sealed class LastNMaterializedSqlBenchmarkTests(ITestOutputHelper output)
         command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = ObservationResourceTypeId;
         command.Parameters.Add("@SearchParamId", SqlDbType.SmallInt).Value = CodeSearchParamId;
         command.Parameters.Add("@Generation", SqlDbType.BigInt).Value = generation;
+        command.Parameters.Add("@AttemptId", SqlDbType.UniqueIdentifier).Value = attemptId;
         if (includeRange)
         {
             command.Parameters.Add("@StartResourceSurrogateId", SqlDbType.BigInt).Value = SurrogateBase + 1;
             command.Parameters.Add("@EndResourceSurrogateId", SqlDbType.BigInt).Value = SurrogateBase + ObservationCount;
+            command.Parameters.Add("@LeaseExpiresDateTime", SqlDbType.DateTime2).Value = DateTime.UtcNow.AddMinutes(1);
         }
 
         command.CommandTimeout = SetupCommandTimeoutSeconds;

@@ -47,4 +47,9 @@ transaction-owned `LastNCodeGroup:{ResourceTypeId}:{SearchParamId}` locks in
 lexicographic scope order, and maintain graph rows in the same transaction as
 the base resource write. `LastNCodeGroupGeneration` admits reads only when its
 state is `Ready`; `Pending`, `Building`, and `Failed` remain explicit unavailable
-states until a resumable generation completes.
+states until a resumable generation completes. A building row durably stores its
+current attempt, bounded lease expiry, snapshot high water, and highest committed
+backfill surrogate id. Start serializes live-owner rejection or expired-lease
+takeover under the scope lock; every batch advances progress and renews the lease
+in the same transaction as materialization. Batch, completion, and failure
+procedures require the current attempt id.

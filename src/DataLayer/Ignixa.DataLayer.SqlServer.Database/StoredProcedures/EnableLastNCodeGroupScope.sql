@@ -19,10 +19,11 @@ BEGIN
         BEGIN
             INSERT INTO dbo.LastNCodeGroupGeneration
                 (ResourceTypeId, SearchParamId, Generation, AttemptId, State, SnapshotHighWaterSurrogateId,
-                 StartedDateTime, CompletedDateTime, FailureReason)
+                 LastCommittedResourceSurrogateId, LeaseExpiresDateTime, StartedDateTime,
+                 CompletedDateTime, FailureReason)
             VALUES
                 (@ResourceTypeId, @SearchParamId, 0, NULL, 'Pending', NULL,
-                 SYSUTCDATETIME(), NULL, NULL);
+                 NULL, NULL, SYSUTCDATETIME(), NULL, NULL);
         END;
 
         COMMIT TRANSACTION;

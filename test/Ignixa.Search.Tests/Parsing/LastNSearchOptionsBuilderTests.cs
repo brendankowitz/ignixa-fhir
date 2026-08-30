@@ -422,16 +422,21 @@ public class LastNSearchOptionsBuilderTests
         options.Maximum.ShouldBe(1);
     }
 
-    [Fact]
-    public void GivenACustomCodeBearingFilterForR4_WhenBuildingLastNOptions_ThenAcceptsTheRequest()
+    [Theory]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenACustomPrimitiveCodeFilterWithoutACodePathSegment_WhenBuildingLastNOptions_ThenAcceptsTheRequest(
+        FhirVersion version)
     {
         // Arrange
-        var context = CreateObservationContext();
+        var context = CreateObservationContext(CreateSchemaProvider(version));
         context.Add(
             "Observation",
-            "component-value",
+            "workflow-status",
             SearchParamType.Token,
-            expression: "Observation.component.code");
+            expression: "Observation.status");
         var builder = new LastNSearchOptionsBuilder(
             new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
             context.DefinitionManager,
@@ -441,7 +446,36 @@ public class LastNSearchOptionsBuilderTests
         LastNSearchOptions options = builder.Build(
         [
             new QueryParameter("subject", "Patient/1"),
-            new QueryParameter("component-value", "http://loinc.org|1234-5"),
+            new QueryParameter("workflow-status", "final"),
+        ]);
+
+        // Assert
+        options.Maximum.ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.R4, "Observation.code", "direct-concept")]
+    [InlineData(FhirVersion.R4B, "Observation.code.coding", "direct-coding")]
+    [InlineData(FhirVersion.R5, "Observation.code", "direct-concept")]
+    [InlineData(FhirVersion.R6, "Observation.code.coding", "direct-coding")]
+    public void GivenADirectComplexCodeBearingResult_WhenBuildingLastNOptions_ThenAcceptsTheRequest(
+        FhirVersion version,
+        string expression,
+        string parameterCode)
+    {
+        // Arrange
+        var context = CreateObservationContext(CreateSchemaProvider(version));
+        context.Add("Observation", parameterCode, SearchParamType.Token, expression: expression);
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        LastNSearchOptions options = builder.Build(
+        [
+            new QueryParameter("subject", "Patient/1"),
+            new QueryParameter(parameterCode, "http://loinc.org|1234-5"),
         ]);
 
         // Assert
@@ -477,7 +511,7 @@ public class LastNSearchOptionsBuilderTests
     }
 
     [Fact]
-    public void GivenAValueConceptFilterWithoutCode_WhenBuildingLastNOptions_ThenRejectsTheRequest()
+    public void GivenACompositeCodeableConceptResultWithoutACodePathSegment_WhenBuildingLastNOptions_ThenAcceptsTheRequest()
     {
         // Arrange
         var context = CreateObservationContext();
@@ -492,10 +526,41 @@ public class LastNSearchOptionsBuilderTests
             context.SchemaProvider);
 
         // Act
-        BadSearchRequestException exception = Should.Throw<BadSearchRequestException>(() => builder.Build(
+        LastNSearchOptions options = builder.Build(
         [
             new QueryParameter("subject", "Patient/1"),
             new QueryParameter("combo-value-concept", "http://snomed.info/sct|123"),
+        ]);
+
+        // Assert
+        options.Maximum.ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenAnExpressionThatTraversesCodeButReturnsDisplay_WhenBuildingLastNOptions_ThenRejectsTheRequest(
+        FhirVersion version)
+    {
+        // Arrange
+        var context = CreateObservationContext(CreateSchemaProvider(version));
+        context.Add(
+            "Observation",
+            "code-display",
+            SearchParamType.Token,
+            expression: "Observation.code.coding.display");
+        var builder = new LastNSearchOptionsBuilder(
+            new SearchOptionsBuilder(context.Parser, context.DefinitionManager),
+            context.DefinitionManager,
+            context.SchemaProvider);
+
+        // Act
+        BadSearchRequestException exception = Should.Throw<BadSearchRequestException>(() => builder.Build(
+        [
+            new QueryParameter("subject", "Patient/1"),
+            new QueryParameter("code-display", "display"),
         ]));
 
         // Assert
@@ -630,4 +695,14 @@ public class LastNSearchOptionsBuilderTests
         context.Add("Observation", "date", SearchParamType.Date, expression: "Observation.effective");
         return context;
     }
+
+    private static IFhirSchemaProvider CreateSchemaProvider(FhirVersion version)
+        => version switch
+        {
+            FhirVersion.R4 => new R4CoreSchemaProvider(),
+            FhirVersion.R4B => new R4BCoreSchemaProvider(),
+            FhirVersion.R5 => new R5CoreSchemaProvider(),
+            FhirVersion.R6 => new R6CoreSchemaProvider(),
+            _ => throw new ArgumentOutOfRangeException(nameof(version), version, null),
+        };
 }

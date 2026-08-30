@@ -5,6 +5,8 @@ CREATE TABLE dbo.LastNCodeGroupGeneration (
     AttemptId UNIQUEIDENTIFIER NULL,
     State VARCHAR(16) NOT NULL,
     SnapshotHighWaterSurrogateId BIGINT NULL,
+    LastCommittedResourceSurrogateId BIGINT NULL,
+    LeaseExpiresDateTime DATETIME2(7) NULL,
     StartedDateTime DATETIME2(7) NOT NULL,
     CompletedDateTime DATETIME2(7) NULL,
     FailureReason VARCHAR(1000) NULL,

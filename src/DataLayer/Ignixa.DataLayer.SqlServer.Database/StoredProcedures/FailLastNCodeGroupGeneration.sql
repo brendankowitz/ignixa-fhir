@@ -26,6 +26,7 @@ BEGIN
 
         UPDATE dbo.LastNCodeGroupGeneration WITH (UPDLOCK, HOLDLOCK)
         SET State = 'Failed',
+            LeaseExpiresDateTime = NULL,
             CompletedDateTime = NULL,
             FailureReason = LEFT(@FailureReason, 1000)
         WHERE ResourceTypeId = @ResourceTypeId

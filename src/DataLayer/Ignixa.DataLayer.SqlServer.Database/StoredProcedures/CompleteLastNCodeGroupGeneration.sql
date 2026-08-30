@@ -1,7 +1,8 @@
 CREATE PROCEDURE dbo.CompleteLastNCodeGroupGeneration
     @ResourceTypeId SMALLINT,
     @SearchParamId SMALLINT,
-    @Generation BIGINT
+    @Generation BIGINT,
+    @AttemptId UNIQUEIDENTIFIER
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -31,6 +32,7 @@ BEGIN
             WHERE ResourceTypeId = @ResourceTypeId
                 AND SearchParamId = @SearchParamId
                 AND Generation = @Generation
+                AND AttemptId = @AttemptId
                 AND State = 'Building')
         BEGIN
             THROW 50424, 'LastN code-group generation is not active.', 1;
@@ -130,11 +132,13 @@ BEGIN
 
         UPDATE dbo.LastNCodeGroupGeneration
         SET State = 'Ready',
+            LeaseExpiresDateTime = NULL,
             CompletedDateTime = SYSUTCDATETIME(),
             FailureReason = NULL
         WHERE ResourceTypeId = @ResourceTypeId
             AND SearchParamId = @SearchParamId
             AND Generation = @Generation
+            AND AttemptId = @AttemptId
             AND State = 'Building';
 
         COMMIT TRANSACTION;
