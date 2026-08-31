@@ -504,25 +504,27 @@ internal class SchemaAwareElement : IElement
         }
         else
         {
-            // Check for recursive BackboneElements (e.g., QuestionnaireResponse.item.item)
-            // The parent InstanceType might already be the qualified name we need
-            // Extract last segment of parent's TypeName and compare with child name
-            var parentTypeName = cachedTypeDef.Info.Name;
-            var lastSegment = parentTypeName != null && parentTypeName.Contains('.', StringComparison.Ordinal)
-                ? parentTypeName.Substring(parentTypeName.LastIndexOf('.') + 1)
-                : parentTypeName;
-
-            // Name equality alone is not a reliable recursion signal: several non-recursive
-            // BackboneElement children merely share their parent's last name segment (e.g.
-            // Encounter.location.location, which declares a plain Reference type, not a
-            // recursive backbone). The schema's own ContentReference is the authoritative
-            // marker for a recursive element, so require it alongside the name match rather
-            // than trusting the name match alone.
-            if (childName.Equals(lastSegment, StringComparison.OrdinalIgnoreCase)
-                && (cachedTypeDef.Children.FirstOrDefault(e => e.Info.Name == childName) as ITypeExtended)?.ContentReference != null)
+            // A recursive or forward-referencing BackboneElement (e.g. QuestionnaireResponse.item.item,
+            // or ExplanationOfBenefit.item.detail.subDetail.adjudication referring back up to
+            // ExplanationOfBenefit.item.adjudication) is not detectable by name: the target is not
+            // always the immediate parent, and can be an ancestor several levels up or even a sibling
+            // (ValueSet.compose.exclude -> #ValueSet.compose.include). The schema's own
+            // ContentReference is the authoritative - and only reliable - marker, so key off it
+            // directly rather than approximating it with a name comparison.
+            var childElementDef = cachedTypeDef.Children.FirstOrDefault(e => e.Info.Name == childName);
+            if (childElementDef is ITypeExtended { ContentReference: { } contentReference })
             {
-                // This is a recursive element - use the parent's qualified type
-                qualifiedInstanceType = parentTypeName;
+                var targetTypeName = contentReference.TrimStart('#');
+                var targetTypeDef = schema.GetTypeDefinition(targetTypeName);
+
+                // Every ContentReference in the generated schemas resolves (verified across all five
+                // FHIR versions), but a miss is handled deliberately rather than assumed away: leaving
+                // qualifiedInstanceType null here falls through to the normal DeriveInstanceType path
+                // below instead of fabricating a type name for a target the schema cannot locate.
+                if (targetTypeDef != null)
+                {
+                    qualifiedInstanceType = targetTypeDef.Info.Name;
+                }
             }
         }
 

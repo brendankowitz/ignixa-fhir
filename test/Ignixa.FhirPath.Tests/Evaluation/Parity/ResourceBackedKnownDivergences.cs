@@ -271,11 +271,23 @@ internal static class ResourceBackedKnownDivergences
     /// says how much was compared, so halving the entries every parameter produced satisfied both. A floor
     /// rather than an exact pin, for the reason on <see cref="MinimumAgreementsOnValues"/>. Applied per
     /// engine rather than to the total, because a total is satisfied by one side growing while the other
-    /// collapses: the two sit at 10,745 Firely and 10,756 Ignixa - the gap is the 11 divergent resources -
-    /// so the floor is the lower. Raised from 10,743 when repairing the STU3 Observation composite
-    /// component references let both indexers emit composites they had both been dropping.
+    /// collapses: the two sit at 10,777 Firely and 10,788 Ignixa - the gap is the 11 divergent resources -
+    /// so the floor is the lower. Raised from 10,745 by issue #454's <c>SchemaAwareElement</c>
+    /// recursion-heuristic fix: both engines gained exactly the same 32 entries, because both indexers
+    /// share the one production element model the fix corrected - <c>Encounter.location.location</c> and
+    /// its 26 other false-positive siblings (see <c>UnconvertedPairs</c>, above) now arrive typed as their
+    /// schema-declared leaf instead of their parent backbone, so the parameters that target them
+    /// contribute entries neither engine could produce before. The follow-up widening in
+    /// <c>SchemaAwareElement.ComputeChildResolution</c> that resolves a <c>ContentReference</c> to its
+    /// actual target rather than only the 19 sites where it happens to equal the parent measured zero
+    /// further movement here: none of the 76 additional qualified paths it fixes are reached by a search
+    /// parameter this corpus
+    /// exercises or by a shape <c>SchemaBasedFhirResourceFaker</c> generates deeply enough to trigger, so
+    /// this floor is unchanged by that half of the work. Previously raised from 10,743 when repairing the
+    /// STU3 Observation composite component references let both indexers emit composites they had both
+    /// been dropping.
     /// </remarks>
-    public const int MinimumIndexEntriesComparedPerEngine = 10745;
+    public const int MinimumIndexEntriesComparedPerEngine = 10777;
 
     /// <summary>
     /// Lower bound on resources reaching the index sweep, so a corpus that stopped generating them
