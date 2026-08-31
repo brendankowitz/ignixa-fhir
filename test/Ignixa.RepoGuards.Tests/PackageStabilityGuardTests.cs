@@ -149,13 +149,19 @@ public class PackageStabilityGuardTests
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup>
                     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+                    <PackageStability>alpha</PackageStability>
                     <PackageStability Condition="'$(TargetFramework)' == 'net9.0'">beta</PackageStability>
                     <PackageStability Condition="'$(TargetFramework)' == 'net10.0'">stable</PackageStability>
                   </PropertyGroup>
                 </Project>
                 """);
 
-            Should.Throw<InvalidOperationException>(() => GetEffectiveStability(projectPath));
+            var exception = Should.Throw<InvalidOperationException>(() => GetEffectiveStability(projectPath));
+
+            exception.Message.ShouldContain("PackageStability differs by target framework");
+            exception.Message.ShouldContain(projectPath);
+            exception.Message.ShouldContain("default is 'alpha'");
+            exception.Message.ShouldContain("'net9.0' is 'beta'");
         }
         finally
         {
