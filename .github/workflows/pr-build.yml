@@ -278,15 +278,11 @@ jobs:
           # false. FhirTest is a throwaway, empty database in a disposable container -- precisely
           # the brand-new-tenant scenario auto-deploy exists for -- so enable it here. Without
           # this, SchemaDeployer refuses to provision the schema and every E2E test fails at
-          # startup with "Tenant 1's database is not initialized".
+          # startup with "Tenant 1's database is not initialized". Nothing else in this job
+          # creates the schema -- the DeployReport step above only diffs, it does not publish.
           SqlServer__AutomaticSchemaDeploymentEnabled: "true"
           IGNIXA_RUN_CONFORMANCE: "true"
           IGNIXA_CONFORMANCE_REPORT_PATH: ${{ runner.temp }}/ignixa-conformance/latest.json
-          # The API deploys the dacpac to each tenant database on first use. Without this it refuses
-          # to start against an empty database, and every E2E test fails in seconds with "Tenant 1's
-          # database is not initialized". Nothing else in this job creates the schema -- the
-          # DeployReport step above only diffs, it does not publish.
-          SqlServer__AutomaticSchemaDeploymentEnabled: "true"
           # Reduce log output in test host
           Logging__LogLevel__Default: "Warning"
           Logging__LogLevel__Microsoft: "Warning"
