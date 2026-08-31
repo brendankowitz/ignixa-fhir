@@ -108,6 +108,9 @@ public class PackageStabilityGuardTests
             .FirstOrDefault(element => element.Name.LocalName == "PackageStability")?.Value.Trim();
 
         var projectDir = Path.GetDirectoryName(csprojPath)!;
+        var inheritedStability = declaredStability is null
+            ? FindInheritedStability(projectDir, repoRoot)
+            : null;
         var references = doc.Descendants("ProjectReference")
             .Where(IsNuspecDependency)
             .Select(reference => Path.GetFullPath(Path.Combine(projectDir, reference.Attribute("Include")!.Value)))
@@ -122,7 +125,43 @@ public class PackageStabilityGuardTests
             RelativePath: relativePath,
             IsPackable: !string.Equals(isPackable, "false", StringComparison.OrdinalIgnoreCase),
             DeclaredStability: declaredStability,
+            InheritedStability: inheritedStability,
             ProjectReferences: references);
+    }
+
+    private static string? FindInheritedStability(string projectDir, string repoRoot)
+    {
+        var directory = new DirectoryInfo(projectDir);
+        var root = new DirectoryInfo(repoRoot);
+
+        while (directory.FullName.StartsWith(root.FullName, StringComparison.OrdinalIgnoreCase))
+        {
+            var propsPath = Path.Combine(directory.FullName, "Directory.Build.props");
+            if (File.Exists(propsPath))
+            {
+                var props = XDocument.Load(propsPath);
+                var stability = props.Descendants("PackageStability")
+                    .FirstOrDefault(element =>
+                        string.Equals(
+                            element.Attribute("Condition")?.Value.Trim(),
+                            "'$(PackageStability)' == ''",
+                            StringComparison.Ordinal));
+
+                if (stability is not null)
+                {
+                    return stability.Value.Trim();
+                }
+            }
+
+            if (string.Equals(directory.FullName, root.FullName, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            directory = directory.Parent!;
+        }
+
+        return null;
     }
 
     // Analyzer/source-generator references (ReferenceOutputAssembly=false) and PrivateAssets="All"
@@ -147,9 +186,10 @@ public class PackageStabilityGuardTests
         string RelativePath,
         bool IsPackable,
         string? DeclaredStability,
+        string? InheritedStability,
         List<string> ProjectReferences)
     {
-        public string Stability => DeclaredStability ?? DefaultStability;
+        public string Stability => DeclaredStability ?? InheritedStability ?? DefaultStability;
 
         public bool IsPublicFeed =>
             RelativePath.StartsWith($"src{Path.DirectorySeparatorChar}Core{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
