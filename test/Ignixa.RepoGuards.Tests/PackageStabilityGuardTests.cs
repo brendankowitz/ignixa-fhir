@@ -3,6 +3,8 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Xml.Linq;
 using Shouldly;
 using Xunit;
@@ -25,6 +27,9 @@ public class PackageStabilityGuardTests
         ["beta"] = 1,
         ["stable"] = 2,
     };
+
+    private static readonly ConcurrentDictionary<string, string> EffectiveStabilities =
+        new(StringComparer.OrdinalIgnoreCase);
 
     [Fact]
     public void GivenPackableProjects_WhenComparingToDependencies_ThenNoPackageIsMoreStableThanItsDependencies()
@@ -64,6 +69,46 @@ public class PackageStabilityGuardTests
             .ToList();
 
         invalid.ShouldBeEmpty("PackageStability must be one of: alpha, beta, stable.");
+    }
+
+    [Fact]
+    public void GivenNestedPropsWithoutImport_WhenResolvingStability_ThenUnreachableAncestorPolicyIsNotUsed()
+    {
+        var repoRoot = Directory.CreateTempSubdirectory();
+
+        try
+        {
+            var applicationDirectory = Directory.CreateDirectory(Path.Combine(repoRoot.FullName, "src", "Application"));
+            File.WriteAllText(
+                Path.Combine(applicationDirectory.FullName, "Directory.Build.props"),
+                """
+                <Project>
+                  <PropertyGroup>
+                    <PackageStability Condition="'$(PackageStability)' == ''">stable</PackageStability>
+                  </PropertyGroup>
+                </Project>
+                """);
+
+            var projectDirectory = Directory.CreateDirectory(Path.Combine(applicationDirectory.FullName, "Nested"));
+            File.WriteAllText(
+                Path.Combine(projectDirectory.FullName, "Directory.Build.props"),
+                """
+                <Project>
+                  <PropertyGroup>
+                    <PackageStability>beta</PackageStability>
+                  </PropertyGroup>
+                </Project>
+                """);
+
+            var projectPath = Path.Combine(projectDirectory.FullName, "TestProject.csproj");
+            File.WriteAllText(projectPath, """<Project Sdk="Microsoft.NET.Sdk" />""");
+
+            GetEffectiveStability(projectPath).ShouldBe("beta");
+        }
+        finally
+        {
+            repoRoot.Delete(recursive: true);
+        }
     }
 
     private static IEnumerable<string> FindStabilityViolations(
@@ -108,9 +153,6 @@ public class PackageStabilityGuardTests
             .FirstOrDefault(element => element.Name.LocalName == "PackageStability")?.Value.Trim();
 
         var projectDir = Path.GetDirectoryName(csprojPath)!;
-        var inheritedStability = declaredStability is null
-            ? FindInheritedStability(projectDir, repoRoot)
-            : null;
         var references = doc.Descendants("ProjectReference")
             .Where(IsNuspecDependency)
             .Select(reference => Path.GetFullPath(Path.Combine(projectDir, reference.Attribute("Include")!.Value)))
@@ -125,43 +167,45 @@ public class PackageStabilityGuardTests
             RelativePath: relativePath,
             IsPackable: !string.Equals(isPackable, "false", StringComparison.OrdinalIgnoreCase),
             DeclaredStability: declaredStability,
-            InheritedStability: inheritedStability,
+            EffectiveStability: GetEffectiveStability(fullPath),
             ProjectReferences: references);
     }
 
-    private static string? FindInheritedStability(string projectDir, string repoRoot)
+    private static string GetEffectiveStability(string csprojPath)
     {
-        var directory = new DirectoryInfo(projectDir);
-        var root = new DirectoryInfo(repoRoot);
+        return EffectiveStabilities.GetOrAdd(Path.GetFullPath(csprojPath), EvaluatePackageStability);
+    }
 
-        while (directory.FullName.StartsWith(root.FullName, StringComparison.OrdinalIgnoreCase))
+    private static string EvaluatePackageStability(string csprojPath)
+    {
+        var startInfo = new ProcessStartInfo("dotnet")
         {
-            var propsPath = Path.Combine(directory.FullName, "Directory.Build.props");
-            if (File.Exists(propsPath))
-            {
-                var props = XDocument.Load(propsPath);
-                var stability = props.Descendants("PackageStability")
-                    .FirstOrDefault(element =>
-                        string.Equals(
-                            element.Attribute("Condition")?.Value.Trim(),
-                            "'$(PackageStability)' == ''",
-                            StringComparison.Ordinal));
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        startInfo.ArgumentList.Add("msbuild");
+        startInfo.ArgumentList.Add(csprojPath);
+        startInfo.ArgumentList.Add("-nologo");
+        startInfo.ArgumentList.Add("-getProperty:PackageStability");
 
-                if (stability is not null)
-                {
-                    return stability.Value.Trim();
-                }
-            }
-
-            if (string.Equals(directory.FullName, root.FullName, StringComparison.OrdinalIgnoreCase))
-            {
-                break;
-            }
-
-            directory = directory.Parent!;
+        using var process = Process.Start(startInfo);
+        if (process is null)
+        {
+            return DefaultStability;
         }
 
-        return null;
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        process.WaitForExit();
+        Task.WaitAll(outputTask, errorTask);
+        var output = outputTask.Result;
+
+        if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+        {
+            return DefaultStability;
+        }
+
+        return output.Trim();
     }
 
     // Analyzer/source-generator references (ReferenceOutputAssembly=false) and PrivateAssets="All"
@@ -186,10 +230,10 @@ public class PackageStabilityGuardTests
         string RelativePath,
         bool IsPackable,
         string? DeclaredStability,
-        string? InheritedStability,
+        string EffectiveStability,
         List<string> ProjectReferences)
     {
-        public string Stability => DeclaredStability ?? InheritedStability ?? DefaultStability;
+        public string Stability => EffectiveStability;
 
         public bool IsPublicFeed =>
             RelativePath.StartsWith($"src{Path.DirectorySeparatorChar}Core{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
