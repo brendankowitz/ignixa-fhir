@@ -31,6 +31,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Search.Models;
 using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
+using Ignixa.Api.Infrastructure;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -692,7 +693,14 @@ public static class OperationEndpoints
 
         var queryParameters = queryParser.Parse(context.Request.Query);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
-        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+        // Not unconditional: an explicit Prefer: handling=lenient asks the server to ignore what it
+        // could not honour rather than fail, and R4 http.html#2.21.0.2 has it report that instead --
+        // 200, a warning issue in the bundle, and the parameter dropped from the self link, all of
+        // which the builder has already arranged. Matches the plain search endpoint's CheckStrictHandling.
+        if (!PreferHeaderParser.IsLenientHandling(context.Request.Headers))
+        {
+            SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+        }
 
         searchOptions.IncludesContinuationToken = includesContinuationToken;
 

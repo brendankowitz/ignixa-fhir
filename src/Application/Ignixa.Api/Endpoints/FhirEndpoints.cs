@@ -1719,9 +1719,18 @@ public static class FhirEndpoints
         // FHIR R4 SHALL rejects a search suffixed by a modifier the server does not support for that
         // parameter (https://hl7.org/fhir/R4/search.html#modifiers), unlike an unsupported *parameter*,
         // which only SHOULD be rejected and is opt-in via Prefer: handling=strict below. Silently
-        // dropping the modifier would widen the result set instead of narrowing it, so this check is
-        // unconditional -- it does not depend on the Prefer header.
-        if (searchOptions.UnsupportedModifierParams.Count > 0)
+        // dropping the modifier would widen the result set instead of narrowing it, so rejecting is the
+        // default whenever the client has not said otherwise.
+        //
+        // handling=lenient is the client saying otherwise, and it is not an error case: R4's
+        // http.html#2.21.0.2 has the server ignore what it could not honour and report it, which is what
+        // the reference implementation does -- 200, a warning issue in the bundle, and the offending
+        // parameter dropped from the self link. All three already happen for free here, because the
+        // builder records an unsupported modifier in BOTH UnsupportedParams (which drives the bundle
+        // warning and the self-link filter) and UnsupportedModifierParams (which drives this rejection).
+        // So the only thing lenient has to do is decline to reject.
+        if (searchOptions.UnsupportedModifierParams.Count > 0 &&
+            !PreferHeaderParser.IsLenientHandling(context.Request.Headers))
         {
             logger.LogWarning(
                 "Unsupported search modifier(s) found: {UnsupportedModifierParams}",

@@ -309,8 +309,8 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
     /// was always overlap; only the query needed to say so.
     /// </remarks>
     [Theory]
-    [InlineData("1980-05-16T16:32:15.500")] // Falls inside obs[7]'s period but contains none of it; obs[1] and obs[2] are coarser still
-    public async Task GivenADateTimeSearchParam_WhenSearchedAgainstAPeriod_ThenCorrectBundleShouldBeReturned(
+    [InlineData("1980-05-16T16:32:15.500", 1, 2, 7)] // Spans the instant: year, month, and period [05-16, 05-17]
+    public async Task GivenAnInstant_WhenSearchedAgainstAPeriod_ThenTheCoveringObservationsAreReturned(
         string queryValue,
         params int[] expectedIndices)
     {

@@ -55,6 +55,38 @@ jobs:
           # string is absent, so running them here is 222 red tests that say nothing about the code.
           test-filter: 'FullyQualifiedName!~E2ETests&FullyQualifiedName!~IntegrationTests'
 
+      - name: Create package output directories
+        run: |
+          mkdir -p ./core-packages
+          mkdir -p ./internal-packages
+
+      # ci.yml's pack step only runs on push to main, so a PR touching tools/**,
+      # Directory.Build.props, or Directory.Build.targets could break `dotnet pack` (e.g. NU5039
+      # missing-readme, or the NU5104 stable-vs-prerelease rule from ADR 2606) without this job
+      # ever noticing. --no-build is near-free here since the build above already produced Release
+      # binaries. Mirrors ci.yml's "Pack Core projects" step; not uploaded anywhere, just verified.
+      - name: Pack Core projects (verify pack succeeds)
+        run: |
+          find src/Core tools src/Application/Ignixa.Sidecar.Contracts -name "*.csproj" -type f | sort | while read -r PROJECT; do
+            echo "Packing: $PROJECT"
+            dotnet pack "$PROJECT" --configuration Release --no-build --output ./core-packages \
+              -p:BasePackageVersion=${{ steps.build.outputs.nuget-version }} \
+              -p:UpdateVersionProperties=false
+          done
+
+      # Mirrors ci.yml's "Pack Application projects" step: NU5104 is demoted to a warning here
+      # because the internal GitHub Packages feed these publish to is not bound by the public
+      # Core feed's stable-package-no-prerelease-dependency rule (ADR 2606).
+      - name: Pack Application projects (verify pack succeeds)
+        run: |
+          find src/Application src/DataLayer -name "*.csproj" -type f -not -path "*Ignixa.Sidecar.Contracts*" | sort | while read -r PROJECT; do
+            echo "Packing: $PROJECT"
+            dotnet pack "$PROJECT" --configuration Release --no-build --output ./internal-packages \
+              -p:BasePackageVersion=${{ steps.build.outputs.nuget-version }} \
+              -p:UpdateVersionProperties=false \
+              -p:WarningsNotAsErrors=NU5104
+          done
+
   # Its own job, not a step in e2e-tests-sql. Two reasons: the suite serialises its schema deploys
   # (sixteen concurrent DacFx deploys time each other out) so it runs long, and as a step it made the
   # E2E tests conditional on it -- one integration failure skipped the E2E run entirely.
@@ -118,38 +150,6 @@ jobs:
       - name: Cleanup SQL Server container
         if: always()
         run: docker compose -f docker-compose.test.yml down -v || true
-
-      - name: Create package output directories
-        run: |
-          mkdir -p ./core-packages
-          mkdir -p ./internal-packages
-
-      # ci.yml's pack step only runs on push to main, so a PR touching tools/**,
-      # Directory.Build.props, or Directory.Build.targets could break `dotnet pack` (e.g. NU5039
-      # missing-readme, or the NU5104 stable-vs-prerelease rule from ADR 2606) without this job
-      # ever noticing. --no-build is near-free here since the build above already produced Release
-      # binaries. Mirrors ci.yml's "Pack Core projects" step; not uploaded anywhere, just verified.
-      - name: Pack Core projects (verify pack succeeds)
-        run: |
-          find src/Core tools src/Application/Ignixa.Sidecar.Contracts -name "*.csproj" -type f | sort | while read -r PROJECT; do
-            echo "Packing: $PROJECT"
-            dotnet pack "$PROJECT" --configuration Release --no-build --output ./core-packages \
-              -p:BasePackageVersion=${{ steps.build.outputs.nuget-version }} \
-              -p:UpdateVersionProperties=false
-          done
-
-      # Mirrors ci.yml's "Pack Application projects" step: NU5104 is demoted to a warning here
-      # because the internal GitHub Packages feed these publish to is not bound by the public
-      # Core feed's stable-package-no-prerelease-dependency rule (ADR 2606).
-      - name: Pack Application projects (verify pack succeeds)
-        run: |
-          find src/Application src/DataLayer -name "*.csproj" -type f -not -path "*Ignixa.Sidecar.Contracts*" | sort | while read -r PROJECT; do
-            echo "Packing: $PROJECT"
-            dotnet pack "$PROJECT" --configuration Release --no-build --output ./internal-packages \
-              -p:BasePackageVersion=${{ steps.build.outputs.nuget-version }} \
-              -p:UpdateVersionProperties=false \
-              -p:WarningsNotAsErrors=NU5104
-          done
 
   e2e-tests-sql:
     name: E2E Tests (SQL Server)
