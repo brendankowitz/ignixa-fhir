@@ -92,12 +92,26 @@ internal static class ResourceBackedKnownDivergences
     /// divergence tracked as #430. Ignixa registers <c>canonical</c> against <c>UriSearchValue</c> only.
     /// </description></item>
     /// <item><description>
-    /// Backbone element types under a leaf-typed parameter (28 sites). Not converter gaps: each is a path
-    /// <c>X.y.y</c> where a backbone's child shares the backbone's own name, and
-    /// <c>SchemaAwareElement.Children</c> types the child as its parent - so
-    /// <c>Encounter.location.location</c>, a <c>Reference</c> in the schema, arrives as
-    /// <c>Encounter.Location</c> and the reference converter is never asked for. An
-    /// <c>Ignixa.Serialization</c> element-model defect, tracked separately.
+    /// Backbone element types under a leaf-typed parameter used to cost 28 sites here (issue #454): each
+    /// was a path <c>X.y.y</c> where a backbone's child shared the backbone's own name, and
+    /// <c>SchemaAwareElement.Children</c>'s recursion heuristic - keyed on name equality alone - typed the
+    /// child as its parent regardless of what the schema actually declared, so
+    /// <c>Encounter.location.location</c>, a <c>Reference</c> in the schema, arrived as
+    /// <c>Encounter.Location</c> and the reference converter was never asked for. Narrowing the heuristic
+    /// to also require a schema-declared <c>ContentReference</c> fixed 27 of the 28 and is why those rows
+    /// left this dictionary. The 28th, <c>Ingredient-manufacturer</c>, drops from 4 to 1 rather than
+    /// vanishing: R4B's own published <c>SearchParameter</c> expression is <c>Ingredient.manufacturer</c>
+    /// (the backbone itself, one level short of the nested <c>Reference</c> that R5 and R6 point at), a
+    /// gap in the published definition rather than in the element model, and the element-model fix now
+    /// lets that shallower expression actually reach the indexer instead of being masked by the deeper
+    /// mistyping. Fixing the heuristic also unmasked a second, previously-unreachable gap, already known
+    /// to <c>KnownCompositeComponentDivergences</c>: R5's <c>Encounter-location-period</c> composite's
+    /// first component evaluates <c>location.reference</c> against the same nested element, which used to
+    /// resolve empty and skip the component loop before it ever reached the composite's second component -
+    /// <c>Encounter-period</c>, dropped from R5 when <c>Encounter.period</c> was renamed to
+    /// <c>Encounter.actualPeriod</c>, so its definition URL dangles in the published package itself. That
+    /// pre-existing, adjudicated gap is the new <c>ComponentNullResolvedSearchParameter :: location-period</c>
+    /// row below - reachable, not created, by this fix.
     /// </description></item>
     /// <item><description>
     /// Correct skips upstream performs identically: <c>Attachment</c> and <c>base64Binary</c> under
@@ -133,8 +147,8 @@ internal static class ResourceBackedKnownDivergences
     public static IReadOnlyDictionary<string, int> ExpectedIgnixaConverterPipelineSkips { get; } =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            ["CannotInferSearchParamType :: http://hl7.org/fhir/SearchParameter/Encounter-location :: Encounter.Location :: "] = 1,
             ["ComponentNullResolvedSearchParameter :: code-value-string ::  :: "] = 11,
+            ["ComponentNullResolvedSearchParameter :: location-period ::  :: "] = 2,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-actual ::  :: "] = 2,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-period ::  :: "] = 2,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-period-actual ::  :: "] = 2,
@@ -163,16 +177,14 @@ internal static class ResourceBackedKnownDivergences
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Consent-source-reference :: Attachment :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Device-udi-carrier :: base64Binary :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/DeviceRequest-instantiates-canonical :: canonical :: "] = 5,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Encounter-location :: Encounter.Location :: "] = 8,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/FamilyMemberHistory-instantiates-canonical :: canonical :: "] = 6,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ImplementationGuide-depends-on :: canonical :: "] = 8,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ImplementationGuide-global :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Ingredient-manufacturer :: Ingredient.Manufacturer :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Ingredient-manufacturer :: Ingredient.Manufacturer :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Location-near :: Location.Position :: "] = 5,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Location-near-distance :: Location.Position :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Measure-depends-on :: canonical :: "] = 3,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MeasureReport-measure :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-contact :: MedicinalProductDefinition.Contact :: "] = 4,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageDefinition-event :: uri :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageDefinition-parent :: canonical :: "] = 4,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageHeader-event :: canonical :: "] = 1,
@@ -197,15 +209,10 @@ internal static class ResourceBackedKnownDivergences
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SearchParameter-derived-from :: canonical :: "] = 3,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ServiceRequest-instantiates-canonical :: canonical :: "] = 6,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/StructureDefinition-base :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceDefinition-code :: SubstanceDefinition.Code :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceDefinition-name :: SubstanceDefinition.Name :: "] = 2,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceSpecification-code :: SubstanceSpecification.Code :: "] = 2,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestReport-testscript :: canonical :: "] = 2,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestScript-artifact :: canonical :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact :: canonical :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/clinical-date :: string :: "] = 3,
-            ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/Encounter-location ::  :: "] = 2,
-            ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/InventoryReport-item ::  :: "] = 2,
         };
 
     /// <summary>
@@ -234,12 +241,12 @@ internal static class ResourceBackedKnownDivergences
 
         // Backbone types the element model hands to a leaf-typed parameter. Neither codebase has a
         // converter for a backbone, and neither should - the defect is upstream of the converter.
-        ("Encounter.Location", SearchParamType.Reference),
+        // Encounter.Location, MedicinalProductDefinition.Contact, SubstanceDefinition.Code/Name and
+        // SubstanceSpecification.Code left this list with issue #454: the element model now types their
+        // sole recursion site as the schema-declared leaf, so a backbone is never handed to the converter
+        // for them again. Ingredient.Manufacturer stays - not because the element model still mistypes it,
+        // but because R4B's own published Ingredient-manufacturer expression names the backbone itself.
         ("Ingredient.Manufacturer", SearchParamType.Reference),
-        ("MedicinalProductDefinition.Contact", SearchParamType.Reference),
-        ("SubstanceDefinition.Code", SearchParamType.Token),
-        ("SubstanceDefinition.Name", SearchParamType.String),
-        ("SubstanceSpecification.Code", SearchParamType.Token),
         ("DeviceDefinition.UdiDeviceIdentifier", SearchParamType.Token),
 
         // Correct skips: the element genuinely cannot be represented as the parameter's value type.

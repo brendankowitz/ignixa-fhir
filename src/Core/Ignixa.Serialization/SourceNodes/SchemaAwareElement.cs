@@ -512,8 +512,14 @@ internal class SchemaAwareElement : IElement
                 ? parentTypeName.Substring(parentTypeName.LastIndexOf('.') + 1)
                 : parentTypeName;
 
-            // Case-insensitive comparison for recursion check
-            if (childName.Equals(lastSegment, StringComparison.OrdinalIgnoreCase))
+            // Name equality alone is not a reliable recursion signal: several non-recursive
+            // BackboneElement children merely share their parent's last name segment (e.g.
+            // Encounter.location.location, which declares a plain Reference type, not a
+            // recursive backbone). The schema's own ContentReference is the authoritative
+            // marker for a recursive element, so require it alongside the name match rather
+            // than trusting the name match alone.
+            if (childName.Equals(lastSegment, StringComparison.OrdinalIgnoreCase)
+                && (cachedTypeDef.Children.FirstOrDefault(e => e.Info.Name == childName) as ITypeExtended)?.ContentReference != null)
             {
                 // This is a recursive element - use the parent's qualified type
                 qualifiedInstanceType = parentTypeName;

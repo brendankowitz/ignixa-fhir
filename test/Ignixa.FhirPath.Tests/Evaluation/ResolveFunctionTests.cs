@@ -415,17 +415,20 @@ public class ResolveFunctionTests
     public void GivenReferenceElementWhoseValueIsTheReferenceString_WhenResolving_ThenInInstanceResolutionFindsIt()
     {
         // Arrange - pins the premise this test relies on: SchemaAwareElement reports
-        // `Observation.subject.reference` as InstanceType "Reference" (a case-insensitive
-        // name/type-match quirk), which is exactly what routes ExtractReferenceValue into its
-        // "Value is the reference string" fallback rather than the bare-primitive branch. If that
-        // heuristic is ever tightened this assertion fails loudly instead of the test silently
-        // starting to cover a different branch.
+        // `Observation.subject.reference` as InstanceType "string" - the schema-declared type of
+        // `Reference.reference` itself - which routes ExtractReferenceValue into its bare-primitive
+        // branch rather than the "Reference with a reference child" branch. Issue #454 narrowed
+        // SchemaAwareElement's recursion heuristic to require a schema-declared ContentReference, so
+        // this element no longer falls through to a name/type-match quirk that used to report
+        // "Reference" here; either branch reaches the same string value, so resolution still finds
+        // the same target and this pin now records the current, correct route instead of the former
+        // quirk.
         var observation = ToElement(ObservationWithContainedPatientJson);
         var referenceElement = _evaluator.Evaluate(
             observation,
             _parser.Parse("Observation.subject.reference"),
             new EvaluationContext { Resource = observation }).Single();
-        referenceElement.InstanceType.ShouldBe("Reference");
+        referenceElement.InstanceType.ShouldBe("string");
         var expr = _parser.Parse("Observation.subject.reference.resolve().id");
         var context = new EvaluationContext { Resource = observation };
 
