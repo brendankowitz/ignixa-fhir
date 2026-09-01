@@ -109,20 +109,20 @@ The reverse corpus evaluated 19,647 expression/resource pairs per engine over 78
 | Both engines threw | 0 |
 | Divergent | 120 |
 
-The 10,074 is the count the conformance claim rests on, and it is floored rather than pinned so it can only be satisfied by holding or gaining evidence. It used to be derived by subtracting the other three from the total, which meant a both-threw counter that stopped incrementing would have inflated it and made its own floor easier to satisfy; all four are now counted where they are observed. The index half compares 10,745 Firely and 10,756 Ignixa canonicalized entries, each floored per engine.
+The 10,074 is the count the conformance claim rests on, and it is floored rather than pinned so it can only be satisfied by holding or gaining evidence. It used to be derived by subtracting the other three from the total, which meant a both-threw counter that stopped incrementing would have inflated it and made its own floor easier to satisfy; all four are now counted where they are observed. The index half compares 10,777 Firely and 10,788 Ignixa canonicalized entries, each floored per engine.
 
 ### What the index half cannot see
 
 The index comparison runs Firely for `Select` only. Everything downstream - the search parameter definitions, `InferSearchParamTypeFromFhirType`, `GetSearchValueTypeForSearchParamType` and the converter manager - is a single set of Ignixa objects that `SearchIndexParityHarness` constructs once and hands to both indexers. When both sides skip an element, that is one object making one decision, not two implementations agreeing, so **no entry-list comparison over this corpus can detect a gap in the converter pipeline.**
 
-Capturing the production indexer's contained failures - it catches per search parameter, logs and continues, and the harness previously gave it a null logger - surfaces 258 of them per sweep, split by what the corpus can adjudicate:
+Capturing the production indexer's contained failures - it catches per search parameter, logs and continues, and the harness previously gave it a null logger - surfaces 233 of them per sweep, split by what the corpus can adjudicate:
 
 | Class | Count | Status |
 |---|---:|---|
 | Contained throws (`ExpectedIgnixaEvaluationFailures`) | 1 | Adjudicable. Ignixa's `NotSupportedException` for `hasExtension()`, already pinned on the `Select` side. |
-| Classification skips (`ExpectedIgnixaConverterPipelineSkips`) | 257 | Recorded here, adjudicated by the census in `Ignixa.Search.Tests`. |
+| Classification skips (`ExpectedIgnixaConverterPipelineSkips`) | 232 | Recorded here, adjudicated by the census in `Ignixa.Search.Tests`. |
 
-These counts were 302 and 301 when the classification skips were first captured. Repairing the STU3 `Observation-code-value-*` component references (`CompositeComponentDefinitionRepairs`) removed 44 of them, because those composites now resolve their components instead of skipping. The paragraphs below describe the pre-repair population of 301.
+These counts were 302 and 301 when the classification skips were first captured. Repairing the STU3 `Observation-code-value-*` component references (`CompositeComponentDefinitionRepairs`) removed 44 of them, because those composites now resolve their components instead of skipping, leaving 257. Fixing the `SchemaAwareElement` recursion heuristic (#454) then removed 28 more across nine signatures and added three back - `Ingredient-manufacturer`'s one surviving R4B site, plus a two-site composite-component gap the mistyping had been masking - for the 232 above. The paragraphs below describe the pre-repair population of 301.
 
 Of the 301, 229 were converter-manager misses and **186 are `canonical` under 46 shipped SearchParameters** - 45 `Reference`-typed plus `MessageHeader-event`. Ignixa registers `canonical` against `UriSearchValue` only, so those 46 parameters index nothing: `QuestionnaireResponse-questionnaire`, `MeasureReport-measure`, `StructureDefinition-base`, `PlanDefinition-definition`, the `instantiates-canonical` family across nine resource types, the `-depends-on` family, and eight `ConceptMap` parameters among them.
 
@@ -142,7 +142,7 @@ What the census established about the 115 non-`canonical` skips:
 | Cause | Sites | Adjudication |
 |---|---:|---|
 | Composite component references the published package never publishes | 67 | The four STU3 `Observation-code-value-*` composites are **fixed** - see below. The R5/R6 remainder is documented, with what upstream chose for each. |
-| Backbone element handed to a leaf-typed parameter | 28 | **Not a converter gap.** One `Ignixa.Serialization` element-model defect, described below. |
+| Backbone element handed to a leaf-typed parameter | 28 | **Not a converter gap, and now fixed** - one `Ignixa.Serialization` element-model defect (#454), described below. |
 | Element genuinely unrepresentable as the parameter's value type | 14 | Correct skip; upstream skips identically. `Attachment` and `base64Binary` under parameters that cannot carry them, `string` reached by a date parameter through a string-valued choice, `uri` reached by a token parameter through `event[x]`, and R6 ballot's `CanonicalResource-identifier` selecting `DeviceDefinition.udiDeviceIdentifier`. |
 | `Location.Position` under `Location-near` / `Location-near-distance` | 6 | Geo search is unimplemented here and upstream. Both parameters index nothing. |
 
@@ -154,13 +154,17 @@ STU3's four `Observation-code-value-*` composites name their code component as `
 
 `CompositeComponentDefinitionRepairs` redirects the four references, which is what microsoft/fhir-server does in the data by curating its embedded `search-parameters.json`. R4, R4B and R6 were never affected; R5 loses only `code-value-string`, because R5 deleted `Observation-value-string` while keeping the composite that references it, and reintroducing a deleted search parameter changes R5's supported surface rather than repairing a dangling reference. Note that `SearchParameterInfo` hashing does not include component resolution, so the repair does not move any resource type's search parameter hash and existing STU3 indexes need an explicit reindex to gain the entries.
 
-### `X.y.y` paths are mistyped as their own backbone
+### `X.y.y` paths were mistyped as their own backbone
 
-`Encounter.location.location` is a `Reference` in every shipped schema. Ignixa's element model returns it typed `Encounter.Location`. `SchemaAwareElement.Children` detects recursive backbones - `Questionnaire.item.item` really is a `Questionnaire.Item` - by comparing the child's name with the last segment of the parent's type name, case-insensitively, and that test also matches every backbone whose child happens to share the backbone's name. The child's declared type is available at that point and is ignored.
+`Encounter.location.location` is a `Reference` in every shipped schema, and Ignixa's element model used to return it typed `Encounter.Location`. `SchemaAwareElement.Children` detected recursive backbones - `Questionnaire.item.item` really is a `Questionnaire.Item` - by comparing the child's name with the last segment of the parent's type name, case-insensitively, and that test also matched every backbone whose child happened to share the backbone's name. The child's declared type was available at that point and was ignored.
 
-The consequence is that six shipped search parameters index nothing on every FHIR version: `Encounter-location`, `Ingredient-manufacturer`, `MedicinalProductDefinition-contact`, `SubstanceDefinition-code`, `SubstanceDefinition-name` and `SubstanceSpecification-code`, plus the two `SkippingElementNullOrEmptyInstanceType` sites reached through the same mistyped node. A schema walk finds roughly ninety such sites across STU3 through R6, split cleanly by whether the child's declared type is a real FHIR type (`Reference`, `CodeableConcept`, `string`, `Money`, `Dosage`, `Identifier`, `CodeableReference`) or the element's own name, which is how the schema marks genuine recursion.
+The consequence was that six shipped search parameters indexed nothing on every FHIR version: `Encounter-location`, `Ingredient-manufacturer`, `MedicinalProductDefinition-contact`, `SubstanceDefinition-code`, `SubstanceDefinition-name` and `SubstanceSpecification-code`, plus the two `SkippingElementNullOrEmptyInstanceType` sites reached through the same mistyped node. Like the STU3 composites above, the API symptom was **an empty bundle with HTTP 200** - indistinguishable from "no matches".
 
-This is an `Ignixa.Serialization` element-model defect, not a search-indexer or FHIRPath-evaluator one: the indexer asked for a reference converter and was handed a backbone. It is recorded here because this corpus is where it surfaced, and it is deliberately not fixed here because the fix changes element typing for every consumer - FHIRPath, de-identification, validation and SQL-on-FHIR alike - and deserves its own change with its own evidence.
+A schema walk across all five generated providers finds **33 such qualified paths, 93 site-instances**. The schema separates them from genuine recursion explicitly, and not by name: a genuinely recursive element carries a `contentReference` (`Questionnaire.item.item` declares `#Questionnaire.item`), while a false positive declares a real type (`Reference`, `CodeableConcept`, `string`, `Money`, `Dosage`, `Identifier`, `CodeableReference`) and no `contentReference` at all.
+
+Issue #454 keys the branch on that marker instead of on name equality, and resolves the `contentReference` to its actual target rather than assuming the target is the immediate parent. The second half matters independently: a `contentReference` target is often *not* the parent - `ExplanationOfBenefit.item.detail.subDetail.adjudication` points at an ancestor several levels up, `ValueSet.compose.exclude` at a sibling - and those 76 further qualified paths (244 site-instances) used to fall through to the element's own unqualified name, which is not a valid FHIR type. All 307 `contentReference` declarations across the five schemas resolve.
+
+This was an `Ignixa.Serialization` element-model defect, not a search-indexer or FHIRPath-evaluator one: the indexer asked for a reference converter and was handed a backbone. It is recorded here because this corpus is where it surfaced; the fix changed element typing for every consumer - FHIRPath, de-identification, validation and SQL-on-FHIR alike - so it was made as its own change with its own evidence rather than as part of this corpus work.
 
 The earlier `8 Select / 9 indexed` typed-choice count and `2 Select / 2 indexed` instant count are not valid Phase 3 numbers. Native Firely probes split each bucket into production-confirmed, harness-only, and unverifiable portions:
 

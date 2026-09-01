@@ -275,10 +275,10 @@ internal static class ResourceBackedKnownDivergences
     /// resources - so the floor is the lower. Raised from 10,745 by issue #454's
     /// <c>SchemaAwareElement</c> recursion-heuristic fix: both engines gained exactly the same 32
     /// entries, because both indexers share the one production element model the fix corrected -
-    /// <c>Encounter.location.location</c> and 36 other false-positive siblings now arrive typed as their
-    /// schema-declared leaf instead of their parent backbone - 37 unique false-positive qualified paths
-    /// in total, found by a schema walk across all five generated providers - so the parameters that
-    /// target them contribute entries neither engine could produce before. The follow-up widening in
+    /// <c>Encounter.location.location</c> and 32 other false-positive siblings now arrive typed as their
+    /// schema-declared leaf instead of their parent backbone - 33 unique qualified paths, 93
+    /// site-instances, found by a schema walk across all five generated providers - so the parameters
+    /// that target them contribute entries neither engine could produce before. The follow-up widening in
     /// <c>SchemaAwareElement.ComputeChildResolution</c> that resolves a <c>ContentReference</c> to its
     /// actual target rather than only the 19 sites where it happens to equal the parent measured zero
     /// further movement here: none of the 76 additional qualified paths it fixes are reached by a search
