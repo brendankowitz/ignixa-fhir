@@ -496,6 +496,10 @@ internal class SchemaAwareElement : IElement
         var qualifiedName = $"{cachedTypeDef.Info.Name}.{childName}";
         var qualifiedTypeDef = schema.GetTypeDefinition(qualifiedName);
 
+        // Looked up once and shared below: the exact-name child element is both the fallback definition
+        // for primitives/simple types and the only place a ContentReference can be declared.
+        var childElementDef = cachedTypeDef.Children.FirstOrDefault(e => e.Info.Name == childName);
+
         // A BackboneElement's qualified name is also its instance type.
         string? qualifiedInstanceType = null;
         if (qualifiedTypeDef != null)
@@ -511,7 +515,6 @@ internal class SchemaAwareElement : IElement
             // (ValueSet.compose.exclude -> #ValueSet.compose.include). The schema's own
             // ContentReference is the authoritative - and only reliable - marker, so key off it
             // directly rather than approximating it with a name comparison.
-            var childElementDef = cachedTypeDef.Children.FirstOrDefault(e => e.Info.Name == childName);
             if (childElementDef is ITypeExtended { ContentReference: { } contentReference })
             {
                 var targetTypeName = contentReference.TrimStart('#');
@@ -528,19 +531,10 @@ internal class SchemaAwareElement : IElement
             }
         }
 
-        // If we found a qualified type definition for this child (it's a BackboneElement),
-        // use it as the definition
-        IType? childDef = null;
-        if (qualifiedTypeDef != null)
-        {
-            childDef = qualifiedTypeDef;
-        }
-
-        // If no qualified type def, try exact match from parent's children (for primitives/simple types)
-        if (childDef == null)
-        {
-            childDef = cachedTypeDef.Children.FirstOrDefault(e => e.Info.Name == childName);
-        }
+        // If we found a qualified type definition for this child (it's a BackboneElement), use it as the
+        // definition; otherwise fall back to the exact-name match already looked up above (primitives and
+        // simple types).
+        var childDef = qualifiedTypeDef ?? childElementDef;
 
         // If still no match, check if this is a choice type variant (e.g., valueString for value[x])
         if (childDef == null)

@@ -69,7 +69,6 @@ public class SchemaAwareElementRecursionHeuristicTests
 
         // Assert
         nestedLocation.InstanceType.ShouldBe("Reference");
-        nestedLocation.InstanceType.ShouldNotBe("Encounter.Location");
     }
 
     [Fact]
@@ -160,7 +159,6 @@ public class SchemaAwareElementRecursionHeuristicTests
 
         // Assert
         adjudication.InstanceType.ShouldBe("ExplanationOfBenefit.item.Adjudication");
-        adjudication.InstanceType.ShouldNotBe("adjudication");
 
         // The resolved type's own children are reachable too - confirms the fix resolves the actual
         // target type, not merely a label, since navigation depends on the schema lookup this
@@ -198,7 +196,6 @@ public class SchemaAwareElementRecursionHeuristicTests
 
         // Assert
         exclude.InstanceType.ShouldBe("ValueSet.compose.Include");
-        exclude.InstanceType.ShouldNotBe("exclude");
         exclude.InstanceType.ShouldNotBe(compose.InstanceType);
 
         var system = exclude.Children("system").Single();
@@ -238,7 +235,6 @@ public class SchemaAwareElementRecursionHeuristicTests
 
         // Assert
         referenceRange.InstanceType.ShouldBe("Observation.ReferenceRange");
-        referenceRange.InstanceType.ShouldNotBe("referenceRange");
 
         var text = referenceRange.Children("text").Single();
         text.InstanceType.ShouldBe("string");
