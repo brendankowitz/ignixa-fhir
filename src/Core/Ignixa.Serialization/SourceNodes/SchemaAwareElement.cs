@@ -510,20 +510,33 @@ internal class SchemaAwareElement : IElement
         {
             // A recursive or forward-referencing BackboneElement (e.g. QuestionnaireResponse.item.item,
             // or ExplanationOfBenefit.item.detail.subDetail.adjudication referring back up to
-            // ExplanationOfBenefit.item.adjudication) is not detectable by name: the target is not
-            // always the immediate parent, and can be an ancestor several levels up or even a sibling
-            // (ValueSet.compose.exclude -> #ValueSet.compose.include). The schema's own
-            // ContentReference is the authoritative - and only reliable - marker, so key off it
-            // directly rather than approximating it with a name comparison.
-            if (childElementDef is ITypeExtended { ContentReference: { } contentReference })
+            // ExplanationOfBenefit.item.adjudication) is not reliably detectable by name: the target is
+            // not always the immediate parent, and can be an ancestor several levels up or even a
+            // sibling (ValueSet.compose.exclude -> #ValueSet.compose.include). The schema marks this
+            // form of recursion with a ContentReference and nothing else does, so key off it directly
+            // rather than approximating it with a name comparison. Self-typed recursion needs no branch
+            // here at all - Extension.extension declares type Extension and no ContentReference, and
+            // DeriveInstanceType reads that correctly.
+            if (childElementDef is ITypeExtended { ContentReference: { Length: > 1 } contentReference })
             {
-                var targetTypeName = contentReference.TrimStart('#');
+                // ElementDefinition.contentReference is a uri, and both spellings are legal: the local
+                // fragment "#Questionnaire.item" that the generated schemas use, and the absolute
+                // "http://hl7.org/fhir/StructureDefinition/Questionnaire#Questionnaire.item" that IG
+                // packages emit and that ProfileLayeredSchemaProvider passes through verbatim. Slice
+                // from the '#' so both resolve - the same parse FhirPathAnalyzer applies to this field,
+                // deliberately identical so static analysis and runtime navigation cannot disagree
+                // about which element is recursive.
+                var targetTypeName = contentReference[(contentReference.IndexOf('#', StringComparison.Ordinal) + 1)..];
                 var targetTypeDef = schema.GetTypeDefinition(targetTypeName);
 
-                // Every ContentReference in the generated schemas resolves (verified across all five
-                // FHIR versions), but a miss is handled deliberately rather than assumed away: leaving
-                // qualifiedInstanceType null here falls through to the normal DeriveInstanceType path
-                // below instead of fabricating a type name for a target the schema cannot locate.
+                // A target the schema cannot locate falls through to the normal DeriveInstanceType
+                // path below rather than fabricating a type name. Be aware of what that costs: a
+                // ContentReference element carries no declared type, so DeriveInstanceType returns its
+                // bare element name ("item"), which is not a FHIR type and matches no converter - the
+                // #454 failure shape, one level down. Every ContentReference across the five generated
+                // schemas resolves, and ContentReferenceResolutionTests pins that, so this branch is
+                // unreachable through them; it is reachable through a profile-backed ISchema, where a
+                // package can declare a target that provider cannot resolve.
                 if (targetTypeDef != null)
                 {
                     qualifiedInstanceType = targetTypeDef.Info.Name;
