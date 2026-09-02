@@ -496,6 +496,10 @@ internal class SchemaAwareElement : IElement
         var qualifiedName = $"{cachedTypeDef.Info.Name}.{childName}";
         var qualifiedTypeDef = schema.GetTypeDefinition(qualifiedName);
 
+        // Looked up once and shared below: the exact-name child element is both the fallback definition
+        // for primitives/simple types and the only place a ContentReference can be declared.
+        var childElementDef = cachedTypeDef.Children.FirstOrDefault(e => e.Info.Name == childName);
+
         // A BackboneElement's qualified name is also its instance type.
         string? qualifiedInstanceType = null;
         if (qualifiedTypeDef != null)
@@ -504,35 +508,46 @@ internal class SchemaAwareElement : IElement
         }
         else
         {
-            // Check for recursive BackboneElements (e.g., QuestionnaireResponse.item.item)
-            // The parent InstanceType might already be the qualified name we need
-            // Extract last segment of parent's TypeName and compare with child name
-            var parentTypeName = cachedTypeDef.Info.Name;
-            var lastSegment = parentTypeName != null && parentTypeName.Contains('.', StringComparison.Ordinal)
-                ? parentTypeName.Substring(parentTypeName.LastIndexOf('.') + 1)
-                : parentTypeName;
-
-            // Case-insensitive comparison for recursion check
-            if (childName.Equals(lastSegment, StringComparison.OrdinalIgnoreCase))
+            // A recursive or forward-referencing BackboneElement (e.g. QuestionnaireResponse.item.item,
+            // or ExplanationOfBenefit.item.detail.subDetail.adjudication referring back up to
+            // ExplanationOfBenefit.item.adjudication) is not reliably detectable by name: the target is
+            // not always the immediate parent, and can be an ancestor several levels up or even a
+            // sibling (ValueSet.compose.exclude -> #ValueSet.compose.include). The schema marks this
+            // form of recursion with a ContentReference and nothing else does, so key off it directly
+            // rather than approximating it with a name comparison. Self-typed recursion needs no branch
+            // here at all - Extension.extension declares type Extension and no ContentReference, and
+            // DeriveInstanceType reads that correctly.
+            if (childElementDef is ITypeExtended { ContentReference: { Length: > 1 } contentReference })
             {
-                // This is a recursive element - use the parent's qualified type
-                qualifiedInstanceType = parentTypeName;
+                // ElementDefinition.contentReference is a uri, and both spellings are legal: the local
+                // fragment "#Questionnaire.item" that the generated schemas use, and the absolute
+                // "http://hl7.org/fhir/StructureDefinition/Questionnaire#Questionnaire.item" that IG
+                // packages emit and that ProfileLayeredSchemaProvider passes through verbatim. Slice
+                // from the '#' so both resolve - the same parse FhirPathAnalyzer applies to this field,
+                // deliberately identical so static analysis and runtime navigation cannot disagree
+                // about which element is recursive.
+                var targetTypeName = contentReference[(contentReference.IndexOf('#', StringComparison.Ordinal) + 1)..];
+                var targetTypeDef = schema.GetTypeDefinition(targetTypeName);
+
+                // A target the schema cannot locate falls through to the normal DeriveInstanceType
+                // path below rather than fabricating a type name. Be aware of what that costs: a
+                // ContentReference element carries no declared type, so DeriveInstanceType returns its
+                // bare element name ("item"), which is not a FHIR type and matches no converter - the
+                // #454 failure shape, one level down. Every ContentReference across the five generated
+                // schemas resolves, and ContentReferenceResolutionTests pins that, so this branch is
+                // unreachable through them; it is reachable through a profile-backed ISchema, where a
+                // package can declare a target that provider cannot resolve.
+                if (targetTypeDef != null)
+                {
+                    qualifiedInstanceType = targetTypeDef.Info.Name;
+                }
             }
         }
 
-        // If we found a qualified type definition for this child (it's a BackboneElement),
-        // use it as the definition
-        IType? childDef = null;
-        if (qualifiedTypeDef != null)
-        {
-            childDef = qualifiedTypeDef;
-        }
-
-        // If no qualified type def, try exact match from parent's children (for primitives/simple types)
-        if (childDef == null)
-        {
-            childDef = cachedTypeDef.Children.FirstOrDefault(e => e.Info.Name == childName);
-        }
+        // If we found a qualified type definition for this child (it's a BackboneElement), use it as the
+        // definition; otherwise fall back to the exact-name match already looked up above (primitives and
+        // simple types).
+        var childDef = qualifiedTypeDef ?? childElementDef;
 
         // If still no match, check if this is a choice type variant (e.g., valueString for value[x])
         if (childDef == null)
