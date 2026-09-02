@@ -71,6 +71,74 @@ public class SchemaAwareElementRecursionHeuristicTests
         nestedLocation.InstanceType.ShouldBe("Reference");
     }
 
+    /// <summary>
+    /// The old heuristic compared the child's name against the last segment of the parent's type name,
+    /// and when that name had no dot the "last segment" was the whole name - so it fired on datatypes
+    /// whose child shares their name, not only on backbones. Four sites are in that class, and this is
+    /// the one that matters: <c>Reference.reference</c> is on every reference in every resource, and it
+    /// used to report <c>Reference</c> rather than the <c>string</c> the schema declares.
+    /// </summary>
+    /// <remarks>
+    /// Pinned here because the parity corpus cannot see it - no search parameter resolves a reference's
+    /// own <c>reference</c> child - while several consumers can: <c>resolve()</c>'s extraction path,
+    /// <c>ofType(Reference)</c> in de-identification rules, and <c>FreeTextEdgeCaseStrategy</c>, which
+    /// was relying on the wrong type to keep emoji out of reference values.
+    /// </remarks>
+    [Fact]
+    public void GivenAReferencesOwnReferenceChild_WhenNavigated_ThenTypesAsStringNotReference()
+    {
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs1",
+          "status": "final",
+          "code": { "coding": [ { "code": "1234-5" } ] },
+          "subject": { "reference": "Patient/p1", "display": "A patient" }
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var subject = resource.ToElement(_r4Provider).Children("subject").Single();
+
+        subject.InstanceType.ShouldBe("Reference");
+        subject.Children("reference").Single().InstanceType.ShouldBe("string");
+        subject.Children("display").Single().InstanceType.ShouldBe("string");
+    }
+
+    /// <summary>
+    /// The one member of that datatype class the old heuristic got right, and it got it right for the
+    /// wrong reason - <c>Extension.extension</c> is genuine recursion that declares no
+    /// <c>ContentReference</c>, so the narrowed branch no longer fires on it at all. It still types
+    /// correctly because <c>DeriveInstanceType</c> reads its declared type, which is the mechanism this
+    /// test exists to pin: nested extensions are every profile and every IG.
+    /// </summary>
+    [Fact]
+    public void GivenANestedExtension_WhenNavigated_ThenStillTypesAsExtension()
+    {
+        var patientJson = """
+        {
+          "resourceType": "Patient",
+          "id": "p1",
+          "extension": [
+            {
+              "url": "http://example.org/outer",
+              "extension": [ { "url": "http://example.org/inner", "valueString": "x" } ]
+            }
+          ]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var outer = resource.ToElement(_r4Provider).Children("extension").Single();
+        var inner = outer.Children("extension").Single();
+
+        outer.InstanceType.ShouldBe("Extension");
+        inner.InstanceType.ShouldBe("Extension");
+
+        // Navigable, not merely labelled: the nested extension's own choice variant resolves.
+        inner.Children("valueString").Single().InstanceType.ShouldBe("string");
+    }
+
     [Fact]
     public void GivenQuestionnaireWithNestedItems_WhenNavigatingItemItem_ThenTypesAsTheParentQuestionnaireItem()
     {

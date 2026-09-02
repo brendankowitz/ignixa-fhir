@@ -88,7 +88,8 @@ internal static class ResourceBackedKnownDivergences
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// <c>canonical</c> under 46 <c>Reference</c>-typed parameters (186 sites): the deliberate storage
+    /// <c>canonical</c> under 46 parameters (186 sites) - 45 <c>Reference</c>-typed plus
+    /// <c>MessageHeader-event</c>, which is <c>Token</c>: the deliberate storage
     /// divergence tracked as #430. Ignixa registers <c>canonical</c> against <c>UriSearchValue</c> only.
     /// </description></item>
     /// <item><description>
@@ -243,7 +244,8 @@ internal static class ResourceBackedKnownDivergences
         // converter for a backbone, and neither should - the defect is upstream of the converter.
         // Encounter.Location, MedicinalProductDefinition.Contact, SubstanceDefinition.Code/Name and
         // SubstanceSpecification.Code left this list with issue #454: the element model now types their
-        // sole recursion site as the schema-declared leaf, so a backbone is never handed to the converter
+        // sole name-equality site as the schema-declared leaf - these were never recursion sites, that
+        // they were treated as recursion is the defect - so a backbone is never handed to the converter
         // for them again. Ingredient.Manufacturer stays - not because the element model still mistypes it,
         // but because R4B's own published Ingredient-manufacturer expression names the backbone itself.
         ("Ingredient.Manufacturer", SearchParamType.Reference),
@@ -275,13 +277,20 @@ internal static class ResourceBackedKnownDivergences
     /// resources - so the floor is the lower. Raised from 10,745 by issue #454's
     /// <c>SchemaAwareElement</c> recursion-heuristic fix: both engines gained exactly the same 32
     /// entries, because both indexers share the one production element model the fix corrected -
-    /// <c>Encounter.location.location</c> and 32 other false-positive siblings now arrive typed as their
-    /// schema-declared leaf instead of their parent backbone - 33 unique qualified paths, 93
-    /// site-instances, found by a schema walk across all five generated providers - so the parameters
-    /// that target them contribute entries neither engine could produce before. The follow-up widening in
-    /// <c>SchemaAwareElement.ComputeChildResolution</c> that resolves a <c>ContentReference</c> to its
-    /// actual target rather than only the 19 sites where it happens to equal the parent measured zero
-    /// further movement here: none of the 76 additional qualified paths it fixes are reached by a search
+    /// <c>Encounter.location.location</c> and its false-positive siblings now arrive typed as their
+    /// schema-declared leaf instead of their parent backbone, so the parameters that target them
+    /// contribute entries neither engine could produce before. A schema walk across all five generated
+    /// providers counts 37 unique false-positive qualified paths over 112 site-instances, in two
+    /// classes: 33 paths / 93 sites under a backbone parent, which is what this corpus measures, and
+    /// four under a datatype parent - <c>Reference.reference</c>, <c>Expression.expression</c>,
+    /// <c>id.id</c> and <c>Extension.extension</c> - which it does not. That second class is the wider
+    /// one by far: <c>Reference.reference</c> is on every reference in every resource, and it is why
+    /// <c>ResolveFunctionTests</c> re-pins from <c>Reference</c> to <c>string</c>. It moves no count
+    /// here because no search parameter resolves a reference's own <c>reference</c> child. The
+    /// follow-up widening in <c>SchemaAwareElement.ComputeChildResolution</c> that resolves a
+    /// <c>ContentReference</c> to its actual target, rather than only the 19 paths where the child's
+    /// name also matched the parent backbone's last segment, measured zero further movement here: none
+    /// of the 76 additional qualified paths it fixes are reached by a search
     /// parameter this corpus exercises or by a shape <c>SchemaBasedFhirResourceFaker</c> generates deeply
     /// enough to trigger, so this floor is unchanged by that half of the work. Previously raised from
     /// 10,743 when repairing the STU3 Observation composite component references let both indexers emit

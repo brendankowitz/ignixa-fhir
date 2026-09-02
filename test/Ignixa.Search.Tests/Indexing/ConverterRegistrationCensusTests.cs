@@ -244,10 +244,16 @@ public class ConverterRegistrationCensusTests
     /// all cannot be recovered by it. Recording the types the sweep actually reached keeps the reason
     /// those skips are correct attached to evidence rather than to a claim.
     /// </summary>
+    /// <remarks>
+    /// <c>Encounter.Location</c> was a case here until #454, when the element model stopped handing
+    /// that backbone to a leaf-typed parameter. It is deliberately not carried as a historical row:
+    /// the summary above promises these are types the sweep reached, and after #454 it does not reach
+    /// this one - a row asserting inference and upstream registration would still pass while quietly
+    /// falsifying that promise.
+    /// </remarks>
     [Theory]
     [InlineData("Attachment")]
     [InlineData("base64Binary")]
-    [InlineData("Encounter.Location")]
     [InlineData("Location.Position")]
     public void GivenAnUnconvertibleFhirType_WhenCensused_ThenUpstreamCannotConvertItEither(
         string fhirType)
