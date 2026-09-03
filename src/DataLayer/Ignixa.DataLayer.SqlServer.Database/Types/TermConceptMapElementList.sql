@@ -7,12 +7,14 @@
 -- TargetSystemId is nullable and means "no target system", which is not the same as "no target". An element
 -- can carry a target code whose system the ConceptMap never declared; storing a placeholder id instead would
 -- make it look like a real system on the read path.
+--
+-- The code column(s) mirror their destination table's collation; see TermConcept.sql.
 CREATE TYPE dbo.TermConceptMapElementList AS TABLE (
     SourceSystemId INT            NOT NULL,
-    SourceCode     NVARCHAR (256) NOT NULL,
+    SourceCode     NVARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
     SourceDisplay  NVARCHAR (500) NULL,
     TargetSystemId INT            NULL,
-    TargetCode     NVARCHAR (256) NULL,
+    TargetCode     NVARCHAR (256) COLLATE Latin1_General_100_CS_AS NULL,
     TargetDisplay  NVARCHAR (500) NULL,
     Equivalence    NVARCHAR (50)  NOT NULL,
     Comment        NVARCHAR (MAX) NULL,

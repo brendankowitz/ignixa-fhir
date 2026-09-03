@@ -39,6 +39,29 @@ public sealed class SqlServerTerminologyService(
     private static readonly TableDescriptor MapElements = SqlCatalog.Default.Table("TermConceptMapElement");
     private static readonly TableDescriptor Packages = SqlCatalog.Default.Table("PackageResource");
 
+    /// <summary>
+    /// The collation every code comparison below falls back to for a CodeSystem that declares
+    /// <c>caseSensitive=false</c>.
+    /// <para>
+    /// The code columns themselves are declared <c>COLLATE Latin1_General_100_CS_AS</c> (see
+    /// dbo.TermConcept, dbo.TermValueSetExpansion and dbo.TermConceptMapElement), so a plain
+    /// <c>Code = @code</c> here is case-sensitive by construction rather than by whatever collation the
+    /// database happens to have been created with. That is the FHIR default and the only storage that can
+    /// represent both kinds of CodeSystem: under a case-insensitive collation <c>UQ_TermConcept_CodeSystem_Code</c>
+    /// cannot hold both <c>AB</c> and <c>ab</c> at all, so a case-sensitive CodeSystem containing the pair is
+    /// unrepresentable, while case-insensitive matching can always be layered back on at read time.
+    /// </para>
+    /// <para>
+    /// Layering it back on is what <c>dbo.TermCodeSystem.CaseSensitive</c> is for -- the flag the importer has
+    /// always written and no query had ever read. Each read path below runs its case-sensitive query first and
+    /// re-runs it under this collation only on a miss, gated on <c>CaseSensitive = 0</c>. A single query
+    /// covering both cases would be one round trip rather than two, but forcing a collation onto the column
+    /// makes the predicate non-sargable, turning every ordinary lookup into a scan of the code index; the
+    /// retry keeps the common case a seek and costs a second round trip only on a miss.
+    /// </para>
+    /// </summary>
+    private const string CaseInsensitiveCollation = "Latin1_General_100_CI_AS";
+
     // Every SQL string here is assembled from catalog identifiers and fixed literals; all caller data flows
     // through parameters. Stating the CA2100 justification once rather than at each call site.
     private static SqlCommand Command(string sql)
@@ -67,37 +90,11 @@ public sealed class SqlServerTerminologyService(
             return CacheAndReturn(cacheKey, NotFound());
         }
 
-        var versionFilter = version is null
-            ? string.Empty
-            : $" AND cs.{CodeSystems.Column("Version").Name} = @version";
-
-        // Ordered by the code system's import date so the most recently imported version wins when a
-        // concept appears in more than one, matching the EF query's OrderByDescending(ImportedDate).
-        using var command = Command(
-            $"SELECT TOP 1 tc.{Concepts.Column("Display").Name}, tc.{Concepts.Column("Definition").Name}, " +
-            $"tc.{Concepts.Column("PropertiesJson").Name}, cs.{CodeSystems.Column("Version").Name} " +
-            $"FROM {Qualified(Concepts)} tc " +
-            $"JOIN {Qualified(CodeSystems)} cs ON cs.{CodeSystems.Column("TermCodeSystemId").Name} = tc.{Concepts.Column("TermCodeSystemId").Name} " +
-            $"WHERE cs.{CodeSystems.Column("SystemId").Name} = @systemId AND tc.{Concepts.Column("Code").Name} = @code" +
-            versionFilter +
-            $" ORDER BY cs.{CodeSystems.Column("ImportedDate").Name} DESC");
-
-        command.Parameters.AddWithValue("@systemId", systemId.Value);
-        command.Parameters.AddWithValue("@code", code);
-        if (version is not null)
+        var rows = await ReadConceptAsync(systemId.Value, code, version, MatchMode.CaseSensitive, cancellationToken);
+        if (rows.Count == 0)
         {
-            command.Parameters.AddWithValue("@version", version);
+            rows = await ReadConceptAsync(systemId.Value, code, version, MatchMode.CaseInsensitiveFallback, cancellationToken);
         }
-
-        var rows = await sqlExecutionService.ExecuteReaderAsync(
-            systemPartitionId,
-            command,
-            reader => (
-                Display: reader.IsDBNull(0) ? null : reader.GetString(0),
-                Definition: reader.IsDBNull(1) ? null : reader.GetString(1),
-                PropertiesJson: reader.IsDBNull(2) ? null : reader.GetString(2),
-                Version: reader.IsDBNull(3) ? null : reader.GetString(3)),
-            cancellationToken);
 
         if (rows.Count == 0)
         {
@@ -143,9 +140,13 @@ public sealed class SqlServerTerminologyService(
             return null;
         }
 
+        // $expand's filter is a text search for a picker, not a code identity comparison, so it stays
+        // case-insensitive against both columns. Display already is; Code needs the collation forced back on
+        // now that the column itself is case-sensitive, or making code *equality* correct would silently
+        // narrow this to codes typed in exactly the right case.
         var filterClause = string.IsNullOrWhiteSpace(parameters.Filter)
             ? string.Empty
-            : $" AND (e.{Expansions.Column("Code").Name} LIKE @filter OR " +
+            : $" AND (e.{Expansions.Column("Code").Name} COLLATE {CaseInsensitiveCollation} LIKE @filter OR " +
               $"(e.{Expansions.Column("Display").Name} IS NOT NULL AND e.{Expansions.Column("Display").Name} LIKE @filter))";
 
         var total = await CountExpansionAsync(valueSet.Value.Id, filterClause, parameters.Filter, cancellationToken);
@@ -247,23 +248,13 @@ public sealed class SqlServerTerminologyService(
             }
         }
 
-        var systemFilter = systemId is null
-            ? string.Empty
-            : $" AND e.{Expansions.Column("SystemId").Name} = @systemId";
-
-        using var command = Command(
-            $"SELECT TOP 1 e.{Expansions.Column("Display").Name} FROM {Qualified(Expansions)} e " +
-            $"WHERE e.{Expansions.Column("TermValueSetId").Name} = @valueSetId " +
-            $"AND e.{Expansions.Column("Code").Name} = @code{systemFilter}");
-        command.Parameters.AddWithValue("@valueSetId", valueSet.Value.Id);
-        command.Parameters.AddWithValue("@code", code);
-        if (systemId is not null)
+        var matches = await ReadExpansionDisplayAsync(
+            valueSet.Value.Id, code, systemId, MatchMode.CaseSensitive, cancellationToken);
+        if (matches.Count == 0)
         {
-            command.Parameters.AddWithValue("@systemId", systemId.Value);
+            matches = await ReadExpansionDisplayAsync(
+                valueSet.Value.Id, code, systemId, MatchMode.CaseInsensitiveFallback, cancellationToken);
         }
-
-        var matches = await sqlExecutionService.ExecuteReaderAsync(
-            systemPartitionId, command, reader => reader.IsDBNull(0) ? null : reader.GetString(0), cancellationToken);
 
         if (matches.Count == 0)
         {
@@ -366,49 +357,11 @@ public sealed class SqlServerTerminologyService(
                   ? string.Empty
                   : $" AND cm.{maps.Column("Version").Name} = @conceptMapVersion");
 
-        using var command = Command(
-            $"SELECT e.{MapElements.Column("SourceCode").Name}, e.{MapElements.Column("SourceDisplay").Name}, " +
-            $"e.{MapElements.Column("TargetCode").Name}, e.{MapElements.Column("TargetDisplay").Name}, " +
-            $"e.{MapElements.Column("Equivalence").Name}, e.{MapElements.Column("Comment").Name}, " +
-            $"ss.{Systems.Column("Value").Name}, ts.{Systems.Column("Value").Name}, " +
-            $"cm.{maps.Column("Canonical").Name} " +
-            $"FROM {Qualified(MapElements)} e " +
-            $"JOIN {Qualified(maps)} cm ON cm.{maps.Column("TermConceptMapId").Name} = e.{MapElements.Column("TermConceptMapId").Name} " +
-            $"JOIN {Qualified(Systems)} ss ON ss.{Systems.Column("SystemId").Name} = e.{MapElements.Column("SourceSystemId").Name} " +
-            $"LEFT JOIN {Qualified(Systems)} ts ON ts.{Systems.Column("SystemId").Name} = e.{MapElements.Column("TargetSystemId").Name} " +
-            $"WHERE e.{MapElements.Column(matchColumn).Name} = @sourceSystemId " +
-            $"AND e.{MapElements.Column(codeColumn).Name} = @code{targetFilter}{mapFilter}");
-
-        command.Parameters.AddWithValue("@sourceSystemId", sourceSystemId.Value);
-        command.Parameters.AddWithValue("@code", parameters.Code);
-        if (targetSystemId is not null && targetFilter.Length > 0)
+        var rows = await ReadTranslationsAsync(MatchMode.CaseSensitive);
+        if (rows.Count == 0)
         {
-            command.Parameters.AddWithValue("@targetSystemId", targetSystemId.Value);
+            rows = await ReadTranslationsAsync(MatchMode.CaseInsensitiveFallback);
         }
-
-        if (!string.IsNullOrEmpty(parameters.Url))
-        {
-            command.Parameters.AddWithValue("@url", parameters.Url);
-            if (parameters.ConceptMapVersion is not null)
-            {
-                command.Parameters.AddWithValue("@conceptMapVersion", parameters.ConceptMapVersion);
-            }
-        }
-
-        var rows = await sqlExecutionService.ExecuteReaderAsync(
-            systemPartitionId,
-            command,
-            reader => (
-                SourceCode: reader.GetString(0),
-                SourceDisplay: reader.IsDBNull(1) ? null : reader.GetString(1),
-                TargetCode: reader.IsDBNull(2) ? null : reader.GetString(2),
-                TargetDisplay: reader.IsDBNull(3) ? null : reader.GetString(3),
-                Equivalence: reader.GetString(4),
-                Comment: reader.IsDBNull(5) ? null : reader.GetString(5),
-                SourceSystem: reader.GetString(6),
-                TargetSystem: reader.IsDBNull(7) ? null : reader.GetString(7),
-                MapCanonical: reader.GetString(8)),
-            cancellationToken);
 
         if (rows.Count == 0)
         {
@@ -434,6 +387,63 @@ public sealed class SqlServerTerminologyService(
             .ToList();
 
         return new TranslateResult(true, null, matches);
+
+        async Task<IReadOnlyList<(string SourceCode, string? SourceDisplay, string? TargetCode, string? TargetDisplay,
+            string Equivalence, string? Comment, string SourceSystem, string? TargetSystem, string MapCanonical)>>
+            ReadTranslationsAsync(MatchMode mode)
+        {
+            var codeMatch = mode == MatchMode.CaseSensitive
+                ? $"e.{MapElements.Column(codeColumn).Name} = @code"
+                : $"e.{MapElements.Column(codeColumn).Name} COLLATE {CaseInsensitiveCollation} = @code";
+
+            var caseSensitiveGuard = mode == MatchMode.CaseSensitive
+                ? string.Empty
+                : CaseInsensitiveSystemGuard($"e.{MapElements.Column(matchColumn).Name}");
+
+            using var command = Command(
+                $"SELECT e.{MapElements.Column("SourceCode").Name}, e.{MapElements.Column("SourceDisplay").Name}, " +
+                $"e.{MapElements.Column("TargetCode").Name}, e.{MapElements.Column("TargetDisplay").Name}, " +
+                $"e.{MapElements.Column("Equivalence").Name}, e.{MapElements.Column("Comment").Name}, " +
+                $"ss.{Systems.Column("Value").Name}, ts.{Systems.Column("Value").Name}, " +
+                $"cm.{maps.Column("Canonical").Name} " +
+                $"FROM {Qualified(MapElements)} e " +
+                $"JOIN {Qualified(maps)} cm ON cm.{maps.Column("TermConceptMapId").Name} = e.{MapElements.Column("TermConceptMapId").Name} " +
+                $"JOIN {Qualified(Systems)} ss ON ss.{Systems.Column("SystemId").Name} = e.{MapElements.Column("SourceSystemId").Name} " +
+                $"LEFT JOIN {Qualified(Systems)} ts ON ts.{Systems.Column("SystemId").Name} = e.{MapElements.Column("TargetSystemId").Name} " +
+                $"WHERE e.{MapElements.Column(matchColumn).Name} = @sourceSystemId " +
+                $"AND {codeMatch}{targetFilter}{mapFilter}{caseSensitiveGuard}");
+
+            command.Parameters.AddWithValue("@sourceSystemId", sourceSystemId.Value);
+            command.Parameters.AddWithValue("@code", parameters.Code);
+            if (targetSystemId is not null && targetFilter.Length > 0)
+            {
+                command.Parameters.AddWithValue("@targetSystemId", targetSystemId.Value);
+            }
+
+            if (!string.IsNullOrEmpty(parameters.Url))
+            {
+                command.Parameters.AddWithValue("@url", parameters.Url);
+                if (parameters.ConceptMapVersion is not null)
+                {
+                    command.Parameters.AddWithValue("@conceptMapVersion", parameters.ConceptMapVersion);
+                }
+            }
+
+            return await sqlExecutionService.ExecuteReaderAsync(
+                systemPartitionId,
+                command,
+                reader => (
+                    SourceCode: reader.GetString(0),
+                    SourceDisplay: reader.IsDBNull(1) ? null : reader.GetString(1),
+                    TargetCode: reader.IsDBNull(2) ? null : reader.GetString(2),
+                    TargetDisplay: reader.IsDBNull(3) ? null : reader.GetString(3),
+                    Equivalence: reader.GetString(4),
+                    Comment: reader.IsDBNull(5) ? null : reader.GetString(5),
+                    SourceSystem: reader.GetString(6),
+                    TargetSystem: reader.IsDBNull(7) ? null : reader.GetString(7),
+                    MapCanonical: reader.GetString(8)),
+                cancellationToken);
+        }
     }
 
     public async Task<SubsumesResult> SubsumesAsync(
@@ -450,47 +460,29 @@ public sealed class SqlServerTerminologyService(
             return new SubsumesResult("not-subsumed");
         }
 
-        var versionFilter = parameters.Version is null
-            ? string.Empty
-            : $" AND cs.{CodeSystems.Column("Version").Name} = @version";
+        // One resolution per code, each matching exactly the way the other read paths do. See
+        // FindConceptIdAsync for why this is not the single IN (@codeA, @codeB) query it replaces.
+        var conceptA = await FindConceptIdAsync(systemId.Value, parameters.CodeA, parameters.Version, cancellationToken);
+        var conceptB = await FindConceptIdAsync(systemId.Value, parameters.CodeB, parameters.Version, cancellationToken);
 
-        using var command = Command(
-            $"SELECT tc.{Concepts.Column("TermConceptId").Name}, tc.{Concepts.Column("Code").Name} " +
-            $"FROM {Qualified(Concepts)} tc " +
-            $"JOIN {Qualified(CodeSystems)} cs ON cs.{CodeSystems.Column("TermCodeSystemId").Name} = tc.{Concepts.Column("TermCodeSystemId").Name} " +
-            $"WHERE cs.{CodeSystems.Column("SystemId").Name} = @systemId " +
-            $"AND tc.{Concepts.Column("Code").Name} IN (@codeA, @codeB){versionFilter}");
-
-        command.Parameters.AddWithValue("@systemId", systemId.Value);
-        command.Parameters.AddWithValue("@codeA", parameters.CodeA);
-        command.Parameters.AddWithValue("@codeB", parameters.CodeB);
-        if (parameters.Version is not null)
-        {
-            command.Parameters.AddWithValue("@version", parameters.Version);
-        }
-
-        var concepts = await sqlExecutionService.ExecuteReaderAsync(
-            systemPartitionId, command, reader => (Id: reader.GetInt64(0), Code: reader.GetString(1)), cancellationToken);
-
-        var conceptA = concepts.FirstOrDefault(c => c.Code == parameters.CodeA);
-        var conceptB = concepts.FirstOrDefault(c => c.Code == parameters.CodeB);
-
-        if (conceptA.Code is null || conceptB.Code is null)
+        if (conceptA is null || conceptB is null)
         {
             return new SubsumesResult("not-subsumed");
         }
 
-        if (conceptA.Id == conceptB.Id)
+        // Two codes differing only by case in a caseSensitive=false CodeSystem resolve to the same concept,
+        // and "equivalent" is the right answer for them.
+        if (conceptA == conceptB)
         {
             return new SubsumesResult("equivalent");
         }
 
-        if (await IsDescendantOfAsync(conceptB.Id, conceptA.Id, cancellationToken))
+        if (await IsDescendantOfAsync(conceptB.Value, conceptA.Value, cancellationToken))
         {
             return new SubsumesResult("subsumes");
         }
 
-        if (await IsDescendantOfAsync(conceptA.Id, conceptB.Id, cancellationToken))
+        if (await IsDescendantOfAsync(conceptA.Value, conceptB.Value, cancellationToken))
         {
             return new SubsumesResult("subsumed-by");
         }
@@ -570,6 +562,158 @@ public sealed class SqlServerTerminologyService(
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The display recorded for <paramref name="code"/> in an expansion, or no rows when the code is not in
+    /// it. The expansion table carries a SystemId but no TermCodeSystemId, so the case-insensitive fallback
+    /// reaches its CodeSystem through <see cref="CaseInsensitiveSystemGuard"/> — against the expansion row's
+    /// own system when the caller named none.
+    /// </summary>
+    private async Task<IReadOnlyList<string?>> ReadExpansionDisplayAsync(
+        long valueSetId, string code, int? systemId, MatchMode mode, CancellationToken cancellationToken)
+    {
+        var systemFilter = systemId is null
+            ? string.Empty
+            : $" AND e.{Expansions.Column("SystemId").Name} = @systemId";
+
+        var codeMatch = mode == MatchMode.CaseSensitive
+            ? $"e.{Expansions.Column("Code").Name} = @code"
+            : $"e.{Expansions.Column("Code").Name} COLLATE {CaseInsensitiveCollation} = @code";
+
+        var caseSensitiveGuard = mode == MatchMode.CaseSensitive
+            ? string.Empty
+            : CaseInsensitiveSystemGuard($"e.{Expansions.Column("SystemId").Name}");
+
+        using var command = Command(
+            $"SELECT TOP 1 e.{Expansions.Column("Display").Name} FROM {Qualified(Expansions)} e " +
+            $"WHERE e.{Expansions.Column("TermValueSetId").Name} = @valueSetId " +
+            $"AND {codeMatch}{systemFilter}{caseSensitiveGuard}");
+        command.Parameters.AddWithValue("@valueSetId", valueSetId);
+        command.Parameters.AddWithValue("@code", code);
+        if (systemId is not null)
+        {
+            command.Parameters.AddWithValue("@systemId", systemId.Value);
+        }
+
+        return await sqlExecutionService.ExecuteReaderAsync(
+            systemPartitionId, command, reader => reader.IsDBNull(0) ? null : reader.GetString(0), cancellationToken);
+    }
+
+    /// <summary>
+    /// Which comparison a code predicate is being built for. <see cref="CaseInsensitiveFallback"/> relaxes
+    /// the collation <em>and</em> adds the <c>CaseSensitive = 0</c> guard; the two belong together, because a
+    /// relaxed collation without the guard is a blanket case-insensitive match — the defect being fixed.
+    /// </summary>
+    private enum MatchMode
+    {
+        CaseSensitive,
+        CaseInsensitiveFallback,
+    }
+
+    /// <summary>
+    /// Matches <c>tc.Code</c> against <c>@code</c> for a query that has already joined the concept's
+    /// CodeSystem as <c>cs</c>, so the <c>caseSensitive=false</c> guard reads a column on that row.
+    /// </summary>
+    private static string ConceptCodeMatch(MatchMode mode) => mode == MatchMode.CaseSensitive
+        ? $"tc.{Concepts.Column("Code").Name} = @code"
+        : $"tc.{Concepts.Column("Code").Name} COLLATE {CaseInsensitiveCollation} = @code " +
+          $"AND cs.{CodeSystems.Column("CaseSensitive").Name} = 0";
+
+    /// <summary>
+    /// The <c>caseSensitive=false</c> guard for a query that has <em>not</em> joined a CodeSystem — the
+    /// expansion and concept-map tables carry a SystemId but no TermCodeSystemId. Written as EXISTS rather
+    /// than a join so a system with several imported CodeSystem versions cannot multiply the rows.
+    /// </summary>
+    private static string CaseInsensitiveSystemGuard(string systemIdExpression)
+        => $" AND EXISTS (SELECT 1 FROM {Qualified(CodeSystems)} cs " +
+           $"WHERE cs.{CodeSystems.Column("SystemId").Name} = {systemIdExpression} " +
+           $"AND cs.{CodeSystems.Column("CaseSensitive").Name} = 0)";
+
+    /// <summary>
+    /// The most recently imported concept for <paramref name="code"/> in <paramref name="systemId"/>, or no
+    /// rows. Ordered by the code system's import date so the most recently imported version wins when a
+    /// concept appears in more than one, matching the EF query's <c>OrderByDescending(ImportedDate)</c>.
+    /// </summary>
+    private async Task<IReadOnlyList<(string? Display, string? Definition, string? PropertiesJson, string? Version)>>
+        ReadConceptAsync(int systemId, string code, string? version, MatchMode mode, CancellationToken cancellationToken)
+    {
+        var versionFilter = version is null
+            ? string.Empty
+            : $" AND cs.{CodeSystems.Column("Version").Name} = @version";
+
+        using var command = Command(
+            $"SELECT TOP 1 tc.{Concepts.Column("Display").Name}, tc.{Concepts.Column("Definition").Name}, " +
+            $"tc.{Concepts.Column("PropertiesJson").Name}, cs.{CodeSystems.Column("Version").Name} " +
+            $"FROM {Qualified(Concepts)} tc " +
+            $"JOIN {Qualified(CodeSystems)} cs ON cs.{CodeSystems.Column("TermCodeSystemId").Name} = tc.{Concepts.Column("TermCodeSystemId").Name} " +
+            $"WHERE cs.{CodeSystems.Column("SystemId").Name} = @systemId AND {ConceptCodeMatch(mode)}" +
+            versionFilter +
+            $" ORDER BY cs.{CodeSystems.Column("ImportedDate").Name} DESC");
+
+        command.Parameters.AddWithValue("@systemId", systemId);
+        command.Parameters.AddWithValue("@code", code);
+        if (version is not null)
+        {
+            command.Parameters.AddWithValue("@version", version);
+        }
+
+        return await sqlExecutionService.ExecuteReaderAsync(
+            systemPartitionId,
+            command,
+            reader => (
+                Display: reader.IsDBNull(0) ? null : reader.GetString(0),
+                Definition: reader.IsDBNull(1) ? null : reader.GetString(1),
+                PropertiesJson: reader.IsDBNull(2) ? null : reader.GetString(2),
+                Version: reader.IsDBNull(3) ? null : reader.GetString(3)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The identity of the concept <paramref name="code"/> resolves to, case-sensitively first and then
+    /// under <see cref="CaseInsensitiveCollation"/> if its CodeSystem declares <c>caseSensitive=false</c>.
+    /// <para>
+    /// <see cref="SubsumesAsync"/> resolves each of its two codes through this rather than fetching both in
+    /// one <c>Code IN (@codeA, @codeB)</c> query and splitting the result in C#. That split compared the
+    /// returned codes with <c>==</c> — ordinal — while the query that returned them compared under the
+    /// database's collation, so the two halves of one operation disagreed about what equality means: a row
+    /// SQL had matched could be rejected by the C# predicate, leaving the concept unresolved and the
+    /// operation answering "not-subsumed" with no indication anything had gone wrong. There is no second
+    /// comparison here to disagree with the first.
+    /// </para>
+    /// </summary>
+    private async Task<long?> FindConceptIdAsync(
+        int systemId, string code, string? version, CancellationToken cancellationToken)
+    {
+        var id = await ReadConceptIdAsync(MatchMode.CaseSensitive);
+        return id ?? await ReadConceptIdAsync(MatchMode.CaseInsensitiveFallback);
+
+        async Task<long?> ReadConceptIdAsync(MatchMode mode)
+        {
+            var versionFilter = version is null
+                ? string.Empty
+                : $" AND cs.{CodeSystems.Column("Version").Name} = @version";
+
+            using var command = Command(
+                $"SELECT TOP 1 tc.{Concepts.Column("TermConceptId").Name} " +
+                $"FROM {Qualified(Concepts)} tc " +
+                $"JOIN {Qualified(CodeSystems)} cs ON cs.{CodeSystems.Column("TermCodeSystemId").Name} = tc.{Concepts.Column("TermCodeSystemId").Name} " +
+                $"WHERE cs.{CodeSystems.Column("SystemId").Name} = @systemId AND {ConceptCodeMatch(mode)}" +
+                versionFilter +
+                $" ORDER BY cs.{CodeSystems.Column("ImportedDate").Name} DESC");
+
+            command.Parameters.AddWithValue("@systemId", systemId);
+            command.Parameters.AddWithValue("@code", code);
+            if (version is not null)
+            {
+                command.Parameters.AddWithValue("@version", version);
+            }
+
+            var rows = await sqlExecutionService.ExecuteReaderAsync(
+                systemPartitionId, command, reader => reader.GetInt64(0), cancellationToken);
+
+            return rows.Count > 0 ? rows[0] : null;
+        }
     }
 
     private async Task<int?> ResolveSystemIdAsync(string? system, CancellationToken cancellationToken)

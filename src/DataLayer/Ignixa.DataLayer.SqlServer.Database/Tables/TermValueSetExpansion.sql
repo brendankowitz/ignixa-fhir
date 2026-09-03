@@ -1,8 +1,9 @@
+-- The code column(s) below are CS_AS for the reason given in full on TermConcept.sql.
 CREATE TABLE dbo.TermValueSetExpansion (
     TermValueSetExpansionId BIGINT         NOT NULL IDENTITY (1, 1),
     TermValueSetId          BIGINT         NOT NULL,
     SystemId                INT            NOT NULL,
-    Code                    NVARCHAR (256) NOT NULL,
+    Code                    NVARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
     Display                 NVARCHAR (500) NULL,
     SystemVersion           NVARCHAR (100) NULL,
     IsActive                BIT            NOT NULL,

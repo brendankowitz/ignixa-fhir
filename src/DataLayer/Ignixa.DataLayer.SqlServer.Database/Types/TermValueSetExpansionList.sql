@@ -6,9 +6,11 @@
 --
 -- Ordinal is carried rather than derived: the caller assigns it while building the set, and for a compose
 -- expansion that order reflects include processing rather than anything recoverable from the rows.
+--
+-- The code column(s) mirror their destination table's collation; see TermConcept.sql.
 CREATE TYPE dbo.TermValueSetExpansionList AS TABLE (
     SystemId      INT            NOT NULL,
-    Code          NVARCHAR (256) NOT NULL,
+    Code          NVARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
     Display       NVARCHAR (500) NULL,
     SystemVersion NVARCHAR (100) NULL,
     IsActive      BIT            NOT NULL,
