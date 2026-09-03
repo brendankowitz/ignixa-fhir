@@ -92,6 +92,15 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
         // 2. Ask the data layer for the caller's page plus a probe row (count-as-render pattern).
         //    The page size stays the caller's own: the over-fetch is stated, not folded into the count,
         //    so the data layer knows which rows are genuinely on the page and seeds _include from those.
+        //
+        //    This copy-constructs a SEPARATE SearchOptions instance from request.SearchOptions -- the
+        //    result below (line ~137) hands the serializer the ORIGINAL request.SearchOptions, not this
+        //    one, so anything a data-layer execution wrote onto searchOptionsWithExtra after this point
+        //    would never reach the serializer. Currently inert: BundleIssues, the only property either
+        //    instance carries that the serializer reads, is written once by SearchOptionsBuilder.cs
+        //    (~:399) BEFORE either instance exists and copied into both by the constructor below. A
+        //    future runtime data-layer warning routed through BundleIssues (or any other property
+        //    written post-construction) would silently vanish on this path.
         var searchOptionsWithExtra = new SearchOptions(request.SearchOptions)
         {
             ProbeExtraRow = true,
