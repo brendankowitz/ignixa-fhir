@@ -56,7 +56,7 @@ Designed for the cloud, Ignixa supports multi-tenancy out of the box, with data 
 Ignixa can be deployed to Azure using **Bicep** (Infrastructure as Code). This provisions a complete, secure environment with:
 
 - **App Service (Linux)** for hosting the container.
-- **SQL Server** with auto-provisioned tenant databases.
+- **SQL Server**, with tenant database schema deployed by running the schema-upgrade CLI once after first deploy (see the [Azure Deployment Guide](deploy/azure/README.md#8-database-schema-deployment)) -- it is not auto-provisioned.
 - **Storage Accounts** for FHIR data and DurableTask orchestration.
 - **Managed Identity** for zero-trust, passwordless security.
 
