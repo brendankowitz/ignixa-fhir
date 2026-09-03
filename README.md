@@ -95,9 +95,9 @@ docker pull ghcr.io/brendankowitz/ignixa-fhir:release
 
 ```
 
-#### Production Mode (SQL Server) 🚀
+#### SQL Server via Docker Compose
 
-For a complete, high-performance experience with **SQL Server**, use Docker Compose. This enables full ACID transactions, advanced indexing, and concurrency support.
+For a complete, high-performance local development experience with **SQL Server**, use Docker Compose. This enables full ACID transactions, advanced indexing, and concurrency support.
 
 ```bash
 docker compose up -d
@@ -107,6 +107,8 @@ docker compose up -d
 The server will be available at `http://localhost:8080/metadata`.
 
 > __Configuration__: You must create a `.env` file (see `.env.example`) to set the `SQL_SA_PASSWORD` and optionally the image tag.
+
+> **Note**: This Docker Compose setup is for **local development only**. For production deployments, see the [Azure Deployment Guide](deploy/azure/README.md), which uses Managed Identity for authentication instead of hardcoded credentials.
 
 ## 🛠️ Quick Start (Local Development)
 
