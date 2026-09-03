@@ -1,5 +1,6 @@
 using System.Data;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
@@ -487,6 +488,12 @@ public sealed class SqlServerCompiledSearchService(
             reader => ReadMatchRow(reader, hasIncludes),
             cancellationToken);
 
+        // Identities whose only appearance in `rows` sits at or beyond the page's own Limit -- the
+        // lookahead row(s) ProbeExtraRow asked for, never a member of the page. Ranked over the raw,
+        // pre-Distinct row order ExecuteReaderAsync returned it in, which mirrors the OFFSET/FETCH
+        // boundary the compiled statement actually drew -- see ComputeProbeRowIdentities.
+        var probeIdentities = ComputeProbeRowIdentities(rows, compiled.Query.OffsetPage);
+
         // Distinct: a resource can legitimately appear more than once in the raw row set when multiple
         // include/iterate stages independently resolve the same (ResourceTypeId, SurrogateId) -- e.g. a
         // multitype array reference matched by more than one join path. Without this, FetchResourcesAsync's
@@ -503,9 +510,22 @@ public sealed class SqlServerCompiledSearchService(
 
             foreach (var (resourceTypeId, surrogateId) in batch)
             {
+                var isProbeRow = probeIdentities.Contains((resourceTypeId, surrogateId));
+
                 if (!fetchedById.TryGetValue((resourceTypeId, surrogateId), out var resource))
                 {
                     _logger.LogWarning("Resource {ResourceTypeId}/{SurrogateId} matched the search but was not found on batch fetch -- likely deleted concurrently.", resourceTypeId, surrogateId);
+
+                    // A plain `continue` here would let a probe row's proof that a further page
+                    // exists vanish along with it -- see SearchEntryResult.IsPagingProbe. No
+                    // client-visible OperationOutcome: an ordinary concurrent-delete race is not a
+                    // data problem worth surfacing, unlike the genuinely corrupt payload below, and
+                    // this path has no ResourceType/ResourceId to report -- only internal ids.
+                    if (isProbeRow)
+                    {
+                        yield return PagingProbeSentinel;
+                    }
+
                     continue;
                 }
 
@@ -519,9 +539,100 @@ public sealed class SqlServerCompiledSearchService(
                 if (TryBuildSearchEntryResult(resource, matchRow.IsMatch) is { } result)
                 {
                     yield return result;
+                    continue;
                 }
+
+                // TryBuildSearchEntryResult already logged the deserialization failure. Two distinct
+                // problems follow from it, so two distinct entries: a probe-position miss still needs
+                // to prove a further page exists (as above), and -- unlike the concurrent-delete case
+                // -- a corrupt stored payload IS a data problem, so the client gets a visible
+                // OperationOutcome rather than a page that is silently one entry short with no trace.
+                if (isProbeRow)
+                {
+                    yield return PagingProbeSentinel;
+                }
+
+                yield return BuildSkippedResourceOutcome(resource.ResourceTypeName, resource.ResourceId, resource.Version);
             }
         }
+    }
+
+    /// <summary>
+    /// A reusable, content-free sentinel: <see cref="SearchEntryResult.IsPagingProbe"/> is the only
+    /// thing about it a consumer may read, so one immutable instance safely stands in for every
+    /// probe-row miss across every search.
+    /// </summary>
+    private static readonly SearchEntryResult PagingProbeSentinel = new(
+        ResourceType: string.Empty,
+        ResourceId: string.Empty,
+        VersionId: string.Empty,
+        LastModified: DateTimeOffset.UnixEpoch,
+        ResourceBytes: ReadOnlyMemory<byte>.Empty)
+    {
+        IsPagingProbe = true,
+    };
+
+    /// <summary>
+    /// Identities in <paramref name="rows"/> whose only appearance sits at or beyond the page's own
+    /// <see cref="OffsetSpec.Limit"/> -- the lookahead row(s) <see cref="OffsetSpec.ProbeExtraRow"/>
+    /// asked for. Ranked over Match-designated rows only (an Include row shares no boundary with the
+    /// match page it seeds from), in the raw SQL fetch order <paramref name="rows"/> already
+    /// preserves -- the post-Distinct identity list ExecuteAndMaterializeAsync builds from the same
+    /// rows can silently reorder or collapse them, which this ranking must not do.
+    /// </summary>
+    private static HashSet<(short ResourceTypeId, long SurrogateId)> ComputeProbeRowIdentities(
+        IReadOnlyList<MatchRow> rows, OffsetSpec? offsetPage)
+    {
+        var probeIdentities = new HashSet<(short, long)>();
+        if (offsetPage is not { ProbeExtraRow: true })
+        {
+            return probeIdentities;
+        }
+
+        var matchRank = 0;
+        foreach (var row in rows)
+        {
+            if (row.IsMatch is false)
+            {
+                continue;
+            }
+
+            if (matchRank >= offsetPage.Limit)
+            {
+                probeIdentities.Add((row.ResourceTypeId, row.SurrogateId));
+            }
+
+            matchRank++;
+        }
+
+        return probeIdentities;
+    }
+
+    /// <summary>
+    /// Builds the client-visible warning that stands in for a resource whose stored payload could
+    /// not be read. Unconditionally written by StreamingBundleSerializer (an Outcome-mode entry is
+    /// never subject to page-size trimming), so this is the only trace of the skip that reaches the
+    /// client -- without it, TryBuildSearchEntryResult's log entry is the sole record anywhere that a
+    /// matched resource is missing from the bundle.
+    /// </summary>
+    private static SearchEntryResult BuildSkippedResourceOutcome(string resourceType, string resourceId, int version)
+    {
+        var diagnostics = $"{resourceType}/{resourceId} version {version} matched this search but its stored content could not be read, and was omitted from this page.";
+        var outcomeBytes = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            resourceType = "OperationOutcome",
+            issue = new[] { new { severity = "warning", code = "incomplete", diagnostics } },
+        });
+
+        return new SearchEntryResult(
+            ResourceType: resourceType,
+            ResourceId: resourceId,
+            VersionId: version.ToString(),
+            LastModified: DateTimeOffset.UtcNow,
+            ResourceBytes: outcomeBytes)
+        {
+            SearchMode = SearchEntryMode.Outcome,
+        };
     }
 
     private SearchEntryResult? TryBuildSearchEntryResult(FetchedResource resource, bool? isMatch)

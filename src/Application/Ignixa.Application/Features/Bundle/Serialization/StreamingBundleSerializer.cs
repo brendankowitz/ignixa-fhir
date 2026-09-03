@@ -270,6 +270,17 @@ public static class StreamingBundleSerializer
 
             await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
             {
+                if (resource.IsPagingProbe)
+                {
+                    // The data layer's lookahead row could not be turned into content (a corrupt
+                    // payload, or a concurrent-delete miss), but its presence still proves a further
+                    // page exists -- counting rendered deliveries alone cannot see that, since the row
+                    // that would have crossed pageSize never arrived. Pure signal: never rendered,
+                    // never counted.
+                    hasMore = true;
+                    continue;
+                }
+
                 if (resource.SearchMode == SearchEntryMode.Match)
                 {
                     if (entryCount >= pageSize)
@@ -514,6 +525,15 @@ public static class StreamingBundleSerializer
 
             await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
             {
+                if (resource.IsPagingProbe)
+                {
+                    // Mirrors SerializeWithPaginationAsync's identical guard: the lookahead row itself
+                    // could not be turned into content, but its presence still proves a further page
+                    // exists. Pure signal: never rendered, never counted toward entryCount.
+                    hasMore = true;
+                    continue;
+                }
+
                 entryCount++;
 
                 if (entryCount > pageSize)

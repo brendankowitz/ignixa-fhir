@@ -38,4 +38,23 @@ public record SearchEntryResult(
     /// Defaults to Match for backward compatibility.
     /// </summary>
     public SearchEntryMode SearchMode { get; init; } = SearchEntryMode.Match;
+
+    /// <summary>
+    /// True for a synthetic entry that carries no resource content and exists purely to prove a
+    /// further page exists.
+    /// </summary>
+    /// <remarks>
+    /// A data layer that over-fetches one lookahead ("probe") row past the caller's page size, so a
+    /// pagination serializer can detect a further page by counting deliveries, has no way to signal
+    /// that fact if the probe row itself cannot be turned into a deliverable resource -- a corrupt
+    /// stored payload, or a match whose fetch missed because of a concurrent delete. Silently
+    /// dropping that row (the same skip-and-continue every other unmappable row already gets) would
+    /// make the delivered count fall exactly at the page size, which a counting-based pagination
+    /// serializer cannot distinguish from "there is no further page" -- silently truncating a result
+    /// set with no error and no next link. Yielding this sentinel in the probe row's place preserves
+    /// the count the serializer relies on without fabricating content for a row that was never
+    /// actually deliverable. A consumer must treat it as pure signal: never render it, and never
+    /// count it toward a page's rendered entries.
+    /// </remarks>
+    public bool IsPagingProbe { get; init; }
 }

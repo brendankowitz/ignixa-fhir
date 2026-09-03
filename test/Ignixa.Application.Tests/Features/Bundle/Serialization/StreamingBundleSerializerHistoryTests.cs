@@ -295,6 +295,70 @@ public class StreamingBundleSerializerHistoryTests
         entries[0].GetProperty("fullUrl").GetString().ShouldBe("Patient/p0/_history/1");
     }
 
+    [Fact]
+    public async Task GivenAnUnmappableProbeRow_WhenSerializingHistory_ThenTheNextLinkSurvives()
+    {
+        // Arrange: @CountPlusOne fetched a second (lookahead) row beyond a real, single-entry page,
+        // but it could not be turned into content -- a corrupt payload, mirrored here by an
+        // IsPagingProbe sentinel, exactly as SqlServerHistoryQueryExecutor now substitutes in its
+        // place. pageSize=2 is deliberately larger than the one real entry: entryCount only reaches
+        // pageSize (2), never exceeding it, when the sentinel is counted like any other entry -- so a
+        // naive fix (a placeholder the loop counts as real content) would both render the placeholder
+        // as a fake entry and still wrongly conclude no further page exists. Only a signal checked
+        // ahead of the entryCount bookkeeping gets both right.
+        var stream = new MemoryStream();
+        var links = new[] { CreateLink("self", "http://x/_history"), CreateLink("next", "http://x/_history?page=2") };
+
+        // Act
+        await StreamingBundleSerializer.SerializeHistoryAsync(
+            stream, "history", null, OneEntryThenUnmappableProbeAsync(), links, pageSize: 2);
+
+        // Assert
+        var entries = ParseEntries(stream);
+        entries.Count.ShouldBe(1, "the probe sentinel carries no content and must not be rendered");
+
+        var relations = JsonDocument.Parse(stream.ToArray()).RootElement.GetProperty("link")
+            .EnumerateArray().Select(l => l.GetProperty("relation").GetString()).ToList();
+        relations.ShouldContain("next");
+    }
+
+    [Fact]
+    public async Task GivenNoProbeRowAndAShortPage_WhenSerializingHistory_ThenTheNextLinkIsSuppressed()
+    {
+        // Arrange -- control for the test above: with no probe sentinel and a page that came up
+        // short of pageSize, there genuinely is no further page, so "next" must not survive.
+        var stream = new MemoryStream();
+        var links = new[] { CreateLink("self", "http://x/_history"), CreateLink("next", "http://x/_history?page=2") };
+
+        // Act
+        await StreamingBundleSerializer.SerializeHistoryAsync(
+            stream, "history", null, TwoEntriesAsync(), links, pageSize: 2);
+
+        // Assert
+        var relations = JsonDocument.Parse(stream.ToArray()).RootElement.GetProperty("link")
+            .EnumerateArray().Select(l => l.GetProperty("relation").GetString()).ToList();
+        relations.ShouldNotContain("next");
+    }
+
+    private static SearchEntryResult CreatePagingProbeSentinel() =>
+        new(
+            ResourceType: string.Empty,
+            ResourceId: string.Empty,
+            VersionId: string.Empty,
+            LastModified: DateTimeOffset.UnixEpoch,
+            ResourceBytes: ReadOnlyMemory<byte>.Empty)
+        {
+            IsPagingProbe = true,
+        };
+
+    private static async IAsyncEnumerable<SearchEntryResult> OneEntryThenUnmappableProbeAsync()
+    {
+        yield return CreateEntry("p0");
+        await Task.Yield();
+        yield return CreatePagingProbeSentinel();
+        await Task.Yield();
+    }
+
     private static async Task<string> ErrorEntryRequestUrlAsync(IReadOnlyList<FhirBundleLink>? links)
     {
         var stream = new MemoryStream();

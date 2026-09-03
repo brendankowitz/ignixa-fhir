@@ -44,4 +44,33 @@ public class SqlServerHistoryQueryExecutorTests : IAsyncLifetime
         history.Count.ShouldBe(3);
         history.Select(h => h.VersionId).ShouldBe(["3", "2", "1"]);
     }
+
+    [Fact]
+    public async Task GivenACorruptProbeRow_WhenQueriedWithAPageSizeOfOne_ThenYieldsAPagingProbeSentinel()
+    {
+        // Arrange -- two versions, history sorted descending by default so version 2 is the real page
+        // and version 1 is the lookahead row @CountPlusOne fetches to detect a further page.
+        // Corrupting version 1's RawResource mirrors the exact defect code review found: a corrupt
+        // probe row must not silently drop the caller's only proof that a further page exists.
+        var resourceTypeId = await _database.ExecuteScalarAsync<short>(
+            "SELECT ResourceTypeId FROM dbo.ResourceType WHERE Name = 'Patient'");
+
+        var resourceId = $"executor-probe-{Guid.NewGuid():N}";
+        var resource = new ResourceWrapper("Patient", resourceId, "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{resourceId}}"}"""), new ResourceRequest("PUT", $"Patient/{resourceId}"));
+        await _database.Repository.CreateOrUpdateAsync(resource, CancellationToken.None);
+        await _database.Repository.CreateOrUpdateAsync(resource with { }, CancellationToken.None);
+
+        await _database.ExecuteNonQueryAsync(
+            $"UPDATE dbo.Resource SET RawResource = 0xDEADBEEF WHERE ResourceId = '{resourceId}' AND Version = 1");
+
+        var history = await _executor.GetResourceHistoryAsync(
+            resourceTypeId, "Patient", resourceId, new HistoryQueryParameters { Count = 1 }, CancellationToken.None).ToListAsync();
+
+        // Assert -- the real page (version 2) plus a content-free sentinel proving a further page
+        // exists despite the probe row (version 1) being unreadable.
+        history.Count.ShouldBe(2);
+        history.ShouldContain(h => h.VersionId == "2");
+        history.ShouldContain(h => h.IsPagingProbe);
+    }
 }

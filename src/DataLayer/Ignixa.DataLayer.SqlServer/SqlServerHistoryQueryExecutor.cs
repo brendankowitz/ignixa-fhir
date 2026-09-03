@@ -130,15 +130,45 @@ public class SqlServerHistoryQueryExecutor(
 
         var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, ReadHistoryRow, cancellationToken);
 
-        foreach (var row in rows)
+        // @CountPlusOne always over-fetches by exactly one lookahead row past parameters.Count, so
+        // its position is simply the raw fetch order's tail -- unlike the compiled search path, there
+        // is no separate match/include split to rank over.
+        for (var i = 0; i < rows.Count; i++)
         {
-            var result = TryMapHistoryRow(row);
+            var isProbeRow = i >= parameters.Count;
+            var result = TryMapHistoryRow(rows[i]);
             if (result != null)
             {
                 yield return result;
+                continue;
+            }
+
+            // TryMapHistoryRow already logged the deserialization failure. A plain skip is otherwise
+            // unchanged -- see the type doc for why a history bundle has no per-row slot to make this
+            // visible to the client the way a searchset entry's search.mode="outcome" does -- but a
+            // probe-position miss still needs to prove a further page exists, or that proof vanishes
+            // along with the row (see SearchEntryResult.IsPagingProbe).
+            if (isProbeRow)
+            {
+                yield return PagingProbeSentinel;
             }
         }
     }
+
+    /// <summary>
+    /// A reusable, content-free sentinel: <see cref="SearchEntryResult.IsPagingProbe"/> is the only
+    /// thing about it a consumer may read, so one immutable instance safely stands in for every
+    /// probe-row miss across every history query.
+    /// </summary>
+    private static readonly SearchEntryResult PagingProbeSentinel = new(
+        ResourceType: string.Empty,
+        ResourceId: string.Empty,
+        VersionId: string.Empty,
+        LastModified: DateTimeOffset.UnixEpoch,
+        ResourceBytes: ReadOnlyMemory<byte>.Empty)
+    {
+        IsPagingProbe = true,
+    };
 
     private static string BuildHistorySql(string selectFromWhere, HistoryQueryParameters parameters)
     {

@@ -199,6 +199,50 @@ public class SqlServerCompiledSearchServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenACorruptProbeRow_WhenSearchStreamAsyncCalled_ThenYieldsAPagingProbeSentinelAndAVisibleOutcomeEntry()
+    {
+        // Arrange -- two Patients, created in order so the first has the lower ResourceSurrogateId
+        // and sorts first under the default (unsorted) ascending-by-surrogate-id ordering.
+        // MaxItemCount=1 with ProbeExtraRow=true asks the compiler for exactly 2 rows: the real page
+        // (the first patient) plus a lookahead (the second) -- mirroring the exact defect code review
+        // found: the (pageSize+1)th row, fetched purely to detect a further page, has a corrupt
+        // RawResource and cannot be decompressed. Without the fix, TryBuildSearchEntryResult's skip
+        // would drop that row from the stream entirely and the caller would never learn a further page
+        // exists.
+        var tag = Guid.NewGuid().ToString("N");
+        var firstId = $"probe-corrupt-a-{tag}";
+        var secondId = $"probe-corrupt-b-{tag}";
+        await CreatePatientAsync(firstId);
+        await CreatePatientAsync(secondId);
+
+        await _database.ExecuteNonQueryAsync(
+            $"UPDATE dbo.Resource SET RawResource = 0xDEADBEEF WHERE ResourceId = '{secondId}'");
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Expression = TypeEquals("Patient"),
+            MaxItemCount = 1,
+            ProbeExtraRow = true,
+        };
+
+        // Act
+        var results = new List<SearchEntryResult>();
+        await foreach (var result in _service.SearchStreamAsync(options, CancellationToken.None))
+        {
+            results.Add(result);
+        }
+
+        // Assert -- the real page (one Match entry for the first patient), a content-free sentinel
+        // proving a further page exists despite the probe row's failure, and a client-visible
+        // OperationOutcome standing in for the second patient's unreadable content.
+        results.Count.ShouldBe(3);
+        results.ShouldContain(r => r.SearchMode == SearchEntryMode.Match && r.ResourceId == firstId);
+        results.ShouldContain(r => r.IsPagingProbe);
+        results.ShouldContain(r => r.SearchMode == SearchEntryMode.Outcome && r.ResourceId == secondId);
+    }
+
+    [Fact]
     public async Task GivenResourcesAcrossASurrogateIdSpan_WhenGetExportRangesAsyncCalled_ThenReturnsNonOverlappingExhaustiveRanges()
     {
         // Arrange -- create 3 Patients (distinct surrogate ids by construction).
