@@ -11,6 +11,9 @@ using Ignixa.Application.BackgroundOperations.Terminology.Orchestrations;
 using Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrations;
 using Ignixa.Application.BackgroundOperations.TtlCleanup.Orchestrations;
 using Ignixa.DataLayer.FileSystem.DurableTask;
+using Ignixa.DataLayer.SqlServer;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using ExportCompleteJobActivity = Ignixa.Application.BackgroundOperations.Export.Activities.CompleteJobActivity;
 using ImportActivities = Ignixa.Application.BackgroundOperations.Import.Activities;
 using TerminologyActivities = Ignixa.Application.BackgroundOperations.Terminology.Activities;
@@ -126,16 +129,9 @@ public static class DurableTaskConfiguration
         var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger("DurableTask.SqlServer");
 
-        // Get connection string from Tenant 0 (system partition) settings
-        // Tenant 0 may inherit its connection string from another tenant (default: Tenant 1)
-        var connectionString = GetSystemPartitionConnectionString(configuration);
-
-        if (string.IsNullOrEmpty(connectionString))
-        {
-            throw new InvalidOperationException(
-                "DurableTask SqlServer connection string not found. Ensure Tenant 0 (system partition) has a valid " +
-                "SQL Server connection string configured, either directly or via InheritConnectionStringFromTenant.");
-        }
+        // The SQL Server backend runs on the system partition's database, which may inherit its
+        // connection string from another tenant (default: Tenant 1).
+        var connectionString = ResolveSystemPartitionConnectionString(sp);
 
         var taskHubName = configuration["DurableTask:SqlServer:TaskHubName"] ?? "ignixa";
 
@@ -149,55 +145,57 @@ public static class DurableTaskConfiguration
     }
 
     /// <summary>
-    /// Gets the connection string from Tenant 0 (system partition).
-    /// If Tenant 0 has no direct connection string, it inherits from the tenant specified by InheritConnectionStringFromTenant.
+    /// Resolves the connection string the SQL Server orchestration backend runs on -- the system
+    /// partition's -- through the same <see cref="TenantConnectionStringResolver"/> every other SQL Server
+    /// call site uses.
+    /// <para>
+    /// This hand-rolled the inheritance rule off raw <see cref="IConfiguration"/> sections until it was a
+    /// fourth copy of it, applying no storage-type gate, no parse guard and no credential guard -- so it
+    /// could hand DurableTask a connection string every FHIR path would have rejected. Reading sections
+    /// rather than the bound model also made this the one caller immune to <c>ConfigurationBinder</c>
+    /// dropping tenant 0, which is part of why that bug stayed invisible for so long: background jobs kept
+    /// working while every query against the system partition failed.
+    /// </para>
+    /// <para>
+    /// Blocking on the resolver is deliberate. <see cref="IOrchestrationService"/> is built by a synchronous
+    /// DI factory; the alternative -- deferring the backend's construction until
+    /// <see cref="DurableTaskHostedService"/> can await it -- would move a configuration failure from host
+    /// start to the first background job, where it is swallowed and logged rather than fatal. The factory
+    /// runs once, on the startup thread, with no synchronisation context, and by then the host's database
+    /// initialization has already driven tenant 0 through this same resolver.
+    /// </para>
     /// </summary>
-    private static string? GetSystemPartitionConnectionString(IConfiguration configuration)
+    internal static string ResolveSystemPartitionConnectionString(IServiceProvider serviceProvider)
     {
-        var tenantsSection = configuration.GetSection("Tenants:Configurations");
-        if (!tenantsSection.Exists())
+        var tenantStore = serviceProvider.GetRequiredService<ITenantConfigurationStore>();
+
+        string connectionString;
+        try
         {
-            return null;
+            connectionString = TenantConnectionStringResolver
+                .ResolveAsync(tenantStore, SystemConstants.SystemPartitionId, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // The resolver names the tenant but not the caller, and "tenant 0 is not configured for SQL
+            // Server storage" reads as a non-sequitur to an operator who never asked for SQL -- until they
+            // know it is DurableTask:Provider that asked.
+            throw new InvalidOperationException(
+                "DurableTask is configured for the SqlServer provider (DurableTask:Provider), which runs on " +
+                $"the system partition's database, but Tenant {SystemConstants.SystemPartitionId}'s connection " +
+                $"string could not be resolved. {ex.Message}",
+                ex);
         }
 
-        // Find Tenant 0 (system partition) configuration
-        IConfigurationSection? tenant0Section = null;
-        foreach (var tenantSection in tenantsSection.GetChildren())
-        {
-            var tenantId = tenantSection.GetValue<int>("TenantId", -1);
-            if (tenantId == 0)
-            {
-                tenant0Section = tenantSection;
-                break;
-            }
-        }
+        // Run here rather than trusting the repository factory to have run it first: the orchestration
+        // backend opens its own connections from this string, so without this it is the one SQL Server
+        // caller that can reach a Production database with a password.
+        serviceProvider.GetRequiredService<ManagedIdentityConnectionStringValidator>()
+            .Validate(connectionString, SystemConstants.SystemPartitionId);
 
-        if (tenant0Section == null)
-        {
-            return null;
-        }
-
-        // Check if Tenant 0 has a direct connection string
-        var connectionString = tenant0Section["Storage:ConnectionString"];
-        if (!string.IsNullOrEmpty(connectionString))
-        {
-            return connectionString;
-        }
-
-        // Tenant 0 inherits connection string from another tenant (default: Tenant 1)
-        var inheritFromTenantId = tenant0Section.GetValue<int>("Storage:InheritConnectionStringFromTenant", 1);
-
-        // Find the tenant to inherit from
-        foreach (var tenantSection in tenantsSection.GetChildren())
-        {
-            var tenantId = tenantSection.GetValue<int>("TenantId", -1);
-            if (tenantId == inheritFromTenantId)
-            {
-                return tenantSection["Storage:ConnectionString"];
-            }
-        }
-
-        return null;
+        return connectionString;
     }
 
     /// <summary>
