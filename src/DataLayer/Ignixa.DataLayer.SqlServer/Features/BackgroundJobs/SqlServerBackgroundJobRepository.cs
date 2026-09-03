@@ -55,7 +55,13 @@ public sealed class SqlServerBackgroundJobRepository<T>(
 
         BindAll(command, job);
 
-        await sqlExecutionService.ExecuteNonQueryAsync(connectionTenantId, command, cancellationToken);
+        // NonIdempotent: a bare INSERT against dbo.BackgroundJobs, whose primary key is
+        // (TenantId, JobId). A retried transient failure here is loud rather than silent -- the
+        // retry hits the same primary key and fails with a duplicate-key error instead of quietly
+        // creating a second job -- but it is still the wrong behaviour for a write that may have
+        // already committed, so the transient-fault pipeline must not attempt it a second time.
+        await sqlExecutionService.ExecuteNonQueryAsync(
+            connectionTenantId, command, cancellationToken, SqlCommandIdempotency.NonIdempotent);
         logger.LogInformation("Created background job {JobId}", job.JobId);
     }
 
