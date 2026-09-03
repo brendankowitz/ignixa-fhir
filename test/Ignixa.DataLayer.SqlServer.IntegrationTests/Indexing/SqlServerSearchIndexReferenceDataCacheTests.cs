@@ -254,22 +254,25 @@ public class SqlServerSearchIndexReferenceDataCacheTests : IAsyncLifetime
         rowCount.ShouldBe(1);
     }
 
+    /// <summary>
+    /// A failed resolver used to be caught and turned into a logged warning plus a <c>false</c> return --
+    /// silently dropping the search-index row a caller was about to build from this dictionary, while
+    /// <c>SqlServerMergeRepository.MergeResourcesAsync</c> went on to report a successful write. GetOrCreate*
+    /// has no "genuinely not in the catalog" outcome (it always inserts), so a failed resolve here is always
+    /// an infrastructure fault, never a legitimate miss -- it must propagate instead. See the remarks on
+    /// <see cref="SqlServerSearchIndexReferenceDataCache.OnDemandResolvingDictionary{TKey,TValue}"/>.
+    /// </summary>
     [Fact]
-    public void GivenAResolverThatThrows_WhenTryGetValueMisses_ThenAWarningIsLoggedAndFalseIsReturned()
+    public void GivenAResolverThatThrows_WhenTryGetValueMisses_ThenTheFailurePropagatesAndNothingIsCached()
     {
         var backingCache = new ConcurrentDictionary<string, int>();
-        var logger = new ListLogger<SqlServerSearchIndexReferenceDataCache>();
         var wrapper = new SqlServerSearchIndexReferenceDataCache.OnDemandResolvingDictionary<string, int>(
             backingCache,
             (_, _) => Task.FromException<int>(new InvalidOperationException("simulated resolve failure")),
-            logger,
             -1);
 
-        var found = wrapper.TryGetValue("any-key", out var value);
-
-        found.ShouldBeFalse();
-        value.ShouldBe(0);
-        logger.Warnings.ShouldContain(w => w.Contains("any-key"));
+        Should.Throw<InvalidOperationException>(() => wrapper.TryGetValue("any-key", out _))
+            .Message.ShouldBe("simulated resolve failure");
         backingCache.ContainsKey("any-key").ShouldBeFalse();
     }
 }

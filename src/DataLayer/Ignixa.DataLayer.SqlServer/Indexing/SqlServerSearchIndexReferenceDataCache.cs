@@ -106,10 +106,10 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     // not a snapshot -- so inserts from any wrapper instance are immediately visible everywhere,
     // matching SqlServerMergeRepository's expectation that these mappings stay live.
     public IReadOnlyDictionary<string, int> SystemMappings =>
-        new OnDemandResolvingDictionary<string, int>(_systemCache, GetOrCreateSystemIdAsync, _logger, SystemQuantityMissingSentinel);
+        new OnDemandResolvingDictionary<string, int>(_systemCache, GetOrCreateSystemIdAsync, SystemQuantityMissingSentinel);
 
     public IReadOnlyDictionary<string, int> QuantityCodeMappings =>
-        new OnDemandResolvingDictionary<string, int>(_quantityCodeCache, GetOrCreateQuantityCodeIdAsync, _logger, SystemQuantityMissingSentinel);
+        new OnDemandResolvingDictionary<string, int>(_quantityCodeCache, GetOrCreateQuantityCodeIdAsync, SystemQuantityMissingSentinel);
 
     public async Task PreloadResourceTypesAsync(CancellationToken cancellationToken)
     {
@@ -673,12 +673,14 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
             // No unique-constraint catch/retry -- the original SearchIndexReferenceDataCache has
             // none either (relies on the in-process semaphore for single-process safety; a true
             // concurrent-insert race across processes is an existing, unaddressed gap this port
-            // does not need to fix).
+            // does not need to fix). NonIdempotent: a -2 command timeout does not prove the server
+            // did not commit this INSERT, and retrying it would risk a duplicate-key failure on a
+            // write that actually succeeded -- so a transient fault propagates instead.
             using var insertCommand = new SqlCommand(
                 "INSERT INTO dbo.System (Value) OUTPUT INSERTED.SystemId VALUES (@Value)");
             insertCommand.Parameters.Add("@Value", SqlDbType.NVarChar).Value = systemUri;
             var insertedRows = await _sqlExecutionService.ExecuteReaderAsync(
-                tenantId, insertCommand, reader => reader.GetInt32(0), cancellationToken);
+                tenantId, insertCommand, reader => reader.GetInt32(0), cancellationToken, SqlCommandIdempotency.NonIdempotent);
 
             var newId = insertedRows[0];
             _logger.LogDebug("Created new System entry: {SystemUri} -> {SystemId}", systemUri, newId);
@@ -726,11 +728,13 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
                 return existingId;
             }
 
+            // NonIdempotent: see the matching comment in GetOrCreateSystemIdAsync -- a transient fault here
+            // must propagate rather than retry an INSERT that may have already committed.
             using var insertCommand = new SqlCommand(
                 "INSERT INTO dbo.QuantityCode (Value) OUTPUT INSERTED.QuantityCodeId VALUES (@Value)");
             insertCommand.Parameters.Add("@Value", SqlDbType.NVarChar).Value = code;
             var insertedRows = await _sqlExecutionService.ExecuteReaderAsync(
-                tenantId, insertCommand, reader => reader.GetInt32(0), cancellationToken);
+                tenantId, insertCommand, reader => reader.GetInt32(0), cancellationToken, SqlCommandIdempotency.NonIdempotent);
 
             var newId = insertedRows[0];
             _logger.LogDebug("Created new QuantityCode entry: {Code} -> {QuantityCodeId}", code, newId);
@@ -796,6 +800,158 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         {
             _dbLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Batched form of <see cref="TryGetSystemIdAsync"/>: looks up every requested system URI in a single
+    /// database round trip (<c>WHERE Value IN (...)</c>) rather than one round trip per URI, taking
+    /// <see cref="_dbLock"/> at most once for the whole set. Every requested URI appears in the result,
+    /// mapped to null when it has no row.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Mirrors <c>SearchIndexReferenceDataCache.GetSystemIdsAsync</c> (Ignixa.DataLayer.SqlEntityFramework)
+    /// exactly: positive results land in the shared <see cref="_systemCache"/>, misses in
+    /// <see cref="_missingSystems"/>, and both caches are consulted before the lock so a URI already
+    /// answerable from either cache never joins the database round trip.
+    /// </para>
+    /// <para>
+    /// A returned row is credited only to the requested spelling that equals its stored <c>Value</c>
+    /// ordinally. <c>dbo.System.Value</c> declares no explicit collation (unlike <c>dbo.QuantityCode</c> and
+    /// <c>dbo.SearchParam</c>), so whether a row differing only by case answers to a given spelling is a
+    /// question about the database's default collation, which this method cannot read. Crediting it
+    /// unconditionally would be wrong under a case-sensitive collation and would poison the ordinal
+    /// <see cref="_systemCache"/> for the process lifetime; recording it as a miss would be wrong under a
+    /// case-insensitive one. Deferring to a follow-up exact-spelling query keeps this method in agreement
+    /// with <see cref="TryGetSystemIdAsync"/> under either collation, at the cost of one extra round trip --
+    /// paid only for the rare case-only match, not the common path this method exists to speed up.
+    /// </para>
+    /// </remarks>
+    /// <param name="systemUris">The system URIs to look up.</param>
+    /// <param name="cancellationToken">
+    /// Observed before either cache is consulted, then cancels the lock wait and the database round trip.
+    /// </param>
+    /// <returns>A map from every requested URI to its SystemId, or null where no row exists.</returns>
+    public async Task<IReadOnlyDictionary<string, int?>> GetSystemIdsAsync(
+        IReadOnlyCollection<string> systemUris,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(systemUris);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var results = new Dictionary<string, int?>(StringComparer.Ordinal);
+        var pending = new List<string>();
+
+        foreach (var systemUri in systemUris)
+        {
+            if (string.IsNullOrEmpty(systemUri) || results.ContainsKey(systemUri))
+            {
+                continue;
+            }
+
+            if (_systemCache.TryGetValue(systemUri, out var cachedId))
+            {
+                results[systemUri] = cachedId;
+            }
+            else if (_missingSystems.IsKnownMissing(systemUri))
+            {
+                results[systemUri] = null;
+            }
+            else
+            {
+                results[systemUri] = null;
+                pending.Add(systemUri);
+            }
+        }
+
+        if (pending.Count == 0)
+        {
+            return results;
+        }
+
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            var found = await ReadSystemsByValueAsync(pending, cancellationToken);
+            var foundByValue = found.ToDictionary(row => row.Value, row => row.Id, StringComparer.Ordinal);
+            var foundIgnoringCase = new HashSet<string>(found.Select(row => row.Value), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var systemUri in pending)
+            {
+                // An ordinal-equal row is this spelling under any collation.
+                if (foundByValue.TryGetValue(systemUri, out var systemId))
+                {
+                    _systemCache[systemUri] = systemId;
+                    results[systemUri] = systemId;
+                    continue;
+                }
+
+                // A row came back that differs only by case -- ask the database about the exact spelling
+                // instead of guessing (see the remarks above). Queried directly, not through
+                // TryGetSystemIdAsync: that method takes _dbLock itself, which this call path already holds.
+                if (foundIgnoringCase.Contains(systemUri))
+                {
+                    var exactId = await ReadSystemIdByExactValueAsync(systemUri, cancellationToken);
+                    if (exactId is { } id)
+                    {
+                        _systemCache[systemUri] = id;
+                        results[systemUri] = id;
+                        continue;
+                    }
+                }
+
+                _missingSystems.RecordMiss(systemUri);
+            }
+
+            return results;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Single-round-trip <c>WHERE Value IN (...)</c> lookup backing <see cref="GetSystemIdsAsync"/>. Binds
+    /// one <c>@p&lt;n&gt;</c> parameter per requested value rather than a table-valued parameter, matching the
+    /// <c>NVarChar</c> binding every other lookup against <c>dbo.System.Value</c> in this class uses.
+    /// </summary>
+    private async Task<IReadOnlyList<(string Value, int Id)>> ReadSystemsByValueAsync(
+        IReadOnlyList<string> values,
+        CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand();
+        var parameterNames = new string[values.Count];
+        for (var i = 0; i < values.Count; i++)
+        {
+            var parameterName = $"@p{i}";
+            parameterNames[i] = parameterName;
+            command.Parameters.Add(parameterName, SqlDbType.NVarChar).Value = values[i];
+        }
+
+        // CA2100 suppressed: the query text is built purely from a fixed sequence of numbered placeholders
+        // (@p0, @p1, ...) whose count is bounded by the caller's own pending-lookup count -- actual values
+        // always flow through parameters, never string concatenation. Same rationale as
+        // SqlServerFhirRepository.ResolveResourceTypeIdsAsync's identical pattern.
+#pragma warning disable CA2100
+        command.CommandText = $"SELECT Value, SystemId FROM dbo.System WHERE Value IN ({string.Join(", ", parameterNames)})";
+#pragma warning restore CA2100
+
+        return await _sqlExecutionService.ExecuteReaderAsync(
+            tenantId, command, reader => (Value: reader.GetString(0), Id: reader.GetInt32(1)), cancellationToken);
+    }
+
+    /// <summary>
+    /// Exact-spelling follow-up query for <see cref="GetSystemIdsAsync"/>'s case-only-match branch. Does NOT
+    /// take <see cref="_dbLock"/> -- the one caller already holds it.
+    /// </summary>
+    private async Task<int?> ReadSystemIdByExactValueAsync(string systemUri, CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand("SELECT SystemId FROM dbo.System WHERE Value = @Value");
+        command.Parameters.Add("@Value", SqlDbType.NVarChar).Value = systemUri;
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(
+            tenantId, command, reader => reader.GetInt32(0), cancellationToken);
+        return rows.Count > 0 ? rows[0] : null;
     }
 
     /// <summary>
@@ -970,9 +1126,22 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// specifically -- see docs/superpowers/specs/2026-07-21-sqlserver-system-quantitycode-selfheal-design.md
     /// for why this was missing and why it's safe (bounded blocking cost, no deadlock against
     /// <see cref="_dbLock"/>, since row generation always runs after Ensure*PreloadedAsync has already
-    /// released it). Internal, not private, so tests can construct it directly with a fake resolver to
-    /// exercise the failure path deterministically -- <see cref="GetOrCreateSystemIdAsync"/>/
-    /// <see cref="GetOrCreateQuantityCodeIdAsync"/> essentially never throw under normal test conditions.
+    /// released it).
+    /// <para>
+    /// <see cref="TryGetValue"/> deliberately does NOT catch and swallow a failed <paramref name="resolveAsync"/>
+    /// into a <c>false</c> return. <see cref="GetOrCreateSystemIdAsync"/> and
+    /// <see cref="GetOrCreateQuantityCodeIdAsync"/> -- the only two resolvers ever wired in here -- have no
+    /// "genuinely not in the catalog" outcome: they always insert the row when it is missing, so any exception
+    /// they raise (a deadlock, a command timeout, everything else the transient-fault pipeline gave up on)
+    /// means "we could not find out," never "this key does not exist." Catching that and returning
+    /// <c>false</c> used to turn it into a silently dropped search-index row while
+    /// <c>SqlServerMergeRepository.MergeResourcesAsync</c> went on to report a successful write. Letting it
+    /// propagate is safe here specifically: every row generator's <c>GenerateSqlDataRecords</c> -- the only
+    /// caller of this indexer, through <see cref="SystemMappings"/>/<see cref="QuantityCodeMappings"/> -- is
+    /// materialized to a <c>List</c> before <c>MergeResourcesAsync</c> issues <c>dbo.MergeResources</c>, so an
+    /// exception thrown here aborts the whole merge before anything reaches the database: no partial commit,
+    /// no silent 201.
+    /// </para>
     /// Note the asymmetry by design: <see cref="TryGetValue"/> and the indexer resolve on demand, but
     /// <see cref="ContainsKey"/>/<see cref="Count"/>/enumeration reflect only what's already cached --
     /// required, not incidental: an existing test asserts <c>ContainsKey</c> on an unresolved key stays
@@ -982,7 +1151,6 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     internal sealed class OnDemandResolvingDictionary<TKey, TValue>(
         ConcurrentDictionary<TKey, TValue> cache,
         Func<TKey, CancellationToken, Task<TValue>> resolveAsync,
-        ILogger logger,
         TValue missingSentinel) : IReadOnlyDictionary<TKey, TValue>
         where TKey : notnull
     {
@@ -1005,18 +1173,9 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
                 return true;
             }
 
-            try
-            {
-                value = resolveAsync(key, CancellationToken.None).GetAwaiter().GetResult();
-                cache[key] = value;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Failed to resolve {Key} on demand -- row skipped", key);
-                value = default!;
-                return false;
-            }
+            value = resolveAsync(key, CancellationToken.None).GetAwaiter().GetResult();
+            cache[key] = value;
+            return true;
         }
 
         public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() => cache.GetEnumerator();
