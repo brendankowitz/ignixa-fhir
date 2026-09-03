@@ -97,7 +97,18 @@ public sealed class FileBasedSearchServiceProbeRowTests : IDisposable
         // third (not yet fetched) resource's metadata now reproduces a genuine concurrent delete: its
         // presence was already proven, but by the time its own row is fetched, it's gone.
         var probeId = ids.Single(id => results.All(r => r.ResourceId != id));
-        Directory.Delete(Path.Combine(_baseDirectory, "_internal", "Patient", probeId), recursive: true);
+        var probeMetadataDir = Path.Combine(_baseDirectory, "_internal", "Patient", probeId);
+
+        // Assert the on-disk state this deletion assumes, rather than trusting it silently: the
+        // probe's metadata must still exist (nothing has removed it yet) and must not already have
+        // been fetched (the two rows above are the OTHER two ids). Without this, a wrong assumption
+        // about timing turns into a baffling downstream failure instead of a clear one here.
+        Directory.Exists(probeMetadataDir).ShouldBeTrue(
+            "the probe resource's metadata must still be on disk immediately before this test deletes it");
+        results.Count.ShouldBe(2);
+        results.ShouldAllBe(r => r.ResourceId != probeId);
+
+        Directory.Delete(probeMetadataDir, recursive: true);
 
         (await enumerator.MoveNextAsync()).ShouldBeTrue(
             "the probe row's proof that a further page exists must survive its own concurrent deletion");

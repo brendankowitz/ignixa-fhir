@@ -76,82 +76,16 @@ public partial class FileBasedSearchService : ISearchService
 
         LogSearching(_logger, options.ResourceType, options.Expression != null);
 
-        var resourceType = options.ResourceType;
-
-        // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, cancellationToken);
-
-        if (allMetadata.Count == 0)
-        {
-            LogNoResourcesFound(_logger, resourceType);
-            return Array.Empty<SearchEntryResult>();
-        }
-
-        LogLoadedMetadata(_logger, allMetadata.Count, resourceType);
-
-        // Step 2: Apply search expression filter if provided
-        IEnumerable<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> filteredMetadata = allMetadata;
-
-        if (options.Expression != null)
-        {
-            LogApplyingSearchFilter(_logger);
-
-            // Convert expression to predicate using SearchQueryInterpreter
-            var predicate = options.Expression.AcceptVisitor(_searchQueryInterpreter, default);
-
-            // Apply predicate to filter metadata
-            filteredMetadata = predicate(allMetadata);
-
-            int filteredCount = filteredMetadata.Count();
-            LogSearchFilterResults(_logger, allMetadata.Count, filteredCount);
-        }
-
-        // Step 2.5: Apply surrogate ID range filtering for export partitioning
-        // For file-based storage, we use index position as the "surrogate ID"
-        if (options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue)
-        {
-            var filteredList = filteredMetadata.ToList();
-            filteredMetadata = filteredList
-                .Skip((int)options.StartSurrogateId.Value)
-                .Take((int)(options.EndSurrogateId.Value - options.StartSurrogateId.Value + 1));
-
-            LogSurrogateIdRangeFilter(_logger, options.StartSurrogateId.Value, options.EndSurrogateId.Value);
-        }
-
-        // Step 3: Apply pagination
-        int skip = 0; // TODO: Parse continuation token
-        int take = FetchCount(options);
-
-        var pagedKeys = filteredMetadata
-            .Skip(skip)
-            .Take(take)
-            .Select(m => m.Location)
-            .ToList();
-
-        LogPagination(_logger, skip, take, pagedKeys.Count);
-
-        // Step 4: Load ONLY the matching resources (not all resources)
+        // Delegates to SearchStreamAsync instead of duplicating its metadata scan, filtering,
+        // pagination and paging-probe substitution: this method has no production caller of its
+        // own (it isn't part of ISearchService) to exercise a second copy of that logic, so a
+        // second copy is a second place for the same bug to hide -- see
+        // FileBasedSearchServiceProbeRowTests and FileBasedSearchServiceSearchAsyncTests.
         var results = new List<SearchEntryResult>();
-        for (var i = 0; i < pagedKeys.Count; i++)
+        await foreach (var entry in SearchStreamAsync(searchOptions, cancellationToken).ConfigureAwait(false))
         {
-            var resource = await _repository.GetAsync(pagedKeys[i], cancellationToken);
-            if (resource != null)
-            {
-                results.Add(resource);
-                continue;
-            }
-
-            // Mirrors SearchStreamAsync's identical guard below: a plain skip here would let a
-            // probe row's proof that a further page exists vanish along with it -- see
-            // SearchEntryResult.IsPagingProbe.
-            if (i >= options.MaxItemCount)
-            {
-                results.Add(PagingProbeSentinel);
-            }
+            results.Add(entry);
         }
-
-        int totalMatching = filteredMetadata.Count();
-        LogSearchResults(_logger, results.Count, totalMatching, take);
 
         return results;
     }
@@ -371,9 +305,6 @@ public partial class FileBasedSearchService : ISearchService
 
     [LoggerMessage(EventId = 7, Level = LogLevel.Debug, Message = "Pagination: Skip={Skip}, Take={Take}, Results={ResultCount}")]
     private static partial void LogPagination(ILogger logger, int skip, int take, int resultCount);
-
-    [LoggerMessage(EventId = 8, Level = LogLevel.Information, Message = "Search returned {Count} results (total matching: {Total}, page size: {PageSize})")]
-    private static partial void LogSearchResults(ILogger logger, int count, int total, int pageSize);
 
     [LoggerMessage(EventId = 9, Level = LogLevel.Information, Message = "Streaming search for {ResourceType} resources (Expression: {HasExpression})")]
     private static partial void LogStreamingSearch(ILogger logger, string resourceType, bool hasExpression);
