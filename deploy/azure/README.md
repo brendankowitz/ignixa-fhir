@@ -312,6 +312,15 @@ Repeat for every tenant (`--tenant-id 2`, `--tenant-id 3`, ...) in a multi-tenan
 full option list, including `--allow-incompatible-platform` for non-Azure SQL targets and
 `--allow-data-loss` for diffs `DeployReportClassifier` flags as unsafe.
 
+**This step is not only for a first deployment.** Because this template leaves
+`AutomaticSchemaDeploymentEnabled` unset, the app never applies a schema change on its own -- so any
+release that raises `SchemaVersionConstants.CurrentVersion` needs the same CLI run again, once per
+tenant, before that release serves traffic. Until it does, the first request against each tenant
+fails with `"Tenant {id}'s database is behind schema version {n} and
+SqlServer:AutomaticSchemaDeploymentEnabled is false"`, naming the version the build expects.
+`SELECT MAX(Version) FROM dbo.SchemaVersion` in a tenant's database reports where that tenant
+currently stands; the changelog in `SchemaVersionConstants.cs` says what each version added.
+
 **What Gets Configured (once the CLI has run):**
 - ✅ **Tenant 0** (System Partition) - Shares database with Tenant 1, used for transaction IDs
 - ✅ **Tenant 1-N** (Production Tenants) - Each configured with their own SQL database
