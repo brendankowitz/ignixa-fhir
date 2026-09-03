@@ -687,7 +687,14 @@ public class SqlServerFhirRepository(
         using var command = new SqlCommand(
             "INSERT INTO dbo.ResourceType (Name) OUTPUT INSERTED.ResourceTypeId VALUES (@Name)");
         command.Parameters.AddWithValue("@Name", resourceType);
-        var results = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt16(0), cancellationToken);
+
+        // NonIdempotent: an unguarded INSERT that comes through ExecuteReaderAsync only because it needs the
+        // generated ResourceTypeId back. A -2 command timeout does not prove the server did not commit it,
+        // and a retry would insert the name a second time. Name is dbo.ResourceType's primary key, so that
+        // is loud rather than silent -- but a duplicate-key error on a type the caller just created is a
+        // failure invented by the retry, and the timeout the server actually caused is the honest one.
+        var results = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId, command, reader => reader.GetInt16(0), cancellationToken, SqlCommandIdempotency.NonIdempotent);
         var newId = results[0];
         _cache.CacheResourceTypeId(resourceType, newId);
         return newId;
@@ -847,6 +854,10 @@ public class SqlServerFhirRepository(
         return currentVersions;
     }
 
+    // Left Idempotent even though NEXT VALUE FOR mutates: a retry does not apply anything twice, it just
+    // consumes another value and hands back that one instead. The caller never saw the value the failed
+    // attempt may have burned, and a sequence is allowed to have gaps -- NEXT VALUE FOR is not rolled back
+    // by a transaction either. Declining the retry would fail an entire delete over a transient blip.
     private async Task<long> GetNextSurrogateIdAsync(CancellationToken cancellationToken)
     {
         using var command = new SqlCommand("SELECT NEXT VALUE FOR dbo.ResourceSurrogateIdUniquifierSequence");

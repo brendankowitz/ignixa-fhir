@@ -214,6 +214,40 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         fetched.IsDeleted.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// The one command in this repository that must never be retried: on-demand resource-type creation is an
+    /// unguarded <c>INSERT ... OUTPUT INSERTED</c>, and it goes through <c>ExecuteReaderAsync</c> only
+    /// because it needs the generated ID back.
+    /// <para>
+    /// This pins the call site, not the mechanism -- that a <c>NonIdempotent</c> command really does bypass
+    /// the retry pipeline is already covered, for both overloads, by
+    /// <c>SqlExecutionServiceConnectionTests</c>. Nothing else would notice this argument being dropped, and
+    /// the sweep over the rest of the calls is here so an over-broad "fix" that marks the reads
+    /// non-idempotent too -- which would surface transient faults callers should never have seen -- fails
+    /// just as loudly.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GivenAResourceTypeMissingFromTheCatalog_WhenItIsCreatedOnDemand_ThenOnlyThatInsertDeclaresItselfNonIdempotent()
+    {
+        var (interceptor, repository) = await CreateInterceptedRepositoryAsync();
+
+        // The fixture seeds only Patient, so any call that has to resolve another type reaches the insert.
+        // A GET is the shortest route to it, and the miss it then reports is beside the point.
+        await repository.GetAsync(new ResourceKey("Observation", "never-created"), CancellationToken.None);
+
+        var byKind = interceptor.ReaderCalls
+            .ToLookup(call => call.CommandText.Contains("INSERT INTO dbo.ResourceType", StringComparison.Ordinal));
+        var inserts = byKind[true].ToList();
+        var everythingElse = byKind[false].ToList();
+
+        inserts.Count.ShouldBe(1);
+        inserts[0].Idempotency.ShouldBe(SqlCommandIdempotency.NonIdempotent);
+
+        everythingElse.ShouldNotBeEmpty();
+        everythingElse.ShouldAllBe(call => call.Idempotency == SqlCommandIdempotency.Idempotent);
+    }
+
     private Task<int> CountAsync(string sql) => _database.ExecuteScalarAsync<int>(sql);
 
     /// <summary>
@@ -300,13 +334,35 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
 
         public void Disarm() => BeforeNonQueryAsync = null;
 
+        private readonly List<(string CommandText, SqlCommandIdempotency Idempotency)> _readerCalls = [];
+
+        /// <summary>Every command sent through <see cref="ExecuteReaderAsync"/>, with what it declared itself to be.</summary>
+        public IReadOnlyList<(string CommandText, SqlCommandIdempotency Idempotency)> ReaderCalls
+        {
+            get
+            {
+                lock (_readerCalls)
+                {
+                    return [.. _readerCalls];
+                }
+            }
+        }
+
         public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
             int tenantId,
             SqlCommand command,
             Func<SqlDataReader, TResult> readRow,
             CancellationToken cancellationToken,
             SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
-            => inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken, idempotency);
+        {
+            ArgumentNullException.ThrowIfNull(command);
+            lock (_readerCalls)
+            {
+                _readerCalls.Add((command.CommandText, idempotency));
+            }
+
+            return inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken, idempotency);
+        }
 
         public async Task<int> ExecuteNonQueryAsync(
             int tenantId,
