@@ -24,6 +24,22 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 /// </summary>
 public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
 {
+    /// <summary>
+    /// Rounds run by
+    /// <see cref="GivenRealWritesRacingRealHardDeletes_WhenNeitherIsStalled_ThenNoSearchIndexRowOutlivesItsResource"/>.
+    /// MEASURED, not chosen. Against the un-fixed final DELETE -- matching on
+    /// <c>(ResourceTypeId, ResourceId)</c> rather than on <c>@SurrogateIds</c> -- four runs of 20 rounds
+    /// orphaned rows on 2, 2, 1 and 2 rounds: 7 of 80, a per-round hit rate of about 9%. At that rate 40
+    /// rounds detect the regression about 97% of the time (20 would be 84%), and cost about 50 seconds.
+    /// All 80 measured rounds ran both sides to completion -- no deadlock, no exception of any kind -- so
+    /// the round count is bounded by detection power, not by how often the race is even reachable.
+    /// <para>
+    /// Raise this if the regression it watches for ever ships again; do not lower it below about 30 without
+    /// re-measuring, because detection falls off geometrically.
+    /// </para>
+    /// </summary>
+    private const int LiveRaceRounds = 40;
+
     private TestTenantDatabase _database = null!;
     private SqlServerFhirRepository _repository = null!;
     private SqlServerSearchIndexReferenceDataCache? _interceptedCache;
@@ -475,6 +491,14 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
     /// production paths do to each other. Nothing about the hazard depends on which writer produced the
     /// rows; it depends only on a version being committed whose surrogate ID the snapshot never saw.
     /// </para>
+    /// <para>
+    /// So this proves a property of the final DELETE's predicate under an interleaving that was staged. It
+    /// does NOT prove that the two real code paths compose safely when they contend for locks, because the
+    /// lock and the target table here were chosen precisely so that they would not contend.
+    /// <see cref="GivenRealWritesRacingRealHardDeletes_WhenNeitherIsStalled_ThenNoSearchIndexRowOutlivesItsResource"/>
+    /// covers that second claim, at the cost of only catching a regression probabilistically. Neither test
+    /// replaces the other; delete one and the pair stops meaning what it means.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task GivenAConcurrentWriterVersionsTheResourceMidHardDelete_WhenTheHardDeleteCommits_ThenNoSearchIndexRowOutlivesItsResource()
@@ -579,6 +603,119 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The same invariant as
+    /// <see cref="GivenAConcurrentWriterVersionsTheResourceMidHardDelete_WhenTheHardDeleteCommits_ThenNoSearchIndexRowOutlivesItsResource"/>,
+    /// but with both sides real and neither one stalled: a real <c>CreateOrUpdateAsync</c> and a real
+    /// <c>HardDeleteResourceAsync</c> started together, over and over, with the interleaving left to the
+    /// scheduler. That test stages the interleaving and therefore proves the final DELETE's predicate; this
+    /// one cannot stage anything, and therefore is the only one of the pair that exercises the real merge
+    /// path, the real lock ordering, and whatever the two do to each other when they contend. Keep both.
+    /// <para>
+    /// THIS IS NOT A FLAKY TEST, and the distinction matters enough to spell out, because "probabilistic"
+    /// gets read as "flaky" and tests like this get deleted for a fault they do not have. With the code
+    /// correct, the invariant holds on EVERY round whatever the interleaving, so the verdict is
+    /// deterministic: it does not intermittently redden CI. What is probabilistic is its DETECTION POWER --
+    /// with the code broken it only fails on rounds where the racing write happens to land inside the
+    /// batch's window. Reliable when the code is right, probabilistic at catching a regression, is a
+    /// perfectly good test. The unacceptable inverse -- reliable at catching regressions but intermittently
+    /// red when correct -- is not what this is.
+    /// </para>
+    /// <para>
+    /// Both operations are allowed to fail, and the outcomes are counted rather than asserted, because the
+    /// two take their locks in opposite orders -- this batch does the fifteen index tables and then
+    /// <c>dbo.Resource</c>, while <c>MergeResources</c> flips <c>dbo.Resource</c> first and then deletes the
+    /// previous version's rows from the same fifteen -- which is the classic shape of a deadlock cycle. A
+    /// deadlock victim is a rolled-back transaction and cannot orphan anything, so it is not a failure of
+    /// this invariant. What is worth recording is that across 80 measured rounds NOT ONE deadlocked or threw
+    /// at all: the two paths do interleave in practice rather than serialising, which is what makes the race
+    /// reachable often enough to be worth watching. The count is asserted only so that a run in which
+    /// nothing ever completed cannot pass silently.
+    /// </para>
+    /// <para>
+    /// Round count was picked by measurement against the un-fixed code, not by taste -- see the constant.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GivenRealWritesRacingRealHardDeletes_WhenNeitherIsStalled_ThenNoSearchIndexRowOutlivesItsResource()
+    {
+        await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
+
+        const string ReferenceTargetId = "hard-delete-live-race-target";
+        await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ReferenceTargetId), CancellationToken.None);
+
+        var resourceTypeId = await _database.ExecuteScalarAsync<short>(
+            "SELECT ResourceTypeId FROM dbo.ResourceType WHERE Name = 'Patient'");
+
+        var roundsThatOrphanedRows = new List<string>();
+        var roundsWhereBothSidesCompleted = 0;
+
+        for (var round = 0; round < LiveRaceRounds; round++)
+        {
+            var resourceId = $"hard-delete-live-race-{round}";
+            var resource = new ResourceWrapper("Patient", resourceId, "1", DateTimeOffset.UtcNow,
+                ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{resourceId}}"}"""),
+                new ResourceRequest("PUT", $"Patient/{resourceId}"))
+            {
+                SearchIndices = SearchIndexTableSeeder.BuildSearchIndicesCoveringEverySearchIndexTable(ReferenceTargetId),
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(30)
+            };
+            await _repository.CreateOrUpdateAsync(resource, CancellationToken.None);
+
+            var orphansBefore = await CountSearchIndexRowsOutlivingTheirResourceAsync();
+
+            var hardDelete = Task.Run(async () =>
+                await _repository.HardDeleteResourceAsync(resourceTypeId, resourceId, CancellationToken.None));
+            var write = Task.Run(async () =>
+                await _repository.CreateOrUpdateAsync(resource, CancellationToken.None));
+
+            var hardDeleteOutcome = await RunToOutcomeAsync(hardDelete);
+            var writeOutcome = await RunToOutcomeAsync(write);
+            if (hardDeleteOutcome is null && writeOutcome is null)
+            {
+                roundsWhereBothSidesCompleted++;
+            }
+
+            var orphansAfter = await CountSearchIndexRowsOutlivingTheirResourceAsync();
+            if (orphansAfter > orphansBefore)
+            {
+                var where = await FindSearchIndexRowsOutlivingTheirResourceAsync();
+                roundsThatOrphanedRows.Add(
+                    $"round {round} ({resourceId}) orphaned {orphansAfter - orphansBefore} row(s); " +
+                    $"hard delete: {hardDeleteOutcome ?? "completed"}; write: {writeOutcome ?? "completed"}; " +
+                    $"orphans now: {string.Join(" | ", where)}");
+            }
+        }
+
+        // Reported before the invariant so that a failure carries the hit rate with it: how many rounds
+        // orphaned rows, out of how many that actually got both sides through.
+        roundsThatOrphanedRows.ShouldBeEmpty(
+            $"{roundsThatOrphanedRows.Count} of {LiveRaceRounds} rounds left search-index rows with no resource behind them " +
+            $"({roundsWhereBothSidesCompleted} rounds had both sides complete)");
+
+        roundsWhereBothSidesCompleted.ShouldBeGreaterThan(
+            0,
+            "no round got both a write and a hard delete through, so nothing was actually raced and this test proved nothing");
+    }
+
+    /// <summary>
+    /// Awaits <paramref name="operation"/> and reports how it ended -- <c>null</c> for success, otherwise a
+    /// short description. Both sides of the race are allowed to fail (a deadlock victim rolls back and
+    /// cannot orphan anything); what must not happen is the invariant breaking.
+    /// </summary>
+    private static async Task<string?> RunToOutcomeAsync(Task operation)
+    {
+        try
+        {
+            await operation;
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex is SqlException sql ? $"{ex.GetType().Name} {sql.Number}" : ex.GetType().Name;
+        }
+    }
+
+    /// <summary>
     /// Waits until the hard delete is really parked on the blocker's lock. A fixed delay would make the
     /// test's whole premise a guess; if nothing ever blocks, say so rather than racing on regardless.
     /// </summary>
@@ -613,17 +750,49 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
     /// </summary>
     private async Task AssertNoSearchIndexRowOutlivesItsResourceAsync()
     {
+        var orphans = await FindSearchIndexRowsOutlivingTheirResourceAsync();
+        orphans.ShouldBeEmpty(
+            "search-index rows are left with no resource row behind them -- nothing can ever sweep them, because collecting a surrogate ID requires a dbo.Resource row to read it from, and they still satisfy search queries joining on ResourceSurrogateId");
+    }
+
+    private async Task<int> CountSearchIndexRowsOutlivingTheirResourceAsync()
+    {
+        var total = 0;
         foreach (var table in SearchIndexTableSeeder.SearchIndexTables)
         {
-            var orphans = await CountAsync(
+            total += await CountAsync(
                 $"""
                 SELECT COUNT(*) FROM dbo.{table} AS s
                 WHERE NOT EXISTS (SELECT 1 FROM dbo.Resource AS r WHERE r.ResourceSurrogateId = s.ResourceSurrogateId)
                 """);
-            orphans.ShouldBe(
-                0,
-                $"dbo.{table} holds rows whose resource row is gone -- nothing can ever sweep them, and they still satisfy search queries joining on ResourceSurrogateId.");
         }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Names every table holding orphaned rows and the surrogate IDs in them, so a failure says where to
+    /// look instead of leaving the next person to re-derive it from a bare count.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> FindSearchIndexRowsOutlivingTheirResourceAsync()
+    {
+        var found = new List<string>();
+        foreach (var table in SearchIndexTableSeeder.SearchIndexTables)
+        {
+            var surrogateIds = await _database.ExecuteScalarAsync<string>(
+                $"""
+                SELECT ISNULL(STRING_AGG(CAST(s.ResourceSurrogateId AS VARCHAR(32)), ','), '')
+                FROM (SELECT DISTINCT ResourceSurrogateId FROM dbo.{table}) AS s
+                WHERE NOT EXISTS (SELECT 1 FROM dbo.Resource AS r WHERE r.ResourceSurrogateId = s.ResourceSurrogateId)
+                """);
+
+            if (surrogateIds.Length > 0)
+            {
+                found.Add($"dbo.{table} surrogate IDs {surrogateIds}");
+            }
+        }
+
+        return found;
     }
 
     private Task<int> CountAsync(string sql) => _database.ExecuteScalarAsync<int>(sql);
