@@ -34,8 +34,6 @@ public class BackgroundJobsModule(IConfiguration configuration) : Module
     // global state (conformance, packages) already lives.
     private const int SharedJobsTenantId = 1;
 
-    private static bool _loggedRepositorySelection;
-
     protected override void Load(ContainerBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -56,7 +54,11 @@ public class BackgroundJobsModule(IConfiguration configuration) : Module
                 .As(typeof(IBackgroundJobRepository<>))
                 .WithParameter("connectionTenantId", SharedJobsTenantId)
                 .SingleInstance()
-                .OnActivating(LogSqlServerSelection);
+                .OnActivating((args) =>
+                {
+                    var logger = args.Context.Resolve<ILogger<BackgroundJobsModule>>();
+                    logger.LogInformation("Using SqlServer background job repository");
+                });
 
             return;
         }
@@ -64,26 +66,10 @@ public class BackgroundJobsModule(IConfiguration configuration) : Module
         builder.RegisterGeneric(typeof(Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs.InMemoryBackgroundJobRepository<>))
             .As(typeof(IBackgroundJobRepository<>))
             .SingleInstance()
-            .OnActivating(LogInMemorySelection);
-    }
-
-    private static void LogSqlServerSelection(IActivatingEventArgs<object> args)
-    {
-        if (!_loggedRepositorySelection)
-        {
-            var logger = args.Context.Resolve<ILogger<BackgroundJobsModule>>();
-            logger.LogInformation("Using SqlServer background job repository");
-            _loggedRepositorySelection = true;
-        }
-    }
-
-    private static void LogInMemorySelection(IActivatingEventArgs<object> args)
-    {
-        if (!_loggedRepositorySelection)
-        {
-            var logger = args.Context.Resolve<ILogger<BackgroundJobsModule>>();
-            logger.LogInformation("Using InMemory background job repository (default)");
-            _loggedRepositorySelection = true;
-        }
+            .OnActivating((args) =>
+            {
+                var logger = args.Context.Resolve<ILogger<BackgroundJobsModule>>();
+                logger.LogInformation("Using InMemory background job repository (default)");
+            });
     }
 }
