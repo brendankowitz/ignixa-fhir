@@ -817,9 +817,10 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// </para>
     /// <para>
     /// A returned row is credited only to the requested spelling that equals its stored <c>Value</c>
-    /// ordinally. <c>dbo.System.Value</c> declares no explicit collation (unlike <c>dbo.QuantityCode</c> and
-    /// <c>dbo.SearchParam</c>), so whether a row differing only by case answers to a given spelling is a
-    /// question about the database's default collation, which this method cannot read. Crediting it
+    /// ordinally. The current DDL collates <c>dbo.System.Value</c> <c>Latin1_General_100_CS_AS</c>, which
+    /// ordinal comparison reproduces -- but a tenant database provisioned before that change carries the
+    /// server's default collation on the column instead, so whether a row differing only by case answers to
+    /// a given spelling is still a question about a collation this method cannot read. Crediting it
     /// unconditionally would be wrong under a case-sensitive collation and would poison the ordinal
     /// <see cref="_systemCache"/> for the process lifetime; recording it as a miss would be wrong under a
     /// case-insensitive one. Deferring to a follow-up exact-spelling query keeps this method in agreement
