@@ -43,11 +43,12 @@ public class SqlServerFhirRepository(
     private readonly SqlServerHistoryQueryExecutor _historyExecutor = new(sqlExecutionService, tenantId, compressor, logger);
 
     /// <summary>
-    /// Reported as the conflicting version's surrogate ID when a delete loses its race and the resource has
-    /// no current row left at all -- a concurrent HARD delete rather than a concurrent version.
-    /// <see cref="ResourceVersionConflictException.ExistingSurrogateId"/> cannot express "none".
+    /// The one entry in <see cref="SearchIndexTables"/> with no ResourceTypeId column, and so the one that
+    /// is neither clustered nor partitioned on it -- see Database/Tables/ResourceWriteClaim.sql. Every
+    /// other entry is both, which is why the hard-delete batch carries a resource-type predicate on the
+    /// fourteen and cannot on this one.
     /// </summary>
-    private const long NoCurrentVersionSurrogateId = 0;
+    private const string TableWithoutResourceTypeId = "ResourceWriteClaim";
 
     private static readonly string[] SearchIndexTables =
     [
@@ -65,7 +66,7 @@ public class SqlServerFhirRepository(
         "TokenQuantityCompositeSearchParam",
         "TokenStringCompositeSearchParam",
         "TokenNumberNumberCompositeSearchParam",
-        "ResourceWriteClaim"
+        TableWithoutResourceTypeId
     ];
 
     /// <inheritdoc/>
@@ -342,11 +343,14 @@ public class SqlServerFhirRepository(
                         var conflictingRows = await transaction.ExecuteReaderAsync(
                             conflictingVersionCommand, reader => reader.GetInt64(0), ct);
 
+                        // No row at all means a concurrent HARD delete rather than a concurrent version:
+                        // there is no surrogate ID to name, and null is how the 409 says so rather than
+                        // reporting a sentinel that the client would read as a real row.
                         throw new ResourceVersionConflictException(
                             key.ResourceType,
                             key.Id,
                             newSurrogateId,
-                            conflictingRows.Count == 0 ? NoCurrentVersionSurrogateId : conflictingRows[0]);
+                            conflictingRows.Count == 0 ? null : conflictingRows[0]);
                     }
                 }
 
@@ -698,27 +702,61 @@ public class SqlServerFhirRepository(
         // the resource ID it would remove the new version's row while the fifteen index deletes above,
         // which ARE scoped to @SurrogateIds, left that version's index rows untouched. Those rows would then
         // be orphans PERMANENTLY -- the next hard delete for this resource ID finds no dbo.Resource row to
-        // collect a surrogate ID from and so can never sweep them -- and they still satisfy search queries
-        // joining on ResourceSurrogateId, which is a hard-deleted resource that keeps appearing in search
-        // results. Scoping the DELETE leaves the racing writer's version alive with no history instead:
-        // incomplete, but coherent, and the next hard delete finishes the job.
+        // collect a surrogate ID from and so can never sweep them.
+        //
+        // What those orphans would corrupt is narrower than "the resource keeps appearing in search
+        // results", but it is not nothing. Every entry-producing shape joins dbo.Resource on
+        // (ResourceTypeId, ResourceSurrogateId) -- ShapeEmitter's projection shapes and MatchPageEmitter
+        // both do -- so an orphaned index row cannot by itself put a deleted resource into a Bundle entry.
+        // Two shapes are still wrong:
+        //   - ShapeEmitter.EmitCountOnlyShape is SELECT COUNT_BIG(DISTINCT m.Sid1) over the match CTE and
+        //     joins dbo.Resource only when some plan feature needs an r. column, which a plain
+        //     _summary=count does not. Orphans inflate Bundle.total: a spec-visible wrong number.
+        //   - reverse chaining (CteEmitter's ChainDirection.Reverse) joins dbo.ReferenceSearchParam to the
+        //     inner match CTE BY SURROGATE ID and joins dbo.Resource only for the chain's TARGET, so an
+        //     orphaned reference row from a hard-deleted Observation can pull a genuinely existing Patient
+        //     into a _has: result -- wrong entries, not just a wrong count.
+        // Scoping the DELETE leaves the racing writer's version alive with no history instead: incomplete,
+        // but coherent, and the next hard delete finishes the job.
         //
         // UPDLOCK/HOLDLOCK on the snapshot would close the race rather than tolerate it, but at the price of
-        // range-locking every version of the resource for the length of an eighteen-statement batch --
+        // range-locking every version of the resource for the length of the whole batch below --
         // blocking, and giving deadlocks a lock order to find -- and it is not worth that for a background
         // sweep whose whole job is repeatable.
         //
-        // SET XACT_ABORT ON is about the seventeen statements AFTER a failing one, not about atomicity:
+        // Those are not the only two options, and the better third one is already in this repo's deployed
+        // schema: Database/StoredProcedures/HardDeleteResource.sql captures the surrogate IDs with
+        // "DELETE dbo.Resource OUTPUT deleted.ResourceSurrogateId INTO @SurrogateIds", so the set comes from
+        // the rows the DELETE actually removed rather than from a snapshot that can go stale. There is no
+        // race window to tolerate, no lock hint, no scoping predicate, and no half-deleted outcome either:
+        // a racing writer's version is simply neither deleted nor swept, leaving the resource whole. Not
+        // taken here because it inverts the statement order this method inherited from the EF port -- the
+        // resource DELETE has to run before the fifteen index deletes rather than after -- and reordering
+        // the whole batch is a larger change than the race this fix closes. It is the shape to move to
+        // when this method is next revisited.
+        //
+        // SET XACT_ABORT ON is about the statements AFTER a failing one, not about atomicity:
         // without it, a statement-level error inside an explicit transaction aborts only that statement and
         // the batch keeps running, taking more locks in a transaction already destined to roll back. The
         // rollback in ExecuteInTransactionAsync is what makes the batch atomic -- and because the server has
         // then already rolled back, that method logs its "rolling back ... failed" warning on this path.
+        var survivingVersions = 0;
+
         await _sqlExecutionService.ExecuteInTransactionAsync(
             _tenantId,
             async (transaction, ct) =>
             {
+                // Fourteen of the fifteen tables are clustered AND partitioned on
+                // (ResourceTypeId, ResourceSurrogateId), so leading with the resource type buys partition
+                // elimination and a seek on the clustering key instead of a probe across every partition.
+                // It also matches HardDeleteResource.sql, which carries the same predicate on the same
+                // tables. TableWithoutResourceTypeId is the exception and has no such column.
                 var deleteStatements = string.Join("\n              ", SearchIndexTables.Select(table =>
-                    $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);"));
+                {
+                    var partitionPredicate =
+                        table == TableWithoutResourceTypeId ? string.Empty : "ResourceTypeId = @ResourceTypeId AND ";
+                    return $"DELETE FROM dbo.{table} WHERE {partitionPredicate}ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);";
+                }));
 
                 // CA2100 suppressed: deleteStatements is built exclusively from the fixed, hardcoded
                 // SearchIndexTables array above -- never from caller/user input -- matching the identical
@@ -752,19 +790,48 @@ public class SqlServerFhirRepository(
                     WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId
                       AND NOT EXISTS (SELECT 1 FROM dbo.Resource
                                       WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId);
+
+                    -- Report what this batch deliberately did not take, so the caller can log the truth
+                    -- rather than an unqualified success. Non-zero only on the race described above.
+                    SELECT @SurvivingVersions = COUNT(*)
+                    FROM dbo.Resource
+                    WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
                     """);
 #pragma warning restore CA2100
                 command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
                 command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
 
+                var survivingVersionsParameter = command.Parameters.Add("@SurvivingVersions", SqlDbType.Int);
+                survivingVersionsParameter.Direction = ParameterDirection.Output;
+
                 await transaction.ExecuteNonQueryAsync(command, ct);
+
+                survivingVersions = survivingVersionsParameter.Value as int? ?? 0;
             },
             cancellationToken);
 
-        _logger.LogInformation(
-            "Successfully hard deleted resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
-            resourceTypeId,
-            resourceId);
+        // A healthcare audit trail should not record a completed deletion that did not complete. The
+        // sweep is repeatable and the next pass finishes the job, so this is not a correctness failure --
+        // but it is the difference between "deleted" and "deleted what it could see", and only the batch
+        // itself knows which happened.
+        if (survivingVersions == 0)
+        {
+            _logger.LogInformation(
+                "Successfully hard deleted resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
+                resourceTypeId,
+                resourceId);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Partially hard deleted resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}. " +
+                "{SurvivingVersions} version(s) were committed after this sweep took its snapshot and were " +
+                "deliberately left in place, along with the resource's TTL row; a later sweep collects them " +
+                "if they are still expired.",
+                resourceTypeId,
+                resourceId,
+                survivingVersions);
+        }
     }
 
     // Corrected during plan review: an earlier draft never updated the cache after inserting, so every

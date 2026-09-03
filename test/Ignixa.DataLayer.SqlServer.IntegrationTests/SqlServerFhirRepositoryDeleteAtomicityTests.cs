@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
@@ -628,8 +629,10 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
     /// deadlock victim is a rolled-back transaction and cannot orphan anything, so it is not a failure of
     /// this invariant. What is worth recording is that across 80 measured rounds NOT ONE deadlocked or threw
     /// at all: the two paths do interleave in practice rather than serialising, which is what makes the race
-    /// reachable often enough to be worth watching. The count is asserted only so that a run in which
-    /// nothing ever completed cannot pass silently.
+    /// reachable often enough to be worth watching. What is asserted alongside the invariant is that the two
+    /// sides' measured intervals actually OVERLAPPED on at least one round, so that a run in which the two
+    /// never once ran at the same time cannot pass silently -- see <see cref="RacedOperation"/> for why
+    /// "both sides completed" is not the same claim and does not do that job.
     /// </para>
     /// <para>
     /// Round count was picked by measurement against the un-fixed code, not by taste -- see the constant.
@@ -647,7 +650,7 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
             "SELECT ResourceTypeId FROM dbo.ResourceType WHERE Name = 'Patient'");
 
         var roundsThatOrphanedRows = new List<string>();
-        var roundsWhereBothSidesCompleted = 0;
+        var roundsWhereBothSidesOverlapped = 0;
 
         for (var round = 0; round < LiveRaceRounds; round++)
         {
@@ -663,16 +666,16 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
 
             var orphansBefore = await CountSearchIndexRowsOutlivingTheirResourceAsync();
 
-            var hardDelete = Task.Run(async () =>
-                await _repository.HardDeleteResourceAsync(resourceTypeId, resourceId, CancellationToken.None));
-            var write = Task.Run(async () =>
+            var hardDeleteTask = StartRacedOperationAsync(() =>
+                _repository.HardDeleteResourceAsync(resourceTypeId, resourceId, CancellationToken.None));
+            var writeTask = StartRacedOperationAsync(async () =>
                 await _repository.CreateOrUpdateAsync(resource, CancellationToken.None));
 
-            var hardDeleteOutcome = await RunToOutcomeAsync(hardDelete);
-            var writeOutcome = await RunToOutcomeAsync(write);
-            if (hardDeleteOutcome is null && writeOutcome is null)
+            var hardDelete = await hardDeleteTask;
+            var write = await writeTask;
+            if (hardDelete.OverlappedWith(write))
             {
-                roundsWhereBothSidesCompleted++;
+                roundsWhereBothSidesOverlapped++;
             }
 
             var orphansAfter = await CountSearchIndexRowsOutlivingTheirResourceAsync();
@@ -681,47 +684,69 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
                 var where = await FindSearchIndexRowsOutlivingTheirResourceAsync();
                 roundsThatOrphanedRows.Add(
                     $"round {round} ({resourceId}) orphaned {orphansAfter - orphansBefore} row(s); " +
-                    $"hard delete: {hardDeleteOutcome ?? "completed"}; write: {writeOutcome ?? "completed"}; " +
+                    $"hard delete: {hardDelete.Outcome ?? "completed"}; write: {write.Outcome ?? "completed"}; " +
                     $"orphans now: {string.Join(" | ", where)}");
             }
         }
 
         // Reported before the invariant so that a failure carries the hit rate with it: how many rounds
-        // orphaned rows, out of how many that actually got both sides through.
+        // orphaned rows, out of how many were actually in flight at the same time.
         roundsThatOrphanedRows.ShouldBeEmpty(
             $"{roundsThatOrphanedRows.Count} of {LiveRaceRounds} rounds left search-index rows with no resource behind them " +
-            $"({roundsWhereBothSidesCompleted} rounds had both sides complete)");
+            $"({roundsWhereBothSidesOverlapped} rounds had the two sides genuinely overlap)");
 
-        // This failing does NOT mean the invariant broke. It means the two paths stopped interleaving --
-        // every round had one side fail or be shut out -- so the assertion above had nothing to detect
-        // with and this test can no longer see what it claims to watch. Something changed the concurrency
-        // model: a lock hint added to the hard-delete batch (UPDLOCK/HOLDLOCK on its snapshot is the
-        // specific candidate, and note the deterministic test would stay green through exactly that
-        // change), a new lock in the merge path, or the two serialising for some other reason. Go and
-        // look at that, not at this test. 80 of 80 measured rounds got both sides through, so this has a
-        // great deal of headroom and should not fire on a healthy tree.
-        roundsWhereBothSidesCompleted.ShouldBeGreaterThan(
+        // This failing does NOT mean the invariant broke. It means the two paths stopped interleaving, so
+        // the assertion above had nothing to detect with and this test can no longer see what it claims to
+        // watch. Something changed the concurrency model: a lock hint added to the hard-delete batch
+        // (UPDLOCK/HOLDLOCK on its snapshot is the specific candidate, and note the deterministic test
+        // would stay green through exactly that change), a new lock in the merge path, or the two
+        // serialising for some other reason. Go and look at that, not at this test.
+        //
+        // What is counted is temporal OVERLAP -- the two operations' measured intervals intersecting --
+        // and not, as an earlier version of this guard did, "neither side threw". Two operations can both
+        // complete with no overlap whatever, so a completion count would sit at 40 out of 40 while the
+        // race window was never once entered, which is a permanently green guard watching nothing. 80 of
+        // 80 measured rounds overlapped, so a threshold of "at least one" has a great deal of headroom and
+        // should not fire on a healthy tree.
+        roundsWhereBothSidesOverlapped.ShouldBeGreaterThan(
             0,
-            "no round got both a write and a hard delete through, so the two paths are no longer interleaving and this test can no longer detect the orphaning it exists to watch for -- the concurrency model changed, look there rather than at this assertion");
+            "no round had the write and the hard delete in flight at the same time, so the two paths are no longer interleaving and this test can no longer detect the orphaning it exists to watch for -- the concurrency model changed, look there rather than at this assertion");
     }
 
     /// <summary>
-    /// Awaits <paramref name="operation"/> and reports how it ended -- <c>null</c> for success, otherwise a
-    /// short description. Both sides of the race are allowed to fail (a deadlock victim rolls back and
-    /// cannot orphan anything); what must not happen is the invariant breaking.
+    /// One side of a race: how it ended (<c>null</c> for success, otherwise a short description) and the
+    /// interval it actually occupied. Both sides are allowed to fail -- a deadlock victim rolls back and
+    /// cannot orphan anything -- so the outcome is recorded rather than asserted. The interval is what
+    /// lets the test tell interleaving from mere completion: two operations can both succeed with no
+    /// temporal overlap at all, and a round like that exercises nothing.
     /// </summary>
-    private static async Task<string?> RunToOutcomeAsync(Task operation)
+    private readonly record struct RacedOperation(string? Outcome, long StartTimestamp, long EndTimestamp)
     {
-        try
-        {
-            await operation;
-            return null;
-        }
-        catch (Exception ex)
-        {
-            return ex is SqlException sql ? $"{ex.GetType().Name} {sql.Number}" : ex.GetType().Name;
-        }
+        public bool OverlappedWith(RacedOperation other)
+            => StartTimestamp < other.EndTimestamp && other.StartTimestamp < EndTimestamp;
     }
+
+    /// <summary>
+    /// Runs <paramref name="operation"/> on the thread pool, stamping a timestamp immediately either side
+    /// of it. <see cref="Stopwatch"/> rather than <c>DateTime.UtcNow</c> because the system clock's tick is
+    /// coarser than the operations being measured, which would collapse genuinely overlapping intervals
+    /// onto a single instant and make the overlap test read false.
+    /// </summary>
+    private static Task<RacedOperation> StartRacedOperationAsync(Func<Task> operation)
+        => Task.Run(async () =>
+        {
+            var start = Stopwatch.GetTimestamp();
+            try
+            {
+                await operation();
+                return new RacedOperation(null, start, Stopwatch.GetTimestamp());
+            }
+            catch (Exception ex)
+            {
+                var outcome = ex is SqlException sql ? $"{ex.GetType().Name} {sql.Number}" : ex.GetType().Name;
+                return new RacedOperation(outcome, start, Stopwatch.GetTimestamp());
+            }
+        });
 
     /// <summary>
     /// Waits until the hard delete is really parked on the blocker's lock. A fixed delay would make the
