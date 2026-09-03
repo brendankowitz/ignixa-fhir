@@ -4,9 +4,11 @@
 // -------------------------------------------------------------------------------------------------
 
 using Autofac;
+using Autofac.Core;
 using Ignixa.DataLayer.SqlServer.Features.BackgroundJobs;
 using Ignixa.Domain.Abstractions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Api.Infrastructure;
 
@@ -32,24 +34,56 @@ public class BackgroundJobsModule(IConfiguration configuration) : Module
     // global state (conformance, packages) already lives.
     private const int SharedJobsTenantId = 1;
 
+    private static bool _loggedRepositorySelection;
+
     protected override void Load(ContainerBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
         var repository = configuration["BackgroundJobs:Repository"];
 
+        // Validate: non-empty, unrecognized values are configuration typos and should fail fast.
+        if (!string.IsNullOrEmpty(repository) && !string.Equals(repository, "SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Unrecognized BackgroundJobs:Repository configuration value '{repository}'. " +
+                $"Accepted values: 'SqlServer' (case-insensitive), or empty/absent for the InMemory default.");
+        }
+
         if (string.Equals(repository, "SqlServer", StringComparison.OrdinalIgnoreCase))
         {
             builder.RegisterGeneric(typeof(SqlServerBackgroundJobRepository<>))
                 .As(typeof(IBackgroundJobRepository<>))
                 .WithParameter("connectionTenantId", SharedJobsTenantId)
-                .SingleInstance();
+                .SingleInstance()
+                .OnActivating(LogSqlServerSelection);
 
             return;
         }
 
         builder.RegisterGeneric(typeof(Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs.InMemoryBackgroundJobRepository<>))
             .As(typeof(IBackgroundJobRepository<>))
-            .SingleInstance();
+            .SingleInstance()
+            .OnActivating(LogInMemorySelection);
+    }
+
+    private static void LogSqlServerSelection(IActivatingEventArgs<object> args)
+    {
+        if (!_loggedRepositorySelection)
+        {
+            var logger = args.Context.Resolve<ILogger<BackgroundJobsModule>>();
+            logger.LogInformation("Using SqlServer background job repository");
+            _loggedRepositorySelection = true;
+        }
+    }
+
+    private static void LogInMemorySelection(IActivatingEventArgs<object> args)
+    {
+        if (!_loggedRepositorySelection)
+        {
+            var logger = args.Context.Resolve<ILogger<BackgroundJobsModule>>();
+            logger.LogInformation("Using InMemory background job repository (default)");
+            _loggedRepositorySelection = true;
+        }
     }
 }
