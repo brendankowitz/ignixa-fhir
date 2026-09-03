@@ -73,4 +73,27 @@ public class SqlServerHistoryQueryExecutorTests : IAsyncLifetime
         history.ShouldContain(h => h.VersionId == "2");
         history.ShouldContain(h => h.IsPagingProbe);
     }
+
+    [Fact]
+    public async Task GivenCountIsMaxValue_WhenQueriedAsHistoryCountHelperDoesForTotalAccurate_ThenDoesNotOverflowTheFetchRowcount()
+    {
+        // HistoryCountHelper deliberately sets Count = int.MaxValue ("no limit, count everything")
+        // when answering _history?_total=accurate. AddSharedHistoryParameters used to bind
+        // @CountPlusOne as Count + 1 unconditionally, which overflows int.MaxValue to
+        // int.MinValue; SQL Server then rejects the negative FETCH NEXT rowcount on every call
+        // (measured: "The number of rows provided for a FETCH clause must be greater then [sic] zero.").
+        var resourceTypeId = await _database.ExecuteScalarAsync<short>(
+            "SELECT ResourceTypeId FROM dbo.ResourceType WHERE Name = 'Patient'");
+
+        var resourceId = $"executor-maxcount-{Guid.NewGuid():N}";
+        var resource = new ResourceWrapper("Patient", resourceId, "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{resourceId}}"}"""), new ResourceRequest("PUT", $"Patient/{resourceId}"));
+        await _database.Repository.CreateOrUpdateAsync(resource, CancellationToken.None);
+        await _database.Repository.CreateOrUpdateAsync(resource with { }, CancellationToken.None);
+
+        var history = await _executor.GetResourceHistoryAsync(
+            resourceTypeId, "Patient", resourceId, new HistoryQueryParameters { Count = int.MaxValue }, CancellationToken.None).ToListAsync();
+
+        history.Count.ShouldBe(2);
+    }
 }

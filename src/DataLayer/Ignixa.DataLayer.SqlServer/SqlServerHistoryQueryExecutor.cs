@@ -203,7 +203,19 @@ public class SqlServerHistoryQueryExecutor(
         }
 
         command.Parameters.Add("@Offset", SqlDbType.Int).Value = parameters.Offset;
-        command.Parameters.Add("@CountPlusOne", SqlDbType.Int).Value = parameters.Count + 1;
+
+        // parameters.Count + 1 overflows to int.MinValue when Count is int.MaxValue -- the value
+        // HistoryCountHelper deliberately passes to mean "no limit, count everything" for
+        // _total=accurate -- and SQL Server rejects the negative FETCH NEXT rowcount outright (measured
+        // against a live container: "The number of rows provided for a FETCH clause must be greater
+        // then [sic] zero."). The +1 exists only to over-fetch one
+        // lookahead row so ExecuteHistoryQueryAsync can tell whether a further page exists; that
+        // question is meaningless when the caller asked for every row, so there is nothing to look
+        // ahead of and no over-fetch to make. The normal paginated path can never reach this branch --
+        // HistoryQueryParameters.Validate() clamps Count to [1, MaxCount] for every caller except this
+        // internal one, which bypasses Validate() on purpose.
+        var countPlusOne = parameters.Count == int.MaxValue ? int.MaxValue : parameters.Count + 1;
+        command.Parameters.Add("@CountPlusOne", SqlDbType.Int).Value = countPlusOne;
     }
 
     private SearchEntryResult? TryMapHistoryRow(HistoryRow row)
