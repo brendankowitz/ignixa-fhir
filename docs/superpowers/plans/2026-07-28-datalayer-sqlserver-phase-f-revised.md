@@ -366,3 +366,115 @@ Named plainly, because they are the things worth watching for:
   mode is silent partial terminology data rather than an exception.
 - **Task 9 is treated as a formality.** It is the last point at which the rollback lever still exists.
 - **The follow-ups register is not carried forward** into whatever tracks work after this phase.
+
+---
+
+## Follow-ups register — PR #386 remediation run, 2026-09-02
+
+The Phase F register above closes with Task 10. This section carries forward what the remediation
+run on `brendankowitz-miniature-fortnight` found and deliberately did **not** fix, triaged against
+*production readiness* rather than merge readiness — the two are different bars and this branch
+clears only the first.
+
+Sources: `R-FINAL` (whole-branch correctness, 575d2fd9..5c208420), `R-ARCH` (Fable, architectural),
+and T17's E2E product findings. Both whole-branch reviews returned **MERGE**. Nothing below blocks
+the merge; everything below is what remains between the merge and running this against real patient
+data.
+
+Six Criticals (C1 resolver consolidation, C2 delete atomicity, C3 batch upsert, C4 managed-identity
+guard, C5 schema version + drift guard, C6 cancellation) are fixed and independently
+mutation-verified, and are not repeated here.
+
+### A. Data integrity — wrong or lost data, no exception raised
+
+| # | Item | Where | Status / why deferred |
+|---|---|---|---|
+| A1 | `CreateOrUpdateAsync` writes the TTL row in a **separate auto-commit** after the resource is already visible. TTL write fails and the resource persists **forever**: `GetExpiredResourcesAsync` is driven *from* `dbo.ResourceTtl`, so a row with no TTL is never a sweep candidate. Healthcare data-retention exposure | `SqlServerFhirRepository.cs:174-203`, `:644-648` | **INHERITED** — `origin/main`'s EF path is the same sequence line for line, with its own `SaveChangesAsync`. Not introduced here, which is what drops it below C2. Highest-value single fix on this list |
+| A2 | The **asymmetry A1 creates**: T10 made `DeleteAsync` clear an expiry *inside* the transaction (`:373`), so the system now atomically clears an expiry and non-atomically sets one | same | Introduced by fixing C2. Fixing one side of a pair is how the next reader concludes the other side was considered and deemed safe |
+| A3 | Row generators `continue` silently when a lookup does not resolve — the index row is dropped and the resource becomes **silently unsearchable** on that parameter. 34 sites across 17 files | `RowGenerators/*` | Largest silent-wrong-answer class in the layer. S1 below kills the whole category rather than patching 34 sites |
+| A4 | `MergeResources` interleaved with hard delete is **unexamined**. Nobody has looked at what a concurrent hard delete does to an in-flight merge | `MergeResources.sql`, `HardDeleteResource.sql` | Genuinely unknown, not assessed-and-accepted. Needs a deliberate concurrency pass |
+| A5 | Two readings of "current version" coexist — one orders by surrogate id, one by version number | `SqlServerFhirRepository.cs:1108` vs `:1119` | Agree today; nothing enforces that they keep agreeing |
+| A6 | `dbo.HardDeleteResource` leaves orphaned index rows **by design** under `@KeepCurrentVersion=1` | `HardDeleteResource.sql` | Inherited from fhir-server. Documented, not fixed |
+| A7 | `@SingleTransaction`'s orphan invariant holds only because of how callers configure it — not enforced by the proc | `MergeResources.sql:56-58` | True today by caller convention |
+| A8 | **`System.Value` collation CI to CS on existing databases.** Token searches on mixed-case system URIs stop matching rows written before the rebuild | `Tables/System.sql`, schema v2 | **Deployment concern, not a code defect.** The tables have been on `main` since squashed PR #387, shipped in `release/0.6.68` — this branch changes the collation, so upgrades need a data check. Belongs in release notes **and** an upgrade runbook |
+
+### B. Operability — an operator cannot tell what went wrong
+
+| # | Item | Where | Status / why deferred |
+|---|---|---|---|
+| B1 | A transient `SqlException` that exhausts Polly surfaces as a **bare 500 carrying the raw provider message**. No 503, no `Retry-After`, and provider internals reach the client | `FhirExceptionMiddleware.cs:69-90` | Part of S3's exception taxonomy |
+| B2 | `InvalidOperationException` maps to **400 Bad Request** — and `TenantConnectionStringResolver` throws exactly that for infrastructure misconfiguration (six sites). **A deployment problem tells the client their request was bad** | `FhirExceptionMiddleware.cs:79-83`; resolver `:261, :276, :333, :343, :355, :374` | Same taxonomy work. Small fix, disproportionate operational value |
+| B3 | **404 response bodies serialise to literally `{}`** — the OperationOutcome diagnostics never reach the client | found by T17 against the live E2E stack | Product-facing. Independent of the data layer |
+| B4 | Audit log records `Status=200` on a 404 | audit pipeline | Corrupts the audit trail, which in this domain is itself a compliance artifact |
+| B5 | A partial delete is **audit-logged as success** — the partial signal exists and nothing consumes it | `TtlCleanupActivity.cs:85` | The signal was added by this run; the consumer was not |
+| B6 | Nothing asserts that partitions sharing content resolve to the same `DataSource` + `InitialCatalog`. Package content is written through **tenant 1**; the terminology importer reads and updates the same `dbo.PackageResource` rows through **tenant 0**. Coherent only because tenant 0 inherits tenant 1's connection string — permitted by config, not enforced | `DataLayerRegistration.cs:281,297`; `SqlServerCodeSystemImporter.cs:688,709,734,761` | T17 closed the *E2E blind spot* that hid this; the **startup assertion** is still owed. A deployment giving tenant 0 its own database silently breaks terminology import — and `PackageResourceId` is a per-database IDENTITY, so it may find a *different* row rather than none |
+| B7 | `ImportTermCodeSystem` runs at the default `Idempotent` with a 120 s `CommandTimeout`, so a genuine timeout re-sends a **350k-row TVP** up to three more times — roughly 8 minutes before failing | `SqlServerCodeSystemImporter.cs:268` | The global 3x Polly policy is unaware of command cost |
+
+### C. Resilience under load
+
+| # | Item | Where | Status / why deferred |
+|---|---|---|---|
+| C1 | **Cache starvation / restart storm.** One `SemaphoreSlim` guards every miss of every kind, held across a network round trip, with row generators blocking on pool threads. Modelled: 64 callers recovered; **200 callers gave 0 of 200 resolved for ~18 s**; `MaxThreads` capped at 32 gave a **permanent deadlock, 0/64 after five minutes**. Trigger: post-restart write burst (every system is a miss once per process) or a bulk load with many distinct identifier systems | reference-data cache | R-ARCH's numbers are a faithful model of the exact shape, **not** the real cache against SQL Server — and the real one holds the lock across the network, which is worse. The steady-state design doc is right; the transient is the hazard. **Worth measuring for real before production traffic** |
+| C2 | Kestrel does not bound concurrent requests, which is what lets C1 reach 200 | host config | One-line mitigation available independent of the cache fix |
+| C3 | `ReadSystemsByValueAsync` has a ~2100-parameter ceiling | terminology read path | Batches above it fail; no chunking |
+| C4 | RCSI (read-committed snapshot) not decided | schema | Affects reader/writer blocking under load. A deliberate decision, not an omission — but still undecided |
+| C5 | `LOCK_ESCALATION` settings are **inert** on the unpartitioned Term\* tables | `Tables/Term*.sql` | The real fix is partitioning those tables, which is dedicated work |
+
+### D. Detection gaps — a regression here would ship silently
+
+| # | Item | Where | Status / why deferred |
+|---|---|---|---|
+| D1 | The tenant-drop-detection guard is **untested**: disabling it left 1392/1392 green | `AppSettingsTenantConfigurationStore.cs:72` | Verified unable to fail. The fix committed this run has no test behind it |
+| D2 | `SqlServerSourceEventStore`'s `NonIdempotent` declaration has no unit test | event store | Same shape as D1 |
+| D3 | `ComputeProbeRowIdentities` covers **one of two paging modes** — `SearchPaging.Keyset.TopIncludesProbeRow` is a second over-fetch mechanism it never looks at. Unreachable today only because the SQL adapter always builds `SearchPaging.Offset` | `SqlServerSearchService.cs:446` | Safe by construction today, not by design |
+| D4 | `HistoryCountHelper` is an unguarded fourth `IsPagingProbe` consumer, inert **only** because it passes `Count = int.MaxValue` | `HistoryCountHelper` | Safe by accident. The `int.MaxValue` overflow it depended on was fixed this run; the guard was not added |
+| D5 | Batch-atomicity test 2's docstring overclaims what the test measures | `SqlServerPackageResourceRepositoryBatchAtomicityTests` | Prose, not behaviour — but this run found **seven tests unable to fail**, and overclaiming prose is how they persist |
+| D6 | The interleaving-vacuity guard's comment asserts "interleaved"; the counter actually measures "neither side threw" | delete-atomicity tests | Caught by R-T20 after the sharpening was requested without first checking what the guard measured |
+| D7 | No RepoGuards test flags a test whose only assertions are `ShouldNotBeNull` / `ShouldNotThrow` | `RepoGuards` | Cheap; would have caught most of the seven |
+| D8 | Seeder helpers do not require `before > 0`, so a precondition can be vacuous **by construction**. T21 did this once by hand | test fixtures | Make it the helper's contract |
+| D9 | Integration tests cost a DacFx deploy per class (3-12 min), which is **why** unit tests drift toward assertions that need no database — the soil the vacuous tests grew in | test infrastructure | Fix is one template database per run with snapshot restore per class. Explicitly **not** a call to re-abstract `ISqlExecutionService` — the `SqlCommand` altitude is right and is what makes the fault-injection seam work |
+| D10 | `FixedRowsSqlExecutionService` erases tuple shape; no guard | test double | Lets a fake diverge from the real reader silently |
+
+### E. Product gaps surfaced by T17's E2E work
+
+| # | Item | Where |
+|---|---|---|
+| E1 | `$expand` is advertised but unusable without a prior SQL import — the operation exists and returns nothing useful on a fresh deployment | terminology endpoints |
+| E2 | Background jobs still default to in-memory; job state does not survive restart | `BackgroundJobsModule` *(carried from the Phase F register above)* |
+
+### F. Hygiene
+
+| # | Item |
+|---|---|
+| F1 | Encoding drift: 524 of 3148 `.cs` files carry a BOM; `.editorconfig` has no `charset` |
+| F2 | Dead schema columns: `TokenText.IsHistory`, `CompartmentAssignment.IsHistory` |
+| F3 | Three partition vocabularies with no single owner — `SystemPartitionId` (Domain), `GlobalPackageTenantId` (an Api registration), `connectionTenantId` (a per-repository ctor int) — plus two sources of truth for "is system partition" (`tenant.IsSystemPartition` **or** `tenantId == 0`) |
+| F4 | The `OUTPUT`-form hard delete is strictly better than the client-side one and already exists in the deployed schema, unused |
+| F5 | `ISqlTransactionContext.ExecuteReaderAsync` / UPDLOCK restructuring |
+
+### Release notes — behaviour changes a consumer must be told about
+
+1. **Event-store writes are now `NonIdempotent`** — a transient failure no longer silently retries the insert.
+2. **Concurrent DELETEs now yield 200 + 409** rather than two 200s. The 409 is correct and new.
+3. **`System.Value` collation CI to CS** (see A8) — on existing databases, token searches on mixed-case system URIs stop matching rows written before the rebuild.
+4. **`ExistingSurrogateId` changed `long` to `long?`** — source-breaking on a published `Ignixa.Domain` type.
+
+### Structural items — from R-ARCH, none belong in this PR
+
+| # | Item | Size |
+|---|---|---|
+| S1 | **Resolve-then-generate on the write path.** Collect distinct search-param URLs, systems and quantity codes across all resources *before* any generator runs, resolve in one batched call, hand generators a resolved lookup with **non-nullable** ids. Kills sync-over-async, the per-miss round trips, the silent-drop convention (A3) and `OnDemandResolvingDictionary` in one move | Medium; dedicated work. **Highest future-finding prevention on the list** |
+| S2 | **"One write = one server-side unit."** A source guard (~1 day) failing any method that invokes `ExecuteNonQueryAsync` more than once outside an `ExecuteInTransactionAsync` lambda, with an allowlist requiring written justification. Then move `DeleteAsync` and hard delete server-side beside `MergeResources` — `HardDeleteResource.sql` **already exists** and R-T20 showed it is strictly better. Closes A1/A2 structurally rather than case by case | Guard: small, next PR. Migration: dedicated work + schema bump |
+| S3 | **Shared-content partition ownership** (B6's startup assertion) **plus the exception taxonomy**: transient to 503 + `Retry-After`; commit-indeterminate to 500 with a specific issue code; configuration to 500, **never** 400. Stop copying raw provider messages into `Diagnostics` | Small; next PR. B1, B2 and B6 all ride on it |
+
+### What this run closed, for the record
+
+Fixed and mutation-verified beyond the six Criticals: the E2E system-partition blind spot
+(`ffe7f868`, `aff7b8e6`); the `_history?_total=accurate` `FETCH NEXT` overflow (`d72b60de`); the
+fifth `SqlCommandIdempotency` site (`555b098c`); `FileBasedSearchService.SearchAsync` collapsed into
+`SearchStreamAsync` and covered (`480ab305`); a pre-existing `TransactionId` millisecond-collision
+data-loss bug found by CI (`49fa3f6c`); and three comments that misstated real risk
+(`d4a9fc16`, `065fe41c`).
+
+**Seven tests were found unable to fail** during this engagement. The seventh was caught by its own
+author via mutation before shipping — which is the only reason to believe the standard held.
