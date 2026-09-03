@@ -96,21 +96,23 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The window a real client falls into, driven for real: a reader polling as fast as it can while the
-    /// delete runs. Committed non-atomically, the interval between the history flip's commit and the
-    /// tombstone insert's commit is a whole round trip during which the resource has no current row at all,
-    /// and the reader sees <c>null</c> -- which the API layer reports as 404 "never existed" for a resource
-    /// that certainly did. Committed atomically, no such state is ever committed for anyone to read.
+    /// What this pins, exactly: that <c>DeleteAsync</c> never COMMITS a state in which the resource has no
+    /// current row. Committed non-atomically, the interval between the history flip's commit and the
+    /// tombstone insert's commit is a whole round trip during which exactly that state is committed and
+    /// readable. Committed atomically, it never exists for anyone to read.
     /// <para>
-    /// The reader is put on READ_COMMITTED_SNAPSHOT deliberately, and the assertion means nothing without
-    /// it. Under this server's default locking READ COMMITTED a scan concurrent with an update that moves a
-    /// row's key -- which setting <c>IsHistory = 1</c> does, since <c>IX_Resource_ResourceTypeId_ResourceId</c>
-    /// is filtered on <c>IsHistory = 0</c> -- can miss the row whether or not the write was atomic. This test
-    /// measured that happening on roughly half of twenty rounds with the atomic delete in place: a
-    /// pre-existing read-isolation property of the storage engine, not a property of this method, and not
-    /// something this change claims to fix. Snapshot reads remove that confound: every read returns a
-    /// consistent committed state, so a <c>null</c> here means a committed state with no current row really
-    /// existed -- which is exactly, and only, the defect under test.
+    /// The reader runs under READ_COMMITTED_SNAPSHOT so that it observes committed STATES and nothing else.
+    /// That is what makes a <c>null</c> here mean "a committed state with no current row existed" rather
+    /// than "a locking read lost the row" -- and it is also the whole of the test's reach.
+    /// </para>
+    /// <para>
+    /// What this therefore does NOT pin: the 404 window a real client falls into. No deployed tenant runs
+    /// under RCSI -- it is set nowhere in the product (not in the dacpac, not in the deployer, not in the
+    /// connection-string builders; <c>SqlExecutionService</c> takes the server default), so every tenant
+    /// reads under locking READ COMMITTED, where a read racing a delete can return <c>null</c> for reasons
+    /// that have nothing to do with what was committed. Turning RCSI on here is what removes that from
+    /// view. The locking-READ-COMMITTED window is pinned separately, and only, by
+    /// <see cref="GivenTheReadIsForcedToStartMidDelete_WhenTheDeleteCommits_ThenTheReadSeesTheTombstone"/>.
     /// </para>
     /// </summary>
     [Fact]
@@ -170,6 +172,116 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         }
 
         roundsWhereTheResourceVanished.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The window a real client falls into, under the isolation every deployed tenant actually runs:
+    /// locking READ COMMITTED, no RCSI. A GET issued while a DELETE is in flight must return the resource
+    /// (200) or the tombstone (410 Gone). It must never return nothing, which the API reports as 404
+    /// "never existed".
+    /// <para>
+    /// Nothing here is left to timing. The reader is launched from inside the delete's transaction, between
+    /// the history flip and the tombstone insert, and given three quarters of a second to reach the lock it
+    /// cannot get past -- so it is certain to have begun mid-delete and to return only after the commit,
+    /// which is precisely the shape every observed failure had. Polling and hoping for the race reproduced
+    /// the anomaly on 8 of 30 rounds; forcing it reproduces it every time.
+    /// </para>
+    /// <para>
+    /// Without the <c>INDEX(IX_Resource_ResourceTypeId_ResourceId)</c> hint on
+    /// <c>SqlServerFhirRepository.GetAsync</c>'s current-resource read this returns <c>null</c>: the
+    /// optimizer seeks the version index backward, positions on the live version, blocks on its clustered
+    /// row, and after the commit re-examines that row, finds <c>IsHistory = 1</c>, and scans down past
+    /// versions that do not exist -- never back up to the tombstone. Forced onto the filtered index, whose
+    /// entry the delete removes and re-adds under the identical key, the same blocked read finds the
+    /// tombstone.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GivenTheReadIsForcedToStartMidDelete_WhenTheDeleteCommits_ThenTheReadSeesTheTombstone()
+    {
+        // The premise of the whole test: this database is on locking READ COMMITTED, like every deployed
+        // tenant. If that ever stops being true the anomaly disappears and the test stops meaning anything.
+        (await CountAsync("SELECT CAST(is_read_committed_snapshot_on AS INT) FROM sys.databases WHERE database_id = DB_ID()"))
+            .ShouldBe(0, "this test is only meaningful under locking READ COMMITTED");
+
+        const string ResourceId = "delete-read-window-1";
+        var key = new ResourceKey("Patient", ResourceId);
+        await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ResourceId), CancellationToken.None);
+
+        // Warm the reader's resource-type cache so the racing GET is nothing but the one read under test.
+        (await _repository.GetAsync(key, CancellationToken.None)).ShouldNotBeNull();
+
+        var (interceptor, repository) = await CreateInterceptedRepositoryAsync();
+        interceptor.ResetOrdinals();
+
+        Task<SearchEntryResult?>? read = null;
+        interceptor.BeforeNonQueryAsync = async ordinal =>
+        {
+            // Ordinal 2 is the tombstone insert: the flip has run and holds its locks, the tombstone is not
+            // in yet, and the transaction is still open.
+            if (ordinal != 2)
+            {
+                return;
+            }
+
+            interceptor.Disarm();
+            read = Task.Run(async () => await _repository.GetAsync(key, CancellationToken.None));
+            await Task.Delay(TimeSpan.FromMilliseconds(750));
+        };
+
+        await repository.DeleteAsync(
+            key, new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None);
+
+        var racingRead = read ?? throw new InvalidOperationException(
+            "the delete never reached the tombstone insert, so the racing read was never started");
+        var seen = await racingRead.WaitAsync(TimeSpan.FromSeconds(30));
+
+        seen.ShouldNotBeNull("a read racing the delete returned nothing, which the API reports as 404 'never existed'");
+        seen!.IsDeleted.ShouldBeTrue();
+        seen.VersionId.ShouldBe("2");
+    }
+
+    /// <summary>
+    /// The hint in <c>GetAsync</c> names an index by string. Renaming or dropping
+    /// <c>IX_Resource_ResourceTypeId_ResourceId</c> breaks that read outright, and changing its shape --
+    /// dropping the filter, or adding a key column -- would break it more quietly, because the fix depends
+    /// on the delete's two writes landing on one identical index key. This says so in the schema's own
+    /// terms so the next person to touch that index finds out here.
+    /// </summary>
+    [Fact]
+    public async Task GivenTheCurrentResourceRead_WhenTheSchemaIsDeployed_ThenTheIndexItIsHintedOntoExistsAsAFilteredUniqueIndex()
+    {
+        (await CountAsync(
+            """
+            SELECT COUNT(*) FROM sys.indexes
+            WHERE object_id = OBJECT_ID('dbo.Resource')
+              AND name = 'IX_Resource_ResourceTypeId_ResourceId'
+              AND is_unique = 1 AND has_filter = 1
+            """)).ShouldBe(1, "GetAsync hints onto this index by name; renaming or dropping it breaks that read");
+
+        // Stripped of the punctuation SQL Server chooses to store it with -- ([IsHistory]=(0)) here.
+        var filter = await _database.ExecuteScalarAsync<string>(
+            """
+            SELECT TRANSLATE(filter_definition, ' []()', '     ')
+            FROM sys.indexes
+            WHERE object_id = OBJECT_ID('dbo.Resource') AND name = 'IX_Resource_ResourceTypeId_ResourceId'
+            """);
+        filter.Replace(" ", string.Empty, StringComparison.Ordinal).ShouldBe("IsHistory=0");
+
+        var keyColumns = await _database.ExecuteScalarAsync<string>(
+            """
+            SELECT STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal)
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+            JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE i.object_id = OBJECT_ID('dbo.Resource')
+              AND i.name = 'IX_Resource_ResourceTypeId_ResourceId'
+              AND ic.is_included_column = 0
+            """);
+
+        // Exactly these two, in this order: the delete's history flip and its tombstone insert have to
+        // resolve to the same index key for a blocked reader to land on the tombstone.
+        keyColumns.ShouldBe("ResourceTypeId,ResourceId");
     }
 
     /// <summary>
@@ -333,6 +445,9 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         }
 
         public void Disarm() => BeforeNonQueryAsync = null;
+
+        /// <summary>Restarts the ordinal count, for hooks assigned directly rather than through <see cref="FailBeforeNonQuery"/>.</summary>
+        public void ResetOrdinals() => _nonQueryCount = 0;
 
         private readonly List<(string CommandText, SqlCommandIdempotency Idempotency)> _readerCalls = [];
 

@@ -83,10 +83,33 @@ public class SqlServerFhirRepository(
         }
         else
         {
+            // The INDEX hint is load-bearing, not a performance tweak. Left to itself the optimizer seeks
+            // IX_Resource_ResourceTypeId_ResourceId_Version ORDERED BACKWARD and evaluates IsHistory = 0 as a
+            // residual on the key lookup, because IsHistory is not in that index at all. A soft delete never
+            // touches that index, so a reader racing one positions on the live version, blocks on the
+            // clustered row the delete holds X-locked, and after the commit re-examines the row it had
+            // already committed to -- now IsHistory = 1 -- and rejects it. The tombstone's higher version
+            // sorts above the scan's start position and a backward scan never revisits it, so the read
+            // returns nothing and the API answers 404 "never existed" for a resource that certainly did.
+            // Measured on a 400,000-row table: 8 of 30 racing reads, and 100% of reads forced to start
+            // mid-delete. Under READ_COMMITTED_SNAPSHOT this cannot happen, but RCSI is not set anywhere in
+            // this product, so every deployed tenant runs locking READ COMMITTED and is exposed.
+            //
+            // IX_Resource_ResourceTypeId_ResourceId is filtered on IsHistory = 0, so the history flip
+            // DELETES its entry and the tombstone INSERT adds one back under the identical
+            // (ResourceTypeId, ResourceId) key. There is nothing for the reader to be positioned past: it
+            // blocks at the seek and, once the delete commits, finds the tombstone. Measured 0 of 30, with
+            // every racing read returning the tombstone (410 Gone) rather than merely not returning null.
+            //
+            // If that index is ever renamed or dropped this query fails outright with "index does not
+            // exist" rather than silently regressing -- which is the safer failure, and is pinned by
+            // GivenTheReadIsForcedToStartMidDelete_WhenTheDeleteCommits_ThenTheReadSeesTheTombstone and by
+            // GivenTheCurrentResourceRead_WhenTheSchemaIsDeployed_ThenTheIndexItIsHintedOntoExistsAsAFilteredUniqueIndex.
             command = new SqlCommand(
                 """
                 SELECT TOP (1) r.ResourceId, r.Version, r.RawResource, r.IsDeleted, r.RequestMethod, t.CreateDate
-                FROM dbo.Resource r LEFT JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue
+                FROM dbo.Resource r WITH (INDEX(IX_Resource_ResourceTypeId_ResourceId))
+                LEFT JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue
                 WHERE r.ResourceTypeId = @ResourceTypeId AND r.ResourceId = @ResourceId AND r.IsHistory = 0
                 ORDER BY r.Version DESC;
                 """);
@@ -250,10 +273,15 @@ public class SqlServerFhirRepository(
         // All four effects -- history flip, tombstone insert, TTL removal, search-index wipe -- commit
         // together or not at all. What the EF port expressed as one SaveChangesAsync became four
         // independently auto-committed statements on four connections in the raw-ADO.NET port, and between
-        // the first and the second the resource has NO current row at all: a concurrent GET matches nothing
-        // and the API answers 404 "never existed" when the truth is 200 (before) or 410 Gone (after). A
-        // crash in that same gap is permanent -- no current row to read, and the next PUT computes version 1
-        // again and collides with the surviving history row on IX_Resource_ResourceTypeId_ResourceId_Version.
+        // the first and the second the resource has NO current row at all -- a state that is COMMITTED and
+        // therefore readable by anyone, under any isolation level. A crash in that same gap is permanent:
+        // no current row to read, and the next PUT computes version 1 again and collides with the surviving
+        // history row on IX_Resource_ResourceTypeId_ResourceId_Version.
+        //
+        // What this transaction does NOT fix on its own is the 404 a concurrent GET can still get. That
+        // anomaly outlived the non-atomic shape: it comes from the read's plan, not from any committed
+        // state, and it was still measured at 8 of 30 racing reads with this transaction already in place.
+        // Closing it took the INDEX hint on GetAsync's current-resource read -- see the comment there.
         await _sqlExecutionService.ExecuteInTransactionAsync(
             _tenantId,
             async (transaction, ct) =>
