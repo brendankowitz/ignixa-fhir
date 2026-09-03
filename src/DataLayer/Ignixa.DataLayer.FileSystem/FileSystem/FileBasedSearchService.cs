@@ -48,6 +48,22 @@ public partial class FileBasedSearchService : ISearchService
     private static int FetchCount(SearchOptions options)
         => options.MaxItemCount + (options.ProbeExtraRow ? 1 : 0);
 
+    /// <summary>
+    /// A reusable, content-free sentinel: <see cref="SearchEntryResult.IsPagingProbe"/> is the only
+    /// thing about it a consumer may read, so one immutable instance safely stands in for every
+    /// probe-row miss across every search. Mirrors SqlServerCompiledSearchService's own sentinel of
+    /// the same name.
+    /// </summary>
+    private static readonly SearchEntryResult PagingProbeSentinel = new(
+        ResourceType: string.Empty,
+        ResourceId: string.Empty,
+        VersionId: string.Empty,
+        LastModified: DateTimeOffset.UnixEpoch,
+        ResourceBytes: ReadOnlyMemory<byte>.Empty)
+    {
+        IsPagingProbe = true,
+    };
+
     public async ValueTask<IReadOnlyList<SearchEntryResult>> SearchAsync<TSearchOptions>(
         TSearchOptions searchOptions,
         CancellationToken cancellationToken = default)
@@ -116,12 +132,21 @@ public partial class FileBasedSearchService : ISearchService
 
         // Step 4: Load ONLY the matching resources (not all resources)
         var results = new List<SearchEntryResult>();
-        foreach (var key in pagedKeys)
+        for (var i = 0; i < pagedKeys.Count; i++)
         {
-            var resource = await _repository.GetAsync(key, cancellationToken);
+            var resource = await _repository.GetAsync(pagedKeys[i], cancellationToken);
             if (resource != null)
             {
                 results.Add(resource);
+                continue;
+            }
+
+            // Mirrors SearchStreamAsync's identical guard below: a plain skip here would let a
+            // probe row's proof that a further page exists vanish along with it -- see
+            // SearchEntryResult.IsPagingProbe.
+            if (i >= options.MaxItemCount)
+            {
+                results.Add(PagingProbeSentinel);
             }
         }
 
@@ -199,15 +224,27 @@ public partial class FileBasedSearchService : ISearchService
 
         // Step 4: Stream ONLY the matching resources
         int streamed = 0;
-        foreach (var key in pagedKeys)
+        for (var i = 0; i < pagedKeys.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var resource = await _repository.GetAsync(key, cancellationToken);
+            var resource = await _repository.GetAsync(pagedKeys[i], cancellationToken);
             if (resource != null)
             {
                 streamed++;
                 yield return resource;
+                continue;
+            }
+
+            // FileBasedFhirRepository.GetAsync returns null here for a resource its own metadata
+            // scan (Step 1 above) already reported as present -- a concurrent delete race, the
+            // only way this branch is reached: a genuinely corrupt/missing NDJSON file throws
+            // instead (see GetAsync's own try/catch). A plain skip would let a probe row's proof
+            // that a further page exists vanish along with it, the same silent-truncation defect
+            // fcbc8f8b fixed for the SQL Server data layer -- see SearchEntryResult.IsPagingProbe.
+            if (i >= options.MaxItemCount)
+            {
+                yield return PagingProbeSentinel;
             }
         }
 
