@@ -74,6 +74,19 @@ public sealed class SqlServerPackageResourceRepository(
         }
     }
 
+    /// <summary>
+    /// Runs the whole batch as one transaction, all-or-nothing -- restoring the invariant the EF
+    /// implementation had (one <c>SaveChangesAsync</c> per batch) and this port had silently dropped: per-
+    /// resource auto-committed statements under a catch that wrapped the whole loop, so a duplicate key on
+    /// resource 200 of 800 abandoned resources 200-800, logged a warning claiming they were "already
+    /// written", and returned normally. The caller has to be able to trust that "no exception" means every
+    /// resource landed; the only way to make that true again is to make partial application impossible.
+    /// <para>
+    /// The caller (<c>PackageResourceImporter.BatchUpsertResourcesAsync</c>) already chunks large packages at
+    /// 500 resources per call "to keep transactions manageable", so one transaction per call is exactly the
+    /// shape this method was always meant to run under.
+    /// </para>
+    /// </summary>
     public async Task BatchUpsertAsync(IReadOnlyList<PackageResource> packageResources, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(packageResources);
@@ -92,10 +105,16 @@ public sealed class SqlServerPackageResourceRepository(
 
         try
         {
-            foreach (var resource in packageResources)
-            {
-                await UpsertOneAsync(resource, cancellationToken);
-            }
+            await sqlExecutionService.ExecuteInTransactionAsync(
+                connectionTenantId,
+                async (transaction, ct) =>
+                {
+                    foreach (var resource in packageResources)
+                    {
+                        await UpsertOneAsync(transaction, resource, ct);
+                    }
+                },
+                cancellationToken);
 
             logger.LogInformation(
                 "Successfully upserted {Count} resources from package {PackageId}@{PackageVersion}",
@@ -103,10 +122,19 @@ public sealed class SqlServerPackageResourceRepository(
         }
         catch (SqlException ex) when (IsDuplicateKey(ex))
         {
+            // The whole batch just ran in one transaction, so a duplicate key anywhere in it rolled the
+            // ENTIRE batch back -- none of packageResources was written, not just the colliding one. That is
+            // what makes "treating as already written" true again: the concurrent writer (TenantPackage-
+            // PreloadService and EmbeddedPackagePreloadService can run together) applies the same rows, and
+            // this attempt applied none of them, so there is nothing here for it to have clobbered or missed.
+            //
+            // A commit that itself fails surfaces as SqlTransactionCommitException, not SqlException, so it
+            // is never caught here -- it propagates to the caller as the indeterminate outcome it is.
             logger.LogWarning(
                 ex,
-                "Package {PackageId}@{PackageVersion}: batch upsert encountered duplicate key constraint. " +
-                "Another thread is loading the same package; treating as already written.",
+                "Package {PackageId}@{PackageVersion}: batch upsert encountered duplicate key constraint; the " +
+                "whole batch was rolled back and none of it was written. Another thread is loading the same " +
+                "package; treating as already written.",
                 packageId, packageVersion);
         }
     }
@@ -119,7 +147,21 @@ public sealed class SqlServerPackageResourceRepository(
     /// </summary>
     private async Task UpsertOneAsync(PackageResource resource, CancellationToken cancellationToken)
     {
-        using var command = Command(
+        using var command = BuildUpsertCommand(resource);
+        await sqlExecutionService.ExecuteNonQueryAsync(connectionTenantId, command, cancellationToken);
+    }
+
+    /// <summary>Same upsert, run through the transaction <see cref="BatchUpsertAsync"/> enlists every resource in.</summary>
+    private static async Task UpsertOneAsync(
+        ISqlTransactionContext transaction, PackageResource resource, CancellationToken cancellationToken)
+    {
+        using var command = BuildUpsertCommand(resource);
+        await transaction.ExecuteNonQueryAsync(command, cancellationToken);
+    }
+
+    private static SqlCommand BuildUpsertCommand(PackageResource resource)
+    {
+        var command = Command(
             $"UPDATE {QualifiedTable} SET " +
             $"{Packages.Column("Version").Name} = @version, " +
             $"{Packages.Column("ResourceJson").Name} = @resourceJson, " +
@@ -146,7 +188,7 @@ public sealed class SqlServerPackageResourceRepository(
         command.Parameters.AddWithValue("@loadedDate", resource.LoadedDate);
         command.Parameters.AddWithValue("@isActive", resource.IsActive);
 
-        await sqlExecutionService.ExecuteNonQueryAsync(connectionTenantId, command, cancellationToken);
+        return command;
     }
 
     private static readonly string InsertColumns = string.Join(", ", new[]
