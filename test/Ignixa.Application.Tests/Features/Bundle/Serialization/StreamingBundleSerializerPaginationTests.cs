@@ -88,9 +88,17 @@ public class StreamingBundleSerializerPaginationTests
     {
         // Arrange: the data layer fetched pageSize+1 rows, but the (pageSize+1)th -- the probe --
         // could not be turned into content (corrupt payload, or a concurrent-delete miss). It is
-        // represented by an IsPagingProbe sentinel rather than a real Match entry: exactly the
-        // defect this test guards against is a corrupt/unmappable probe row silently dropping the
-        // hasMore signal because the counting-based detection never saw a (pageSize+1)th delivery.
+        // represented by an IsPagingProbe sentinel rather than a real Match entry.
+        //
+        // NOT LOAD-BEARING for the IsPagingProbe guard itself: with a full pageSize of real Match
+        // entries ahead of it, entryCount already equals pageSize by the time the sentinel arrives,
+        // so the OLD pre-fix overflow-counting branch (entryCount >= pageSize => hasMore, skip
+        // rendering) already gets this exact arrangement right regardless of whether the sentinel is
+        // recognised -- removing the IsPagingProbe check does not fail this test. It documents the
+        // "probe lands exactly at the page boundary" shape and keeps that shape covered, but the
+        // sibling below (...WithUnmappableProbeRowAndAnEarlierSkippedRow_...), where the page is
+        // short of pageSize when the sentinel arrives, is the one that actually fails without the
+        // guard and is the real regression test for this defect.
         var entries = CreateMatchEntries(count: PageSize);
         entries.Add(CreatePagingProbeSentinel());
         var searchOptions = new SearchOptions { MaxItemCount = PageSize };
