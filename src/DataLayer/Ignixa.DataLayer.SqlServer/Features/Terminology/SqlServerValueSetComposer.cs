@@ -57,6 +57,7 @@ internal sealed class SqlServerValueSetComposer
     private readonly int _systemPartitionId;
     private readonly ISystemRepository _systemRepository;
     private readonly ILogger _logger;
+    private readonly int _commandTimeoutSeconds;
 
     private readonly List<ValueSetExpansionRow> _included = [];
     private readonly HashSet<(int SystemId, string Code)> _includedKeys = [];
@@ -70,22 +71,34 @@ internal sealed class SqlServerValueSetComposer
         ISqlExecutionService sqlExecutionService,
         int systemPartitionId,
         ISystemRepository systemRepository,
-        ILogger logger)
+        ILogger logger,
+        int commandTimeoutSeconds)
     {
         _sqlExecutionService = sqlExecutionService;
         _systemPartitionId = systemPartitionId;
         _systemRepository = systemRepository;
         _logger = logger;
+        _commandTimeoutSeconds = commandTimeoutSeconds;
     }
 
+    /// <param name="commandTimeoutSeconds">
+    /// <see cref="SqlCommand.CommandTimeout"/> for every command this composer issues. Shares
+    /// <see cref="SqlServerOptions.TerminologyImportCommandTimeoutSeconds"/> with the CodeSystem/ValueSet/
+    /// ConceptMap import procedures: <see cref="ReadConceptsAsync"/> in particular runs an unbounded
+    /// "every concept in this system" read for a plain <c>compose.include.system</c> with no <c>concept</c>
+    /// or <c>filter</c> array, which for a SNOMED-scale include reads as many rows as the import itself
+    /// writes -- and it ran BEFORE the configurable timeout reached this class, still on ADO's 30-second
+    /// default, regardless of how the importer's own commands were configured.
+    /// </param>
     public static Task<ComposedExpansion> ComposeAsync(
         JsonObject compose,
         ISqlExecutionService sqlExecutionService,
         int systemPartitionId,
         ISystemRepository systemRepository,
         ILogger logger,
+        int commandTimeoutSeconds,
         CancellationToken cancellationToken)
-        => new SqlServerValueSetComposer(sqlExecutionService, systemPartitionId, systemRepository, logger)
+        => new SqlServerValueSetComposer(sqlExecutionService, systemPartitionId, systemRepository, logger, commandTimeoutSeconds)
             .RunAsync(compose, cancellationToken);
 
     private async Task<ComposedExpansion> RunAsync(JsonObject compose, CancellationToken cancellationToken)
@@ -512,7 +525,10 @@ internal sealed class SqlServerValueSetComposer
             $"tc.{Concepts.Column("PropertiesJson").Name}, cs.{CodeSystems.Column("Version").Name} " +
             $"FROM {Qualified(Concepts)} tc " +
             $"JOIN {Qualified(CodeSystems)} cs ON cs.{CodeSystems.Column("TermCodeSystemId").Name} = tc.{Concepts.Column("TermCodeSystemId").Name} " +
-            $"WHERE cs.{CodeSystems.Column("SystemId").Name} = @systemId{versionFilter}");
+            $"WHERE cs.{CodeSystems.Column("SystemId").Name} = @systemId{versionFilter}")
+        {
+            CommandTimeout = _commandTimeoutSeconds,
+        };
 #pragma warning restore CA2100
 
         command.Parameters.AddWithValue("@systemId", systemId);
@@ -534,6 +550,8 @@ internal sealed class SqlServerValueSetComposer
             cancellationToken);
     }
 
+    // Left on the ADO default rather than _commandTimeoutSeconds: TOP 1 over IX_TermValueSet_Canonical is a
+    // single-row index seek regardless of table size, unlike ReadConceptsAsync and ReadExpansionAsync below.
     private async Task<long?> ResolveExpandedValueSetIdAsync(string canonical, CancellationToken cancellationToken)
     {
 #pragma warning disable CA2100
@@ -551,6 +569,8 @@ internal sealed class SqlServerValueSetComposer
         return rows.Count > 0 ? rows[0] : null;
     }
 
+    // Also unbounded, for the same reason as ReadConceptsAsync: a compose.include.valueSet naming a
+    // previously expanded SNOMED-scale ValueSet reads every one of its rows back in one query.
     private async Task<IReadOnlyList<ValueSetExpansionRow>> ReadExpansionAsync(
         long valueSetId, CancellationToken cancellationToken)
     {
@@ -560,7 +580,10 @@ internal sealed class SqlServerValueSetComposer
             $"e.{Expansions.Column("Display").Name}, e.{Expansions.Column("SystemVersion").Name} " +
             $"FROM {Qualified(Expansions)} e " +
             $"WHERE e.{Expansions.Column("TermValueSetId").Name} = @valueSetId " +
-            $"ORDER BY e.{Expansions.Column("Ordinal").Name}");
+            $"ORDER BY e.{Expansions.Column("Ordinal").Name}")
+        {
+            CommandTimeout = _commandTimeoutSeconds,
+        };
 #pragma warning restore CA2100
 
         command.Parameters.AddWithValue("@valueSetId", valueSetId);

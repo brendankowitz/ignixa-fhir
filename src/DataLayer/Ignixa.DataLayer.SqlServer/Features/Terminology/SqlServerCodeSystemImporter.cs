@@ -207,7 +207,7 @@ public sealed class SqlServerCodeSystemImporter(
         else if (valueSet["compose"] is JsonObject compose)
         {
             var composed = await SqlServerValueSetComposer.ComposeAsync(
-                compose, sqlExecutionService, systemPartitionId, systemRepository, logger, cancellationToken);
+                compose, sqlExecutionService, systemPartitionId, systemRepository, logger, commandTimeoutSeconds, cancellationToken);
 
             entries = composed.Entries;
             isPartial = composed.IsPartial;

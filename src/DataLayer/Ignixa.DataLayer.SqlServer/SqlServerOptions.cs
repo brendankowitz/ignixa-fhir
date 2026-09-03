@@ -47,7 +47,11 @@ public sealed class SqlServerOptions
     /// <see cref="Microsoft.Data.SqlClient.SqlCommand.CommandTimeout"/> for <c>dbo.ImportTermCodeSystem</c>,
     /// <c>dbo.ImportTermValueSet</c> and <c>dbo.ImportTermConceptMap</c> -- the three commands that carry a
     /// whole CodeSystem, ValueSet or ConceptMap as a table-valued parameter and run its insert, delete-and-
-    /// replace, and hierarchy resolution in one server-side transaction. Left unset, <see cref="SqlCommand"/>
+    /// replace, and hierarchy resolution in one server-side transaction -- and also for the reads
+    /// <c>SqlServerValueSetComposer</c> runs to resolve a ValueSet's <c>compose</c> element before
+    /// <c>dbo.ImportTermValueSet</c> ever runs. Those reads can be just as large: an include naming a whole
+    /// CodeSystem with no <c>concept</c> or <c>filter</c> array reads every concept in it, and an include
+    /// naming a previously expanded ValueSet reads every one of its rows. Left unset, <see cref="SqlCommand"/>
     /// defaults to 30 seconds, and SQL error <c>-2</c> (command timeout) is classified transient by
     /// <c>SqlExecutionService.IsTransient</c>, so a command that overruns the timeout is retried up to three
     /// more times before the import is marked <c>Failed</c> -- and <c>Failed</c> is not a terminal status, so
