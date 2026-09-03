@@ -168,7 +168,8 @@ public class SqlServerFhirRepository(
             failureReason: null,
             cancellationToken: cancellationToken);
 
-        await UpsertResourceTtlAsync(resourceTypeId, resource.ResourceId, resource.ExpiresAt, transactionId.Value, cancellationToken);
+        await UpsertResourceTtlAsync(
+            transaction: null, resourceTypeId, resource.ResourceId, resource.ExpiresAt, transactionId.Value, cancellationToken);
 
         _logger.LogInformation(
             "Created/updated resource {ResourceType}/{ResourceId} version {Version} via merge",
@@ -225,21 +226,14 @@ public class SqlServerFhirRepository(
         }
 
         var newVersion = currentEntity.Value.Version + 1;
+        var currentSurrogateId = currentEntity.Value.ResourceSurrogateId;
 
-        // Deliberate divergence from the legacy EF port: this method never allocates a transactionId
-        // (no transaction-scoped delete), matching the documented semantics pinned directly by
-        // SqlServerFhirRepositoryCrudTests -- see that file for the exact behavioral contract this
-        // comment used to restate in full. This divergence is currently inert in production: the only
-        // real caller (DeleteResourceHandler) always passes transactionId: null.
-        using (var historyCommand = new SqlCommand(
-            "UPDATE dbo.Resource SET IsHistory=1, HistoryTransactionId=@HistoryTransactionId WHERE ResourceSurrogateId=@ResourceSurrogateId"))
-        {
-            historyCommand.Parameters.Add("@HistoryTransactionId", SqlDbType.BigInt).Value =
-                (object?)transactionId?.Value ?? DBNull.Value;
-            historyCommand.Parameters.Add("@ResourceSurrogateId", SqlDbType.BigInt).Value = currentEntity.Value.ResourceSurrogateId;
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, historyCommand, cancellationToken);
-        }
-
+        // Computed here, OUTSIDE the unit of work below, because that callback can be re-run from the top
+        // after a transient fault and must produce the same delete each time. Both values are safe to reuse
+        // across attempts precisely because the rollback undid the attempt that used them: the tombstone's
+        // meta.lastUpdated stays the instant the delete was asked for rather than drifting to whenever the
+        // last retry happened, and the surrogate ID stays one ID per delete instead of burning a fresh
+        // sequence value (and a fresh round trip) per attempt.
         var tombstoneJsonNode = new ResourceJsonNode
         {
             ResourceType = key.ResourceType,
@@ -251,30 +245,71 @@ public class SqlServerFhirRepository(
             }
         };
         var compressedTombstone = _compressor.SerializeAndCompress(tombstoneJsonNode);
-
         var newSurrogateId = await GetNextSurrogateIdAsync(cancellationToken);
 
-        using (var insertCommand = new SqlCommand(
-            """
-            INSERT INTO dbo.Resource
-                (ResourceTypeId, ResourceId, Version, IsHistory, ResourceSurrogateId, IsDeleted, RequestMethod, RawResource, IsRawResourceMetaSet, SearchParamHash, TransactionId)
-            VALUES
-                (@ResourceTypeId, @ResourceId, @NewVersion, 0, @NewSurrogateId, 1, 'DELETE', @TombstoneBytes, 1, NULL, @TransactionId);
-            """))
-        {
-            insertCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
-            insertCommand.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = key.Id;
-            insertCommand.Parameters.Add("@NewVersion", SqlDbType.Int).Value = newVersion;
-            insertCommand.Parameters.Add("@NewSurrogateId", SqlDbType.BigInt).Value = newSurrogateId;
-            insertCommand.Parameters.Add("@TombstoneBytes", SqlDbType.VarBinary).Value = compressedTombstone;
-            insertCommand.Parameters.Add("@TransactionId", SqlDbType.BigInt).Value =
-                (object?)transactionId?.Value ?? DBNull.Value;
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, insertCommand, cancellationToken);
-        }
+        // All four effects -- history flip, tombstone insert, TTL removal, search-index wipe -- commit
+        // together or not at all. What the EF port expressed as one SaveChangesAsync became four
+        // independently auto-committed statements on four connections in the raw-ADO.NET port, and between
+        // the first and the second the resource has NO current row at all: a concurrent GET matches nothing
+        // and the API answers 404 "never existed" when the truth is 200 (before) or 410 Gone (after). A
+        // crash in that same gap is permanent -- no current row to read, and the next PUT computes version 1
+        // again and collides with the surviving history row on IX_Resource_ResourceTypeId_ResourceId_Version.
+        await _sqlExecutionService.ExecuteInTransactionAsync(
+            _tenantId,
+            async (transaction, ct) =>
+            {
+                // ResourceTypeId and IsHistory both matter here. ResourceSurrogateId is only unique WITHIN a
+                // resource type (PKC_Resource is keyed on both), and the surrogate ID came from a read that
+                // committed before this transaction began -- so without "IsHistory = 0" a writer that
+                // versioned the row in between would leave this re-stamping an already-history row,
+                // reporting success, and inserting the tombstone at a version that is no longer current.
+                // Zero rows means exactly that happened.
+                using (var historyCommand = new SqlCommand(
+                    """
+                    UPDATE dbo.Resource SET IsHistory = 1, HistoryTransactionId = @HistoryTransactionId
+                    WHERE ResourceTypeId = @ResourceTypeId AND ResourceSurrogateId = @ResourceSurrogateId AND IsHistory = 0;
+                    """))
+                {
+                    historyCommand.Parameters.Add("@HistoryTransactionId", SqlDbType.BigInt).Value =
+                        (object?)transactionId?.Value ?? DBNull.Value;
+                    historyCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
+                    historyCommand.Parameters.Add("@ResourceSurrogateId", SqlDbType.BigInt).Value = currentSurrogateId;
 
-        await UpsertResourceTtlAsync(resourceTypeId, key.Id, expiresAt: null, transactionId?.Value, cancellationToken);
+                    var flippedRows = await transaction.ExecuteNonQueryAsync(historyCommand, ct);
+                    if (flippedRows == 0)
+                    {
+                        throw new ResourceVersionConflictException(key.ResourceType, key.Id, newSurrogateId, currentSurrogateId);
+                    }
+                }
 
-        await DeleteSearchIndexEntriesAsync(currentEntity.Value.ResourceSurrogateId, cancellationToken);
+                // Deliberate divergence from the legacy EF port: this method never allocates a transactionId
+                // (no transaction-scoped delete), matching the documented semantics pinned directly by
+                // SqlServerFhirRepositoryCrudTests -- see that file for the exact behavioral contract this
+                // comment used to restate in full. This divergence is currently inert in production: the only
+                // real caller (DeleteResourceHandler) always passes transactionId: null.
+                using (var insertCommand = new SqlCommand(
+                    """
+                    INSERT INTO dbo.Resource
+                        (ResourceTypeId, ResourceId, Version, IsHistory, ResourceSurrogateId, IsDeleted, RequestMethod, RawResource, IsRawResourceMetaSet, SearchParamHash, TransactionId)
+                    VALUES
+                        (@ResourceTypeId, @ResourceId, @NewVersion, 0, @NewSurrogateId, 1, 'DELETE', @TombstoneBytes, 1, NULL, @TransactionId);
+                    """))
+                {
+                    insertCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
+                    insertCommand.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = key.Id;
+                    insertCommand.Parameters.Add("@NewVersion", SqlDbType.Int).Value = newVersion;
+                    insertCommand.Parameters.Add("@NewSurrogateId", SqlDbType.BigInt).Value = newSurrogateId;
+                    insertCommand.Parameters.Add("@TombstoneBytes", SqlDbType.VarBinary).Value = compressedTombstone;
+                    insertCommand.Parameters.Add("@TransactionId", SqlDbType.BigInt).Value =
+                        (object?)transactionId?.Value ?? DBNull.Value;
+                    await transaction.ExecuteNonQueryAsync(insertCommand, ct);
+                }
+
+                await UpsertResourceTtlAsync(transaction, resourceTypeId, key.Id, expiresAt: null, transactionId?.Value, ct);
+
+                await DeleteSearchIndexEntriesAsync(transaction, currentSurrogateId, ct);
+            },
+            cancellationToken);
 
         _logger.LogInformation(
             "Created tombstone for {ResourceType}/{ResourceId} version {Version}", key.ResourceType, key.Id, newVersion);
@@ -578,38 +613,50 @@ public class SqlServerFhirRepository(
             resourceTypeId,
             resourceId);
 
-        var deleteStatements = string.Join("\n              ", SearchIndexTables.Select(table =>
-            $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);"));
+        // One multi-statement batch is not one transaction: with no BEGIN TRAN each statement
+        // auto-commits on its own, so a failure part-way through leaves the search-index rows deleted
+        // and their dbo.Resource rows still present -- rows nothing will ever revisit, because the next
+        // hard delete finds no resource to collect surrogate IDs from. The EF original had the same
+        // shape; it is not a regression, but it is the same missing primitive as the soft-delete path
+        // above and the same one-line fix.
+        await _sqlExecutionService.ExecuteInTransactionAsync(
+            _tenantId,
+            async (transaction, ct) =>
+            {
+                var deleteStatements = string.Join("\n              ", SearchIndexTables.Select(table =>
+                    $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);"));
 
-        // CA2100 suppressed: deleteStatements is built exclusively from the fixed, hardcoded
-        // SearchIndexTables array above -- never from caller/user input -- matching the identical
-        // rationale used by DeleteSearchIndexEntriesAsync above.
+                // CA2100 suppressed: deleteStatements is built exclusively from the fixed, hardcoded
+                // SearchIndexTables array above -- never from caller/user input -- matching the identical
+                // rationale used by DeleteSearchIndexEntriesAsync above.
 #pragma warning disable CA2100
-        using var command = new SqlCommand(
-            $"""
-            -- Create temp table to hold surrogate IDs
-            DECLARE @SurrogateIds TABLE (ResourceSurrogateId BIGINT PRIMARY KEY);
+                using var command = new SqlCommand(
+                    $"""
+                    -- Create temp table to hold surrogate IDs
+                    DECLARE @SurrogateIds TABLE (ResourceSurrogateId BIGINT PRIMARY KEY);
 
-            -- Find all surrogate IDs for this resource
-            INSERT INTO @SurrogateIds (ResourceSurrogateId)
-            SELECT ResourceSurrogateId
-            FROM dbo.Resource
-            WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+                    -- Find all surrogate IDs for this resource
+                    INSERT INTO @SurrogateIds (ResourceSurrogateId)
+                    SELECT ResourceSurrogateId
+                    FROM dbo.Resource
+                    WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
 
-            -- Delete all search parameter indexes
-            {deleteStatements}
+                    -- Delete all search parameter indexes
+                    {deleteStatements}
 
-            -- Delete all resource versions (current + history)
-            DELETE FROM dbo.Resource WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+                    -- Delete all resource versions (current + history)
+                    DELETE FROM dbo.Resource WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
 
-            -- Delete TTL entry (after successfully deleting resource)
-            DELETE FROM dbo.ResourceTtl WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
-            """);
+                    -- Delete TTL entry (after successfully deleting resource)
+                    DELETE FROM dbo.ResourceTtl WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+                    """);
 #pragma warning restore CA2100
-        command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
-        command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
+                command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
+                command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
 
-        await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
+                await transaction.ExecuteNonQueryAsync(command, ct);
+            },
+            cancellationToken);
 
         _logger.LogInformation(
             "Successfully hard deleted resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
@@ -808,7 +855,13 @@ public class SqlServerFhirRepository(
         return (long)(DateTimeOffset.UtcNow - DateTimeOffset.MinValue).TotalMilliseconds * 80000 + sequenceValue;
     }
 
+    /// <param name="transaction">
+    /// The unit of work to enlist in, or <c>null</c> to run standalone on its own connection.
+    /// <see cref="DeleteAsync"/> passes one because the TTL removal has to commit with the tombstone;
+    /// <see cref="CreateOrUpdateAsync"/> passes null because there its write is the only statement.
+    /// </param>
     private async Task UpsertResourceTtlAsync(
+        ISqlTransactionContext? transaction,
         short resourceTypeId,
         string resourceId,
         DateTimeOffset? expiresAt,
@@ -829,7 +882,7 @@ public class SqlServerFhirRepository(
             command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
             command.Parameters.Add("@ExpiresAt", SqlDbType.DateTimeOffset).Value = expiresAt.Value;
             command.Parameters.Add("@TransactionId", SqlDbType.BigInt).Value = (object?)transactionId ?? DBNull.Value;
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
+            await ExecuteNonQueryAsync(transaction, command, cancellationToken);
         }
         else
         {
@@ -837,11 +890,23 @@ public class SqlServerFhirRepository(
                 "DELETE FROM dbo.ResourceTtl WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;");
             command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
             command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
+            await ExecuteNonQueryAsync(transaction, command, cancellationToken);
         }
     }
 
-    private async Task DeleteSearchIndexEntriesAsync(long resourceSurrogateId, CancellationToken cancellationToken)
+    private Task<int> ExecuteNonQueryAsync(
+        ISqlTransactionContext? transaction, SqlCommand command, CancellationToken cancellationToken)
+        => transaction is null
+            ? _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken)
+            : transaction.ExecuteNonQueryAsync(command, cancellationToken);
+
+    /// <summary>
+    /// Wipes every search-index row for one resource version. Takes the unit of work rather than running
+    /// standalone because its only caller, <see cref="DeleteAsync"/>, has to have this land with the
+    /// tombstone: indexes swept without a tombstone make the resource unfindable while it is still current.
+    /// </summary>
+    private async Task DeleteSearchIndexEntriesAsync(
+        ISqlTransactionContext transaction, long resourceSurrogateId, CancellationToken cancellationToken)
     {
         var deleteStatements = string.Join(
             "\n",
@@ -854,7 +919,7 @@ public class SqlServerFhirRepository(
         using var command = new SqlCommand(deleteStatements);
 #pragma warning restore CA2100
         command.Parameters.Add("@ResourceSurrogateId", SqlDbType.BigInt).Value = resourceSurrogateId;
-        await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
+        await transaction.ExecuteNonQueryAsync(command, cancellationToken);
 
         _logger.LogDebug("Deleted search index entries for ResourceSurrogateId={ResourceSurrogateId}", resourceSurrogateId);
     }
