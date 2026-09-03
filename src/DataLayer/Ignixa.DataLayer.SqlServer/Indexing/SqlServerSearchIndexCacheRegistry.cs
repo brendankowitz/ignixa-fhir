@@ -41,6 +41,7 @@ public sealed class SqlServerSearchIndexCacheRegistry(
 
     public Task<SqlServerSearchIndexReferenceDataCache> GetOrCreateAsync(int tenantId, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var entry = _caches.GetOrAdd(

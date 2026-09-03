@@ -139,6 +139,8 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// </summary>
     public async Task EnsureResourceTypesPreloadedAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (_resourceTypesLoaded)
         {
             return;
@@ -208,6 +210,8 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// </summary>
     public async Task EnsureSearchParametersPreloadedAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (_searchParametersLoaded)
         {
             return;
@@ -270,6 +274,8 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
     public async Task<short?> GetResourceTypeIdAsync(string? resourceTypeName, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (string.IsNullOrEmpty(resourceTypeName))
         {
             return null;
@@ -318,6 +324,8 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
     public async Task<short?> GetSearchParamIdAsync(string uri, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (string.IsNullOrEmpty(uri))
         {
             return null;
@@ -633,6 +641,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
     public async Task<int> GetOrCreateSystemIdAsync(string? systemUri, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrEmpty(systemUri);
 
         if (_systemCache.TryGetValue(systemUri, out var cachedId))
@@ -688,6 +697,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
     public async Task<int> GetOrCreateQuantityCodeIdAsync(string? code, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrEmpty(code);
 
         if (_quantityCodeCache.TryGetValue(code, out var cachedId))
@@ -746,6 +756,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// </summary>
     public async Task<int?> TryGetSystemIdAsync(string systemUri, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrEmpty(systemUri);
 
         if (_systemCache.TryGetValue(systemUri, out var cachedId))
@@ -794,6 +805,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// </summary>
     public async Task<int?> TryGetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrEmpty(code);
 
         if (_quantityCodeCache.TryGetValue(code, out var cachedId))
