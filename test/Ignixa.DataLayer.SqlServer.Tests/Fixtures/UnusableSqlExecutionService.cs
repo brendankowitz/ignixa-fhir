@@ -14,11 +14,26 @@ public sealed class UnusableSqlExecutionService : ISqlExecutionService
         int tenantId,
         SqlCommand command,
         Func<SqlDataReader, TResult> readRow,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         => throw Unexpected(command);
 
-    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, bool disableRetries = false)
+    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         => throw Unexpected(command);
+
+    public Task<TResult> ExecuteInTransactionAsync<TResult>(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
+        CancellationToken cancellationToken)
+        => throw new InvalidOperationException(
+            "The code under test was expected to short-circuit before issuing SQL, but opened a transaction.");
+
+    public Task ExecuteInTransactionAsync(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task> work,
+        CancellationToken cancellationToken)
+        => throw new InvalidOperationException(
+            "The code under test was expected to short-circuit before issuing SQL, but opened a transaction.");
 
     private static InvalidOperationException Unexpected(SqlCommand command)
         => new($"The code under test was expected to short-circuit before issuing SQL, but ran: {command.CommandText}");

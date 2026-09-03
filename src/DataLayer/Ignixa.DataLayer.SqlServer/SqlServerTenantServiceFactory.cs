@@ -162,11 +162,15 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
             throw new InvalidOperationException($"Tenant {tenantId} is not active");
         }
 
-        var connectionString = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(
+        var connectionString = await TenantConnectionStringResolver.ResolveAsync(
             _tenantStore, tenantId, cancellationToken);
 
-        // The only invocation of this guard in the codebase. Removing it silently re-opens Production to
-        // password-bearing connection strings; SqlServerTenantServiceFactoryValidationTests pins it.
+        // Kept even though SqlExecutionService now runs the same guard on every connection it opens, because
+        // this one runs EARLIER: tenant initialization below deploys the schema through SchemaDeployer, which
+        // opens its own DacFx connection from the raw connection string and never goes through
+        // ISqlExecutionService. Without this call a Production tenant configured with a password would have
+        // its schema deployed over that password before the first query rejected it.
+        // SqlServerTenantServiceFactoryValidationTests pins the ordering.
         _managedIdentityValidator.Validate(connectionString, tenantId);
 
         var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);

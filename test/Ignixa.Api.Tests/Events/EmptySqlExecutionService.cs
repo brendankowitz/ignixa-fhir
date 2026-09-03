@@ -14,9 +14,22 @@ internal sealed class EmptySqlExecutionService : ISqlExecutionService
         int tenantId,
         SqlCommand command,
         Func<SqlDataReader, TResult> readRow,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         => Task.FromResult<IReadOnlyList<TResult>>([]);
 
-    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, bool disableRetries = false)
+    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         => Task.FromResult(0);
+
+    public Task<TResult> ExecuteInTransactionAsync<TResult>(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
+        CancellationToken cancellationToken)
+        => throw new NotSupportedException("No test using this fixture runs a transaction.");
+
+    public Task ExecuteInTransactionAsync(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task> work,
+        CancellationToken cancellationToken)
+        => throw new NotSupportedException("No test using this fixture runs a transaction.");
 }

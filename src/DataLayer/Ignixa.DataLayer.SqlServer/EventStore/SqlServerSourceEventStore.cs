@@ -151,8 +151,12 @@ public sealed class SqlServerSourceEventStore(
         command.CommandText = sql.ToString();
 #pragma warning restore CA2100
 
+        // NonIdempotent: this is an unguarded INSERT that comes through ExecuteReaderAsync only because it
+        // needs the generated EventIds back. A -2 command timeout does not prove the server did not commit
+        // it, so a retry would append the whole batch a second time -- duplicate events in a stream are
+        // worse than a surfaced failure the caller can retry with its own idempotency.
         var eventIds = await sqlExecutionService.ExecuteReaderAsync(
-            tenantId, command, reader => reader.GetInt64(0), cancellationToken);
+            tenantId, command, reader => reader.GetInt64(0), cancellationToken, SqlCommandIdempotency.NonIdempotent);
 
         return [.. eventIds.OrderBy(id => id)];
     }

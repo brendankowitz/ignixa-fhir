@@ -17,9 +17,22 @@ internal sealed class ThrowingSqlExecutionService : ISqlExecutionService
         int tenantId,
         SqlCommand command,
         Func<SqlDataReader, TResult> readRow,
+        CancellationToken cancellationToken,
+        SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
+        => throw new InvalidOperationException("execution service is deliberately unusable in this test");
+
+    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
+        => throw new InvalidOperationException("execution service is deliberately unusable in this test");
+
+    public Task<TResult> ExecuteInTransactionAsync<TResult>(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
         CancellationToken cancellationToken)
         => throw new InvalidOperationException("execution service is deliberately unusable in this test");
 
-    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, bool disableRetries = false)
+    public Task ExecuteInTransactionAsync(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task> work,
+        CancellationToken cancellationToken)
         => throw new InvalidOperationException("execution service is deliberately unusable in this test");
 }

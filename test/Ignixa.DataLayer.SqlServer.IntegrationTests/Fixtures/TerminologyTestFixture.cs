@@ -64,7 +64,10 @@ public sealed class TerminologyTestFixture : IAsyncDisposable
 
         var store = new SystemPartitionTenantStore(database.ConnectionString);
 
-        var sqlExecutionService = new SqlExecutionService(store, NullLogger<SqlExecutionService>.Instance);
+        var sqlExecutionService = new SqlExecutionService(
+            store,
+            new ManagedIdentityConnectionStringValidator("Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
+            NullLogger<SqlExecutionService>.Instance);
 
         var cacheRegistry = new SqlServerSearchIndexCacheRegistry(
             sqlExecutionService, NullLoggerFactory.Instance);

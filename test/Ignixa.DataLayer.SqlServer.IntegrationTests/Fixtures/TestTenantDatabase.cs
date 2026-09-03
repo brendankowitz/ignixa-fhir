@@ -79,7 +79,10 @@ public sealed class TestTenantDatabase
         // lookup so this fixture is usable before that on-demand-creation path exists.
         await SeedResourceTypeAsync(connectionString, "Patient", cancellationToken);
 
-        var sqlExecutionService = new SqlExecutionService(tenantConfigurationStore, NullLogger<SqlExecutionService>.Instance);
+        var sqlExecutionService = new SqlExecutionService(
+            tenantConfigurationStore,
+            new ManagedIdentityConnectionStringValidator("Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
+            NullLogger<SqlExecutionService>.Instance);
 
         return new TestTenantDatabase(databaseName, TestTenantId, sqlExecutionService);
     }

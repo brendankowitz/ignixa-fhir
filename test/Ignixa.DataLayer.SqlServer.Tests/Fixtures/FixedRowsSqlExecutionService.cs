@@ -17,7 +17,8 @@ public sealed class FixedRowsSqlExecutionService<TRow>(params TRow[] rows) : ISq
         int tenantId,
         SqlCommand command,
         Func<SqlDataReader, TResult> readRow,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
     {
         CallCount++;
 
@@ -30,6 +31,18 @@ public sealed class FixedRowsSqlExecutionService<TRow>(params TRow[] rows) : ISq
         return Task.FromResult<IReadOnlyList<TResult>>(rows.Cast<TResult>().ToList());
     }
 
-    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, bool disableRetries = false)
+    public Task<int> ExecuteNonQueryAsync(int tenantId, SqlCommand command, CancellationToken cancellationToken, SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
+        => throw new NotSupportedException("This fixture only supports ExecuteReaderAsync.");
+
+    public Task<TResult> ExecuteInTransactionAsync<TResult>(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
+        CancellationToken cancellationToken)
+        => throw new NotSupportedException("This fixture only supports ExecuteReaderAsync.");
+
+    public Task ExecuteInTransactionAsync(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task> work,
+        CancellationToken cancellationToken)
         => throw new NotSupportedException("This fixture only supports ExecuteReaderAsync.");
 }
