@@ -764,6 +764,12 @@ public static class StreamingBundleSerializer
             // timeout - reaches this same catch while the caller's own token is still live, meaning
             // a connected client is about to receive a well-formed 200 with entries silently
             // missing unless this is treated like any other mid-stream failure.
+
+            // We read the ambient token state to classify this cancellation, but we cannot establish
+            // that the token actually caused this exception. A race exists: if an unrelated internal
+            // cancellation throws while the caller's token happens to be canceled, we misclassify a
+            // real failure as a benign disconnect. Checking ex.CancellationToken instead is strictly
+            // worse—many sources leave it empty—so we accept this narrower gap as the lesser trade-off.
             clientDisconnected = cancellationToken.IsCancellationRequested;
             streamingException = ex;
         }
