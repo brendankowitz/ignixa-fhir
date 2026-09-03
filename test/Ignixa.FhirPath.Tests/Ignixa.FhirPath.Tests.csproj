@@ -45,13 +45,9 @@
     project's pinned Firely 5.11.4 rather than the 6.0.1 the repo ships against.
 
     Why not a ProjectReference to Ignixa.Extensions.FirelySdk5, which already link-compiles all six
-    adapter sources for exactly this reason: measured, it restores but does not compile. The pin itself
-    survives restore - CentralPackageTransitivePinningEnabled plus the VersionOverride below hold this
-    project at 5.11.4 rather than floating it to the 5.13.1 that project's folder-local
-    Directory.Packages.props asks for - but the reference then contributes an assembly built against
-    5.13.1, and the build reports two diagnostics but fails only one way. MSB3277 (a conflict between
-    Hl7.Fhir.Base 5.11.4 and 5.13.1 "that could not be resolved", 5.11.4 winning as primary) stays a
-    warning: TreatWarningsAsErrors promotes CS diagnostics, not MSB ones. The failure is CS0436 on
+    adapter sources for exactly this reason: measured, it restores but does not compile. Both projects
+    now pin the same Firely 5.11.4, so the version-conflict half of that failure (MSB3277 between
+    Hl7.Fhir.Base 5.11.4 and 5.13.1) is gone. The compile failure is not: it is CS0436 on
     IgnixaElementAdapter, because that project link-compiles the same sources this one does, so the type
     arrives both as source and as metadata.
     Four of the six sources are needed: the parity tests drive both adapter directions and the
