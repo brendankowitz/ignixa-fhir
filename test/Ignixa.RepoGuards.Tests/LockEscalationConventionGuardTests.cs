@@ -12,10 +12,17 @@ namespace Ignixa.RepoGuards.Tests;
 /// repo expects to take high-volume inserts or deletes shared across many callers -- every search-parameter
 /// table, <c>dbo.Resource</c>, <c>dbo.CompartmentAssignment</c>, and the six terminology tables a CodeSystem,
 /// ValueSet or ConceptMap import writes -- declares <c>SET (LOCK_ESCALATION = AUTO)</c> in its
-/// <c>Tables/*.sql</c> file. Left at SQL Server's TABLE default, a bulk operation crossing the escalation
-/// threshold takes a table-level lock shared by every caller of that table rather than one scoped to the
-/// partition or row range actually being written -- see the terminology tables' history for a case where
-/// omitting it went unnoticed until a review caught it.
+/// <c>Tables/*.sql</c> file.
+/// <para>
+/// <b>The effect differs by table, and this guard does not check for that difference.</b> <c>AUTO</c>
+/// escalates a bulk operation's row locks to the partition it touches instead of the whole table -- but
+/// only on a partitioned table. Every search-parameter table here is partitioned on
+/// <c>PartitionScheme_ResourceTypeId</c>, so the setting is load-bearing on those. None of the six
+/// terminology tables is partitioned, so on those <c>AUTO</c> escalates to TABLE level exactly like SQL
+/// Server's un-set default -- the setting is currently inert there, kept for convention consistency and so
+/// it is already correct if one of those tables is ever partitioned. See each <c>Tables/TermCodeSystem.sql</c>-
+/// style comment for the same note where it is set.
+/// </para>
 /// <para>
 /// Nothing else checks this. DacFx deploys whatever <c>Tables/*.sql</c> says whether or not the option is
 /// set, and the schema still compiles and passes every functional test either way -- the omission only shows

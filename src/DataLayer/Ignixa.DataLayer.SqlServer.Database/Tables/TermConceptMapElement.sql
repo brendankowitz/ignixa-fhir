@@ -18,6 +18,8 @@ CREATE TABLE dbo.TermConceptMapElement (
 
 GO
 
+-- Convention-only here, not load-bearing: this table is not partitioned, so AUTO escalates to TABLE
+-- level exactly like SQL Server's un-set default. See TermCodeSystem.sql for the full explanation.
 ALTER TABLE dbo.TermConceptMapElement SET (LOCK_ESCALATION = AUTO);
 
 GO
