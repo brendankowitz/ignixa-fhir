@@ -14,6 +14,10 @@ CREATE TABLE dbo.TermValueSetExpansion (
 
 GO
 
+ALTER TABLE dbo.TermValueSetExpansion SET (LOCK_ESCALATION = AUTO);
+
+GO
+
 CREATE INDEX IX_TermValueSetExpansion_Display
     ON dbo.TermValueSetExpansion(Display)
     INCLUDE(TermValueSetId, SystemId, Code)

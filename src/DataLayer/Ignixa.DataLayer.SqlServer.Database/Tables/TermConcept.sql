@@ -15,6 +15,10 @@ CREATE TABLE dbo.TermConcept (
 
 GO
 
+ALTER TABLE dbo.TermConcept SET (LOCK_ESCALATION = AUTO);
+
+GO
+
 CREATE INDEX IX_TermConcept_CodeSystem_Code_Active
     ON dbo.TermConcept(TermCodeSystemId, Code, IsActive)
     INCLUDE(Display, Definition);

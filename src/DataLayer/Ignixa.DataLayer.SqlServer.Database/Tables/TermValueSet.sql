@@ -17,6 +17,10 @@ CREATE TABLE dbo.TermValueSet (
 
 GO
 
+ALTER TABLE dbo.TermValueSet SET (LOCK_ESCALATION = AUTO);
+
+GO
+
 CREATE INDEX IX_TermValueSet_Canonical
     ON dbo.TermValueSet(Canonical)
     INCLUDE(Version, IsExpanded);

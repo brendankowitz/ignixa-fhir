@@ -18,6 +18,10 @@ CREATE TABLE dbo.TermConceptMapElement (
 
 GO
 
+ALTER TABLE dbo.TermConceptMapElement SET (LOCK_ESCALATION = AUTO);
+
+GO
+
 CREATE INDEX IX_TermConceptMapElement_Source
     ON dbo.TermConceptMapElement(SourceSystemId, SourceCode)
     INCLUDE(TermConceptMapId, TargetSystemId, TargetCode, Equivalence);

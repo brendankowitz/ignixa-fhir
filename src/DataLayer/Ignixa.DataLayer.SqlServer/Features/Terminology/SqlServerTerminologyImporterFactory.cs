@@ -34,7 +34,8 @@ public sealed class SqlServerTerminologyImporterFactory(
     ISqlExecutionService sqlExecutionService,
     SqlServerSearchIndexCacheRegistry cacheRegistry,
     int systemPartitionId,
-    ILoggerFactory loggerFactory) : ITerminologyImporterFactory
+    ILoggerFactory loggerFactory,
+    int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds) : ITerminologyImporterFactory
 {
     public async Task<ITerminologyImporter> CreateAsync(CancellationToken cancellationToken)
     {
@@ -50,6 +51,7 @@ public sealed class SqlServerTerminologyImporterFactory(
             sqlExecutionService,
             systemPartitionId,
             systemRepository,
-            loggerFactory.CreateLogger<SqlServerCodeSystemImporter>());
+            loggerFactory.CreateLogger<SqlServerCodeSystemImporter>(),
+            commandTimeoutSeconds);
     }
 }

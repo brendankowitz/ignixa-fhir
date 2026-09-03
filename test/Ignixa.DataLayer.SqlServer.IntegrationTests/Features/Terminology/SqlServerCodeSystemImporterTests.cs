@@ -309,4 +309,73 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
             () => importer.ImportCodeSystemAsync(
                 _fixture.SystemPartitionId, packageResource, CancellationToken.None));
     }
+
+    /// <summary>
+    /// Not part of CI -- <c>[Skip]</c>d for the same reason the plan docs' other manual-perf tests are: it
+    /// needs a live SQL Server and several hundred thousand rows, and its point is a number a human reads,
+    /// not a pass/fail CI cares about. Run it directly (<c>dotnet test --filter
+    /// FullyQualifiedName~MeasureLargeCodeSystemImportDurations</c>) against <c>TEST_SQL_CONNECTION_STRING</c>
+    /// to re-check <see cref="SqlServerOptions.TerminologyImportCommandTimeoutSeconds"/>'s default against a
+    /// different server.
+    /// <para>
+    /// Measured on a local, otherwise-idle SQL Server 2025 container (see <c>docker-compose.test.yml</c>) on
+    /// 2026-09-02: a fresh 100,000-concept import took ~2.0s, a fresh 350,000-concept import (SNOMED CT's
+    /// rough scale) took ~5.7s, and re-importing 100,000 concepts as 100,001 -- the cascade DELETE of the
+    /// previous import plus a full re-insert, the path flagged as the expensive one -- took ~3.1s. All three
+    /// comfortably clear even the ADO.NET default of 30 seconds on this hardware; the assertions below use a
+    /// much looser bound because this test's purpose is catching a gross regression (an accidentally
+    /// reintroduced O(n^2) pass, say), not pinning exact timings that will vary by machine.
+    /// </para>
+    /// </summary>
+    [Fact(Skip = "Manual perf probe -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    public async Task MeasureLargeCodeSystemImportDurations()
+    {
+        var generousBound = TimeSpan.FromSeconds(60);
+        var importer = _fixture.CreateSqlServerImporter();
+
+        var hundredKUrl = "http://example.org/fhir/CodeSystem/measure-100k";
+        var hundredKResource = await _fixture.SeedPackageResourceAsync(
+            "CodeSystem", hundredKUrl, TerminologyTestFixture.FlatCodeSystemJson(hundredKUrl, 100_000));
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var firstImport = await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, hundredKResource, CancellationToken.None);
+        sw.Stop();
+
+        firstImport.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Completed);
+        sw.Elapsed.ShouldBeLessThan(generousBound, $"fresh 100k-concept import took {sw.Elapsed}");
+
+        // Re-import under different content so the unchanged-content guard does not skip it: this is the
+        // cascade DELETE of the previous 100k concepts plus a full re-insert, called out separately because
+        // it is more expensive than either half alone.
+        var reimportResource = new Ignixa.Domain.Models.PackageResource
+        {
+            PackageResourceId = hundredKResource.PackageResourceId,
+            PackageId = hundredKResource.PackageId,
+            PackageVersion = hundredKResource.PackageVersion,
+            ResourceType = hundredKResource.ResourceType,
+            Canonical = hundredKResource.Canonical,
+            ResourceId = hundredKResource.ResourceId,
+            ResourceJson = TerminologyTestFixture.FlatCodeSystemJson(hundredKUrl, 100_001),
+            FhirVersion = hundredKResource.FhirVersion,
+            IsActive = hundredKResource.IsActive,
+        };
+
+        sw.Restart();
+        var reimport = await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, reimportResource, CancellationToken.None);
+        sw.Stop();
+
+        reimport.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Completed);
+        sw.Elapsed.ShouldBeLessThan(generousBound, $"100k-concept re-import (cascade delete + re-insert) took {sw.Elapsed}");
+
+        var snomedScaleUrl = "http://example.org/fhir/CodeSystem/measure-350k";
+        var snomedScaleResource = await _fixture.SeedPackageResourceAsync(
+            "CodeSystem", snomedScaleUrl, TerminologyTestFixture.FlatCodeSystemJson(snomedScaleUrl, 350_000));
+
+        sw.Restart();
+        var snomedScaleImport = await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, snomedScaleResource, CancellationToken.None);
+        sw.Stop();
+
+        snomedScaleImport.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Completed);
+        sw.Elapsed.ShouldBeLessThan(generousBound, $"fresh 350k-concept (SNOMED-scale) import took {sw.Elapsed}");
+    }
 }

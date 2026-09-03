@@ -15,6 +15,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
+using Microsoft.Extensions.Options;
 using Microsoft.IO;
 
 namespace Ignixa.Api.Registrations;
@@ -307,7 +308,8 @@ public static class DataLayerRegistration
                 c.Resolve<ISqlExecutionService>(),
                 c.Resolve<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>(),
                 SystemConstants.SystemPartitionId,
-                c.Resolve<ILoggerFactory>()))
+                c.Resolve<ILoggerFactory>(),
+                c.Resolve<IOptions<SqlServerOptions>>().Value.TerminologyImportCommandTimeoutSeconds))
             .InstancePerDependency();
     }
 }

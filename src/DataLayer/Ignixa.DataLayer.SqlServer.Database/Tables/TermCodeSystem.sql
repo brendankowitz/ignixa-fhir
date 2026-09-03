@@ -16,6 +16,10 @@ CREATE TABLE dbo.TermCodeSystem (
 
 GO
 
+ALTER TABLE dbo.TermCodeSystem SET (LOCK_ESCALATION = AUTO);
+
+GO
+
 CREATE INDEX IX_TermCodeSystem_PackageResourceId
     ON dbo.TermCodeSystem(PackageResourceId);
 

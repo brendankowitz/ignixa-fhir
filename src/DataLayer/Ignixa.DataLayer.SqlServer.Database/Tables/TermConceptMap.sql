@@ -13,6 +13,10 @@ CREATE TABLE dbo.TermConceptMap (
 
 GO
 
+ALTER TABLE dbo.TermConceptMap SET (LOCK_ESCALATION = AUTO);
+
+GO
+
 CREATE INDEX IX_TermConceptMap_PackageResourceId
     ON dbo.TermConceptMap(PackageResourceId);
 

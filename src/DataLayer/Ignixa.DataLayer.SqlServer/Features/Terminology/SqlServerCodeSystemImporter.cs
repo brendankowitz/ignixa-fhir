@@ -22,9 +22,11 @@ namespace Ignixa.DataLayer.SqlServer.Features.Terminology;
 /// </para>
 /// <para>
 /// The procedure also owns the whole sequence — status, delete-existing, code system row, concepts, parent
-/// links, final status — because <see cref="ISqlExecutionService"/> has no transaction API and cannot span
-/// calls. The EF version got atomicity from a transaction wrapping all of those steps; splitting them
-/// client-side would let a failure leave a code system with no concepts.
+/// links, final status — rather than that sequence being composed client-side over
+/// <see cref="ISqlExecutionService.ExecuteInTransactionAsync{TResult}"/>. Either would be atomic; one stored
+/// procedure call is one round trip instead of several, which matters when the payload is a whole
+/// CodeSystem's worth of concepts. The stored procedures already own their transactions correctly, so this
+/// stays a redesign of the insert path, not the transaction boundary.
 /// </para>
 /// <para>
 /// ValueSet and ConceptMap import follow the same shape — build the rows client-side, hand them to one
@@ -38,7 +40,8 @@ public sealed class SqlServerCodeSystemImporter(
     ISqlExecutionService sqlExecutionService,
     int systemPartitionId,
     ISystemRepository systemRepository,
-    ILogger<SqlServerCodeSystemImporter> logger) : ITerminologyImporter
+    ILogger<SqlServerCodeSystemImporter> logger,
+    int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds) : ITerminologyImporter
 {
     private const int DefinitionMaxLength = 4000;
 
@@ -243,7 +246,11 @@ public sealed class SqlServerCodeSystemImporter(
         IReadOnlyList<ConceptRow> concepts,
         CancellationToken cancellationToken)
     {
-        using var command = new SqlCommand("dbo.ImportTermCodeSystem") { CommandType = CommandType.StoredProcedure };
+        using var command = new SqlCommand("dbo.ImportTermCodeSystem")
+        {
+            CommandType = CommandType.StoredProcedure,
+            CommandTimeout = commandTimeoutSeconds,
+        };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
         command.Parameters.AddWithValue("@SystemId", systemId);
@@ -301,7 +308,11 @@ public sealed class SqlServerCodeSystemImporter(
         string? partialExpansionReason,
         CancellationToken cancellationToken)
     {
-        using var command = new SqlCommand("dbo.ImportTermValueSet") { CommandType = CommandType.StoredProcedure };
+        using var command = new SqlCommand("dbo.ImportTermValueSet")
+        {
+            CommandType = CommandType.StoredProcedure,
+            CommandTimeout = commandTimeoutSeconds,
+        };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
         command.Parameters.AddWithValue("@Canonical", metadata.Url);
@@ -328,7 +339,11 @@ public sealed class SqlServerCodeSystemImporter(
         IReadOnlyList<ConceptMapElementRow> elements,
         CancellationToken cancellationToken)
     {
-        using var command = new SqlCommand("dbo.ImportTermConceptMap") { CommandType = CommandType.StoredProcedure };
+        using var command = new SqlCommand("dbo.ImportTermConceptMap")
+        {
+            CommandType = CommandType.StoredProcedure,
+            CommandTimeout = commandTimeoutSeconds,
+        };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
         command.Parameters.AddWithValue("@Canonical", metadata.Url);
