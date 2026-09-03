@@ -50,10 +50,11 @@ jobs:
           dotnet-version: ${{ matrix.dotnet-version }}
           solution-file: 'All.sln'
           build-configuration: 'Release'
-          # IntegrationTests need a live SQL Server, which this job does not start. They run in
-          # integration-tests-sql, which does. Their fixtures fail rather than skip when the connection
-          # string is absent, so running them here is 222 red tests that say nothing about the code.
-          test-filter: 'FullyQualifiedName!~E2ETests&FullyQualifiedName!~IntegrationTests'
+          # E2ETests run in e2e-tests-sql. The SQL Server integration tests
+          # (Ignixa.DataLayer.SqlServer.IntegrationTests) need a live database and run in
+          # integration-tests-sql; their fixtures fail rather than skip without the connection string.
+          # Other integration tests (FhirValidatorIntegrationTests, etc.) need no database and run here.
+          test-filter: 'FullyQualifiedName!~E2ETests&FullyQualifiedName!~Ignixa.DataLayer.SqlServer.IntegrationTests'
 
       - name: Create package output directories
         run: |
