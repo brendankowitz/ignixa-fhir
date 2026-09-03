@@ -391,6 +391,64 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
         page2Raw.Count.ShouldBe(PageSize, "page 2 is the last page: there is no seventh row to signal hasMore with.");
     }
 
+    /// <summary>
+    /// Closes the gap fcbc8f8b's own integration test left open: that test only proved the probe
+    /// sentinel survives the single-phase (unsorted) compile. The whole correctness of a SORTED
+    /// search's probe identity rests on <see cref="SqlServerCompiledSearchService.SearchStreamWithPhaseHandlingAsync"/>
+    /// handing each phase's own compile the RIGHT <c>OffsetSpec.Limit</c> -- the Valued phase gets the
+    /// full page <c>Limit</c>, but the MissingPrimary phase gets <c>requestedPage.Limit - valuedCount</c>
+    /// (see that method's own comment). <see cref="ComputeProbeRowIdentities"/> ranks purely off
+    /// whichever <c>OffsetSpec.Limit</c> its own phase's compile carries, so if that arithmetic were
+    /// ever wrong -- e.g. the MissingPrimary compile silently reusing the Valued phase's original Limit
+    /// instead of the reduced one -- a MissingPrimary-phase lookahead row would be misranked as a
+    /// genuine page member instead of a probe, and a corrupt one would vanish with no sentinel and no
+    /// hasMore signal, exactly the silent-truncation defect fcbc8f8b fixed, just reachable from the
+    /// other phase.
+    /// <para>
+    /// Arrange: 10 Valued + 5 MissingPrimary patients (<see cref="CreateValuedAndMissingPatientsAsync"/>).
+    /// Offset 9, count 1, <c>ProbeExtraRow</c> true -- Valued has exactly ONE row left (the tail of its
+    /// 10), so <c>valuedCount</c> (1) is short of <c>requestedCount</c> (2) by exactly one, driving
+    /// <c>missingPrimaryOffset = 0</c> and a MissingPrimary <c>OffsetSpec(0, Limit: 1 - 1 = 0,
+    /// ProbeExtraRow: true)</c> -- a single-row fetch that is ENTIRELY the probe (rank 0 >= Limit 0).
+    /// That single MissingPrimary row (the first "missing" patient, by creation/surrogate-id order) is
+    /// corrupted, mirroring the unsorted test's exact corruption technique.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GivenACorruptProbeRowLandingInTheMissingPrimaryPhase_WhenSearchStreamAsyncCalled_ThenYieldsAPagingProbeSentinelAndAVisibleOutcomeEntry()
+    {
+        // Arrange
+        var tag = Guid.NewGuid().ToString("N");
+        await CreateValuedAndMissingPatientsAsync(tag);
+
+        var corruptMissingId = $"sort-{tag}-missing-0";
+        await _database.ExecuteNonQueryAsync(
+            $"UPDATE dbo.Resource SET RawResource = 0xDEADBEEF WHERE ResourceId = '{corruptMissingId}'");
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [FamilyAscending],
+            MaxItemCount = 1,
+            ProbeExtraRow = true,
+            ContinuationToken = ContinuationToken.Encode(offset: 9, count: 1),
+        };
+
+        // Act
+        var results = await CollectAsync(options);
+
+        // Assert -- the Valued phase's own last row (a genuine Match), a content-free sentinel proving
+        // the MissingPrimary phase has a further page despite its lookahead row's corruption, and a
+        // client-visible OperationOutcome standing in for that unreadable "missing" patient. If the
+        // MissingPrimary phase's Limit arithmetic were wrong, the corrupt row would be misranked as a
+        // real page member and BOTH the sentinel and the survives-corruption guarantee would silently
+        // vanish, leaving only 2 results instead of 3.
+        results.Count.ShouldBe(3);
+        results.ShouldContain(r => r.SearchMode == SearchEntryMode.Match && r.ResourceId == $"sort-{tag}-valued-9");
+        results.ShouldContain(r => r.IsPagingProbe);
+        results.ShouldContain(r => r.SearchMode == SearchEntryMode.Outcome && r.ResourceId == corruptMissingId);
+    }
+
     private async Task<List<SearchEntryResult>> CollectAsync(SearchOptions options)
     {
         var results = new List<SearchEntryResult>();
