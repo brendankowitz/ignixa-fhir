@@ -567,7 +567,7 @@ public class StreamingBundleSerializerFailureTests
         var stream = new MemoryStream();
 
         // Act — must NOT throw
-        await StreamingBundleSerializer.SerializeStreamAsync(
+        var result = await StreamingBundleSerializer.SerializeStreamAsync(
             stream, "batch-response", EntriesWithCorruptResourceJsonResponseAsync());
 
         // Assert
@@ -575,7 +575,65 @@ public class StreamingBundleSerializerFailureTests
         root.GetProperty("entry").EnumerateArray()
             .Any(e => e.GetProperty("response").GetProperty("status").GetString() == "500 Internal Server Error")
             .ShouldBeTrue();
+
+        // Defect (A): a failed batch must be observable to the caller instead of reporting success.
+        result.Succeeded.ShouldBeFalse();
+        result.Exception.ShouldNotBeNull();
+        result.ClientDisconnected.ShouldBeFalse();
     }
+
+    [Fact]
+    public async Task GivenCancellationRaisedByAnUnrelatedToken_WhenStreamingABatchResponse_ThenAnErrorEntryIsWrittenAndTheResultIsNotClientDisconnected()
+    {
+        // Arrange -- simulates an OperationCanceledException surfacing from something other than the
+        // caller's own token (a linked token inside bundleProcessor, an internal timeout): the caller's
+        // `cancellationToken` parameter (default here) is never itself canceled. The client is still
+        // connected, so silently truncating the bundle behind a 200 would be the worst available outcome.
+        var stream = new MemoryStream();
+
+        // Act — must NOT throw
+        var result = await StreamingBundleSerializer.SerializeStreamAsync(
+            stream, "batch-response", ThrowAfterResponseAsync(1, new OperationCanceledException()));
+
+        // Assert
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(2);
+        entries[^1].GetProperty("response").GetProperty("status").GetString().ShouldBe("500 Internal Server Error");
+
+        result.Succeeded.ShouldBeFalse();
+        result.Exception.ShouldBeOfType<OperationCanceledException>();
+        result.ClientDisconnected.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenTheCallersOwnTokenIsCanceled_WhenStreamingABatchResponse_ThenTheBundleIsWellFormedWithNoErrorEntryAndTheResultReportsClientDisconnected()
+    {
+        // Arrange -- simulates a genuine client disconnect: the token passed in as `cancellationToken`
+        // is the one that gets canceled. Nobody is listening for the response any more, so there is no
+        // error entry to show - but the JSON must still close cleanly rather than leaving a truncated
+        // array (an already-canceled token makes a plain FlushAsync throw instead of completing the body).
+        var stream = new MemoryStream();
+        var cts = new CancellationTokenSource();
+
+        // Act — must NOT throw
+        var result = await StreamingBundleSerializer.SerializeStreamAsync(
+            stream, "batch-response", ThrowAfterResponseAndCancelAsync(1, cts), cancellationToken: cts.Token);
+
+        // Assert
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(1);
+        entries.Any(HasFatalErrorResponseStatus).ShouldBeFalse();
+
+        result.Succeeded.ShouldBeFalse();
+        result.Exception.ShouldBeOfType<OperationCanceledException>();
+        result.ClientDisconnected.ShouldBeTrue();
+    }
+
+    private static bool HasFatalErrorResponseStatus(JsonElement entry) =>
+        entry.TryGetProperty("response", out var response)
+        && response.GetProperty("status").GetString() == "500 Internal Server Error";
 
     private static BundleEntryResponse CreateEntryResponse(string resourceJson) => new()
     {
@@ -590,5 +648,28 @@ public class StreamingBundleSerializerFailureTests
         await Task.Yield();
         yield return CreateEntryResponse("{\"resourceType\":");
         await Task.Yield();
+    }
+
+    private static async IAsyncEnumerable<BundleEntryResponse> ThrowAfterResponseAsync(int count, Exception ex)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return CreateEntryResponse($$"""{"resourceType":"Patient","id":"p{{i}}"}""");
+            await Task.Yield();
+        }
+
+        throw ex;
+    }
+
+    private static async IAsyncEnumerable<BundleEntryResponse> ThrowAfterResponseAndCancelAsync(int count, CancellationTokenSource cts)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return CreateEntryResponse($$"""{"resourceType":"Patient","id":"p{{i}}"}""");
+            await Task.Yield();
+        }
+
+        cts.Cancel();
+        throw new OperationCanceledException(cts.Token);
     }
 }

@@ -706,7 +706,12 @@ public static class StreamingBundleSerializer
     /// <param name="nextLink">The next page URL (optional).</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public static async Task SerializeStreamAsync(
+    /// <returns>
+    /// The outcome of the stream (design doc Section 8: this entry point's caller contract forbids
+    /// rethrowing once headers are sent, so this is how a failed or truncated bundle is surfaced
+    /// instead of silently reporting success).
+    /// </returns>
+    public static async Task<StreamingBundleResult> SerializeStreamAsync(
         Stream outputStream,
         string bundleType,
         IAsyncEnumerable<BundleEntryResponse> entryResponses,
@@ -733,8 +738,9 @@ public static class StreamingBundleSerializer
         // Write entry array
         writer.WriteStartArray("entry");
 
-        // Track whether we need to write an error entry
+        // Track whether the stream ended early, and why - see StreamingBundleResult.
         Exception? streamingException = null;
+        bool clientDisconnected = false;
 
         // Stream entry responses as they become available
         // CRITICAL: Wrap in try-catch to ensure JSON is always well-formed
@@ -750,10 +756,16 @@ public static class StreamingBundleSerializer
                 await writer.FlushAsync(cancellationToken);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
-            // Cancellation requested - don't include error entry, just complete the JSON
-            // The client will see an incomplete response which is expected for cancellation
+            // A canceled `cancellationToken` means the client itself disconnected: nobody is
+            // listening for this response, so there is nothing to gain from an error entry. Any
+            // other OperationCanceledException - a linked token inside bundleProcessor, an internal
+            // timeout - reaches this same catch while the caller's own token is still live, meaning
+            // a connected client is about to receive a well-formed 200 with entries silently
+            // missing unless this is treated like any other mid-stream failure.
+            clientDisconnected = cancellationToken.IsCancellationRequested;
+            streamingException = ex;
         }
         catch (Exception ex)
         {
@@ -762,15 +774,23 @@ public static class StreamingBundleSerializer
             streamingException = ex;
         }
 
-        // If an exception occurred during streaming, write it as an error entry
+        // If an exception occurred during streaming, write it as an error entry - unless the client
+        // disconnected, in which case there is no reader left to show it to.
         // This ensures the bundle response is valid JSON with the error visible to the client
-        if (streamingException is not null)
+        if (streamingException is not null && !clientDisconnected)
         {
             WriteErrorEntry(writer, streamingException);
         }
 
-        // Write bundle footer - ALWAYS called to ensure valid JSON
-        await WriteBundleFooterAsync(writer, cancellationToken);
+        // Write bundle footer - ALWAYS called to ensure valid JSON. An already-canceled
+        // `cancellationToken` (client disconnect) makes FlushAsync throw immediately instead of
+        // completing the body, so any failure closes with CancellationToken.None - the same
+        // rationale documented on every tiered entry point's error-close helper.
+        await WriteBundleFooterAsync(writer, streamingException is null ? cancellationToken : CancellationToken.None);
+
+        return streamingException is null
+            ? StreamingBundleResult.Success
+            : new StreamingBundleResult(Succeeded: false, streamingException, clientDisconnected);
     }
 
     /// <summary>
@@ -1386,3 +1406,24 @@ public static class StreamingBundleSerializer
 /// <param name="ContinuationToken">Token for fetching the next page of results.</param>
 /// <param name="RenderedCount">Number of entries actually rendered (should be pageSize or less).</param>
 public record PaginationResult(bool HasMore, string? ContinuationToken, int RenderedCount);
+
+/// <summary>
+/// Outcome of <see cref="StreamingBundleSerializer.SerializeStreamAsync"/>. The batch/transaction
+/// response is already committed to the client by the time this returns, so nothing here can change
+/// the HTTP status - it exists purely so the caller can log what actually happened instead of
+/// unconditionally reporting success.
+/// </summary>
+/// <param name="Succeeded">True when every entry response streamed with no exception or cancellation.</param>
+/// <param name="Exception">The exception (including <see cref="OperationCanceledException"/>) that ended the stream early, or null on success.</param>
+/// <param name="ClientDisconnected">
+/// True when <paramref name="Exception"/> is cancellation raised because the caller's own
+/// <c>cancellationToken</c> was signaled - i.e. nobody is listening for the response any more, so a
+/// quiet log (if any) is appropriate. False for every other failure, including cancellation raised by
+/// some other source (a linked token inside the entry producer, an internal timeout): that truncates
+/// a live, connected client's response and warrants a normal error log.
+/// </param>
+public sealed record StreamingBundleResult(bool Succeeded, Exception? Exception, bool ClientDisconnected)
+{
+    /// <summary>The result for a bundle that streamed every entry successfully.</summary>
+    public static readonly StreamingBundleResult Success = new(true, null, false);
+}

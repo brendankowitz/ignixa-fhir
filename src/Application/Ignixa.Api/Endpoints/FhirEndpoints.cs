@@ -1167,7 +1167,7 @@ public static class FhirEndpoints
                 bool pretty = context.Request.Query.GetPrettyParameter();
 
                 // Stream responses directly to HTTP (headers are now locked)
-                await StreamingBundleSerializer.SerializeStreamAsync(
+                var streamResult = await StreamingBundleSerializer.SerializeStreamAsync(
                     outputStream: context.Response.Body,
                     bundleType: "batch-response",
                     entryResponses: streamingContext.ResponseStream,
@@ -1180,7 +1180,22 @@ public static class FhirEndpoints
                 // Complete background tasks
                 await streamingContext.CompleteAsync();
 
-                logger.LogInformation("Successfully processed bundle (streaming mode)");
+                // The response body is already committed at this point (design doc Section 8), so the
+                // HTTP status cannot change - but a failed or truncated bundle must not be logged as a
+                // success, or there is nothing left for anyone to alert on.
+                if (streamResult.Succeeded)
+                {
+                    logger.LogInformation("Successfully processed bundle (streaming mode)");
+                }
+                else if (streamResult.ClientDisconnected)
+                {
+                    // Nobody is listening for this response any more - log quietly rather than as an error.
+                    logger.LogDebug(streamResult.Exception, "Client disconnected while streaming bundle response");
+                }
+                else
+                {
+                    logger.LogError(streamResult.Exception, "Streaming bundle response ended early; a fatal entry was appended for the client");
+                }
 
                 // Response already written to stream
                 return Results.Empty;
