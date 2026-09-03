@@ -104,6 +104,15 @@ Example: resourceType='Patient', id='123', count=5")]
         var entries = new List<ResourceEntryDto>();
         await foreach (var entry in result.Entries.WithCancellation(cancellationToken))
         {
+            if (entry.IsPagingProbe)
+            {
+                // SqlServerHistoryQueryExecutor's lookahead over-fetch is unconditional, so a corrupt
+                // or concurrently-deleted lookahead row can reach this tool as a content-free sentinel
+                // rather than real content -- see SearchEntryResult.IsPagingProbe. It carries no
+                // resource bytes, so it must be skipped rather than parsed or counted.
+                continue;
+            }
+
             var resourceJson = JsonDocument.Parse(entry.ResourceBytes);
             entries.Add(new ResourceEntryDto
             {
