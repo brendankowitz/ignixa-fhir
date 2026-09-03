@@ -692,9 +692,17 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
             $"{roundsThatOrphanedRows.Count} of {LiveRaceRounds} rounds left search-index rows with no resource behind them " +
             $"({roundsWhereBothSidesCompleted} rounds had both sides complete)");
 
+        // This failing does NOT mean the invariant broke. It means the two paths stopped interleaving --
+        // every round had one side fail or be shut out -- so the assertion above had nothing to detect
+        // with and this test can no longer see what it claims to watch. Something changed the concurrency
+        // model: a lock hint added to the hard-delete batch (UPDLOCK/HOLDLOCK on its snapshot is the
+        // specific candidate, and note the deterministic test would stay green through exactly that
+        // change), a new lock in the merge path, or the two serialising for some other reason. Go and
+        // look at that, not at this test. 80 of 80 measured rounds got both sides through, so this has a
+        // great deal of headroom and should not fire on a healthy tree.
         roundsWhereBothSidesCompleted.ShouldBeGreaterThan(
             0,
-            "no round got both a write and a hard delete through, so nothing was actually raced and this test proved nothing");
+            "no round got both a write and a hard delete through, so the two paths are no longer interleaving and this test can no longer detect the orphaning it exists to watch for -- the concurrency model changed, look there rather than at this assertion");
     }
 
     /// <summary>
