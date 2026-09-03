@@ -275,44 +275,73 @@ az webapp restart \
   --name ignixa-fhir-demo
 ```
 
-### 8. Application Auto-Initialization
+### 8. Database Schema Deployment
 
-The FHIR Server **automatically initializes all tenant databases** on first run. No manual SQL scripts needed!
+**Schema deployment is opt-in, not automatic.** `SchemaDeployer` only deploys or upgrades a tenant's
+schema when `SqlServer:AutomaticSchemaDeploymentEnabled` is `true`; it defaults to `false`
+(`SqlServerOptions.cs`) precisely so a deployment opts in rather than out, and this template does not
+set it. That default is deliberate: the flag drives live DacFx deploys against a production database
+with no environment guard of its own, so silently defaulting it on for every ARM/Bicep deployment
+would be worse than requiring one explicit operator step. Leaving the flag unset means a freshly
+deployed tenant database has no schema, and `SchemaDeployer` throws
+`"Tenant {id}'s database is not initialized and ...AutomaticSchemaDeploymentEnabled is false"` on the
+first request against it, directing you to the schema-upgrade CLI below.
 
-**What Gets Configured:**
+The tenant's connection string uses `Authentication=Active Directory Managed Identity`, which only
+authenticates when the process runs as that identity -- an arbitrary workstation cannot use it, even
+with `az login`. Run the CLI from a compute resource that carries the deployment's user-assigned
+identity. The image already contains the CLI alongside the server (see the Dockerfile), so the
+lowest-friction option is a short-lived Azure Container Instance with that identity attached:
+
+```bash
+az container create \
+  --resource-group ignixa-fhir-rg \
+  --name ignixa-schema-upgrade \
+  --image ghcr.io/brendankowitz/ignixa-fhir:release \
+  --assign-identity <userAssignedIdentityResourceId> \
+  --restart-policy Never \
+  --environment-variables Tenants__Configurations__1__Storage__ConnectionString="<tenant 1's connection string, from the deployment output>" \
+  --command-line "dotnet Ignixa.SchemaUpgrade.Cli.dll --tenant-id 1 --confirm"
+
+az container logs --resource-group ignixa-fhir-rg --name ignixa-schema-upgrade
+az container delete --resource-group ignixa-fhir-rg --name ignixa-schema-upgrade --yes
+```
+
+Repeat for every tenant (`--tenant-id 2`, `--tenant-id 3`, ...) in a multi-tenant deployment. See
+[`tools/Ignixa.SchemaUpgrade.Cli/README.md`](../../tools/Ignixa.SchemaUpgrade.Cli/README.md) for the
+full option list, including `--allow-incompatible-platform` for non-Azure SQL targets and
+`--allow-data-loss` for diffs `DeployReportClassifier` flags as unsafe.
+
+**This step is not only for a first deployment.** Because this template leaves
+`AutomaticSchemaDeploymentEnabled` unset, the app never applies a schema change on its own -- so any
+release that raises `SchemaVersionConstants.CurrentVersion` needs the same CLI run again, once per
+tenant, before that release serves traffic. Until it does, the first request against each tenant
+fails with `"Tenant {id}'s database is behind schema version {n} and
+SqlServer:AutomaticSchemaDeploymentEnabled is false"`, naming the version the build expects.
+`SELECT MAX(Version) FROM dbo.SchemaVersion` in a tenant's database reports where that tenant
+currently stands; the changelog in `SchemaVersionConstants.cs` says what each version added.
+
+**What Gets Configured (once the CLI has run):**
 - ✅ **Tenant 0** (System Partition) - Shares database with Tenant 1, used for transaction IDs
 - ✅ **Tenant 1-N** (Production Tenants) - Each configured with their own SQL database
-- ✅ **Database Schema** - Auto-created with all tables, indexes, and stored procedures (per tenant database)
-- ✅ **Managed Identity** - Database user auto-created with permissions (per tenant database)
+- ✅ **Database Schema** - Deployed from the server's embedded dacpac (tables, indexes, stored procedures) per tenant database
 - ✅ **DurableTask Backend** - Connected to Azure Storage with Managed Identity
 - ✅ **Export/Import Storage** - Connected to Azure Blob Storage with Managed Identity
 
+The schema-upgrade CLI does not create the database user for the App Service's Managed Identity --
+run [`scripts/setup-sql-mi.sql`](scripts/setup-sql-mi.sql) against each tenant database (as an Azure
+AD admin) beforehand, substituting the identity's name for the script's placeholder.
+
 **Multi-Tenant Initialization:**
 
-For a deployment with `tenantCount=10`, the application automatically:
-1. Initializes schema in all 10 tenant databases (`FhirTenant1` through `FhirTenant10`)
-2. Creates managed identity users in each database
-3. Configures tenant routing for `/tenant/1/`, `/tenant/2/`, etc.
+For a deployment with `tenantCount=10`, after running the CLI and `setup-sql-mi.sql` against each tenant:
+1. All 10 tenant databases (`FhirTenant1` through `FhirTenant10`) have schema deployed
+2. Managed identity users exist in each database
+3. Tenant routing is configured for `/tenant/1/`, `/tenant/2/`, etc.
 4. System partition (Tenant 0) shares `FhirTenant1` database
 
-**Automatic Full Initialization** (On First Run):
-
-1. **Schema Creation** (if database is empty)
-   - ✅ Detects empty database automatically
-   - ✅ Loads embedded schema (97.sql) from application assembly
-   - ✅ Creates all tables, views, indexes, functions, stored procedures
-   - ✅ Configures partition functions for performance
-   - ✅ Creates all 17 Table-Valued Parameter types
-
-2. **Managed Identity Setup** (if User ID in connection string)
-   - ✅ Extracts User ID from connection string
-   - ✅ Creates database user for App Service MI
-   - ✅ Assigns `db_datareader` role (read permissions)
-   - ✅ Assigns `db_datawriter` role (write permissions)
-   - ✅ Grants EXECUTE on schema (for stored procedures/functions)
-   - ✅ Grants CREATE TABLE (for schema evolution)
-
-**No manual deployment needed** - The App Service automatically pulls and runs your Docker image from ACR!
+**The App Service image deployment itself is still hands-off** - it automatically pulls and runs your
+Docker image from ACR/GHCR on restart. Only the database schema step above requires a manual run.
 
 **Verify Setup** (Optional - Check logs or database after deployment):
 ```sql
@@ -425,10 +454,10 @@ After deployment, the FHIR server is configured with:
 
 - **Tenant 0** (System Partition) - FileSystem storage, used for transaction ID allocation
 - **Tenant 1** (Production) - **Azure SQL Database** (auto-configured)
-  - Storage Type: `SqlEntityFramework`
+  - Storage Type: `SqlServer`
   - FHIR Version: Configurable via `fhirVersion` parameter (default: 4.3/R4B)
   - Connection: Uses Managed Identity authentication
-  - Database: Auto-initialized on first startup
+  - Database: Schema is not auto-initialized -- run the schema-upgrade CLI once after first deploy (see [step 8](#8-database-schema-deployment))
 
 ### Storage Configuration
 

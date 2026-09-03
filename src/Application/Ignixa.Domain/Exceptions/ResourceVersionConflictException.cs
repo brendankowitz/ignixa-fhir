@@ -20,16 +20,23 @@ public class ResourceVersionConflictException : FhirException
     public string ResourceType { get; }
     public string ResourceId { get; }
     public long AttemptedSurrogateId { get; }
-    public long ExistingSurrogateId { get; }
+
+    /// <summary>
+    /// The surrogate ID of the version that won, or <c>null</c> when the conflict left no current version
+    /// behind at all (a concurrent hard delete). Null rather than a sentinel because every surrogate ID
+    /// this type reports reaches the client in <see cref="Exception.Message"/> and in the
+    /// OperationOutcome's diagnostics, and a sentinel there names a row that does not exist.
+    /// </summary>
+    public long? ExistingSurrogateId { get; }
 
     public ResourceVersionConflictException(
         string resourceType,
         string resourceId,
         long attemptedSurrogateId,
-        long existingSurrogateId)
+        long? existingSurrogateId)
         : base($"Resource {resourceType}/{resourceId} was modified by another operation. " +
-               $"Attempted SurrogateId {attemptedSurrogateId} conflicts with existing SurrogateId {existingSurrogateId}. " +
-               $"This typically occurs when multiple bundles process concurrently and modify the same resource.")
+               $"{DescribeConflict(attemptedSurrogateId, existingSurrogateId)} " +
+               $"This typically occurs when multiple operations process concurrently and modify the same resource.")
     {
         ResourceType = resourceType;
         ResourceId = resourceId;
@@ -42,10 +49,18 @@ public class ResourceVersionConflictException : FhirException
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
             IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Conflict,
             Diagnostics = $"Resource {resourceType}/{resourceId} was modified by another concurrent operation. " +
-                          $"Please retry the bundle. (Attempted SurrogateId: {attemptedSurrogateId}, " +
-                          $"Existing SurrogateId: {existingSurrogateId})"
+                          $"Please retry the request. (Attempted SurrogateId: {attemptedSurrogateId}" +
+                          $"{DescribeExistingSurrogateId(existingSurrogateId)})"
         });
     }
+
+    private static string DescribeConflict(long attemptedSurrogateId, long? existingSurrogateId)
+        => existingSurrogateId.HasValue
+            ? $"Attempted SurrogateId {attemptedSurrogateId} conflicts with existing SurrogateId {existingSurrogateId.Value}."
+            : $"Attempted SurrogateId {attemptedSurrogateId} conflicts, and no current version of the resource remains.";
+
+    private static string DescribeExistingSurrogateId(long? existingSurrogateId)
+        => existingSurrogateId.HasValue ? $", Existing SurrogateId: {existingSurrogateId.Value}" : string.Empty;
 
     /// <summary>
     /// Returns HTTP 409 Conflict status code.

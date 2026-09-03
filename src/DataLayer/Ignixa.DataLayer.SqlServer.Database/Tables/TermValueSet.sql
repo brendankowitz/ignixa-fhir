@@ -17,6 +17,12 @@ CREATE TABLE dbo.TermValueSet (
 
 GO
 
+-- Convention-only here, not load-bearing: this table is not partitioned, so AUTO escalates to TABLE
+-- level exactly like SQL Server's un-set default. See TermCodeSystem.sql for the full explanation.
+ALTER TABLE dbo.TermValueSet SET (LOCK_ESCALATION = AUTO);
+
+GO
+
 CREATE INDEX IX_TermValueSet_Canonical
     ON dbo.TermValueSet(Canonical)
     INCLUDE(Version, IsExpanded);

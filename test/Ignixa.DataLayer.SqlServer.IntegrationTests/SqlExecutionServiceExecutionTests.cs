@@ -35,6 +35,11 @@ public class SqlExecutionServiceExecutionTests
             => new((TenantConfiguration?)null);
     }
 
+    // Non-production: TEST_SQL_CONNECTION_STRING is a SQL-auth string, which the Production credential guard
+    // exists to reject. SqlExecutionServiceCredentialGuardTests covers the guard itself.
+    private static readonly ManagedIdentityConnectionStringValidator NonProductionValidator =
+        new("Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance);
+
     private static string GetConnectionString()
     {
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
@@ -48,7 +53,7 @@ public class SqlExecutionServiceExecutionTests
     }
 
     private static SqlExecutionService CreateService()
-        => new(new SingleTenantStore(GetConnectionString()), NullLogger<SqlExecutionService>.Instance);
+        => new(new SingleTenantStore(GetConnectionString()), NonProductionValidator, NullLogger<SqlExecutionService>.Instance);
 
     [SkippableFact]
     public async Task GivenASimpleSelectQuery_WhenExecutedViaExecuteReaderAsync_ThenReturnsTheExpectedRow()
@@ -158,7 +163,7 @@ public class SqlExecutionServiceExecutionTests
             Storage = new TenantStorageConfiguration { Type = "FileSystem" },
         };
         var store = new FakeStoreWithOneTenant(fileSystemTenant);
-        var service = new SqlExecutionService(store, NullLogger<SqlExecutionService>.Instance);
+        var service = new SqlExecutionService(store, NonProductionValidator, NullLogger<SqlExecutionService>.Instance);
         await using var command = new SqlCommand("SELECT 1");
 
         // Act & Assert

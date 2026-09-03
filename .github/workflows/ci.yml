@@ -44,7 +44,11 @@ jobs:
           dotnet-version: ${{ matrix.dotnet-version }}
           solution-file: 'All.sln'
           build-configuration: 'Release'
-          test-filter: 'FullyQualifiedName!~E2ETests'
+          # E2ETests run in e2e-tests-sql. The SQL Server integration tests
+          # (Ignixa.DataLayer.SqlServer.IntegrationTests) need a live database and run in
+          # integration-tests-sql; their fixtures fail rather than skip without the connection string.
+          # Other integration tests (FhirValidatorIntegrationTests, etc.) need no database and run here.
+          test-filter: 'FullyQualifiedName!~E2ETests&FullyQualifiedName!~Ignixa.DataLayer.SqlServer.IntegrationTests'
 
       - name: Store version for later jobs
         run: |
@@ -151,6 +155,73 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Use the **Publish Release** workflow to publish and create a GitHub release." >> $GITHUB_STEP_SUMMARY
 
+  # Its own job, not a step in e2e-tests-sql. Two reasons: the suite serialises its schema deploys
+  # (sixteen concurrent DacFx deploys time each other out) so it runs long, and as a step it made the
+  # E2E tests conditional on it -- one integration failure skipped the E2E run entirely.
+  integration-tests-sql:
+    name: Integration Tests (SQL Server)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    # Job-scoped for the same reason as e2e-tests-sql below.
+    env:
+      SQL_SA_PASSWORD: ${{ secrets.SQL_SA_PASSWORD || 'YourStrong!Passw0rd' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Start SQL Server container
+        run: |
+          docker compose -f docker-compose.test.yml up -d --wait || {
+            echo "Container startup failed. Checking logs..."
+            docker compose -f docker-compose.test.yml logs
+            docker ps -a
+            exit 1
+          }
+        env:
+          SQL_SA_PASSWORD: ${{ env.SQL_SA_PASSWORD }}
+
+      - name: Verify SQL Server connection
+        run: |
+          docker exec ignixa-test-sql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -C -U sa -P "${{ env.SQL_SA_PASSWORD }}" \
+            -Q "SELECT @@VERSION" -b
+        timeout-minutes: 2
+
+      - name: Run SQL Server integration tests
+        run: |
+          dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=integration-test-results.trx;verbosity=minimal" \
+            --logger "console;verbosity=minimal" \
+            --verbosity minimal
+        env:
+          TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=master;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+          SqlServer__AutomaticSchemaDeploymentEnabled: "true"
+          Logging__LogLevel__Default: "Warning"
+          Logging__LogLevel__Microsoft: "Warning"
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: '**/integration-test-results.trx'
+
+      - name: Cleanup SQL Server container
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v || true
+
   e2e-tests-sql:
     name: E2E Tests (SQL Server)
     runs-on: ubuntu-latest
@@ -255,7 +326,6 @@ jobs:
           # Reduce log output in test host
           Logging__LogLevel__Default: "Warning"
           Logging__LogLevel__Microsoft: "Warning"
-          Logging__LogLevel__Microsoft.EntityFrameworkCore: "Error"
 
       - name: Upload E2E test results
         if: always()
@@ -514,11 +584,12 @@ jobs:
   notify-success:
     name: Notify Success
     runs-on: ubuntu-latest
-    needs: [ build-and-unit-tests, e2e-tests-sql, build-and-push-container ]
+    needs: [ build-and-unit-tests, integration-tests-sql, e2e-tests-sql, build-and-push-container ]
     permissions: {}
     if: |
       always() &&
       needs.build-and-unit-tests.result == 'success' &&
+      needs.integration-tests-sql.result == 'success' &&
       needs.e2e-tests-sql.result == 'success' &&
       (needs.build-and-push-container.result == 'success' || needs.build-and-push-container.result == 'skipped')
 
@@ -527,17 +598,19 @@ jobs:
         run: |
           echo "✅ CI pipeline completed successfully"
           echo "Unit tests: ✅"
+          echo "Integration tests: ✅"
           echo "E2E tests: ✅"
           echo "Docker build: ${{ needs.build-and-push-container.result == 'skipped' && '⏭️ Skipped' || '✅' }}"
 
   notify-failure:
     name: Notify Failure
     runs-on: ubuntu-latest
-    needs: [ build-and-unit-tests, e2e-tests-sql, build-and-push-container ]
+    needs: [ build-and-unit-tests, integration-tests-sql, e2e-tests-sql, build-and-push-container ]
     permissions: {}
     if: |
       always() &&
       (needs.build-and-unit-tests.result == 'failure' ||
+       needs.integration-tests-sql.result == 'failure' ||
        needs.e2e-tests-sql.result == 'failure' ||
        needs.build-and-push-container.result == 'failure')
 
@@ -546,6 +619,7 @@ jobs:
         run: |
           echo "❌ CI pipeline failed"
           echo "Unit tests: ${{ needs.build-and-unit-tests.result }}"
+          echo "Integration tests: ${{ needs.integration-tests-sql.result }}"
           echo "E2E tests: ${{ needs.e2e-tests-sql.result }}"
           echo "Docker build: ${{ needs.build-and-push-container.result }}"
           exit 1

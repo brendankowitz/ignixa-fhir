@@ -31,6 +31,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Search.Models;
 using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
+using Ignixa.Api.Infrastructure;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -437,6 +438,9 @@ public static class OperationEndpoints
         HttpContext context,
         string id,
         [FromServices] IMediator mediator,
+        [FromServices] IFhirVersionContext versionContext,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
+        [FromServices] ILoggerFactory loggerFactory,
         [FromQuery] string? start,
         [FromQuery] string? end,
         [FromQuery] DateTimeOffset? _since,
@@ -444,6 +448,20 @@ public static class OperationEndpoints
         [FromQuery] int? _count,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(OperationEndpoints).FullName!);
+
+        // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
+        var fhirContext = fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
+        {
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for Patient/{Id}/$everything", id.SanitizeForLog());
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, fhirContext.TenantId);
+
         // Parse _type parameter (comma-delimited list of resource types)
         ISet<string>? types = null;
         if (!string.IsNullOrEmpty(_type))
@@ -513,6 +531,7 @@ public static class OperationEndpoints
             searchOptions: result.SearchOptions!,
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
+            schemaProvider: schemaProvider,
             pretty: pretty,
             cancellationToken: cancellationToken);
 
@@ -674,7 +693,14 @@ public static class OperationEndpoints
 
         var queryParameters = queryParser.Parse(context.Request.Query);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
-        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+        // Not unconditional: an explicit Prefer: handling=lenient asks the server to ignore what it
+        // could not honour rather than fail, and R4 http.html#2.21.0.2 has it report that instead --
+        // 200, a warning issue in the bundle, and the parameter dropped from the self link, all of
+        // which the builder has already arranged. Matches the plain search endpoint's CheckStrictHandling.
+        if (!PreferHeaderParser.IsLenientHandling(context.Request.Headers))
+        {
+            SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+        }
 
         searchOptions.IncludesContinuationToken = includesContinuationToken;
 

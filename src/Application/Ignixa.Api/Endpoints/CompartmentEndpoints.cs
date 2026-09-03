@@ -11,6 +11,7 @@ using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
@@ -20,6 +21,7 @@ using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using FhirOperationOutcomeIssue = Ignixa.Models.OperationOutcomeIssue;
+using Ignixa.Api.Infrastructure;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -119,6 +121,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -152,6 +155,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            versionContext,
             fhirContextAccessor,
             loggerFactory,
             cancellationToken);
@@ -170,6 +174,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -191,6 +196,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            versionContext,
             fhirContextAccessor,
             loggerFactory,
             cancellationToken);
@@ -210,6 +216,7 @@ public static class CompartmentEndpoints
         IMediator mediator,
         IQueryParameterParser queryParser,
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        IFhirVersionContext versionContext,
         IFhirRequestContextAccessor fhirContextAccessor,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -243,13 +250,21 @@ public static class CompartmentEndpoints
         // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
         var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec, fhirContext.TenantId);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, fhirContext.TenantId);
 
         // Parse query parameters
         var queryParameters = queryParser.Parse(context.Request.Query);
 
         // Build SearchOptions
-        var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters);
-        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+        var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
+        // Not unconditional: an explicit Prefer: handling=lenient asks the server to ignore what it
+        // could not honour rather than fail, and R4 http.html#2.21.0.2 has it report that instead --
+        // 200, a warning issue in the bundle, and the parameter dropped from the self link, all of
+        // which the builder has already arranged. Matches the plain search endpoint's CheckStrictHandling.
+        if (!PreferHeaderParser.IsLenientHandling(context.Request.Headers))
+        {
+            SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+        }
 
         // Create SearchCompartmentQuery
         var query = new SearchCompartmentQuery(
@@ -279,6 +294,7 @@ public static class CompartmentEndpoints
             searchOptions: searchOptions,
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
+            schemaProvider: schemaProvider,
             pretty: pretty,
             cancellationToken: cancellationToken);
 
@@ -297,6 +313,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -329,6 +346,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            versionContext,
             fhirContextAccessor,
             loggerFactory,
             cancellationToken);
@@ -346,6 +364,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -366,6 +385,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            versionContext,
             fhirContextAccessor,
             loggerFactory,
             cancellationToken);

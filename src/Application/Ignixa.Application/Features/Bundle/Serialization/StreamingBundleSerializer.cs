@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using EnsureThat;
@@ -50,40 +51,56 @@ public static class StreamingBundleSerializer
         EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
         EnsureArg.IsNotNull(entries, nameof(entries));
 
+        var entryBuffer = new ArrayBufferWriter<byte>();
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+        await using FhirJsonWriter entryWriter = FhirJsonWriter.Create(entryBuffer, pretty);
 
-        // Write bundle header
-        WriteBundleHeader(writer, bundleType, total);
-
-        // Write links
-        WriteBundleLinksFromStrings(writer, selfLink, nextLink);
-
-        // Write entry array
-        writer.WriteStartArray("entry");
-
-        // Stream entries as they become available (zero-copy from raw bytes)
-        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+        try
         {
-            writer.WriteStartObject();
+            WriteBundleHeader(writer, bundleType, total);
 
-            // Write fullUrl
-            string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
-            writer.WriteString("fullUrl", fullUrl);
+            WriteBundleLinksFromStrings(writer, selfLink, nextLink);
 
-            // Write resource using helper
-            WriteResourceBytes(writer, resource);
+            writer.WriteStartArray("entry");
 
-            // Write search metadata - use resource's SearchMode (match, include, or outcome)
-            // CA1308 suppressed: JSON requires lowercase values for FHIR compliance
-#pragma warning disable CA1308
-            writer.WriteObject("search", w => w
-                .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
-#pragma warning restore CA1308
+            // Stream entries as they become available (zero-copy from raw bytes)
+            await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+            {
+                WriteBufferedSimpleEntry(writer, entryWriter, entryBuffer, resource);
 
-            writer.WriteEndObject(); // end entry
+                // Flush periodically to stream data to client
+                await writer.FlushAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                DiscardTierOneBuffer(writer);
+                throw;
+            }
 
-            // Flush periodically to stream data to client
-            await writer.FlushAsync(cancellationToken);
+            await CloseSimpleErrorBundleAsync(writer);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                DiscardTierOneBuffer(writer);
+                throw;
+            }
+
+            WriteOperationOutcomeEntry(
+                writer,
+                new IssueComponent("fatal", "exception", Diagnostics: $"Bundle serialization failed: {ex.Message}"),
+                bundleType,
+                FhirVersion.R4,
+                ErrorEntryFullUrl,
+                string.Empty);
+
+            await CloseSimpleErrorBundleAsync(writer);
+            throw;
         }
 
         // Write bundle footer
@@ -91,10 +108,81 @@ public static class StreamingBundleSerializer
     }
 
     /// <summary>
+    /// Writes one complete entry into the scratch writer, then copies the finished bytes into the
+    /// response writer as a single raw array element. Mirrors <see cref="WriteBufferedEntry"/> without
+    /// the pagination path's element filtering, which <see cref="SerializeAsync"/> does not support.
+    /// Staging keeps the response writer between complete entries at all times, so a mid-entry failure
+    /// dirties only the scratch buffer and the bundle stays closable.
+    /// </summary>
+    private static void WriteBufferedSimpleEntry(
+        FhirJsonWriter writer,
+        FhirJsonWriter entryWriter,
+        ArrayBufferWriter<byte> entryBuffer,
+        SearchEntryResult resource)
+    {
+        entryWriter.WriteStartObject();
+
+        string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
+        entryWriter.WriteString("fullUrl", fullUrl);
+
+        WriteResourceBytes(entryWriter, resource);
+
+        // CA1308 suppressed: JSON requires lowercase values for FHIR compliance
+#pragma warning disable CA1308
+        entryWriter.WriteObject("search", w => w
+            .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
+#pragma warning restore CA1308
+
+        entryWriter.WriteEndObject();
+
+        // The scratch buffer holds nothing until the writer is flushed into it.
+        entryWriter.UnderlyingWriter.Flush();
+        writer.UnderlyingWriter.WriteRawValue(entryBuffer.WrittenSpan, skipInputValidation: true);
+        entryBuffer.Clear();
+        entryWriter.UnderlyingWriter.Reset(entryBuffer);
+    }
+
+    /// <summary>
+    /// Completes a bundle whose response has already started, then leaves the caller to rethrow.
+    /// No links are re-emitted: <see cref="SerializeAsync"/> writes them in the prologue, inside the
+    /// guard, so they already survived by the time a failure reaches this catch.
+    /// The flush deliberately uses <see cref="CancellationToken.None"/> - an already-canceled token
+    /// makes FlushAsync throw immediately, which would defeat the body completion.
+    /// </summary>
+    private static async Task CloseSimpleErrorBundleAsync(FhirJsonWriter writer)
+    {
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+        await writer.FlushAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Tier 1: discards everything the main writer has buffered and re-points it at
+    /// <see cref="Stream.Null"/> before the caller rethrows.
+    /// Retargeting is load-bearing, not tidiness: <see cref="Utf8JsonWriter"/> disposal flushes its
+    /// destination stream unconditionally - even with zero bytes pending - and an empty flush on
+    /// <c>Response.Body</c> starts the response in Kestrel. Since disposal runs during the unwind,
+    /// before the exception reaches FhirExceptionMiddleware, a plain <c>Reset()</c> would commit a
+    /// headers-only HTTP 200 and the middleware's <c>HasStarted</c> guard would then decline to
+    /// write the real status-coded error.
+    /// </summary>
+    private static void DiscardTierOneBuffer(FhirJsonWriter writer)
+    {
+        writer.UnderlyingWriter.Reset(Stream.Null);
+    }
+
+    /// <summary>
     /// Flush the writer to the output stream when its pending buffer exceeds this size.
     /// Prevents unbounded memory growth for large result sets without flushing on every entry.
     /// </summary>
     private const int FlushThresholdBytes = 50 * 1024 * 1024; // 50 MB
+
+    /// <summary>
+    /// fullUrl carried by the mid-stream fatal OperationOutcome entry. A well-formed UUID URN, distinct
+    /// from the warning entry's ...d0 so a bundle carrying both still satisfies bdl-7 uniqueness.
+    /// At most one error entry is written per serialization, so a constant is safe.
+    /// </summary>
+    private const string ErrorEntryFullUrl = "urn:uuid:00000000-0000-0000-0000-0000000000e0";
 
     /// <summary>
     /// Serializes a search result bundle with count-as-render pagination pattern.
@@ -131,7 +219,9 @@ public static class StreamingBundleSerializer
         EnsureArg.IsNotNull(entries, nameof(entries));
         EnsureArg.IsNotNull(searchOptions, nameof(searchOptions));
 
+        var entryBuffer = new ArrayBufferWriter<byte>();
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+        await using FhirJsonWriter entryWriter = FhirJsonWriter.Create(entryBuffer, pretty);
 
         int pageSize = searchOptions.MaxItemCount;
         int entryCount = 0;
@@ -144,124 +234,247 @@ public static class StreamingBundleSerializer
         int includesOffset = 0;
         bool hasMoreIncludes = false;
 
-        if (!string.IsNullOrWhiteSpace(searchOptions.IncludesContinuationToken))
-        {
-            if (IncludesContinuationToken.TryDecode(searchOptions.IncludesContinuationToken, out int tokenOffset, out _))
-            {
-                includesOffset = tokenOffset;
-            }
-        }
+        string selfLink = string.Empty;
+        string? nextLink = null;
+        string? relatedLink = null;
 
-        if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken))
+        try
         {
-            if (ContinuationToken.TryDecode(searchOptions.ContinuationToken, out int tokenOffset, out _))
+            // Validated here, before any writing, so an empty Severity/Code fails inside the guard on
+            // every FHIR version. Without this, an R5 tenant hits the identical throw in the unguarded
+            // WriteBundleIssues call after the entry array closes (design §6/§9), resurrecting the
+            // dispose-flush truncation bug.
+            ValidateBundleIssues(searchOptions.BundleIssues);
+
+            if (!string.IsNullOrWhiteSpace(searchOptions.IncludesContinuationToken)
+                && IncludesContinuationToken.TryDecode(searchOptions.IncludesContinuationToken, out int includesTokenOffset, out _))
+            {
+                includesOffset = includesTokenOffset;
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken)
+                && ContinuationToken.TryDecode(searchOptions.ContinuationToken, out int tokenOffset, out _))
             {
                 currentOffset = tokenOffset;
             }
-        }
 
-        WriteBundleHeader(writer, bundleType, total);
+            WriteBundleHeader(writer, bundleType, total);
 
-        string filteredQueryString = FilterUnsupportedParams(queryString, searchOptions.UnsupportedParams);
+            string filteredQueryString = FilterUnsupportedParams(queryString, searchOptions.UnsupportedParams);
 
-        string selfLink = $"{baseUrl}{filteredQueryString}";
+            selfLink = $"{baseUrl}{filteredQueryString}";
 
-        writer.WriteStartArray("entry");
+            writer.WriteStartArray("entry");
 
-        WriteBundleIssuesPreR5(writer, searchOptions.BundleIssues, fhirVersion);
+            WriteBundleIssuesPreR5(writer, searchOptions.BundleIssues, fhirVersion);
 
-        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
-        {
-            if (resource.SearchMode == SearchEntryMode.Match)
+            await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
             {
-                if (entryCount >= pageSize)
+                if (resource.IsPagingProbe)
                 {
+                    // The data layer's lookahead row could not be turned into content (a corrupt
+                    // payload, or a concurrent-delete miss), but its presence still proves a further
+                    // page exists -- counting rendered deliveries alone cannot see that, since the row
+                    // that would have crossed pageSize never arrived. Pure signal: never rendered,
+                    // never counted.
                     hasMore = true;
                     continue;
                 }
 
-                entryCount++;
-            }
-            else if (resource.SearchMode == SearchEntryMode.Include)
-            {
-                if (includesMaxCount.HasValue && includesCount >= includesMaxCount.Value)
+                if (resource.SearchMode == SearchEntryMode.Match)
                 {
-                    hasMoreIncludes = true;
-                    continue;
+                    if (entryCount >= pageSize)
+                    {
+                        hasMore = true;
+                        continue;
+                    }
+
+                    entryCount++;
+                }
+                else if (resource.SearchMode == SearchEntryMode.Include)
+                {
+                    if (includesMaxCount.HasValue && includesCount >= includesMaxCount.Value)
+                    {
+                        hasMoreIncludes = true;
+                        continue;
+                    }
+
+                    includesCount++;
                 }
 
-                includesCount++;
+                WriteBufferedEntry(writer, entryWriter, entryBuffer, resource, searchOptions, schemaProvider);
+
+                // Flush to the HTTP response stream once the buffer exceeds the threshold.
+                // This keeps memory bounded for large result sets while avoiding the overhead
+                // of flushing (a syscall + potential TCP segment) on every single entry.
+                if (writer.UnderlyingWriter.BytesPending >= flushThresholdBytes)
+                {
+                    await writer.FlushAsync(cancellationToken);
+                }
             }
 
-            writer.WriteStartObject();
-
-            string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
-            writer.WriteString("fullUrl", fullUrl);
-
-            WriteResourceBytes(writer, resource, searchOptions, schemaProvider);
-
-#pragma warning disable CA1308
-            writer.WriteObject("search", w => w
-                .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
-#pragma warning restore CA1308
-
-            writer.WriteEndObject();
-
-            // Flush to the HTTP response stream once the buffer exceeds the threshold.
-            // This keeps memory bounded for large result sets while avoiding the overhead
-            // of flushing (a syscall + potential TCP segment) on every single entry.
-            if (writer.UnderlyingWriter.BytesPending >= flushThresholdBytes)
+            // Link building parses baseUrl and can throw, so it is computed while the entry array is
+            // still open - an error entry cannot be appended once the array has been closed.
+            nextLink = BuildNextLink(hasMore, currentOffset, pageSize, filteredQueryString, baseUrl);
+            relatedLink = BuildRelatedLink(searchOptions, includesMaxCount, includesOffset, includesCount, hasMoreIncludes, filteredQueryString, baseUrl);
+        }
+        catch (OperationCanceledException)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                await writer.FlushAsync(cancellationToken);
+                DiscardTierOneBuffer(writer);
+                throw;
             }
+
+            await CloseErrorBundleAsync(writer, selfLink, searchOptions.BundleIssues, fhirVersion);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                DiscardTierOneBuffer(writer);
+                throw;
+            }
+
+            WriteOperationOutcomeEntry(
+                writer,
+                new IssueComponent("fatal", "exception", Diagnostics: $"Bundle serialization failed: {ex.Message}"),
+                bundleType,
+                fhirVersion,
+                ErrorEntryFullUrl,
+                selfLink);
+
+            await CloseErrorBundleAsync(writer, selfLink, searchOptions.BundleIssues, fhirVersion);
+            throw;
         }
 
         writer.WriteEndArray();
 
         WriteBundleIssues(writer, searchOptions.BundleIssues, fhirVersion);
 
-        string? continuationToken = null;
-        if (hasMore)
-        {
-            int nextOffset = currentOffset + pageSize;
-            continuationToken = ContinuationToken.Encode(nextOffset, pageSize);
-        }
-
-        string? nextLink = null;
-        if (hasMore && !string.IsNullOrWhiteSpace(continuationToken))
-        {
-            var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
-            parsedQuery["after"] = continuationToken;
-            nextLink = $"{baseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
-        }
-
-        string? relatedLink = null;
-        if (hasMoreIncludes && includesMaxCount.HasValue && searchOptions.ResourceType is not null)
-        {
-            int nextIncludesOffset = includesOffset + includesCount;
-            string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesMaxCount.Value);
-
-            string includesBaseUrl;
-            if (baseUrl.Contains("/$includes", StringComparison.Ordinal))
-            {
-                includesBaseUrl = baseUrl;
-            }
-            else
-            {
-                var uri = new Uri(baseUrl, UriKind.Absolute);
-                string pathWithOperation = uri.AbsolutePath.TrimEnd('/') + "/$includes";
-                includesBaseUrl = $"{uri.Scheme}://{uri.Authority}{pathWithOperation}";
-            }
-
-            var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
-            parsedQuery["_includesContinuationToken"] = includesContinuationToken;
-            relatedLink = $"{includesBaseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
-        }
-
         WriteBundleLinksFromStrings(writer, selfLink, nextLink, relatedLink);
 
         writer.WriteEndObject();
         await writer.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes one complete entry into the scratch writer, then copies the finished bytes into the
+    /// response writer as a single raw array element.
+    /// Staging is load-bearing rather than tidy: it keeps the response writer between complete entries
+    /// at all times, so a mid-entry failure dirties only the scratch buffer and the bundle stays closable.
+    /// </summary>
+    private static void WriteBufferedEntry(
+        FhirJsonWriter writer,
+        FhirJsonWriter entryWriter,
+        ArrayBufferWriter<byte> entryBuffer,
+        SearchEntryResult resource,
+        SearchOptions searchOptions,
+        ISchema? schemaProvider)
+    {
+        entryWriter.WriteStartObject();
+
+        string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
+        entryWriter.WriteString("fullUrl", fullUrl);
+
+        WriteResourceBytes(entryWriter, resource, searchOptions, schemaProvider);
+
+#pragma warning disable CA1308
+        entryWriter.WriteObject("search", w => w
+            .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
+#pragma warning restore CA1308
+
+        entryWriter.WriteEndObject();
+
+        // The scratch buffer holds nothing until the writer is flushed into it.
+        entryWriter.UnderlyingWriter.Flush();
+        writer.UnderlyingWriter.WriteRawValue(entryBuffer.WrittenSpan, skipInputValidation: true);
+        entryBuffer.Clear();
+        entryWriter.UnderlyingWriter.Reset(entryBuffer);
+    }
+
+    /// <summary>
+    /// Builds the <c>next</c> pagination link, or null when there is no further page.
+    /// </summary>
+    private static string? BuildNextLink(bool hasMore, int currentOffset, int pageSize, string filteredQueryString, string baseUrl)
+    {
+        if (!hasMore)
+        {
+            return null;
+        }
+
+        string continuationToken = ContinuationToken.Encode(currentOffset + pageSize, pageSize);
+        if (string.IsNullOrWhiteSpace(continuationToken))
+        {
+            return null;
+        }
+
+        var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
+        parsedQuery["after"] = continuationToken;
+        return $"{baseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
+    }
+
+    /// <summary>
+    /// Builds the <c>related</c> link pointing at the $includes continuation, or null when no
+    /// included resources remain.
+    /// </summary>
+    private static string? BuildRelatedLink(
+        SearchOptions searchOptions,
+        int? includesMaxCount,
+        int includesOffset,
+        int includesCount,
+        bool hasMoreIncludes,
+        string filteredQueryString,
+        string baseUrl)
+    {
+        if (!hasMoreIncludes || !includesMaxCount.HasValue || searchOptions.ResourceType is null)
+        {
+            return null;
+        }
+
+        int nextIncludesOffset = includesOffset + includesCount;
+        string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesMaxCount.Value);
+
+        string includesBaseUrl;
+        if (baseUrl.Contains("/$includes", StringComparison.Ordinal))
+        {
+            includesBaseUrl = baseUrl;
+        }
+        else
+        {
+            var uri = new Uri(baseUrl, UriKind.Absolute);
+            string pathWithOperation = uri.AbsolutePath.TrimEnd('/') + "/$includes";
+            includesBaseUrl = $"{uri.Scheme}://{uri.Authority}{pathWithOperation}";
+        }
+
+        var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
+        parsedQuery["_includesContinuationToken"] = includesContinuationToken;
+        return $"{includesBaseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
+    }
+
+    /// <summary>
+    /// Completes a bundle whose response has already started, then leaves the caller to rethrow.
+    /// Mirrors the normal footer's <see cref="WriteBundleIssues"/> call so R5+ tenants still see
+    /// their warning issues on a tier-2 failure. Only the self link is emitted: next and related
+    /// describe pages this request never produced.
+    /// The flush deliberately uses <see cref="CancellationToken.None"/> - an already-canceled token
+    /// makes FlushAsync throw immediately, which would defeat the body completion.
+    /// </summary>
+    private static async Task CloseErrorBundleAsync(
+        FhirJsonWriter writer,
+        string selfLink,
+        IReadOnlyList<IssueComponent>? bundleIssues,
+        FhirVersion fhirVersion)
+    {
+        writer.WriteEndArray();
+
+        WriteBundleIssues(writer, bundleIssues, fhirVersion);
+
+        WriteBundleLinksFromStrings(writer, selfLink, nextLink: null);
+
+        writer.WriteEndObject();
+        await writer.FlushAsync(CancellationToken.None);
     }
 
     /// <summary>
@@ -273,6 +486,7 @@ public static class StreamingBundleSerializer
     /// <param name="total">Total number of matching resources (optional).</param>
     /// <param name="entries">Async stream of search entry results (raw bytes) to include in the bundle.</param>
     /// <param name="links">Pagination links (self, first, prev, next, last).</param>
+    /// <param name="schemaProvider">Optional FHIR schema provider; supplies the version that shapes version-sensitive output.</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
     /// <param name="pageSize"></param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -281,6 +495,7 @@ public static class StreamingBundleSerializer
         int? total,
         IAsyncEnumerable<SearchEntryResult> entries,
         IReadOnlyList<FhirBundleLink>? links = null,
+        ISchema? schemaProvider = null,
         bool pretty = false,
         int pageSize = 20,
         CancellationToken cancellationToken = default)
@@ -291,74 +506,212 @@ public static class StreamingBundleSerializer
 
         int entryCount = 0;
         bool hasMore = false;
+        var fhirVersion = schemaProvider != null ? (FhirVersion)schemaProvider.Version : FhirVersion.R4;
+        List<FhirBundleLink>? resolvedLinks = null;
 
+        // Resolved before any writer exists: unlike the pagination path, the error entry's url comes
+        // from a caller-supplied parameter, so a throw here must not be able to land mid-bundle.
+        string selfUrl = ResolveHistorySelfUrl(links);
+
+        var entryBuffer = new ArrayBufferWriter<byte>();
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+        await using FhirJsonWriter entryWriter = FhirJsonWriter.Create(entryBuffer, pretty);
 
-        // Write bundle header
-        WriteBundleHeader(writer, bundleType, total);
-
-        // Write links
-        //WriteBundleLinks(writer, links);
-
-        // Write entry array
-        writer.WriteStartArray("entry");
-
-        // Stream entries as they become available (zero-copy from raw bytes)
-        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+        try
         {
-            entryCount++;
+            WriteBundleHeader(writer, bundleType, total);
 
-            if (entryCount > pageSize)
+            writer.WriteStartArray("entry");
+
+            await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
             {
-                hasMore = true;
-                continue;
+                if (resource.IsPagingProbe)
+                {
+                    // Mirrors SerializeWithPaginationAsync's identical guard: the lookahead row itself
+                    // could not be turned into content, but its presence still proves a further page
+                    // exists. Pure signal: never rendered, never counted toward entryCount.
+                    hasMore = true;
+                    continue;
+                }
+
+                entryCount++;
+
+                if (entryCount > pageSize)
+                {
+                    hasMore = true;
+                    continue;
+                }
+
+                WriteBufferedHistoryEntry(writer, entryWriter, entryBuffer, resource, fhirVersion);
+
+                // Flush per entry to stream data to the client. This makes tier 2 the common case:
+                // from the second entry onward the response has already started.
+                await writer.FlushAsync(cancellationToken);
             }
 
-            writer.WriteStartObject();
-
-            // Write fullUrl with version for history bundles
-            string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
-            if (!string.IsNullOrEmpty(resource.VersionId))
+            // GetRelationRaw() reads a possibly malformed JSON node and can throw; resolving links
+            // while the entry array is still open keeps that throw inside the guard, so an error entry
+            // can still be appended. Once the array is closed a throw here would resurrect the
+            // dispose-flush truncation bug (design §6/§10).
+            resolvedLinks = ResolveHistoryLinks(links, hasMore, entryCount);
+        }
+        catch (OperationCanceledException)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                fullUrl = $"{fullUrl}/_history/{resource.VersionId}";
+                DiscardTierOneBuffer(writer);
+                throw;
             }
-            writer.WriteString("fullUrl", fullUrl);
 
-            // Write resource using helper
-            WriteResourceBytes(writer, resource);
+            await CloseHistoryErrorBundleAsync(writer);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                DiscardTierOneBuffer(writer);
+                throw;
+            }
 
-            // Write request metadata for history bundles
-            writer.WriteObject("request", w => w
-                .WriteString("method", resource.Request?.Method ?? "PUT")
-                .WriteString("url", $"{resource.ResourceType}/{resource.ResourceId}"));
+            WriteOperationOutcomeEntry(
+                writer,
+                new IssueComponent("fatal", "exception", Diagnostics: $"Bundle serialization failed: {ex.Message}"),
+                bundleType,
+                fhirVersion,
+                ErrorEntryFullUrl,
+                selfUrl);
 
-            // Write response metadata for history bundles
-            writer.WriteObject("response", w => w
-                .WriteString("status", resource.IsDeleted ? "204" : "200")
-                .WriteString("lastModified", resource.LastModified.ToString("o"))
-                .Condition(!string.IsNullOrEmpty(resource.VersionId), w2 => w2
-                    .WriteString("etag", $"W/\"{resource.VersionId}\"")));
-
-            writer.WriteEndObject(); // end entry
-
-            // Flush periodically to stream data to client
-            await writer.FlushAsync(cancellationToken);
+            await CloseHistoryErrorBundleAsync(writer);
+            throw;
         }
 
         writer.WriteEndArray();
 
-        if (links != null)
+        if (resolvedLinks != null)
         {
-            if (!hasMore || entryCount == 0)
-            {
-                links = links.Where(x => x.GetRelationRaw() != "next").ToList();
-            }
-
-            WriteBundleLinks(writer, links);
+            WriteBundleLinks(writer, resolvedLinks);
         }
 
         writer.WriteEndObject(); // end bundle
         await writer.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes one complete history entry into the scratch writer, then copies the finished bytes into
+    /// the response writer as a single raw array element.
+    /// Staging keeps the response writer between complete entries at all times, so a mid-entry failure
+    /// dirties only the scratch buffer and the bundle stays closable.
+    /// </summary>
+    private static void WriteBufferedHistoryEntry(
+        FhirJsonWriter writer,
+        FhirJsonWriter entryWriter,
+        ArrayBufferWriter<byte> entryBuffer,
+        SearchEntryResult resource,
+        FhirVersion fhirVersion)
+    {
+        entryWriter.WriteStartObject();
+
+        string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
+        if (!string.IsNullOrEmpty(resource.VersionId))
+        {
+            fullUrl = $"{fullUrl}/_history/{resource.VersionId}";
+        }
+        entryWriter.WriteString("fullUrl", fullUrl);
+
+        WriteResourceBytes(entryWriter, resource);
+
+        entryWriter.WriteObject("request", w => w
+            .WriteString("method", resource.Request?.Method ?? "PUT")
+            .WriteString("url", $"{resource.ResourceType}/{resource.ResourceId}"));
+
+        // Stu3 bdl-4 prohibits entry.response in a history bundle; R4 reversed this and R4B/R5 carry
+        // the reversal forward, so the element is required from R4 on and must be suppressed for Stu3.
+        // A Stu3 deleted version consequently loses lastModified: its resource stub carries no meta,
+        // and a conformant Stu3 history bundle has nowhere else to put it.
+        if (fhirVersion >= FhirVersion.R4)
+        {
+            entryWriter.WriteObject("response", w => w
+                .WriteString("status", resource.IsDeleted ? "204" : "200")
+                .WriteString("lastModified", resource.LastModified.ToString("o"))
+                .Condition(!string.IsNullOrEmpty(resource.VersionId), w2 => w2
+                    .WriteString("etag", $"W/\"{resource.VersionId}\"")));
+        }
+
+        entryWriter.WriteEndObject();
+
+        // The scratch buffer holds nothing until the writer is flushed into it.
+        entryWriter.UnderlyingWriter.Flush();
+        writer.UnderlyingWriter.WriteRawValue(entryBuffer.WrittenSpan, skipInputValidation: true);
+        entryBuffer.Clear();
+        entryWriter.UnderlyingWriter.Reset(entryBuffer);
+    }
+
+    /// <summary>
+    /// Resolves the url carried by the history error entry's <c>request</c>: the self link's url, or the
+    /// literal <c>_history</c> when there is no self link or it carries no usable url.
+    /// </summary>
+    private static string ResolveHistorySelfUrl(IReadOnlyList<FhirBundleLink>? links)
+    {
+        string? selfUrl = links?
+            .FirstOrDefault(link => string.Equals(link.GetRelationRaw(), "self", StringComparison.Ordinal))?.Url;
+
+        return string.IsNullOrEmpty(selfUrl) ? "_history" : selfUrl;
+    }
+
+    /// <summary>
+    /// Resolves the "next"-suppression and empty-URL filtering that the happy-path footer applies to
+    /// <paramref name="links"/>, returning freshly-built links whose relation was already read via
+    /// <see cref="Ignixa.Models.BundleLink.GetRelationRaw"/> here. That read can throw on a malformed
+    /// relation node; calling it here, before the entry array closes, keeps the throw inside the guard
+    /// (design §6/§10) instead of in the post-guard footer. The returned links carry relations set via
+    /// <see cref="CreateLink"/>, so the footer's own <c>GetRelationRaw()</c> call can never throw.
+    /// </summary>
+    private static List<FhirBundleLink>? ResolveHistoryLinks(
+        IReadOnlyList<FhirBundleLink>? links,
+        bool hasMore,
+        int entryCount)
+    {
+        if (links == null)
+        {
+            return null;
+        }
+
+        bool suppressNext = !hasMore || entryCount == 0;
+        var resolved = new List<FhirBundleLink>();
+
+        foreach (var link in links)
+        {
+            string relation = link.GetRelationRaw() ?? "self";
+
+            if (suppressNext && relation == "next")
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(link.Url))
+            {
+                continue;
+            }
+
+            resolved.Add(CreateLink(relation, link.Url));
+        }
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// Completes a history bundle whose response has already started, then leaves the caller to rethrow.
+    /// No link array is emitted: the guard exits before the link region, and no history invariant in any
+    /// supported version requires links (bdl-18's self-link rule is searchset-only).
+    /// The flush deliberately uses <see cref="CancellationToken.None"/> - an already-canceled token
+    /// makes FlushAsync throw immediately, which would defeat the body completion.
+    /// </summary>
+    private static async Task CloseHistoryErrorBundleAsync(FhirJsonWriter writer)
+    {
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+        await writer.FlushAsync(CancellationToken.None);
     }
 
     /// <summary>
@@ -373,7 +726,12 @@ public static class StreamingBundleSerializer
     /// <param name="nextLink">The next page URL (optional).</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public static async Task SerializeStreamAsync(
+    /// <returns>
+    /// The outcome of the stream (design doc Section 8: this entry point's caller contract forbids
+    /// rethrowing once headers are sent, so this is how a failed or truncated bundle is surfaced
+    /// instead of silently reporting success).
+    /// </returns>
+    public static async Task<StreamingBundleResult> SerializeStreamAsync(
         Stream outputStream,
         string bundleType,
         IAsyncEnumerable<BundleEntryResponse> entryResponses,
@@ -387,7 +745,9 @@ public static class StreamingBundleSerializer
         EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
         EnsureArg.IsNotNull(entryResponses, nameof(entryResponses));
 
+        var entryBuffer = new ArrayBufferWriter<byte>();
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+        await using FhirJsonWriter entryWriter = FhirJsonWriter.Create(entryBuffer, pretty);
 
         // Write bundle header
         WriteBundleHeader(writer, bundleType, total);
@@ -398,8 +758,9 @@ public static class StreamingBundleSerializer
         // Write entry array
         writer.WriteStartArray("entry");
 
-        // Track whether we need to write an error entry
+        // Track whether the stream ended early, and why - see StreamingBundleResult.
         Exception? streamingException = null;
+        bool clientDisconnected = false;
 
         // Stream entry responses as they become available
         // CRITICAL: Wrap in try-catch to ensure JSON is always well-formed
@@ -409,16 +770,28 @@ public static class StreamingBundleSerializer
         {
             await foreach (BundleEntryResponse entryResponse in entryResponses.WithCancellation(cancellationToken))
             {
-                WriteEntryResponse(writer, entryResponse);
+                WriteBufferedEntryResponse(writer, entryWriter, entryBuffer, entryResponse);
 
                 // Flush periodically to stream data to client
                 await writer.FlushAsync(cancellationToken);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
-            // Cancellation requested - don't include error entry, just complete the JSON
-            // The client will see an incomplete response which is expected for cancellation
+            // A canceled `cancellationToken` means the client itself disconnected: nobody is
+            // listening for this response, so there is nothing to gain from an error entry. Any
+            // other OperationCanceledException - a linked token inside bundleProcessor, an internal
+            // timeout - reaches this same catch while the caller's own token is still live, meaning
+            // a connected client is about to receive a well-formed 200 with entries silently
+            // missing unless this is treated like any other mid-stream failure.
+
+            // We read the ambient token state to classify this cancellation, but we cannot establish
+            // that the token actually caused this exception. A race exists: if an unrelated internal
+            // cancellation throws while the caller's token happens to be canceled, we misclassify a
+            // real failure as a benign disconnect. Checking ex.CancellationToken instead is strictly
+            // worse—many sources leave it empty—so we accept this narrower gap as the lesser trade-off.
+            clientDisconnected = cancellationToken.IsCancellationRequested;
+            streamingException = ex;
         }
         catch (Exception ex)
         {
@@ -427,15 +800,23 @@ public static class StreamingBundleSerializer
             streamingException = ex;
         }
 
-        // If an exception occurred during streaming, write it as an error entry
+        // If an exception occurred during streaming, write it as an error entry - unless the client
+        // disconnected, in which case there is no reader left to show it to.
         // This ensures the bundle response is valid JSON with the error visible to the client
-        if (streamingException is not null)
+        if (streamingException is not null && !clientDisconnected)
         {
             WriteErrorEntry(writer, streamingException);
         }
 
-        // Write bundle footer - ALWAYS called to ensure valid JSON
-        await WriteBundleFooterAsync(writer, cancellationToken);
+        // Write bundle footer - ALWAYS called to ensure valid JSON. An already-canceled
+        // `cancellationToken` (client disconnect) makes FlushAsync throw immediately instead of
+        // completing the body, so any failure closes with CancellationToken.None - the same
+        // rationale documented on every tiered entry point's error-close helper.
+        await WriteBundleFooterAsync(writer, streamingException is null ? cancellationToken : CancellationToken.None);
+
+        return streamingException is null
+            ? StreamingBundleResult.Success
+            : new StreamingBundleResult(Succeeded: false, streamingException, clientDisconnected);
     }
 
     /// <summary>
@@ -444,28 +825,149 @@ public static class StreamingBundleSerializer
     /// </summary>
     private static void WriteErrorEntry(FhirJsonWriter writer, Exception exception)
     {
+        WriteErrorEntry(writer, new IssueComponent("fatal", "exception", Diagnostics: $"Streaming serialization failed: {exception.Message}"));
+    }
+
+    /// <summary>
+    /// Writes the batch-response/transaction-response error entry shape: <c>response.status = "500 Internal Server Error"</c>
+    /// plus the OperationOutcome as <c>resource</c>. Shared by both the streaming-exception path and
+    /// <see cref="WriteOperationOutcomeEntry"/> so the shape is defined exactly once.
+    /// </summary>
+    private static void WriteErrorEntry(FhirJsonWriter writer, IssueComponent issue)
+    {
         writer.WriteStartObject();
 
-        // Write response with 500 status
         writer.WriteStartObject("response");
         writer.WriteString("status", "500 Internal Server Error");
         writer.WriteEndObject(); // end response
 
-        // Write OperationOutcome as resource
+        WriteOperationOutcomeResource(writer, issue);
+
+        writer.WriteEndObject(); // end entry
+    }
+
+    /// <summary>
+    /// Writes one fatal OperationOutcome bundle entry into an already-open <c>entry</c> array,
+    /// shaped by <paramref name="bundleType"/> and, for history bundles, <paramref name="fhirVersion"/>.
+    /// Shapes are specified in the mid-stream error handling design (§3) and must not be re-derived.
+    /// </summary>
+    internal static void WriteOperationOutcomeEntry(
+        FhirJsonWriter writer,
+        IssueComponent issue,
+        string bundleType,
+        FhirVersion fhirVersion,
+        string fullUrl,
+        string selfUrl)
+    {
+        // Falls back to the same "_history" literal ResolveHistorySelfUrl uses: selfUrl is
+        // caller-supplied (SerializeAsync always passes string.Empty, inert only because it never
+        // reaches "history" today), and WriteString rejects empty values -- which would otherwise
+        // throw inside the catch and replace the original exception.
+        string resolvedSelfUrl = string.IsNullOrEmpty(selfUrl) ? "_history" : selfUrl;
+
+        switch (bundleType)
+        {
+            case "searchset":
+                writer.WriteStartObject();
+                writer.WriteString("fullUrl", fullUrl);
+                WriteOperationOutcomeResource(writer, issue);
+                writer.WriteObject("search", w => w.WriteString("mode", "outcome"));
+                writer.WriteEndObject();
+                break;
+
+            case "history" when fhirVersion >= FhirVersion.R4:
+                writer.WriteStartObject();
+                writer.WriteString("fullUrl", fullUrl);
+                writer.WriteObject("request", w => w
+                    .WriteString("method", "GET")
+                    .WriteString("url", resolvedSelfUrl));
+                writer.WriteObject("response", w =>
+                {
+                    w.WriteString("status", "500");
+                    w.WriteStartObject("outcome");
+                    WriteOperationOutcomeBody(w, issue);
+                    w.WriteEndObject();
+                });
+                writer.WriteEndObject();
+                break;
+
+            case "history":
+                writer.WriteStartObject();
+                writer.WriteString("fullUrl", fullUrl);
+                WriteOperationOutcomeResource(writer, issue);
+                writer.WriteObject("request", w => w
+                    .WriteString("method", "GET")
+                    .WriteString("url", resolvedSelfUrl));
+                writer.WriteEndObject();
+                break;
+
+            case "batch-response":
+            case "transaction-response":
+                WriteErrorEntry(writer, issue);
+                break;
+
+            default:
+                writer.WriteStartObject();
+                writer.WriteString("fullUrl", fullUrl);
+                WriteOperationOutcomeResource(writer, issue);
+                writer.WriteEndObject();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Writes a <c>resource</c> property carrying an OperationOutcome for a single issue.
+    /// </summary>
+    private static void WriteOperationOutcomeResource(FhirJsonWriter writer, IssueComponent issue)
+    {
         writer.WriteStartObject("resource");
+        WriteOperationOutcomeBody(writer, issue);
+        writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// Writes the body of an OperationOutcome (resourceType and single-issue array) into the
+    /// currently open object.
+    /// </summary>
+    private static void WriteOperationOutcomeBody(FhirJsonWriter writer, IssueComponent issue)
+    {
         writer.WriteString("resourceType", "OperationOutcome");
 
         writer.WriteStartArray("issue");
         writer.WriteStartObject();
-        writer.WriteString("severity", "fatal");
-        writer.WriteString("code", "exception");
-        writer.WriteString("diagnostics", $"Streaming serialization failed: {exception.Message}");
-        writer.WriteEndObject(); // end issue
-        writer.WriteEndArray(); // end issue array
+        writer.WriteString("severity", issue.Severity);
+        writer.WriteString("code", issue.Code);
 
-        writer.WriteEndObject(); // end resource (OperationOutcome)
+        if (!string.IsNullOrEmpty(issue.Diagnostics))
+        {
+            writer.WriteString("diagnostics", issue.Diagnostics);
+        }
 
-        writer.WriteEndObject(); // end entry
+        writer.WriteEndObject();
+        writer.WriteEndArray();
+    }
+
+    /// <summary>
+    /// Writes one complete entry response into the scratch writer, then copies the finished bytes into
+    /// the response writer as a single raw array element.
+    /// Staging keeps the response writer between complete entries at all times, so a mid-entry failure
+    /// in <see cref="WriteEntryResponse"/> - notably its validating <see cref="FhirJsonWriter.WriteRawProperty"/>
+    /// call on corrupt <see cref="BundleEntryResponse.ResourceJson"/> - dirties only the scratch buffer,
+    /// leaving the main writer closable.
+    /// </summary>
+    private static void WriteBufferedEntryResponse(
+        FhirJsonWriter writer,
+        FhirJsonWriter entryWriter,
+        ArrayBufferWriter<byte> entryBuffer,
+        BundleEntryResponse response)
+    {
+        WriteEntryResponse(entryWriter, response);
+
+        // The scratch buffer holds nothing until the writer is flushed into it.
+        entryWriter.UnderlyingWriter.Flush();
+        writer.UnderlyingWriter.WriteRawValue(entryBuffer.WrittenSpan, skipInputValidation: true);
+        entryBuffer.Clear();
+        entryWriter.UnderlyingWriter.Reset(entryBuffer);
     }
 
     /// <summary>
@@ -536,16 +1038,47 @@ public static class StreamingBundleSerializer
             return;
         }
 
+        var linksWithUrl = links.Where(link => !string.IsNullOrWhiteSpace(link.Url)).ToList();
+        if (linksWithUrl.Count == 0)
+        {
+            return;
+        }
+
         writer.WriteStartArray("link");
 
-        foreach (var link in links)
+        foreach (var link in linksWithUrl)
         {
             writer.WriteStartObject();
             writer.WriteString("relation", link.GetRelationRaw() ?? "self");
-            writer.WriteString("url", link.Url ?? string.Empty);
+            writer.WriteString("url", link.Url!);
             writer.WriteEndObject();
         }
 
+        writer.WriteEndArray();
+    }
+
+    /// <summary>
+    /// Writes a string array property, skipping null, empty, or whitespace-only values.
+    /// Skips emitting the array entirely if nothing survives the filter.
+    /// </summary>
+    private static void WriteNonEmptyStringArray(FhirJsonWriter writer, string propertyName, IReadOnlyList<string>? values)
+    {
+        if (values == null || values.Count == 0)
+        {
+            return;
+        }
+
+        var nonEmptyValues = values.Where(value => !string.IsNullOrWhiteSpace(value)).ToList();
+        if (nonEmptyValues.Count == 0)
+        {
+            return;
+        }
+
+        writer.WriteStartArray(propertyName);
+        foreach (var value in nonEmptyValues)
+        {
+            writer.WriteStringValue(value);
+        }
         writer.WriteEndArray();
     }
 
@@ -629,6 +1162,26 @@ public static class StreamingBundleSerializer
     }
 
     /// <summary>
+    /// Validates that every issue's Severity/Code is present. Both are written through
+    /// <see cref="FhirJsonWriter.WriteString"/>, which rejects empty values; calling this before any
+    /// writing keeps that throw inside the guarded region (recoverable) instead of letting it surface
+    /// from <see cref="WriteBundleIssues"/>, which runs after the guard closes on R5 tenants.
+    /// </summary>
+    private static void ValidateBundleIssues(IReadOnlyList<IssueComponent>? issues)
+    {
+        if (issues == null)
+        {
+            return;
+        }
+
+        foreach (var issue in issues)
+        {
+            EnsureArg.IsNotNullOrWhiteSpace(issue.Severity, nameof(issue.Severity));
+            EnsureArg.IsNotNullOrWhiteSpace(issue.Code, nameof(issue.Code));
+        }
+    }
+
+    /// <summary>
     /// Writes Bundle.issues as a complete OperationOutcome resource.
     /// Per FHIR spec, Bundle.issues is an OperationOutcome resource (not just an array).
     /// https://build.fhir.org/bundle.html
@@ -673,25 +1226,8 @@ public static class StreamingBundleSerializer
                 writer.WriteString("diagnostics", issue.Diagnostics);
             }
 
-            if (issue.Location != null && issue.Location.Count > 0)
-            {
-                writer.WriteStartArray("location");
-                foreach (var location in issue.Location)
-                {
-                    writer.WriteStringValue(location);
-                }
-                writer.WriteEndArray();
-            }
-
-            if (issue.Expression != null && issue.Expression.Count > 0)
-            {
-                writer.WriteStartArray("expression");
-                foreach (var expr in issue.Expression)
-                {
-                    writer.WriteStringValue(expr);
-                }
-                writer.WriteEndArray();
-            }
+            WriteNonEmptyStringArray(writer, "location", issue.Location);
+            WriteNonEmptyStringArray(writer, "expression", issue.Expression);
 
             writer.WriteEndObject();
         }
@@ -725,7 +1261,7 @@ public static class StreamingBundleSerializer
         writer.WriteStartObject();
 
         // Full URL: Use a synthetic URL for the outcome entry
-        writer.WriteString("fullUrl", "urn:uuid:operation-outcome");
+        writer.WriteString("fullUrl", "urn:uuid:00000000-0000-0000-0000-0000000000d0");
 
         // Resource: OperationOutcome
         writer.WriteStartObject("resource");
@@ -744,25 +1280,8 @@ public static class StreamingBundleSerializer
                 writer.WriteString("diagnostics", issue.Diagnostics);
             }
 
-            if (issue.Location != null && issue.Location.Count > 0)
-            {
-                writer.WriteStartArray("location");
-                foreach (var location in issue.Location)
-                {
-                    writer.WriteStringValue(location);
-                }
-                writer.WriteEndArray();
-            }
-
-            if (issue.Expression != null && issue.Expression.Count > 0)
-            {
-                writer.WriteStartArray("expression");
-                foreach (var expr in issue.Expression)
-                {
-                    writer.WriteStringValue(expr);
-                }
-                writer.WriteEndArray();
-            }
+            WriteNonEmptyStringArray(writer, "location", issue.Location);
+            WriteNonEmptyStringArray(writer, "expression", issue.Expression);
 
             writer.WriteEndObject();
         }
@@ -913,3 +1432,24 @@ public static class StreamingBundleSerializer
 /// <param name="ContinuationToken">Token for fetching the next page of results.</param>
 /// <param name="RenderedCount">Number of entries actually rendered (should be pageSize or less).</param>
 public record PaginationResult(bool HasMore, string? ContinuationToken, int RenderedCount);
+
+/// <summary>
+/// Outcome of <see cref="StreamingBundleSerializer.SerializeStreamAsync"/>. The batch/transaction
+/// response is already committed to the client by the time this returns, so nothing here can change
+/// the HTTP status - it exists purely so the caller can log what actually happened instead of
+/// unconditionally reporting success.
+/// </summary>
+/// <param name="Succeeded">True when every entry response streamed with no exception or cancellation.</param>
+/// <param name="Exception">The exception (including <see cref="OperationCanceledException"/>) that ended the stream early, or null on success.</param>
+/// <param name="ClientDisconnected">
+/// True when <paramref name="Exception"/> is cancellation raised because the caller's own
+/// <c>cancellationToken</c> was signaled - i.e. nobody is listening for the response any more, so a
+/// quiet log (if any) is appropriate. False for every other failure, including cancellation raised by
+/// some other source (a linked token inside the entry producer, an internal timeout): that truncates
+/// a live, connected client's response and warrants a normal error log.
+/// </param>
+public sealed record StreamingBundleResult(bool Succeeded, Exception? Exception, bool ClientDisconnected)
+{
+    /// <summary>The result for a bundle that streamed every entry successfully.</summary>
+    public static readonly StreamingBundleResult Success = new(true, null, false);
+}

@@ -51,7 +51,7 @@ internal static class Program
                 // tell "declined" from "crashed before doing anything" apart. This is exactly the
                 // failure mode for an unknown/inactive tenant, a non-SQL-Server or misconfigured
                 // storage type, an unparseable connection string, a missing --config file, or a
-                // missing embedded schema dacpac -- see TenantConnectionStringResolver.ResolveAsync
+                // missing embedded schema dacpac -- see TenantConnectionStringResolver.ResolveForSchemaDeploymentAsync
                 // and RunAsync's AddJsonFile/GetManifestResourceStream calls.
                 Console.Error.WriteLine($"Error: {ex.Message}");
                 return 3;
@@ -79,7 +79,7 @@ internal static class Program
         ITenantConfigurationStore tenantConfigurationStore =
             new AppSettingsTenantConfigurationStore(configuration, NullLogger<AppSettingsTenantConfigurationStore>.Instance);
 
-        var connectionString = await TenantConnectionStringResolver.ResolveAsync(tenantConfigurationStore, tenantId, cancellationToken);
+        var connectionString = await TenantConnectionStringResolver.ResolveForSchemaDeploymentAsync(tenantConfigurationStore, tenantId, cancellationToken);
 
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream("Ignixa.DataLayer.SqlServer.Schema.dacpac")
             ?? throw new InvalidOperationException("Embedded schema dacpac not found.");

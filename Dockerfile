@@ -53,10 +53,8 @@ COPY src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySd
 COPY src/DataLayer/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj src/DataLayer/Ignixa.DataLayer.BlobStorage/
 COPY src/DataLayer/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj src/DataLayer/Ignixa.DataLayer.FileSystem/
 COPY src/DataLayer/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj src/DataLayer/Ignixa.DataLayer.InMemoryIndex/
-COPY src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/
 COPY src/DataLayer/Ignixa.DataLayer.SqlServer/Ignixa.DataLayer.SqlServer.csproj src/DataLayer/Ignixa.DataLayer.SqlServer/
-# The SQL Database Project (.sqlproj) is in Ignixa.Web's transitive graph: SqlEntityFramework ->
-# SqlServer -> Database. SqlServer embeds the .dacpac this project produces, and the ProjectReference
+# The SQL Database Project (.sqlproj) is in Ignixa.Web's transitive graph: SqlServer -> Database. SqlServer embeds the .dacpac this project produces, and the ProjectReference
 # to it only enforces build order (ReferenceOutputAssembly=false). It must be present in the restore
 # layer so `dotnet restore` can walk the graph and `dotnet publish --no-restore` can build it.
 COPY src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj src/DataLayer/Ignixa.DataLayer.SqlServer.Database/

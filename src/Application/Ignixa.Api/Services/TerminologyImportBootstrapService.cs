@@ -4,9 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Events.Terminology;
-using Ignixa.DataLayer.SqlEntityFramework;
+using Ignixa.Domain.Abstractions;
 using Medino;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -14,56 +13,60 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Api.Services;
 
 /// <summary>
-/// Bootstrap service that triggers terminology imports for existing packages on startup.
-/// Scans all tenants for packages with pending terminology resources and creates orchestrations.
-/// Runs once after package preload completes.
+/// Triggers terminology imports for packages already loaded, once, at startup. Covers the resources that
+/// were stored before terminology auto-import was switched on, and anything a previous run left
+/// non-terminal.
+/// <para>
+/// Reads through <see cref="IPackageResourceRepository"/> rather than a tenant-scoped <c>FhirDbContext</c>.
+/// The EF version opened a context for tenant 1 and explained the choice as "the system partition doesn't
+/// have terminology resources", which described the wrong thing: <c>dbo.PackageResource</c> is not
+/// partitioned at all, so there was never more than one place to look.
+/// </para>
 /// </summary>
 public class TerminologyImportBootstrapService : BackgroundService
 {
+    // The tenant stamped on the published event, for the import orchestration's request context. It does
+    // not select which resources are found -- package content is global.
+    private const int OrchestrationTenantId = 1;
+
+    private static readonly TimeSpan DefaultStartupDelay = TimeSpan.FromSeconds(5);
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<TerminologyImportBootstrapService> _logger;
+    private readonly TimeSpan _startupDelay;
 
     public TerminologyImportBootstrapService(
         IServiceProvider serviceProvider,
-        ILogger<TerminologyImportBootstrapService> logger)
+        ILogger<TerminologyImportBootstrapService> logger,
+        TimeSpan? startupDelay = null)
     {
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _startupDelay = startupDelay ?? DefaultStartupDelay;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            // Wait a bit for package preload to complete
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            // Package preload runs as its own hosted service with no completion signal to wait on, so this
+            // is a delay rather than a handshake. Anything it stores after the scan is covered by
+            // PackageLoadedTerminologyImportHandler instead.
+            if (_startupDelay > TimeSpan.Zero)
+            {
+                await Task.Delay(_startupDelay, stoppingToken);
+            }
 
             _logger.LogInformation("Starting terminology import bootstrap scan...");
 
             using var scope = _serviceProvider.CreateScope();
-            var repositoryFactory = scope.ServiceProvider.GetRequiredService<SqlEntityFrameworkRepositoryFactory>();
+            var packageResources = scope.ServiceProvider.GetRequiredService<IPackageResourceRepository>();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-            // Scan tenant 1 only (system partition doesn't have terminology resources)
-            var tenantId = 1;
+            var pending = await packageResources.ListPendingTerminologyImportsAsync(
+                packageId: null, packageVersion: null, stoppingToken);
 
-            using var context = await repositoryFactory.GetDbContextAsync(tenantId, stoppingToken);
-
-            // Group pending terminology resources by package
-            var packageGroups = await context.PackageResources
-                .Where(pr => pr.IsActive)
-                .Where(pr => pr.ResourceType == "CodeSystem" || pr.ResourceType == "ValueSet" || pr.ResourceType == "ConceptMap")
-                .Where(pr => pr.TerminologyImportStatus == null || pr.TerminologyImportStatus == "Pending" || pr.TerminologyImportStatus == "Failed")
-                .GroupBy(pr => new { pr.PackageId, pr.PackageVersion })
-                .Select(g => new
-                {
-                    g.Key.PackageId,
-                    g.Key.PackageVersion,
-                    ResourceIds = g.Select(pr => pr.PackageResourceId).ToList()
-                })
-                .ToListAsync(stoppingToken);
-
-            if (packageGroups.Count == 0)
+            if (pending.Count == 0)
             {
                 _logger.LogInformation("No pending terminology imports found");
                 return;
@@ -71,42 +74,12 @@ public class TerminologyImportBootstrapService : BackgroundService
 
             _logger.LogInformation(
                 "Found {PackageCount} package(s) with {ResourceCount} total pending terminology resources",
-                packageGroups.Count,
-                packageGroups.Sum(g => g.ResourceIds.Count));
+                pending.Count,
+                pending.Sum(p => p.PackageResourceIds.Count));
 
-            // Trigger import for each package
-            foreach (var package in packageGroups)
+            foreach (var package in pending)
             {
-                try
-                {
-                    _logger.LogInformation(
-                        "Triggering terminology import for {PackageId}@{PackageVersion} ({Count} resources)",
-                        package.PackageId,
-                        package.PackageVersion,
-                        package.ResourceIds.Count);
-
-                    var importEvent = new TerminologyImportTriggeredEvent(
-                        TenantId: tenantId,
-                        PackageId: package.PackageId,
-                        PackageVersion: package.PackageVersion,
-                        PackageResourceIds: package.ResourceIds);
-
-                    await mediator.PublishAsync(importEvent, stoppingToken);
-
-                    _logger.LogInformation(
-                        "Triggered orchestration for {PackageId}@{PackageVersion}",
-                        package.PackageId,
-                        package.PackageVersion);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(
-                        ex,
-                        "Failed to trigger terminology import for {PackageId}@{PackageVersion}: {Message}",
-                        package.PackageId,
-                        package.PackageVersion,
-                        ex.Message);
-                }
+                await TriggerAsync(mediator, package.PackageId, package.PackageVersion, package.PackageResourceIds, stoppingToken);
             }
 
             _logger.LogInformation("Terminology import bootstrap completed");
@@ -118,6 +91,51 @@ public class TerminologyImportBootstrapService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during terminology import bootstrap: {Message}", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// One package's failure must not stop the others being offered, which is why this catches per package
+    /// rather than around the loop.
+    /// </summary>
+    private async Task TriggerAsync(
+        IMediator mediator,
+        string packageId,
+        string packageVersion,
+        IReadOnlyList<long> packageResourceIds,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "Triggering terminology import for {PackageId}@{PackageVersion} ({Count} resources)",
+                packageId,
+                packageVersion,
+                packageResourceIds.Count);
+
+            await mediator.PublishAsync(
+                new TerminologyImportTriggeredEvent(
+                    TenantId: OrchestrationTenantId,
+                    PackageId: packageId,
+                    PackageVersion: packageVersion,
+                    PackageResourceIds: packageResourceIds),
+                cancellationToken);
+
+            _logger.LogInformation(
+                "Triggered orchestration for {PackageId}@{PackageVersion}", packageId, packageVersion);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to trigger terminology import for {PackageId}@{PackageVersion}: {Message}",
+                packageId,
+                packageVersion,
+                ex.Message);
         }
     }
 }

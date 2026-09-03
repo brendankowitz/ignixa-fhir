@@ -433,14 +433,14 @@ public static class ApplicationServicesRegistration
             .InstancePerDependency();
 
         // Search parameter sync handler
-        builder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Events.PackageLoadedSearchParameterSyncHandler>()
+        builder.RegisterType<Ignixa.Api.Events.PackageLoadedSearchParameterSyncHandler>()
             .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
             .InstancePerDependency();
 
         // Terminology import handler (conditional on config)
         if (terminologyAutoImportEnabled)
         {
-            builder.RegisterType<Ignixa.DataLayer.SqlEntityFramework.Events.PackageLoadedTerminologyImportHandler>()
+            builder.RegisterType<Ignixa.Api.Events.PackageLoadedTerminologyImportHandler>()
                 .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
                 .InstancePerDependency();
         }

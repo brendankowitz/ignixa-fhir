@@ -8,13 +8,14 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
 using Ignixa.DataLayer.FileSystem.FileSystem;
 using Ignixa.DataLayer.InMemoryIndex;
-using Ignixa.DataLayer.SqlEntityFramework;
-using Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement;
-using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.DataLayer.SqlServer;
+using Ignixa.DataLayer.SqlServer.Features.PackageManagement;
+using Ignixa.DataLayer.SqlServer.Features.Terminology;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
-using Microsoft.EntityFrameworkCore;
+using Ignixa.Domain.Terminology;
+using Microsoft.Extensions.Options;
 using Microsoft.IO;
 
 namespace Ignixa.Api.Registrations;
@@ -35,8 +36,10 @@ public static class DataLayerRegistration
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        // MultiTenantSearchIndexCache (per-tenant cache for search index reference data)
-        services.AddSingleton<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>();
+        // One SqlServer reference-data cache per tenant, shared by the write path and the package-load
+        // search-parameter sync. Singleton because the identity of the instance is the point: a sync against
+        // any other instance leaves the write path dropping index rows.
+        services.AddSingleton<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>();
 
         // SchemaDeployer (DacFx-based schema deployment for brand-new, empty tenant databases)
         services.AddIgnixaSqlServerSchemaDeployment(configuration);
@@ -134,15 +137,17 @@ public static class DataLayerRegistration
             .SingleInstance();
 
         // Register background job repository module
-        builder.RegisterModule<Infrastructure.BackgroundJobsModule>();
+        builder.RegisterModule(new Infrastructure.BackgroundJobsModule(configuration));
 
         // Register package resource repository
         RegisterPackageRepository(builder);
 
-        // Register SqlSystemRepository for system URL normalization
-        builder.RegisterType<SqlSystemRepository>()
-            .As<ISystemRepository>()
-            .InstancePerDependency();
+        // ISystemRepository is deliberately not registered. The EF registration here could never resolve --
+        // SqlSystemRepository needs a FhirDbContext and only IDbContextFactory<FhirDbContext> is registered
+        // -- and nothing resolved it: its sole consumer, ImportTerminologyResourceActivity, constructs the
+        // repository and the importer by hand from a tenant-scoped context. Replacing a dead registration
+        // with an equally dead one would only look like wiring. Task 6 gives the terminology path its own
+        // per-tenant construction.
 
         return builder;
     }
@@ -161,14 +166,36 @@ public static class DataLayerRegistration
             .Named<ISearchServiceFactory>("FileSystem")
             .SingleInstance();
 
-        // SQL Entity Framework factory (implements both interfaces)
-        builder.Register(c => new SqlEntityFrameworkRepositoryFactory(
+        // Per-tenant database initialization: schema deploy -> upgrade -> search-parameter catalog seed
+        // -> reference-data preload, in that order, before any repository is handed out.
+        builder.Register(c => new SqlServerTenantInitializer(
+                c.Resolve<ISchemaDeployer>(),
+                c.Resolve<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>(),
+                c.Resolve<ILoggerFactory>().CreateLogger<SqlServerTenantInitializer>()))
+            .AsSelf()
+            .SingleInstance();
+
+        // The host's environment name, not ASPNETCORE_ENVIRONMENT off the process: a container that
+        // supplies its environment through configuration has no such variable, and reading it there
+        // silently disabled the Production credential guard.
+        builder.Register(c => new ManagedIdentityConnectionStringValidator(
+                environmentName,
+                c.Resolve<ILoggerFactory>().CreateLogger<ManagedIdentityConnectionStringValidator>()))
+            .AsSelf()
+            .SingleInstance();
+
+        // SQL Server factory (implements both interfaces). The "SqlEf" name is the DI key the composite
+        // factories resolve by, not a statement about the implementation: it is kept so
+        // CompositeRepositoryFactory/CompositeSearchServiceFactory -- which take the inner factory as a
+        // plain interface -- need no change. Tenant storage types "SqlEntityFramework" and "SqlServer" are
+        // a separate, unrelated vocabulary and both remain accepted.
+        builder.Register(c => new SqlServerTenantServiceFactory(
                 c.Resolve<ITenantConfigurationStore>(),
                 c.Resolve<ILoggerFactory>(),
                 c.Resolve<RecyclableMemoryStreamManager>(),
-                c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>(),
-                c.Resolve<ISchemaDeployer>(),
-                environmentName))
+                c.Resolve<SqlServerTenantInitializer>(),
+                c.Resolve<ManagedIdentityConnectionStringValidator>(),
+                c.Resolve<ISqlExecutionService>()))
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")
             .AsSelf()
@@ -250,32 +277,39 @@ public static class DataLayerRegistration
         .SingleInstance();
     }
 
+    // Package and conformance content is global rather than per-tenant, and lives in tenant 1's database.
+    private const int GlobalPackageTenantId = 1;
+
     private static void RegisterPackageRepository(ContainerBuilder builder)
     {
-        // Package repository DbContext factory (also used by event store)
-        builder.Register<PackageRepositoryDbContextFactory>(c =>
-        {
-            var tenantStore = c.Resolve<ITenantConfigurationStore>();
-            var loggerFactory = c.Resolve<ILoggerFactory>();
+        // PackageRepositoryDbContextFactory is deliberately not registered. Its only two consumers -- the EF
+        // SqlPackageResourceRepository and the EF SqlSourceEventStore -- were both replaced by raw-ADO.NET
+        // SqlServer implementations (below, and in ConformanceServicesRegistration), leaving nothing in the
+        // process that resolves IDbContextFactory<FhirDbContext>. Keeping the registration would only look
+        // like wiring, the same reason ISystemRepository above is left unregistered.
 
-            var tenantConfig = tenantStore.GetTenantConfigurationAsync(1, default).AsTask().GetAwaiter().GetResult();
-            if (tenantConfig == null || string.IsNullOrEmpty(tenantConfig.Storage.ConnectionString))
-            {
-                throw new InvalidOperationException(
-                    "Tenant 1 connection string is required for global package resource repository");
-            }
-
-            return new PackageRepositoryDbContextFactory(tenantConfig.Storage.ConnectionString, loggerFactory);
-        })
-        .As<IDbContextFactory<FhirDbContext>>()
-        .AsSelf()
-        .SingleInstance();
-
-        // SQL package resource repository
+        // SQL package resource repository (Phase F Task 5a: raw ADO.NET, no DbContext).
+        // Tenant 1 for the same reason the removed EF DbContext factory used it: package content is global,
+        // and dbo.PackageResource has no tenant column to scope it by.
         builder.Register<IPackageResourceRepository>(c =>
-            new SqlPackageResourceRepository(
-                c.Resolve<PackageRepositoryDbContextFactory>(),
-                c.Resolve<ILogger<SqlPackageResourceRepository>>()))
+            new SqlServerPackageResourceRepository(
+                c.Resolve<ISqlExecutionService>(),
+                GlobalPackageTenantId,
+                c.Resolve<ILogger<SqlServerPackageResourceRepository>>()))
+            .InstancePerDependency();
+
+        // Terminology importer factory. SystemPartitionId rather than GlobalPackageTenantId above: the
+        // terminology tables are server-wide and live in the system partition's database, matching the
+        // SqlServerTerminologyService registration in ValidationServicesRegistration. A factory rather than
+        // a direct ITerminologyImporter registration because the importer needs a reference-data cache that
+        // is produced asynchronously and must be the registry's instance -- see ITerminologyImporterFactory.
+        builder.Register<ITerminologyImporterFactory>(c =>
+            new SqlServerTerminologyImporterFactory(
+                c.Resolve<ISqlExecutionService>(),
+                c.Resolve<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>(),
+                SystemConstants.SystemPartitionId,
+                c.Resolve<ILoggerFactory>(),
+                c.Resolve<IOptions<SqlServerOptions>>().Value.TerminologyImportCommandTimeoutSeconds))
             .InstancePerDependency();
     }
 }

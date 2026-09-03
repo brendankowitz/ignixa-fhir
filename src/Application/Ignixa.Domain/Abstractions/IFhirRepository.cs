@@ -18,22 +18,22 @@ public interface IFhirRepository
     /// Retrieves a resource by key. Returns null if not found.
     /// Returns raw JSON bytes + metadata for zero-copy serialization.
     /// </summary>
-    ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken ct = default);
+    ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates or updates a resource. Returns the resource key, raw bytes, and metadata.
     /// Accepts ResourceJsonNode so data layer can set id/meta before final serialization.
     /// Returns UpdateResult with ResourceKey + raw bytes - only deserialize if needed.
     /// </summary>
-    ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default);
+    ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Allocates a new transaction ID for coordinated writes.
     /// Used by DeferredWriteCoordinator to get a transaction ID that will be used across multiple batches.
     /// </summary>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A new transaction ID.</returns>
-    ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken ct = default);
+    ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Batch write operation for bulk resource creation/updates.
@@ -44,20 +44,20 @@ public interface IFhirRepository
     /// <param name="transactionId">Transaction ID to use for this batch (from GetNextTransactionIdAsync).</param>
     /// <param name="operations">List of resources to write (resourceType, resourceId, resource, searchIndexes, httpMethod, entryIndex).
     /// The entryIndex is the bundle entry index (0-based) used to calculate unique surrogate IDs.</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of resource keys with versions.</returns>
     Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
         IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Commits a transaction by renaming the lock file to committed file.
     /// Should be called after all batches are complete.
     /// </summary>
     /// <param name="transactionId">Transaction ID to commit.</param>
-    /// <param name="ct">Cancellation token.</param>
-    ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken ct = default);
+    /// <param name="cancellationToken">Cancellation token.</param>
+    ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get transactions with lock files/records older than specified threshold.
@@ -66,11 +66,11 @@ public interface IFhirRepository
     /// SQL: Queries TransactionEntity table where IsCompleted = false AND HeartbeatDate is old.
     /// </summary>
     /// <param name="stallThreshold">Time threshold for considering a transaction stalled.</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of transaction IDs that are stalled and need to be committed.</returns>
     ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
         TimeSpan stallThreshold,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves version history for a specific resource instance.
@@ -81,12 +81,12 @@ public interface IFhirRepository
     /// </summary>
     /// <param name="key">Resource key (resourceType and resourceId, versionId ignored).</param>
     /// <param name="parameters">Query parameters (count, offset, since, until, sort).</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Async stream of search entry results (raw bytes for zero-copy serialization).</returns>
     IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
         ResourceKey key,
         HistoryQueryParameters parameters,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves version history for all resources of a given type.
@@ -98,13 +98,13 @@ public interface IFhirRepository
     /// <param name="resourceType">FHIR resource type (e.g., "Patient").</param>
     /// <param name="tenantId">Tenant partition ID.</param>
     /// <param name="parameters">Query parameters (count, offset, since, until, sort).</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Async stream of search entry results (raw bytes for zero-copy serialization).</returns>
     IAsyncEnumerable<SearchEntryResult> GetTypeHistoryAsync(
         string resourceType,
         int tenantId,
         HistoryQueryParameters parameters,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves version history across all resource types in the system.
@@ -115,12 +115,12 @@ public interface IFhirRepository
     /// </summary>
     /// <param name="tenantId">Tenant partition ID.</param>
     /// <param name="parameters">Query parameters (count, offset, since, until, sort).</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Async stream of search entry results (raw bytes for zero-copy serialization).</returns>
     IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
         int tenantId,
         HistoryQueryParameters parameters,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes a resource (soft delete per FHIR R4 specification).
@@ -141,7 +141,7 @@ public interface IFhirRepository
     /// <param name="key">Resource key (resourceType and resourceId, versionId ignored).</param>
     /// <param name="request">HTTP request metadata (method, URL).</param>
     /// <param name="transactionId">Optional transaction ID for bundle operations.</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
     /// ResourceKey with new deleted version, or null if resource never existed.
     /// </returns>
@@ -149,18 +149,18 @@ public interface IFhirRepository
         ResourceKey key,
         ResourceRequest request,
         TransactionId? transactionId = null,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets expired resources from TTL table (ExpiresAt &lt; now).
     /// Used by TTL cleanup background job.
     /// </summary>
     /// <param name="batchSize">Maximum number of expired resources to return.</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of expired resource metadata (ResourceTypeId, ResourceId, ExpiresAt).</returns>
     Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
         int batchSize,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Hard deletes a resource: removes all versions, all search indexes, and TTL entry.
@@ -169,9 +169,9 @@ public interface IFhirRepository
     /// </summary>
     /// <param name="resourceTypeId">Resource type ID (short).</param>
     /// <param name="resourceId">Resource ID (string).</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     Task HardDeleteResourceAsync(
         short resourceTypeId,
         string resourceId,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 }

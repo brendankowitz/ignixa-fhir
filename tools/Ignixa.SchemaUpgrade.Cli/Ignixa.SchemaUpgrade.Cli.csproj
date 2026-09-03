@@ -5,13 +5,21 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Ignixa.SchemaUpgrade.Cli</RootNamespace>    <NoWarn>CA1303,CA1869,CA1861,CA2000,CA1031,CA1852,IDE0073,CA1307,CA1310,CA1849</NoWarn>
+    <RootNamespace>Ignixa.SchemaUpgrade.Cli</RootNamespace>
+    <!-- AssemblyName deliberately left at the default (matches the project name): this assembly
+         consumes Ignixa.DataLayer.SqlServer's internal SqlExecutionService.ResolveConnectionStringAsync
+         via InternalsVisibleTo, which is granted by assembly name, not project name. -->
+    <NoWarn>CA1303,CA1869,CA1861,CA2000,CA1031,CA1852,IDE0073,CA1307,CA1310,CA1849</NoWarn>
   </PropertyGroup>
 
   <!-- NuGet Package & Tool Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <PackageStability>stable</PackageStability>
+    <!-- alpha, not stable: this tool references Ignixa.DataLayer.SqlServer and Ignixa.Application, both
+         alpha, and ADR 2606 forbids a public-feed package being more stable than what it depends on. It was
+         declared stable when added, which PackageStabilityGuardTests caught. Graduate this only when those
+         dependencies graduate. -->
+    <PackageStability>alpha</PackageStability>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ignixa-schema-upgrade</ToolCommandName>
     <PackageId>Ignixa.SchemaUpgrade.Cli</PackageId>
@@ -22,6 +30,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.SchemaUpgrade.Cli.Tests" />
+    <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1167,7 +1167,7 @@ public static class FhirEndpoints
                 bool pretty = context.Request.Query.GetPrettyParameter();
 
                 // Stream responses directly to HTTP (headers are now locked)
-                await StreamingBundleSerializer.SerializeStreamAsync(
+                var streamResult = await StreamingBundleSerializer.SerializeStreamAsync(
                     outputStream: context.Response.Body,
                     bundleType: "batch-response",
                     entryResponses: streamingContext.ResponseStream,
@@ -1180,7 +1180,22 @@ public static class FhirEndpoints
                 // Complete background tasks
                 await streamingContext.CompleteAsync();
 
-                logger.LogInformation("Successfully processed bundle (streaming mode)");
+                // The response body is already committed at this point (design doc Section 8), so the
+                // HTTP status cannot change - but a failed or truncated bundle must not be logged as a
+                // success, or there is nothing left for anyone to alert on.
+                if (streamResult.Succeeded)
+                {
+                    logger.LogInformation("Successfully processed bundle (streaming mode)");
+                }
+                else if (streamResult.ClientDisconnected)
+                {
+                    // Nobody is listening for this response any more - log quietly rather than as an error.
+                    logger.LogDebug(streamResult.Exception, "Client disconnected while streaming bundle response");
+                }
+                else
+                {
+                    logger.LogError(streamResult.Exception, "Streaming bundle response ended early; a fatal entry was appended for the client");
+                }
 
                 // Response already written to stream
                 return Results.Empty;
@@ -1492,7 +1507,7 @@ public static class FhirEndpoints
         var queryParameters = queryParser.Parse(context.Request.Query);
 
         // Build SearchOptions for base-level search (resourceType = null for system-wide search)
-        // This will search across all resource types (handled by SqlEntityFrameworkSearchService)
+        // This will search across all resource types (handled by the configured search service)
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
@@ -1690,8 +1705,23 @@ public static class FhirEndpoints
     /// Returns a BadRequest result if an unsupported modifier was used, or if strict handling is
     /// requested and unsupported parameters exist.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An unknown or unsupported <i>parameter</i> SHOULD be ignored — proxies and HTTP stacks inject
+    /// parameters the client never sent, and the self link reports what was actually used — so it only
+    /// fails the request when the client asked for <c>Prefer: handling=strict</c>.
+    /// </para>
+    /// <para>
+    /// An unsupported <i>modifier</i> is a SHALL: "Server SHALL reject any search request that ... is
+    /// suffixed by a modifier that the server does not support for that parameter ... using an HTTP 400
+    /// error". Ignoring one does not narrow the query, it widens it — <c>_id:above=abc</c> would return
+    /// every resource — and the client cannot tell that from a filter that matched everything. So it fails
+    /// by default and only an explicit <c>handling=lenient</c> downgrades it to the bundle warning the
+    /// search options already carry.
+    /// </para>
+    /// </remarks>
     /// <param name="context">The HTTP context.</param>
-    /// <param name="searchOptions">The search options containing unsupported params.</param>
+    /// <param name="searchOptions">The search options carrying the unsupported parameter lists.</param>
     /// <param name="resourceType">Optional resource type for error message context.</param>
     /// <param name="logger">Logger for warnings.</param>
     /// <returns>BadRequest result if the request must be rejected, null otherwise.</returns>
@@ -1704,9 +1734,18 @@ public static class FhirEndpoints
         // FHIR R4 SHALL rejects a search suffixed by a modifier the server does not support for that
         // parameter (https://hl7.org/fhir/R4/search.html#modifiers), unlike an unsupported *parameter*,
         // which only SHOULD be rejected and is opt-in via Prefer: handling=strict below. Silently
-        // dropping the modifier would widen the result set instead of narrowing it, so this check is
-        // unconditional -- it does not depend on the Prefer header.
-        if (searchOptions.UnsupportedModifierParams.Count > 0)
+        // dropping the modifier would widen the result set instead of narrowing it, so rejecting is the
+        // default whenever the client has not said otherwise.
+        //
+        // handling=lenient is the client saying otherwise, and it is not an error case: R4's
+        // http.html#2.21.0.2 has the server ignore what it could not honour and report it, which is what
+        // the reference implementation does -- 200, a warning issue in the bundle, and the offending
+        // parameter dropped from the self link. All three already happen for free here, because the
+        // builder records an unsupported modifier in BOTH UnsupportedParams (which drives the bundle
+        // warning and the self-link filter) and UnsupportedModifierParams (which drives this rejection).
+        // So the only thing lenient has to do is decline to reject.
+        if (searchOptions.UnsupportedModifierParams.Count > 0 &&
+            !PreferHeaderParser.IsLenientHandling(context.Request.Headers))
         {
             logger.LogWarning(
                 "Unsupported search modifier(s) found: {UnsupportedModifierParams}",
@@ -1722,7 +1761,7 @@ public static class FhirEndpoints
         }
 
         logger.LogWarning(
-            "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
+            "Rejecting search: unsupported parameters {UnsupportedParams}",
             string.Join(", ", searchOptions.UnsupportedParams.Select(p => p.SanitizeForLog())));
 
         return BuildUnsupportedParametersResult(searchOptions.UnsupportedParams, resourceType, isModifierRejection: false);

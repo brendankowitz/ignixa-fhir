@@ -78,8 +78,11 @@ public class SearchOptionsForwardingTests
         SearchOptions executed = CapturedOptions();
         ShouldKeepConstraints(executed, options);
 
-        // The one property this handler deliberately varies: pageSize + 1 for has-more detection.
-        executed.MaxItemCount.ShouldBe(options.MaxItemCount + 1);
+        // The one property this handler deliberately varies: it asks for a probe row rather than inflating
+        // the page size, so the data layer still knows which rows are genuinely on the page.
+        executed.MaxItemCount.ShouldBe(options.MaxItemCount);
+        executed.ProbeExtraRow.ShouldBeTrue();
+        options.ProbeExtraRow.ShouldBeFalse();
 
         // Total=Accurate also runs a COUNT. It must carry the same constraints, or the count leaks the
         // cardinality of resources the caller may not read.
@@ -118,6 +121,10 @@ public class SearchOptionsForwardingTests
         executed.MaxItemCount.ShouldBe(options.MaxItemCount * 10);
         executed.IncludesContinuationToken.ShouldBeNull();
         executed.IncludesMaxItemCount.ShouldBeNull();
+
+        // $includes wants every row of its widened match budget on the page: it is mining those rows for
+        // their includes, and a row treated as a probe contributes none.
+        executed.ProbeExtraRow.ShouldBeFalse();
     }
 
     [Fact]

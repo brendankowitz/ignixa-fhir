@@ -25,6 +25,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlServer/Ignixa.DataLayer.SqlServer.csproj" />
+    <ProjectReference Include="../../tools/Ignixa.SchemaUpgrade.Cli/Ignixa.SchemaUpgrade.Cli.csproj" />
+    <!-- Hosts ImportTerminologyResourceActivity, exercised end to end against a real database. -->
+    <ProjectReference Include="../../src/Application/Ignixa.Application.BackgroundOperations/Ignixa.Application.BackgroundOperations.csproj" />
   </ItemGroup>
 
   <ItemGroup>

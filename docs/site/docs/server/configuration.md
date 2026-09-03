@@ -24,7 +24,7 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
         "IsActive": true,
         "IsSystemPartition": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "InheritConnectionStringFromTenant": true
         }
       },
@@ -34,7 +34,7 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
         "FhirVersion": "4.0",
         "IsActive": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "ConnectionString": "Server=localhost;Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
         }
       }
@@ -50,7 +50,7 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
 | `Mode` | `Isolated` - each tenant has separate data. (`Distributed` planned but not yet implemented) |
 | `TenantId` | Unique identifier. `0` is reserved for system operations |
 | `FhirVersion` | `4.0` (R4), `4.3` (R4B), `5.0` (R5), or `6.0` (R6) |
-| `Storage.Type` | `SqlEntityFramework` (recommended) |
+| `Storage.Type` | `SqlServer` (recommended). `SqlEntityFramework` is accepted as a legacy alias for the same storage. |
 | `InheritConnectionStringFromTenant` | System partition inherits from Tenant 1 |
 
 ### Hostname-based Tenant Resolution
@@ -67,7 +67,7 @@ Each tenant may declare a `Hostnames` array to enable resolution by request `Hos
         "TenantId": 1,
         "DisplayName": "Production Database",
         "Hostnames": ["fhir1.example.org", "fhir1-backup.example.org"],
-        "Storage": { "Type": "SqlEntityFramework", "ConnectionString": "..." }
+        "Storage": { "Type": "SqlServer", "ConnectionString": "..." }
       }
     ]
   }
@@ -136,7 +136,7 @@ For production SQL Server:
 ```json
 {
   "Storage": {
-    "Type": "SqlEntityFramework",
+    "Type": "SqlServer",
     "ConnectionString": "Server=your-server.database.windows.net;Database=FHIR_R4;Authentication=Active Directory Default;TrustServerCertificate=true"
   }
 }
@@ -147,7 +147,7 @@ For local development with Windows Auth:
 ```json
 {
   "Storage": {
-    "Type": "SqlEntityFramework",
+    "Type": "SqlServer",
     "ConnectionString": "Server=(local);Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
   }
 }
@@ -225,6 +225,54 @@ the tenant database must already exist before the first request for that tenant 
 
 ```bash
 export SqlServer__AutomaticSchemaDeploymentEnabled=true
+```
+
+## Terminology Import Timeout
+
+Terminology packages (CodeSystem, ValueSet, ConceptMap) import through a handful of SQL Server commands
+that can carry a whole CodeSystem's or ValueSet's worth of rows in one call. The `SqlServer` section also
+controls how long those commands are allowed to run before ADO.NET gives up on them.
+
+```json
+{
+  "SqlServer": {
+    "TerminologyImportCommandTimeoutSeconds": 120
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `TerminologyImportCommandTimeoutSeconds` | `120` | `SqlCommand.CommandTimeout`, in seconds, for the terminology import procedures and the ValueSet compose-resolution reads that can run before them |
+
+Left unset, `SqlCommand` defaults to ADO.NET's 30-second timeout. A command that overruns it is classified
+as a transient SQL failure and retried up to three more times before the import is marked `Failed` — and
+`Failed` is not a terminal status, so the same package is re-offered and re-fails on every subsequent
+startup. This setting covers:
+
+- `dbo.ImportTermCodeSystem`, `dbo.ImportTermValueSet` and `dbo.ImportTermConceptMap` — the three
+  procedures that insert a whole CodeSystem, ValueSet or ConceptMap as a table-valued parameter and
+  resolve its hierarchy server-side in one transaction.
+- The reads `SqlServerValueSetComposer` runs to resolve a ValueSet's `compose` element *before*
+  `dbo.ImportTermValueSet` runs. These can be just as large: an `include` naming a whole CodeSystem with
+  no `concept` or `filter` array reads every concept in that system, and an `include` naming a previously
+  expanded ValueSet reads every one of its rows.
+
+:::note
+Measured against a local, otherwise-idle SQL Server: importing 100,000 flat concepts took under 2 seconds,
+a 350,000-concept import (SNOMED CT's rough scale) took under 6 seconds, and re-importing 100,000 concepts
+(a cascade delete of the previous import plus a full re-insert) took about 3 seconds. Real CodeSystems
+carry per-concept `property` and `designation` payloads that benchmark did not, and a production database
+adds network latency, a lower-throughput SKU, and lock contention from concurrent terminology activity on
+top of that baseline — the default of 120 seconds is set well above the measured numbers, not at them.
+Raise it further for Azure SQL deployments seeing terminology import failures under real package sizes or
+concurrent load; a genuinely stuck command still fails eventually rather than hanging forever.
+:::
+
+### Environment variable override
+
+```bash
+export SqlServer__TerminologyImportCommandTimeoutSeconds=180
 ```
 
 ## Blob Storage
@@ -599,7 +647,7 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
         "IsActive": true,
         "IsSystemPartition": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "InheritConnectionStringFromTenant": true
         }
       },
@@ -609,7 +657,7 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
         "FhirVersion": "4.0",
         "IsActive": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "ConnectionString": "Server=sql.example.com;Database=FHIR_R4;Authentication=Active Directory Default"
         }
       }

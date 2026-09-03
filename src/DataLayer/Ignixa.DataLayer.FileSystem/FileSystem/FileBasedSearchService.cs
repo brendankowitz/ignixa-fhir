@@ -39,9 +39,34 @@ public partial class FileBasedSearchService : ISearchService
         _searchQueryInterpreter = new SearchQueryInterpreter();
     }
 
+    /// <summary>
+    /// Rows one page must read: the caller's page, plus a lookahead row when the caller asked for one via
+    /// <see cref="SearchOptions.ProbeExtraRow"/>. Returning exactly <see cref="SearchOptions.MaxItemCount"/>
+    /// unconditionally would leave a paged caller unable to tell a full last page from a full middle one,
+    /// since the probe row is the only signal it has that a further page exists.
+    /// </summary>
+    private static int FetchCount(SearchOptions options)
+        => options.MaxItemCount + (options.ProbeExtraRow ? 1 : 0);
+
+    /// <summary>
+    /// A reusable, content-free sentinel: <see cref="SearchEntryResult.IsPagingProbe"/> is the only
+    /// thing about it a consumer may read, so one immutable instance safely stands in for every
+    /// probe-row miss across every search. Mirrors SqlServerCompiledSearchService's own sentinel of
+    /// the same name.
+    /// </summary>
+    private static readonly SearchEntryResult PagingProbeSentinel = new(
+        ResourceType: string.Empty,
+        ResourceId: string.Empty,
+        VersionId: string.Empty,
+        LastModified: DateTimeOffset.UnixEpoch,
+        ResourceBytes: ReadOnlyMemory<byte>.Empty)
+    {
+        IsPagingProbe = true,
+    };
+
     public async ValueTask<IReadOnlyList<SearchEntryResult>> SearchAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
         where TSearchOptions : class
     {
         if (searchOptions is not SearchOptions options)
@@ -51,80 +76,23 @@ public partial class FileBasedSearchService : ISearchService
 
         LogSearching(_logger, options.ResourceType, options.Expression != null);
 
-        var resourceType = options.ResourceType;
-
-        // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
-
-        if (allMetadata.Count == 0)
-        {
-            LogNoResourcesFound(_logger, resourceType);
-            return Array.Empty<SearchEntryResult>();
-        }
-
-        LogLoadedMetadata(_logger, allMetadata.Count, resourceType);
-
-        // Step 2: Apply search expression filter if provided
-        IEnumerable<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> filteredMetadata = allMetadata;
-
-        if (options.Expression != null)
-        {
-            LogApplyingSearchFilter(_logger);
-
-            // Convert expression to predicate using SearchQueryInterpreter
-            var predicate = options.Expression.AcceptVisitor(_searchQueryInterpreter, default);
-
-            // Apply predicate to filter metadata
-            filteredMetadata = predicate(allMetadata);
-
-            int filteredCount = filteredMetadata.Count();
-            LogSearchFilterResults(_logger, allMetadata.Count, filteredCount);
-        }
-
-        // Step 2.5: Apply surrogate ID range filtering for export partitioning
-        // For file-based storage, we use index position as the "surrogate ID"
-        if (options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue)
-        {
-            var filteredList = filteredMetadata.ToList();
-            filteredMetadata = filteredList
-                .Skip((int)options.StartSurrogateId.Value)
-                .Take((int)(options.EndSurrogateId.Value - options.StartSurrogateId.Value + 1));
-
-            LogSurrogateIdRangeFilter(_logger, options.StartSurrogateId.Value, options.EndSurrogateId.Value);
-        }
-
-        // Step 3: Apply pagination
-        int skip = 0; // TODO: Parse continuation token
-        int take = options.MaxItemCount;
-
-        var pagedKeys = filteredMetadata
-            .Skip(skip)
-            .Take(take)
-            .Select(m => m.Location)
-            .ToList();
-
-        LogPagination(_logger, skip, take, pagedKeys.Count);
-
-        // Step 4: Load ONLY the matching resources (not all resources)
+        // Delegates to SearchStreamAsync instead of duplicating its metadata scan, filtering,
+        // pagination and paging-probe substitution: this method has no production caller of its
+        // own (it isn't part of ISearchService) to exercise a second copy of that logic, so a
+        // second copy is a second place for the same bug to hide -- see
+        // FileBasedSearchServiceProbeRowTests and FileBasedSearchServiceSearchAsyncTests.
         var results = new List<SearchEntryResult>();
-        foreach (var key in pagedKeys)
+        await foreach (var entry in SearchStreamAsync(searchOptions, cancellationToken).ConfigureAwait(false))
         {
-            var resource = await _repository.GetAsync(key, ct);
-            if (resource != null)
-            {
-                results.Add(resource);
-            }
+            results.Add(entry);
         }
-
-        int totalMatching = filteredMetadata.Count();
-        LogSearchResults(_logger, results.Count, totalMatching, take);
 
         return results;
     }
 
     public async IAsyncEnumerable<SearchEntryResult> SearchStreamAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
         where TSearchOptions : class
     {
         if (searchOptions is not SearchOptions options)
@@ -137,7 +105,7 @@ public partial class FileBasedSearchService : ISearchService
         var resourceType = options.ResourceType;
 
         // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, cancellationToken);
 
         if (allMetadata.Count == 0)
         {
@@ -178,7 +146,7 @@ public partial class FileBasedSearchService : ISearchService
 
         // Step 3: Apply pagination
         int skip = 0; // TODO: Parse continuation token
-        int take = options.MaxItemCount;
+        int take = FetchCount(options);
 
         var pagedKeys = filteredMetadata
             .Skip(skip)
@@ -190,15 +158,27 @@ public partial class FileBasedSearchService : ISearchService
 
         // Step 4: Stream ONLY the matching resources
         int streamed = 0;
-        foreach (var key in pagedKeys)
+        for (var i = 0; i < pagedKeys.Count; i++)
         {
-            ct.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var resource = await _repository.GetAsync(key, ct);
+            var resource = await _repository.GetAsync(pagedKeys[i], cancellationToken);
             if (resource != null)
             {
                 streamed++;
                 yield return resource;
+                continue;
+            }
+
+            // FileBasedFhirRepository.GetAsync returns null here for a resource its own metadata
+            // scan (Step 1 above) already reported as present -- a concurrent delete race, the
+            // only way this branch is reached: a genuinely corrupt/missing NDJSON file throws
+            // instead (see GetAsync's own try/catch). A plain skip would let a probe row's proof
+            // that a further page exists vanish along with it, the same silent-truncation defect
+            // fcbc8f8b fixed for the SQL Server data layer -- see SearchEntryResult.IsPagingProbe.
+            if (i >= options.MaxItemCount)
+            {
+                yield return PagingProbeSentinel;
             }
         }
 
@@ -208,7 +188,7 @@ public partial class FileBasedSearchService : ISearchService
 
     public async ValueTask<int> CountAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
         where TSearchOptions : class
     {
         if (searchOptions is not SearchOptions options)
@@ -221,7 +201,7 @@ public partial class FileBasedSearchService : ISearchService
         var resourceType = options.ResourceType;
 
         // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, cancellationToken);
 
         if (allMetadata.Count == 0)
         {
@@ -261,12 +241,12 @@ public partial class FileBasedSearchService : ISearchService
     public async Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
         string resourceType,
         int numberOfRanges,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         LogGettingExportRanges(_logger, resourceType, numberOfRanges);
 
         // Load metadata for resource type
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, cancellationToken);
 
         if (allMetadata.Count == 0)
         {
@@ -325,9 +305,6 @@ public partial class FileBasedSearchService : ISearchService
 
     [LoggerMessage(EventId = 7, Level = LogLevel.Debug, Message = "Pagination: Skip={Skip}, Take={Take}, Results={ResultCount}")]
     private static partial void LogPagination(ILogger logger, int skip, int take, int resultCount);
-
-    [LoggerMessage(EventId = 8, Level = LogLevel.Information, Message = "Search returned {Count} results (total matching: {Total}, page size: {PageSize})")]
-    private static partial void LogSearchResults(ILogger logger, int count, int total, int pageSize);
 
     [LoggerMessage(EventId = 9, Level = LogLevel.Information, Message = "Streaming search for {ResourceType} resources (Expression: {HasExpression})")]
     private static partial void LogStreamingSearch(ILogger logger, string resourceType, bool hasExpression);

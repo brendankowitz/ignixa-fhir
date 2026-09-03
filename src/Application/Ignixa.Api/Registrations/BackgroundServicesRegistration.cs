@@ -38,9 +38,6 @@ public static class BackgroundServicesRegistration
         // Tenant package preload service
         services.AddHostedService<TenantPackagePreloadService>();
 
-        // SQL reference data preload handler
-        services.AddSingleton<SqlReferenceDataPreloadHandler>();
-
         // Terminology import bootstrap service (conditional)
         if (terminologyAutoImportEnabled)
         {
