@@ -13,6 +13,10 @@ public static class ServiceCollectionExtensions
         services.Configure<SqlServerOptions>(configuration.GetSection(SqlServerOptions.SectionName));
         services.AddSingleton<ISchemaDeployer, SchemaDeployer>();
         services.AddSingleton<ISchemaVersionResolver, SchemaVersionResolver>();
+        services.AddSingleton<ISqlExecutionService, SqlExecutionService>();
+        services.AddSingleton<ISqlResourceIndexWriter, SqlResourceIndexWriter>();
+        services.AddSingleton<ILastNCodeGroupBackfillService, LastNCodeGroupBackfillService>();
+        services.AddSingleton<ILastNSearchExecutor, LastNSearchExecutor>();
         return services;
     }
 }

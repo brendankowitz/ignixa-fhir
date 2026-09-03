@@ -32,6 +32,7 @@ public class ResultShapeUnionTests
         data.Add(typeof(ResultShape.Count.AllMatches));
         data.Add(typeof(ResultShape.Count.CurrentSortPhase));
         data.Add(typeof(ResultShape.IncludesPage));
+        data.Add(typeof(ResultShape.LastN));
         data.Add(typeof(SearchPaging.Keyset));
         data.Add(typeof(SearchPaging.Offset));
         return data;
@@ -68,7 +69,7 @@ public class ResultShapeUnionTests
             .Where(t => typeof(ResultShape).IsAssignableFrom(t) && t != typeof(ResultShape) && !t.IsAbstract)
             .Select(t => t.Name)
             .OrderBy(n => n, StringComparer.Ordinal)
-            .ShouldBe(["AllMatches", "CurrentSortPhase", "IncludesPage", "Matches"]);
+            .ShouldBe(["AllMatches", "CurrentSortPhase", "IncludesPage", "LastN", "Matches"]);
     }
 
     [Fact]

@@ -24,6 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/Core/Ignixa.Search.Sql/Ignixa.Search.Sql.csproj" />
     <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlServer/Ignixa.DataLayer.SqlServer.csproj" />
   </ItemGroup>
 

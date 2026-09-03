@@ -226,6 +226,32 @@ Malformed key or value syntax raises `InvalidSearchOperationException` with a po
 
 The mandatory BenchmarkDotNet result and acceptance decision are recorded in [the handwritten syntax parser comparison](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/features/search/benchmarks/2026-07-11-handwritten-syntax-parser-comparison.md). The comparison uses the unchanged public-facade harness and six inputs against the original handwritten baseline. The replacement was classified as **Mixed**, with a -6.31% geometric-mean time change, and all ratified performance limits passed. It was not classified as **Faster**; no speedup is claimed.
 
+## Observation `$lastn`
+
+`Ignixa.Search` models `$lastn` separately from ordinary paging, and
+`Ignixa.Search.Sql` compiles it as a terminal, tie-inclusive `RANK()` shape.
+SQL Server execution requires a `Ready` materialized Observation code-group
+generation. A missing, pending, building, or failed generation returns an
+explicit unavailable error; the compiler never falls back to query-time graph
+construction.
+
+For R4 and later required-input validation, code-bearing search parameters are
+classified from the version-specific FHIRPath analyzer's inferred result types.
+Direct `Coding`, `CodeableConcept`, and primitive `code` results qualify,
+including composite components and custom parameters whose path does not contain
+a segment named `code`. Traversing through a code-bearing element does not
+qualify when the expression ultimately returns a non-code descendant.
+
+Backfill workers persist committed surrogate-id progress and hold a bounded
+lease. A competing worker is rejected while that lease is live; after expiry, a
+new worker atomically takes over the same snapshot generation and resumes from
+the first uncommitted range.
+
+The initial shape rejects `_sort`, `_count`, continuation tokens, `_include`,
+and `_revinclude`. The server does not advertise an HTTP `$lastn` route until
+the Application handler, endpoint, and capability statement are added in a
+separate reviewed change.
+
 ## Related Documentation
 
 - [Search Parameters](/docs/server/fhir/search-parameters)

@@ -157,6 +157,17 @@ public static class PlanExplainer
             rows.Add(new PlanExplainRow("countOnly", "countOnly", PlanRowKind.CountOnly, "true", []));
         }
 
+        if (plan.EffectiveShape is ResultShape.LastN lastN)
+        {
+            LastNSpec spec = lastN.Spec;
+            rows.Add(new PlanExplainRow(
+                "lastN",
+                "lastN",
+                PlanRowKind.LastN,
+                $"LastNSpec(type={spec.ResourceTypeId}, code={spec.CodeSearchParamId}, date={spec.EffectiveDateSearchParamId}, max={cursor.Next(spec.Maximum)})",
+                []));
+        }
+
         // Both directions matter: Next() catches an explain that renders a parameter out of order, this
         // catches one that renders too few.
         cursor.RequireFullyConsumed();

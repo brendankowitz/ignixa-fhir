@@ -219,6 +219,22 @@ new ResultShape.Count.CurrentSortPhase();           // ...restricted to the segm
 new ResultShape.IncludesPage(Resume: null);         // $includes: the include stages only, as one stream
 ```
 
+`CreateLastNPlanAsync(LastNSearchOptions)` produces the operation-specific
+`ResultShape.LastN`. The existing match CTE remains the candidate set; the terminal
+shape first verifies the scope's `Ready` materialized generation, then joins
+`dbo.LastNObservationCodeGroup`. It emits coded groups before case-sensitive
+text-only groups. Within a group, dated observations are newest first with
+`RANK()` tie expansion. Missing effective dates follow dated rows and use
+descending surrogate id only among the missing rows. Ordinary sorting, paging,
+`_include`, and `_revinclude` are rejected.
+
+`Ignixa.Search.Sql` only compiles this shape. Execution is provided by
+`Ignixa.DataLayer.SqlServer.ILastNSearchExecutor`; it is never provided by
+`SqlEntityFrameworkSearchService`. A missing or non-`Ready` generation emits SQL
+error `50403`, which the direct executor exposes as `LastNUnavailableException`;
+the compiler never emits a query-time code graph fallback. The application has not
+yet added an HTTP `$lastn` route.
+
 Paging hangs off `Matches` because that is the only shape that pages. A count reads the whole match set, and
 an includes page carries its own boundary in `IncludesPage.Resume` — so neither has a second paging
 coordinate that could contradict it.
@@ -272,6 +288,7 @@ is what a caller totalling the two phases separately needs.
 | **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, [two-phase missing-value sort](#two-phase-missing-value-sort) | caller drives the phases |
 | **Counting** | `ResultShape.Count` | `COUNT_BIG(DISTINCT …)`; the caller sets the shape — `_summary=count` / `_total` are not read |
 | **Missing** | `:missing` for leaf and composite parameters | |
+| **Observation `$lastn`** | `ResultShape.LastN` | terminal, tie-inclusive `RANK()` over ready materialized code groups; direct SQL Server executor only |
 
 ## Comparator semantics
 

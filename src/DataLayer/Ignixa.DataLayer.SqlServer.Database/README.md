@@ -30,3 +30,26 @@ assumed.
 
 There is no ongoing generation step: this schema was vendored once and is maintained by hand
 going forward, the same way EF Core migrations are.
+
+## Ignixa-owned `$lastn` materialization
+
+The `LastNCodeIdentity`, `LastNObservationCodeMembership`, `LastNCodeEdge`,
+`LastNObservationCodeGroup`, `LastNCodeGroupGeneration`, and
+`LastNCodeGroupDirtyObservation` tables, `LastNResourceScopeList` TVP, and
+`*AndMaintainLastNGroups` and generation procedures are Ignixa-owned additions.
+They are not vendored from `microsoft/fhir-server` and must not be overwritten by
+an upstream schema refresh.
+
+These objects materialize exact, current Observation code equivalence per
+`(ResourceTypeId, SearchParamId)` scope. The wrapper procedures keep the
+vendored base procedure bodies and existing TVPs unchanged, acquire
+transaction-owned `LastNCodeGroup:{ResourceTypeId}:{SearchParamId}` locks in
+lexicographic scope order, and maintain graph rows in the same transaction as
+the base resource write. `LastNCodeGroupGeneration` admits reads only when its
+state is `Ready`; `Pending`, `Building`, and `Failed` remain explicit unavailable
+states until a resumable generation completes. A building row durably stores its
+current attempt, bounded lease expiry, snapshot high water, and highest committed
+backfill surrogate id. Start serializes live-owner rejection or expired-lease
+takeover under the scope lock; every batch advances progress and renews the lease
+in the same transaction as materialization. Batch, completion, and failure
+procedures require the current attempt id.
