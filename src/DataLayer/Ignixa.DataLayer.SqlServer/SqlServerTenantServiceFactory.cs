@@ -125,12 +125,23 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
 
     private async Task<TenantServices> GetOrInitializeTenantAsync(int tenantId, CancellationToken cancellationToken)
     {
+        // Before the lookup, because the wait below cannot be relied on to do it. Task.WaitAsync(token)
+        // returns the task unchanged when it is ALREADY COMPLETE -- the runtime checks IsCompleted before it
+        // checks the token -- and on the warm path (steady state, after a tenant's first request) it always
+        // is. Every read and every write for every tenant arrives here, so without this a cancelled caller
+        // was handed its services and kept working under load-shedding. Note the contrast with
+        // SemaphoreSlim.WaitAsync(token), which does observe the token even when it can be satisfied
+        // immediately; that is why the _dbLock sites elsewhere in this assembly need no equivalent. Matches
+        // SqlServerSearchIndexCacheRegistry.GetOrCreateAsync, which has the same Lazy<Task> shape.
+        cancellationToken.ThrowIfCancellationRequested();
+
         var entry = _tenantServices.GetOrAdd(
             tenantId,
             id => new Lazy<Task<TenantServices>>(
                 // CancellationToken.None: the result is shared by every subsequent request for this tenant,
-                // so one caller's cancellation must not abandon a half-deployed schema for all of them. The
-                // caller's own token still releases it from the wait below.
+                // so one caller's cancellation must not abandon a half-deployed schema for all of them.
+                // While that initialization is still running, the caller's own token does release it from
+                // the wait below; once it has completed, only the guard above observes cancellation.
                 () => InitializeTenantAsync(id, CancellationToken.None),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
