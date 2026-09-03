@@ -290,12 +290,20 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
     /// The history flip must then match nothing and the delete must fail as the conflict it is -- rather
     /// than re-stamping a row that is already history and inserting a tombstone at a version that is no
     /// longer current, which is how two rows end up with <c>IsHistory = 0</c> for one resource.
+    /// <para>
+    /// The 409 also has to name the right row. The surrogate ID the delete read is the one ID that is
+    /// definitely NOT current by the time the flip matches nothing, so reporting it as the conflicting
+    /// "existing" ID sends whoever debugs the 409 to the row that is not the problem.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task GivenAConcurrentWriterVersionsTheRowAfterTheDeleteReadIt_WhenTheHistoryFlipRuns_ThenItDoesNotReStampTheHistoryRowAndTheDeleteFails()
     {
         const string ResourceId = "delete-stale-surrogate-1";
         await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ResourceId), CancellationToken.None);
+
+        var surrogateIdTheDeleteWillRead = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
 
         var (interceptor, repository) = await CreateInterceptedRepositoryAsync();
 
@@ -312,8 +320,15 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
             await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ResourceId), CancellationToken.None);
         };
 
-        await Should.ThrowAsync<ResourceVersionConflictException>(async () => await repository.DeleteAsync(
+        var conflict = await Should.ThrowAsync<ResourceVersionConflictException>(async () => await repository.DeleteAsync(
             new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None));
+
+        var surrogateIdThatIsActuallyCurrent = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
+        surrogateIdThatIsActuallyCurrent.ShouldNotBe(surrogateIdTheDeleteWillRead);
+        conflict.ExistingSurrogateId.ShouldBe(
+            surrogateIdThatIsActuallyCurrent,
+            "the 409 names the surrogate ID the delete read, which is the one row that is certainly not the conflict");
 
         // Exactly the concurrent writer's state, and nothing of the delete's.
         (await CountAsync($"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = '{ResourceId}'")).ShouldBe(2);
@@ -360,13 +375,270 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         everythingElse.ShouldAllBe(call => call.Idempotency == SqlCommandIdempotency.Idempotent);
     }
 
+    /// <summary>
+    /// The two statements the rest of this class never observes. Every other test here injects at ordinal
+    /// 2, the tombstone insert, so ordinal 3 (the TTL removal) and ordinal 4 (the fifteen-table index wipe)
+    /// run after the injection point and are never watched. A regression that put the TTL removal back on
+    /// its own auto-committed connection -- passing <c>transaction: null</c> to
+    /// <c>UpsertResourceTtlAsync</c> -- would leave all of them green: the TTL row's disappearance is
+    /// invisible until something fails AFTER it, which is exactly what this injects.
+    /// <para>
+    /// The ordinal-to-statement map is asserted rather than assumed, because the whole test rests on
+    /// ordinal 3 being the TTL removal and ordinal 4 the wipe.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GivenAFailureAtTheSearchIndexWipe_WhenDeleteAsyncRuns_ThenTheTombstoneIsGoneAndTheTtlRowIsStillThere()
+    {
+        await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
+
+        const string ReferenceTargetId = "delete-wipe-rollback-target";
+        await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ReferenceTargetId), CancellationToken.None);
+
+        const string ResourceId = "delete-wipe-rollback-1";
+        var resource = new ResourceWrapper("Patient", ResourceId, "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{ResourceId}}"}"""),
+            new ResourceRequest("PUT", $"Patient/{ResourceId}"))
+        {
+            SearchIndices = SearchIndexTableSeeder.BuildSearchIndicesCoveringEverySearchIndexTable(ReferenceTargetId),
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30)
+        };
+        await _repository.CreateOrUpdateAsync(resource, CancellationToken.None);
+
+        var surrogateId = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
+        await SearchIndexTableSeeder.InsertResourceWriteClaimAsync(_database, surrogateId, CancellationToken.None);
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(_database, surrogateId, CancellationToken.None);
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.ResourceTtl WHERE ResourceId = '{ResourceId}'")).ShouldBe(1);
+
+        var (interceptor, repository) = await CreateInterceptedRepositoryAsync();
+        interceptor.FailBeforeNonQuery(4, new InvalidOperationException("injected failure before the search-index wipe"));
+
+        var thrown = await Should.ThrowAsync<InvalidOperationException>(async () => await repository.DeleteAsync(
+            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None));
+        thrown.Message.ShouldContain("injected failure");
+
+        interceptor.Disarm();
+
+        // The map this test depends on: 1 history flip, 2 tombstone insert, 3 TTL removal, 4 index wipe.
+        var statements = interceptor.NonQueryCommands;
+        statements.Count.ShouldBe(4);
+        statements[0].ShouldContain("UPDATE dbo.Resource SET IsHistory = 1");
+        statements[1].ShouldContain("INSERT INTO dbo.Resource");
+        statements[2].ShouldContain("DELETE FROM dbo.ResourceTtl");
+        statements[3].ShouldContain("DELETE FROM dbo.ReferenceSearchParam");
+
+        // The tombstone did not survive its own transaction's rollback.
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = '{ResourceId}'")).ShouldBe(1);
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsDeleted = 1")).ShouldBe(0);
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 1")).ShouldBe(0);
+
+        // And neither did the TTL removal, which is the assertion a `transaction: null` regression fails.
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.ResourceTtl WHERE ResourceId = '{ResourceId}'"))
+            .ShouldBe(1, "the TTL removal committed on its own rather than with the rest of the delete");
+
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(_database, surrogateId, CancellationToken.None);
+
+        var fetched = await _repository.GetAsync(new ResourceKey("Patient", ResourceId), CancellationToken.None);
+        fetched.ShouldNotBeNull();
+        fetched!.VersionId.ShouldBe("1");
+        fetched.IsDeleted.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// <c>HardDeleteResourceAsync</c> collects the resource's surrogate IDs into <c>@SurrogateIds</c> with a
+    /// plain SELECT -- no <c>UPDLOCK</c>, no <c>HOLDLOCK</c> -- and READ COMMITTED drops that statement's
+    /// shared locks at statement end no matter what transaction surrounds it. A writer can therefore commit
+    /// a whole new version, with a new surrogate ID, after the snapshot and before the batch ends.
+    /// <para>
+    /// What that used to cost: the fifteen index deletes are scoped to <c>@SurrogateIds</c>, but the final
+    /// resource delete matched on <c>(ResourceTypeId, ResourceId)</c> -- so it removed the new version's
+    /// resource row while leaving that version's search-index rows behind. Those rows are orphaned
+    /// PERMANENTLY, because the next hard delete for this resource ID finds no <c>dbo.Resource</c> row to
+    /// collect a surrogate ID from and so can never sweep them, and they still satisfy search queries
+    /// joining on <c>ResourceSurrogateId</c>: a hard-deleted resource that keeps coming back in search
+    /// results. Scoping the delete to <c>@SurrogateIds</c> leaves the new version alive with no history
+    /// instead, which is incomplete but coherent, and a later hard delete finishes it.
+    /// </para>
+    /// <para>
+    /// The interleaving is forced, not raced for: the batch is a single command, so there is nowhere for the
+    /// interceptor to stand inside it. A second connection takes an X lock on the resource's one
+    /// <c>dbo.ReferenceSearchParam</c> row instead -- the first of the fifteen tables, so the batch stalls
+    /// with its snapshot already taken, its shared read locks already released, and no other lock held --
+    /// and the racing version is committed while it is stalled there.
+    /// </para>
+    /// <para>
+    /// That racing version is written as the rows a concurrent PUT commits rather than by calling
+    /// <c>CreateOrUpdateAsync</c>, and it has to be: <c>MergeResources</c> deletes the previous version's
+    /// rows from all fifteen search-index tables, so a real PUT would want the very row this test is holding
+    /// locked and would block rather than race -- an artifact of forcing the interleaving, not anything the
+    /// production paths do to each other. Nothing about the hazard depends on which writer produced the
+    /// rows; it depends only on a version being committed whose surrogate ID the snapshot never saw.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GivenAConcurrentWriterVersionsTheResourceMidHardDelete_WhenTheHardDeleteCommits_ThenNoSearchIndexRowOutlivesItsResource()
+    {
+        await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
+
+        const string ReferenceTargetId = "hard-delete-race-target";
+        await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ReferenceTargetId), CancellationToken.None);
+
+        const string ResourceId = "hard-delete-race-1";
+        var resource = new ResourceWrapper("Patient", ResourceId, "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{ResourceId}}"}"""),
+            new ResourceRequest("PUT", $"Patient/{ResourceId}"))
+        {
+            SearchIndices = SearchIndexTableSeeder.BuildSearchIndicesCoveringEverySearchIndexTable(ReferenceTargetId),
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30)
+        };
+        await _repository.CreateOrUpdateAsync(resource, CancellationToken.None);
+
+        var sweptSurrogateId = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
+        await SearchIndexTableSeeder.InsertResourceWriteClaimAsync(_database, sweptSurrogateId, CancellationToken.None);
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(_database, sweptSurrogateId, CancellationToken.None);
+
+        var resourceTypeId = await _database.ExecuteScalarAsync<short>(
+            "SELECT ResourceTypeId FROM dbo.ResourceType WHERE Name = 'Patient'");
+
+        long survivingSurrogateId;
+        await using (var blocker = new SqlConnection(_database.ConnectionString))
+        {
+            await blocker.OpenAsync();
+            await using var blockerTransaction = (SqlTransaction)await blocker.BeginTransactionAsync();
+
+            // XLOCK without HOLDLOCK on purpose: exclusive row locks are held to the end of the transaction
+            // anyway, and a range lock here could block the concurrent writer's own inserts, which is the
+            // one thing that must stay free to run.
+            await using (var takeLock = blocker.CreateCommand())
+            {
+                takeLock.Transaction = blockerTransaction;
+
+                // CA2100 suppressed: the only interpolated value is a surrogate ID this test just read back
+                // out of dbo.Resource -- a long, never caller or user input -- matching how every other SQL
+                // helper in this suite is written.
+#pragma warning disable CA2100
+                takeLock.CommandText =
+                    $"SELECT COUNT(*) FROM dbo.ReferenceSearchParam WITH (XLOCK, ROWLOCK) WHERE ResourceSurrogateId = {sweptSurrogateId}";
+#pragma warning restore CA2100
+                ((int)(await takeLock.ExecuteScalarAsync())!).ShouldBeGreaterThan(0);
+            }
+
+            var hardDelete = Task.Run(async () =>
+                await _repository.HardDeleteResourceAsync(resourceTypeId, ResourceId, CancellationToken.None));
+
+            await WaitUntilSomethingIsBlockedAsync(hardDelete);
+
+            // The racing writer: a whole new version, with its own surrogate ID and its own search-index
+            // row, committed after the hard delete's snapshot was taken. Its index row goes in
+            // dbo.ResourceWriteClaim, the LAST of the fifteen tables, which the stalled batch has not
+            // reached and so holds no lock in.
+            survivingSurrogateId = sweptSurrogateId + 1;
+            await _database.ExecuteNonQueryAsync(
+                $"""
+                UPDATE dbo.Resource SET IsHistory = 1
+                WHERE ResourceTypeId = {resourceTypeId} AND ResourceSurrogateId = {sweptSurrogateId};
+
+                INSERT INTO dbo.Resource
+                    (ResourceTypeId, ResourceId, Version, IsHistory, ResourceSurrogateId, IsDeleted, RequestMethod, RawResource, IsRawResourceMetaSet, SearchParamHash, TransactionId)
+                SELECT ResourceTypeId, ResourceId, Version + 1, 0, {survivingSurrogateId}, 0, 'PUT', RawResource, IsRawResourceMetaSet, SearchParamHash, NULL
+                FROM dbo.Resource
+                WHERE ResourceTypeId = {resourceTypeId} AND ResourceSurrogateId = {sweptSurrogateId};
+
+                INSERT INTO dbo.ResourceWriteClaim (ResourceSurrogateId, ClaimTypeId, ClaimValue)
+                VALUES ({survivingSurrogateId}, 1, 'racing-writer');
+                """,
+                CancellationToken.None);
+
+            (await CountAsync($"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceSurrogateId = {survivingSurrogateId} AND IsHistory = 0"))
+                .ShouldBe(1, "the racing version was not committed, so nothing raced");
+
+            await blockerTransaction.CommitAsync();
+            await hardDelete.WaitAsync(TimeSpan.FromSeconds(60));
+        }
+
+        // The point of the whole test: nothing anywhere in the fifteen tables is left pointing at a resource
+        // row that no longer exists.
+        await AssertNoSearchIndexRowOutlivesItsResourceAsync();
+
+        // The sweep still did its job for the versions it snapshotted...
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(_database, sweptSurrogateId, CancellationToken.None);
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceSurrogateId = {sweptSurrogateId}")).ShouldBe(0);
+
+        // ...and the version it never saw is still whole: its row, its index row, and its expiry.
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.Resource WHERE ResourceSurrogateId = {survivingSurrogateId} AND IsHistory = 0"))
+            .ShouldBe(1, "the racing version's resource row was deleted even though its search-index rows were not swept");
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {survivingSurrogateId}")).ShouldBe(1);
+        (await CountAsync($"SELECT COUNT(*) FROM dbo.ResourceTtl WHERE ResourceId = '{ResourceId}'"))
+            .ShouldBe(1, "the surviving version is still live, so it must keep its expiry");
+
+        var fetched = await _repository.GetAsync(new ResourceKey("Patient", ResourceId), CancellationToken.None);
+        fetched.ShouldNotBeNull();
+        fetched!.IsDeleted.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Waits until the hard delete is really parked on the blocker's lock. A fixed delay would make the
+    /// test's whole premise a guess; if nothing ever blocks, say so rather than racing on regardless.
+    /// </summary>
+    private async Task WaitUntilSomethingIsBlockedAsync(Task hardDelete)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (hardDelete.IsCompleted)
+            {
+                await hardDelete; // surface its exception if it has one
+                throw new InvalidOperationException(
+                    "the hard delete finished without ever blocking, so the concurrent write cannot have landed mid-batch");
+            }
+
+            var blocked = await CountAsync(
+                "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE blocking_session_id <> 0 AND database_id = DB_ID()");
+            if (blocked > 0)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        throw new InvalidOperationException("the hard delete never blocked on the lock this test took out");
+    }
+
+    /// <summary>
+    /// A search-index row whose resource row is gone is unreachable: no hard delete will ever collect its
+    /// surrogate ID again, because collecting one requires a <c>dbo.Resource</c> row to read it from.
+    /// </summary>
+    private async Task AssertNoSearchIndexRowOutlivesItsResourceAsync()
+    {
+        foreach (var table in SearchIndexTableSeeder.SearchIndexTables)
+        {
+            var orphans = await CountAsync(
+                $"""
+                SELECT COUNT(*) FROM dbo.{table} AS s
+                WHERE NOT EXISTS (SELECT 1 FROM dbo.Resource AS r WHERE r.ResourceSurrogateId = s.ResourceSurrogateId)
+                """);
+            orphans.ShouldBe(
+                0,
+                $"dbo.{table} holds rows whose resource row is gone -- nothing can ever sweep them, and they still satisfy search queries joining on ResourceSurrogateId.");
+        }
+    }
+
     private Task<int> CountAsync(string sql) => _database.ExecuteScalarAsync<int>(sql);
 
     /// <summary>
     /// Switches this test class's own scratch database to snapshot reads. Run from <c>master</c> because a
     /// database cannot be altered from a connection inside it, and <c>WITH ROLLBACK IMMEDIATE</c> because
     /// the fixture's deploy leaves pooled connections behind that would otherwise block the change; the
-    /// pools are cleared on both sides so no killed connection is handed back out.
+    /// pool for this database is cleared on both sides so no killed connection is handed back out.
+    /// <para>
+    /// <see cref="SqlConnection.ClearAllPools"/> would do the same job and much more besides: it is
+    /// process-wide, so it would also tear down the pools of every other integration test class running in
+    /// parallel with this one. <see cref="SqlConnection.ClearPool"/> is scoped to one connection string,
+    /// and this scratch database's connection string is the only one whose connections are in the way.
+    /// </para>
     /// </summary>
     private async Task EnableReadCommittedSnapshotAsync()
     {
@@ -374,7 +646,7 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         var databaseName = builder.InitialCatalog;
         builder.InitialCatalog = "master";
 
-        SqlConnection.ClearAllPools();
+        ClearThisDatabasesConnectionPool();
 
         await using (var connection = new SqlConnection(builder.ConnectionString))
         {
@@ -390,7 +662,13 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
-        SqlConnection.ClearAllPools();
+        ClearThisDatabasesConnectionPool();
+    }
+
+    private void ClearThisDatabasesConnectionPool()
+    {
+        using var pooled = new SqlConnection(_database.ConnectionString);
+        SqlConnection.ClearPool(pooled);
     }
 
     private async Task<(NonQueryInterceptor Interceptor, SqlServerFhirRepository Repository)> CreateInterceptedRepositoryAsync()
@@ -440,14 +718,39 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
 
         public void FailBeforeNonQuery(int ordinal, Exception failure)
         {
-            _nonQueryCount = 0;
+            ResetOrdinals();
             BeforeNonQueryAsync = actual => actual == ordinal ? Task.FromException(failure) : Task.CompletedTask;
         }
 
         public void Disarm() => BeforeNonQueryAsync = null;
 
         /// <summary>Restarts the ordinal count, for hooks assigned directly rather than through <see cref="FailBeforeNonQuery"/>.</summary>
-        public void ResetOrdinals() => _nonQueryCount = 0;
+        public void ResetOrdinals()
+        {
+            _nonQueryCount = 0;
+            lock (_nonQueryCommands)
+            {
+                _nonQueryCommands.Clear();
+            }
+        }
+
+        private readonly List<string> _nonQueryCommands = [];
+
+        /// <summary>
+        /// The command text of every non-query since the last <see cref="ResetOrdinals"/>, indexed by
+        /// ordinal minus one -- including the one an injected failure stopped from running. Lets a test say
+        /// which statement an ordinal actually is instead of asserting it in a comment.
+        /// </summary>
+        public IReadOnlyList<string> NonQueryCommands
+        {
+            get
+            {
+                lock (_nonQueryCommands)
+                {
+                    return [.. _nonQueryCommands];
+                }
+            }
+        }
 
         private readonly List<(string CommandText, SqlCommandIdempotency Idempotency)> _readerCalls = [];
 
@@ -485,7 +788,8 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
             CancellationToken cancellationToken,
             SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         {
-            await OnNonQueryAsync();
+            ArgumentNullException.ThrowIfNull(command);
+            await OnNonQueryAsync(command);
             return await inner.ExecuteNonQueryAsync(tenantId, command, cancellationToken, idempotency);
         }
 
@@ -503,9 +807,14 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
             => inner.ExecuteInTransactionAsync(
                 tenantId, (context, ct) => work(new InterceptingTransactionContext(this, context), ct), cancellationToken);
 
-        private async Task OnNonQueryAsync()
+        private async Task OnNonQueryAsync(SqlCommand command)
         {
             var ordinal = Interlocked.Increment(ref _nonQueryCount);
+            lock (_nonQueryCommands)
+            {
+                _nonQueryCommands.Add(command.CommandText);
+            }
+
             var hook = BeforeNonQueryAsync;
             if (hook is not null)
             {
@@ -518,7 +827,8 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         {
             public async Task<int> ExecuteNonQueryAsync(SqlCommand command, CancellationToken cancellationToken)
             {
-                await owner.OnNonQueryAsync();
+                ArgumentNullException.ThrowIfNull(command);
+                await owner.OnNonQueryAsync(command);
                 return await inner.ExecuteNonQueryAsync(command, cancellationToken);
             }
 

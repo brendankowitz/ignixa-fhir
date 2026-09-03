@@ -42,6 +42,13 @@ public class SqlServerFhirRepository(
     private readonly int _tenantId = tenantId;
     private readonly SqlServerHistoryQueryExecutor _historyExecutor = new(sqlExecutionService, tenantId, compressor, logger);
 
+    /// <summary>
+    /// Reported as the conflicting version's surrogate ID when a delete loses its race and the resource has
+    /// no current row left at all -- a concurrent HARD delete rather than a concurrent version.
+    /// <see cref="ResourceVersionConflictException.ExistingSurrogateId"/> cannot express "none".
+    /// </summary>
+    private const long NoCurrentVersionSurrogateId = 0;
+
     private static readonly string[] SearchIndexTables =
     [
         "ReferenceSearchParam",
@@ -292,6 +299,17 @@ public class SqlServerFhirRepository(
                 // versioned the row in between would leave this re-stamping an already-history row,
                 // reporting success, and inserting the tombstone at a version that is no longer current.
                 // Zero rows means exactly that happened.
+                //
+                // This guard is also what makes the FROZEN surrogate ID above safe, which is the less
+                // obvious half of why it is load-bearing. GetNextSurrogateIdAsync encodes the wall clock at
+                // the moment the delete was asked for, so a writer that versions the row afterwards gets a
+                // surrogate that sorts ABOVE the tombstone's. Weakening this predicate -- dropping
+                // "IsHistory = 0", or letting a zero-row flip carry on -- would let the tombstone land BELOW
+                // a newer live version and invert the surrogate ordering that
+                // GetCurrentVersionOrderedBySurrogateIdAsync (ORDER BY ResourceSurrogateId DESC),
+                // MergeResources.sql (which raises 50409 on "SurrogateId <= PreviousSurrogateId") and the
+                // filtered unique index IX_Resource_ResourceTypeId_ResourceId in Resource.sql (one current
+                // row per resource) all lean on.
                 using (var historyCommand = new SqlCommand(
                     """
                     UPDATE dbo.Resource SET IsHistory = 1, HistoryTransactionId = @HistoryTransactionId
@@ -306,7 +324,29 @@ public class SqlServerFhirRepository(
                     var flippedRows = await transaction.ExecuteNonQueryAsync(historyCommand, ct);
                     if (flippedRows == 0)
                     {
-                        throw new ResourceVersionConflictException(key.ResourceType, key.Id, newSurrogateId, currentSurrogateId);
+                        // currentSurrogateId is the one ID that is definitely NOT current any more -- that is
+                        // what zero rows means -- so reporting it as the conflicting "existing" ID points
+                        // whoever debugs the 409 at the row that is not the problem. Read the ID that really
+                        // is current, on this transaction's own connection so the read cannot block behind
+                        // this transaction's own locks. One extra round trip, only on a path that is already
+                        // failing.
+                        using var conflictingVersionCommand = new SqlCommand(
+                            """
+                            SELECT TOP (1) ResourceSurrogateId FROM dbo.Resource
+                            WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId AND IsHistory = 0
+                            ORDER BY Version DESC;
+                            """);
+                        conflictingVersionCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
+                        conflictingVersionCommand.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = key.Id;
+
+                        var conflictingRows = await transaction.ExecuteReaderAsync(
+                            conflictingVersionCommand, reader => reader.GetInt64(0), ct);
+
+                        throw new ResourceVersionConflictException(
+                            key.ResourceType,
+                            key.Id,
+                            newSurrogateId,
+                            conflictingRows.Count == 0 ? NoCurrentVersionSurrogateId : conflictingRows[0]);
                     }
                 }
 
@@ -625,12 +665,13 @@ public class SqlServerFhirRepository(
     }
 
     /// <inheritdoc/>
-    // Ports SqlEntityFrameworkRepository.cs:989-1026 nearly verbatim -- already raw SQL in the
-    // original (the one method in the whole port with no LINQ to translate), so only the execution
-    // wrapper changes (ExecuteSqlInterpolatedAsync -> a parameterized SqlCommand via
-    // ISqlExecutionService). Statement sequence unchanged: stash surrogate IDs, delete every
-    // search-index table row for them, delete every dbo.Resource row (current + history), then delete
-    // the dbo.ResourceTtl entry.
+    // Started as a near-verbatim port of SqlEntityFrameworkRepository.cs:989-1026 -- already raw SQL in
+    // the original (the one method in the whole port with no LINQ to translate), so at first only the
+    // execution wrapper changed (ExecuteSqlInterpolatedAsync -> a parameterized SqlCommand via
+    // ISqlExecutionService). The statement SEQUENCE is still the original's -- stash surrogate IDs,
+    // delete every search-index table row for them, delete the dbo.Resource rows, delete the
+    // dbo.ResourceTtl entry -- but the last two statements' predicates are no longer the original's;
+    // see the comment inside for what a concurrent writer did to them.
     public async Task HardDeleteResourceAsync(
         short resourceTypeId,
         string resourceId,
@@ -647,6 +688,31 @@ public class SqlServerFhirRepository(
         // hard delete finds no resource to collect surrogate IDs from. The EF original had the same
         // shape; it is not a regression, but it is the same missing primitive as the soft-delete path
         // above and the same one-line fix.
+        //
+        // What the transaction does NOT do is freeze the set of rows being deleted, and the batch below is
+        // written on the assumption that it does not. The snapshot SELECT takes no UPDLOCK and no HOLDLOCK,
+        // and READ COMMITTED releases its shared read locks at statement end regardless of the surrounding
+        // transaction -- so a concurrent PUT can commit a whole new version, with a new surrogate ID,
+        // after @SurrogateIds has been filled and before the batch reaches its end. That is why the final
+        // resource DELETE is scoped to @SurrogateIds rather than to (ResourceTypeId, ResourceId): scoped to
+        // the resource ID it would remove the new version's row while the fifteen index deletes above,
+        // which ARE scoped to @SurrogateIds, left that version's index rows untouched. Those rows would then
+        // be orphans PERMANENTLY -- the next hard delete for this resource ID finds no dbo.Resource row to
+        // collect a surrogate ID from and so can never sweep them -- and they still satisfy search queries
+        // joining on ResourceSurrogateId, which is a hard-deleted resource that keeps appearing in search
+        // results. Scoping the DELETE leaves the racing writer's version alive with no history instead:
+        // incomplete, but coherent, and the next hard delete finishes the job.
+        //
+        // UPDLOCK/HOLDLOCK on the snapshot would close the race rather than tolerate it, but at the price of
+        // range-locking every version of the resource for the length of an eighteen-statement batch --
+        // blocking, and giving deadlocks a lock order to find -- and it is not worth that for a background
+        // sweep whose whole job is repeatable.
+        //
+        // SET XACT_ABORT ON is about the seventeen statements AFTER a failing one, not about atomicity:
+        // without it, a statement-level error inside an explicit transaction aborts only that statement and
+        // the batch keeps running, taking more locks in a transaction already destined to roll back. The
+        // rollback in ExecuteInTransactionAsync is what makes the batch atomic -- and because the server has
+        // then already rolled back, that method logs its "rolling back ... failed" warning on this path.
         await _sqlExecutionService.ExecuteInTransactionAsync(
             _tenantId,
             async (transaction, ct) =>
@@ -660,6 +726,8 @@ public class SqlServerFhirRepository(
 #pragma warning disable CA2100
                 using var command = new SqlCommand(
                     $"""
+                    SET XACT_ABORT ON;
+
                     -- Create temp table to hold surrogate IDs
                     DECLARE @SurrogateIds TABLE (ResourceSurrogateId BIGINT PRIMARY KEY);
 
@@ -672,11 +740,18 @@ public class SqlServerFhirRepository(
                     -- Delete all search parameter indexes
                     {deleteStatements}
 
-                    -- Delete all resource versions (current + history)
-                    DELETE FROM dbo.Resource WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+                    -- Delete exactly the resource versions the sweep above covered, and no others: a
+                    -- version committed after the snapshot has index rows nothing here has deleted.
+                    DELETE FROM dbo.Resource
+                    WHERE ResourceTypeId = @ResourceTypeId
+                      AND ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);
 
-                    -- Delete TTL entry (after successfully deleting resource)
-                    DELETE FROM dbo.ResourceTtl WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+                    -- Delete TTL entry, but only once no version of the resource is left: a version that
+                    -- survived the DELETE above is still live and keeps its expiry.
+                    DELETE FROM dbo.ResourceTtl
+                    WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId
+                      AND NOT EXISTS (SELECT 1 FROM dbo.Resource
+                                      WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId);
                     """);
 #pragma warning restore CA2100
                 command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
