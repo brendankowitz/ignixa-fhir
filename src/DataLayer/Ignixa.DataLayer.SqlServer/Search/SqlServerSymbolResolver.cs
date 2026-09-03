@@ -23,6 +23,16 @@ public sealed class SqlServerSymbolResolver(SqlServerSearchIndexReferenceDataCac
     public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
         => _cache.TryGetSystemIdAsync(system, cancellationToken);
 
+    /// <summary>
+    /// Overrides the interface's sequential default with the cache's single-round-trip batch lookup --
+    /// see <see cref="SqlServerSearchIndexReferenceDataCache.GetSystemIdsAsync"/>. Without this override, a
+    /// search naming N distinct token systems fell back to the interface's default implementation: N calls
+    /// to <see cref="GetSystemIdAsync"/>, and each cache miss opens a fresh <c>SqlConnection</c> through
+    /// <c>ISqlExecutionService</c>.
+    /// </summary>
+    public Task<IReadOnlyDictionary<string, int?>> GetSystemIdsAsync(IReadOnlyCollection<string> systems, CancellationToken cancellationToken)
+        => _cache.GetSystemIdsAsync(systems, cancellationToken);
+
     public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
         => _cache.TryGetQuantityCodeIdAsync(code, cancellationToken);
 }
