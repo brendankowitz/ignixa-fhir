@@ -252,7 +252,7 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant'
-          value: 'true'
+          value: '1'
         }
       ], flatten(tenantConfigurations))
     }
