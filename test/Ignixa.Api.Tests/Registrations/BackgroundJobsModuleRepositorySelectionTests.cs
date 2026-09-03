@@ -5,6 +5,7 @@
 
 using Autofac;
 using Ignixa.Api.Infrastructure;
+using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Configuration;
@@ -14,6 +15,36 @@ using NSubstitute;
 using Shouldly;
 
 namespace Ignixa.Api.Tests.Registrations;
+
+/// <summary>
+/// Minimal <see cref="ILogger{TCategoryName}"/> that records every Information-level message it is given.
+/// NSubstitute cannot verify <c>LogInformation</c> directly -- it is an extension method over the
+/// interface's actual <c>Log(...)</c> method -- so a hand-written recorder is clearer than asserting on
+/// the underlying call shape.
+/// </summary>
+file sealed class CapturingLogger<T> : ILogger<T>
+{
+    private readonly List<string> _informationMessages = [];
+
+    public IReadOnlyList<string> InformationMessages => _informationMessages;
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        if (logLevel == LogLevel.Information)
+        {
+            _informationMessages.Add(formatter(state, exception));
+        }
+    }
+}
 
 /// <summary>
 /// Tests that <see cref="BackgroundJobsModule"/> correctly selects the repository implementation
@@ -40,6 +71,7 @@ public sealed class BackgroundJobsModuleRepositorySelectionTests
         var builder = new ContainerBuilder();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
         builder.RegisterInstance(NullLoggerFactory.Instance).As<ILoggerFactory>();
+        builder.RegisterInstance(Substitute.For<ITenantConfigurationStore>()).As<ITenantConfigurationStore>();
 
         // Act & Assert: no throw should occur
         builder.RegisterModule(new BackgroundJobsModule(configuration));
@@ -66,6 +98,7 @@ public sealed class BackgroundJobsModuleRepositorySelectionTests
         var builder = new ContainerBuilder();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
         builder.RegisterInstance(NullLoggerFactory.Instance).As<ILoggerFactory>();
+        builder.RegisterInstance(Substitute.For<ITenantConfigurationStore>()).As<ITenantConfigurationStore>();
 
         // Act & Assert: no throw should occur
         builder.RegisterModule(new BackgroundJobsModule(configuration));
@@ -92,6 +125,8 @@ public sealed class BackgroundJobsModuleRepositorySelectionTests
         var builder = new ContainerBuilder();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
         builder.RegisterInstance(NullLoggerFactory.Instance).As<ILoggerFactory>();
+        builder.RegisterInstance(Substitute.For<ITenantConfigurationStore>()).As<ITenantConfigurationStore>();
+        builder.RegisterInstance(Substitute.For<ISqlExecutionService>()).As<ISqlExecutionService>();
 
         // Act & Assert: no throw should occur
         builder.RegisterModule(new BackgroundJobsModule(configuration));
@@ -118,6 +153,8 @@ public sealed class BackgroundJobsModuleRepositorySelectionTests
         var builder = new ContainerBuilder();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
         builder.RegisterInstance(NullLoggerFactory.Instance).As<ILoggerFactory>();
+        builder.RegisterInstance(Substitute.For<ITenantConfigurationStore>()).As<ITenantConfigurationStore>();
+        builder.RegisterInstance(Substitute.For<ISqlExecutionService>()).As<ISqlExecutionService>();
 
         // Act & Assert: no throw should occur
         builder.RegisterModule(new BackgroundJobsModule(configuration));
@@ -142,10 +179,12 @@ public sealed class BackgroundJobsModuleRepositorySelectionTests
             .Build();
 
         var builder = new ContainerBuilder();
+        builder.RegisterModule(new BackgroundJobsModule(configuration));
 
-        // Act & Assert: InvalidOperationException should be thrown
-        var exception = Should.Throw<InvalidOperationException>(() =>
-            builder.RegisterModule(new BackgroundJobsModule(configuration)));
+        // Act & Assert: Autofac runs a module's Load() lazily, during Build() rather than
+        // RegisterModule() -- confirmed empirically: a module whose Load() unconditionally throws
+        // does not throw on RegisterModule(), only on the subsequent Build().
+        var exception = Should.Throw<InvalidOperationException>(() => builder.Build());
 
         exception.Message.ShouldContain("SqlSever");
         exception.Message.ShouldContain("Unrecognized");
@@ -164,10 +203,10 @@ public sealed class BackgroundJobsModuleRepositorySelectionTests
             .Build();
 
         var builder = new ContainerBuilder();
+        builder.RegisterModule(new BackgroundJobsModule(configuration));
 
-        // Act & Assert
-        var exception = Should.Throw<InvalidOperationException>(() =>
-            builder.RegisterModule(new BackgroundJobsModule(configuration)));
+        // Act & Assert: see the note in the typo test above -- the throw happens on Build().
+        var exception = Should.Throw<InvalidOperationException>(() => builder.Build());
 
         exception.Message.ShouldContain("InvalidRepo");
         exception.Message.ShouldContain("SqlServer");
@@ -185,27 +224,24 @@ public sealed class BackgroundJobsModuleRepositorySelectionTests
             })
             .Build();
 
-        var mockLogger = Substitute.For<ILogger<BackgroundJobsModule>>();
-        var mockLoggerFactory = Substitute.For<ILoggerFactory>();
-        mockLoggerFactory.CreateLogger(Arg.Any<string>()).Returns(mockLogger);
+        var capturingLogger = new CapturingLogger<BackgroundJobsModule>();
 
         var builder = new ContainerBuilder();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
-        builder.RegisterInstance(mockLoggerFactory).As<ILoggerFactory>();
-
-        // Act: Register the module - this sets up the OnActivating handlers
+        builder.RegisterInstance(capturingLogger).As<ILogger<BackgroundJobsModule>>();
+        builder.RegisterInstance(Substitute.For<ITenantConfigurationStore>()).As<ITenantConfigurationStore>();
+        builder.RegisterInstance(Substitute.For<ISqlExecutionService>()).As<ISqlExecutionService>();
         builder.RegisterModule(new BackgroundJobsModule(configuration));
 
-        // Assert: Verify registration succeeded without throwing
-        var container = builder.Build();
-        container.ShouldNotBeNull();
+        using var container = builder.Build();
 
-        // The OnActivating handler will call logger.LogInformation when the repository is resolved,
-        // but we verify here that the module registered correctly for SqlServer which means
-        // the SqlServer OnActivating handler is in place (not the InMemory one).
-        // The logging itself is verified through mutation testing below.
+        // Act: OnActivating only fires when the registration is actually resolved.
+        var repository = container.Resolve<IBackgroundJobRepository<ExportJobDefinition>>();
 
-        container.Dispose();
+        // Assert
+        repository.ShouldNotBeNull();
+        capturingLogger.InformationMessages.ShouldHaveSingleItem();
+        capturingLogger.InformationMessages.ShouldContain("Using SqlServer background job repository");
     }
 
     [Fact]
@@ -216,24 +252,22 @@ public sealed class BackgroundJobsModuleRepositorySelectionTests
             .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
 
-        var mockLogger = Substitute.For<ILogger<BackgroundJobsModule>>();
-        var mockLoggerFactory = Substitute.For<ILoggerFactory>();
-        mockLoggerFactory.CreateLogger(Arg.Any<string>()).Returns(mockLogger);
+        var capturingLogger = new CapturingLogger<BackgroundJobsModule>();
 
         var builder = new ContainerBuilder();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
-        builder.RegisterInstance(mockLoggerFactory).As<ILoggerFactory>();
-
-        // Act: Register the module with absent configuration - this sets up InMemory's OnActivating
+        builder.RegisterInstance(capturingLogger).As<ILogger<BackgroundJobsModule>>();
+        builder.RegisterInstance(Substitute.For<ITenantConfigurationStore>()).As<ITenantConfigurationStore>();
         builder.RegisterModule(new BackgroundJobsModule(configuration));
 
-        // Assert: Verify registration succeeded without throwing
-        var container = builder.Build();
-        container.ShouldNotBeNull();
+        using var container = builder.Build();
 
-        // The OnActivating handler will call logger.LogInformation when the repository is resolved.
-        // The logging itself is verified through mutation testing below.
+        // Act: OnActivating only fires when the registration is actually resolved.
+        var repository = container.Resolve<IBackgroundJobRepository<ExportJobDefinition>>();
 
-        container.Dispose();
+        // Assert
+        repository.ShouldNotBeNull();
+        capturingLogger.InformationMessages.ShouldHaveSingleItem();
+        capturingLogger.InformationMessages.ShouldContain("Using InMemory background job repository (default)");
     }
 }
