@@ -747,22 +747,21 @@ base makes it 9 again. D4 is **not** on this list — see its entry in §4 for w
    either way. So the requirement here is that no release note or parity claim published from this
    repo asserts index fidelity while the gap is open. Silence is not an option — that is exactly
    the failure mode this evidence-base repair exists to close.
-7. **Firely floor resolved (explicit answer):** the shipped `src/Core/Extensions/Ignixa.Extensions.FirelySdk5` targets
-   `Hl7.Fhir.Base` **5.13.1**
-   (`C:/w427/src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Directory.Packages.props:14`)
-   while every parity measurement link-compiles the same sources at **5.11.4**
-   (`test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj:94-95`), and fhir-server runs 5.11.4.
-   A 5.13.1 dependency floor would force fhir-server's Firely up past the version its own
-   characterization tests pin (`Scalar` throw semantics are version-sensitive — SDK 6 changed
-   them). **Decision: lower the package floor to 5.11.4** (standard lowest-supported-version
-   practice), verify it compiles at 5.11.4 (the comment says 5.13.1 was a "compatibility target" —
-   if an API used exists only in 5.13.x, that changes the answer and must be found by the
-   downgrade build, not assumed), and add a CI matrix leg that builds+tests the adapter at both
-   5.11.4 (floor) and 5.13.1 (current 5.x) so neither combination is ever untested again.
+7. **Firely floor resolved (explicit answer): DONE.** The shipped `src/Core/Extensions/Ignixa.Extensions.FirelySdk5`
+   previously targeted `Hl7.Fhir.Base` **5.13.1** while every parity measurement link-compiles the
+   same sources at **5.11.4** (`test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj:94-95`), and
+   fhir-server runs 5.11.4. A 5.13.1 dependency floor would force fhir-server's Firely up past the
+   version its own characterization tests pin (`Scalar` throw semantics are version-sensitive — SDK 6
+   changed them), and later 5.x releases carry a known bug. **The package floor is now 5.11.4**
+   (`src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Directory.Packages.props`). The open question
+   of whether a 5.13.x-only API blocked the downgrade was answered by the downgrade build rather than
+   assumed: the adapter compiles clean at 5.11.4 on both TFMs, zero warnings. Floor and seam now name
+   the same version, so the shipped package is measured on the engine it ships against.
+   *Falsified by:* `test/Ignixa.RepoGuards.Tests/FirelySdk5FloorGuardTests.cs`, which asserts the
+   props floor and both seam measurement sites (benchmark pin, parity `VersionOverride`) all read
+   5.11.4; mutation = bump the props version → red (verified). Remaining follow-up: a CI matrix leg
+   that also builds+tests the adapter at the current 5.x, so the upper end stays exercised.
    Multi-targeting is not the tool here — this is a dependency-version floor, not a TFM problem.
-   *Falsify:* packaging test asserting the nuspec dependency range floor is 5.11.4; mutation =
-   bump the props version → red. Plus the two CI legs actually executing (check the run, not the
-   yaml). Not yet done.
 8. #427 + all of the above merged to main; `ci.yml` green on main; artifact version.txt matches
    the intended release version. Not yet done.
 9. Release notes drafted quoting **only** post-fix measurements (E-series) and carrying the
