@@ -110,9 +110,20 @@ public class SqlServerFhirRepository(
             // every racing read returning the tombstone (410 Gone) rather than merely not returning null.
             //
             // If that index is ever renamed or dropped this query fails outright with "index does not
-            // exist" rather than silently regressing -- which is the safer failure, and is pinned by
+            // exist" rather than silently regressing -- which is the safer failure for a permanent rename
+            // or drop, and is pinned by
             // GivenTheReadIsForcedToStartMidDelete_WhenTheDeleteCommits_ThenTheReadSeesTheTombstone and by
             // GivenTheCurrentResourceRead_WhenTheSchemaIsDeployed_ThenTheIndexItIsHintedOntoExistsAsAFilteredUniqueIndex.
+            //
+            // The same hard failure is a much worse trade during a transient maintenance or rolling-deploy
+            // window that drops and recreates this index -- a DROP INDEX + CREATE INDEX sequence rather
+            // than CREATE ... WITH (DROP_EXISTING = ON), or any schema deploy step that recreates it. For
+            // that window's duration, every GET against this path returns a 500 (measured: "Msg 308, Level
+            // 16 -- The query processor could not produce a query plan because the index
+            // 'IX_Resource_ResourceTypeId_ResourceId' ... does not exist"), not a latency blip and not a
+            // fallback to a table/clustered-index scan -- there is no fallback plan. The schema guard test
+            // above only asserts the index exists at TEST time; it does not, and cannot, cover the index
+            // being absent mid-deploy in production.
             command = new SqlCommand(
                 """
                 SELECT TOP (1) r.ResourceId, r.Version, r.RawResource, r.IsDeleted, r.RequestMethod, t.CreateDate
@@ -1038,8 +1049,17 @@ public class SqlServerFhirRepository(
 
     /// <param name="transaction">
     /// The unit of work to enlist in, or <c>null</c> to run standalone on its own connection.
-    /// <see cref="DeleteAsync"/> passes one because the TTL removal has to commit with the tombstone;
-    /// <see cref="CreateOrUpdateAsync"/> passes null because there its write is the only statement.
+    /// <see cref="DeleteAsync"/> passes one because the TTL removal has to commit with the tombstone.
+    /// <see cref="CreateOrUpdateAsync"/> passes null, so the TTL write commits SEPARATELY, on its own
+    /// connection, after the merge has already committed and the resource is visible to readers
+    /// (<see cref="GetAsync"/> has no visibility predicate tying it to <c>dbo.ResourceTtl</c>). If this
+    /// write fails, the caller gets a 500 but the resource persists with no expiry -- and that is
+    /// permanent, not just delayed, because <see cref="GetExpiredResourcesAsync"/> is driven FROM
+    /// <c>dbo.ResourceTtl</c>, so a resource with no TTL row is never a sweep candidate. This is
+    /// inherited, not introduced here: the EF implementation this replaces has the same two-phase
+    /// sequence, ending in its own separate SaveChangesAsync for the TTL write. What this branch does
+    /// add is an asymmetry between the two callers: the delete side now clears an expiry atomically
+    /// with the tombstone, while the create side still sets one non-atomically after the fact.
     /// </param>
     private async Task UpsertResourceTtlAsync(
         ISqlTransactionContext? transaction,
