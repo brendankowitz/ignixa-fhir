@@ -34,6 +34,15 @@ namespace Ignixa.Api.E2ETests.Operations.Terminology;
 /// 404, so an unresolvable connection string and a ValueSet that is merely not imported produce the same
 /// response, and it could not tell the two apart.
 /// </para>
+/// <para>
+/// A second property of the fixture change, worth knowing before anyone tries to "simplify" it: with the
+/// inheritance rule removed from <c>SqlExecutionService</c>, the host does not start. The failure runs
+/// from <c>Program.InitializeDatabasesAsync</c> through <c>CompositeRepositoryFactory</c>,
+/// <c>SqlServerTenantServiceFactory</c>, <c>SqlServerTenantInitializer</c> and the search-index reference
+/// data cache to <c>OpenConnectionAsync</c>, and it takes the whole E2E suite with it. That converts a
+/// regression that used to be an invisible runtime failure on deployed configurations into a startup
+/// failure in CI, which is a strictly better failure mode.
+/// </para>
 /// </summary>
 public class SystemPartitionConnectionInheritanceTests : CapabilityDrivenTestBase
 {
@@ -50,9 +59,20 @@ public class SystemPartitionConnectionInheritanceTests : CapabilityDrivenTestBas
     }
 
     /// <summary>
-    /// The precondition the other two depend on. If the fixture ever hands the system partition its own
-    /// connection string again, they would still pass -- while exercising the direct path, not the
-    /// inherited one. This is what makes that drift loud instead of silent.
+    /// The precondition the other two depend on, and the single assertion that closes the blind spot.
+    /// <para>
+    /// This is not a hypothesis. It was measured: with the inheritance rule removed from
+    /// <c>SqlExecutionService</c> AND this fixture reverted to also setting
+    /// <c>Tenants:Configurations:0:Storage:ConnectionString</c>, the two operation tests below both
+    /// PASSED and only this one failed. That is the condition that let six Criticals through a fully
+    /// green CI, reproduced on demand. Nothing else in the suite distinguishes "the system partition
+    /// inherits its connection string" from "the fixture handed it one", so this assertion is the only
+    /// thing standing between that configuration and a silent regression.
+    /// </para>
+    /// <para>
+    /// So: do not simplify the fixture by giving tenant 0 its own connection string again. It would make
+    /// the suite pass faster and see less.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task GivenSqlServerMode_WhenInspectingTheSystemPartition_ThenItHasNoConnectionStringOfItsOwn()

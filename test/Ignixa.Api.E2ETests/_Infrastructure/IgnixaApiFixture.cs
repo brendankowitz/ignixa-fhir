@@ -141,7 +141,8 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 // and the binder silently ignored it -- so the key implied inheritance coverage the suite
                 // never had. Tenant 0 deliberately gets no ConnectionString of its own below: the shipped
                 // configuration inherits, and a fixture that hands the system partition its own string
-                // cannot see a regression on the inheritance path.
+                // cannot see a regression on the inheritance path -- measured, not assumed. See
+                // SystemPartitionConnectionInheritanceTests, which fails if that changes back.
                 ["Tenants:Configurations:0:Storage:InheritConnectionStringFromTenant"] = "1",
 
                 // Tenant 1
