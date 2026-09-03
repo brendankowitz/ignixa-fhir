@@ -135,7 +135,14 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Tenants:Configurations:0:Storage:Type"] = storageType,
                 ["Tenants:Configurations:0:Storage:BaseDirectory"] = Path.Combine(_testDataPath, "system"),
                 ["Tenants:Configurations:0:Packages:EnableAutoLoad"] = "false",
-                ["Tenants:Configurations:0:Packages:InheritConnectionStringFromTenant"] = "1",
+
+                // Under Storage:, where TenantStorageConfiguration declares it. It sat under Packages:
+                // for most of this fixture's life, where TenantPackageConfiguration has no such property
+                // and the binder silently ignored it -- so the key implied inheritance coverage the suite
+                // never had. Tenant 0 deliberately gets no ConnectionString of its own below: the shipped
+                // configuration inherits, and a fixture that hands the system partition its own string
+                // cannot see a regression on the inheritance path.
+                ["Tenants:Configurations:0:Storage:InheritConnectionStringFromTenant"] = "1",
 
                 // Tenant 1
                 ["Tenants:Configurations:1:TenantId"] = "1",
@@ -189,10 +196,11 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 ["ASPNETCORE_ENVIRONMENT"] = "Test"
             };
 
-            // Add SQL connection strings only when using SQL Server
+            // Add SQL connection strings only when using SQL Server. Tenant 1 only: the system
+            // partition reaches the same database through Storage:InheritConnectionStringFromTenant
+            // above, which is how the shipped appsettings.json and the ARM template configure it.
             if (UseSqlServer)
             {
-                configValues["Tenants:Configurations:0:Storage:ConnectionString"] = _sqlConnectionString;
                 configValues["Tenants:Configurations:1:Storage:ConnectionString"] = _sqlConnectionString;
             }
 
