@@ -16,9 +16,8 @@ namespace Ignixa.Search.Sql.Builders;
 internal static class SqlBuilder
 {
     /// <summary>
-    /// Renders a plan to SQL and its bound parameters by selecting one of three terminal shapes and
-    /// delegating to its emitter: a COUNT_BIG SELECT when CountOnly, a plain (T1, Sid1) select (with
-    /// optional sort/paging) when there are no includes, or a match-page CTE plus per-stage include CTEs
+    /// Renders a plan to SQL and its bound parameters by selecting its terminal shape and delegating to the
+    /// dedicated emitter: LastN grouping, COUNT_BIG, a plain (T1, Sid1) match select, or match/include CTEs
     /// unioned into a (T1, Sid1, IsMatch, IsPartial) result.
     /// </summary>
     public static EmittedSql Run(QueryPlan plan, EmitOptions? options = null)
@@ -30,7 +29,11 @@ internal static class SqlBuilder
         var visibility = plan.EffectiveVisibility;
         var cteBodies = EmitCteBodies(plan, parameters, visibility);
 
-        if (plan.CountOnly)
+        if (plan.EffectiveShape is ResultShape.LastN lastN)
+        {
+            LastNEmitter.Emit(plan, lastN, writer, cteBodies, parameters);
+        }
+        else if (plan.CountOnly)
         {
             EmitCountOnlyShape(plan, writer, cteBodies, parameters);
         }

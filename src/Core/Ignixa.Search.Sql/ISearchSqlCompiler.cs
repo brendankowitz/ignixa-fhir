@@ -57,4 +57,16 @@ public interface ISearchSqlCompiler
         string? resourceType,
         SearchPlanOptions? options = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Resolves and lowers Observation <c>$lastn</c>, throwing on compilation failure.</summary>
+    Task<SearchPlan> CreateLastNPlanAsync(
+        LastNSearchOptions lastNOptions,
+        SearchPlanOptions? options = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>As <see cref="CreateLastNPlanAsync"/>, returning compilation failure as data.</summary>
+    Task<SearchPlanResult> TryCreateLastNPlanAsync(
+        LastNSearchOptions lastNOptions,
+        SearchPlanOptions? options = null,
+        CancellationToken cancellationToken = default);
 }

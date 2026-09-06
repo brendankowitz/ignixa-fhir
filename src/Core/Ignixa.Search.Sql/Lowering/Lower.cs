@@ -1,5 +1,6 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Compilation;
@@ -32,7 +33,9 @@ internal static class Lower
         var sort = context.Sort;
 
         var sortPhase = options.SortPhase;
-        var shape = options.Shape;
+        var shape = context.LastNOptions is { } lastN
+            ? BuildLastNShape(context, symbols, lastN)
+            : options.Shape;
         var includesOnly = shape is ResultShape.IncludesPage;
 
         // Paging hangs off Matches, so a count or an includes page cannot carry one at all — the combinations
@@ -128,6 +131,68 @@ internal static class Lower
             IncludeSeed: includeSeed);
 
         return new LoweredPlan(query, new PlanProvenance(lowerContext.Origins));
+    }
+
+    private static ResultShape BuildLastNShape(
+        CompilationContext context,
+        SymbolTable symbols,
+        LastNSearchOptions options)
+    {
+        if (options.Maximum < 1)
+        {
+            throw new NotSupportedException($"$lastn maximum must be positive; got {options.Maximum}.");
+        }
+
+        if (options.CodeParameter.Type != SearchParamType.Token)
+        {
+            throw new NotSupportedException("$lastn code parameter must have SearchParamType.Token.");
+        }
+
+        if (options.EffectiveDateParameter.Type != SearchParamType.Date)
+        {
+            throw new NotSupportedException("$lastn effective-date parameter must have SearchParamType.Date.");
+        }
+
+        if (context.Options.Shape is not ResultShape.Matches { Paging: null })
+        {
+            throw new NotSupportedException("$lastn cannot carry ordinary sort or paging in SearchPlanOptions.");
+        }
+
+        if (context.Options.SortPhase != SortPhase.Valued)
+        {
+            throw new NotSupportedException("$lastn cannot select an ordinary sort phase.");
+        }
+
+        if (context.Options.OperationExpression is not null)
+        {
+            throw new NotSupportedException("$lastn cannot replace its candidate filters with an OperationExpression.");
+        }
+
+        if (context.Sort.Count > 0)
+        {
+            throw new NotSupportedException("$lastn cannot be combined with _sort because the operation owns result ordering.");
+        }
+
+        if (options.CountSpecified)
+        {
+            throw new NotSupportedException("$lastn cannot be combined with _count until group-aware paging is defined.");
+        }
+
+        if (options.ContinuationSpecified || !string.IsNullOrEmpty(options.Filters.ContinuationToken))
+        {
+            throw new NotSupportedException("$lastn cannot be combined with a continuation token until group-aware paging is defined.");
+        }
+
+        if (context.Includes.Count > 0 || context.RevIncludes.Count > 0)
+        {
+            throw new NotSupportedException("$lastn cannot be combined with _include or _revinclude.");
+        }
+
+        return new ResultShape.LastN(new LastNSpec(
+            symbols.ResourceTypeId("Observation"),
+            symbols.SearchParamId(options.CodeParameter),
+            symbols.SearchParamId(options.EffectiveDateParameter),
+            options.Maximum));
     }
 
     /// <summary>The <see cref="OffsetSpec"/> an OFFSET/FETCH page must carry, rejecting a missing or

@@ -50,4 +50,6 @@ public static class PlanRowKind
     public const string OffsetSpec = "offsetSpec";
 
     public const string CountOnly = "countOnly";
+
+    public const string LastN = "lastN";
 }
