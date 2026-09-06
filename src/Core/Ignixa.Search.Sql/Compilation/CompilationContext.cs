@@ -39,6 +39,8 @@ internal sealed record CompilationContext
 
     public required SearchPlanOptions Options { get; init; }
 
+    public LastNSearchOptions? LastNOptions { get; init; }
+
     private readonly bool? _systemLevelSearch;
 
     /// <summary>
@@ -81,6 +83,19 @@ internal sealed record CompilationContext
             Visibility = ToVisibility(searchOptions.ResourceVersionTypes),
             SurrogateRange = ToSurrogateRange(options.SurrogateRange, searchOptions),
             Options = options,
+        };
+    }
+
+    public static CompilationContext CreateLastN(
+        LastNSearchOptions lastNOptions,
+        SearchPlanOptions options,
+        DateTimeOffset approximationReferenceTime)
+    {
+        ArgumentNullException.ThrowIfNull(lastNOptions);
+
+        return Create(lastNOptions.Filters, "Observation", options, approximationReferenceTime) with
+        {
+            LastNOptions = lastNOptions,
         };
     }
 

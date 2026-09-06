@@ -25,6 +25,7 @@
   <ItemGroup>
     <!-- Project references -->
     <ProjectReference Include="..\..\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Search.Sql\Ignixa.Search.Sql.csproj" />
   </ItemGroup>
 
   <ItemGroup>
