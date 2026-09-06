@@ -126,6 +126,12 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             // Increment version
             int newVersion = await GetNextVersionAsync(key, ct).ConfigureAwait(false);
 
+            // Stamp the resolved version and timestamp into the resource's own meta before
+            // serializing, so the stored bytes agree with the sidecar ResourceMetadata below
+            // (mirrors SqlEntityFrameworkRepository.CreateOrUpdateAsync).
+            resource.Resource.Meta.VersionId = newVersion.ToString();
+            resource.Resource.Meta.LastUpdatedOffset = timestamp;
+
             // Use RawJson if available (fast path), otherwise would need complex serialization
             string resourceJson = resource.Resource.SerializeToString();
 
@@ -537,6 +543,12 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 var key = new ResourceKey(operation.resourceType, operation.resourceId);
                 int newVersion = await GetNextVersionAsync(key, ct).ConfigureAwait(false);
 
+                // Stamp the resolved version and timestamp into the resource's own meta before
+                // it is serialized in Step 6 below, so the stored bytes agree with the sidecar
+                // ResourceMetadata (mirrors the single-resource CreateOrUpdateAsync path above).
+                operation.resource.Meta.VersionId = newVersion.ToString();
+                operation.resource.Meta.LastUpdatedOffset = timestamp;
+
                 var metadata = new ResourceMetadata
                 {
                     TransactionId = transactionId.ToString(),
@@ -636,9 +648,13 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     {
         if (append)
         {
-            // Append batch operations to existing lock file (one line per operation)
+            // Append batch operations to existing lock file (one line per operation).
+            // Use a BOM-less UTF-8 encoding: Encoding.UTF8 makes StreamWriter emit a 3-byte
+            // preamble on every call, and here that preamble lands mid-file after the bytes
+            // already on disk (see the identical fix and rationale on WriteResourceFileAsync
+            // below, which is the reachable, tested instance of this bug).
             using var stream = _memoryStreamManager.GetStream("lock-file-append");
-            using var writer = new StreamWriter(stream, Encoding.UTF8, leaveOpen: true);
+            using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), leaveOpen: true);
 
             foreach (var op in operations)
             {
@@ -692,14 +708,28 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         CancellationToken ct)
     {
         using var stream = _memoryStreamManager.GetStream("resource-file-write");
-        using var writer = new StreamWriter(stream, Encoding.UTF8, leaveOpen: true);
+
+        // Encoding.UTF8 makes StreamWriter emit a 3-byte BOM preamble at the start of every
+        // buffer it writes to. This method always starts from a fresh in-memory stream/writer
+        // pair, including on the append path, so when append is true that preamble is copied
+        // onto the *middle* of the existing NDJSON file - right before the newly appended
+        // resource line - rather than only at the start of the file. The reader (see
+        // ReadResourceFromNdjsonByIdAsync's StreamReader below) only auto-detects and strips a
+        // BOM at position 0, so an embedded one corrupts JSON parsing for every resource
+        // appended after the first in a multi-batch transaction, and the failure is swallowed by
+        // LoadResourceVersionAsync/GetAsync's catch blocks - the resource silently vanishes from
+        // reads/history even though BatchWriteAsync reported success. Use a BOM-less UTF-8
+        // encoding so no preamble is ever written, on both the create and append paths.
+        using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), leaveOpen: true);
 
         // Write resource JSON (one per line, no bundle header)
         // Transaction metadata is stored in /transactions files
         foreach (var operation in operations)
         {
-            // Serialize ResourceJsonNode to JSON string
-            string rawJson = JsonSerializer.Serialize(operation.resource, _jsonOptions);
+            // ResourceJsonNode wraps an internal MutableNode and exposes no serializable
+            // properties, so JsonSerializer.Serialize(operation.resource, ...) would emit "{}".
+            // Use the node-aware serializer (mirrors the single-resource CreateOrUpdateAsync path).
+            string rawJson = operation.resource.SerializeToString();
             await writer.WriteLineAsync(rawJson).ConfigureAwait(false);
         }
 

@@ -331,7 +331,7 @@ No `ElementResolver` needed. It covers:
 
 - Contained resources by `#id` (`"reference": "#p1"` finds the matching entry in `contained`).
 - A bare `#` — **only when an index exists** (`Resource` or `RootResource` is set) — is decided entirely in-instance: it resolves to the containing resource when evaluated from inside one of that container's own contained resources, and to empty at the container's own scope (root, or a Bundle/Parameters entry). See the callout below — this is **not** the same rule as an unresolved `#id`.
-- For a `Bundle` root, sibling entries by `fullUrl`, `Type/id`, and `Type/id/_history/versionId`.
+- For a `Bundle` root, sibling entries by `fullUrl`, `Type/id`, `Type/id/_history/versionId`, and `fullUrl/_history/versionId`.
 - For a `Parameters` root, resources nested under `parameter`/`part` (at any depth), keyed by `Type/id` only — Parameters entries have no `fullUrl`.
 
 ```csharp
