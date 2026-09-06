@@ -81,11 +81,18 @@ public class StreamingBundleSerializerReferenceIndexCompositionTests
         var bundleElement = ResourceJsonNode.Parse(bundleJson).ToElement(R4Provider);
         var index = ReferenceIndex.Build(bundleElement);
 
-        // Assert - fullUrl stays version-agnostic per bdl-8, the behavior Change 1 fixed.
-        bundleJson.ShouldNotContain("/_history/");
+        // Assert - each entry's fullUrl stays version-agnostic per bdl-8 ("fullUrl cannot be a
+        // version specific reference"). Checked against the entry fullUrl values specifically
+        // (not the whole payload) because a resource can legitimately carry a versioned reference
+        // in its own content elsewhere in the bundle.
+        var fullUrls = bundleElement.Children("entry")
+            .SelectMany(entry => entry.Children("fullUrl"))
+            .Select(fullUrl => fullUrl.Value?.ToString())
+            .ToList();
+        fullUrls.ShouldAllBe(fullUrl => fullUrl != null && !fullUrl.Contains("/_history/", StringComparison.Ordinal));
 
-        // Assert - Change 2's derived keys still resolve each version specifically, in-bundle,
-        // with no ElementResolver configured.
+        // Assert - the ReferenceIndex's derived keys still resolve each version specifically,
+        // in-bundle, with no ElementResolver configured.
         var versionTwoResolved = index.Resolve("Patient/123/_history/2");
         versionTwoResolved.ShouldNotBeNull();
         versionTwoResolved!.Children("gender").Single().Value.ShouldBe("female");
@@ -105,7 +112,7 @@ public class StreamingBundleSerializerReferenceIndexCompositionTests
         foreach (var entry in entries)
         {
             yield return entry;
-            await Task.Delay(0); // Allow async enumeration
+            await Task.Yield();
         }
     }
 }

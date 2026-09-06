@@ -95,7 +95,7 @@ public class StreamingBundleSerializerHistoryTests
         foreach (var entry in entries)
         {
             yield return entry;
-            await Task.Delay(0); // Allow async enumeration
+            await Task.Yield();
         }
     }
 

@@ -166,22 +166,24 @@ public class ReferenceIndexTests
     public void GivenBundleEntryWithFullUrlAndVersionIdButNoId_WhenResolvingAbsoluteVersionedReference_ThenStillResolves()
     {
         // Arrange - a resource can legitimately carry a fullUrl and meta.versionId without an `id`
-        // (e.g. a not-yet-assigned resource in a batch/transaction response). The new
-        // fullUrl/_history/versionId key must not be coupled to the `id`-presence check that gates
-        // the Type/id and Type/id/_history/versionId keys below it in IndexBundleEntries.
-        var element = ToElement(@"{
-            ""resourceType"": ""Bundle"",
-            ""type"": ""collection"",
-            ""entry"": [
+        // (e.g. a not-yet-assigned resource in a batch/transaction response). The absolute versioned
+        // key (fullUrl/_history/versionId) requires only fullUrl and meta.versionId - it must not
+        // require resource.id, which the Type/id and Type/id/_history/versionId keys need instead.
+        var element = ToElement("""
+        {
+            "resourceType": "Bundle",
+            "type": "collection",
+            "entry": [
                 {
-                    ""fullUrl"": ""http://ex.org/fhir/Patient/temp"",
-                    ""resource"": {
-                        ""resourceType"": ""Patient"",
-                        ""meta"": { ""versionId"": ""1"" }
+                    "fullUrl": "http://ex.org/fhir/Patient/temp",
+                    "resource": {
+                        "resourceType": "Patient",
+                        "meta": { "versionId": "1" }
                     }
                 }
             ]
-        }");
+        }
+        """);
         var index = ReferenceIndex.Build(element);
 
         // Act
@@ -190,6 +192,93 @@ public class ReferenceIndexTests
         // Assert
         resolved.ShouldNotBeNull();
         resolved!.InstanceType.ShouldBe("Patient");
+    }
+
+    [Fact]
+    public void GivenBundleEntriesWithoutVersionId_WhenResolving_ThenAuthoredKeysResolveAndNoHistoryKeyIsRegistered()
+    {
+        // Arrange - entry 0 has no `meta` at all; entry 1 has `meta` but no `versionId`. Neither
+        // condition should register a fullUrl/_history/ or Type/id/_history/ key: this pins the
+        // VersionId presence guard in IndexBundleEntries' pass 2. Deleting that guard would still
+        // let both entries resolve by fullUrl/Type-id (asserted below), but would additionally
+        // register a malformed key ending in "/_history/" (empty-string interpolation of a null
+        // VersionId) - a lookup for that exact malformed string must return null.
+        var element = ToElement("""
+        {
+            "resourceType": "Bundle",
+            "type": "collection",
+            "entry": [
+                {
+                    "fullUrl": "http://ex.org/fhir/Patient/1",
+                    "resource": { "resourceType": "Patient", "id": "1" }
+                },
+                {
+                    "fullUrl": "http://ex.org/fhir/Patient/2",
+                    "resource": { "resourceType": "Patient", "id": "2", "meta": { } }
+                }
+            ]
+        }
+        """);
+        var index = ReferenceIndex.Build(element);
+
+        // Assert - the authored keys still resolve normally.
+        index.Resolve("http://ex.org/fhir/Patient/1").ShouldNotBeNull();
+        index.Resolve("Patient/1").ShouldNotBeNull();
+        index.Resolve("http://ex.org/fhir/Patient/2").ShouldNotBeNull();
+        index.Resolve("Patient/2").ShouldNotBeNull();
+
+        // Assert - no malformed derived key (trailing "/_history/" with no versionId) resolves.
+        index.Resolve("http://ex.org/fhir/Patient/1/_history/").ShouldBeNull();
+        index.Resolve("Patient/1/_history/").ShouldBeNull();
+        index.Resolve("http://ex.org/fhir/Patient/2/_history/").ShouldBeNull();
+        index.Resolve("Patient/2/_history/").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenTwoEntriesWithIdenticalDerivedFullUrlHistoryKey_WhenResolvingSharedKey_ThenFirstEntryByOrderWins()
+    {
+        // Arrange - a derived-vs-derived collision (as opposed to the authored-vs-derived
+        // collisions covered by the sibling collision tests below): both entries share the same
+        // fullUrl AND the same meta.versionId (a duplicate/data-quality bundle), so both
+        // synthesize the identical derived key "http://ex.org/fhir/Patient/1/_history/2" in pass
+        // 2. This pins first-wins ordering *between entries* in pass 2 - reversing pass 2's entry
+        // loop breaks it. Reversing the two per-entry TryAdd calls (the absolute and relative
+        // derived keys) does not: those calls write different key strings that both point at the
+        // same resource within one entry, so swapping their order changes nothing.
+        var element = ToElement("""
+        {
+            "resourceType": "Bundle",
+            "type": "collection",
+            "entry": [
+                {
+                    "fullUrl": "http://ex.org/fhir/Patient/1",
+                    "resource": {
+                        "resourceType": "Patient",
+                        "id": "1",
+                        "meta": { "versionId": "2" },
+                        "gender": "male"
+                    }
+                },
+                {
+                    "fullUrl": "http://ex.org/fhir/Patient/1",
+                    "resource": {
+                        "resourceType": "Patient",
+                        "id": "1",
+                        "meta": { "versionId": "2" },
+                        "gender": "female"
+                    }
+                }
+            ]
+        }
+        """);
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("http://ex.org/fhir/Patient/1/_history/2");
+
+        // Assert - the first entry (by document order) wins the derived-key collision.
+        resolved.ShouldNotBeNull();
+        resolved!.Children("gender").Single().Value.ShouldBe("male");
     }
 
     [Fact]

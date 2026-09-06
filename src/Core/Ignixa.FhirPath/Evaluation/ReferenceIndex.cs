@@ -269,12 +269,11 @@ public sealed class ReferenceIndex
         List<ContainedScope> nestedScopes,
         Dictionary<string, IElement> containerByContainedLocation)
     {
-        // Pass 1: authored keys - each entry's own fullUrl and Type/id, first-wins among entries
-        // exactly as before this method grew a second pass. AddNestedContainer runs here, exactly
-        // once per entry with a resource. This also captures what pass 2 needs (fullUrl, id,
-        // versionId, and the resource itself), so the bundle's entries are enumerated once even
-        // though key registration happens in two passes.
-        var entryKeys = new List<BundleEntryKeys>();
+        // Pass 1: authored keys - each entry's own fullUrl and Type/id, first-wins among entries.
+        // AddNestedContainer runs here, exactly once per entry with a resource. This also captures
+        // what pass 2 needs (fullUrl, id, versionId, and the resource itself), so the bundle's
+        // entries are enumerated once even though key registration happens in two passes.
+        var entryKeys = new List<BundleEntryKeySource>();
 
         foreach (var entry in bundle.Children("entry"))
         {
@@ -300,7 +299,7 @@ public sealed class ReferenceIndex
                 byBundleKey.TryAdd($"{resource.InstanceType}/{id}", resource);
             }
 
-            entryKeys.Add(new BundleEntryKeys(resource, fullUrl, id, MetaVersionId(resource)));
+            entryKeys.Add(new BundleEntryKeySource(resource, fullUrl, id, MetaVersionId(resource)));
         }
 
         // Pass 2: derived keys (fullUrl/_history/versionId and Type/id/_history/versionId),
@@ -315,12 +314,19 @@ public sealed class ReferenceIndex
         // first-wins by entry order, same as two entries' authored keys colliding in pass 1.
         foreach (var keys in entryKeys)
         {
-            if (!string.IsNullOrEmpty(keys.FullUrl) && !string.IsNullOrEmpty(keys.VersionId))
+            // Neither derived key is meaningful without a versionId; skip both rather than
+            // register a malformed key ending in "/_history/" (an empty-string interpolation).
+            if (string.IsNullOrEmpty(keys.VersionId))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(keys.FullUrl))
             {
                 byBundleKey.TryAdd($"{keys.FullUrl}/_history/{keys.VersionId}", keys.Resource);
             }
 
-            if (!string.IsNullOrEmpty(keys.Id) && !string.IsNullOrEmpty(keys.VersionId))
+            if (!string.IsNullOrEmpty(keys.Id))
             {
                 byBundleKey.TryAdd($"{keys.Resource.InstanceType}/{keys.Id}/_history/{keys.VersionId}", keys.Resource);
             }
@@ -386,9 +392,11 @@ public sealed class ReferenceIndex
     private sealed record ContainedScope(string Prefix, Dictionary<string, IElement> ById);
 
     /// <summary>
-    /// Per-entry values captured by <see cref="IndexBundleEntries"/>'s authored-key pass and
-    /// consumed by its derived-key pass, so the bundle's entries are enumerated once even though
-    /// authored and derived keys are registered in two separate passes.
+    /// Raw per-entry inputs captured by <see cref="IndexBundleEntries"/>'s authored-key pass and
+    /// consumed by its derived-key pass to synthesize keys, so the bundle's entries are enumerated
+    /// once even though authored and derived keys are registered in two separate passes. These are
+    /// source values (the entry's own <c>fullUrl</c>, <c>id</c>, <c>meta.versionId</c>, and
+    /// resource), not keys themselves - pass 2 builds the actual dictionary keys from them.
     /// </summary>
-    private readonly record struct BundleEntryKeys(IElement Resource, string? FullUrl, string? Id, string? VersionId);
+    private readonly record struct BundleEntryKeySource(IElement Resource, string? FullUrl, string? Id, string? VersionId);
 }
