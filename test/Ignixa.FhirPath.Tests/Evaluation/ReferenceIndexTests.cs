@@ -101,6 +101,228 @@ public class ReferenceIndexTests
     }
 
     [Fact]
+    public void GivenHistoryBundleWithTwoVersionsSharingFullUrl_WhenResolvingAbsoluteVersionedReference_ThenReturnsMatchingVersion()
+    {
+        // Arrange - a history-style bundle: two entries share the same fullUrl (the version-agnostic
+        // resource address) but differ by meta.versionId, the shape a vread history bundle produces.
+        // This is the gap from firely-net-sdk#3099: an absolute versioned reference like
+        // "http://ex.org/fhir/Patient/123/_history/2" must resolve to the SPECIFIC version, not
+        // fall through to the host resolver because only the plain fullUrl and relative
+        // Type/id/_history/versionId keys were indexed.
+        var element = ToElement(HistoryBundleWithTwoVersionsSharingFullUrlJson);
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var v1 = index.Resolve("http://ex.org/fhir/Patient/123/_history/1");
+        var v2 = index.Resolve("http://ex.org/fhir/Patient/123/_history/2");
+
+        // Assert
+        v1.ShouldNotBeNull();
+        v1!.Children("gender").Single().Value.ShouldBe("male");
+        v2.ShouldNotBeNull();
+        v2!.Children("gender").Single().Value.ShouldBe("female");
+    }
+
+    [Fact]
+    public void GivenHistoryBundleWithTwoVersionsSharingFullUrl_WhenResolvingVersionAgnosticFullUrl_ThenReturnsFirstEntryFirstWins()
+    {
+        // Arrange - guards the pre-existing first-wins semantic for the plain (version-agnostic)
+        // fullUrl key: adding the new fullUrl/_history/versionId key must not change which entry a
+        // bare, unversioned fullUrl resolves to.
+        var element = ToElement(HistoryBundleWithTwoVersionsSharingFullUrlJson);
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("http://ex.org/fhir/Patient/123");
+
+        // Assert
+        resolved.ShouldNotBeNull();
+        resolved!.Children("gender").Single().Value.ShouldBe("male");
+    }
+
+    [Fact]
+    public void GivenHistoryBundleWithTwoVersionsSharingFullUrl_WhenResolvingRelativeReferences_ThenExistingBehaviorStillWorks()
+    {
+        // Arrange - guards the pre-existing relative-reference behavior (Type/id and
+        // Type/id/_history/versionId) against regression from the new fullUrl-based key.
+        var element = ToElement(HistoryBundleWithTwoVersionsSharingFullUrlJson);
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var byTypeId = index.Resolve("Patient/123");
+        var v1 = index.Resolve("Patient/123/_history/1");
+        var v2 = index.Resolve("Patient/123/_history/2");
+
+        // Assert
+        byTypeId.ShouldNotBeNull();
+        byTypeId!.Children("gender").Single().Value.ShouldBe("male");
+        v1.ShouldNotBeNull();
+        v1!.Children("gender").Single().Value.ShouldBe("male");
+        v2.ShouldNotBeNull();
+        v2!.Children("gender").Single().Value.ShouldBe("female");
+    }
+
+    [Fact]
+    public void GivenBundleEntryWithFullUrlAndVersionIdButNoId_WhenResolvingAbsoluteVersionedReference_ThenStillResolves()
+    {
+        // Arrange - a resource can legitimately carry a fullUrl and meta.versionId without an `id`
+        // (e.g. a not-yet-assigned resource in a batch/transaction response). The new
+        // fullUrl/_history/versionId key must not be coupled to the `id`-presence check that gates
+        // the Type/id and Type/id/_history/versionId keys below it in IndexBundleEntries.
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""fullUrl"": ""http://ex.org/fhir/Patient/temp"",
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""meta"": { ""versionId"": ""1"" }
+                    }
+                }
+            ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("http://ex.org/fhir/Patient/temp/_history/1");
+
+        // Assert
+        resolved.ShouldNotBeNull();
+        resolved!.InstanceType.ShouldBe("Patient");
+    }
+
+    [Fact]
+    public void GivenCrossEntryFullUrlHistoryCollisionWithCompliantEntryFirst_WhenResolvingSharedKey_ThenReturnsAuthoringEntryNotSynthesizingEntry()
+    {
+        // Arrange - entry 0's own fullUrl is compliant; entry 1's own fullUrl is the bdl-8-invalid
+        // shape "{fullUrl}/_history/{versionId}" that Bundle invariant bdl-8 forbids but a
+        // non-conformant sender can still produce. Entry 0's meta.versionId makes
+        // IndexBundleEntries synthesize a derived key "http://ex.org/fhir/Patient/1/_history/2" for
+        // entry 0 - the exact string entry 1 authored as its own fullUrl. Entry 1's authored key
+        // must win: it is entry 1's own address, not a byproduct of entry 0's versioning.
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""fullUrl"": ""http://ex.org/fhir/Patient/1"",
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""1"",
+                        ""meta"": { ""versionId"": ""2"" },
+                        ""gender"": ""male""
+                    }
+                },
+                {
+                    ""fullUrl"": ""http://ex.org/fhir/Patient/1/_history/2"",
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""99"",
+                        ""gender"": ""female""
+                    }
+                }
+            ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var collided = index.Resolve("http://ex.org/fhir/Patient/1/_history/2");
+        var compliant = index.Resolve("http://ex.org/fhir/Patient/1");
+
+        // Assert
+        collided.ShouldNotBeNull();
+        collided!.Children("gender").Single().Value.ShouldBe("female");
+        compliant.ShouldNotBeNull();
+        compliant!.Children("gender").Single().Value.ShouldBe("male");
+    }
+
+    [Fact]
+    public void GivenCrossEntryFullUrlHistoryCollisionWithInvalidEntryFirst_WhenResolvingSharedKey_ThenReturnsAuthoringEntryNotSynthesizingEntry()
+    {
+        // Arrange - same collision as above with entry order reversed, proving the fix is
+        // order-independent: an entry's authored fullUrl must win regardless of whether it is
+        // indexed before or after the entry whose derived key would otherwise collide with it.
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""fullUrl"": ""http://ex.org/fhir/Patient/1/_history/2"",
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""99"",
+                        ""gender"": ""female""
+                    }
+                },
+                {
+                    ""fullUrl"": ""http://ex.org/fhir/Patient/1"",
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""1"",
+                        ""meta"": { ""versionId"": ""2"" },
+                        ""gender"": ""male""
+                    }
+                }
+            ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var collided = index.Resolve("http://ex.org/fhir/Patient/1/_history/2");
+        var compliant = index.Resolve("http://ex.org/fhir/Patient/1");
+
+        // Assert
+        collided.ShouldNotBeNull();
+        collided!.Children("gender").Single().Value.ShouldBe("female");
+        compliant.ShouldNotBeNull();
+        compliant!.Children("gender").Single().Value.ShouldBe("male");
+    }
+
+    [Fact]
+    public void GivenCrossEntryTypeIdHistoryCollisionWithRelativeFullUrl_WhenResolvingSharedKey_ThenReturnsAuthoringEntryNotSynthesizingEntry()
+    {
+        // Arrange - pre-existing collision class, predating the fullUrl/_history/versionId key
+        // added alongside these tests: entry 1's own relative fullUrl "Patient/123/_history/2" is
+        // the exact string IndexBundleEntries synthesizes as the Type/id/_history/versionId key for
+        // entry 0 (id "123", meta.versionId "2"). Ignixa itself emitted this
+        // relative-fullUrl-with-embedded-history shape for history bundles until a fix landed in
+        // this same change, so such bundles exist in the wild. Entry 0 (the synthesizing entry) is
+        // indexed first, so a single-pass, order-sensitive implementation lets its derived key claim
+        // the shared string before entry 1 ever gets to author it.
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""123"",
+                        ""meta"": { ""versionId"": ""2"" },
+                        ""gender"": ""female""
+                    }
+                },
+                {
+                    ""fullUrl"": ""Patient/123/_history/2"",
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""77"",
+                        ""gender"": ""male""
+                    }
+                }
+            ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var collided = index.Resolve("Patient/123/_history/2");
+
+        // Assert
+        collided.ShouldNotBeNull();
+        collided!.Children("gender").Single().Value.ShouldBe("male");
+    }
+
+    [Fact]
     public void GivenUnknownReference_WhenResolving_ThenReturnsNull()
     {
         // Arrange
@@ -545,6 +767,31 @@ public class ReferenceIndexTests
         // Assert
         resolved.ShouldBeNull();
     }
+
+    private const string HistoryBundleWithTwoVersionsSharingFullUrlJson = @"{
+        ""resourceType"": ""Bundle"",
+        ""type"": ""history"",
+        ""entry"": [
+            {
+                ""fullUrl"": ""http://ex.org/fhir/Patient/123"",
+                ""resource"": {
+                    ""resourceType"": ""Patient"",
+                    ""id"": ""123"",
+                    ""meta"": { ""versionId"": ""1"" },
+                    ""gender"": ""male""
+                }
+            },
+            {
+                ""fullUrl"": ""http://ex.org/fhir/Patient/123"",
+                ""resource"": {
+                    ""resourceType"": ""Patient"",
+                    ""id"": ""123"",
+                    ""meta"": { ""versionId"": ""2"" },
+                    ""gender"": ""female""
+                }
+            }
+        ]
+    }";
 
     private IElement BuildParametersWithNestedResources() => ToElement(@"{
         ""resourceType"": ""Parameters"",
