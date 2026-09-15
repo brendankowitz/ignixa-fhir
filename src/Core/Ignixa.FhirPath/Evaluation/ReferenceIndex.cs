@@ -10,8 +10,9 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <summary>
 /// Scoped reference index that resolves FHIRPath <c>resolve()</c> targets within a single
 /// resource root. Indexes contained resources (by <c>#id</c>) and, when the root is a Bundle,
-/// sibling entry resources (by <c>fullUrl</c>, <c>Type/id</c>, and <c>Type/id/_history/versionId</c>);
-/// when the root is a Parameters resource, nested <c>parameter</c>/<c>part</c> resources (by
+/// sibling entry resources (by <c>fullUrl</c>, <c>fullUrl/_history/versionId</c>, <c>Type/id</c>,
+/// and <c>Type/id/_history/versionId</c>) so both relative and absolute versioned references
+/// resolve in-bundle; when the root is a Parameters resource, nested <c>parameter</c>/<c>part</c> resources (by
 /// <c>Type/id</c> only - a Parameters entry has no <c>fullUrl</c>). A bare <c>#</c> resolves to the
 /// container only when the current evaluation scope is itself one of that container's contained
 /// resources; see <see cref="ResolveContainerScope"/>. Root-level and Bundle-entry-level scope both
@@ -27,6 +28,20 @@ namespace Ignixa.FhirPath.Evaluation;
 /// + bundle resolution algorithm of Firely's <c>ScopedNode.BundledResources()</c> /
 /// <c>ContainedResources()</c> and the <c>locateContainer</c> local function inside
 /// <c>ScopedNodeExtensions.Resolve&lt;T&gt;</c>, without per-node parent pointers.
+/// </para>
+/// <para>
+/// Bundle entry keys have two tiers: authored keys (each entry's own <c>fullUrl</c> and
+/// <c>Type/id</c>) and derived keys synthesized from them (<c>fullUrl/_history/versionId</c> and
+/// <c>Type/id/_history/versionId</c>). An authored key always wins over a derived key - even one
+/// synthesized by a different entry - regardless of entry order: <see cref="IndexBundleEntries"/>
+/// registers every entry's authored keys in a first pass and only then registers derived keys in a
+/// second pass, so a derived key's <c>TryAdd</c> can never displace an authored key that pass 1
+/// already claimed. This matters because a spec-invalid <c>fullUrl</c> that already embeds
+/// <c>/_history/{versionId}</c> (forbidden by Bundle invariant bdl-8, but producible by a
+/// non-conformant sender) is exactly the string another entry's derived key would synthesize;
+/// two entries' authored keys colliding with each other, or two entries' derived keys colliding
+/// with each other, remain first-wins by entry order - that ambiguity is inherent to the input,
+/// not something this index resolves.
 /// </para>
 /// <para>
 /// Containment isolation without a parent pointer: <see cref="IElement"/> has no parent link, so
@@ -254,6 +269,12 @@ public sealed class ReferenceIndex
         List<ContainedScope> nestedScopes,
         Dictionary<string, IElement> containerByContainedLocation)
     {
+        // Pass 1: authored keys - each entry's own fullUrl and Type/id, first-wins among entries.
+        // AddNestedContainer runs here, exactly once per entry with a resource. This also captures
+        // what pass 2 needs (fullUrl, id, versionId, and the resource itself), so the bundle's
+        // entries are enumerated once even though key registration happens in two passes.
+        var entryKeys = new List<BundleEntryKeySource>();
+
         foreach (var entry in bundle.Children("entry"))
         {
             var resourceChildren = entry.Children("resource");
@@ -273,18 +294,41 @@ public sealed class ReferenceIndex
             }
 
             var id = FirstChildValue(resource, "id");
-            if (string.IsNullOrEmpty(id))
+            if (!string.IsNullOrEmpty(id))
+            {
+                byBundleKey.TryAdd($"{resource.InstanceType}/{id}", resource);
+            }
+
+            entryKeys.Add(new BundleEntryKeySource(resource, fullUrl, id, MetaVersionId(resource)));
+        }
+
+        // Pass 2: derived keys (fullUrl/_history/versionId and Type/id/_history/versionId),
+        // synthesized so absolute and relative versioned references resolve in-bundle without a
+        // host round-trip - independent of the resource having an `id` for the fullUrl-based key. A
+        // derived key is a string another entry could have authored verbatim: a spec-invalid
+        // fullUrl that already embeds "/_history/{versionId}" (forbidden by Bundle invariant bdl-8,
+        // but producible by a non-conformant sender) is exactly what another entry's derived key
+        // would synthesize. Every authored key from pass 1 is already in byBundleKey before this
+        // loop runs, so TryAdd can never let a derived key displace an authored one, regardless of
+        // which entry was visited first. Two entries' derived keys colliding with each other remain
+        // first-wins by entry order, same as two entries' authored keys colliding in pass 1.
+        foreach (var keys in entryKeys)
+        {
+            // Neither derived key is meaningful without a versionId; skip both rather than
+            // register a malformed key ending in "/_history/" (an empty-string interpolation).
+            if (string.IsNullOrEmpty(keys.VersionId))
             {
                 continue;
             }
 
-            var type = resource.InstanceType;
-            byBundleKey.TryAdd($"{type}/{id}", resource);
-
-            var versionId = MetaVersionId(resource);
-            if (!string.IsNullOrEmpty(versionId))
+            if (!string.IsNullOrEmpty(keys.FullUrl))
             {
-                byBundleKey.TryAdd($"{type}/{id}/_history/{versionId}", resource);
+                byBundleKey.TryAdd($"{keys.FullUrl}/_history/{keys.VersionId}", keys.Resource);
+            }
+
+            if (!string.IsNullOrEmpty(keys.Id))
+            {
+                byBundleKey.TryAdd($"{keys.Resource.InstanceType}/{keys.Id}/_history/{keys.VersionId}", keys.Resource);
             }
         }
     }
@@ -346,4 +390,13 @@ public sealed class ReferenceIndex
     /// container's absolute <see cref="IElement.Location"/>.
     /// </summary>
     private sealed record ContainedScope(string Prefix, Dictionary<string, IElement> ById);
+
+    /// <summary>
+    /// Raw per-entry inputs captured by <see cref="IndexBundleEntries"/>'s authored-key pass and
+    /// consumed by its derived-key pass to synthesize keys, so the bundle's entries are enumerated
+    /// once even though authored and derived keys are registered in two separate passes. These are
+    /// source values (the entry's own <c>fullUrl</c>, <c>id</c>, <c>meta.versionId</c>, and
+    /// resource), not keys themselves - pass 2 builds the actual dictionary keys from them.
+    /// </summary>
+    private readonly record struct BundleEntryKeySource(IElement Resource, string? FullUrl, string? Id, string? VersionId);
 }

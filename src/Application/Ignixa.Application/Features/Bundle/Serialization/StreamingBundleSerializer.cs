@@ -316,12 +316,12 @@ public static class StreamingBundleSerializer
 
             writer.WriteStartObject();
 
-            // Write fullUrl with version for history bundles
+            // fullUrl must stay version-agnostic per invariant bdl-8 ("fullUrl cannot be a version
+            // specific reference"). WriteResourceBytes preserves any meta.versionId already present
+            // in the supplied resource bytes (it does not populate it from
+            // SearchEntryResult.VersionId). A non-empty SearchEntryResult.VersionId is conveyed to
+            // the client through response.etag below instead, independently of the resource bytes.
             string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
-            if (!string.IsNullOrEmpty(resource.VersionId))
-            {
-                fullUrl = $"{fullUrl}/_history/{resource.VersionId}";
-            }
             writer.WriteString("fullUrl", fullUrl);
 
             // Write resource using helper
