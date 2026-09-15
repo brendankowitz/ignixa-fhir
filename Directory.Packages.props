@@ -112,8 +112,7 @@
     <PackageVersion Include="Google.Protobuf" Version="3.33.2" />
     <!-- GitVersion for semantic versioning -->
     <PackageVersion Include="GitVersion.MsBuild" Version="6.5.1" />
-    <!-- Source Link and Reproducible Builds -->
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <!-- Reproducible Builds -->
     <PackageVersion Include="DotNet.ReproducibleBuilds" Version="1.2.39" />
     <!-- HotChocolate GraphQL -->
     <PackageVersion Include="HotChocolate.AspNetCore" Version="15.1.14" />

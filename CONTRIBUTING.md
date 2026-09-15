@@ -10,8 +10,8 @@ Thank you for your interest in contributing to the Ignixa FHIR Server! We welcom
 
 ## Development Environment
 
-*   **SDK**: .NET 9.0 SDK is required.
-*   **IDE**: Visual Studio 2022, VS Code, or Rider.
+*   **SDK**: .NET SDK 10.0.401 or a later compatible SDK selected by `global.json` is required. Source Link uses the patched SDK implementation rather than a separate NuGet package.
+*   **IDE**: Visual Studio with support for the required SDK, VS Code, or Rider.
 *   **Docker**: Recommended for running SQL Server integration tests.
 
 ## Building and Testing

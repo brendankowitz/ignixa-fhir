@@ -17,6 +17,7 @@ WORKDIR /src
 # Copy root-level configuration files for centralized package management and code style
 COPY Directory.Build.props ./
 COPY Directory.Packages.props ./
+COPY global.json ./
 COPY GitVersion.yml ./
 COPY .editorconfig ./
 
