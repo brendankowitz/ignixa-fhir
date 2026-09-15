@@ -60,6 +60,12 @@ internal static class Resolve
             collector.CollectSort(sortExpression);
         }
 
+        if (context.LastNOptions is { } lastN)
+        {
+            collector.Parameters.Add(lastN.CodeParameter);
+            collector.Parameters.Add(lastN.EffectiveDateParameter);
+        }
+
         // Access constraints are lowered as ordinary expressions by AccessConstraintApplier, so their symbols
         // must be resolved here. Omitting them made a constraint throw from Lower unless the user's query also
         // named the same parameter.

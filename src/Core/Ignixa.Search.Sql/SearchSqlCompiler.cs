@@ -68,6 +68,50 @@ public sealed class SearchSqlCompiler(
         return await RunAsync(searchOptions, resourceType, options, outcomes: [], implicitParameters: [], cancellationToken);
     }
 
+    public async Task<SearchPlan> CreateLastNPlanAsync(
+        LastNSearchOptions lastNOptions,
+        SearchPlanOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        SearchPlanResult result = await TryCreateLastNPlanAsync(lastNOptions, options, cancellationToken);
+        return result.Succeeded ? result.Plan : throw new SearchCompilationException(result.Failure);
+    }
+
+    public async Task<SearchPlanResult> TryCreateLastNPlanAsync(
+        LastNSearchOptions lastNOptions,
+        SearchPlanOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(lastNOptions);
+        options ??= new SearchPlanOptions();
+
+        CompilationContext context;
+        try
+        {
+            context = CompilationContext.CreateLastN(lastNOptions, options, _timeProvider.GetUtcNow());
+        }
+        catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
+        {
+            var outcomes = new List<ParameterTrace>();
+            SearchCompilationFailure failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Build, ex);
+            return SearchPlanResult.Failed(failure with
+            {
+                Diagnostics = Diagnostics(
+                    options.DiagnosticsLevel != SearchDiagnosticsLevel.None,
+                    outcomes,
+                    implicitParameters: [],
+                    planTrace: null,
+                    planTraceFailure: null),
+            });
+        }
+
+        return await RunAsync(
+            context,
+            outcomes: [],
+            implicitParameters: [],
+            cancellationToken);
+    }
+
     private async Task<SearchPlanResult> TryCreatePlanCoreAsync(
         string? resourceType,
         IReadOnlyList<QueryParameter> parameters,
@@ -123,7 +167,6 @@ public sealed class SearchSqlCompiler(
         CancellationToken cancellationToken)
     {
         var traced = options.DiagnosticsLevel != SearchDiagnosticsLevel.None;
-
         CompilationContext context;
         try
         {
@@ -140,6 +183,17 @@ public sealed class SearchSqlCompiler(
                 failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null, planTraceFailure: null) });
         }
 
+        return await RunAsync(context, outcomes, implicitParameters, cancellationToken);
+    }
+
+    private async Task<SearchPlanResult> RunAsync(
+        CompilationContext context,
+        List<ParameterTrace> outcomes,
+        IReadOnlyList<ImplicitParameter> implicitParameters,
+        CancellationToken cancellationToken)
+    {
+        var options = context.Options;
+        var traced = options.DiagnosticsLevel != SearchDiagnosticsLevel.None;
         var resolved = await Resolve.RunAsync(context, _deps, cancellationToken);
 
         if (resolved.Unresolved.Count > 0)

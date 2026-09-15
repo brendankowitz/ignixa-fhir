@@ -14,6 +14,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit" />
+    <PackageReference Include="Xunit.SkippableFact" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
@@ -24,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj" />
     <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlServer/Ignixa.DataLayer.SqlServer.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.Search.Sql/Ignixa.Search.Sql.csproj" />
   </ItemGroup>
 
 </Project>
