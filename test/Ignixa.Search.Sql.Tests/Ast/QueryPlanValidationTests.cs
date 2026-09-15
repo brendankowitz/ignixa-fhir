@@ -8,6 +8,52 @@ namespace Ignixa.Search.Sql.Tests.Ast;
 public class QueryPlanValidationTests
 {
     [Fact]
+    public void GivenALastNPlanWithANonPositiveMaximum_WhenRunOrExplained_ThenBothRejectThePublicPlan()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(104)],
+            new MatchPageSpec(
+                new CteRef(0),
+                Shape: new ResultShape.LastN(new LastNSpec(104, 210, 211, 0))));
+
+        AssertRejectedBySqlBuilderAndExplain(plan, "Maximum");
+    }
+
+    [Theory]
+    [MemberData(nameof(LastNShapeViolations))]
+    public void GivenAnInvalidLastNShape_WhenRunOrExplained_ThenBothRejectThePublicPlan(
+        MatchPageSpec spec,
+        string expectedMessage)
+    {
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(104)], spec);
+
+        AssertRejectedBySqlBuilderAndExplain(plan, expectedMessage);
+    }
+
+    public static TheoryData<MatchPageSpec, string> LastNShapeViolations() => new()
+    {
+        {
+            new MatchPageSpec(new CteRef(0), Shape: new ResultShape.LastN(null!)),
+            "requires a LastNSpec"
+        },
+        {
+            new MatchPageSpec(new CteRef(0), Shape: new ResultShape.LastN(new LastNSpec(104, 0, 211, 1))),
+            "SearchParamIds"
+        },
+        {
+            new MatchPageSpec(new CteRef(0), Shape: new ResultShape.LastN(new LastNSpec(0, 210, 211, 1))),
+            "ResourceTypeId"
+        },
+        {
+            new MatchPageSpec(
+                new CteRef(0),
+                Top: 10,
+                Shape: new ResultShape.LastN(new LastNSpec(104, 210, 211, 1))),
+            "paging"
+        },
+    };
+
+    [Fact]
     public void GivenAMatchPageWithANullSpec_WhenRunOrExplained_ThenBothRejectThePublicPlan()
     {
         var spec = new MatchPageSpec(new CteRef(0));

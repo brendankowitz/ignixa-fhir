@@ -226,6 +226,55 @@ Malformed key or value syntax raises `InvalidSearchOperationException` with a po
 
 The mandatory BenchmarkDotNet result and acceptance decision are recorded in [the handwritten syntax parser comparison](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/features/search/benchmarks/2026-07-11-handwritten-syntax-parser-comparison.md). The comparison uses the unchanged public-facade harness and six inputs against the original handwritten baseline. The replacement was classified as **Mixed**, with a -6.31% geometric-mean time change, and all ratified performance limits passed. It was not classified as **Faster**; no speedup is claimed.
 
+## Observation `$lastn` prototype
+
+`LastNSearchOptionsBuilder` and `SearchSqlCompiler.CreateLastNPlanAsync` expose
+the operation as a separate terminal search shape:
+
+```csharp
+using Ignixa.Search.Models;
+using Ignixa.Search.Parsing;
+using Ignixa.Search.Sql;
+
+var builder = new LastNSearchOptionsBuilder(
+    searchOptionsBuilder, definitionManager, schemaProvider);
+LastNSearchOptions options = builder.Build(
+[
+    new QueryParameter("patient", "Patient/123"),
+    new QueryParameter("category", "laboratory"),
+    new QueryParameter("max", "3"),
+]);
+SearchPlan plan = await compiler.CreateLastNPlanAsync(
+    options, cancellationToken: cancellationToken);
+CompiledSearch compiled = plan.Compile();
+```
+
+`max` defaults to 1 and accepts values from 1 through 1000. R4 and later require
+patient/subject plus category or a code-bearing search parameter. The builder
+uses FHIRPath result types, including primitive `code`, rather than matching
+parameter names; STU3 does not impose these required-input rules.
+
+The SQL reads existing search indexes through CTEs, without temporary tables,
+views, migrations, materialized groups, or backfill. Equivalence is transitive
+across codings in the **filtered candidate set**; an excluded Observation does
+not link two groups. This differs from the database-wide materialized design
+in [PR #456](https://github.com/brendankowitz/ignixa-fhir/pull/456).
+
+Each group returns its newest `max` Observations, including all effective-time
+boundary ties. Text-only codes form case-sensitive groups. Undated
+Observations fill remaining positions in descending surrogate-id order after
+dated ones. No status filter is added implicitly.
+
+The direct `Ignixa.DataLayer.SqlServer.LastNSearchExecutor` can execute
+`compiled` using an existing `ISqlExecutionService` and a reader callback.
+Results are resource identities `(T1, Sid1)`, not a FHIR Bundle. Ordinary
+sorting, paging, and includes are rejected.
+
+This is a **library-only, small-dataset prototype**: no HTTP endpoint or
+capability advertisement is added. Recursive traversal may grow exponentially
+for highly connected code groups; SQL timeouts and cancellation propagate,
+and no production latency guarantee is made.
+
 ## Related Documentation
 
 - [Search Parameters](/docs/server/fhir/search-parameters)

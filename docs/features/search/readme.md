@@ -32,6 +32,7 @@ FHIR search is a complex domain requiring support for compartment searches, wild
 | [includes-operation](investigations/includes-operation.md) | **Implemented** | `$includes` operation for paginated include/revinclude results with `_includesCount` parameter |
 | [not-referenced-search](investigations/not-referenced-search.md) | **Implemented** | `_not-referenced` parameter to find orphaned resources not referenced by others (SQL only) |
 | [search-sql-decomposition](investigations/search-sql-decomposition.md) | Viable | Structural decomposition of the three oversized `Ignixa.Search.Sql` stage orchestrators; removes duplicated plan invariants and extends the existing dispatcher/rule pattern upward |
+| [lastn-direct-search](investigations/lastn-direct-search.md) | Prototype | CTE-only `$lastn` over existing search tables, with candidate-local transitive code grouping and boundary ties; no schema or temporary objects |
 
 ## Related ADRs
 

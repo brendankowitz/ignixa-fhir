@@ -18,6 +18,44 @@ internal static class PlanShapeValidator
     /// <summary>Rejects the plan shapes that have no coherent SQL rendering, before any text is produced.</summary>
     private static void RejectUnsupportedCombinations(QueryPlan plan)
     {
+        if (plan.EffectiveShape is ResultShape.LastN lastN)
+        {
+            if (lastN.Spec is null)
+            {
+                throw new NotSupportedException("ResultShape.LastN requires a LastNSpec.");
+            }
+
+            if (lastN.Spec.Maximum < 1)
+            {
+                throw new NotSupportedException($"LastNSpec.Maximum must be positive; got {lastN.Spec.Maximum}.");
+            }
+
+            if (lastN.Spec.CodeSearchParamId <= 0 || lastN.Spec.EffectiveDateSearchParamId <= 0)
+            {
+                throw new NotSupportedException("LastNSpec code and effective-date SearchParamIds must be positive.");
+            }
+
+            if (lastN.Spec.ResourceTypeId == 0)
+            {
+                throw new NotSupportedException("LastNSpec.ResourceTypeId must be a resolved id or the unmatchable sentinel.");
+            }
+
+            if (plan.Sort is not null || plan.Top is not null || plan.Page is not null || plan.OffsetPage is not null)
+            {
+                throw new NotSupportedException("ResultShape.LastN cannot carry ordinary sort or paging.");
+            }
+
+            if (plan.Includes is { Count: > 0 } || plan.IncludeSeed is not null)
+            {
+                throw new NotSupportedException("ResultShape.LastN cannot carry include stages or an IncludeSeed.");
+            }
+
+            if (plan.Projection is not null)
+            {
+                throw new NotSupportedException("ResultShape.LastN emits resource identity columns only and cannot carry a Projection.");
+            }
+        }
+
         if (plan.IncludesOnly && plan.Includes is not { Count: > 0 })
         {
             throw new NotSupportedException(
