@@ -22,14 +22,18 @@ internal sealed class LoopbackHttpsRegistry : IAsyncDisposable
     private readonly Task? _tlsErrors;
     private readonly bool _expectTrustRejection;
     private readonly ConcurrentQueue<string> _diagnostics = new();
+    private readonly ConcurrentQueue<(string Path, IReadOnlyDictionary<string, string> Headers)> _requests = new();
+    private readonly Dictionary<int, TaskCompletionSource> _bodySignals = [];
     private bool _unexpectedStandardError;
+    private bool _unexpectedHandshakeFailure;
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal Uri BaseUri { get; private set; }
     internal Task Ready => _ready.Task;
     internal IReadOnlyCollection<string> Diagnostics => _diagnostics.ToArray();
-    internal List<(string Path, IReadOnlyDictionary<string, string> Headers)> Requests { get; } = [];
+    internal IReadOnlyList<(string Path, IReadOnlyDictionary<string, string> Headers)> Requests => _requests.ToArray();
     internal Func<string, LoopbackReply> Respond { get; set; } = _ => new(404, [], false);
+    internal Func<Task>? BeforeUnexpectedHandshakeFailure { get; set; }
 
     internal LoopbackHttpsRegistry(bool expectTrustRejection = false)
     {
@@ -124,9 +128,17 @@ internal sealed class LoopbackHttpsRegistry : IAsyncDisposable
                 }
                 using JsonDocument message = JsonDocument.Parse(line);
                 JsonElement root = message.RootElement;
+                if (root.TryGetProperty("bodySent", out JsonElement bodySent))
+                {
+                    if (_bodySignals.Remove(bodySent.GetInt32(), out TaskCompletionSource? signal))
+                    {
+                        signal.TrySetResult();
+                    }
+                    continue;
+                }
                 if (root.TryGetProperty("tlsError", out JsonElement tlsError))
                 {
-                    RecordHandshakeFailure(SafeCode(tlsError.GetString()));
+                    await RecordHandshakeFailureAsync(SafeCode(tlsError.GetString()));
                     continue;
                 }
                 if (root.TryGetProperty("processError", out JsonElement processError))
@@ -140,18 +152,26 @@ internal sealed class LoopbackHttpsRegistry : IAsyncDisposable
                 string path = root.GetProperty("path").GetString()!;
                 var headers = root.GetProperty("headers").EnumerateObject()
                     .ToDictionary(property => property.Name, property => property.Value.GetString()!, StringComparer.OrdinalIgnoreCase);
-                Requests.Add((path, headers));
+                _requests.Enqueue((path, headers));
                 LoopbackReply reply = Respond(path);
                 var responseHeaders = reply.Headers.Split("\r\n", StringSplitOptions.RemoveEmptyEntries)
                     .Select(header => header.Split(':', 2))
-                    .ToDictionary(parts => parts[0], parts => parts[1].Trim(), StringComparer.OrdinalIgnoreCase);
+                    .SelectMany(parts => new[] { parts[0], parts[1].Trim() }).ToArray();
+                int id = root.GetProperty("id").GetInt32();
+                if (reply.BodySent is not null)
+                {
+                    _bodySignals.Add(id, reply.BodySent);
+                }
                 string response = JsonSerializer.Serialize(new
                 {
-                    id = root.GetProperty("id").GetInt32(),
+                    id,
                     status = reply.Status,
                     body = Convert.ToBase64String(reply.Body),
                     chunked = reply.Chunked,
-                    headers = responseHeaders
+                    headers = responseHeaders,
+                    bytesToSend = reply.BytesToSend ?? reply.Body.Length,
+                    truncate = reply.Truncate,
+                    stall = reply.Stall
                 });
                 await _node.StandardInput.WriteLineAsync(response.AsMemory(), _stop.Token);
             }
@@ -159,7 +179,7 @@ internal sealed class LoopbackHttpsRegistry : IAsyncDisposable
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
         {
         }
-        catch (IOException) when (_stop.IsCancellationRequested)
+        catch (IOException) when (_stop.IsCancellationRequested && !_unexpectedHandshakeFailure)
         {
         }
         catch (Exception exception)
@@ -171,25 +191,13 @@ internal sealed class LoopbackHttpsRegistry : IAsyncDisposable
 
     private async Task ServeAsync()
     {
+        var clients = new List<Task>();
         try
         {
             while (!_stop.IsCancellationRequested)
             {
-                using TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token);
-                await using var tls = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
-                try
-                {
-                    await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
-                    {
-                        ServerCertificate = _certificate,
-                        EnabledSslProtocols = SslProtocols.None
-                    }, _stop.Token);
-                    _ = await RespondAsync(tls, tls, _stop.Token);
-                }
-                catch (AuthenticationException exception)
-                {
-                    RecordHandshakeFailure($"TLS_AUTHENTICATION_{exception.HResult:X8}");
-                }
+                TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token);
+                clients.Add(ServeClientAsync(client));
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
@@ -197,6 +205,34 @@ internal sealed class LoopbackHttpsRegistry : IAsyncDisposable
         }
         catch (SocketException) when (_stop.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            await Task.WhenAll(clients);
+        }
+    }
+
+    private async Task ServeClientAsync(TcpClient client)
+    {
+        using (client)
+        {
+            await using var tls = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
+            try
+            {
+                await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+                {
+                    ServerCertificate = _certificate,
+                    EnabledSslProtocols = SslProtocols.None
+                }, _stop.Token);
+                _ = await RespondAsync(tls, tls, _stop.Token);
+            }
+            catch (AuthenticationException exception)
+            {
+                await RecordHandshakeFailureAsync($"TLS_AUTHENTICATION_{exception.HResult:X8}");
+            }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+            {
+            }
         }
     }
 
@@ -222,34 +258,47 @@ internal sealed class LoopbackHttpsRegistry : IAsyncDisposable
         }
         var headers = lines.Skip(1).Select(line => line.Split(':', 2))
             .ToDictionary(parts => parts[0], parts => parts[1].Trim(), StringComparer.OrdinalIgnoreCase);
-        Requests.Add((request[1], headers));
+        _requests.Enqueue((request[1], headers));
         LoopbackReply reply = Respond(request[1]);
         string framing = reply.Chunked ? "Transfer-Encoding: chunked" : $"Content-Length: {reply.Body.Length}";
         byte[] prefix = Encoding.ASCII.GetBytes($"HTTP/1.1 {reply.Status} Test\r\n{framing}\r\nConnection: close\r\n{reply.Headers}\r\n");
         await output.WriteAsync(prefix, cancellationToken);
         if (reply.Chunked)
         {
-            foreach (byte[] chunk in reply.Body.Chunk(13))
+            foreach (byte[] chunk in reply.Body.Take(reply.BytesToSend ?? reply.Body.Length).Chunk(13))
             {
                 await output.WriteAsync(Encoding.ASCII.GetBytes($"{chunk.Length:X}\r\n"), cancellationToken);
                 await output.WriteAsync(chunk, cancellationToken);
                 await output.WriteAsync("\r\n"u8.ToArray(), cancellationToken);
             }
-            await output.WriteAsync("0\r\n\r\n"u8.ToArray(), cancellationToken);
+            if (!reply.Truncate && !reply.Stall)
+            {
+                await output.WriteAsync("0\r\n\r\n"u8.ToArray(), cancellationToken);
+            }
         }
         else
         {
-            await output.WriteAsync(reply.Body, cancellationToken);
+            await output.WriteAsync(reply.Body.AsMemory(0, reply.BytesToSend ?? reply.Body.Length), cancellationToken);
         }
         await output.FlushAsync(cancellationToken);
+        reply.BodySent?.TrySetResult();
+        if (reply.Stall)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
         return true;
     }
 
-    private void RecordHandshakeFailure(string code)
+    private async Task RecordHandshakeFailureAsync(string code)
     {
+        _unexpectedHandshakeFailure = !_expectTrustRejection;
         _diagnostics.Enqueue(code);
         if (!_expectTrustRejection)
         {
+            if (BeforeUnexpectedHandshakeFailure is not null)
+            {
+                await BeforeUnexpectedHandshakeFailure();
+            }
             throw new IOException($"Unexpected test TLS handshake failure: {code}.");
         }
     }
@@ -335,12 +384,19 @@ internal sealed class LoopbackHttpsRegistry : IAsyncDisposable
             const response = pending.get(value.id);
             pending.delete(value.id);
             const bytes = Buffer.from(value.body, 'base64');
-            const headers = { ...value.headers, Connection: 'close' };
-            if (!value.chunked) headers['Content-Length'] = bytes.length;
-            else headers['Transfer-Encoding'] = 'chunked';
+            const headers = [...value.headers, 'Connection', 'close'];
+            if (!value.chunked) headers.push('Content-Length', String(bytes.length));
+            else headers.push('Transfer-Encoding', 'chunked');
             response.writeHead(value.status, headers);
-            for (let offset = 0; offset < bytes.length; offset += 13) response.write(bytes.subarray(offset, offset + 13));
-            response.end();
+            response.flushHeaders();
+            const body = bytes.subarray(0, value.bytesToSend);
+            for (let offset = 0; offset + 13 < body.length; offset += 13) response.write(body.subarray(offset, offset + 13));
+            const tail = body.length === 0 ? 0 : Math.floor((body.length - 1) / 13) * 13;
+            response.write(body.subarray(tail), () => {
+                console.log(JSON.stringify({ bodySent: value.id }));
+                if (value.truncate) response.socket?.end();
+                else if (!value.stall) response.end();
+            });
         });
         input.on('close', () => { server?.close(); process.exit(0); });
         """;

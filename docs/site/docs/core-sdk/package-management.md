@@ -219,8 +219,9 @@ on all success/failure paths.
 Reuse the acquirer for concurrent operations only with concurrency-safe authentication
 and certificate-validation callbacks. Do not dispose the acquirer while calls are active.
 
-Metadata and tarball requests send `Accept-Encoding: identity`. Non-identity HTTP
-content encodings are rejected before body reads, not silently decompressed.
+Metadata and tarball requests send `Accept-Encoding: identity`. Every original
+`Content-Encoding` field and list member must declare identity: non-identity,
+malformed and empty members are rejected before body reads, not silently decompressed.
 The `.tgz` body itself is still gzip data whose **compressed bytes** are authenticated.
 
 ### Bounds, digest and deadline
@@ -246,9 +247,11 @@ digest verification, strict extraction and cache work. Backoff is outside the at
 timeout but inside the overall deadline. Optional `TimeProvider` controls timers/time.
 
 Only transient transport/timeouts and HTTP 408/429/500/502/503/504 retry. TLS authentication
-or certificate rejection (an underlying `AuthenticationException`) is permanent sanitized
-`TransportFailure`; other connection failures remain transport-retry candidates.
-Retry-After delta/date values
+or certificate rejection, including any exception thrown by the certificate-validation
+callback, is permanent sanitized `TransportFailure`. Actual caller/deadline cancellation
+is preserved; other connection failures remain transport-retry candidates.
+Retry-After must have exactly one complete valid delta/date field (a date's comma is
+part of that value, not a separator). Its delay
 must fit both maximum delay and remaining deadline; invalid or excessive values stop the
 call rather than being ignored or retried early. A delay equal to all remaining time
 cannot leave time for another attempt and is rejected. A delay equal to the configured
@@ -280,7 +283,8 @@ the owned staging file; no broad recursive cleanup occurs. A crash may leave an 
 staging file, which is never read as an artifact. Protect this directory from untrusted
 local writers; cross-process eviction, crash recovery and installed inventory are host
 concerns. Acquisition makes no claim that a package is installed or activated.
-Cleanup-only failure remains permanent `CacheFailure`. If cleanup also fails while
+Cleanup-only failure remains permanent `CacheFailure`, including staging-stream disposal.
+If a buffered disposal flush or file cleanup also fails while
 another failure is in flight, the primary error (including the caller cancellation
 token or deadline timeout) is retained and retries stop. The primary exception's
 `Data[PackageAcquisitionException.CacheCleanupFailureDataKey]` is set to
@@ -308,6 +312,9 @@ production dependency or certificate-store modification. Non-Windows uses SslStr
 Trust-rejection tests explicitly permit expected TLS handshake failures; other tests
 fail on unexpected handshake/process errors with sanitized error codes. Unrestricted
 stderr and certificate/key material are never emitted as fixture diagnostics.
+The fixture exercises truncated content-length/chunked bodies, stalled final chunks
+and concurrent acquisitions; shutdown cannot suppress a previously observed unexpected
+handshake failure.
 
 ## Resource Extraction
 
@@ -471,7 +478,14 @@ Duplicate or malformed Pax attributes fail. Embedded LF, CR or NUL within an att
 rejected because supported BCL runtimes parse record boundaries differently. Numeric sizes
 accept octal digits with optional leading spaces and trailing NUL/space padding, or positive
 GNU base-256; digits after a NUL terminator, negative/overflowing binary sizes and binary
-checksums are rejected. GNU long paths may include or omit their final NUL, with the actual
+checksums are rejected. The same unambiguous octal grammar also applies to mode, user/group
+IDs and timestamps, including hidden metadata. Signed base-256 IDs must fit signed 32-bit
+values; timestamps (including ordinary negative historical values) must fit the
+`DateTimeOffset` Unix-seconds range. GNU access/change timestamps are checked whenever
+the reader consumes GNU attributes, including a header inheriting its format from
+long-path metadata. Device types are rejected before device numbers can be consumed;
+unused device/GNU auxiliary fields in regular files impose no additional numeric policy.
+GNU long paths may include or omit their final NUL, with the actual
 physical payload size counting toward limits in either case.
 
 Opaque metadata-header names are not extraction paths. A narrow framing map preserves the

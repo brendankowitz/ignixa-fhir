@@ -92,7 +92,7 @@ public class NpmAcquisitionAcceptanceGuardTests
         Task<AcquiredNpmPackage> task = acquirer.AcquireAsync(SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), CancellationToken.None);
         foreach (int seconds in new[] { 1, 2 })
         {
-            TimeSpan delay = await clock.WaitForDelayAsync(TimeSpan.FromSeconds(seconds));
+            TimeSpan delay = await clock.WaitForDelayAsync(TimeSpan.FromSeconds(seconds), task, () => artifactCount > seconds);
             clock.Advance(delay);
         }
         if (recover)

@@ -23,8 +23,8 @@ public class NpmAcquisitionRetryTests
         registry.Respond = (_, _, _) => Task.FromResult(registry.Bytes([], (HttpStatusCode)status));
         using var acquirer = registry.Acquirer(timeProvider: clock);
         Task<AcquiredNpmPackage> task = acquirer.AcquireAsync(SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), CancellationToken.None);
-        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(1));
-        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(2));
+        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(1), () => registry.Requests.Count > 1);
+        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(2), () => registry.Requests.Count > 2);
         (await Should.ThrowAsync<PackageAcquisitionException>(() => task)).StatusCode.ShouldBe((HttpStatusCode)status);
         registry.Requests.Count.ShouldBe(3);
         registry.Bodies.ShouldAllBe(s => s.Disposed);
@@ -61,8 +61,8 @@ public class NpmAcquisitionRetryTests
             : throw new HttpRequestException("https://user:secret@private.test/");
         using var acquirer = registry.Acquirer(timeProvider: clock);
         Task<AcquiredNpmPackage> task = acquirer.AcquireAsync(SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), CancellationToken.None);
-        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(1));
-        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(2));
+        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(1), () => registry.Requests.Count > 1);
+        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(2), () => registry.Requests.Count > 2);
         var error = await Should.ThrowAsync<PackageAcquisitionException>(() => task);
         error.Error.ShouldBe(PackageAcquisitionError.TransportFailure);
         error.ToString().ShouldNotContain("secret");
@@ -78,9 +78,11 @@ public class NpmAcquisitionRetryTests
         var retry = new PackageAcquisitionRetryPolicy(maxAttempts: 8);
         using var acquirer = registry.Acquirer(timeProvider: clock);
         Task<AcquiredNpmPackage> task = acquirer.AcquireAsync(SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(retry: retry), CancellationToken.None);
+        int attempt = 1;
         foreach (int ceiling in new[] { 1, 2, 4, 8, 16, 30, 30 })
         {
-            await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(ceiling));
+            await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(ceiling), () => registry.Requests.Count > attempt);
+            attempt++;
         }
         _ = await Should.ThrowAsync<PackageAcquisitionException>(() => task);
         registry.Requests.Count.ShouldBe(8);
@@ -144,7 +146,12 @@ public class NpmAcquisitionRetryTests
         using var registry = new SyntheticNpmRegistry();
         using var caller = new CancellationTokenSource();
         var clock = new ManualAcquisitionTime();
-        registry.Respond = (_, _, _) => Task.FromResult(registry.Bytes([], HttpStatusCode.ServiceUnavailable));
+        registry.Respond = (_, _, _) =>
+        {
+            HttpResponseMessage response = registry.Bytes([], HttpStatusCode.ServiceUnavailable);
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(1));
+            return Task.FromResult(response);
+        };
         using var acquirer = registry.Acquirer(timeProvider: clock);
         Task<AcquiredNpmPackage> task = acquirer.AcquireAsync(SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), caller.Token);
         _ = await clock.WaitForDelayAsync(TimeSpan.FromSeconds(1));
@@ -191,7 +198,7 @@ public class NpmAcquisitionRetryTests
         Task<AcquiredNpmPackage> task = acquirer.AcquireAsync(SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(retry: retry), CancellationToken.None);
         await bodies[0].Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         clock.Advance(TimeSpan.FromSeconds(2));
-        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(1));
+        await AdvanceDelayAsync(task, clock, TimeSpan.FromSeconds(1), () => registry.Requests.Count > 1);
         while (bodies.Count < 2)
         {
             if (task.IsCompleted)
@@ -255,13 +262,9 @@ public class NpmAcquisitionRetryTests
         registry.Requests.Count.ShouldBe(1);
     }
 
-    private static async Task AdvanceDelayAsync(Task task, ManualAcquisitionTime clock, TimeSpan ceiling)
+    private static async Task AdvanceDelayAsync(Task task, ManualAcquisitionTime clock, TimeSpan ceiling, Func<bool> hasProgressed)
     {
-        if (task.IsCompleted)
-        {
-            await task;
-        }
-        TimeSpan delay = await clock.WaitForDelayAsync(ceiling);
+        TimeSpan delay = await clock.WaitForDelayAsync(ceiling, task, hasProgressed);
         delay.ShouldBeGreaterThanOrEqualTo(TimeSpan.Zero);
         delay.ShouldBeLessThanOrEqualTo(ceiling);
         clock.Advance(delay);

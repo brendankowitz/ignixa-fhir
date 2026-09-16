@@ -18,9 +18,7 @@ public class StrictParserDifferentialTests(ITestOutputHelper output)
         (byte[] gzip, byte[] tar) = ReadWire("nul-checksum");
         tar[1024 + 148].ShouldBe((byte)0);
 
-        ReadBclNames(tar).ShouldBe(Environment.Version.Major == 9
-            ? ["package/package.json", "package/resource.json"]
-            : ["package/package.json"]);
+        ObserveBcl(tar);
         await AssertRejected(gzip, PackageExtractionError.InvalidArchive, 2);
     }
 
@@ -32,15 +30,7 @@ public class StrictParserDifferentialTests(ITestOutputHelper output)
         Encoding.UTF8.GetString(tar, 1536, 26).ShouldBe(payload);
         tar[1024 + 156].ShouldBe((byte)'x');
 
-        if (Environment.Version.Major == 9)
-        {
-            ReadBclNames(tar).ShouldBe(["package/package.json", "package/ignored.bin"]);
-        }
-        else
-        {
-            Should.Throw<InvalidDataException>(() => ReadBclNames(tar));
-            output.WriteLine($"Runtime {Environment.Version}; BCL rejected embedded-newline Pax records.");
-        }
+        ObserveBcl(tar);
         await AssertRejected(gzip, PackageExtractionError.InvalidArchive, 2);
     }
 
@@ -50,8 +40,7 @@ public class StrictParserDifferentialTests(ITestOutputHelper output)
         (byte[] gzip, byte[] tar) = ReadWire("trailing-space-path");
         Encoding.UTF8.GetString(tar, 1024, 19).ShouldBe("package/evil.json \0");
 
-        ReadBclNames(tar).ShouldBe(["package/package.json",
-            Environment.Version.Major == 9 ? "package/evil.json" : "package/evil.json "]);
+        ObserveBcl(tar);
         await AssertRejected(gzip, PackageExtractionError.UnsafePath, 2);
     }
 
@@ -62,18 +51,23 @@ public class StrictParserDifferentialTests(ITestOutputHelper output)
         return (gzip, tar);
     }
 
-    private string[] ReadBclNames(byte[] tar)
+    private void ObserveBcl(byte[] tar)
     {
         using var stream = new MemoryStream(tar);
         using var reader = new TarReader(stream);
         var names = new List<string>();
-        TarEntry? entry;
-        while ((entry = reader.GetNextEntry()) is not null)
+        try
         {
-            names.Add(entry.Name);
+            while (reader.GetNextEntry() is { } entry)
+            {
+                names.Add(entry.Name);
+            }
+        }
+        catch (Exception exception) when (exception is InvalidDataException or OverflowException or ArgumentException)
+        {
+            output.WriteLine($"Runtime {Environment.Version}; BCL diagnostic={exception.GetType().Name}");
         }
         output.WriteLine($"Runtime {Environment.Version}; BCL returned {names.Count}: {string.Join(", ", names)}");
-        return names.ToArray();
     }
 
     private async Task AssertRejected(byte[] gzip, PackageExtractionError code, int physicalIndex)

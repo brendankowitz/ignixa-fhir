@@ -61,13 +61,12 @@ public sealed class VerifiedPackageCache
             try
             {
                 checkBudget();
-                await using (var stream = new FileStream(staging, FileMode.CreateNew, FileAccess.Write,
-                    FileShare.None, 65536, FileOptions.Asynchronous))
-                {
-                    ownsStaging = true;
-                    await stream.WriteAsync(verifiedBytes, cancellationToken).ConfigureAwait(false);
-                    await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                }
+#pragma warning disable CA2000 // WriteStagingAsync owns disposal, including exceptional write/flush paths.
+                var stream = new FileStream(staging, FileMode.CreateNew, FileAccess.Write,
+                    FileShare.None, 65536, FileOptions.Asynchronous);
+#pragma warning restore CA2000
+                ownsStaging = true;
+                await WriteStagingAsync(stream, verifiedBytes, cancellationToken).ConfigureAwait(false);
 
                 checkBudget();
                 try
@@ -117,6 +116,34 @@ public sealed class VerifiedPackageCache
             var failure = new PackageAcquisitionException(PackageAcquisitionError.CacheFailure);
             PackageAcquisitionException.PreserveCleanupFailure(exception, failure);
             throw failure;
+        }
+    }
+
+    internal static async Task WriteStagingAsync(Stream stream, byte[] verifiedBytes, CancellationToken cancellationToken)
+    {
+        Exception? primaryFailure = null;
+        try
+        {
+            await stream.WriteAsync(verifiedBytes, cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            primaryFailure = exception;
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception) when (primaryFailure is not null &&
+                exception is IOException or UnauthorizedAccessException)
+            {
+                // Buffered disposal can flush again, even after FlushAsync was canceled.
+                primaryFailure.Data[PackageAcquisitionException.CacheCleanupFailureDataKey] = PackageAcquisitionError.CacheFailure;
+            }
         }
     }
 

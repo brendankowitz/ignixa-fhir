@@ -48,11 +48,15 @@ internal sealed class ManualAcquisitionTime : TimeProvider
         }
     }
 
-    internal async Task<TimeSpan> WaitForDelayAsync(TimeSpan maximum)
+    internal async Task<TimeSpan> WaitForDelayAsync(TimeSpan maximum, Task? operation = null, Func<bool>? hasProgressed = null)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (true)
         {
+            if (operation?.IsCompleted == true || hasProgressed?.Invoke() == true)
+            {
+                return TimeSpan.Zero;
+            }
             lock (_gate)
             {
                 long next = _timers.Where(t => t.Duration <= maximum).Select(t => t.Due).DefaultIfEmpty(long.MaxValue).Min();

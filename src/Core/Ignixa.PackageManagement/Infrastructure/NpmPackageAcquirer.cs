@@ -72,7 +72,18 @@ public sealed class NpmPackageAcquirer : IDisposable
             UseProxy = false,
             SslOptions = new SslClientAuthenticationOptions
             {
-                RemoteCertificateValidationCallback = validateServerCertificate
+                RemoteCertificateValidationCallback = validateServerCertificate is null ? null : (sender, certificate, chain, errors) =>
+                {
+                    try
+                    {
+                        return validateServerCertificate(sender, certificate, chain, errors);
+                    }
+                    catch (Exception)
+                    {
+                        // Trust evaluation is permanent; callback exceptions may contain credentials.
+                        throw new AuthenticationException("Server certificate trust evaluation failed.");
+                    }
+                }
             }
         };
     }
@@ -281,10 +292,7 @@ public sealed class NpmPackageAcquirer : IDisposable
                     throw new PackageAcquisitionException(PackageAcquisitionError.HttpFailure, response.StatusCode);
                 }
 
-                if (response.Content.Headers.ContentEncoding.Any(encoding => !string.Equals(encoding, "identity", StringComparison.OrdinalIgnoreCase)))
-                {
-                    throw new PackageAcquisitionException(PackageAcquisitionError.UnsupportedContentEncoding);
-                }
+                ValidateContentEncoding(response.Content.Headers);
 
                 int limit = metadata ? policy.MaxMetadataBytes : policy.ExtractionLimits.MaxCompressedBytes;
                 PackageAcquisitionError limitError = metadata ? PackageAcquisitionError.MetadataSizeLimit : PackageAcquisitionError.CompressedSizeLimit;
@@ -303,6 +311,7 @@ public sealed class NpmPackageAcquirer : IDisposable
             }
             catch (HttpRequestException exception) when (HasTlsAuthenticationFailure(exception))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 throw new PackageAcquisitionException(PackageAcquisitionError.TransportFailure);
             }
             catch (HttpRequestException exception) when (exception.StatusCode is { } status)
@@ -364,13 +373,36 @@ public sealed class NpmPackageAcquirer : IDisposable
 
     private TimeSpan? GetRetryAfter(HttpResponseMessage response)
     {
-        RetryConditionHeaderValue? value = response.Headers.RetryAfter;
-        if (value is null && response.Headers.Contains("Retry-After"))
+        if (!response.Headers.NonValidated.TryGetValues("Retry-After", out HeaderStringValues raw))
+        {
+            return null;
+        }
+        // An HTTP date contains a comma, but this singleton header must not have multiple fields.
+        if (raw.Count != 1 || !RetryConditionHeaderValue.TryParse(raw.Single(), out RetryConditionHeaderValue? value))
         {
             throw new PackageAcquisitionException(PackageAcquisitionError.HttpFailure, response.StatusCode);
         }
-        TimeSpan? delay = value?.Delta ?? (value?.Date - _timeProvider.GetUtcNow());
+        TimeSpan? delay = value.Delta ?? (value.Date - _timeProvider.GetUtcNow());
         return delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
+    }
+
+    private static void ValidateContentEncoding(HttpContentHeaders headers)
+    {
+        if (!headers.NonValidated.TryGetValues("Content-Encoding", out HeaderStringValues raw))
+        {
+            return;
+        }
+        // Typed collections omit malformed values. Validate every original list member instead.
+        foreach (string field in raw)
+        {
+            foreach (string encoding in field.Split(','))
+            {
+                if (!encoding.AsSpan().Trim(" \t").Equals("identity", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new PackageAcquisitionException(PackageAcquisitionError.UnsupportedContentEncoding);
+                }
+            }
+        }
     }
 
     private static void VerifyDigest(byte[] bytes, NpmPackageIntegrity integrity, CancellationToken cancellationToken)

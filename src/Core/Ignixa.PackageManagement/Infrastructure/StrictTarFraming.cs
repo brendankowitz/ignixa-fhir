@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Text;
 using Ignixa.PackageManagement.Models;
@@ -16,6 +17,7 @@ internal static class StrictTarFraming
         int entries = 0;
         long payloadBytes = 0;
         bool pendingMetadata = false;
+        bool pendingGnuMetadata = false;
         string? pendingPath = null;
         var frames = new List<StrictTarFrame>();
         while (offset <= tar.Length - BlockSize)
@@ -49,12 +51,14 @@ internal static class StrictTarFraming
             {
                 throw Failure(PackageExtractionError.UnsupportedEntryType, entries);
             }
+            ValidateNumericAttributes(header, entries, pendingGnuMetadata);
             bool metadata = type is (byte)'x' or (byte)'L';
             if ((metadata && pendingMetadata) || (type == (byte)'5' && size != 0))
             {
                 throw Failure(PackageExtractionError.InvalidArchive, entries);
             }
             pendingMetadata = metadata;
+            pendingGnuMetadata = type == (byte)'L';
             long paddedSize = (size + BlockSize - 1) / BlockSize * BlockSize;
             if (offset + BlockSize + paddedSize > tar.Length)
             {
@@ -130,6 +134,47 @@ internal static class StrictTarFraming
             value = value * 8 + digit - '0';
         }
         return value;
+    }
+
+    private static void ValidateNumericAttributes(ReadOnlySpan<byte> header, int entry, bool afterGnuMetadata)
+    {
+        ReadNumeric(header.Slice(100, 8), entry, int.MinValue, int.MaxValue);
+        ReadNumeric(header.Slice(108, 8), entry, int.MinValue, int.MaxValue);
+        ReadNumeric(header.Slice(116, 8), entry, int.MinValue, int.MaxValue);
+        ValidateTimestamp(header.Slice(136, 12), entry);
+        // Devices are rejected before TarReader; their device numbers are never consumed.
+        // Of the GNU auxiliary fields, TarReader consumes only access/change timestamps.
+        ReadOnlySpan<byte> magic = header.Slice(257, 6);
+        if (magic.SequenceEqual("ustar "u8) ||
+            ((afterGnuMetadata || header[156] == (byte)'L') && !IsZero(magic)))
+        {
+            ValidateTimestamp(header.Slice(345, 12), entry);
+            ValidateTimestamp(header.Slice(357, 12), entry);
+        }
+    }
+
+    private static void ValidateTimestamp(ReadOnlySpan<byte> field, int entry) =>
+        ReadNumeric(field, entry, DateTimeOffset.MinValue.ToUnixTimeSeconds(), DateTimeOffset.MaxValue.ToUnixTimeSeconds());
+
+    private static void ReadNumeric(ReadOnlySpan<byte> field, int entry, long minimum, long maximum)
+    {
+        long value;
+        if (field[0] == 0xff)
+        {
+            value = BinaryPrimitives.ReadInt64BigEndian(field[^8..]);
+            if (field[..^8].IndexOfAnyExcept((byte)0xff) >= 0 || value >= 0)
+            {
+                throw Failure(PackageExtractionError.InvalidArchive, entry);
+            }
+        }
+        else
+        {
+            value = ReadSize(field, entry);
+        }
+        if (value < minimum || value > maximum)
+        {
+            throw Failure(PackageExtractionError.InvalidArchive, entry);
+        }
     }
 
     private static string? ValidatePax(ReadOnlySpan<byte> payload, int entry, CancellationToken cancellationToken)

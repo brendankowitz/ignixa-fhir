@@ -88,7 +88,8 @@ IReadOnlyList<StrictPackageEntry> allJson = raw.JsonEntries;
   acquisitions are active. The acquirer owns its client/transport, not the extractor,
   authenticator, certificate callback, clock or cache.
 - Both metadata and tarballs request `Accept-Encoding: identity`. HTTP content
-  encodings other than identity are rejected **before reading**; gzip tarballs
+  encodings other than identity, malformed declarations and empty list members
+  are rejected **before reading**, across every original header field; gzip tarballs
   themselves remain ordinary compressed artifact bytes. Thus automatic HTTP
   decompression cannot bypass the decoded metadata cap.
 - Defaults: 32 MiB compressed, 256 MiB expanded including all tar overhead,
@@ -104,9 +105,10 @@ IReadOnlyList<StrictPackageEntry> allJson = raw.JsonEntries;
 - Three **total attempts**, 120 seconds each, share a 300-second overall deadline.
   Full-jitter exponential backoff starts at a 1-second ceiling, capped at 30 seconds.
   Only transient transport/timeouts and HTTP 408/429/500/502/503/504 retry.
-  TLS authentication/certificate rejection is permanent sanitized `TransportFailure`;
-  it does not retry. Retry-After is
-  honored only if valid and within the maximum delay and remaining deadline;
+  TLS authentication/certificate rejection, including exceptions thrown by the
+  trust callback, is permanent sanitized `TransportFailure`; actual caller/deadline
+  cancellation remains cancellation/timeout. Retry-After is honored only as one
+  valid delta/date field within the maximum delay and remaining deadline;
   otherwise acquisition stops rather than retrying early. Body reads, digest,
   extraction and cache work all participate. Inject `TimeProvider` for deterministic
   time control. CPU/filesystem calls are cooperative, not forcibly preemptible.
@@ -122,7 +124,8 @@ IReadOnlyList<StrictPackageEntry> allJson = raw.JsonEntries;
   winners are reread and compared; only the caller's unique staging file is cleaned
   up. Protect the cache directory from untrusted local writers. This is not installed
   inventory, durable activation state, an offline registry or a cache eviction service.
-  Cleanup-only failure is permanent `CacheFailure`. If cleanup also fails during a
+  Cleanup-only failure is permanent `CacheFailure`, including staging-stream disposal.
+  If a buffered disposal flush or file cleanup also fails during a
   primary failure, that primary error/caller token is preserved and retries stop:
   `exception.Data[PackageAcquisitionException.CacheCleanupFailureDataKey]` contains
   `PackageAcquisitionError.CacheFailure`, never the path or nested filesystem message.
@@ -146,6 +149,8 @@ transport. On Windows, those tests require `node` on PATH because Schannel canno
 serve an ephemeral private key; the isolated test server receives certificate/key
 material through memory pipes, never a trust store or key file. Node is **not** a
 production package dependency. Non-Windows tests use in-process `SslStream`.
+The fixture can truncate or stall real response framing and serve concurrent calls.
+Unexpected TLS failures remain observable even when shutdown races with diagnostics.
 
 ### Loading a Package from NPM
 
@@ -295,7 +300,11 @@ Strict format support is intentionally narrower than general-purpose tar tools: 
 gzip member with verified CRC/size and no trailing compressed data; regular POSIX/GNU files
 and directories; local Pax metadata and GNU long paths bounded before `TarReader` sees them.
 Global Pax metadata, sparse formats, long-link metadata, Pax structural size/link/charset
-overrides and special files are rejected. Ambiguous numeric fields and Pax records containing
+overrides and special files are rejected. The raw gate checks consumed mode, user/group ID
+and timestamp fields even in hidden metadata and inherited GNU headers, not just size/checksum.
+Signed base-256 IDs and in-range historical timestamps remain supported; unused device/GNU
+auxiliary bytes in regular files are not treated as consumed numbers.
+Ambiguous numeric fields and Pax records containing
 embedded newline, carriage return or NUL fail. Effective UTF-8 wire paths (including USTAR prefixes
 and Pax/GNU overrides) are validated before reader trimming, and every reader entry is reconciled
 with its physical offset, size, type and exact path. No ignored body can hide a following entry.
