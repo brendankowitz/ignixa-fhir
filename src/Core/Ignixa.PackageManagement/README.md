@@ -17,6 +17,136 @@ dotnet add package Ignixa.PackageManagement
 
 ## Quick Start
 
+### Exact-Version Acquisition from a Standard NPM Registry (Opt-in)
+
+`NpmPackageAcquirer` is separate from the legacy `NpmPackageLoader` and its
+Simplifier direct-download protocol. It reads the selected version's NPM metadata,
+authorizes `dist.tarball`, verifies SHA-512 over the compressed bytes, and calls
+the strict extractor before returning or caching anything.
+
+```csharp
+using Ignixa.PackageManagement.Infrastructure;
+using Ignixa.PackageManagement.Models;
+
+var extractor = new PackageExtractor(loggerFactory.CreateLogger<PackageExtractor>());
+var source = new NpmPackageSourcePolicy(
+    sourceId: "approved-registry",
+    registryBaseUri: new Uri("https://registry.example/npm/"),
+    allowedArtifactPrefixes: [new Uri("https://artifacts.example/packages/")]);
+var cache = new VerifiedPackageCache(Path.Combine(dataDirectory, "verified-packages"));
+
+using var acquirer = new NpmPackageAcquirer(extractor, cache: cache);
+AcquiredNpmPackage acquired = await acquirer.AcquireAsync(
+    new NpmPackageIdentity("@example/fhir-ig", "1.2.3-rc.1+build.7"),
+    source,
+    cancellationToken);
+
+StrictPackageExtractionResult raw = acquired.Extraction;
+string originalManifest = raw.Manifest.Json;
+IReadOnlyList<StrictPackageEntry> allJson = raw.JsonEntries;
+```
+
+- Names are trimmed lowercase ASCII NPM names (1–214 characters), optionally
+  `@scope/name`; each segment starts with a letter/digit and then contains only
+  letters, digits, `.`, `_` or `-`. Uppercase is rejected. Versions are trimmed strict SemVer 2 strings
+  (1–256), never tags/ranges/partial versions. Build metadata is exact identity.
+- Source IDs are trimmed, case-sensitive ASCII identifiers (1–128), starting with
+  a letter/digit and then containing only letters, digits, `.`, `_` or `-`; no credentials
+  or URLs in package intent. Registry and nonempty artifact prefixes must be
+  absolute HTTPS directories with explicit trailing `/`. Every redirect is
+  manually re-authorized by scheme, normalized host, port and ordinal path.
+  Zero redirects are allowed by default; cycles fail. No public-feed fallback.
+- Directory prefixes cannot contain queries or fragments. Artifact and redirect URLs
+  support valid UTF-8 escaped paths and opaque ASCII queries, including signed URLs.
+  Authorization compares decoded canonical directory paths; requests/auth callbacks
+  preserve exact escaped path/query spelling, including escape case, `+`, duplicates
+  and parameter order. Queries never enter cache identity or acquisition diagnostics.
+  Callback URIs disable .NET path/query canonicalization to retain that spelling;
+  use `AbsolutePath`/`PathAndQuery`, not `GetComponents`, for those components.
+  Userinfo, fragments, controls, raw whitespace/backslashes, malformed escapes/UTF-8,
+  dot segments, repeated slashes, encoded path separators/delimiters and nested path
+  escaping (`%25`) are rejected. Escape non-ASCII query values; query values are not
+  interpreted as paths. The locally constructed exact metadata request separately
+  escapes the validated scoped name as **one** identifier and the exact version.
+- The production transport is privately constructed and owned. It enforces disabled
+  automatic redirects, cookies, ambient credentials, preauthentication, proxy use
+  and automatic decompression; callers cannot supply or mutate its HttpClient/handler.
+  Optional `validateServerCertificate` (`RemoteCertificateValidationCallback`) changes
+  only TLS server trust, for example an administrator's private-root or exact-certificate
+  policy. Omitting it retains system certificate validation. It cannot change HTTP
+  redirects, credentials, cookies or decoding. Arbitrary handlers exist only in the
+  internal friend-test seam, not the public API.
+- Optional `authenticate` has type
+  `Func<string, Uri, CancellationToken, ValueTask<AuthenticationHeaderValue?>>`.
+  It is called for each approved source/destination, including same-origin redirects.
+  Bind credentials to the source **and destination origin/path**, not just the package
+  or allowlist. No Authorization header is copied from the preceding request.
+  Cookies are never supported. Authenticator exceptions, including cancellation
+  unrelated to the supplied token, become safe permanent authentication diagnostics.
+  Actual caller/deadline cancellation propagates; the authenticator must honor its token.
+  Reuse the acquirer; callbacks must support concurrent calls. Do not dispose it while
+  acquisitions are active. The acquirer owns its client/transport, not the extractor,
+  authenticator, certificate callback, clock or cache.
+- Both metadata and tarballs request `Accept-Encoding: identity`. HTTP content
+  encodings other than identity are rejected **before reading**; gzip tarballs
+  themselves remain ordinary compressed artifact bytes. Thus automatic HTTP
+  decompression cannot bypass the decoded metadata cap.
+- Defaults: 32 MiB compressed, 256 MiB expanded including all tar overhead,
+  16 MiB per entry, 10,000 physical entries, JSON depth 64, and 1 MiB metadata.
+  `PackageExtractionLimits`, `maxMetadataBytes`, `PackageAcquisitionRetryPolicy`,
+  and `maxRedirects` configure these bounds. Actual streamed bytes are counted;
+  a misleading smaller Content-Length cannot bypass limits. Metadata and cache
+  rereads are bounded too. Memory/concurrency budgeting remains the host's job.
+- Exactly one canonical `sha512-<base64 of 64 bytes>` integrity token is required.
+  `integrityPin` optionally supplies an administrator's `NpmPackageIntegrity`;
+  absent metadata integrity is allowed only with that pin. A present malformed
+  integrity or a pin/metadata disagreement fails, never downgrades to SHA-1.
+- Three **total attempts**, 120 seconds each, share a 300-second overall deadline.
+  Full-jitter exponential backoff starts at a 1-second ceiling, capped at 30 seconds.
+  Only transient transport/timeouts and HTTP 408/429/500/502/503/504 retry.
+  TLS authentication/certificate rejection is permanent sanitized `TransportFailure`;
+  it does not retry. Retry-After is
+  honored only if valid and within the maximum delay and remaining deadline;
+  otherwise acquisition stops rather than retrying early. Body reads, digest,
+  extraction and cache work all participate. Inject `TimeProvider` for deterministic
+  time control. CPU/filesystem calls are cooperative, not forcibly preemptible.
+- `PackageAcquisitionException.Error` and optional `StatusCode` are safe diagnostics
+  without nested transport messages, URLs, response bodies or credentials. Timeout
+  is distinct from permanent failures; caller cancellation remains cancellation.
+  Strict `PackageExtractionException` is permanent **even though it derives from
+  IOException**. Cache I/O/corruption errors are explicit; no success-shaped fallback.
+- The optional filesystem cache uses SHA-256 opaque filenames derived from source,
+  exact name/version and expected SHA-512 digest. Every call still resolves current
+  trusted metadata and policy; hits repeat compressed bounds, digest and strict
+  extraction/identity checks. Publication is atomic and create-only. Concurrent
+  winners are reread and compared; only the caller's unique staging file is cleaned
+  up. Protect the cache directory from untrusted local writers. This is not installed
+  inventory, durable activation state, an offline registry or a cache eviction service.
+  Cleanup-only failure is permanent `CacheFailure`. If cleanup also fails during a
+  primary failure, that primary error/caller token is preserved and retries stop:
+  `exception.Data[PackageAcquisitionException.CacheCleanupFailureDataKey]` contains
+  `PackageAcquisitionError.CacheFailure`, never the path or nested filesystem message.
+  A failed cleanup can leave an owned staging orphan for host-directed recovery.
+
+The raw result includes every strict JSON entry and the original manifest, retaining
+dependencies, provenance and singular/plural FHIR declarations. A null `ResourceType`
+does **not** mean safe-to-ignore metadata: downstream adapters must explicitly classify
+`package/package.json` and `package/.index.json` and validate remaining JSON according
+to their own policy. The generic library neither installs transitive dependencies nor
+executes scripts nor imports/activates resources.
+
+For local SDK integration, reference this project or consume a coherently pinned
+locally built Ignixa dependency closure for the consumer's net9/net10 target. Adapt
+host `long` byte policies with checked conversion/rejection above `Int32.MaxValue`;
+do not silently clamp to fit in-memory extraction. No host-specific source registration,
+database, inventory or activation API is provided.
+
+Developer verification includes real loopback HTTPS requests through the production
+transport. On Windows, those tests require `node` on PATH because Schannel cannot
+serve an ephemeral private key; the isolated test server receives certificate/key
+material through memory pipes, never a trust store or key file. Node is **not** a
+production package dependency. Non-Windows tests use in-process `SslStream`.
+
 ### Loading a Package from NPM
 
 ```csharp
