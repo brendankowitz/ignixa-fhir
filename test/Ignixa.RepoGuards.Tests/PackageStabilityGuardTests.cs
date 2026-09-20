@@ -3,7 +3,11 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Xml.Linq;
+using Microsoft.Build.Evaluation;
+using Microsoft.Build.Exceptions;
+using Microsoft.Build.Locator;
 using Shouldly;
 using Xunit;
 
@@ -25,6 +29,11 @@ public class PackageStabilityGuardTests
         ["beta"] = 1,
         ["stable"] = 2,
     };
+
+    private static readonly ConcurrentDictionary<string, string> EffectiveStabilities =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly VisualStudioInstance MsBuildInstance = MSBuildLocator.RegisterDefaults();
 
     [Fact]
     public void GivenPackableProjects_WhenComparingToDependencies_ThenNoPackageIsMoreStableThanItsDependencies()
@@ -64,6 +73,100 @@ public class PackageStabilityGuardTests
             .ToList();
 
         invalid.ShouldBeEmpty("PackageStability must be one of: alpha, beta, stable.");
+    }
+
+    [Fact]
+    public void GivenNestedPropsWithoutImport_WhenResolvingStability_ThenUnreachableAncestorPolicyIsNotUsed()
+    {
+        var repoRoot = Directory.CreateTempSubdirectory();
+
+        try
+        {
+            var applicationDirectory = Directory.CreateDirectory(Path.Combine(repoRoot.FullName, "src", "Application"));
+            File.WriteAllText(
+                Path.Combine(applicationDirectory.FullName, "Directory.Build.props"),
+                """
+                <Project>
+                  <PropertyGroup>
+                    <PackageStability Condition="'$(PackageStability)' == ''">stable</PackageStability>
+                  </PropertyGroup>
+                </Project>
+                """);
+
+            var projectDirectory = Directory.CreateDirectory(Path.Combine(applicationDirectory.FullName, "Nested"));
+            File.WriteAllText(
+                Path.Combine(projectDirectory.FullName, "Directory.Build.props"),
+                """
+                <Project>
+                  <PropertyGroup>
+                    <PackageStability>beta</PackageStability>
+                  </PropertyGroup>
+                </Project>
+                """);
+
+            var projectPath = Path.Combine(projectDirectory.FullName, "TestProject.csproj");
+            File.WriteAllText(projectPath, """<Project Sdk="Microsoft.NET.Sdk" />""");
+
+            GetEffectiveStability(projectPath).ShouldBe("beta");
+        }
+        finally
+        {
+            repoRoot.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GivenProjectEvaluationFailure_WhenResolvingStability_ThenGuardFailsWithDiagnostics()
+    {
+        var projectDirectory = Directory.CreateTempSubdirectory();
+
+        try
+        {
+            var projectPath = Path.Combine(projectDirectory.FullName, "Malformed.csproj");
+            File.WriteAllText(projectPath, "<Project");
+
+            var exception = Should.Throw<InvalidOperationException>(() => GetEffectiveStability(projectPath));
+
+            exception.Message.ShouldContain(projectPath);
+        }
+        finally
+        {
+            projectDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GivenMultiTargetProjectWithDifferentStability_WhenResolvingStability_ThenGuardFails()
+    {
+        var projectDirectory = Directory.CreateTempSubdirectory();
+
+        try
+        {
+            var projectPath = Path.Combine(projectDirectory.FullName, "MultiTarget.csproj");
+            File.WriteAllText(
+                projectPath,
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+                    <PackageStability>alpha</PackageStability>
+                    <PackageStability Condition="'$(TargetFramework)' == 'net9.0'">beta</PackageStability>
+                    <PackageStability Condition="'$(TargetFramework)' == 'net10.0'">stable</PackageStability>
+                  </PropertyGroup>
+                </Project>
+                """);
+
+            var exception = Should.Throw<InvalidOperationException>(() => GetEffectiveStability(projectPath));
+
+            exception.Message.ShouldContain("PackageStability differs by target framework");
+            exception.Message.ShouldContain(projectPath);
+            exception.Message.ShouldContain("default is 'alpha'");
+            exception.Message.ShouldContain("'net9.0' is 'beta'");
+        }
+        finally
+        {
+            projectDirectory.Delete(recursive: true);
+        }
     }
 
     private static IEnumerable<string> FindStabilityViolations(
@@ -115,14 +218,89 @@ public class PackageStabilityGuardTests
 
         var fullPath = Path.GetFullPath(csprojPath);
         var relativePath = Path.GetRelativePath(repoRoot, fullPath);
+        var projectIsPackable = !string.Equals(isPackable, "false", StringComparison.OrdinalIgnoreCase);
 
         return new PackableProject(
             Name: Path.GetFileNameWithoutExtension(csprojPath),
             FullPath: fullPath,
             RelativePath: relativePath,
-            IsPackable: !string.Equals(isPackable, "false", StringComparison.OrdinalIgnoreCase),
+            IsPackable: projectIsPackable,
             DeclaredStability: declaredStability,
+            EffectiveStability: projectIsPackable ? GetEffectiveStability(fullPath) : DefaultStability,
             ProjectReferences: references);
+    }
+
+    private static string GetEffectiveStability(string csprojPath)
+    {
+        return EffectiveStabilities.GetOrAdd(Path.GetFullPath(csprojPath), EvaluatePackageStability);
+    }
+
+    private static string EvaluatePackageStability(string csprojPath)
+    {
+        try
+        {
+            var stability = EvaluatePackageStability(csprojPath, targetFramework: null);
+            foreach (var targetFramework in EvaluateTargetFrameworks(csprojPath))
+            {
+                var targetStability = EvaluatePackageStability(csprojPath, targetFramework);
+                if (!string.Equals(stability, targetStability, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"PackageStability differs by target framework for '{csprojPath}': " +
+                        $"default is '{stability}', but '{targetFramework}' is '{targetStability}'.");
+                }
+            }
+
+            return stability;
+        }
+        catch (InvalidProjectFileException exception)
+        {
+            throw new InvalidOperationException(
+                $"Failed to evaluate PackageStability for '{csprojPath}': {exception.Message}",
+                exception);
+        }
+    }
+
+    private static IEnumerable<string> EvaluateTargetFrameworks(string csprojPath)
+    {
+        var targetFrameworks = EvaluateProjectProperty(csprojPath, targetFramework: null, "TargetFrameworks");
+        if (!string.IsNullOrWhiteSpace(targetFrameworks))
+        {
+            return targetFrameworks.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        var targetFramework = EvaluateProjectProperty(csprojPath, targetFramework: null, "TargetFramework");
+        return string.IsNullOrWhiteSpace(targetFramework) ? [] : [targetFramework];
+    }
+
+    private static string EvaluatePackageStability(string csprojPath, string? targetFramework)
+    {
+        var stability = EvaluateProjectProperty(csprojPath, targetFramework, "PackageStability");
+        if (string.IsNullOrWhiteSpace(stability))
+        {
+            throw new InvalidOperationException($"PackageStability was not evaluated for '{csprojPath}'.");
+        }
+
+        return stability;
+    }
+
+    private static string EvaluateProjectProperty(string csprojPath, string? targetFramework, string propertyName)
+    {
+        _ = MsBuildInstance;
+
+        var globalProperties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["BasePackageVersion"] = "0.0.0",
+            ["Configuration"] = "Release",
+        };
+        if (targetFramework is not null)
+        {
+            globalProperties["TargetFramework"] = targetFramework;
+        }
+
+        using var projectCollection = new ProjectCollection(globalProperties);
+        var project = projectCollection.LoadProject(csprojPath);
+        return project.GetPropertyValue(propertyName);
     }
 
     // Analyzer/source-generator references (ReferenceOutputAssembly=false) and PrivateAssets="All"
@@ -147,9 +325,10 @@ public class PackageStabilityGuardTests
         string RelativePath,
         bool IsPackable,
         string? DeclaredStability,
+        string EffectiveStability,
         List<string> ProjectReferences)
     {
-        public string Stability => DeclaredStability ?? DefaultStability;
+        public string Stability => EffectiveStability;
 
         public bool IsPublicFeed =>
             RelativePath.StartsWith($"src{Path.DirectorySeparatorChar}Core{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
