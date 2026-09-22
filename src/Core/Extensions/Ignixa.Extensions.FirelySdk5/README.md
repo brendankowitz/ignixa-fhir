@@ -4,7 +4,7 @@ Firely SDK 5.x interoperability shims for bidirectional conversion between Ignix
 
 ## Overview
 
-This package provides **legacy support** for users still on **Firely SDK 5.x** (5.13.1). It contains the same adapters as `Ignixa.Extensions.FirelySdk6`, but targets Firely SDK 5.x package versions.
+This package provides **legacy support** for users still on **Firely SDK 5.x** (5.11.4). It contains the same adapters as `Ignixa.Extensions.FirelySdk6`, but targets Firely SDK 5.x package versions.
 
 **If you're using Firely SDK 6.0+**, use [`Ignixa.Extensions.FirelySdk6`](../Ignixa.Extensions.FirelySdk6/) instead.
 
@@ -12,7 +12,7 @@ This package provides **legacy support** for users still on **Firely SDK 5.x** (
 
 | Package | Firely SDK Version | Target Framework |
 |---------|-------------------|------------------|
-| `Ignixa.Extensions.FirelySdk5` | 5.13.1 | net9.0 |
+| `Ignixa.Extensions.FirelySdk5` | 5.11.4 | net9.0 |
 | `Ignixa.Extensions.FirelySdk6` | 6.0.0 | net9.0 |
 
 ## Why Two Packages?
@@ -25,11 +25,14 @@ Firely SDK 6.0 introduced breaking changes in internal architecture, but the **c
 
 ## SDK Version and FHIRPath Seam
 
-This package deliberately ships against **5.13.1**, the compatibility target for its SDK-5 adapter
-package. That is distinct from the **5.11.4** FHIRPath seam pinned by ADR 2608: the parity tests and
-benchmark link-compile the adapters at 5.11.4 to compare the engine that the migration replaces. Do not
-downgrade this package to the seam version; package compatibility and seam-parity measurement are separate
-concerns.
+This package ships against **5.11.4**, the lowest supported 5.x version and the same version the
+Microsoft FHIR server runs. Later 5.x releases carry a known bug, and a higher dependency floor would
+force that consumer's Firely SDK up past the version its own characterization tests pin.
+
+This is also the **5.11.4** FHIRPath seam pinned by ADR 2608: the parity tests and benchmark
+link-compile the adapters at 5.11.4 to compare the engine that the migration replaces. Package floor
+and seam-parity measurement now agree, so the adapter is measured on the engine it ships against. Do
+not raise this floor without re-checking the consumer that the seam exists to serve.
 
 ## Installation
 
@@ -88,7 +91,7 @@ When you're ready to upgrade to Firely SDK 6.x:
 3. No code changes required (same namespace and API)
 
 ```diff
-- <PackageReference Include="Hl7.Fhir.Base" Version="5.13.1" />
+- <PackageReference Include="Hl7.Fhir.Base" Version="5.11.4" />
 + <PackageReference Include="Hl7.Fhir.Base" Version="6.0.0" />
 
 - <PackageReference Include="Ignixa.Extensions.FirelySdk5" Version="x.y.z" />

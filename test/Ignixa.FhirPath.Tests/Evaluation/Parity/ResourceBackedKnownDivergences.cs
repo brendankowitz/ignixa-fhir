@@ -88,16 +88,31 @@ internal static class ResourceBackedKnownDivergences
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// <c>canonical</c> under 46 <c>Reference</c>-typed parameters (186 sites): the deliberate storage
+    /// <c>canonical</c> under 46 parameters (186 sites) - 45 <c>Reference</c>-typed plus
+    /// <c>MessageHeader-event</c>, which is <c>Token</c>: the deliberate storage
     /// divergence tracked as #430. Ignixa registers <c>canonical</c> against <c>UriSearchValue</c> only.
     /// </description></item>
     /// <item><description>
-    /// Backbone element types under a leaf-typed parameter (28 sites). Not converter gaps: each is a path
-    /// <c>X.y.y</c> where a backbone's child shares the backbone's own name, and
-    /// <c>SchemaAwareElement.Children</c> types the child as its parent - so
-    /// <c>Encounter.location.location</c>, a <c>Reference</c> in the schema, arrives as
-    /// <c>Encounter.Location</c> and the reference converter is never asked for. An
-    /// <c>Ignixa.Serialization</c> element-model defect, tracked separately.
+    /// Backbone element types under a leaf-typed parameter used to cost 28 sites here (issue #454): each
+    /// was a path <c>X.y.y</c> where a backbone's child shared the backbone's own name, and
+    /// <c>SchemaAwareElement.Children</c>'s recursion heuristic - keyed on name equality alone - typed the
+    /// child as its parent regardless of what the schema actually declared, so
+    /// <c>Encounter.location.location</c>, a <c>Reference</c> in the schema, arrived as
+    /// <c>Encounter.Location</c> and the reference converter was never asked for. Narrowing the heuristic
+    /// to also require a schema-declared <c>ContentReference</c> fixed 27 of the 28 and is why those rows
+    /// left this dictionary. The 28th, <c>Ingredient-manufacturer</c>, drops from 4 to 1 rather than
+    /// vanishing: R4B's own published <c>SearchParameter</c> expression is <c>Ingredient.manufacturer</c>
+    /// (the backbone itself, one level short of the nested <c>Reference</c> that R5 and R6 point at), a
+    /// gap in the published definition rather than in the element model, and the element-model fix now
+    /// lets that shallower expression actually reach the indexer instead of being masked by the deeper
+    /// mistyping. Fixing the heuristic also unmasked a second, previously-unreachable gap, already known
+    /// to <c>KnownCompositeComponentDivergences</c>: R5's <c>Encounter-location-period</c> composite's
+    /// first component evaluates <c>location.reference</c> against the same nested element, which used to
+    /// resolve empty and skip the component loop before it ever reached the composite's second component -
+    /// <c>Encounter-period</c>, dropped from R5 when <c>Encounter.period</c> was renamed to
+    /// <c>Encounter.actualPeriod</c>, so its definition URL dangles in the published package itself. That
+    /// pre-existing, adjudicated gap is the new <c>ComponentNullResolvedSearchParameter :: location-period</c>
+    /// row below - reachable, not created, by this fix.
     /// </description></item>
     /// <item><description>
     /// Correct skips upstream performs identically: <c>Attachment</c> and <c>base64Binary</c> under
@@ -133,8 +148,8 @@ internal static class ResourceBackedKnownDivergences
     public static IReadOnlyDictionary<string, int> ExpectedIgnixaConverterPipelineSkips { get; } =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            ["CannotInferSearchParamType :: http://hl7.org/fhir/SearchParameter/Encounter-location :: Encounter.Location :: "] = 1,
             ["ComponentNullResolvedSearchParameter :: code-value-string ::  :: "] = 11,
+            ["ComponentNullResolvedSearchParameter :: location-period ::  :: "] = 2,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-actual ::  :: "] = 2,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-period ::  :: "] = 2,
             ["ComponentNullResolvedSearchParameter :: progress-status-state-period-actual ::  :: "] = 2,
@@ -163,16 +178,14 @@ internal static class ResourceBackedKnownDivergences
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Consent-source-reference :: Attachment :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Device-udi-carrier :: base64Binary :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/DeviceRequest-instantiates-canonical :: canonical :: "] = 5,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Encounter-location :: Encounter.Location :: "] = 8,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/FamilyMemberHistory-instantiates-canonical :: canonical :: "] = 6,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ImplementationGuide-depends-on :: canonical :: "] = 8,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ImplementationGuide-global :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Ingredient-manufacturer :: Ingredient.Manufacturer :: "] = 4,
+            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Ingredient-manufacturer :: Ingredient.Manufacturer :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Location-near :: Location.Position :: "] = 5,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Location-near-distance :: Location.Position :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Measure-depends-on :: canonical :: "] = 3,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MeasureReport-measure :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MedicinalProductDefinition-contact :: MedicinalProductDefinition.Contact :: "] = 4,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageDefinition-event :: uri :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageDefinition-parent :: canonical :: "] = 4,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageHeader-event :: canonical :: "] = 1,
@@ -197,15 +210,10 @@ internal static class ResourceBackedKnownDivergences
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SearchParameter-derived-from :: canonical :: "] = 3,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ServiceRequest-instantiates-canonical :: canonical :: "] = 6,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/StructureDefinition-base :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceDefinition-code :: SubstanceDefinition.Code :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceDefinition-name :: SubstanceDefinition.Name :: "] = 2,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SubstanceSpecification-code :: SubstanceSpecification.Code :: "] = 2,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestReport-testscript :: canonical :: "] = 2,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestScript-artifact :: canonical :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact :: canonical :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/clinical-date :: string :: "] = 3,
-            ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/Encounter-location ::  :: "] = 2,
-            ["SkippingElementNullOrEmptyInstanceType :: http://hl7.org/fhir/SearchParameter/InventoryReport-item ::  :: "] = 2,
         };
 
     /// <summary>
@@ -234,12 +242,13 @@ internal static class ResourceBackedKnownDivergences
 
         // Backbone types the element model hands to a leaf-typed parameter. Neither codebase has a
         // converter for a backbone, and neither should - the defect is upstream of the converter.
-        ("Encounter.Location", SearchParamType.Reference),
+        // Encounter.Location, MedicinalProductDefinition.Contact, SubstanceDefinition.Code/Name and
+        // SubstanceSpecification.Code left this list with issue #454: the element model now types their
+        // sole name-equality site as the schema-declared leaf - these were never recursion sites, that
+        // they were treated as recursion is the defect - so a backbone is never handed to the converter
+        // for them again. Ingredient.Manufacturer stays - not because the element model still mistypes it,
+        // but because R4B's own published Ingredient-manufacturer expression names the backbone itself.
         ("Ingredient.Manufacturer", SearchParamType.Reference),
-        ("MedicinalProductDefinition.Contact", SearchParamType.Reference),
-        ("SubstanceDefinition.Code", SearchParamType.Token),
-        ("SubstanceDefinition.Name", SearchParamType.String),
-        ("SubstanceSpecification.Code", SearchParamType.Token),
         ("DeviceDefinition.UdiDeviceIdentifier", SearchParamType.Token),
 
         // Correct skips: the element genuinely cannot be represented as the parameter's value type.
@@ -261,14 +270,33 @@ internal static class ResourceBackedKnownDivergences
     /// </summary>
     /// <remarks>
     /// The index half asserted that its divergences were classified and its failure sites pinned; neither
-    /// says how much was compared, so halving the entries every parameter produced satisfied both. A floor
-    /// rather than an exact pin, for the reason on <see cref="MinimumAgreementsOnValues"/>. Applied per
-    /// engine rather than to the total, because a total is satisfied by one side growing while the other
-    /// collapses: the two sit at 10,745 Firely and 10,756 Ignixa - the gap is the 11 divergent resources -
-    /// so the floor is the lower. Raised from 10,743 when repairing the STU3 Observation composite
-    /// component references let both indexers emit composites they had both been dropping.
+    /// says how much was compared, so halving the entries every parameter produced satisfied both. A
+    /// floor rather than an exact pin, for the reason on <see cref="MinimumAgreementsOnValues"/>. Applied
+    /// per engine rather than to the total, because a total is satisfied by one side growing while the
+    /// other collapses: the two sit at 10,777 Firely and 10,788 Ignixa - the gap is the 11 divergent
+    /// resources - so the floor is the lower. Raised from 10,745 by issue #454's
+    /// <c>SchemaAwareElement</c> recursion-heuristic fix: both engines gained exactly the same 32
+    /// entries, because both indexers share the one production element model the fix corrected -
+    /// <c>Encounter.location.location</c> and its false-positive siblings now arrive typed as their
+    /// schema-declared leaf instead of their parent backbone, so the parameters that target them
+    /// contribute entries neither engine could produce before. A schema walk across all five generated
+    /// providers counts 37 unique false-positive qualified paths over 112 site-instances, in two
+    /// classes: 33 paths / 93 sites under a backbone parent, which is what this corpus measures, and
+    /// four under a datatype parent - <c>Reference.reference</c>, <c>Expression.expression</c>,
+    /// <c>id.id</c> and <c>Extension.extension</c> - which it does not. That second class is the wider
+    /// one by far: <c>Reference.reference</c> is on every reference in every resource, and it is why
+    /// <c>ResolveFunctionTests</c> re-pins from <c>Reference</c> to <c>string</c>. It moves no count
+    /// here because no search parameter resolves a reference's own <c>reference</c> child. The
+    /// follow-up widening in <c>SchemaAwareElement.ComputeChildResolution</c> that resolves a
+    /// <c>ContentReference</c> to its actual target, rather than only the 19 paths where the child's
+    /// name also matched the parent backbone's last segment, measured zero further movement here: none
+    /// of the 76 additional qualified paths it fixes are reached by a search
+    /// parameter this corpus exercises or by a shape <c>SchemaBasedFhirResourceFaker</c> generates deeply
+    /// enough to trigger, so this floor is unchanged by that half of the work. Previously raised from
+    /// 10,743 when repairing the STU3 Observation composite component references let both indexers emit
+    /// composites they had both been dropping.
     /// </remarks>
-    public const int MinimumIndexEntriesComparedPerEngine = 10745;
+    public const int MinimumIndexEntriesComparedPerEngine = 10777;
 
     /// <summary>
     /// Lower bound on resources reaching the index sweep, so a corpus that stopped generating them

@@ -1,7 +1,11 @@
 <Project>
   <!--
     Local package version overrides for Firely SDK 5.x support.
-    This file overrides the solution-level Directory.Packages.props to use SDK 5.13.1.
+    This file overrides the solution-level Directory.Packages.props to use SDK 5.11.4.
+
+    5.11.4 is the lowest supported 5.x floor, chosen to match the Firely version the Microsoft
+    FHIR server runs. A higher floor would force that consumer's SDK up past the version its own
+    characterization tests pin, and later 5.x releases carry a known bug.
 
     NOTE: All source code is linked from Ignixa.Extensions.FirelySdk6 project.
     The adapter interfaces (ITypedElement, ISourceNode, IElementDefinitionSummary)
@@ -12,11 +16,11 @@
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)../'))" />
 
   <ItemGroup>
-    <!-- Override Firely SDK packages to use the shipped 5.13.1 compatibility target. -->
-    <PackageVersion Update="Hl7.Fhir.Base" Version="5.13.1" />
-    <PackageVersion Update="Hl7.Fhir.R4" Version="5.13.1" />
-    <PackageVersion Update="Hl7.Fhir.R4B" Version="5.13.1" />
-    <PackageVersion Update="Hl7.Fhir.R5" Version="5.13.1" />
-    <PackageVersion Update="Hl7.Fhir.Stu3" Version="5.13.1" />
+    <!-- Override Firely SDK packages to use the shipped 5.11.4 compatibility floor. -->
+    <PackageVersion Update="Hl7.Fhir.Base" Version="5.11.4" />
+    <PackageVersion Update="Hl7.Fhir.R4" Version="5.11.4" />
+    <PackageVersion Update="Hl7.Fhir.R4B" Version="5.11.4" />
+    <PackageVersion Update="Hl7.Fhir.R5" Version="5.11.4" />
+    <PackageVersion Update="Hl7.Fhir.Stu3" Version="5.11.4" />
   </ItemGroup>
 </Project>
