@@ -39,6 +39,66 @@ public class OperationsSegmentTests
             NullLogger<OperationsSegment>.Instance);
     }
 
+    [Theory]
+    [InlineData(FhirVersion.Stu3, "Stu3")]
+    [InlineData(FhirVersion.R4, "R4")]
+    [InlineData(FhirVersion.R4B, "R4B")]
+    [InlineData(FhirVersion.R5, "R5")]
+    [InlineData(FhirVersion.R6, "R6")]
+    public async Task GivenSupportedVersion_WhenApplyingOperations_ThenLoadsMatchingVersionDefinitions(
+        FhirVersion version, string versionName)
+    {
+        _features.Add(new GraphQlFeature());
+        string canonical = $"https://example.org/{versionName}/OperationDefinition/graphql";
+        _packageResourceRepository.GetOperationDefinitionsAsync(
+                Arg.Any<IReadOnlyList<string>>(), versionName, Arg.Any<CancellationToken>())
+            .Returns([new PackageResource
+            {
+                ResourceId = "graphql",
+                ResourceType = "OperationDefinition",
+                Canonical = canonical,
+                PackageId = "test.operations",
+                PackageVersion = "1.0.0",
+                FhirVersion = versionName,
+                ResourceJson = "{}"
+            }]);
+        var statement = new CapabilityStatementJsonNode();
+        var context = new CapabilityContext(version, TenantId: 1);
+
+        await _segment.ApplyAsync(statement, context, CancellationToken.None);
+
+        var rest = statement.Rest;
+        rest.ShouldNotBeNull();
+        rest.ShouldHaveSingleItem().MutableNode()["operation"]!.AsArray()
+            .ShouldHaveSingleItem()!["definition"]!.GetValue<string>().ShouldBe(canonical);
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3, "Stu3")]
+    [InlineData(FhirVersion.R4, "R4")]
+    [InlineData(FhirVersion.R4B, "R4B")]
+    [InlineData(FhirVersion.R5, "R5")]
+    [InlineData(FhirVersion.R6, "R6")]
+    public async Task GivenSupportedVersion_WhenHashingOperations_ThenIncludesOnlyMatchingFeatures(
+        FhirVersion version, string versionName)
+    {
+        var context = new CapabilityContext(version, TenantId: 1);
+        string emptyHash = await _segment.GetVersionHashAsync(context, CancellationToken.None);
+        var feature = Substitute.For<IPackageFeature>();
+        feature.PackageId.Returns("test.operations");
+        feature.SystemOperations.Returns(["version-operation"]);
+        feature.ResourceOperations.Returns(new Dictionary<string, IReadOnlyList<string>>());
+        feature.SupportedFhirVersions.Returns([versionName]);
+        _features.Add(feature);
+
+        string supportedHash = await _segment.GetVersionHashAsync(context, CancellationToken.None);
+        feature.SupportedFhirVersions.Returns(["Unsupported"]);
+        string unsupportedHash = await _segment.GetVersionHashAsync(context, CancellationToken.None);
+
+        supportedHash.ShouldNotBe(emptyHash);
+        unsupportedHash.ShouldBe(emptyHash);
+    }
+
     [Fact]
     public async Task GivenTransformFeature_WhenApplyingSegment_ThenAddsTransformOperation()
     {

@@ -25,7 +25,8 @@ namespace Ignixa.Api.Tests.Registrations;
 /// Proves the composition root actually serves terminology from the SQL Server implementation.
 /// <para>
 /// The container built here registers only what the terminology graph needs: an
-/// <see cref="ISqlExecutionService"/>, a logger factory, a request-context accessor and a memory cache.
+/// <see cref="ISqlExecutionService"/>, a logger factory and a request-context accessor, without requiring
+/// an application result cache.
 /// Resolution succeeding against that alone is structural evidence that terminology has no dependency on a
 /// wider composition root.
 /// </para>
@@ -38,7 +39,7 @@ public class ValidationServicesRegistrationTerminologyTests
     /// Every terminology query funnels through <see cref="ISqlExecutionService"/>. Returning no rows for the
     /// system lookup is the shortest path that still proves the query was issued.
     /// </summary>
-    private IContainer BuildContainer()
+    private IContainer BuildContainer(bool registerCache = true)
     {
         _sqlExecutionService.ExecuteReaderAsync(
                 Arg.Any<int>(),
@@ -59,11 +60,28 @@ public class ValidationServicesRegistrationTerminologyTests
         // Recursive substitution supplies the schema provider and its ValueSetProvider; the fallback service
         // is constructed but never reached by the assertions below.
         builder.RegisterInstance(Substitute.For<IFhirVersionContext>()).As<IFhirVersionContext>();
-        builder.RegisterInstance(new MemoryCache(new MemoryCacheOptions())).As<IMemoryCache>();
+        if (registerCache)
+        {
+            builder.RegisterInstance(new MemoryCache(new MemoryCacheOptions())).As<IMemoryCache>();
+        }
 
         builder.RegisterValidationServices();
 
         return builder.Build();
+    }
+
+    [Fact]
+    public async Task GivenNoResultCache_WhenResolvingSqlTerminology_ThenLookupReadsTheDatabase()
+    {
+        using var container = BuildContainer(registerCache: false);
+        using var scope = container.BeginLifetimeScope();
+        var service = scope.Resolve<SqlServerTerminologyService>();
+
+        (await service.LookupCodeAsync("http://example.org/uncached", "code", null, CancellationToken.None))
+            .Found.ShouldBeFalse();
+        await _sqlExecutionService.Received(1).ExecuteReaderAsync(
+            SystemConstants.SystemPartitionId, Arg.Any<SqlCommand>(),
+            Arg.Any<Func<SqlDataReader, int>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -20,24 +20,36 @@ namespace Ignixa.DataLayer.SqlServer.Features.Terminology;
 /// is why the implementation had no test coverage before Task 5b.
 /// </para>
 /// <para>
-/// Result caching is preserved exactly, including its keys. <c>LookupCodeAsync</c> memoises on
-/// <c>system|version|code</c> and returns before touching the database on a hit, which is observable: a
-/// caller that imports a CodeSystem after a miss still sees the miss until the entry expires.
+/// Mutable terminology results are read from SQL on every call. Process-local memoization cannot observe
+/// replacement by another process, and an in-flight old read must not publish stale results after commit.
+/// A request overlapping an import can observe the prior committed state; later requests do not inherit it.
 /// </para>
 /// </summary>
 public sealed class SqlServerTerminologyService(
     ISqlExecutionService sqlExecutionService,
     int systemPartitionId,
-    IMemoryCache cache,
     ILogger<SqlServerTerminologyService> logger) : ITerminologyService, ITerminologyImportStatusProvider
 {
+    /// <summary>
+    /// Retains source compatibility for callers supplying an application cache. Mutable SQL terminology
+    /// results deliberately neither read nor populate that cache.
+    /// </summary>
+    public SqlServerTerminologyService(
+        ISqlExecutionService sqlExecutionService,
+        int systemPartitionId,
+        IMemoryCache cache,
+        ILogger<SqlServerTerminologyService> logger)
+        : this(sqlExecutionService, systemPartitionId, logger)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+    }
+
     private static readonly TableDescriptor Systems = SqlCatalog.Default.Table("System");
     private static readonly TableDescriptor CodeSystems = SqlCatalog.Default.Table("TermCodeSystem");
     private static readonly TableDescriptor Concepts = SqlCatalog.Default.Table("TermConcept");
     private static readonly TableDescriptor ValueSets = SqlCatalog.Default.Table("TermValueSet");
     private static readonly TableDescriptor Expansions = SqlCatalog.Default.Table("TermValueSetExpansion");
     private static readonly TableDescriptor MapElements = SqlCatalog.Default.Table("TermConceptMapElement");
-    private static readonly TableDescriptor Packages = SqlCatalog.Default.Table("PackageResource");
 
     /// <summary>
     /// The collation every code comparison below falls back to for a CodeSystem that declares
@@ -77,17 +89,10 @@ public sealed class SqlServerTerminologyService(
         ArgumentException.ThrowIfNullOrWhiteSpace(system);
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
 
-        var cacheKey = $"lookup:{system}:{version ?? "latest"}:{code}";
-        if (cache.TryGetValue(cacheKey, out LookupResult? cached) && cached is not null)
-        {
-            logger.LogDebug("Cache hit for lookup: {System}|{Code}", system, code);
-            return cached;
-        }
-
         var systemId = await ResolveSystemIdAsync(system, cancellationToken);
         if (systemId is null)
         {
-            return CacheAndReturn(cacheKey, NotFound());
+            return NotFound();
         }
 
         var rows = await ReadConceptAsync(systemId.Value, code, version, MatchMode.CaseSensitive, cancellationToken);
@@ -98,7 +103,7 @@ public sealed class SqlServerTerminologyService(
 
         if (rows.Count == 0)
         {
-            return CacheAndReturn(cacheKey, NotFound());
+            return NotFound();
         }
 
         var row = rows[0];
@@ -106,14 +111,14 @@ public sealed class SqlServerTerminologyService(
 
         // Name stays null: TermCodeSystem carries no name column, which the EF implementation noted as a
         // gap rather than filled.
-        return CacheAndReturn(cacheKey, new LookupResult(
+        return new LookupResult(
             Found: true,
             Name: null,
             Version: row.Version,
             Display: row.Display,
             Definition: row.Definition,
             Properties: properties,
-            Designations: designations));
+            Designations: designations);
 
         static LookupResult NotFound() => new(false, null, null, null, null, null, null);
     }
@@ -123,13 +128,6 @@ public sealed class SqlServerTerminologyService(
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentException.ThrowIfNullOrWhiteSpace(parameters.Url);
-
-        var cacheKey = $"expand:{parameters.Url}:{parameters.Filter ?? "none"}:{parameters.Count ?? 1000}:{parameters.Offset ?? 0}";
-        if (cache.TryGetValue(cacheKey, out ExpandResult? cached) && cached is not null)
-        {
-            logger.LogDebug("Cache hit for expand: {Url}", parameters.Url);
-            return cached;
-        }
 
         var valueSet = await ReadValueSetAsync(parameters.Url, cancellationToken);
         if (valueSet is null)
@@ -202,7 +200,7 @@ public sealed class SqlServerTerminologyService(
             Contains: contains,
             Incomplete: valueSet.Value.IsPartialExpansion);
 
-        return CacheAndReturn(cacheKey, result);
+        return result;
     }
 
     public async Task<TerminologyValidationResult> ValidateCodeAsync(
@@ -221,20 +219,13 @@ public sealed class SqlServerTerminologyService(
             return new TerminologyValidationResult(false, IssueSeverity.Error, "Code is required");
         }
 
-        var cacheKey = $"validate:{valueSetUrl}:{system ?? "any"}:{code}:{display ?? "none"}";
-        if (cache.TryGetValue(cacheKey, out TerminologyValidationResult? cached) && cached is not null)
-        {
-            logger.LogDebug("Cache hit for validate: {ValueSet}|{Code}", valueSetUrl, code);
-            return cached;
-        }
-
         var valueSet = await ReadValueSetAsync(valueSetUrl, cancellationToken);
         if (valueSet is null)
         {
             // Warning rather than Error: an unimported ValueSet is a deployment gap, not bad input.
-            return CacheAndReturn(cacheKey, new TerminologyValidationResult(
+            return new TerminologyValidationResult(
                 false, IssueSeverity.Warning,
-                $"ValueSet '{valueSetUrl}' not found or not expanded (terminology not imported)"));
+                $"ValueSet '{valueSetUrl}' not found or not expanded (terminology not imported)");
         }
 
         int? systemId = null;
@@ -243,8 +234,8 @@ public sealed class SqlServerTerminologyService(
             systemId = await ResolveSystemIdAsync(system, cancellationToken);
             if (systemId is null)
             {
-                return CacheAndReturn(cacheKey, new TerminologyValidationResult(
-                    false, IssueSeverity.Error, $"System '{system}' not found"));
+                return new TerminologyValidationResult(
+                    false, IssueSeverity.Error, $"System '{system}' not found");
             }
         }
 
@@ -258,8 +249,8 @@ public sealed class SqlServerTerminologyService(
 
         if (matches.Count == 0)
         {
-            return CacheAndReturn(cacheKey, new TerminologyValidationResult(
-                false, IssueSeverity.Error, $"Code '{code}' not found in ValueSet '{valueSetUrl}'"));
+            return new TerminologyValidationResult(
+                false, IssueSeverity.Error, $"Code '{code}' not found in ValueSet '{valueSetUrl}'");
         }
 
         var expectedDisplay = matches[0];
@@ -269,12 +260,11 @@ public sealed class SqlServerTerminologyService(
             && !string.IsNullOrEmpty(expectedDisplay)
             && !string.Equals(display, expectedDisplay, StringComparison.Ordinal))
         {
-            return CacheAndReturn(cacheKey, new TerminologyValidationResult(
-                true, IssueSeverity.Warning, $"Display '{display}' does not match expected '{expectedDisplay}'"));
+            return new TerminologyValidationResult(
+                true, IssueSeverity.Warning, $"Display '{display}' does not match expected '{expectedDisplay}'");
         }
 
-        return CacheAndReturn(cacheKey, new TerminologyValidationResult(
-            true, IssueSeverity.Information, "Code is valid"));
+        return new TerminologyValidationResult(true, IssueSeverity.Information, "Code is valid");
     }
 
     public async Task<BindingValidationResult> ValidateBindingAsync(
@@ -495,10 +485,21 @@ public sealed class SqlServerTerminologyService(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(canonical);
 
-        using var command = Command(
-            $"SELECT TOP 1 {Packages.Column("TerminologyImportStatus").Name} FROM {Qualified(Packages)} " +
-            $"WHERE {Packages.Column("Canonical").Name} = @canonical AND {Packages.Column("IsActive").Name} = 1 " +
-            $"ORDER BY {Packages.Column("LoadedDate").Name} DESC");
+        // Routing reflects usable installed content, not the latest replacement attempt. Its package row
+        // still records Failed for diagnostics/retry, but rollback must not send hybrid lookups to fallback.
+        using var command = Command("""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.PackageResource p
+                WHERE p.Canonical = @canonical AND p.IsActive = 1
+                  AND (EXISTS (SELECT 1 FROM dbo.TermCodeSystem cs WHERE cs.PackageResourceId = p.PackageResourceId)
+                    OR EXISTS (SELECT 1 FROM dbo.TermValueSet vs WHERE vs.PackageResourceId = p.PackageResourceId AND vs.IsExpanded = 1)
+                    OR EXISTS (SELECT 1 FROM dbo.TermConceptMap cm WHERE cm.PackageResourceId = p.PackageResourceId))
+            ) THEN 'Completed' ELSE (
+                SELECT TOP 1 TerminologyImportStatus FROM dbo.PackageResource
+                WHERE Canonical = @canonical AND IsActive = 1
+                ORDER BY LoadedDate DESC, PackageResourceId DESC
+            ) END
+            """);
         command.Parameters.AddWithValue("@canonical", canonical);
 
         var rows = await sqlExecutionService.ExecuteReaderAsync(
@@ -853,12 +854,6 @@ public sealed class SqlServerTerminologyService(
             .ToList();
 
         return values.Count > 0 ? values : null;
-    }
-
-    private T CacheAndReturn<T>(string cacheKey, T result)
-    {
-        cache.Set(cacheKey, result, TimeSpan.FromMinutes(30));
-        return result;
     }
 
     private static string Qualified(TableDescriptor table) => $"{table.SchemaName}.{table.TableName}";

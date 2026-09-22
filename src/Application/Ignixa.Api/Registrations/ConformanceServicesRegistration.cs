@@ -64,6 +64,10 @@ public static class ConformanceServicesRegistration
             .AsSelf()
             .SingleInstance();
 
+        builder.RegisterType<ConformanceCacheRefresher>()
+            .AsSelf()
+            .SingleInstance();
+
         // PackageActivationPipeline
         builder.RegisterType<PackageActivationPipeline>()
             .AsSelf()

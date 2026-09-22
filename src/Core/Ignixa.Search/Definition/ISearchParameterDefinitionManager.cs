@@ -76,6 +76,33 @@ public interface ISearchParameterDefinitionManager
     SearchParameterInfo GetSearchParameter(Uri definitionUri);
 
     /// <summary>
+    /// Resolves the root canonical used by a parameter and its overrides. Implementations may retain
+    /// identities for superseded canonicals that are no longer advertised as active definitions.
+    /// </summary>
+    bool TryGetSearchParameterRootUrl(Uri definitionUri, out Uri rootUri)
+    {
+        ArgumentNullException.ThrowIfNull(definitionUri);
+        HashSet<Uri> visited = [];
+        rootUri = definitionUri;
+        while (TryGetSearchParameter(rootUri, out var parameter))
+        {
+            if (!visited.Add(rootUri))
+            {
+                throw new InvalidOperationException($"Search parameter override cycle at {rootUri} has no resolved root identity.");
+            }
+
+            if (parameter.OverridesUrl is null)
+            {
+                return true;
+            }
+
+            rootUri = parameter.OverridesUrl;
+        }
+
+        return visited.Count != 0;
+    }
+
+    /// <summary>
     /// Updates the existing resource type - search parameter hash mapping with the given new values.
     /// </summary>
     /// <param name="updatedSearchParamHashMap">Dictionary containing resource type to search parameter hash values</param>

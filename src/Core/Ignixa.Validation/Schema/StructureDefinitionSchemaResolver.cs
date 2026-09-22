@@ -3,8 +3,10 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Collections.Concurrent;
 using Ignixa.Abstractions;
 using Ignixa.Specification;
+using Ignixa.Specification.Extensions;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Services;
 
@@ -16,6 +18,8 @@ namespace Ignixa.Validation.Schema;
 /// </summary>
 public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
 {
+    private const string CoreCanonicalPrefix = "http://hl7.org/fhir/StructureDefinition/";
+    private static readonly ConcurrentDictionary<FhirVersion, Lazy<IFhirSchemaProvider>> CoreSchemas = new();
     private readonly ISchema _schema;
     private readonly StructureDefinitionSchemaBuilder _builder;
     private readonly IReadOnlySet<string>? _validResourceTypes;
@@ -59,48 +63,38 @@ public class StructureDefinitionSchemaResolver : IValidationSchemaResolver
             return null;
         }
 
-        // Extract resource type from canonical URL
-        // Format: http://hl7.org/fhir/StructureDefinition/{ResourceType}
-        var resourceType = ExtractResourceType(canonicalUrl);
-        if (string.IsNullOrEmpty(resourceType))
+        // Installed definitions are keyed by full canonical identity, including business version.
+        var typeDefinition = _schema.GetTypeDefinition(canonicalUrl);
+        if (typeDefinition == null && _schema is IFhirSchemaProvider provider &&
+            canonicalUrl.StartsWith(CoreCanonicalPrefix, StringComparison.Ordinal))
         {
-            return null;
+            string typeName = canonicalUrl[CoreCanonicalPrefix.Length..];
+            int pipe = typeName.IndexOf('|', StringComparison.Ordinal);
+            if (pipe >= 0)
+            {
+                if (typeName[(pipe + 1)..] != provider.FullVersion)
+                {
+                    return null;
+                }
+                typeName = typeName[..pipe];
+            }
+            if (typeName.Length > 0 && !typeName.Contains('/', StringComparison.Ordinal))
+            {
+                // Layered providers expose legacy profile-id aliases for simple names. Those are
+                // not evidence that an unavailable core canonical identifies a core definition.
+                var coreSchema = CoreSchemas.GetOrAdd(provider.Version,
+                    static version => new Lazy<IFhirSchemaProvider>(() => version.GetSchemaProvider())).Value;
+                typeDefinition = coreSchema.GetTypeDefinition(typeName);
+            }
         }
-
-        // Get type definition from schema
-        var typeDefinition = _schema.GetTypeDefinition(resourceType);
         if (typeDefinition == null)
         {
             return null;
         }
 
         // Build schema using builder, passing terminology service for binding validation, valid resource types, and this resolver for contained resources
-        return _builder.BuildSchema(typeDefinition, _schema, terminologyService: _terminologyService, validResourceTypes: _validResourceTypes, validationSchemaResolver: this);
-    }
-
-    /// <summary>
-    /// Extracts the resource type from a canonical URL or returns the input if it's already a resource type name.
-    /// </summary>
-    /// <param name="canonicalUrlOrTypeName">
-    /// Either a canonical URL (e.g., "http://hl7.org/fhir/StructureDefinition/Patient")
-    /// or just the resource type name (e.g., "Patient").
-    /// </param>
-    /// <returns>The resource type name, or null if extraction fails.</returns>
-    private static string? ExtractResourceType(string canonicalUrlOrTypeName)
-    {
-        // If no slash, assume it's already a resource type name
-        var lastSlashIndex = canonicalUrlOrTypeName.LastIndexOf('/');
-        if (lastSlashIndex < 0)
-        {
-            return canonicalUrlOrTypeName;
-        }
-
-        // Extract last segment from URL
-        if (lastSlashIndex == canonicalUrlOrTypeName.Length - 1)
-        {
-            return null;
-        }
-
-        return canonicalUrlOrTypeName.Substring(lastSlashIndex + 1);
+        return _builder.BuildSchema(typeDefinition, _schema, terminologyService: _terminologyService,
+            validResourceTypes: _validResourceTypes, validationSchemaResolver: this,
+            canonicalUrl: canonicalUrl.Contains(':', StringComparison.Ordinal) ? canonicalUrl : null);
     }
 }

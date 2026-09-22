@@ -18,7 +18,6 @@ using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Ignixa.Validation.Services;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace Ignixa.Api.Registrations;
 
@@ -83,14 +82,14 @@ public static class ValidationServicesRegistration
                 var cached = new CachedValidationSchemaResolver(resolver);
                 return new ProfileAwareValidationSchemaResolver(cached);
             };
-        }).SingleInstance();
+        }).InstancePerLifetimeScope();
 
         // Single-tenant factory (backward compatibility, defaults to tenant 1)
         builder.Register<Func<FhirVersion, IValidationSchemaResolver>>(c =>
         {
             var multiTenantFactory = c.Resolve<Func<FhirVersion, int, IValidationSchemaResolver>>();
             return version => multiTenantFactory(version, 1);
-        }).SingleInstance();
+        }).InstancePerLifetimeScope();
     }
 
     private static void RegisterTerminologyServices(ContainerBuilder builder)
@@ -113,11 +112,10 @@ public static class ValidationServicesRegistration
 
         // SqlServerTerminologyService (database-backed terminology, raw ADO.NET).
         // SystemPartitionId because terminology is server-wide rather than per-tenant: the tables it reads
-        // live in the system partition's database, not the caller's.
+        // live in the system partition's database, not the caller's. Mutable results are not process-cached.
         builder.Register(c => new SqlServerTerminologyService(
                 c.Resolve<ISqlExecutionService>(),
                 SystemConstants.SystemPartitionId,
-                c.Resolve<IMemoryCache>(),
                 c.Resolve<ILogger<SqlServerTerminologyService>>()))
             .AsSelf()
             .As<ITerminologyImportStatusProvider>()

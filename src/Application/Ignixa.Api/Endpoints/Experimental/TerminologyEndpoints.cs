@@ -10,6 +10,7 @@ using Ignixa.Application.Features.Experimental.Terminology.Subsumes;
 using Ignixa.Application.Features.Experimental.Terminology.Translate;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Models;
+using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
@@ -132,10 +133,10 @@ public static class TerminologyEndpoints
     {
         if (string.IsNullOrWhiteSpace(url))
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
                 FhirOperationOutcomeIssue.IssueTypeCommon.Required,
-                "Parameter 'url' is required"));
+                "Parameter 'url' is required"), context);
         }
 
         var tenantId = fhirContextAccessor.RequestContext!.TenantId;
@@ -149,10 +150,12 @@ public static class TerminologyEndpoints
         }
         catch (InvalidOperationException ex)
         {
-            return Results.NotFound(CreateOperationOutcome(
+            var outcome = CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
                 FhirOperationOutcomeIssue.IssueTypeCommon.NotFound,
-                ex.Message));
+                ex.Message);
+            return new FhirResult(StatusCodes.Status404NotFound,
+                outcome.SerializeToBytes(context.Request.Query.GetPrettyParameter()), httpContext: context);
         }
     }
 
@@ -173,10 +176,10 @@ public static class TerminologyEndpoints
     {
         if (string.IsNullOrWhiteSpace(url))
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
                 FhirOperationOutcomeIssue.IssueTypeCommon.Required,
-                "Parameter 'url' is required"));
+                "Parameter 'url' is required"), context);
         }
 
         var query = new ExpandValueSetQuery(tenantId, url, filter, count, offset, includeDesignations ?? false);
@@ -188,10 +191,12 @@ public static class TerminologyEndpoints
         }
         catch (InvalidOperationException ex)
         {
-            return Results.NotFound(CreateOperationOutcome(
+            var outcome = CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
                 FhirOperationOutcomeIssue.IssueTypeCommon.NotFound,
-                ex.Message));
+                ex.Message);
+            return new FhirResult(StatusCodes.Status404NotFound,
+                outcome.SerializeToBytes(context.Request.Query.GetPrettyParameter()), httpContext: context);
         }
     }
 
@@ -220,10 +225,10 @@ public static class TerminologyEndpoints
     {
         if (string.IsNullOrWhiteSpace(body.Code) || string.IsNullOrWhiteSpace(body.System))
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
                 FhirOperationOutcomeIssue.IssueTypeCommon.Required,
-                "Parameters 'code' and 'system' are required"));
+                "Parameters 'code' and 'system' are required"), context);
         }
 
         var tenantId = fhirContextAccessor.RequestContext!.TenantId;
@@ -257,10 +262,10 @@ public static class TerminologyEndpoints
     {
         if (string.IsNullOrWhiteSpace(body.Code) || string.IsNullOrWhiteSpace(body.System))
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
                 FhirOperationOutcomeIssue.IssueTypeCommon.Required,
-                "Parameters 'code' and 'system' are required"));
+                "Parameters 'code' and 'system' are required"), context);
         }
 
         var command = new TranslateCodeCommand(
@@ -304,10 +309,10 @@ public static class TerminologyEndpoints
     {
         if (string.IsNullOrWhiteSpace(body.CodeA) || string.IsNullOrWhiteSpace(body.CodeB) || string.IsNullOrWhiteSpace(body.System))
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
                 FhirOperationOutcomeIssue.IssueTypeCommon.Required,
-                "Parameters 'codeA', 'codeB', and 'system' are required"));
+                "Parameters 'codeA', 'codeB', and 'system' are required"), context);
         }
 
         var tenantId = fhirContextAccessor.RequestContext!.TenantId;
@@ -330,10 +335,10 @@ public static class TerminologyEndpoints
     {
         if (string.IsNullOrWhiteSpace(body.CodeA) || string.IsNullOrWhiteSpace(body.CodeB) || string.IsNullOrWhiteSpace(body.System))
         {
-            return Results.BadRequest(CreateOperationOutcome(
+            return FhirResults.BadRequest(CreateOperationOutcome(
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
                 FhirOperationOutcomeIssue.IssueTypeCommon.Required,
-                "Parameters 'codeA', 'codeB', and 'system' are required"));
+                "Parameters 'codeA', 'codeB', and 'system' are required"), context);
         }
 
         var query = new SubsumesQuery(tenantId, body.CodeA, body.CodeB, body.System, body.Version);

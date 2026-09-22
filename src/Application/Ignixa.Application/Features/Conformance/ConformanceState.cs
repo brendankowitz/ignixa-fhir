@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -11,7 +12,7 @@ public sealed class ConformanceState : IDisposable
     private readonly Dictionary<(string ResourceType, string Code), ActiveSearchParameter> _searchParameters = [];
     private readonly Dictionary<string, ActiveStructureDefinition> _structureDefinitions = [];
     private readonly Dictionary<string, ActivePackage> _packages = [];
-    private readonly Dictionary<string, string> _overrideChain = [];
+    private readonly ConcurrentDictionary<string, string> _storageCanonicals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _canonicalToParamId = [];
     private readonly SemaphoreSlim _activationLock = new(1, 1);
     private readonly ILogger<ConformanceState>? _logger;
@@ -54,6 +55,12 @@ public sealed class ConformanceState : IDisposable
         return newId;
     }
 
+    // Selection does not mutate bindings. Applying the validated event advances allocation,
+    // matching durable replay instead of changing the state against which it is validated.
+    internal int GetSearchParamIdForActivation(string canonical, ActiveSearchParameter? existingOverride) =>
+        existingOverride?.SearchParamId
+        ?? (_canonicalToParamId.TryGetValue(canonical, out var id) ? id : _nextSearchParamId);
+
     private sealed class LockReleaser(SemaphoreSlim semaphore) : IDisposable
     {
         private bool _disposed;
@@ -90,6 +97,70 @@ public sealed class ConformanceState : IDisposable
 
     public ActiveSearchParameter? FindByCanonical(string canonical) =>
         _searchParameters.Values.FirstOrDefault(sp => sp.Canonical == canonical);
+
+    public bool TryGetSearchParameterStorageCanonical(string canonical, out string storageCanonical) =>
+        _storageCanonicals.TryGetValue(canonical, out storageCanonical!);
+
+    // The caller holds the activation lock. Allocation and proposed-event application must not
+    // change published state until the complete batch has validated and the append has succeeded.
+    internal ConformanceState CreateStagingCopy()
+    {
+        var staged = new ConformanceState
+        {
+            _nextSearchParamId = _nextSearchParamId,
+            _lastProcessedEventId = _lastProcessedEventId,
+            _isInitialized = _isInitialized
+        };
+        foreach (var (key, parameter) in _searchParameters)
+        {
+            staged._searchParameters.Add(key, new ActiveSearchParameter
+            {
+                SearchParamId = parameter.SearchParamId,
+                Canonical = parameter.Canonical,
+                Code = parameter.Code,
+                ResourceType = parameter.ResourceType,
+                Expression = parameter.Expression,
+                ParamType = parameter.ParamType,
+                SourcePackage = parameter.SourcePackage,
+                OverridesCanonical = parameter.OverridesCanonical,
+                TargetResourceTypes = parameter.TargetResourceTypes?.ToArray(),
+                Components = parameter.Components?.ToArray(),
+                Name = parameter.Name,
+                Description = parameter.Description,
+                Status = parameter.Status,
+                ReindexJobId = parameter.ReindexJobId
+            });
+        }
+        foreach (var (key, definition) in _structureDefinitions)
+        {
+            staged._structureDefinitions.Add(key, definition);
+        }
+        foreach (var (key, package) in _packages)
+        {
+            staged._packages.Add(key, package);
+        }
+        foreach (var (canonical, root) in _storageCanonicals)
+        {
+            staged._storageCanonicals[canonical] = root;
+        }
+        foreach (var (canonical, id) in _canonicalToParamId)
+        {
+            staged._canonicalToParamId.Add(canonical, id);
+        }
+        return staged;
+    }
+
+    internal ValidationIssue? ApplyProposedEvent(NewSourceEvent proposed)
+    {
+        if (proposed.Data is SearchParameterActivated parameter &&
+            ValidateStorageCanonical(parameter, out _) is { } issue)
+        {
+            return issue;
+        }
+
+        Apply(new SourceEvent(0, proposed.StreamId, proposed.EventType, proposed.Data, DateTimeOffset.UtcNow));
+        return null;
+    }
 
     public async Task InitializeFromEventsAsync(
         ISourceEventStore store,
@@ -212,6 +283,11 @@ public sealed class ConformanceState : IDisposable
     private void ApplySearchParameterActivated(SearchParameterActivated sp, DateTimeOffset timestamp)
     {
         var isBaseFhir = IsBaseFhirPackage(sp.SourcePackage.Split('@')[0]);
+        var issue = ValidateStorageCanonical(sp, out var storageCanonical);
+        if (issue is not null)
+        {
+            throw new InvalidOperationException(issue.Message);
+        }
 
         _searchParameters[(sp.ResourceType, sp.Code)] = new ActiveSearchParameter
         {
@@ -222,7 +298,7 @@ public sealed class ConformanceState : IDisposable
             Expression = sp.Expression,
             ParamType = sp.ParamType,
             SourcePackage = sp.SourcePackage,
-            OverridesCanonical = sp.Overrides?.OverridesCanonical,
+            OverridesCanonical = storageCanonical == sp.Canonical ? null : storageCanonical,
             TargetResourceTypes = sp.TargetResourceTypes,
             Components = sp.Components,
             Name = sp.Name,
@@ -231,16 +307,59 @@ public sealed class ConformanceState : IDisposable
         };
 
         _canonicalToParamId[sp.Canonical] = sp.SearchParamId;
+        _storageCanonicals[sp.Canonical] = storageCanonical;
 
         if (sp.SearchParamId >= _nextSearchParamId)
         {
             _nextSearchParamId = sp.SearchParamId + 1;
         }
 
-        if (sp.Overrides != null)
+    }
+
+    private ValidationIssue? ValidateStorageCanonical(SearchParameterActivated sp, out string storageCanonical)
+    {
+        storageCanonical = string.Empty;
+        ValidationIssue Invalid(string message) => new("SP_STORAGE_IDENTITY", message, sp.ResourceType, sp.Code);
+
+        _storageCanonicals.TryGetValue(sp.Canonical, out var previousRoot);
+        if (sp.Overrides is null)
         {
-            _overrideChain[sp.Canonical] = sp.Overrides.OverridesCanonical;
+            storageCanonical = previousRoot ?? sp.Canonical;
+            return null;
         }
+
+        if (sp.Overrides.InheritedParamId != sp.SearchParamId)
+        {
+            return Invalid($"Search parameter {sp.Canonical} does not retain its inherited parameter ID.");
+        }
+
+        var target = sp.Overrides.OverridesCanonical;
+        if (_canonicalToParamId.TryGetValue(target, out var targetId) && targetId != sp.Overrides.InheritedParamId)
+        {
+            return Invalid($"Search parameter {sp.Canonical} has an inherited ID inconsistent with {target}.");
+        }
+
+        _storageCanonicals.TryGetValue(target, out var targetRoot);
+        if (previousRoot is not null && targetRoot is not null && previousRoot != targetRoot)
+        {
+            return Invalid($"Search parameter {sp.Canonical} overrides a different storage identity.");
+        }
+
+        // Legacy same-canonical upgrade events point P at P. The earlier canonical ancestry is the
+        // authority; following that self-edge or choosing P's physical SQL row would split the index.
+        if (previousRoot is not null || targetRoot is not null)
+        {
+            storageCanonical = previousRoot ?? targetRoot!;
+            return null;
+        }
+
+        if (target == sp.Canonical)
+        {
+            return Invalid($"Search parameter {sp.Canonical} has a self override with no inherited storage identity.");
+        }
+
+        storageCanonical = target;
+        return null;
     }
 
     private void ApplyReindexStarted(SearchParameterReindexStarted reindex)

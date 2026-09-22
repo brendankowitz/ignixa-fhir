@@ -13,9 +13,10 @@
 -- by the time they arrive here the two are indistinguishable, which is why partial-expansion state is
 -- passed in rather than inferred.
 CREATE PROCEDURE dbo.ImportTermValueSet
-@PackageResourceId BIGINT, @Canonical NVARCHAR (512), @Version NVARCHAR (100)=NULL, @Name NVARCHAR (256), @Immutable BIT, @IsPartialExpansion BIT=0, @PartialExpansionReason NVARCHAR (1024)=NULL, @Entries dbo.TermValueSetExpansionList READONLY
+@PackageResourceId BIGINT, @Canonical NVARCHAR (512), @Version NVARCHAR (100)=NULL, @Name NVARCHAR (256)=NULL, @Immutable BIT, @IsPartialExpansion BIT=0, @PartialExpansionReason NVARCHAR (1024)=NULL, @Entries dbo.TermValueSetExpansionList READONLY, @ContentHash NVARCHAR (64)=NULL
 AS
 SET NOCOUNT ON;
+SET XACT_ABORT ON;
 DECLARE @SP AS VARCHAR (100) = 'ImportTermValueSet', @st AS DATETIME = getUTCdate(), @InitialTranCount AS INT = @@trancount, @TermValueSetId AS BIGINT, @Rows AS INT;
 DECLARE @Mode AS VARCHAR (200) = 'PR=' + CONVERT (VARCHAR, @PackageResourceId);
 BEGIN TRY
@@ -28,8 +29,9 @@ BEGIN TRY
     WHERE  PackageResourceId = @PackageResourceId;
     -- Re-import replaces rather than merges. The FK from TermValueSetExpansion carries ON DELETE CASCADE,
     -- so the previous expansion goes with the previous value set row.
-    DELETE dbo.TermValueSet
-    WHERE  PackageResourceId = @PackageResourceId;
+    DELETE dbo.TermValueSet WITH (UPDLOCK, HOLDLOCK)
+    WHERE  PackageResourceId = @PackageResourceId
+           OR (Canonical = @Canonical AND (Version = @Version OR (Version IS NULL AND @Version IS NULL)));
     SET @Rows = (SELECT COUNT(*)
                  FROM   @Entries);
     INSERT INTO dbo.TermValueSet (PackageResourceId, Canonical, Version, Name, Immutable, IsExpanded, LastExpansionDate, ExpansionCodeCount, IsPartialExpansion, PartialExpansionReason, ImportedDate)
@@ -48,11 +50,12 @@ BEGIN TRY
     SET    TerminologyImportStatus = 'Completed',
            ImportCompletedDate     = SYSDATETIMEOFFSET(),
            ImportedConceptCount    = @Rows,
+           ContentHash             = COALESCE(@ContentHash, ContentHash),
            ImportErrorMessage      = NULL
     WHERE  PackageResourceId = @PackageResourceId;
+    EXECUTE dbo.LogEvent @Process = @SP, @Mode = @Mode, @Status = 'End', @Start = @st, @Rows = @Rows, @Target = 'IsPartialExpansion', @Text = @IsPartialExpansion;
     IF @InitialTranCount = 0
         COMMIT TRANSACTION;
-    EXECUTE dbo.LogEvent @Process = @SP, @Mode = @Mode, @Status = 'End', @Start = @st, @Rows = @Rows, @Target = 'IsPartialExpansion', @Text = @IsPartialExpansion;
     SELECT @TermValueSetId;
 END TRY
 BEGIN CATCH

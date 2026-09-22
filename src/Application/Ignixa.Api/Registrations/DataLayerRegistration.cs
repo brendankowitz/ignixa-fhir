@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using Autofac;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
 using Ignixa.DataLayer.FileSystem.FileSystem;
@@ -15,6 +17,8 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
+using Ignixa.Serialization;
+using Ignixa.Specification;
 using Microsoft.Extensions.Options;
 using Microsoft.IO;
 
@@ -39,7 +43,22 @@ public static class DataLayerRegistration
         // One SqlServer reference-data cache per tenant, shared by the write path and the package-load
         // search-parameter sync. Singleton because the identity of the instance is the point: a sync against
         // any other instance leaves the write path dropping index rows.
-        services.AddSingleton<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>();
+        services.AddSingleton(sp => new Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry(
+            sp.GetRequiredService<ISqlExecutionService>(),
+            sp.GetRequiredService<ILoggerFactory>(),
+            async (tenantId, cancellationToken) =>
+            {
+                if (!sp.GetRequiredService<ConformanceState>().IsInitialized)
+                {
+                    throw new InvalidOperationException("SQL reference data requires completed conformance event replay.");
+                }
+
+                var tenant = await sp.GetRequiredService<ITenantConfigurationStore>()
+                    .GetTenantConfigurationAsync(tenantId, cancellationToken)
+                    ?? throw new InvalidOperationException($"Tenant {tenantId} does not exist.");
+                return sp.GetRequiredService<IFhirVersionContext>().GetSearchParameterDefinitionManager(
+                    FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion), tenantId);
+            }));
 
         // SchemaDeployer (DacFx-based schema deployment for brand-new, empty tenant databases)
         services.AddIgnixaSqlServerSchemaDeployment(configuration);
@@ -282,6 +301,10 @@ public static class DataLayerRegistration
 
     private static void RegisterPackageRepository(ContainerBuilder builder)
     {
+        builder.Register(c => new SharedContentDatabaseGuard(
+                c.Resolve<ISqlExecutionService>(), GlobalPackageTenantId, SystemConstants.SystemPartitionId))
+            .SingleInstance();
+
         // PackageRepositoryDbContextFactory is deliberately not registered. Its only two consumers -- the EF
         // SqlPackageResourceRepository and the EF SqlSourceEventStore -- were both replaced by raw-ADO.NET
         // SqlServer implementations (below, and in ConformanceServicesRegistration), leaving nothing in the
@@ -295,7 +318,8 @@ public static class DataLayerRegistration
             new SqlServerPackageResourceRepository(
                 c.Resolve<ISqlExecutionService>(),
                 GlobalPackageTenantId,
-                c.Resolve<ILogger<SqlServerPackageResourceRepository>>()))
+                c.Resolve<ILogger<SqlServerPackageResourceRepository>>(),
+                c.Resolve<SharedContentDatabaseGuard>()))
             .InstancePerDependency();
 
         // Terminology importer factory. SystemPartitionId rather than GlobalPackageTenantId above: the
@@ -309,7 +333,8 @@ public static class DataLayerRegistration
                 c.Resolve<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>(),
                 SystemConstants.SystemPartitionId,
                 c.Resolve<ILoggerFactory>(),
-                c.Resolve<IOptions<SqlServerOptions>>().Value.TerminologyImportCommandTimeoutSeconds))
+                c.Resolve<IOptions<SqlServerOptions>>().Value.TerminologyImportCommandTimeoutSeconds,
+                GlobalPackageTenantId))
             .InstancePerDependency();
     }
 }

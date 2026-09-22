@@ -33,8 +33,7 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 /// neither.
 /// </para>
 /// <para>
-/// The second is <c>_since</c> over the ordinary write path, which is expected to return nothing and is
-/// documented as such on the test itself.
+/// The second verifies <c>_since</c> over the ordinary write path without manually publishing visibility.
 /// </para>
 /// </summary>
 #pragma warning disable CA1001
@@ -265,21 +264,10 @@ public class PatientEverythingExpansionExecutionTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenASinceQueryAgainstTheProductionWritePath_WhenEverythingIsSearched_ThenNoMemberIsReturnedBecauseVisibleDateIsNeverCommitted()
+    public async Task GivenASinceQueryAgainstTheProductionWritePath_WhenEverythingIsSearched_ThenCommittedMembersAreReturned()
     {
-        // A PASS HERE DOCUMENTS A DEFECT, IT DOES NOT VALIDATE CORRECT BEHAVIOUR.
-        //
-        // SqlServerFhirRepository.CreateOrUpdateAsync opens a dbo.Transactions row per write via
-        // MergeResourcesBeginTransaction and never commits it. Only the MergeResources stored-procedure
-        // path (with @TransactionId supplied, so it calls MergeResourcesCommitTransaction internally) sets
-        // VisibleDate. On this write path VisibleDate stays NULL forever, and _since filters on exactly
-        // that column, so the filter matches nothing regardless of the cutoff.
-        //
-        // PatientEverythingSinceExecutionTests covers the emitted filter itself, and works around this by
-        // issuing a manual UPDATE of dbo.Transactions first. This test deliberately does not, so the
-        // production write path's behaviour is pinned rather than bypassed. It turns green -- and should
-        // then be rewritten to assert the member IS returned -- the day CreateOrUpdateAsync's transaction
-        // lifecycle is fixed. See docs/superpowers/specs/2026-07-25-patient-everything-branch-a-handoff.md.
+        // Commit completion and visibility publication are separate legacy procedures. The repository
+        // must drive both; otherwise ordinary successful writes disappear from incremental $everything.
         var observationSubjectParam = ParameterManager.GetSearchParameter("Observation", "subject");
 
         var cutoff = await _database.ExecuteScalarAsync<DateTime>(
@@ -303,11 +291,10 @@ public class PatientEverythingExpansionExecutionTests : IAsyncLifetime
 
         // The patient-itself branch is never filtered by _since, so it still returns.
         results.ShouldContain(patientId);
-        results.ShouldNotContain(memberId);
+        results.ShouldContain(memberId);
 
-        // Pin the cause, so a future reader does not mistake this for the filter being over-restrictive.
         var nullVisibleDates = await _database.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM dbo.Transactions WHERE VisibleDate IS NULL", CancellationToken.None);
-        nullVisibleDates.ShouldBeGreaterThan(0);
+        nullVisibleDates.ShouldBe(0);
     }
 }

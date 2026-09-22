@@ -18,6 +18,9 @@ public record CompleteJobInput
     public required int TotalErrors { get; init; }
     public required IReadOnlyList<ImportErrorLogEntry> ErrorLogEntries { get; init; }
     public Parameters? StorageDetail { get; init; }
+    public string? ErrorMessage { get; init; }
+    public bool CountsAreComplete { get; init; } = true;
+    public int? ResourcesWithUnknownOutcome { get; init; } = 0;
 
     /// <summary>
     /// Job start date/time for throughput calculation (resources/sec).

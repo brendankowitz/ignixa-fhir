@@ -60,6 +60,14 @@ The production `ValidationServicesRegistration` wires it automatically; consumer
 that have access to the resource element should call `ResolveForElement(element)`
 to pick up `meta.profile` composition.
 
+Full canonicals and explicit `|business-version` suffixes are preserved during
+lookup and deduplication. Unavailable asserted identities produce warnings at
+Spec/Full rather than validating a different version or a same-named profile.
+`ProfileLayeredSchemaProvider` retains its resource-id aliases for direct callers,
+but canonical lookups do not use those aliases to resolve an unrelated profile.
+The server write pipeline uses the current request tenant's provider and rejects
+an unavailable base schema before persistence.
+
 ### CLI
 
 The `ignixa-validator` CLI exposes profile-aware validation directly:

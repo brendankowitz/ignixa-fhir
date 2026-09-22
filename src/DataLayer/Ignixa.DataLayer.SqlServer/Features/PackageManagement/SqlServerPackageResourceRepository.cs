@@ -26,11 +26,16 @@ namespace Ignixa.DataLayer.SqlServer.Features.PackageManagement;
 /// says so at its own filter site, and <c>SqlServerPackageResourceRepositoryVersionFilterTests</c> pins the
 /// current behaviour so those tests fail deliberately the day normalisation lands.
 /// </para>
+/// <para>
+/// <paramref name="sharedContentGuard"/> enforces the application's shared-content topology. Standalone package stores, which never
+/// pass their identities to a separate terminology partition, do not need a cross-database guard.
+/// </para>
 /// </summary>
 public sealed class SqlServerPackageResourceRepository(
     ISqlExecutionService sqlExecutionService,
     int connectionTenantId,
-    ILogger<SqlServerPackageResourceRepository> logger) : IPackageResourceRepository
+    ILogger<SqlServerPackageResourceRepository> logger,
+    SharedContentDatabaseGuard? sharedContentGuard = null) : IPackageResourceRepository
 {
     private static readonly TableDescriptor Packages = SqlCatalog.Default.Table("PackageResource");
 
@@ -54,6 +59,8 @@ public sealed class SqlServerPackageResourceRepository(
     public async Task UpsertAsync(PackageResource packageResource, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(packageResource);
+
+        await EnsureSharedContentAsync(cancellationToken);
 
         try
         {
@@ -95,6 +102,8 @@ public sealed class SqlServerPackageResourceRepository(
         {
             return;
         }
+
+        await EnsureSharedContentAsync(cancellationToken);
 
         var packageId = packageResources[0].PackageId;
         var packageVersion = packageResources[0].PackageVersion;
@@ -314,6 +323,8 @@ public sealed class SqlServerPackageResourceRepository(
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
 
+        await EnsureSharedContentAsync(cancellationToken);
+
         // The current-state predicate matters: the returned count is rows *changed*, so a row already in the
         // target state is not counted.
         using var command = Command(
@@ -339,6 +350,8 @@ public sealed class SqlServerPackageResourceRepository(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
+
+        await EnsureSharedContentAsync(cancellationToken);
 
         using var command = Command(
             $"DELETE FROM {QualifiedTable} " +
@@ -620,6 +633,8 @@ public sealed class SqlServerPackageResourceRepository(
     public async Task<PackageResource?> GetByPackageResourceIdAsync(
         long packageResourceId, CancellationToken cancellationToken)
     {
+        await EnsureSharedContentAsync(cancellationToken);
+
         // No IsActive filter, unlike every other read here. The terminology import orchestration is handed
         // ids that were active when it was scheduled, and a package deactivated mid-import should surface as
         // the resource it is rather than as "not found", which the activity reports as a hard failure.
@@ -687,6 +702,8 @@ public sealed class SqlServerPackageResourceRepository(
     {
         ArgumentNullException.ThrowIfNull(errorMessage);
 
+        await EnsureSharedContentAsync(cancellationToken);
+
         // ImportErrorMessage is NVARCHAR(1000); an over-length message would otherwise fail the write and
         // lose the error entirely, which is the trap SqlServerCodeSystemImporter.RecordFailureAsync documents.
         var message = errorMessage.Length > 1000 ? errorMessage[..1000] : errorMessage;
@@ -708,6 +725,9 @@ public sealed class SqlServerPackageResourceRepository(
     }
 
     private static string ActiveOnly => $"{Packages.Column("IsActive").Name} = 1";
+
+    private Task EnsureSharedContentAsync(CancellationToken cancellationToken)
+        => sharedContentGuard?.EnsureCompatibleAsync(cancellationToken) ?? Task.CompletedTask;
 
     private async Task<IReadOnlyList<PackageResource>> ByResourceTypeAsync(string resourceType, CancellationToken cancellationToken)
     {

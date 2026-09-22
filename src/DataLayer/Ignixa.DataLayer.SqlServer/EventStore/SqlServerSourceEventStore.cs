@@ -17,12 +17,21 @@ namespace Ignixa.DataLayer.SqlServer.EventStore;
 /// load-bearing: every event in one <see cref="AppendAsync"/> call shares a single timestamp and a single
 /// transaction-id cutoff, and the returned events carry <c>TransactionId = 0</c> even though the rows just
 /// written carry the real cutoff (only the read path surfaces it).
+/// Bounded SQL commands share one transaction, so a failed chunk cannot publish a partial append.
+/// Appends serialize identity allocation through commit so snapshot readers cannot advance past
+/// lower EventIds that another append has not committed yet.
 /// </summary>
 public sealed class SqlServerSourceEventStore(
     ISqlExecutionService sqlExecutionService,
     int tenantId,
     ILogger<SqlServerSourceEventStore> logger) : ISourceEventStore
 {
+    // Leave headroom below SQL Server's 2100-parameter RPC limit, including provider overhead.
+    private const int SqlParameterBudget = 1800;
+    private const int SharedParameterCount = 2;
+    private const int ParametersPerEvent = 3;
+    private const int EventsPerCommand = (SqlParameterBudget - SharedParameterCount) / ParametersPerEvent;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -39,7 +48,18 @@ public sealed class SqlServerSourceEventStore(
 
     private static readonly string QualifiedTable = $"{Events.SchemaName}.{Events.TableName}";
 
-    public async Task<IReadOnlyList<SourceEvent>> AppendAsync(IEnumerable<NewSourceEvent> events, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<SourceEvent>> AppendAsync(IEnumerable<NewSourceEvent> events, CancellationToken cancellationToken) =>
+        AppendCoreAsync(events, null, cancellationToken);
+
+    public Task<IReadOnlyList<SourceEvent>> AppendAsync(
+        IEnumerable<NewSourceEvent> events, long expectedLastEventId, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(expectedLastEventId);
+        return AppendCoreAsync(events, expectedLastEventId, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<SourceEvent>> AppendCoreAsync(
+        IEnumerable<NewSourceEvent> events, long? expectedLastEventId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(events);
 
@@ -52,7 +72,7 @@ public sealed class SqlServerSourceEventStore(
         var timestamp = DateTimeOffset.UtcNow;
         var currentTransactionId = await ReadVisibleTransactionCutoffAsync(cancellationToken);
 
-        var eventIds = await InsertAsync(eventsList, timestamp, currentTransactionId, cancellationToken);
+        var eventIds = await InsertAsync(eventsList, timestamp, currentTransactionId, expectedLastEventId, cancellationToken);
 
         logger.LogInformation(
             "Appended {Count} events to event store (TransactionId cutoff: {TransactionId})",
@@ -102,11 +122,55 @@ public sealed class SqlServerSourceEventStore(
         return values.Count > 0 ? values[0] ?? 0L : 0L;
     }
 
-    private async Task<IReadOnlyList<long>> InsertAsync(
+    private Task<IReadOnlyList<long>> InsertAsync(
         IReadOnlyList<NewSourceEvent> eventsList,
         DateTimeOffset timestamp,
         long currentTransactionId,
+        long? expectedLastEventId,
         CancellationToken cancellationToken)
+        // Only a rolled-back transaction may be retried. The execution service never retries an
+        // ambiguous commit, and each attempt owns its ids so a failed attempt cannot leak into the result.
+        => sqlExecutionService.ExecuteInTransactionAsync<IReadOnlyList<long>>(
+            tenantId,
+            async (transaction, token) =>
+            {
+                // Take the table lock before allocating any identities, and hold it through commit.
+                // Otherwise an RCSI reader can advance past higher ids committed by a concurrent append.
+#pragma warning disable CA2100 // Only catalog identifiers are interpolated.
+                using var orderingLock = new SqlCommand(
+                    $"SELECT TOP (1) {Events.Column("EventId").Name} FROM {QualifiedTable} WITH (TABLOCKX, HOLDLOCK)");
+#pragma warning restore CA2100
+                await transaction.ExecuteNonQueryAsync(orderingLock, token);
+
+                if (expectedLastEventId.HasValue)
+                {
+                    using var positionCommand = new SqlCommand("SELECT ISNULL(MAX(EventId), 0) FROM dbo.SourceEvents");
+                    var positions = await transaction.ExecuteReaderAsync(positionCommand, reader => reader.GetInt64(0), token);
+                    var actualEventId = positions.Single();
+                    if (actualEventId != expectedLastEventId.Value)
+                    {
+                        throw new SourceEventConcurrencyException(expectedLastEventId.Value, actualEventId);
+                    }
+                }
+
+                var eventIds = new List<long>(eventsList.Count);
+                foreach (var batch in eventsList.Chunk(EventsPerCommand))
+                {
+                    using var command = new SqlCommand();
+                    ConfigureInsertCommand(command, batch, timestamp, currentTransactionId);
+                    var batchIds = await transaction.ExecuteReaderAsync(command, reader => reader.GetInt64(0), token);
+                    eventIds.AddRange(batchIds.OrderBy(id => id));
+                }
+
+                return eventIds;
+            },
+            cancellationToken);
+
+    private static void ConfigureInsertCommand(
+        SqlCommand command,
+        IReadOnlyList<NewSourceEvent> eventsList,
+        DateTimeOffset timestamp,
+        long currentTransactionId)
     {
         var sql = new StringBuilder()
             .Append("INSERT INTO ").Append(QualifiedTable)
@@ -118,7 +182,6 @@ public sealed class SqlServerSourceEventStore(
             .Append(" OUTPUT INSERTED.").Append(Events.Column("EventId").Name)
             .Append(" SELECT s.StreamId, s.EventType, s.EventData, @timestamp, @transactionId FROM (VALUES ");
 
-        using var command = new SqlCommand();
         for (var i = 0; i < eventsList.Count; i++)
         {
             var ordinal = i.ToString(CultureInfo.InvariantCulture);
@@ -138,7 +201,7 @@ public sealed class SqlServerSourceEventStore(
         }
 
         // ORDER BY the source ordinal so IDENTITY values are assigned in input order. OUTPUT makes no
-        // guarantee about the order of its own result set, so the ids are sorted ascending below and zipped
+        // guarantee about the order of its own result set, so the caller sorts the ids ascending and zips them
         // back onto the input -- which is what reproduces EF's positional entity-to-identity correlation.
         sql.Append(") AS s(Ord, StreamId, EventType, EventData) ORDER BY s.Ord");
 
@@ -150,15 +213,6 @@ public sealed class SqlServerSourceEventStore(
 #pragma warning disable CA2100
         command.CommandText = sql.ToString();
 #pragma warning restore CA2100
-
-        // NonIdempotent: this is an unguarded INSERT that comes through ExecuteReaderAsync only because it
-        // needs the generated EventIds back. A -2 command timeout does not prove the server did not commit
-        // it, so a retry would append the whole batch a second time -- duplicate events in a stream are
-        // worse than a surfaced failure the caller can retry with its own idempotency.
-        var eventIds = await sqlExecutionService.ExecuteReaderAsync(
-            tenantId, command, reader => reader.GetInt64(0), cancellationToken, SqlCommandIdempotency.NonIdempotent);
-
-        return [.. eventIds.OrderBy(id => id)];
     }
 
     private async IAsyncEnumerable<SourceEvent> QueryAsync(

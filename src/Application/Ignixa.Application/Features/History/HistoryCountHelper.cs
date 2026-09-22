@@ -11,87 +11,50 @@ namespace Ignixa.Application.Features.History;
 
 /// <summary>
 /// Helper methods for counting history results (for _total=accurate).
-/// Counts by enumerating the full result set WITHOUT loading resource bytes.
-/// Still expensive, but avoids loading full resources into memory.
+/// Uses the repository's body-free count operations, independently of page limits.
 /// </summary>
 public static class HistoryCountHelper
 {
     /// <summary>
     /// Counts total number of versions for a resource instance.
-    /// Enumerates full result set without offset/limit to get accurate count.
+    /// Includes tombstones and applies the time filters, ignoring pagination.
     /// </summary>
-    public static async Task<int> CountResourceHistoryAsync(
+    public static Task<int> CountResourceHistoryAsync(
         IFhirRepository repository,
         ResourceKey key,
         HistoryQueryParameters parameters,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
-        // Create parameters with no pagination (offset=0, count=MaxValue)
-        var countParameters = parameters with
-        {
-            Offset = 0,
-            Count = int.MaxValue
-        };
-
-        int count = 0;
-        await foreach (var entry in repository.GetResourceHistoryAsync(key, countParameters, ct))
-        {
-            count++;
-        }
-
-        return count;
+        ArgumentNullException.ThrowIfNull(repository);
+        return repository.CountResourceHistoryAsync(key, parameters, cancellationToken);
     }
 
     /// <summary>
     /// Counts total number of versions for a resource type.
-    /// Enumerates full result set without offset/limit to get accurate count.
+    /// Includes tombstones and applies the time filters, ignoring pagination.
     /// </summary>
-    public static async Task<int> CountTypeHistoryAsync(
+    public static Task<int> CountTypeHistoryAsync(
         IFhirRepository repository,
         string resourceType,
         int tenantId,
         HistoryQueryParameters parameters,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
-        // Create parameters with no pagination (offset=0, count=MaxValue)
-        var countParameters = parameters with
-        {
-            Offset = 0,
-            Count = int.MaxValue
-        };
-
-        int count = 0;
-        await foreach (var entry in repository.GetTypeHistoryAsync(resourceType, tenantId, countParameters, ct))
-        {
-            count++;
-        }
-
-        return count;
+        ArgumentNullException.ThrowIfNull(repository);
+        return repository.CountTypeHistoryAsync(resourceType, tenantId, parameters, cancellationToken);
     }
 
     /// <summary>
     /// Counts total number of versions across all resource types.
-    /// Enumerates full result set without offset/limit to get accurate count.
+    /// Includes tombstones and applies the time filters, ignoring pagination.
     /// </summary>
-    public static async Task<int> CountSystemHistoryAsync(
+    public static Task<int> CountSystemHistoryAsync(
         IFhirRepository repository,
         int tenantId,
         HistoryQueryParameters parameters,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
-        // Create parameters with no pagination (offset=0, count=MaxValue)
-        var countParameters = parameters with
-        {
-            Offset = 0,
-            Count = int.MaxValue
-        };
-
-        int count = 0;
-        await foreach (var entry in repository.GetSystemHistoryAsync(tenantId, countParameters, ct))
-        {
-            count++;
-        }
-
-        return count;
+        ArgumentNullException.ThrowIfNull(repository);
+        return repository.CountSystemHistoryAsync(tenantId, parameters, cancellationToken);
     }
 }

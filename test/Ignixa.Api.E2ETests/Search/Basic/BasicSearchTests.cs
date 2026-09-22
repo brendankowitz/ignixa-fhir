@@ -156,6 +156,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
         var tag = Guid.NewGuid().ToString();
 
         var scenario = CreateScenario()
+            .WithResolvedReferences()
             .WithName("Observation Code Search Test")
             .WithDescription("Tests Observation search by code parameter with realistic patient")
             .WithTag(tag)
@@ -709,6 +710,7 @@ public class BasicSearchTests : CapabilityDrivenTestBase
 
         // Create an observation with a specific code
         var scenario = CreateScenario()
+            .WithResolvedReferences()
             .WithTag(tag)
             .WithPatient(p => p.FromSeattle())
             .AddEncounter("Test visit")

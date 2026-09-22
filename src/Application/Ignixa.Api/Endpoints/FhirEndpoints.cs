@@ -46,6 +46,7 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class FhirEndpoints
 {
+    private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
     /// <summary>
     /// Registers FHIR RESTful endpoints for all resource types.
     ///
@@ -88,7 +89,7 @@ public static class FhirEndpoints
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id} - Read resource
-        tenantGroup.MapGet("/{resourceType}/{id}", HandleGetResource)
+        tenantGroup.MapMethods("/{resourceType}/{id}", ReadMethods, HandleGetResource)
             .WithName("GetResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status404NotFound);
@@ -199,7 +200,7 @@ public static class FhirEndpoints
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id} - Read resource (agnostic)
-        agnosticGroup.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+        agnosticGroup.MapMethods("/{resourceType}/{id}", ReadMethods, (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
             HandleGetResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, loggerFactory, ct))
             .WithName("GetResourceAgnostic")
@@ -353,6 +354,13 @@ public static class FhirEndpoints
                 return Results.NotFound();
             }
 
+            if (conditionalResult.Resource.IsDeleted)
+            {
+                return FhirResults.Gone(resourceType, id, context)
+                    .WithETag(conditionalResult.Resource.VersionId)
+                    .WithLastModified(conditionalResult.Resource.LastModified);
+            }
+
             if (conditionalResult.NotModified)
             {
                 // 304 Not Modified: Include ETag and Last-Modified headers but no body
@@ -364,7 +372,9 @@ public static class FhirEndpoints
 
             // Resource modified: Return resource with headers
             logger.LogInformation("Resource {ResourceType}/{Id} modified, returning resource", resourceType.SanitizeForLog(), id.SanitizeForLog());
-            return FhirResults.Ok(conditionalResult.Resource.ResourceBytes, context)
+            return (HttpMethods.IsHead(context.Request.Method)
+                ? new FhirResult(StatusCodes.Status200OK)
+                : FhirResults.Ok(conditionalResult.Resource.ResourceBytes, context))
                 .WithETag(conditionalResult.Resource.VersionId)
                 .WithLastModified(conditionalResult.Resource.LastModified);
         }
@@ -388,17 +398,15 @@ public static class FhirEndpoints
                 id.SanitizeForLog(),
                 result.VersionId);
 
-            // Return 410 Gone per FHIR R4 specification (Section 3.1.0.1.2)
-            // 410 Gone = resource existed but has been deleted
-            // 404 Not Found = resource never existed
-            return Results.Problem(
-                statusCode: StatusCodes.Status410Gone,
-                title: "Resource Deleted",
-                detail: $"{resourceType}/{id} has been deleted (last version: {result.VersionId})");
+            return FhirResults.Gone(resourceType, id, context)
+                .WithETag(result.VersionId)
+                .WithLastModified(result.LastModified);
         }
 
         // Return raw JSON bytes with FHIR headers (zero-copy serialization)
-        return FhirResults.Ok(result.ResourceBytes, context)
+        return (HttpMethods.IsHead(context.Request.Method)
+            ? new FhirResult(StatusCodes.Status200OK)
+            : FhirResults.Ok(result.ResourceBytes, context))
             .WithETag(result.VersionId)
             .WithLastModified(result.LastModified);
     }
@@ -515,7 +523,7 @@ public static class FhirEndpoints
         }
 
         // Determine if created or updated
-        bool isCreated = result.Key.VersionId == "1";
+        bool isCreated = result.IsCreated ?? result.Key.VersionId == "1";
 
         // Determine actual return preference: default to representation (FHIR spec), unless minimal explicitly requested
         var actualReturnPreference = returnPreference == ReturnPreference.Minimal
@@ -528,7 +536,7 @@ public static class FhirEndpoints
             context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
         }
 
-        var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Key.Id}";
+        var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Key.Id}/_history/{result.Key.VersionId}";
 
         if (isCreated)
         {
@@ -1311,8 +1319,8 @@ public static class FhirEndpoints
 
         if (result.WasCreated)
         {
-            // 201 Created - include Location header (absolute URL per FHIR spec)
-            var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
+            // Use the documented version-specific location for PUT-as-create.
+            var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}";
 
             if (actualReturnPreference == ReturnPreference.Minimal)
             {
@@ -1443,7 +1451,7 @@ public static class FhirEndpoints
         var result = await mediator.SendAsync(command, ct);
 
         // Return appropriate response based on mode
-        if (!count.HasValue && result.DeletedCount == 1)
+        if (!count.HasValue)
         {
             // Single mode: 204 No Content
             return Results.NoContent();

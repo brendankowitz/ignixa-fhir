@@ -94,7 +94,29 @@ public class DeleteResourceHandler : IRequestHandler<DeleteResourceCommand, bool
         var request = new ResourceRequest("DELETE", $"{command.ResourceType}/{command.Id}");
 
         // Perform soft delete (creates tombstone version)
-        var deletedKey = await repository.DeleteAsync(key, request, transactionId: null, cancellationToken);
+        ResourceKey? deletedKey;
+        if (context.DeferredWriteCoordinator is { IsAtomic: true } coordinator)
+        {
+            var existing = await repository.GetAsync(key, cancellationToken);
+            if (existing == null)
+            {
+                return false;
+            }
+            if (existing.IsDeleted)
+            {
+                return true;
+            }
+            deletedKey = await coordinator.QueueWriteAsync(new ResourceWrapper(
+                command.ResourceType, command.Id, existing.VersionId, DateTimeOffset.UtcNow,
+                minimalResourceNode, request, IsDeleted: true)
+            {
+                ExpectedVersionId = existing.VersionId
+            }, context.BundleEntryIndex ?? 0, cancellationToken);
+        }
+        else
+        {
+            deletedKey = await repository.DeleteAsync(key, request, transactionId: null, cancellationToken);
+        }
 
         if (deletedKey == null)
         {

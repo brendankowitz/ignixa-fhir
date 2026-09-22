@@ -4,11 +4,8 @@
 --
 -- Why the whole import lives here rather than in the caller:
 --
--- ISqlExecutionService opens a fresh connection per call and exposes no transaction API, so a client-side
--- import spanning several calls cannot be atomic. The implementation this replaces got atomicity from an
--- EF transaction wrapping all of its steps; without that, a failure between steps would leave a
--- TermCodeSystem with no concepts, or concepts with no hierarchy, and the package row still claiming
--- InProgress. Moving the sequence into one procedure restores the guarantee the port would otherwise lose.
+-- The procedure keeps replacement, hierarchy, status and content hash in one transaction and one round
+-- trip. A later bookkeeping failure must not leave newly committed terminology behind a failed status.
 --
 -- It also removes a defect rather than reproducing it. The previous design inserted concepts by one of two
 -- client-side paths -- EF AddRange at or below 1,000 concepts, SqlBulkCopy above it -- and only the bulk
@@ -20,9 +17,10 @@
 -- reuse issues sp_reset_connection, dropping session-scoped temp objects even on the same SPID. A
 -- table-valued parameter is a parameter, not session state.
 CREATE PROCEDURE dbo.ImportTermCodeSystem
-@PackageResourceId BIGINT, @SystemId INT, @Version NVARCHAR (100)=NULL, @ConceptCount INT, @Content NVARCHAR (50), @IsHierarchical BIT, @CaseSensitive BIT, @Compositional BIT, @Concepts dbo.TermConceptList READONLY
+@PackageResourceId BIGINT, @SystemId INT, @Version NVARCHAR (100)=NULL, @ConceptCount INT, @Content NVARCHAR (50), @IsHierarchical BIT, @CaseSensitive BIT, @Compositional BIT, @Concepts dbo.TermConceptList READONLY, @ContentHash NVARCHAR (64)=NULL
 AS
 SET NOCOUNT ON;
+SET XACT_ABORT ON;
 DECLARE @SP AS VARCHAR (100) = 'ImportTermCodeSystem', @st AS DATETIME = getUTCdate(), @InitialTranCount AS INT = @@trancount, @TermCodeSystemId AS BIGINT, @Rows AS INT, @ParentRows AS INT;
 DECLARE @Mode AS VARCHAR (200) = 'PR=' + CONVERT (VARCHAR, @PackageResourceId) + ' S=' + CONVERT (VARCHAR, @SystemId);
 BEGIN TRY
@@ -37,8 +35,11 @@ BEGIN TRY
     WHERE  PackageResourceId = @PackageResourceId;
     -- Re-import replaces rather than merges. The FK from TermConcept carries ON DELETE CASCADE, so the old
     -- concepts go with the old code system row and cannot survive as orphans of a previous version.
-    DELETE dbo.TermCodeSystem
-    WHERE  PackageResourceId = @PackageResourceId;
+    -- The last successful import owns the canonical/version, even across package versions. Range locks
+    -- serialize replacement, including an unversioned canonical with no existing row.
+    DELETE dbo.TermCodeSystem WITH (UPDLOCK, HOLDLOCK)
+    WHERE  PackageResourceId = @PackageResourceId
+           OR (SystemId = @SystemId AND (Version = @Version OR (Version IS NULL AND @Version IS NULL)));
     INSERT INTO dbo.TermCodeSystem (PackageResourceId, SystemId, Version, ConceptCount, Content, IsHierarchical, CaseSensitive, Compositional, ImportedDate)
     VALUES                        (@PackageResourceId, @SystemId, @Version, @ConceptCount, @Content, @IsHierarchical, @CaseSensitive, @Compositional, SYSDATETIMEOFFSET());
     SET @TermCodeSystemId = scope_identity();
@@ -72,11 +73,12 @@ BEGIN TRY
     SET    TerminologyImportStatus = 'Completed',
            ImportCompletedDate     = SYSDATETIMEOFFSET(),
            ImportedConceptCount    = @Rows,
+           ContentHash             = COALESCE(@ContentHash, ContentHash),
            ImportErrorMessage      = NULL
     WHERE  PackageResourceId = @PackageResourceId;
+    EXECUTE dbo.LogEvent @Process = @SP, @Mode = @Mode, @Status = 'End', @Start = @st, @Rows = @Rows, @Target = 'ParentLinks', @Text = @ParentRows;
     IF @InitialTranCount = 0
         COMMIT TRANSACTION;
-    EXECUTE dbo.LogEvent @Process = @SP, @Mode = @Mode, @Status = 'End', @Start = @st, @Rows = @Rows, @Target = 'ParentLinks', @Text = @ParentRows;
     SELECT @TermCodeSystemId;
 END TRY
 BEGIN CATCH

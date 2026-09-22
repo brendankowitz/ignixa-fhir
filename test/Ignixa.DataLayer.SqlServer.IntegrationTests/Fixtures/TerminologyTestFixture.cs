@@ -76,10 +76,8 @@ public sealed class TerminologyTestFixture : IAsyncDisposable
     }
 
     /// <summary>
-    /// A terminology service with its own cache. <c>LookupCodeAsync</c> memoises on
-    /// <c>system|version|code</c> and returns before touching the database on a hit, so a test that shares a
-    /// cache across cases can assert against the cache rather than the query it meant to exercise. Each call
-    /// here gets a fresh one.
+    /// A separate terminology service per call, retaining coverage of the cache-accepting compatibility
+    /// constructor. SQL terminology no longer memoises results, and the supplied cache remains unused.
     /// </summary>
     public ITerminologyService CreateTerminologyService()
     {
@@ -204,9 +202,8 @@ public sealed class TerminologyTestFixture : IAsyncDisposable
     }
 
     /// <summary>
-    /// A ValueSet carrying a pre-computed expansion. <c>name</c> is mandatory — the importer throws
-    /// <see cref="InvalidOperationException"/> without it — and the expansion's <c>contains</c> entries are
-    /// what become <c>dbo.TermValueSetExpansion</c> rows.
+    /// A named ValueSet carrying a pre-computed expansion. The sample supplies an optional <c>name</c>;
+    /// the expansion's <c>contains</c> entries become <c>dbo.TermValueSetExpansion</c> rows.
     /// </summary>
     public static string ExpandedValueSetJson(string url, string codeSystemUrl, params string[] codes)
     {

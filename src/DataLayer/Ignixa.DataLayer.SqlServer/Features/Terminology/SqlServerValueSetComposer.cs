@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Terminology;
 using Ignixa.Search.Sql.Catalog;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -52,6 +53,11 @@ internal sealed class SqlServerValueSetComposer
     private static readonly TableDescriptor Expansions = SqlCatalog.Default.Table("TermValueSetExpansion");
 
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+    // Buckets find possible case variants; actual matches still use the system/version policy.
+    private static readonly IEqualityComparer<(int SystemId, string Code)> CandidateCodeComparer =
+        EqualityComparer<(int SystemId, string Code)>.Create(
+            (left, right) => left.SystemId == right.SystemId && StringComparer.OrdinalIgnoreCase.Equals(left.Code, right.Code),
+            key => HashCode.Combine(key.SystemId, StringComparer.OrdinalIgnoreCase.GetHashCode(key.Code)));
 
     private readonly ISqlExecutionService _sqlExecutionService;
     private readonly int _systemPartitionId;
@@ -60,11 +66,13 @@ internal sealed class SqlServerValueSetComposer
     private readonly int _commandTimeoutSeconds;
 
     private readonly List<ValueSetExpansionRow> _included = [];
-    private readonly HashSet<(int SystemId, string Code)> _includedKeys = [];
-    private readonly HashSet<(int SystemId, string Code)> _excludedKeys = [];
-    private readonly HashSet<int> _excludedSystems = [];
+    private readonly Dictionary<(int SystemId, string Code), List<ValueSetExpansionRow>> _includedByCode = new(CandidateCodeComparer);
+    private readonly Dictionary<(int SystemId, string? Version), bool> _caseSensitivityByVersion = [];
+    private readonly Dictionary<int, bool?> _caseSensitivityBySystem = [];
     private readonly List<string> _externalSystems = [];
     private readonly List<string> _missingValueSets = [];
+    private readonly Dictionary<string, string?> _partialValueSets = new(StringComparer.Ordinal);
+    private readonly List<string> _unknownSystemVersions = [];
     private readonly List<string> _unsupportedFilters = [];
 
     private SqlServerValueSetComposer(
@@ -103,6 +111,7 @@ internal sealed class SqlServerValueSetComposer
 
     private async Task<ComposedExpansion> RunAsync(JsonObject compose, CancellationToken cancellationToken)
     {
+        await ReadCodeComparisonPoliciesAsync(cancellationToken);
         foreach (var include in ObjectsOf(compose["include"]))
         {
             await ProcessClauseAsync(include, isExclude: false, cancellationToken);
@@ -113,173 +122,305 @@ internal sealed class SqlServerValueSetComposer
             await ProcessClauseAsync(exclude, isExclude: true, cancellationToken);
         }
 
-        var entries = _included
-            .Where(row => !_excludedSystems.Contains(row.SystemId)
-                && !_excludedKeys.Contains((row.SystemId, row.Code)))
-            .ToList();
+        var isPartial = _externalSystems.Count > 0 || _missingValueSets.Count > 0 || _unsupportedFilters.Count > 0
+            || _partialValueSets.Count > 0 || _unknownSystemVersions.Count > 0;
 
-        var isPartial = _externalSystems.Count > 0 || _missingValueSets.Count > 0 || _unsupportedFilters.Count > 0;
-
-        return new ComposedExpansion(entries, isPartial, isPartial ? BuildPartialReason() : null);
+        return new ComposedExpansion(_included, isPartial, isPartial ? BuildPartialReason() : null);
     }
 
     /// <summary>
-    /// One <c>include</c> or <c>exclude</c>. The three sources are additive and the order is the FHIR
-    /// element order: explicit concepts, referenced ValueSets, then the system itself — filtered if the
-    /// clause carries filters, whole if it names nothing else.
+    /// Intersects the conditions within one clause before unioning an include or subtracting an exclude.
     /// </summary>
     private async Task ProcessClauseAsync(JsonObject clause, bool isExclude, CancellationToken cancellationToken)
     {
         var system = clause["system"]?.GetValue<string>();
         var version = clause["version"]?.GetValue<string>();
+        if (version == "*")
+        {
+            version = null;
+        }
         var concepts = clause["concept"] as JsonArray;
-        var valueSets = clause["valueSet"] as JsonArray;
+        var valueSets = CanonicalsOf(clause["valueSet"] as JsonArray).ToArray();
         var filters = clause["filter"] as JsonArray;
+
+        if (concepts is { Count: > 0 } && filters is { Count: > 0 })
+        {
+            throw new InvalidOperationException("ValueSet compose clauses cannot have both concept and filter (vsd-3).");
+        }
+        if (system is null && (concepts is { Count: > 0 } || filters is { Count: > 0 }))
+        {
+            throw new InvalidOperationException("ValueSet compose clauses with concepts or filters require a system (vsd-2).");
+        }
+        if (system is null && valueSets.Length == 0)
+        {
+            throw new InvalidOperationException("ValueSet compose clauses require a system or a ValueSet reference (vsd-1).");
+        }
+
+        List<ValueSetExpansionRow>? selected = null;
+        foreach (var canonical in valueSets)
+        {
+            var rows = await ReadReferencedValueSetAsync(canonical, cancellationToken);
+            selected = selected is null ? rows.ToList() : Intersect(selected, rows);
+        }
+
+        if (system is not null)
+        {
+            selected = await SelectSystemCodesAsync(system, version, concepts, filters, selected, isExclude, cancellationToken);
+        }
+
+        var selectedRows = selected ?? throw new InvalidOperationException("A compose clause did not produce a selection.");
+        if (isExclude)
+        {
+            var byCode = selectedRows.ToLookup(row => (row.SystemId, row.Code), CandidateCodeComparer);
+            _included.RemoveAll(row => byCode[(row.SystemId, row.Code)].Any(excluded => CanExclude(row, excluded)));
+            return;
+        }
+        foreach (var row in selectedRows)
+        {
+            if (AddDistinct(_includedByCode, row))
+            {
+                _included.Add(row);
+            }
+        }
+    }
+
+    private async Task<List<ValueSetExpansionRow>> SelectSystemCodesAsync(
+        string system, string? version, JsonArray? concepts, JsonArray? filters,
+        List<ValueSetExpansionRow>? referenced, bool isExclude, CancellationToken cancellationToken)
+    {
+        var systemId = await ResolveSystemIdAsync(system, isExclude, cancellationToken);
+        if (systemId is null)
+        {
+            return [];
+        }
+        if (version is not null
+            && (referenced?.Any(row => row.SystemId == systemId.Value && row.SystemVersion is null) == true
+                || isExclude && _included.Any(row => row.SystemId == systemId.Value && row.SystemVersion is null)))
+        {
+            TrackUnknownSystemVersion($"{system}|{version}");
+        }
+        if (referenced is not null)
+        {
+            referenced = referenced.Where(row => row.SystemId == systemId.Value
+                && (version is null || string.Equals(version, row.SystemVersion, StringComparison.Ordinal))).ToList();
+        }
 
         if (concepts is { Count: > 0 })
         {
-            await AddExplicitConceptsAsync(concepts, system, version, isExclude, cancellationToken);
+            var rows = ObjectsOf(concepts)
+                .Where(concept => !string.IsNullOrEmpty(concept["code"]?.GetValue<string>()))
+                .Select(concept => new ValueSetExpansionRow(systemId.Value, concept["code"]!.GetValue<string>(),
+                    concept["display"]?.GetValue<string>(), version)).ToList();
+            return referenced is null ? rows : SelectExplicitConcepts(rows, referenced);
         }
-
-        foreach (var canonical in CanonicalsOf(valueSets))
-        {
-            await AddFromValueSetAsync(canonical, isExclude, cancellationToken);
-        }
-
-        if (system is null)
-        {
-            return;
-        }
-
         if (filters is { Count: > 0 })
         {
-            await AddFilteredSystemCodesAsync(system, version, filters, isExclude, cancellationToken);
+            var rows = await ReadFilteredSystemCodesAsync(systemId.Value, system, version, filters, isExclude, cancellationToken);
+            return referenced is null ? rows : Intersect(referenced, rows);
         }
-        else if (concepts is null or { Count: 0 } && valueSets is null or { Count: 0 })
+        if (referenced is not null)
         {
-            await AddWholeSystemAsync(system, version, isExclude, cancellationToken);
+            return referenced;
         }
-    }
-
-    private async Task AddExplicitConceptsAsync(
-        JsonArray concepts, string? clauseSystem, string? clauseVersion, bool isExclude, CancellationToken cancellationToken)
-    {
-        foreach (var concept in ObjectsOf(concepts))
-        {
-            var code = concept["code"]?.GetValue<string>();
-            var system = concept["system"]?.GetValue<string>() ?? clauseSystem;
-
-            if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(system))
-            {
-                continue;
-            }
-
-            var systemId = await ResolveSystemIdAsync(system, isExclude, cancellationToken);
-            if (systemId is null)
-            {
-                continue;
-            }
-
-            Add(systemId.Value, code, concept["display"]?.GetValue<string>(), clauseVersion, isExclude);
-        }
-    }
-
-    private async Task AddFromValueSetAsync(string canonical, bool isExclude, CancellationToken cancellationToken)
-    {
-        var valueSetId = await ResolveExpandedValueSetIdAsync(canonical, cancellationToken);
-
-        if (valueSetId is null)
-        {
-            // Reported for excludes as well as includes. An unresolvable include leaves codes out; an
-            // unresolvable exclude leaves codes in that were meant to be removed, which is the worse of the
-            // two and was the one the previous implementation passed over in silence.
-            _logger.LogWarning("Compose references ValueSet '{Canonical}' that is not expanded", canonical);
-
-            if (!_missingValueSets.Contains(canonical))
-            {
-                _missingValueSets.Add(canonical);
-            }
-
-            return;
-        }
-
-        foreach (var row in await ReadExpansionAsync(valueSetId.Value, cancellationToken))
-        {
-            Add(row.SystemId, row.Code, row.Display, row.SystemVersion, isExclude);
-        }
-    }
-
-    private async Task AddWholeSystemAsync(
-        string system, string? version, bool isExclude, CancellationToken cancellationToken)
-    {
-        var systemId = await ResolveSystemIdAsync(system, isExclude, cancellationToken);
-        if (systemId is null)
-        {
-            return;
-        }
-
         if (isExclude)
         {
-            // Held as a system rather than expanded into its codes: the exclusion has to cover codes that
-            // arrived from an included ValueSet too, not just the ones this database happens to know.
-            _excludedSystems.Add(systemId.Value);
-            return;
-        }
-
-        var concepts = await ReadConceptsAsync(systemId.Value, version, cancellationToken);
-        if (concepts.Count == 0)
-        {
-            TrackExternalSystem(system);
-            return;
-        }
-
-        foreach (var concept in concepts)
-        {
-            Add(systemId.Value, concept.Code, concept.Display, concept.Version, isExclude: false);
-        }
-    }
-
-    private async Task AddFilteredSystemCodesAsync(
-        string system, string? version, JsonArray filters, bool isExclude, CancellationToken cancellationToken)
-    {
-        var systemId = await ResolveSystemIdAsync(system, isExclude, cancellationToken);
-        if (systemId is null)
-        {
-            return;
+            // Whole-system exclusions operate on included rows, without reading CodeSystem content.
+            return _included.Where(row => row.SystemId == systemId.Value
+                && (version is null || string.Equals(version, row.SystemVersion, StringComparison.Ordinal))).ToList();
         }
 
         var candidates = await ReadConceptsAsync(systemId.Value, version, cancellationToken);
         if (candidates.Count == 0)
         {
+            TrackExternalSystem(system);
+        }
+        return candidates.Select(concept => new ValueSetExpansionRow(
+            systemId.Value, concept.Code, concept.Display, concept.Version)).ToList();
+    }
+
+    private List<ValueSetExpansionRow> Intersect(
+        IReadOnlyList<ValueSetExpansionRow> left, IReadOnlyList<ValueSetExpansionRow> right)
+    {
+        var byCode = right.ToLookup(row => (row.SystemId, row.Code), CandidateCodeComparer);
+        return DistinctRows(left.SelectMany(row => byCode[(row.SystemId, row.Code)]
+                .Where(other => CanIntersect(row, other))
+                .Select(other => row with
+                {
+                    Display = row.Display ?? other.Display,
+                })));
+    }
+
+    private List<ValueSetExpansionRow> SelectExplicitConcepts(
+        IReadOnlyList<ValueSetExpansionRow> concepts, IReadOnlyList<ValueSetExpansionRow> referenced)
+    {
+        var byCode = referenced.ToLookup(row => (row.SystemId, row.Code), CandidateCodeComparer);
+        // An unqualified concept is a code predicate, not evidence of an expansion's unknown version.
+        return DistinctRows(concepts.SelectMany(concept => byCode[(concept.SystemId, concept.Code)]
+            .Where(row => CodesMatch(concept, row, row.SystemVersion))
+            .Select(row => new ValueSetExpansionRow(
+                row.SystemId, concept.Code, concept.Display ?? row.Display, row.SystemVersion))));
+    }
+
+    private bool CanIntersect(ValueSetExpansionRow left, ValueSetExpansionRow right)
+    {
+        if (left.SystemVersion is not null && right.SystemVersion is not null
+            && !string.Equals(left.SystemVersion, right.SystemVersion, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        var version = left.SystemVersion ?? right.SystemVersion;
+        if (!CodesMatch(left, right, version))
+        {
+            return false;
+        }
+        if (string.Equals(left.SystemVersion, right.SystemVersion, StringComparison.Ordinal))
+        {
+            return true;
+        }
+        TrackUnknownSystemVersion($"system {left.SystemId}|{version}");
+        return false;
+    }
+
+    private bool CanExclude(ValueSetExpansionRow included, ValueSetExpansionRow excluded)
+    {
+        if (included.SystemVersion is not null && excluded.SystemVersion is not null
+            && !string.Equals(included.SystemVersion, excluded.SystemVersion, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        if (!CodesMatch(included, excluded, excluded.SystemVersion ?? included.SystemVersion))
+        {
+            return false;
+        }
+        if (included.SystemVersion is null && excluded.SystemVersion is not null)
+        {
+            // An unqualified exclusion is unrestricted; a pinned exclusion cannot resolve a missing version.
+            TrackUnknownSystemVersion($"system {included.SystemId}|{excluded.SystemVersion}");
+            return false;
+        }
+        return true;
+    }
+
+    private bool CodesMatch(ValueSetExpansionRow left, ValueSetExpansionRow right, string? version)
+    {
+        if (string.Equals(left.Code, right.Code, StringComparison.Ordinal))
+        {
+            return true;
+        }
+        if (!string.Equals(left.Code, right.Code, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        // Missing declarations retain the FHIR default; unknown versions cannot choose between conflicting declarations.
+        bool? caseSensitive = version is null
+            ? _caseSensitivityBySystem.GetValueOrDefault(left.SystemId, true)
+            : _caseSensitivityByVersion.GetValueOrDefault((left.SystemId, version), true);
+        if (caseSensitive is null)
+        {
+            TrackUnknownSystemVersion($"system {left.SystemId} (case sensitivity depends on the version)");
+        }
+        return caseSensitive == false;
+    }
+
+    private List<ValueSetExpansionRow> DistinctRows(IEnumerable<ValueSetExpansionRow> rows)
+    {
+        var seen = new Dictionary<(int SystemId, string Code), List<ValueSetExpansionRow>>(CandidateCodeComparer);
+        return rows.Where(row => AddDistinct(seen, row)).ToList();
+    }
+
+    private bool AddDistinct(
+        Dictionary<(int SystemId, string Code), List<ValueSetExpansionRow>> index, ValueSetExpansionRow row)
+    {
+        var key = (row.SystemId, row.Code);
+        if (!index.TryGetValue(key, out var candidates))
+        {
+            index.Add(key, [row]);
+            return true;
+        }
+        if (candidates.Any(existing => string.Equals(existing.SystemVersion, row.SystemVersion, StringComparison.Ordinal)
+            && CodesMatch(existing, row, row.SystemVersion)))
+        {
+            return false;
+        }
+        candidates.Add(row);
+        return true;
+    }
+
+    private void TrackUnknownSystemVersion(string description)
+    {
+        if (!_unknownSystemVersions.Contains(description))
+        {
+            _unknownSystemVersions.Add(description);
+            _logger.LogWarning("Expansion cannot determine the system version required by '{System}'", description);
+        }
+    }
+
+    private async Task ReadCodeComparisonPoliciesAsync(CancellationToken cancellationToken)
+    {
+#pragma warning disable CA2100
+        using var command = new SqlCommand(
+            $"SELECT {CodeSystems.Column("SystemId").Name}, {CodeSystems.Column("Version").Name}, " +
+            $"{CodeSystems.Column("CaseSensitive").Name} FROM {Qualified(CodeSystems)} " +
+            $"ORDER BY {CodeSystems.Column("ImportedDate").Name} DESC, {CodeSystems.Column("TermCodeSystemId").Name} DESC")
+        {
+            CommandTimeout = _commandTimeoutSeconds,
+        };
+#pragma warning restore CA2100
+        var policies = await _sqlExecutionService.ExecuteReaderAsync(
+            _systemPartitionId, command,
+            reader => (SystemId: reader.GetInt32(0), Version: reader.IsDBNull(1) ? null : reader.GetString(1),
+                CaseSensitive: reader.GetBoolean(2)), cancellationToken);
+        foreach (var policy in policies)
+        {
+            _caseSensitivityByVersion.TryAdd((policy.SystemId, policy.Version), policy.CaseSensitive);
+        }
+        foreach (var system in _caseSensitivityByVersion.GroupBy(policy => policy.Key.SystemId))
+        {
+            _caseSensitivityBySystem.Add(system.Key,
+                system.All(policy => policy.Value) ? true : system.All(policy => !policy.Value) ? false : null);
+        }
+    }
+
+    private async Task<IReadOnlyList<ValueSetExpansionRow>> ReadReferencedValueSetAsync(
+        string canonical, CancellationToken cancellationToken)
+    {
+        var valueSet = await ResolveExpandedValueSetAsync(canonical, cancellationToken);
+        if (valueSet is null)
+        {
+            _logger.LogWarning("Compose references ValueSet '{Canonical}' that is not expanded", canonical);
+            if (!_missingValueSets.Contains(canonical))
+            {
+                _missingValueSets.Add(canonical);
+            }
+            return [];
+        }
+        if (valueSet.Value.IsPartial)
+        {
+            _logger.LogWarning("Compose references partially expanded ValueSet '{Canonical}': {Reason}", canonical, valueSet.Value.Reason);
+            _partialValueSets.TryAdd(canonical, valueSet.Value.Reason);
+        }
+        return await ReadExpansionAsync(valueSet.Value.Id, cancellationToken);
+    }
+
+    private async Task<List<ValueSetExpansionRow>> ReadFilteredSystemCodesAsync(
+        int systemId, string system, string? version, JsonArray filters, bool isExclude, CancellationToken cancellationToken)
+    {
+        var candidates = await ReadConceptsAsync(systemId, version, cancellationToken);
+        if (candidates.Count == 0)
+        {
             // An include over a system with no local concepts is always partial. An exclude is partial only
             // when it could have mattered — codes from that system did get in, by way of a referenced
             // ValueSet — because then the filter that was meant to remove them could not be evaluated.
-            if (!isExclude || _included.Any(row => row.SystemId == systemId.Value))
+            if (!isExclude || _included.Any(row => row.SystemId == systemId))
             {
                 TrackExternalSystem(system);
             }
 
-            return;
+            return [];
         }
 
-        foreach (var concept in ApplyFilters(candidates, filters, system))
-        {
-            Add(systemId.Value, concept.Code, concept.Display, concept.Version, isExclude);
-        }
-    }
-
-    private void Add(int systemId, string code, string? display, string? systemVersion, bool isExclude)
-    {
-        if (isExclude)
-        {
-            _excludedKeys.Add((systemId, code));
-            return;
-        }
-
-        if (_includedKeys.Add((systemId, code)))
-        {
-            _included.Add(new ValueSetExpansionRow(systemId, code, display, systemVersion));
-        }
+        return ApplyFilters(candidates, filters, system).Select(concept => new ValueSetExpansionRow(
+            systemId, concept.Code, concept.Display, concept.Version)).ToList();
     }
 
     private void TrackExternalSystem(string system)
@@ -491,6 +632,17 @@ internal sealed class SqlServerValueSetComposer
             reasons.Add($"Referenced ValueSets not expanded: {string.Join(", ", _missingValueSets)}");
         }
 
+        if (_partialValueSets.Count > 0)
+        {
+            reasons.Add("Referenced ValueSets partially expanded: " + string.Join("; ",
+                _partialValueSets.Select(entry => $"{entry.Key}: {entry.Value ?? "completeness unknown"}")));
+        }
+
+        if (_unknownSystemVersions.Count > 0)
+        {
+            reasons.Add($"Codes with unknown system versions: {string.Join(", ", _unknownSystemVersions)}");
+        }
+
         if (_unsupportedFilters.Count > 0)
         {
             reasons.Add($"Filters not evaluated: {string.Join(", ", _unsupportedFilters)}");
@@ -552,19 +704,29 @@ internal sealed class SqlServerValueSetComposer
 
     // Left on the ADO default rather than _commandTimeoutSeconds: TOP 1 over IX_TermValueSet_Canonical is a
     // single-row index seek regardless of table size, unlike ReadConceptsAsync and ReadExpansionAsync below.
-    private async Task<long?> ResolveExpandedValueSetIdAsync(string canonical, CancellationToken cancellationToken)
+    private async Task<(long Id, bool IsPartial, string? Reason)?> ResolveExpandedValueSetAsync(
+        string canonical, CancellationToken cancellationToken)
     {
+        var reference = TerminologyCanonicalReference.Parse(canonical);
+        var versionFilter = reference.Version is null ? string.Empty : $" AND {ValueSets.Column("Version").Name} = @version";
 #pragma warning disable CA2100
         using var command = new SqlCommand(
-            $"SELECT TOP 1 {ValueSets.Column("TermValueSetId").Name} FROM {Qualified(ValueSets)} " +
+            $"SELECT TOP 1 {ValueSets.Column("TermValueSetId").Name}, {ValueSets.Column("IsPartialExpansion").Name}, " +
+            $"{ValueSets.Column("PartialExpansionReason").Name} FROM {Qualified(ValueSets)} " +
             $"WHERE {ValueSets.Column("Canonical").Name} = @canonical AND {ValueSets.Column("IsExpanded").Name} = 1 " +
-            $"ORDER BY {ValueSets.Column("ImportedDate").Name} DESC");
+            $"{versionFilter} ORDER BY {ValueSets.Column("ImportedDate").Name} DESC, {ValueSets.Column("TermValueSetId").Name} DESC");
 #pragma warning restore CA2100
 
-        command.Parameters.AddWithValue("@canonical", canonical);
+        command.Parameters.AddWithValue("@canonical", reference.Url);
+        if (reference.Version is not null)
+        {
+            command.Parameters.AddWithValue("@version", reference.Version);
+        }
 
         var rows = await _sqlExecutionService.ExecuteReaderAsync(
-            _systemPartitionId, command, reader => reader.GetInt64(0), cancellationToken);
+            _systemPartitionId, command,
+            reader => (Id: reader.GetInt64(0), IsPartial: reader.GetBoolean(1), Reason: reader.IsDBNull(2) ? null : reader.GetString(2)),
+            cancellationToken);
 
         return rows.Count > 0 ? rows[0] : null;
     }

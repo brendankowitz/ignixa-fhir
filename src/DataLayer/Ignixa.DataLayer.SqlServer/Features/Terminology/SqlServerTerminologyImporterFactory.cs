@@ -1,3 +1,4 @@
+using Ignixa.DataLayer.SqlServer.Features.PackageManagement;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Terminology;
 using Microsoft.Extensions.Logging;
@@ -20,14 +21,8 @@ namespace Ignixa.DataLayer.SqlServer.Features.Terminology;
 /// different database than the one the foreign keys point into.
 /// </para>
 /// <para>
-/// <b>Known hazard, pre-existing and not introduced here.</b> The importer also reads and writes
-/// <c>dbo.PackageResource</c> against the system partition, while <c>IPackageResourceRepository</c> is
-/// registered against tenant 1 — and <c>SqlServerTerminologyService</c>, which reads the import status back,
-/// is on the system partition too. Those agree only because the system partition has no connection string of
-/// its own and inherits tenant 1's. Give partition 0 its own database and the split becomes real: the
-/// importer would look for the package row in the wrong database, and <c>PackageResourceId</c> is a
-/// per-database IDENTITY, so a same-numbered row elsewhere would be found instead of nothing. Resolving it
-/// means giving the importer a package-row tenant distinct from its terminology-table partition.
+/// Package rows and terminology share a physical database. The guard rejects split destinations before
+/// cache initialization or import can use a database-local PackageResourceId from another database.
 /// </para>
 /// </summary>
 public sealed class SqlServerTerminologyImporterFactory(
@@ -35,12 +30,16 @@ public sealed class SqlServerTerminologyImporterFactory(
     SqlServerSearchIndexCacheRegistry cacheRegistry,
     int systemPartitionId,
     ILoggerFactory loggerFactory,
-    int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds) : ITerminologyImporterFactory
+    int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds,
+    int packageTenantId = 1) : ITerminologyImporterFactory
 {
     public async Task<ITerminologyImporter> CreateAsync(CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(cacheRegistry);
         ArgumentNullException.ThrowIfNull(loggerFactory);
+
+        await new SharedContentDatabaseGuard(sqlExecutionService, packageTenantId, systemPartitionId)
+            .EnsureCompatibleAsync(cancellationToken);
 
         var cache = await cacheRegistry.GetOrCreateAsync(systemPartitionId, cancellationToken);
 
@@ -52,6 +51,7 @@ public sealed class SqlServerTerminologyImporterFactory(
             systemPartitionId,
             systemRepository,
             loggerFactory.CreateLogger<SqlServerCodeSystemImporter>(),
-            commandTimeoutSeconds);
+            commandTimeoutSeconds,
+            packageTenantId);
     }
 }

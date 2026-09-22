@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.RowGenerators;
@@ -73,6 +74,10 @@ public class SqlServerMergeRepository(
         int resourceCount,
         CancellationToken cancellationToken = default)
     {
+        // A full-cycle request cannot advance the procedure's wrap-retry loop.
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resourceCount);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(resourceCount, 80000);
+
         _logger.LogDebug("Beginning merge transaction for {ResourceCount} resources", resourceCount);
 
         var transactionIdParam = new SqlParameter
@@ -99,7 +104,18 @@ public class SqlServerMergeRepository(
         command.Parameters.Add(sequenceStartParam);
         command.Parameters.Add(new SqlParameter("@HeartbeatDate", SqlDbType.DateTime) { Value = DBNull.Value });
 
-        await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
+        try
+        {
+            await _sqlExecutionService.ExecuteNonQueryAsync(
+                tenantId, command, cancellationToken, SqlCommandIdempotency.NonIdempotent);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Merge transaction allocation failed with an uncertain outcome for tenant {TenantId}; allocation was not replayed and requires transaction reconciliation",
+                tenantId);
+            throw;
+        }
 
         var transactionId = (long)transactionIdParam.Value!;
         var sequenceStart = (int)sequenceStartParam.Value!;
@@ -204,14 +220,15 @@ public class SqlServerMergeRepository(
 
         var affectedRowsParam = new SqlParameter("@AffectedRows", SqlDbType.Int) { Direction = ParameterDirection.Output };
 
-        using var command = new SqlCommand(
+        const string MergeCommandText =
             "EXEC dbo.MergeResources @AffectedRows OUTPUT, @RaiseExceptionOnConflict, @IsResourceChangeCaptureEnabled, " +
             "@TransactionId, @SingleTransaction, @Resources, @ResourceWriteClaims, " +
             "@ReferenceSearchParams, @TokenSearchParams, @TokenTexts, @StringSearchParams, @UriSearchParams, " +
             "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParms, " +
             "@ReferenceTokenCompositeSearchParams, @TokenTokenCompositeSearchParams, " +
             "@TokenDateTimeCompositeSearchParams, @TokenQuantityCompositeSearchParams, @TokenStringCompositeSearchParams, " +
-            "@TokenNumberNumberCompositeSearchParams")
+            "@TokenNumberNumberCompositeSearchParams";
+        using var command = new SqlCommand(MergeCommandText)
         {
             CommandType = CommandType.Text
         };
@@ -308,15 +325,72 @@ public class SqlServerMergeRepository(
         var uriExtensions = _uriRowGenerator.ExtractExtensionData(
             resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToList();
 
+        var expectedVersions = resources.Where(r => r.ExpectedVersionId != null)
+            .Select(r => new
+            {
+                ResourceTypeId = resourceTypeIdMap[r.ResourceType],
+                r.ResourceId,
+                Version = int.Parse(r.ExpectedVersionId!, System.Globalization.CultureInfo.InvariantCulture),
+                ExpiresAt = r.IsDeleted ? null : r.ExpiresAt
+            }).ToArray();
+        if (expectedVersions.Length > 0)
+        {
+            // Only the core command is enclosed: the committed core remains separate from the
+            // post-merge extension updater below. HOLDLOCK also protects expected absence.
+            command.CommandText = """
+                SET XACT_ABORT ON;
+                BEGIN TRY
+                  BEGIN TRANSACTION;
+                  IF EXISTS (
+                    SELECT 1
+                    FROM OPENJSON(@ExpectedVersions)
+                    WITH (ResourceTypeId smallint, ResourceId varchar(64), Version int) expected
+                    LEFT JOIN dbo.Resource currentResource WITH (UPDLOCK, HOLDLOCK)
+                      ON currentResource.ResourceTypeId = expected.ResourceTypeId
+                      AND currentResource.ResourceId = expected.ResourceId
+                      AND currentResource.IsHistory = 0
+                    WHERE ISNULL(currentResource.Version, 0) <> expected.Version
+                  )
+                    THROW 50412, 'The supplied resource version is not current.', 1;
+                """ + MergeCommandText + ";" + """
+                  MERGE dbo.ResourceTtl AS target
+                  USING (
+                    SELECT ResourceTypeId, ResourceId, ExpiresAt FROM OPENJSON(@ExpectedVersions)
+                    WITH (ResourceTypeId smallint, ResourceId varchar(64), ExpiresAt datetimeoffset)
+                  ) AS source
+                  ON target.ResourceTypeId = source.ResourceTypeId AND target.ResourceId = source.ResourceId
+                  WHEN MATCHED AND source.ExpiresAt IS NULL THEN DELETE
+                  WHEN MATCHED THEN UPDATE SET ExpiresAt = source.ExpiresAt, TransactionId = @TransactionId
+                  WHEN NOT MATCHED AND source.ExpiresAt IS NOT NULL THEN
+                    INSERT (ResourceTypeId, ResourceId, ExpiresAt, TransactionId)
+                    VALUES (source.ResourceTypeId, source.ResourceId, source.ExpiresAt, @TransactionId);
+                  COMMIT TRANSACTION;
+                END TRY
+                BEGIN CATCH
+                  IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+                  THROW;
+                END CATCH;
+                """;
+            command.Parameters.Add("@ExpectedVersions", SqlDbType.NVarChar, -1).Value = JsonSerializer.Serialize(expectedVersions);
+        }
+
         try
         {
             // Execute merge stored procedure
-            await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
+            await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken,
+                expectedVersions.Length == 0 ? SqlCommandIdempotency.Idempotent : SqlCommandIdempotency.NonIdempotent);
         }
-        catch (SqlException ex) when (ex.Number == 50409)
+        catch (SqlException ex) when (ex.Number is 50409 or 50412 or 2601 or 2627)
         {
             // SQL error 50409: Resource has been recently updated or added (version conflict)
             throw new PreconditionFailedException("Resource was recently updated. Please refresh and retry.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Core merge {TransactionId} failed; a lost response may require transaction reconciliation",
+                transactionId);
+            throw;
         }
 
         var affectedRows = Convert.ToInt32(affectedRowsParam.Value);
@@ -373,7 +447,11 @@ public class SqlServerMergeRepository(
             transactionId,
             failureReason ?? "None");
 
-        using var command = new SqlCommand("EXEC dbo.MergeResourcesCommitTransaction @TransactionId, @FailureReason")
+        // Completion does not publish VisibleDate. Advance only the contiguous completed prefix,
+        // preserving the legacy visibility barrier for earlier unfinished allocations.
+        using var command = new SqlCommand(
+            "EXEC dbo.MergeResourcesCommitTransaction @TransactionId, @FailureReason; " +
+            "EXEC dbo.MergeResourcesAdvanceTransactionVisibility;")
         {
             CommandType = CommandType.Text
         };

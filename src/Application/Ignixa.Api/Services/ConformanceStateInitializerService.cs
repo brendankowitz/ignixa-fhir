@@ -20,6 +20,12 @@ public class ConformanceStateInitializerService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (conformanceState.IsInitialized)
+        {
+            logger.LogDebug("Conformance state was initialized before host startup; skipping replay");
+            return;
+        }
+
         const int maxRetries = 3;
         var delays = new[] { TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30) };
 

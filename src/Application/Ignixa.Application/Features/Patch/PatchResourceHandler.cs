@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Patch.Validation;
+using Ignixa.Application.Features.Resource;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
@@ -24,6 +25,7 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
     private readonly FhirPatchValidator _fhirPatchValidator;
     private readonly ImmutablePropertyValidator _immutablePropertyValidator;
     private readonly ILogger<PatchResourceHandler> _logger;
+    private readonly IMediator _mediator;
 
     public PatchResourceHandler(
         IFhirRepositoryFactory repositoryFactory,
@@ -31,7 +33,8 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         FhirPatchEngine patchEngine,
         FhirPatchValidator fhirPatchValidator,
         ImmutablePropertyValidator immutablePropertyValidator,
-        ILogger<PatchResourceHandler> logger)
+        ILogger<PatchResourceHandler> logger,
+        IMediator mediator)
     {
         _repositoryFactory = repositoryFactory;
         _parametersParser = parametersParser;
@@ -39,6 +42,7 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         _fhirPatchValidator = fhirPatchValidator;
         _immutablePropertyValidator = immutablePropertyValidator;
         _logger = logger;
+        _mediator = mediator;
     }
 
     public async Task<ResourceWrapper?> HandleAsync(
@@ -58,7 +62,7 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         var key = new ResourceKey(request.ResourceType, request.ResourceId);
         var existing = await repository.GetAsync(key, cancellationToken);
 
-        if (existing == null)
+        if (existing == null || existing.IsDeleted)
         {
             _logger.LogWarning(
                 "PATCH failed: Resource {ResourceType}/{ResourceId} not found in tenant {TenantId}",
@@ -132,23 +136,11 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
             throw;
         }
 
-        // 9. Create updated ResourceWrapper
-        var updated = new ResourceWrapper(
-            patchedResource.ResourceType,
-            patchedResource.Id ?? request.ResourceId,
-            existing.VersionId, // Will be incremented by repository
-            DateTimeOffset.UtcNow,
-            patchedResource,
-            new ResourceRequest(
-                "PATCH",
-                $"{request.ResourceType}/{request.ResourceId}"))
-        {
-            TenantId = request.TenantId,
-            FhirVersion = "4.0", // Default to R4
-        };
-
-        // 10. Save via repository (increments versionId, updates lastUpdated)
-        var saveResult = await repository.CreateOrUpdateAsync(updated, cancellationToken);
+        // Use the normal indexed write path, including transaction staging and the version that
+        // was patched. A concurrent writer must not be overwritten even without a client If-Match.
+        var saveResult = await _mediator.SendAsync(new CreateOrUpdateResourceCommand(
+            request.ResourceType, request.ResourceId, patchedResource, HttpMethod.Patch,
+            IfMatch: request.IfMatch ?? existing.VersionId), cancellationToken);
 
         // 11. Update patchedResource meta with saved version info
         patchedResource.Meta ??= new();

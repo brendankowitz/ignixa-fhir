@@ -824,6 +824,72 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         return results;
     }
 
+    /// <inheritdoc/>
+    public Task<int> CountResourceHistoryAsync(
+        ResourceKey key,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return CountHistoryMetadataAsync(
+            Path.Combine(_baseDirectory, "_internal", key.ResourceType, key.Id), parameters, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> CountTypeHistoryAsync(
+        string resourceType,
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(resourceType);
+        return CountHistoryMetadataAsync(
+            Path.Combine(_baseDirectory, "_internal", resourceType), parameters, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> CountSystemHistoryAsync(
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+        => CountHistoryMetadataAsync(Path.Combine(_baseDirectory, "_internal"), parameters, cancellationToken);
+
+    private async Task<int> CountHistoryMetadataAsync(
+        string directory,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            // Unlike Directory.Exists, this distinguishes absence from an inaccessible directory.
+            _ = File.GetAttributes(directory);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return 0;
+        }
+        catch (FileNotFoundException)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        foreach (string file in Directory.EnumerateFiles(directory, "*.metadata.json", SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
+            if ((!parameters.Since.HasValue || metadata.LastModified >= parameters.Since.Value)
+                && (!parameters.Until.HasValue || metadata.LastModified <= parameters.Until.Value))
+            {
+                count = checked(count + 1);
+            }
+        }
+
+        return count;
+    }
+
     public async IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
         ResourceKey key,
         HistoryQueryParameters parameters,
@@ -1140,6 +1206,13 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     {
         LogHardDeleteNotImplemented(_logger);
         return Task.CompletedTask;
+    }
+
+    public Task<bool> TryHardDeleteExpiredResourceAsync(
+        ExpiredResourceInfo resource,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException("TTL cleanup is not supported by FileBasedFhirRepository.");
     }
 
     private class ResourceMetadata

@@ -14,26 +14,18 @@ REM   pwsh .\run-compat-tests.ps1 -Output "my-report.json"
 
 setlocal
 
-REM Check if PowerShell is available
-set PS_COMMAND=
-pwsh -Version >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    set PS_COMMAND=pwsh
-) else (
-    powershell -Version >nul 2>&1
-    if %ERRORLEVEL% EQU 0 (
-        set PS_COMMAND=powershell
-    ) else (
-        echo Error: PowerShell not found. Please install PowerShell.
-        exit /b 1
-    )
+REM Require PowerShell 7; never use the incompatible Windows PowerShell process APIs.
+pwsh.exe -NoLogo -NoProfile -NonInteractive -Command "if ($PSVersionTable.PSVersion.Major -lt 7) { exit 1 }" >nul 2>&1
+if errorlevel 1 (
+    echo Error: PowerShell 7 or newer ^(pwsh.exe^) is required. Install it and add it to PATH. >&2
+    exit /b 1
 )
 
 REM Build PowerShell command
 if "%~1"=="" (
-    %PS_COMMAND% -ExecutionPolicy Bypass -File "%~dp0run-compat-tests.ps1"
+    pwsh.exe -NoLogo -NoProfile -File "%~dp0run-compat-tests.ps1"
 ) else (
-    %PS_COMMAND% -ExecutionPolicy Bypass -File "%~dp0run-compat-tests.ps1" -Filter "%~1"
+    pwsh.exe -NoLogo -NoProfile -File "%~dp0run-compat-tests.ps1" -Filter "%~1"
 )
 
 exit /b %ERRORLEVEL%

@@ -9,7 +9,10 @@ using Ignixa.Api.Extensions;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.OpenIddict.Extensions;
 using Ignixa.Api.Services;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Conformance.Events.Abstractions;
+using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
@@ -156,6 +159,8 @@ static async Task InitializeDatabasesAsync(WebApplication app)
     }
     allTenantsToInit.AddRange(tenants);
 
+    await InitializeSqlConformanceAsync(app, allTenantsToInit);
+
     foreach (var tenant in allTenantsToInit)
     {
         try
@@ -186,6 +191,34 @@ static async Task InitializeDatabasesAsync(WebApplication app)
     logger.LogInformation("===== All Databases Initialized =====");
 
     startupTiming.LogSummary();
+}
+
+static async Task InitializeSqlConformanceAsync(
+    WebApplication app,
+    IReadOnlyList<TenantConfiguration> tenants)
+{
+    var sqlTenants = tenants.Where(tenant => tenant.Storage.Type is "SqlServer" or "SqlEntityFramework").ToList();
+    if (sqlTenants.Count == 0)
+    {
+        return;
+    }
+
+    var cancellationToken = app.Lifetime.ApplicationStopping;
+    var tenantStore = app.Services.GetRequiredService<ITenantConfigurationStore>();
+    var validator = app.Services.GetRequiredService<ManagedIdentityConnectionStringValidator>();
+    var deployer = app.Services.GetRequiredService<ISchemaDeployer>();
+    foreach (var tenant in sqlTenants)
+    {
+        var connectionString = await TenantConnectionStringResolver.ResolveAsync(tenantStore, tenant.TenantId, cancellationToken);
+        validator.Validate(connectionString, tenant.TenantId);
+        await deployer.DeployIfEmptyAsync(tenant.TenantId, cancellationToken);
+        await deployer.UpgradeIfNeededAsync(tenant.TenantId, cancellationToken);
+    }
+
+    // Repositories need canonical aliases before their caches load. Hosted services start only
+    // after this pre-host initialization, and replay itself needs the conformance SQL schema.
+    await app.Services.GetRequiredService<ConformanceState>().InitializeFromEventsAsync(
+        app.Services.GetRequiredService<ISourceEventStore>(), cancellationToken);
 }
 
 /// <summary>

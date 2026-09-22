@@ -111,6 +111,14 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
             packageResource.PackageId,
             packageResource.PackageVersion);
 
+        if (input.DependencyFailure is not null)
+        {
+            _logger.LogError("Terminology import blocked for {Canonical}: {Reason}", packageResource.Canonical, input.DependencyFailure);
+            await packageResources.MarkTerminologyImportFailedAsync(
+                input.PackageResourceId, input.DependencyFailure, CancellationToken.None);
+            return Failure(input.PackageResourceId, packageResource.Canonical, packageResource.ResourceType, input.DependencyFailure);
+        }
+
         if (!SupportedResourceTypes.Contains(packageResource.ResourceType))
         {
             // Reachable only from a hand-built orchestration -- ListPendingTerminologyImportsAsync offers

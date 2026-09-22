@@ -59,9 +59,9 @@ public class CompositeSchemaProviderRegistryTests
         // For this test, we're just verifying debounce behavior
 
         // Act - Request invalidation multiple times quickly
-        await registry.InvalidateCacheForPackageAsync("package1", tenantId: 1, CancellationToken.None);
-        await registry.InvalidateCacheForPackageAsync("package2", tenantId: 1, CancellationToken.None);
-        await registry.InvalidateCacheForPackageAsync("package3", tenantId: 1, CancellationToken.None);
+        await registry.InvalidateCachesForTenantAsync(tenantId: 1, CancellationToken.None);
+        await registry.InvalidateCachesForTenantAsync(tenantId: 1, CancellationToken.None);
+        await registry.InvalidateCachesForTenantAsync(tenantId: 1, CancellationToken.None);
 
         // Wait for debounce window to expire
         await Task.Delay(shortDelay + TimeSpan.FromMilliseconds(50));
@@ -84,8 +84,8 @@ public class CompositeSchemaProviderRegistryTests
             shortDelay);
 
         // Act - Request invalidation for different tenants
-        await registry.InvalidateCacheForPackageAsync("package1", tenantId: 1, CancellationToken.None);
-        await registry.InvalidateCacheForPackageAsync("package2", tenantId: 2, CancellationToken.None);
+        await registry.InvalidateCachesForTenantAsync(tenantId: 1, CancellationToken.None);
+        await registry.InvalidateCachesForTenantAsync(tenantId: 2, CancellationToken.None);
 
         // Wait for debounce window to expire
         await Task.Delay(shortDelay + TimeSpan.FromMilliseconds(50));
@@ -106,7 +106,7 @@ public class CompositeSchemaProviderRegistryTests
             shortDelay);
 
         // Act - Request invalidation, then cancel
-        await registry.InvalidateCacheForPackageAsync("package1", tenantId: 1, cts.Token);
+        await registry.InvalidateCachesForTenantAsync(tenantId: 1, cts.Token);
 
         // Cancel before debounce window expires
         await cts.CancelAsync();

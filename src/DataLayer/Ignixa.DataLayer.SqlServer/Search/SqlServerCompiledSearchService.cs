@@ -81,7 +81,7 @@ public sealed class SqlServerCompiledSearchService(
 
         // CA2100 suppressed: compiled.Sql is Ignixa.Search.Sql's own compiler output -- every user-controlled
         // value in it is already a named @pN parameter (compiled.Parameters, bound below via BindParameters),
-        // never string-concatenated. Same rationale as ExecuteAndMaterializeAsync's identical suppression.
+        // never string-concatenated. Same rationale as ExecuteMatchRowsAsync's identical suppression.
 #pragma warning disable CA2100
         using var command = new SqlCommand(compiled.Sql);
 #pragma warning restore CA2100
@@ -157,11 +157,40 @@ public sealed class SqlServerCompiledSearchService(
         SearchOptions options,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        if (options.UseExportContinuation)
+        {
+            if (!options.ProbeExtraRow || options.MaxItemCount <= 0 ||
+                string.IsNullOrEmpty(options.ResourceType) || options.Sort.Count != 0 ||
+                options.Include.Count != 0 || options.RevInclude.Count != 0)
+            {
+                throw new ArgumentException("Export continuation requires a bounded, unsorted single-type search with a probe and no includes.", nameof(options));
+            }
+
+            var compiledExport = await CompileAsync(options, cancellationToken);
+            var selected = await ExecuteMatchRowsAsync(compiledExport, cancellationToken);
+            string? continuation = null;
+            if (selected.Count > options.MaxItemCount)
+            {
+                var boundary = selected[options.MaxItemCount - 1];
+                continuation = KeysetContinuationToken.Encode(
+                    new KeysetPosition([], boundary.ResourceTypeId, boundary.SurrogateId, SortPhase.Valued));
+            }
+
+            // Probe membership and the next cursor are determined before any resource fetch can lose rows.
+            var page = new OffsetSpec(0, options.MaxItemCount, ProbeExtraRow: true);
+            await foreach (var result in MaterializeAsync(selected, page, cancellationToken))
+            {
+                yield return result.IsPagingProbe ? result with { ContinuationToken = continuation } : result;
+            }
+            yield break;
+        }
+
         if (options.Sort.Count == 0)
         {
             var compiled = await CompileAsync(options, cancellationToken);
+            var rows = await ExecuteMatchRowsAsync(compiled, cancellationToken);
 
-            await foreach (var result in ExecuteAndMaterializeAsync(compiled, cancellationToken))
+            await foreach (var result in MaterializeAsync(rows, compiled.Query.OffsetPage, cancellationToken))
             {
                 yield return result;
             }
@@ -199,14 +228,11 @@ public sealed class SqlServerCompiledSearchService(
         // Counting Include rows here would prematurely satisfy/shrink the page math on any sorted search
         // combined with _include/_revinclude, silently dropping MissingPrimary match rows that should have
         // been returned.
-        var valuedCount = 0;
-        await foreach (var result in ExecuteAndMaterializeAsync(valuedCompiled, cancellationToken))
+        var valuedRows = await ExecuteMatchRowsAsync(valuedCompiled, cancellationToken);
+        // Phase boundaries are SQL row positions, not counts of successfully decompressed payloads.
+        var valuedCount = valuedRows.Count(row => row.IsMatch is not false);
+        await foreach (var result in MaterializeAsync(valuedRows, valuedCompiled.Query.OffsetPage, cancellationToken))
         {
-            if (result.SearchMode == SearchEntryMode.Match)
-            {
-                valuedCount++;
-            }
-
             valuedResults.Add(result);
         }
 
@@ -285,7 +311,8 @@ public sealed class SqlServerCompiledSearchService(
                 missingPrimaryOffset, requestedPage.Limit - valuedCount, requestedPage.ProbeExtraRow));
 
         var missingResults = new List<SearchEntryResult>();
-        await foreach (var result in ExecuteAndMaterializeAsync(missingCompiled, cancellationToken))
+        var missingRows = await ExecuteMatchRowsAsync(missingCompiled, cancellationToken);
+        await foreach (var result in MaterializeAsync(missingRows, missingCompiled.Query.OffsetPage, cancellationToken))
         {
             missingResults.Add(result);
         }
@@ -392,16 +419,13 @@ public sealed class SqlServerCompiledSearchService(
             ? (options.StartSurrogateId.Value, options.EndSurrogateId.Value)
             : null;
 
-        // Legacy has no hard cap on include results at all -- BuildIncludeQuery has no .Take/TOP of its own,
-        // so there is no legacy default to literally mirror. Fall back to the primary page size when the
-        // caller didn't specify one explicitly, rather than inventing an unrelated magic number.
-        var includeLimit = options.IncludesMaxItemCount ?? options.MaxItemCount;
-
         var planOptions = new SearchPlanOptions
         {
             Shape = BuildResultShape(options, countOnly, countPhaseScoped, offsetPageOverride),
             SortPhase = sortPhase,
-            IncludeLimit = includeLimit,
+            // The serializer and $includes handler own include pagination over this complete traversal.
+            // A per-stage cap loses later rows and iterate seeds before their cursors can reach them.
+            IncludeLimit = null,
             SurrogateRange = surrogateIdRange,
 
             // Left at the default None. This is the live search path and nothing here reads a parameter
@@ -443,6 +467,23 @@ public sealed class SqlServerCompiledSearchService(
                 : new ResultShape.Count.AllMatches();
         }
 
+        if (options.UseExportContinuation)
+        {
+            PageSpec? boundary = null;
+            if (!string.IsNullOrEmpty(options.ContinuationToken))
+            {
+                if (!KeysetContinuationToken.TryDecode(options.ContinuationToken, out var position) ||
+                    position.BoundaryValues.Count != 0 || position.Phase != SortPhase.Valued)
+                {
+                    throw new ArgumentException("Invalid export continuation token.", nameof(options));
+                }
+                boundary = new PageSpec([], new SqlParameterRef(position.BoundaryResourceTypeId),
+                    new SqlParameterRef(position.BoundarySurrogateId));
+            }
+            return new ResultShape.Matches(new SearchPaging.Keyset(
+                checked(options.MaxItemCount + 1), boundary, TopIncludesProbeRow: true));
+        }
+
         return new ResultShape.Matches(new SearchPaging.Offset(offsetPageOverride ?? DefaultOffsetPage(options)));
     }
 
@@ -465,9 +506,9 @@ public sealed class SqlServerCompiledSearchService(
                 ? new OffsetSpec(tokenOffset, tokenCount, options.ProbeExtraRow)
                 : new OffsetSpec(0, options.MaxItemCount, options.ProbeExtraRow);
 
-    private async IAsyncEnumerable<SearchEntryResult> ExecuteAndMaterializeAsync(
+    private async Task<IReadOnlyList<MatchRow>> ExecuteMatchRowsAsync(
         CompiledSearch compiled,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
         // CA2100 suppressed: compiled.Sql is Ignixa.Search.Sql's own compiler output -- every user-controlled
         // value in it is already a named @pN parameter (compiled.Parameters, bound below via BindParameters),
@@ -482,17 +523,23 @@ public sealed class SqlServerCompiledSearchService(
         // being non-empty does not imply the emitted statement carries an IsMatch column.
         var hasIncludes = compiled.Query.Includes is { Count: > 0 };
 
-        var rows = await _sqlExecutionService.ExecuteReaderAsync(
+        return await _sqlExecutionService.ExecuteReaderAsync(
             _tenantId,
             command,
             reader => ReadMatchRow(reader, hasIncludes),
             cancellationToken);
+    }
 
+    private async IAsyncEnumerable<SearchEntryResult> MaterializeAsync(
+        IReadOnlyList<MatchRow> rows,
+        OffsetSpec? offsetPage,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         // Identities whose only appearance in `rows` sits at or beyond the page's own Limit -- the
         // lookahead row(s) ProbeExtraRow asked for, never a member of the page. Ranked over the raw,
         // pre-Distinct row order ExecuteReaderAsync returned it in, which mirrors the OFFSET/FETCH
         // boundary the compiled statement actually drew -- see ComputeProbeRowIdentities.
-        var probeIdentities = ComputeProbeRowIdentities(rows, compiled.Query.OffsetPage);
+        var probeIdentities = ComputeProbeRowIdentities(rows, offsetPage);
 
         // Distinct: a resource can legitimately appear more than once in the raw row set when multiple
         // include/iterate stages independently resolve the same (ResourceTypeId, SurrogateId) -- e.g. a
@@ -538,7 +585,11 @@ public sealed class SqlServerCompiledSearchService(
                 // outside the try rather than inside it.
                 if (TryBuildSearchEntryResult(resource, matchRow.IsMatch) is { } result)
                 {
-                    yield return result;
+                    // Even a healthy probe is not a page member. Retain its identity for cross-phase
+                    // match/include deduplication, but expose no content that could be rendered.
+                    yield return isProbeRow
+                        ? result with { IsPagingProbe = true, ResourceBytes = ReadOnlyMemory<byte>.Empty }
+                        : result;
                     continue;
                 }
 
@@ -577,7 +628,7 @@ public sealed class SqlServerCompiledSearchService(
     /// <see cref="OffsetSpec.Limit"/> -- the lookahead row(s) <see cref="OffsetSpec.ProbeExtraRow"/>
     /// asked for. Ranked over Match-designated rows only (an Include row shares no boundary with the
     /// match page it seeds from), in the raw SQL fetch order <paramref name="rows"/> already
-    /// preserves -- the post-Distinct identity list ExecuteAndMaterializeAsync builds from the same
+    /// preserves -- the post-Distinct identity list MaterializeAsync builds from the same
     /// rows can silently reorder or collapse them, which this ranking must not do.
     /// </summary>
     private static HashSet<(short ResourceTypeId, long SurrogateId)> ComputeProbeRowIdentities(
@@ -664,7 +715,7 @@ public sealed class SqlServerCompiledSearchService(
     /// <summary>
     /// Batch-fetches dbo.Resource rows (joined to dbo.ResourceType for the type name) by their exact
     /// (ResourceTypeId, ResourceSurrogateId) identity, one round trip per <paramref name="batch"/> (the
-    /// caller chunks at 100 -- see ExecuteAndMaterializeAsync). Mirrors
+    /// caller chunks at 100 -- see MaterializeAsync). Mirrors
     /// SqlServerFhirRepository.GetExistingResourceVersionsAsync's established VALUES-table-constructor
     /// join pattern (SQL Server has no tuple IN); <see cref="SqlDbType"/> binding matches
     /// SqlServerHistoryQueryExecutor's own convention.

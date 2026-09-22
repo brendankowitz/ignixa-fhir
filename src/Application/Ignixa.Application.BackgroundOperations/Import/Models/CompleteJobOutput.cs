@@ -12,6 +12,13 @@ namespace Ignixa.Application.BackgroundOperations.Import.Models;
 /// </summary>
 public record CompleteJobOutput
 {
+    /// <summary>
+    /// Authoritative terminal state; absent on completion outputs recorded by older workers.
+    /// </summary>
+    public string? Status { get; init; }
+
+    public string? ErrorMessage { get; init; }
+
     public string? ErrorFileUrl { get; init; }
 
     /// <summary>

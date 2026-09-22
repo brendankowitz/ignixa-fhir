@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json.Nodes;
+using Ignixa.DataLayer.SqlServer.Features.PackageManagement;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
@@ -41,7 +42,8 @@ public sealed class SqlServerCodeSystemImporter(
     int systemPartitionId,
     ISystemRepository systemRepository,
     ILogger<SqlServerCodeSystemImporter> logger,
-    int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds) : ITerminologyImporter
+    int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds,
+    int packageTenantId = 1) : ITerminologyImporter
 {
     private const int DefinitionMaxLength = 4000;
 
@@ -61,7 +63,8 @@ public sealed class SqlServerCodeSystemImporter(
 
     /// <summary>
     /// The part all three imports share: reject the wrong resource type, require the package row, skip
-    /// unchanged content, and turn any failure into a status on the package row rather than an exception.
+    /// unchanged content, and record import failures on the package row. Topology errors and cancellation
+    /// propagate without changing package status.
     /// </summary>
     private async Task<TerminologyImportResult> ImportAsync(
         int tenantId,
@@ -78,6 +81,9 @@ public sealed class SqlServerCodeSystemImporter(
                 $"Expected ResourceType '{resourceType}', got '{packageResource.ResourceType}'", nameof(packageResource));
         }
 
+        await new SharedContentDatabaseGuard(sqlExecutionService, packageTenantId, systemPartitionId)
+            .EnsureCompatibleAsync(cancellationToken);
+
         logger.LogInformation(
             "Starting {ResourceType} import for '{Canonical}' (PackageResourceId: {PackageResourceId})",
             resourceType, packageResource.Canonical, packageResource.PackageResourceId);
@@ -86,7 +92,7 @@ public sealed class SqlServerCodeSystemImporter(
         // this is the one error the caller sees as an exception.
         var existing = await ReadPackageRowAsync(packageResource.PackageResourceId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"PackageResource {packageResource.PackageResourceId} not found in tenant {tenantId}");
+                $"PackageResource {packageResource.PackageResourceId} not found in shared package tenant {packageTenantId} (request tenant {tenantId})");
 
         try
         {
@@ -106,6 +112,10 @@ public sealed class SqlServerCodeSystemImporter(
             }
 
             return await import(packageResource, resource, contentHash, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -253,6 +263,7 @@ public sealed class SqlServerCodeSystemImporter(
         };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
+        command.Parameters.AddWithValue("@ContentHash", contentHash);
         command.Parameters.AddWithValue("@SystemId", systemId);
         command.Parameters.AddWithValue("@Version", (object?)metadata.Version ?? DBNull.Value);
         command.Parameters.AddWithValue("@ConceptCount", metadata.Count ?? concepts.Count);
@@ -267,10 +278,6 @@ public sealed class SqlServerCodeSystemImporter(
 
         await sqlExecutionService.ExecuteReaderAsync(
             systemPartitionId, command, reader => reader.GetInt64(0), cancellationToken);
-
-        // The content hash is not the procedure's concern -- it is import bookkeeping rather than
-        // terminology state -- so it is stamped separately once the import has committed.
-        await StampContentHashAsync(packageResource.PackageResourceId, contentHash, cancellationToken);
     }
 
     private static DataTable BuildConceptTable(IReadOnlyList<ConceptRow> concepts)
@@ -315,9 +322,10 @@ public sealed class SqlServerCodeSystemImporter(
         };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
+        command.Parameters.AddWithValue("@ContentHash", contentHash);
         command.Parameters.AddWithValue("@Canonical", metadata.Url);
         command.Parameters.AddWithValue("@Version", (object?)metadata.Version ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Name", metadata.Name);
+        command.Parameters.AddWithValue("@Name", (object?)metadata.Name ?? DBNull.Value);
         command.Parameters.AddWithValue("@Immutable", metadata.Immutable);
         command.Parameters.AddWithValue("@IsPartialExpansion", isPartialExpansion);
         command.Parameters.AddWithValue("@PartialExpansionReason", (object?)partialExpansionReason ?? DBNull.Value);
@@ -328,8 +336,6 @@ public sealed class SqlServerCodeSystemImporter(
 
         await sqlExecutionService.ExecuteReaderAsync(
             systemPartitionId, command, reader => reader.GetInt64(0), cancellationToken);
-
-        await StampContentHashAsync(packageResource.PackageResourceId, contentHash, cancellationToken);
     }
 
     private async Task ExecuteConceptMapImportAsync(
@@ -346,9 +352,10 @@ public sealed class SqlServerCodeSystemImporter(
         };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
+        command.Parameters.AddWithValue("@ContentHash", contentHash);
         command.Parameters.AddWithValue("@Canonical", metadata.Url);
         command.Parameters.AddWithValue("@Version", (object?)metadata.Version ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Name", metadata.Name);
+        command.Parameters.AddWithValue("@Name", (object?)metadata.Name ?? DBNull.Value);
         command.Parameters.AddWithValue("@SourceCanonical", (object?)metadata.SourceCanonical ?? DBNull.Value);
         command.Parameters.AddWithValue("@TargetCanonical", (object?)metadata.TargetCanonical ?? DBNull.Value);
 
@@ -358,8 +365,6 @@ public sealed class SqlServerCodeSystemImporter(
 
         await sqlExecutionService.ExecuteReaderAsync(
             systemPartitionId, command, reader => reader.GetInt64(0), cancellationToken);
-
-        await StampContentHashAsync(packageResource.PackageResourceId, contentHash, cancellationToken);
     }
 
     private static DataTable BuildExpansionTable(IReadOnlyList<ValueSetExpansionRow> entries)
@@ -696,19 +701,6 @@ public sealed class SqlServerCodeSystemImporter(
         return rows.Count > 0 ? rows[0] : null;
     }
 
-    private async Task StampContentHashAsync(long packageResourceId, string contentHash, CancellationToken cancellationToken)
-    {
-#pragma warning disable CA2100
-        using var command = new SqlCommand(
-            $"UPDATE {Packages.SchemaName}.{Packages.TableName} SET {Packages.Column("ContentHash").Name} = @contentHash " +
-            $"WHERE {Packages.Column("PackageResourceId").Name} = @packageResourceId");
-#pragma warning restore CA2100
-        command.Parameters.AddWithValue("@contentHash", contentHash);
-        command.Parameters.AddWithValue("@packageResourceId", packageResourceId);
-
-        await sqlExecutionService.ExecuteNonQueryAsync(systemPartitionId, command, cancellationToken);
-    }
-
     /// <summary>
     /// Marks the package row Skipped and stamps the content hash, so the same unchanged content is not
     /// re-examined on every package load. The hash has to be written here as well as on the success path —
@@ -772,29 +764,26 @@ public sealed class SqlServerCodeSystemImporter(
         Url: valueSet["url"]?.GetValue<string>()
             ?? throw new InvalidOperationException("ValueSet.url is required"),
         Version: valueSet["version"]?.GetValue<string>(),
-        // Mandatory here even though FHIR treats it as optional, because dbo.TermValueSet.Name is NOT NULL.
-        Name: valueSet["name"]?.GetValue<string>()
-            ?? throw new InvalidOperationException("ValueSet.name is required"),
+        Name: valueSet["name"]?.GetValue<string>(),
         Immutable: valueSet["immutable"]?.GetValue<bool>() ?? false);
 
     private static ConceptMapMetadata ExtractConceptMapMetadata(JsonObject conceptMap) => new(
         Url: conceptMap["url"]?.GetValue<string>()
             ?? throw new InvalidOperationException("ConceptMap.url is required"),
         Version: conceptMap["version"]?.GetValue<string>(),
-        Name: conceptMap["name"]?.GetValue<string>()
-            ?? throw new InvalidOperationException("ConceptMap.name is required"),
+        Name: conceptMap["name"]?.GetValue<string>(),
         // R4 spells these sourceUri/targetUri, R5 sourceCanonical/targetCanonical.
         SourceCanonical: conceptMap["sourceUri"]?.GetValue<string>()
             ?? conceptMap["sourceCanonical"]?.GetValue<string>(),
         TargetCanonical: conceptMap["targetUri"]?.GetValue<string>()
             ?? conceptMap["targetCanonical"]?.GetValue<string>());
 
-    private sealed record ValueSetMetadata(string Url, string? Version, string Name, bool Immutable);
+    private sealed record ValueSetMetadata(string Url, string? Version, string? Name, bool Immutable);
 
     private sealed record ConceptMapMetadata(
         string Url,
         string? Version,
-        string Name,
+        string? Name,
         string? SourceCanonical,
         string? TargetCanonical);
 

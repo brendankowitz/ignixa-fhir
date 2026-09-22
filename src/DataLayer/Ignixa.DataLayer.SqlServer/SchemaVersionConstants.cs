@@ -9,7 +9,7 @@ namespace Ignixa.DataLayer.SqlServer;
 public static class SchemaVersionConstants
 {
     /// <summary>The schema version this build's dacpac represents.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     /// <summary>
     /// The oldest tenant schema version this build still tolerates reading an
@@ -33,4 +33,9 @@ public static class SchemaVersionConstants
     // DeployReportClassifier reports the whole diff as AutoSafe with a DataMotion alert
     // (dbo.System and dbo.ResourceChangeData are rebuilt in place) and no DataIssue, so the
     // automatic path applies it; see DdlSchemaVersionBumpGuardTests for what forces this entry.
+    // Version 3 (expand, unreleased) -- nullable ValueSet/ConceptMap names; canonical/version replacement
+    // and atomic content hashes/success logging in terminology import procedures. Canonical/version
+    // columns in PackageResource, TermValueSet and TermConceptMap, and TermCodeSystem.Version, use CS_AS
+    // identity comparisons and indexes. Existing procedure callers may omit the new optional ContentHash
+    // parameter. No core resource tables or TVPs change.
 }

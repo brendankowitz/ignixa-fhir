@@ -6,6 +6,7 @@ using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Domain.Utilities;
 using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -27,7 +28,7 @@ public class SqlServerFhirRepository(
     GzipResourceCompressor compressor,
     SqlServerSearchIndexReferenceDataCache cache,
     SqlServerMergeRepository mergeRepository,
-    ILogger<SqlServerFhirRepository> logger) : IFhirRepository
+    ILogger<SqlServerFhirRepository> logger) : IFhirRepository, IAtomicFhirRepository, IVersionedResourceRepository
 {
     private readonly ISqlExecutionService _sqlExecutionService =
         sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
@@ -73,13 +74,32 @@ public class SqlServerFhirRepository(
     public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        int? requestedVersion = null;
+        if (key.VersionId != null)
+        {
+            if (!FhirIdSyntax.IsValid(key.VersionId))
+            {
+                throw new BadRequestException("Version ID must contain 1-64 ASCII letters, digits, '-' or '.'.");
+            }
+            // Version IDs are opaque. This provider generates canonical positive integer strings;
+            // a legal but unrepresented ID (including "01") must never become a latest/version-1 read.
+            if (!int.TryParse(key.VersionId, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var version) || version < 1 ||
+                version.ToString(System.Globalization.CultureInfo.InvariantCulture) != key.VersionId)
+            {
+                return null;
+            }
+            requestedVersion = version;
+        }
 
         _logger.LogDebug("Getting resource {ResourceType}/{ResourceId}", key.ResourceType, key.Id);
 
         var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, cancellationToken);
 
         SqlCommand command;
-        if (key.VersionId != null && int.TryParse(key.VersionId, out var version))
+        if (requestedVersion is { } versionNumber)
         {
             command = new SqlCommand(
                 """
@@ -87,7 +107,7 @@ public class SqlServerFhirRepository(
                 FROM dbo.Resource r LEFT JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue
                 WHERE r.ResourceTypeId = @ResourceTypeId AND r.ResourceId = @ResourceId AND r.Version = @Version;
                 """);
-            command.Parameters.Add("@Version", SqlDbType.Int).Value = version;
+            command.Parameters.Add("@Version", SqlDbType.Int).Value = versionNumber;
         }
         else
         {
@@ -182,12 +202,18 @@ public class SqlServerFhirRepository(
 
         _logger.LogDebug("Creating/updating resource {ResourceType}/{ResourceId}", resource.ResourceType, resource.ResourceId);
 
-        var transactionId = await GetNextTransactionIdAsync(cancellationToken);
-
         var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resource.ResourceType, cancellationToken);
 
-        var currentVersion = await GetCurrentVersionOrderedBySurrogateIdAsync(resourceTypeId, resource.ResourceId, cancellationToken);
-        var newVersion = currentVersion.HasValue ? currentVersion.Value + 1 : 1;
+        var current = await GetCurrentResourceForDeleteAsync(resourceTypeId, resource.ResourceId, cancellationToken);
+        if (resource.ExpectedVersionId != null && resource.ExpectedVersionId != current?.Version.ToString())
+        {
+            throw new PreconditionFailedException("The supplied If-Match version is not current.");
+        }
+
+        // The merge TVP carries this successor version into the stored procedure's locked conflict
+        // check. Never re-read and replace it after validation: that would lose the client's condition.
+        var newVersion = checked((current?.Version ?? 0) + 1);
+        var transactionId = await GetNextTransactionIdAsync(cancellationToken);
 
         // Must happen BEFORE handing resource.Resource to the merge repository -- the merge path
         // compresses resource.Resource into RawResource bytes, so the version/timestamp needs to be
@@ -195,23 +221,30 @@ public class SqlServerFhirRepository(
         resource.Resource.Meta.VersionId = newVersion.ToString();
         resource.Resource.Meta.LastUpdatedOffset = transactionId.Value.ToDate();
 
-        var resourceList = new[] { resource };
+        var resourceList = new[] { resource with { ExpectedVersionId = resource.ExpectedVersionId ?? (current?.Version ?? 0).ToString() } };
         var entryIndices = new[] { 0 };
 
-        await _mergeRepository.MergeResourcesAsync(
-            transactionId.Value,
-            singleTransaction: true,
-            resourceList,
-            entryIndices,
-            cancellationToken);
+        try
+        {
+            await _mergeRepository.MergeResourcesAsync(
+                transactionId.Value,
+                singleTransaction: true,
+                resourceList,
+                entryIndices,
+                cancellationToken);
+        }
+        catch (Exception ex) when (IsKnownCoreRollback(ex))
+        {
+            // Explicit server rejections have rolled back; unlike response loss they are safe to
+            // close immediately, so this failed allocation does not block later visibility.
+            await CompleteRejectedTransactionAsync(transactionId.Value, ex);
+            throw;
+        }
 
         await _mergeRepository.CommitTransactionAsync(
             transactionId: transactionId.Value,
             failureReason: null,
-            cancellationToken: cancellationToken);
-
-        await UpsertResourceTtlAsync(
-            transaction: null, resourceTypeId, resource.ResourceId, resource.ExpiresAt, transactionId.Value, cancellationToken);
+            cancellationToken: CancellationToken.None);
 
         _logger.LogInformation(
             "Created/updated resource {ResourceType}/{ResourceId} version {Version} via merge",
@@ -231,8 +264,77 @@ public class SqlServerFhirRepository(
             ResourceBytes: _compressor.DecompressBytes(compressedData),
             LastModified: lastModified)
         {
-            Request = resource.Request
+            Request = resource.Request,
+            IsCreated = current == null || current.Value.IsDeleted
         };
+    }
+
+    /// <inheritdoc/>
+    public async Task WriteTransactionAsync(IReadOnlyList<ResourceWrapper> resources, CancellationToken cancellationToken)
+    {
+        if (resources.Count == 0)
+        {
+            return;
+        }
+
+        // Allocate only after application validation has completed; no background batches can escape
+        // ahead of a later failed entry. The core command also enforces these versions under locks.
+        foreach (var resource in resources)
+        {
+            var typeId = await GetOrCreateResourceTypeIdAsync(resource.ResourceType, cancellationToken);
+            var current = await GetCurrentResourceForDeleteAsync(typeId, resource.ResourceId, cancellationToken);
+            if (resource.ExpectedVersionId != (current?.Version ?? 0).ToString())
+            {
+                throw new PreconditionFailedException("A transaction resource was changed before commit.");
+            }
+            resource.Resource.Meta.VersionId = checked((current?.Version ?? 0) + 1).ToString();
+        }
+
+        var (transactionId, _) = await _mergeRepository.BeginTransactionAsync(resources.Count, cancellationToken);
+        foreach (var resource in resources)
+        {
+            resource.Resource.Meta.LastUpdatedOffset = transactionId.ToDate();
+        }
+        try
+        {
+            await _mergeRepository.MergeResourcesAsync(transactionId, true, resources,
+                Enumerable.Range(0, resources.Count).ToArray(), cancellationToken);
+        }
+        catch (Exception ex) when (IsKnownCoreRollback(ex))
+        {
+            await CompleteRejectedTransactionAsync(transactionId, ex);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Transaction {TransactionId} core merge failed; retaining allocation for reconciliation if outcome is uncertain",
+                transactionId);
+            throw;
+        }
+
+        // Core data is already committed. Cancellation must not interrupt visibility completion.
+        await _mergeRepository.CommitTransactionAsync(transactionId, null, CancellationToken.None);
+    }
+
+    private static bool IsKnownCoreRollback(Exception exception) =>
+        exception is PreconditionFailedException or SqlException { Number: 1205 or >= 50000 };
+
+    private async Task CompleteRejectedTransactionAsync(long transactionId, Exception originalFailure)
+    {
+        try
+        {
+            await _mergeRepository.CommitTransactionAsync(transactionId, originalFailure.Message, CancellationToken.None);
+        }
+        catch (Exception completionFailure)
+        {
+            // The write has already failed. Preserve that original failure while retaining and logging
+            // the cleanup failure, so reconciliation is observable and no success is reported.
+            originalFailure.Data["Ignixa.TransactionCompletionFailure"] = completionFailure;
+            _logger.LogError(completionFailure,
+                "Failed to complete rolled-back transaction {TransactionId}; original {FailureType} will be rethrown and reconciliation is required",
+                transactionId, originalFailure.GetType().Name);
+        }
     }
 
     /// <inheritdoc/>
@@ -636,6 +738,41 @@ public class SqlServerFhirRepository(
     }
 
     /// <inheritdoc/>
+    public async Task<int> CountResourceHistoryAsync(
+        ResourceKey key,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(parameters);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, cancellationToken);
+        return await _historyExecutor.CountHistoryAsync(resourceTypeId, key.Id, parameters, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> CountTypeHistoryAsync(
+        string resourceType,
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(resourceType);
+        ArgumentNullException.ThrowIfNull(parameters);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resourceType, cancellationToken);
+        return await _historyExecutor.CountHistoryAsync(resourceTypeId, null, parameters, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> CountSystemHistoryAsync(
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return _historyExecutor.CountHistoryAsync(null, null, parameters, cancellationToken);
+    }
+
+    /// <inheritdoc/>
     // Ports SqlEntityFrameworkRepository.cs:934-967's 3-way LINQ join (ResourceTtl JOIN Resource JOIN
     // ResourceType) to raw SQL. The Resource join restricts to current (non-history, non-deleted) rows
     // -- a resource can carry a stale ResourceTtl row after being superseded or deleted, and TTL
@@ -653,7 +790,7 @@ public class SqlServerFhirRepository(
 
         using var command = new SqlCommand(
             """
-            SELECT TOP (@BatchSize) t.ResourceTypeId, t.ResourceId, t.ExpiresAt, rt.Name
+            SELECT TOP (@BatchSize) t.ResourceTypeId, t.ResourceId, t.ExpiresAt, rt.Name, r.ResourceSurrogateId
             FROM dbo.ResourceTtl t
             JOIN dbo.Resource r ON r.ResourceTypeId = t.ResourceTypeId AND r.ResourceId = t.ResourceId AND r.IsHistory = 0 AND r.IsDeleted = 0
             JOIN dbo.ResourceType rt ON rt.ResourceTypeId = t.ResourceTypeId
@@ -669,7 +806,10 @@ public class SqlServerFhirRepository(
                 reader.GetInt16(0),
                 reader.GetString(1),
                 reader.GetDateTimeOffset(2),
-                reader.GetString(3)),
+                reader.GetString(3))
+            {
+                ResourceSurrogateId = reader.GetInt64(4)
+            },
             cancellationToken);
 
         _logger.LogDebug(
@@ -677,6 +817,21 @@ public class SqlServerFhirRepository(
             expiredResources.Count);
 
         return expiredResources;
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> TryHardDeleteExpiredResourceAsync(
+        ExpiredResourceInfo resource,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        if (!resource.ResourceSurrogateId.HasValue)
+        {
+            throw new ArgumentException("An expired SQL resource must include its selected version identity.", nameof(resource));
+        }
+
+        return await HardDeleteResourceCoreAsync(
+            resource.ResourceTypeId, resource.ResourceId, resource, cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -691,6 +846,15 @@ public class SqlServerFhirRepository(
         short resourceTypeId,
         string resourceId,
         CancellationToken cancellationToken = default)
+    {
+        await HardDeleteResourceCoreAsync(resourceTypeId, resourceId, null, cancellationToken);
+    }
+
+    private async Task<bool> HardDeleteResourceCoreAsync(
+        short resourceTypeId,
+        string resourceId,
+        ExpiredResourceInfo? expiredResource,
+        CancellationToken cancellationToken)
     {
         _logger.LogDebug(
             "Hard deleting resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
@@ -751,12 +915,22 @@ public class SqlServerFhirRepository(
         // the batch keeps running, taking more locks in a transaction already destined to roll back. The
         // rollback in ExecuteInTransactionAsync is what makes the batch atomic -- and because the server has
         // then already rolled back, that method logs its "rolling back ... failed" warning on this path.
+        // The snapshot race described above applies only to explicit erasure. TTL cleanup first
+        // locks and validates the selected current version and expiry for this transaction's lifetime.
         var survivingVersions = 0;
+        var deleted = false;
 
         await _sqlExecutionService.ExecuteInTransactionAsync(
             _tenantId,
             async (transaction, ct) =>
             {
+                deleted = false;
+                if (expiredResource is not null &&
+                    !await LockExpiredResourceAsync(transaction, expiredResource, ct))
+                {
+                    return;
+                }
+
                 // Fourteen of the fifteen tables are clustered AND partitioned on
                 // (ResourceTypeId, ResourceSurrogateId), so leading with the resource type buys partition
                 // elimination and a seek on the clustering key instead of a probe across every partition.
@@ -817,9 +991,18 @@ public class SqlServerFhirRepository(
 
                 await transaction.ExecuteNonQueryAsync(command, ct);
 
-                survivingVersions = survivingVersionsParameter.Value as int? ?? 0;
+                survivingVersions = (int)survivingVersionsParameter.Value;
+                deleted = true;
             },
             cancellationToken);
+
+        if (!deleted)
+        {
+            _logger.LogInformation(
+                "Skipped stale TTL candidate: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
+                resourceTypeId, resourceId);
+            return false;
+        }
 
         // A healthcare audit trail should not record a completed deletion that did not complete. The
         // sweep is repeatable and the next pass finishes the job, so this is not a correctness failure --
@@ -843,14 +1026,51 @@ public class SqlServerFhirRepository(
                 resourceId,
                 survivingVersions);
         }
+
+        return survivingVersions == 0;
     }
 
-    // Corrected during plan review: an earlier draft never updated the cache after inserting, so every
-    // subsequent call for the same new type name would conclude "still missing" and attempt to insert
-    // AGAIN (a duplicate row / unique-constraint violation on the second caller). CacheResourceTypeId
-    // records the freshly-inserted ID directly, which is what makes the second call a cache hit.
-    // Note the cache deliberately does NOT remember a resource-type miss, so the GetResourceTypeIdAsync
-    // call below re-queries each time it is reached -- see that method's miss branch for why.
+    private static async Task<bool> LockExpiredResourceAsync(
+        ISqlTransactionContext transaction,
+        ExpiredResourceInfo resource,
+        CancellationToken cancellationToken)
+    {
+        // Match the PUT core's current-resource lock before touching TTL or search indexes.
+        // Holding this filtered key until commit also prevents a new version or recreation.
+        using var currentCommand = new SqlCommand(
+            """
+            SELECT ResourceSurrogateId
+            FROM dbo.Resource WITH (UPDLOCK, HOLDLOCK, INDEX(IX_Resource_ResourceTypeId_ResourceId))
+            WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId
+              AND IsHistory = 0 AND IsDeleted = 0;
+            """);
+        currentCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resource.ResourceTypeId;
+        currentCommand.Parameters.Add("@ResourceId", SqlDbType.VarChar, 64).Value = resource.ResourceId;
+        var currentRows = await transaction.ExecuteReaderAsync(
+            currentCommand, reader => reader.GetInt64(0), cancellationToken);
+        if (currentRows.Count == 0 || currentRows[0] != resource.ResourceSurrogateId)
+        {
+            return false;
+        }
+
+        using var expiryCommand = new SqlCommand(
+            """
+            SELECT ExpiresAt
+            FROM dbo.ResourceTtl WITH (UPDLOCK, HOLDLOCK)
+            WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId
+              AND ExpiresAt = @ExpectedExpiry AND ExpiresAt < SYSDATETIMEOFFSET();
+            """);
+        expiryCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resource.ResourceTypeId;
+        expiryCommand.Parameters.Add("@ResourceId", SqlDbType.VarChar, 64).Value = resource.ResourceId;
+        expiryCommand.Parameters.Add("@ExpectedExpiry", SqlDbType.DateTimeOffset).Value = resource.ExpiresAt;
+        var expiryRows = await transaction.ExecuteReaderAsync(
+            expiryCommand, reader => reader.GetDateTimeOffset(0), cancellationToken);
+        return expiryRows.Count != 0;
+    }
+
+    // The cache lock protects its lookup, not this subsequent creation, and is not shared across
+    // application instances. The SQL key-range lock owns get/create atomicity; every caller caches
+    // the canonical ID selected or inserted by that command.
     private async Task<short> GetOrCreateResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
     {
         var cached = _cache.TryGetResourceTypeIdFromCache(resourceType);
@@ -866,14 +1086,31 @@ public class SqlServerFhirRepository(
         }
 
         using var command = new SqlCommand(
-            "INSERT INTO dbo.ResourceType (Name) OUTPUT INSERTED.ResourceTypeId VALUES (@Name)");
+            """
+            SET XACT_ABORT ON;
+            BEGIN TRY
+                BEGIN TRANSACTION;
+                DECLARE @ResourceTypeId smallint;
+                SELECT @ResourceTypeId = ResourceTypeId
+                FROM dbo.ResourceType WITH (UPDLOCK, HOLDLOCK)
+                WHERE Name = @Name;
+                IF @ResourceTypeId IS NULL
+                BEGIN
+                    INSERT INTO dbo.ResourceType (Name) VALUES (@Name);
+                    SET @ResourceTypeId = CONVERT(smallint, SCOPE_IDENTITY());
+                END;
+                COMMIT TRANSACTION;
+                SELECT @ResourceTypeId;
+            END TRY
+            BEGIN CATCH
+                IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+                THROW;
+            END CATCH;
+            """);
         command.Parameters.AddWithValue("@Name", resourceType);
 
-        // NonIdempotent: an unguarded INSERT that comes through ExecuteReaderAsync only because it needs the
-        // generated ResourceTypeId back. A -2 command timeout does not prove the server did not commit it,
-        // and a retry would insert the name a second time. Name is dbo.ResourceType's primary key, so that
-        // is loud rather than silent -- but a duplicate-key error on a type the caller just created is a
-        // failure invented by the retry, and the timeout the server actually caused is the honest one.
+        // Retain the non-replay policy for a command that may allocate an identity. Response loss still
+        // surfaces; a later caller can resolve the committed Name without replaying a bare INSERT.
         var results = await _sqlExecutionService.ExecuteReaderAsync(
             _tenantId, command, reader => reader.GetInt16(0), cancellationToken, SqlCommandIdempotency.NonIdempotent);
         var newId = results[0];
@@ -1050,16 +1287,7 @@ public class SqlServerFhirRepository(
     /// <param name="transaction">
     /// The unit of work to enlist in, or <c>null</c> to run standalone on its own connection.
     /// <see cref="DeleteAsync"/> passes one because the TTL removal has to commit with the tombstone.
-    /// <see cref="CreateOrUpdateAsync"/> passes null, so the TTL write commits SEPARATELY, on its own
-    /// connection, after the merge has already committed and the resource is visible to readers
-    /// (<see cref="GetAsync"/> has no visibility predicate tying it to <c>dbo.ResourceTtl</c>). If this
-    /// write fails, the caller gets a 500 but the resource persists with no expiry -- and that is
-    /// permanent, not just delayed, because <see cref="GetExpiredResourcesAsync"/> is driven FROM
-    /// <c>dbo.ResourceTtl</c>, so a resource with no TTL row is never a sweep candidate. This is
-    /// inherited, not introduced here: the EF implementation this replaces has the same two-phase
-    /// sequence, ending in its own separate SaveChangesAsync for the TTL write. What this branch does
-    /// add is an asymmetry between the two callers: the delete side now clears an expiry atomically
-    /// with the tombstone, while the create side still sets one non-atomically after the fact.
+    /// Create/update and atomic bundle writes maintain TTL inside the guarded core merge command.
     /// </param>
     private async Task UpsertResourceTtlAsync(
         ISqlTransactionContext? transaction,

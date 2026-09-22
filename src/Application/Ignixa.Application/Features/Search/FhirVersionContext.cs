@@ -337,7 +337,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
                 _conformanceState,
                 fhirVersionString,
                 _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
-                _searchParameterResolutionOptions);
+                _searchParameterResolutionOptions,
+                GetSchemaProvider(version, tenant));
 
             // Initialize eagerly if configured
             if (_searchParameterResolutionOptions.EagerLoadPackageSearchParameters)

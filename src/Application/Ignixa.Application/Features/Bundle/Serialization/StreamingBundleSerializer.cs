@@ -272,11 +272,9 @@ public static class StreamingBundleSerializer
             {
                 if (resource.IsPagingProbe)
                 {
-                    // The data layer's lookahead row could not be turned into content (a corrupt
-                    // payload, or a concurrent-delete miss), but its presence still proves a further
-                    // page exists -- counting rendered deliveries alone cannot see that, since the row
-                    // that would have crossed pageSize never arrived. Pure signal: never rendered,
-                    // never counted.
+                    // SQL selected a row beyond the page boundary, regardless of whether it could
+                    // be materialized. Earlier missing/corrupt members must not move that boundary.
+                    // Pure signal: never rendered, never counted.
                     hasMore = true;
                     continue;
                 }

@@ -8,9 +8,11 @@ using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.History;
+using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
+using Ignixa.Domain.Utilities;
 using Ignixa.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +25,7 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class HistoryEndpoints
 {
+    private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
 
     /// <summary>
     /// Registers FHIR _history endpoints.
@@ -58,6 +61,9 @@ public static class HistoryEndpoints
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history
+        tenantGroup.MapMethods("/{resourceType}/{id}/_history/{versionId}", ReadMethods, HandleVread)
+            .WithName("VreadResource");
+
         tenantGroup.MapGet("/{resourceType}/{id}/_history", HandleGetResourceHistory)
             .WithName("GetResourceHistory")
             .Produces(StatusCodes.Status200OK)
@@ -94,6 +100,9 @@ public static class HistoryEndpoints
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history (agnostic)
+        agnosticGroup.MapMethods("/{resourceType}/{id}/_history/{versionId}", ReadMethods, HandleVread)
+            .WithName("VreadResourceAgnostic");
+
         agnosticGroup.MapGet("/{resourceType}/{id}/_history", (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
             [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
@@ -122,6 +131,38 @@ public static class HistoryEndpoints
             .Produces(StatusCodes.Status400BadRequest);
 
         return endpoints;
+    }
+
+    private static async Task<IResult> HandleVread(
+        HttpContext context,
+        string resourceType,
+        string id,
+        string versionId,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        if (!FhirIdSyntax.IsValid(versionId))
+        {
+            throw new Domain.Exceptions.BadRequestException(
+                "Version ID must contain 1-64 ASCII letters, digits, '-' or '.'.");
+        }
+
+        var result = await mediator.SendAsync(new GetResourceQuery(resourceType, id, versionId), cancellationToken);
+        if (result == null)
+        {
+            return Results.NotFound();
+        }
+        if (result.IsDeleted)
+        {
+            return FhirResults.Gone(resourceType, id, context)
+                .WithETag(result.VersionId)
+                .WithLastModified(result.LastModified);
+        }
+        return (HttpMethods.IsHead(context.Request.Method)
+            ? new FhirResult(StatusCodes.Status200OK)
+            : FhirResults.Ok(result.ResourceBytes, context))
+            .WithETag(result.VersionId)
+            .WithLastModified(result.LastModified);
     }
 
     /// <summary>
