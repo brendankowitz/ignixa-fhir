@@ -465,6 +465,7 @@ public class SummaryParameterTests : CapabilityDrivenTestBase
         var tag = Guid.NewGuid().ToString();
 
         var scenario = CreateScenario()
+            .WithResolvedReferences()
             .WithName("Observation Summary Test")
             .WithTag(tag)
             .WithPatient(p => p.FromSeattle())

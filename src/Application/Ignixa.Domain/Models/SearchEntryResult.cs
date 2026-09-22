@@ -57,4 +57,10 @@ public record SearchEntryResult(
     /// count it toward a page's rendered entries.
     /// </remarks>
     public bool IsPagingProbe { get; init; }
+
+    /// <summary>
+    /// Provider-owned cursor on an export paging probe. Resumes after the selected page,
+    /// not after the lookahead resource or the count of successfully rendered resources.
+    /// </summary>
+    public string? ContinuationToken { get; init; }
 }

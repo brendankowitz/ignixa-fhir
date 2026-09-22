@@ -54,29 +54,34 @@ public class NumberSearchTestFixture : IAsyncLifetime
     {
         Tag = Guid.NewGuid().ToString();
 
+        var subject = await _apiFixture.Harness.CreateResourceAsync(
+            new PatientBuilder(_apiFixture.SchemaProvider)
+                .WithTag(Tag)
+                .Build());
+
         // Create RiskAssessments with exact decimal values (powers of 2 in denominator)
         var riskAssessments = new[]
         {
             // [0] - 0.125 (1/8)
-            CreateRiskAssessmentWithProbability(0.125m),
+            CreateRiskAssessmentWithProbability(subject.Id!, 0.125m),
 
             // [1] - 0.25 (1/4)
-            CreateRiskAssessmentWithProbability(0.25m),
+            CreateRiskAssessmentWithProbability(subject.Id!, 0.25m),
 
             // [2] - 0.375 (3/8)
-            CreateRiskAssessmentWithProbability(0.375m),
+            CreateRiskAssessmentWithProbability(subject.Id!, 0.375m),
 
             // [3] - 0.5 (1/2)
-            CreateRiskAssessmentWithProbability(0.5m),
+            CreateRiskAssessmentWithProbability(subject.Id!, 0.5m),
 
             // [4] - 0.625 (5/8)
-            CreateRiskAssessmentWithProbability(0.625m),
+            CreateRiskAssessmentWithProbability(subject.Id!, 0.625m),
 
             // [5] - 0.75 (3/4)
-            CreateRiskAssessmentWithProbability(0.75m),
+            CreateRiskAssessmentWithProbability(subject.Id!, 0.75m),
 
             // [6] - No probability value (tests :missing modifier)
-            CreateRiskAssessmentWithoutProbability()
+            CreateRiskAssessmentWithoutProbability(subject.Id!)
         };
 
         RiskAssessments = await _apiFixture.Harness.CreateResourcesAsync(riskAssessments);
@@ -88,17 +93,19 @@ public class NumberSearchTestFixture : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    private ResourceJsonNode CreateRiskAssessmentWithProbability(decimal probability)
+    private ResourceJsonNode CreateRiskAssessmentWithProbability(string subjectId, decimal probability)
     {
         return new RiskAssessmentBuilder(_apiFixture.SchemaProvider)
+            .WithSubject(subjectId)
             .WithProbability(probability)
             .WithTag(Tag)
             .Build();
     }
 
-    private ResourceJsonNode CreateRiskAssessmentWithoutProbability()
+    private ResourceJsonNode CreateRiskAssessmentWithoutProbability(string subjectId)
     {
         return new RiskAssessmentBuilder(_apiFixture.SchemaProvider)
+            .WithSubject(subjectId)
             .WithTag(Tag)
             .Build();
     }

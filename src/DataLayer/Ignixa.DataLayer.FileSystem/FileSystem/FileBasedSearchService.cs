@@ -145,8 +145,17 @@ public partial class FileBasedSearchService : ISearchService
         }
 
         // Step 3: Apply pagination
-        int skip = 0; // TODO: Parse continuation token
+        int skip = 0;
+        if (!string.IsNullOrEmpty(options.ContinuationToken) &&
+            (!ContinuationToken.TryDecode(options.ContinuationToken, out skip, out _) || skip < 0))
+        {
+            throw new ArgumentException("Invalid search continuation token.", nameof(searchOptions));
+        }
         int take = FetchCount(options);
+        if (options.UseExportContinuation && (!options.ProbeExtraRow || options.MaxItemCount <= 0))
+        {
+            throw new ArgumentException("Export continuation requires a positive page size and a probe.", nameof(searchOptions));
+        }
 
         var pagedKeys = filteredMetadata
             .Skip(skip)
@@ -163,13 +172,25 @@ public partial class FileBasedSearchService : ISearchService
             cancellationToken.ThrowIfCancellationRequested();
 
             var resource = await _repository.GetAsync(pagedKeys[i], cancellationToken);
+            var isProbe = options.ProbeExtraRow && i >= options.MaxItemCount;
+            var continuation = isProbe && options.UseExportContinuation
+                ? ContinuationToken.Encode(checked(skip + options.MaxItemCount), options.MaxItemCount)
+                : null;
             if (resource != null)
             {
                 streamed++;
-                yield return resource;
+                yield return isProbe
+                    ? resource with { IsPagingProbe = true, ResourceBytes = ReadOnlyMemory<byte>.Empty, ContinuationToken = continuation }
+                    : resource;
                 continue;
             }
 
+            if (options.UseExportContinuation && !isProbe)
+            {
+                _logger.LogError("Selected export resource {ResourceType}/{ResourceId} disappeared before it could be read.",
+                    pagedKeys[i].ResourceType, pagedKeys[i].Id);
+                throw new InvalidOperationException("An export page lost a selected resource; file-based positional paging cannot safely continue.");
+            }
             // FileBasedFhirRepository.GetAsync returns null here for a resource its own metadata
             // scan (Step 1 above) already reported as present -- a concurrent delete race, the
             // only way this branch is reached: a genuinely corrupt/missing NDJSON file throws
@@ -178,7 +199,7 @@ public partial class FileBasedSearchService : ISearchService
             // fcbc8f8b fixed for the SQL Server data layer -- see SearchEntryResult.IsPagingProbe.
             if (i >= options.MaxItemCount)
             {
-                yield return PagingProbeSentinel;
+                yield return PagingProbeSentinel with { ContinuationToken = continuation };
             }
         }
 

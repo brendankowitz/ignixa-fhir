@@ -65,6 +65,32 @@ public class SqlServerValueSetComposerCommandTimeoutTests
         sqlExecutionService.ReadExpansionCommand.CommandTimeout.ShouldBe(11);
     }
 
+    [Fact]
+    public async Task GivenManyExplicitCodes_WhenComposed_ThenComparisonPolicyIsReadOnceWithoutReadingConcepts()
+    {
+        var sql = new CommandCapturingSqlExecutionService();
+        var codes = Enumerable.Range(0, 500).SelectMany(index => new[] { $"CODE{index}", $"code{index}" });
+        var compose = new JsonObject
+        {
+            ["include"] = new JsonArray(new JsonObject
+            {
+                ["system"] = SystemUrl, ["version"] = "V1",
+                ["concept"] = new JsonArray(codes.Select(code => (JsonNode)new JsonObject { ["code"] = code }).ToArray()),
+            }),
+        };
+
+        var result = await SqlServerValueSetComposer.ComposeAsync(
+            compose, sql, TestSystemPartitionId, new FixedSystemRepository(1),
+            NullLogger.Instance, 13, CancellationToken.None);
+
+        result.Entries.Count.ShouldBe(500);
+        result.IsPartial.ShouldBeFalse();
+        sql.PolicyReadCount.ShouldBe(1);
+        sql.PolicyCommand.ShouldNotBeNull();
+        sql.PolicyCommand.CommandTimeout.ShouldBe(13);
+        sql.ReadConceptsCommand.ShouldBeNull();
+    }
+
     private static JsonObject ComposeWithWholeSystemInclude()
     {
         var compose = new JsonObject
@@ -100,6 +126,8 @@ public class SqlServerValueSetComposerCommandTimeoutTests
         public SqlCommand? ReadConceptsCommand { get; private set; }
 
         public SqlCommand? ReadExpansionCommand { get; private set; }
+        public SqlCommand? PolicyCommand { get; private set; }
+        public int PolicyReadCount { get; private set; }
 
         public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
             int tenantId,
@@ -108,6 +136,12 @@ public class SqlServerValueSetComposerCommandTimeoutTests
             CancellationToken cancellationToken,
             SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         {
+            if (command.CommandText.Contains("FROM dbo.TermCodeSystem ", StringComparison.Ordinal))
+            {
+                PolicyCommand = command;
+                PolicyReadCount++;
+                return Task.FromResult<IReadOnlyList<TResult>>([(TResult)(object)(1, (string?)"V1", false)]);
+            }
             if (command.CommandText.Contains("JOIN dbo.TermCodeSystem", StringComparison.Ordinal))
             {
                 ReadConceptsCommand = command;
@@ -122,9 +156,8 @@ public class SqlServerValueSetComposerCommandTimeoutTests
 
             if (command.CommandText.Contains("FROM dbo.TermValueSet ", StringComparison.Ordinal))
             {
-                // ResolveExpandedValueSetIdAsync: must resolve to a value-set id for ReadExpansionAsync to
-                // run at all.
-                return Task.FromResult<IReadOnlyList<TResult>>([(TResult)(object)1L]);
+                // The resolved expansion metadata must be present for ReadExpansionAsync to run.
+                return Task.FromResult<IReadOnlyList<TResult>>([(TResult)(object)(1L, false, (string?)null)]);
             }
 
             throw new NotSupportedException(

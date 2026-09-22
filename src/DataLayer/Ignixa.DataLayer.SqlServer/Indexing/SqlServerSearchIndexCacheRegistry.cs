@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.DataLayer.SqlServer.Indexing;
@@ -21,6 +22,7 @@ namespace Ignixa.DataLayer.SqlServer.Indexing;
 /// duplicates. A failed creation is evicted so the next caller retries instead of inheriting a permanently
 /// faulted task. The creation token is deliberately <see cref="CancellationToken.None"/> — the result is
 /// shared, so one caller's cancellation must not poison the instance every other tenant request will use.
+/// Each caller can cancel its own wait without evicting or cancelling that shared creation.
 /// </para>
 /// <para>
 /// The <c>Forget*</c> methods broadcast across every tenant, mirroring EF's
@@ -31,7 +33,8 @@ namespace Ignixa.DataLayer.SqlServer.Indexing;
 /// </summary>
 public sealed class SqlServerSearchIndexCacheRegistry(
     ISqlExecutionService sqlExecutionService,
-    ILoggerFactory loggerFactory) : IDisposable
+    ILoggerFactory loggerFactory,
+    Func<int, CancellationToken, Task<ISearchParameterDefinitionManager>>? searchParameterDefinitionManagerFactory = null) : IDisposable
 {
     private readonly ConcurrentDictionary<int, Lazy<Task<SqlServerSearchIndexReferenceDataCache>>> _caches = new();
     private readonly ILogger<SqlServerSearchIndexCacheRegistry> _logger =
@@ -47,11 +50,19 @@ public sealed class SqlServerSearchIndexCacheRegistry(
         var entry = _caches.GetOrAdd(
             tenantId,
             id => new Lazy<Task<SqlServerSearchIndexReferenceDataCache>>(
-                () => SqlServerRepositoryFactory.CreateReferenceDataCacheAsync(
-                    sqlExecutionService, id, loggerFactory, CancellationToken.None),
+                () => CreateCacheAsync(id),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        return AwaitEvictingOnFailureAsync(tenantId, entry);
+        return AwaitEvictingOnFailureAsync(tenantId, entry, cancellationToken);
+    }
+
+    private async Task<SqlServerSearchIndexReferenceDataCache> CreateCacheAsync(int tenantId)
+    {
+        var definitions = searchParameterDefinitionManagerFactory is null
+            ? null
+            : await searchParameterDefinitionManagerFactory(tenantId, CancellationToken.None);
+        return await SqlServerRepositoryFactory.CreateReferenceDataCacheAsync(
+            sqlExecutionService, tenantId, loggerFactory, CancellationToken.None, definitions);
     }
 
     /// <summary>
@@ -95,17 +106,22 @@ public sealed class SqlServerSearchIndexCacheRegistry(
     }
 
     private async Task<SqlServerSearchIndexReferenceDataCache> AwaitEvictingOnFailureAsync(
-        int tenantId, Lazy<Task<SqlServerSearchIndexReferenceDataCache>> entry)
+        int tenantId,
+        Lazy<Task<SqlServerSearchIndexReferenceDataCache>> entry,
+        CancellationToken cancellationToken)
     {
         try
         {
-            return await entry.Value;
+            return await entry.Value.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            // Evict rather than leave a faulted task cached: otherwise a transient failure during the first
-            // request for a tenant would deny that tenant reference data for the process lifetime.
-            _caches.TryRemove(tenantId, out _);
+            // A later waiter on the same failed creation must not evict a successful replacement.
+            _caches.TryRemove(new KeyValuePair<int, Lazy<Task<SqlServerSearchIndexReferenceDataCache>>>(tenantId, entry));
             _logger.LogError(ex, "Failed to build reference data cache for tenant {TenantId}", tenantId);
             throw;
         }

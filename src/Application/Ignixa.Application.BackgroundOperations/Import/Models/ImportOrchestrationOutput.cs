@@ -11,9 +11,11 @@ namespace Ignixa.Application.BackgroundOperations.Import.Models;
 public record ImportOrchestrationOutput
 {
     public required string JobId { get; init; }
-    public required string Status { get; init; } // "Completed", "Failed"
+    public required string Status { get; init; } // "Completed", "Failed", "Cancelled"
     public int TotalResources { get; init; }
     public int TotalErrors { get; init; }
+    public bool CountsAreComplete { get; init; } = true;
+    public int? ResourcesWithUnknownOutcome { get; init; } = 0;
     public string? ErrorFileUrl { get; init; }
     public string? ErrorMessage { get; init; }
 }

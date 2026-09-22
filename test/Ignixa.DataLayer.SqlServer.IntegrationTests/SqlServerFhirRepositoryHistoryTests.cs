@@ -104,12 +104,7 @@ public class SqlServerFhirRepositoryHistoryTests : IAsyncLifetime
         var history = await _repository.GetResourceHistoryAsync(
             new ResourceKey("Patient", "history-deleted-1"), new HistoryQueryParameters { Count = 10 }, CancellationToken.None).ToListAsync();
 
-        // Not asserting sort position here: DeleteAsync is called with transactionId: null in real
-        // production usage (DeleteResourceHandler.cs), same as the legacy EF source
-        // (SqlEntityFrameworkRepository.cs:259) -- the tombstone row's TransactionId is therefore NULL,
-        // it never joins to a dbo.Transactions row, and its t.CreateDate (the ORDER BY column) is NULL.
-        // Where a NULL CreateDate sorts relative to a real one is a pre-existing trait shared by both
-        // implementations, not something this task changes.
+        // Standalone tombstones need no transaction row: history orders by their persisted SID.
         history.Count.ShouldBe(2);
         var tombstone = history.Single(h => h.VersionId == "2");
         tombstone.IsDeleted.ShouldBeTrue();

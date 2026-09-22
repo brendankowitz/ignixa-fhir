@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Sql.Catalog;
 using Microsoft.Data.SqlClient;
@@ -21,8 +22,9 @@ namespace Ignixa.DataLayer.SqlServer.Features.BackgroundJobs;
 /// </para>
 /// <para>
 /// Rows carry their owning tenant in the <c>TenantId</c> column, sourced from
-/// <see cref="IJobDefinition.TenantId"/>. Reads still locate a job by <c>JobId</c> alone so that Distributed
-/// mode continues to see jobs across tenants; the tenant check stays in code, exactly where it was.
+/// <see cref="IJobDefinition.TenantId"/>. That owner is immutable and must agree with the stored definition.
+/// Reads still locate a job by <c>JobId</c> alone so that Distributed mode continues to see jobs across
+/// tenants; this relaxes requester authorization, never ownership integrity.
 /// </para>
 /// </summary>
 public sealed class SqlServerBackgroundJobRepository<T>(
@@ -97,6 +99,11 @@ public sealed class SqlServerBackgroundJobRepository<T>(
             throw new InvalidOperationException($"Not authorized to update job {job.JobId}");
         }
 
+        if (job.Definition.TenantId != existing.Definition.TenantId)
+        {
+            throw new InvalidOperationException($"Cannot change the owning tenant of background job {job.JobId}");
+        }
+
         // CreateDate, JobId and JobType are deliberately not updated. HeartbeatDate is stamped here rather
         // than taken from the model, so an update always refreshes liveness.
         using var command = CreateCommand(
@@ -112,7 +119,8 @@ public sealed class SqlServerBackgroundJobRepository<T>(
             $"{Jobs.Column("Worker").Name} = @worker, " +
             $"{Jobs.Column("ErrorMessage").Name} = @errorMessage, " +
             $"{Jobs.Column("CancelRequested").Name} = @cancelRequested " +
-            $"WHERE {Jobs.Column("TenantId").Name} = @rowTenantId AND {Jobs.Column("JobId").Name} = @jobId");
+            $"WHERE {Jobs.Column("TenantId").Name} = @rowTenantId AND {Jobs.Column("JobId").Name} = @jobId " +
+            $"AND {Jobs.Column("Status").Name} COLLATE Latin1_General_100_CI_AS NOT IN (N'Completed', N'Failed', N'Cancelled')");
 
         command.Parameters.AddWithValue("@rowTenantId", existing.Definition.TenantId);
         command.Parameters.AddWithValue("@jobId", job.JobId);
@@ -128,7 +136,21 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         command.Parameters.AddWithValue("@errorMessage", (object?)job.ErrorMessage ?? DBNull.Value);
         command.Parameters.AddWithValue("@cancelRequested", job.CancelRequested);
 
-        await sqlExecutionService.ExecuteNonQueryAsync(connectionTenantId, command, cancellationToken);
+        // The status predicate is evaluated at the write, not the earlier authorization read. A
+        // completion committed in that interval must remain authoritative. Do not retry an uncertain CAS.
+        var affectedRows = await sqlExecutionService.ExecuteNonQueryAsync(
+            connectionTenantId, command, cancellationToken, SqlCommandIdempotency.NonIdempotent);
+        if (affectedRows != 1)
+        {
+            var current = await FindByJobIdAsync(job.JobId, cancellationToken, existing.Definition.TenantId);
+            if (current is not null && IsTerminal(current.Status))
+            {
+                throw new BackgroundJobUpdateConflictException(job.JobId, current.Status);
+            }
+
+            throw NotFound(job.JobId);
+        }
+
         logger.LogDebug("Updated background job {JobId}", job.JobId);
     }
 
@@ -153,7 +175,12 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         command.Parameters.AddWithValue("@tenantId", existing.Definition.TenantId);
         command.Parameters.AddWithValue("@jobId", jobId);
 
-        await sqlExecutionService.ExecuteNonQueryAsync(connectionTenantId, command, cancellationToken);
+        var affectedRows = await sqlExecutionService.ExecuteNonQueryAsync(connectionTenantId, command, cancellationToken);
+        if (affectedRows != 1)
+        {
+            throw NotFound(jobId);
+        }
+
         logger.LogInformation("Deleted background job {JobId}", jobId);
     }
 
@@ -175,11 +202,17 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         return await sqlExecutionService.ExecuteReaderAsync(connectionTenantId, command, ReadJob, cancellationToken);
     }
 
-    private async Task<BackgroundJob<T>?> FindByJobIdAsync(string jobId, CancellationToken cancellationToken)
+    private async Task<BackgroundJob<T>?> FindByJobIdAsync(
+        string jobId, CancellationToken cancellationToken, int? rowTenantId = null)
     {
+        var ownerFilter = rowTenantId.HasValue ? $" AND {Jobs.Column("TenantId").Name} = @rowTenantId" : string.Empty;
         using var command = CreateCommand(
-            $"SELECT {AllColumns} FROM {QualifiedTable} WHERE {Jobs.Column("JobId").Name} = @jobId");
+            $"SELECT {AllColumns} FROM {QualifiedTable} WHERE {Jobs.Column("JobId").Name} = @jobId{ownerFilter}");
         command.Parameters.AddWithValue("@jobId", jobId);
+        if (rowTenantId.HasValue)
+        {
+            command.Parameters.AddWithValue("@rowTenantId", rowTenantId.Value);
+        }
 
         var rows = await sqlExecutionService.ExecuteReaderAsync(connectionTenantId, command, ReadJob, cancellationToken);
         return rows.Count > 0 ? rows[0] : null;
@@ -212,6 +245,11 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         var definition = JsonSerializer.Deserialize<T>(definitionJson)
             ?? throw new InvalidOperationException($"Failed to deserialize Definition for job {jobId}");
 
+        if (definition.TenantId != reader.GetInt32(0))
+        {
+            throw new InvalidOperationException($"Stored tenant and Definition tenant disagree for background job {jobId}");
+        }
+
         return new BackgroundJob<T>
         {
             JobId = jobId,
@@ -234,6 +272,11 @@ public sealed class SqlServerBackgroundJobRepository<T>(
     // Isolated mode is multi-tenant, so ownership must be checked. Distributed mode shards one customer
     // across databases, where every job already belongs to that customer.
     private bool ShouldValidateTenant() => tenantConfigStore.Mode == TenantMode.Isolated;
+
+    private static bool IsTerminal(string status)
+        => status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("Failed", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase);
 
     // Every SQL string in this type is assembled from SqlCatalog-sourced identifiers and fixed literals;
     // all caller data flows through parameters. Stating the CA2100 justification once here rather than at

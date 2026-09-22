@@ -1,7 +1,7 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging;
 
@@ -30,63 +30,62 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
         var job = await _jobRepository.GetAsync(input.JobId, input.TenantId, CancellationToken.None);
         if (job == null)
         {
-            _logger.LogWarning("Job {JobId} not found (tenant {TenantId})", input.JobId, input.TenantId);
-            return false;
+            throw new InvalidOperationException($"Export job {input.JobId} not found for tenant {input.TenantId}.");
+        }
+
+        if (job.Status is "Cancelled" or "Failed" or "Completed")
+        {
+            _logger.LogInformation("Export completion for {JobId} is superseded by {Status}", input.JobId, job.Status);
+            return job.Status == "Completed";
         }
 
         if (input.Success)
         {
             // Update result with export completion information
-            job.Result = JsonNode.Parse(JsonSerializer.Serialize(new
+            job.Result = JsonSerializer.SerializeToNode(new ExportJobResult
             {
-                totalResources = input.TotalResourcesExported,
-                exportedFiles = input.ExportedFiles,
-                completedAt = DateTimeOffset.UtcNow
-            }));
+                TotalResources = input.TotalResourcesExported,
+                ExportedFiles = input.ExportedFiles,
+                ExportedFileCounts = input.ExportedFileCounts,
+                CompletedAt = DateTimeOffset.UtcNow
+            });
 
             job.Status = "Completed";
             job.EndDate = DateTimeOffset.UtcNow;
 
-            // Log throughput metrics if timing information is available
-            if (job.StartDate.HasValue)
-            {
-                var elapsed = (job.EndDate.Value - job.StartDate.Value).TotalSeconds;
-                if (elapsed > 0)
-                {
-                    var resourcesPerSec = input.TotalResourcesExported / elapsed;
-                    _logger.LogInformation(
-                        "Export job {JobId} completed successfully: {TotalResources} resources in {ElapsedSeconds:F2}s = {ThroughputPerSec:F2} resources/sec",
-                        input.JobId,
-                        input.TotalResourcesExported,
-                        elapsed,
-                        resourcesPerSec);
-                }
-                else
-                {
-                    _logger.LogInformation(
-                        "Job {JobId} completed successfully ({TotalResources} resources)",
-                        input.JobId,
-                        input.TotalResourcesExported);
-                }
-            }
-            else
-            {
-                _logger.LogInformation(
-                    "Job {JobId} completed successfully ({TotalResources} resources)",
-                    input.JobId,
-                    input.TotalResourcesExported);
-            }
         }
         else
         {
             job.Status = "Failed";
             job.EndDate = DateTimeOffset.UtcNow;
             job.ErrorMessage = input.ErrorMessage ?? "Unknown error";
-
-            _logger.LogError("Job {JobId} failed: {Error}", input.JobId, input.ErrorMessage);
         }
 
-        await _jobRepository.UpdateAsync(job, input.TenantId, CancellationToken.None);
-        return true;
+        try
+        {
+            await _jobRepository.UpdateAsync(job, input.TenantId, CancellationToken.None);
+        }
+        catch (BackgroundJobUpdateConflictException)
+        {
+            var authoritative = await _jobRepository.GetAsync(input.JobId, input.TenantId, CancellationToken.None)
+                ?? throw new InvalidOperationException($"Export job {input.JobId} disappeared after a terminal update conflict.");
+            _logger.LogInformation(
+                "Export completion for {JobId} was superseded; preserving {Status}",
+                input.JobId, authoritative.Status);
+            return authoritative.Status == "Completed";
+        }
+
+        if (input.Success)
+        {
+            var elapsed = job.StartDate.HasValue ? (job.EndDate!.Value - job.StartDate.Value).TotalSeconds : (double?)null;
+            _logger.LogInformation(
+                "Export job {JobId} completed: {TotalResources} resources, elapsed {ElapsedSeconds}s",
+                input.JobId, input.TotalResourcesExported, elapsed);
+        }
+        else
+        {
+            _logger.LogError("Job {JobId} failed: {Error}", input.JobId, input.ErrorMessage);
+        }
+        return input.Success;
     }
 }

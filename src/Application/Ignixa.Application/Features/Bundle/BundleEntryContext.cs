@@ -78,7 +78,7 @@ public record BundleEntryContext
     /// Captured during parsing to avoid re-serialization for deferred writes.
     /// Null for GET/DELETE operations without a resource body.
     /// </summary>
-    public string? RawJson { get; init; }
+    public string? RawJson { get; set; }
 
     /// <summary>
     /// Gets the If-None-Exist header value from bundle.entry.request.ifNoneExist.

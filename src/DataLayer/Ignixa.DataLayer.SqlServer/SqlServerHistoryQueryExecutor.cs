@@ -10,9 +10,8 @@ namespace Ignixa.DataLayer.SqlServer;
 
 /// <summary>
 /// History-query cluster extracted from <see cref="SqlServerFhirRepository"/>: builds and executes
-/// the resource/type/system history queries, mapping rows to <see cref="SearchEntryResult"/>. Mirrors
-/// SqlEntityFrameworkRepository.ExecuteHistoryQueryAsync (:849-931) -- see that method's original
-/// comment for the shared Since/Until/sort/pagination clause and per-row try/catch-and-skip rationale.
+/// bounded resource/type/system pages and body-free counts. All time filtering uses the same
+/// persisted surrogate timestamp as <see cref="SearchEntryResult.LastModified"/>.
 /// </summary>
 public class SqlServerHistoryQueryExecutor(
     ISqlExecutionService sqlExecutionService,
@@ -38,7 +37,7 @@ public class SqlServerHistoryQueryExecutor(
         const string selectFromWhere =
             """
             SELECT r.ResourceId, r.Version, r.RawResource, r.IsDeleted, r.RequestMethod, r.ResourceSurrogateId, @ResourceTypeName AS ResourceTypeName
-            FROM dbo.Resource r LEFT JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue
+            FROM dbo.Resource r
             WHERE r.ResourceTypeId = @ResourceTypeId AND r.ResourceId = @ResourceId
             """;
 
@@ -66,7 +65,7 @@ public class SqlServerHistoryQueryExecutor(
         const string selectFromWhere =
             """
             SELECT r.ResourceId, r.Version, r.RawResource, r.IsDeleted, r.RequestMethod, r.ResourceSurrogateId, @ResourceTypeName AS ResourceTypeName
-            FROM dbo.Resource r LEFT JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue
+            FROM dbo.Resource r
             WHERE r.ResourceTypeId = @ResourceTypeId
             """;
 
@@ -92,7 +91,6 @@ public class SqlServerHistoryQueryExecutor(
             """
             SELECT r.ResourceId, r.Version, r.RawResource, r.IsDeleted, r.RequestMethod, r.ResourceSurrogateId, rt.Name AS ResourceTypeName
             FROM dbo.Resource r
-            LEFT JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue
             JOIN dbo.ResourceType rt ON r.ResourceTypeId = rt.ResourceTypeId
             WHERE 1=1
             """;
@@ -103,55 +101,64 @@ public class SqlServerHistoryQueryExecutor(
         }
     }
 
-    // Shared by all 3 history methods above (mirrors SqlEntityFrameworkRepository.ExecuteHistoryQueryAsync,
-    // :849-931): appends the Since/Until/sort/pagination clauses common to every history query onto
-    // whichever base SELECT/FROM/WHERE the caller supplies, executes it, and maps each row with the
-    // same per-row try/catch-and-skip the original uses -- a genuinely malformed RawResource on one
-    // history row must not fail the whole page. ISqlExecutionService has no server-side-cursor
-    // streaming primitive (ExecuteReaderAsync always fully materializes), so this yields from an
-    // already-fetched in-memory page rather than a live DB cursor; the IAsyncEnumerable<T> contract
-    // callers see is otherwise identical.
+    internal async Task<int> CountHistoryAsync(
+        short? resourceTypeId,
+        string? resourceId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken)
+    {
+        const string selectFromWhere =
+            """
+            SELECT COUNT_BIG(*)
+            FROM dbo.Resource r
+            JOIN dbo.ResourceType rt ON r.ResourceTypeId = rt.ResourceTypeId
+            WHERE 1=1
+            """;
+        using var command = CreateHistoryCommand(selectFromWhere, parameters);
+        if (resourceTypeId.HasValue)
+        {
+            command.CommandText += " AND r.ResourceTypeId = @ResourceTypeId";
+            command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
+        }
+
+        if (resourceId != null)
+        {
+            command.CommandText += " AND r.ResourceId = @ResourceId";
+            command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
+        }
+
+        var counts = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId, command, static reader => reader.GetInt64(0), cancellationToken);
+        return checked((int)counts.Single());
+    }
+
+    // ExecuteReaderAsync materializes a bounded page, never the entire history.
     private async IAsyncEnumerable<SearchEntryResult> ExecuteHistoryQueryAsync(
         string selectFromWhere,
         Action<SqlCommand> configureBaseParameters,
         HistoryQueryParameters parameters,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // CA2100 suppressed: sql is built from a fixed caller-supplied literal plus at most two fixed
-        // literal filter fragments and a sort direction drawn from a 2-value enum (never free-form
-        // caller input) -- same rationale as DeleteSearchIndexEntriesAsync's suppression above. Every
-        // actual value (ResourceTypeId, ResourceId, Since, Until, Offset, CountPlusOne) flows through
-        // parameters, never string concatenation.
+        parameters = parameters.Validate();
+        using var command = CreateHistoryCommand(selectFromWhere, parameters);
+        var direction = parameters.Sort == HistorySortOrder.Ascending ? "ASC" : "DESC";
+        // Only fixed SQL fragments and an enum-derived direction are concatenated.
 #pragma warning disable CA2100
-        using var command = new SqlCommand(BuildHistorySql(selectFromWhere, parameters));
+        command.CommandText += $" ORDER BY r.ResourceSurrogateId {direction}, r.ResourceTypeId {direction}"
+            + " OFFSET @Offset ROWS FETCH NEXT @CountPlusOne ROWS ONLY;";
 #pragma warning restore CA2100
         configureBaseParameters(command);
-        AddSharedHistoryParameters(command, parameters);
+        command.Parameters.Add("@Offset", SqlDbType.Int).Value = parameters.Offset;
+        command.Parameters.Add("@CountPlusOne", SqlDbType.Int).Value = parameters.Count + 1;
 
         var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, ReadHistoryRow, cancellationToken);
 
-        // @CountPlusOne always over-fetches by exactly one lookahead row past parameters.Count, so
-        // its position is simply the raw fetch order's tail -- unlike the compiled search path, there
-        // is no separate match/include split to rank over.
         for (var i = 0; i < rows.Count; i++)
         {
-            var isProbeRow = i >= parameters.Count;
-            var result = TryMapHistoryRow(rows[i]);
-            if (result != null)
-            {
-                yield return result;
-                continue;
-            }
-
-            // TryMapHistoryRow already logged the deserialization failure. A plain skip is otherwise
-            // unchanged -- see the type doc for why a history bundle has no per-row slot to make this
-            // visible to the client the way a searchset entry's search.mode="outcome" does -- but a
-            // probe-position miss still needs to prove a further page exists, or that proof vanishes
-            // along with the row (see SearchEntryResult.IsPagingProbe).
-            if (isProbeRow)
-            {
-                yield return PagingProbeSentinel;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            // The lookahead proves existence without deserializing a body that is not in this page.
+            // A corrupt body in the actual page must fail, not silently disappear from history.
+            yield return i >= parameters.Count ? PagingProbeSentinel : MapHistoryRow(rows[i]);
         }
     }
 
@@ -170,59 +177,59 @@ public class SqlServerHistoryQueryExecutor(
         IsPagingProbe = true,
     };
 
-    private static string BuildHistorySql(string selectFromWhere, HistoryQueryParameters parameters)
+    private static SqlCommand CreateHistoryCommand(string selectFromWhere, HistoryQueryParameters parameters)
     {
-        var direction = parameters.Sort == HistorySortOrder.Ascending ? "ASC" : "DESC";
-        var sql = selectFromWhere;
+        ArgumentNullException.ThrowIfNull(parameters);
+        // The caller supplies a fixed SQL literal; every data value is a parameter.
+#pragma warning disable CA2100
+        var command = new SqlCommand(selectFromWhere);
+#pragma warning restore CA2100
 
         if (parameters.Since.HasValue)
         {
-            sql += " AND t.CreateDate >= @Since";
+            decimal sinceId = decimal.Ceiling((decimal)parameters.Since.Value.UtcTicks / TimeSpan.TicksPerMillisecond)
+                * SurrogateIdsPerMillisecond;
+            if (sinceId > long.MaxValue)
+            {
+                command.CommandText += " AND 1=0";
+            }
+            else
+            {
+                command.CommandText += " AND r.ResourceSurrogateId >= @SinceId";
+                command.Parameters.Add("@SinceId", SqlDbType.BigInt).Value = (long)sinceId;
+            }
         }
 
         if (parameters.Until.HasValue)
         {
-            sql += " AND t.CreateDate <= @Until";
+            decimal untilExclusiveId = ((decimal)(parameters.Until.Value.UtcTicks / TimeSpan.TicksPerMillisecond) + 1)
+                * SurrogateIdsPerMillisecond;
+            if (untilExclusiveId <= long.MaxValue)
+            {
+                command.CommandText += " AND r.ResourceSurrogateId < @UntilExclusiveId";
+                command.Parameters.Add("@UntilExclusiveId", SqlDbType.BigInt).Value = (long)untilExclusiveId;
+            }
         }
 
-        return sql
-            + $" ORDER BY t.CreateDate {direction}, r.ResourceSurrogateId {direction}"
-            + " OFFSET @Offset ROWS FETCH NEXT @CountPlusOne ROWS ONLY;";
+        return command;
     }
 
-    private static void AddSharedHistoryParameters(SqlCommand command, HistoryQueryParameters parameters)
-    {
-        if (parameters.Since.HasValue)
-        {
-            command.Parameters.Add("@Since", SqlDbType.DateTime).Value = parameters.Since.Value.UtcDateTime;
-        }
+    // IdHelper shifts millisecond-truncated ticks left by 3. ToDate discards all 80,000
+    // uniquifier values within that millisecond. Inclusive bounds therefore ceil the lower
+    // instant and use the next millisecond exclusively for the upper instant. Decimal arithmetic
+    // also permits FHIR instants outside the bigint timestamp range without overflow.
+    private const long SurrogateIdsPerMillisecond = TimeSpan.TicksPerMillisecond << 3;
 
-        if (parameters.Until.HasValue)
-        {
-            command.Parameters.Add("@Until", SqlDbType.DateTime).Value = parameters.Until.Value.UtcDateTime;
-        }
-
-        command.Parameters.Add("@Offset", SqlDbType.Int).Value = parameters.Offset;
-
-        // parameters.Count + 1 overflows to int.MinValue when Count is int.MaxValue -- the value
-        // HistoryCountHelper deliberately passes to mean "no limit, count everything" for
-        // _total=accurate -- and SQL Server rejects the negative FETCH NEXT rowcount outright (measured
-        // against a live container: "The number of rows provided for a FETCH clause must be greater
-        // then [sic] zero."). The +1 exists only to over-fetch one
-        // lookahead row so ExecuteHistoryQueryAsync can tell whether a further page exists; that
-        // question is meaningless when the caller asked for every row, so there is nothing to look
-        // ahead of and no over-fetch to make. The normal paginated path can never reach this branch --
-        // HistoryQueryParameters.Validate() clamps Count to [1, MaxCount] for every caller except this
-        // internal one, which bypasses Validate() on purpose.
-        var countPlusOne = parameters.Count == int.MaxValue ? int.MaxValue : parameters.Count + 1;
-        command.Parameters.Add("@CountPlusOne", SqlDbType.Int).Value = countPlusOne;
-    }
-
-    private SearchEntryResult? TryMapHistoryRow(HistoryRow row)
+    private SearchEntryResult MapHistoryRow(HistoryRow row)
     {
         try
         {
             var resourceBytes = _compressor.DecompressBytes(row.RawResource);
+            if (resourceBytes.IsEmpty)
+            {
+                throw new InvalidDataException("History resource body is empty.");
+            }
+
             var resourceTypeName = row.ResourceTypeName ?? "Unknown";
 
             return new SearchEntryResult(
@@ -236,10 +243,10 @@ public class SqlServerHistoryQueryExecutor(
                 Request = new ResourceRequest(row.RequestMethod ?? "PUT", $"{resourceTypeName}/{row.ResourceId}")
             };
         }
-        catch (Exception ex)
+        catch (InvalidDataException ex)
         {
-            _logger.LogWarning(ex, "Failed to deserialize resource {ResourceId} version {Version}", row.ResourceId, row.Version);
-            return null;
+            _logger.LogError(ex, "Failed to deserialize history resource {ResourceId} version {Version}", row.ResourceId, row.Version);
+            throw;
         }
     }
 

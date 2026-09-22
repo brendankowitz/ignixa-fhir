@@ -14,18 +14,18 @@ namespace Ignixa.Api.E2ETests.Operations.Conditional;
 
 /// <summary>
 /// E2E tests for FHIR conditional delete operations.
-/// Tests validate the behavior defined in FHIR R4 Section 3.1.0.6 (Conditional Delete).
+/// Tests R4 conditional delete behavior and Ignixa's optional _count deletion-limit extension.
 /// </summary>
 /// <remarks>
 /// Conditional delete enables deleting resources based on search criteria:
 ///
 /// Single Mode (no _count parameter):
-/// - 0 matches: 404 Not Found
+/// - 0 matches: 204 No Content (successful no-op)
 /// - 1 match: 204 No Content (deletes resource)
 /// - Multiple matches: 412 Precondition Failed
 ///
 /// Multiple Mode (with _count parameter):
-/// - 0 matches: 404 Not Found
+/// - 0 matches: 200 OK with an informational OperationOutcome (successful no-op)
 /// - 1+ matches: 200 OK with OperationOutcome showing deleted count
 ///
 /// Test Coverage:
@@ -34,7 +34,7 @@ namespace Ignixa.Api.E2ETests.Operations.Conditional;
 /// - Edge cases (no search criteria, Bundle rejection)
 ///
 /// Reference:
-/// - http://hl7.org/fhir/R4/http.html#cdelete
+/// - http://hl7.org/fhir/R4/http.html#delete
 /// </remarks>
 public class ConditionalDeleteTests : CapabilityDrivenTestBase
 {
@@ -44,13 +44,14 @@ public class ConditionalDeleteTests : CapabilityDrivenTestBase
 
     /// <summary>
     /// Tests conditional delete when no matching resources exist.
-    /// Expected: Returns 404 Not Found.
+    /// Expected: Returns 204 No Content as a successful no-op.
     /// </summary>
     /// <remarks>
-    /// FHIR R4 Section 3.1.0.6: If the search returns zero matches, the server returns 404 Not Found.
+    /// R4 section 3.1.0.7.1 applies ordinary DELETE semantics to zero or one match.
+    /// Ignixa chooses 204 without a payload for single mode; R4 also permits successful payload responses.
     /// </remarks>
     [Fact]
-    public async Task GivenConditionalDelete_WhenNoMatch_ThenReturnsNotFound()
+    public async Task GivenConditionalDelete_WhenNoMatch_ThenReturnsNoContent()
     {
         // Arrange
         var uniqueIdentifier = Guid.NewGuid().ToString();
@@ -61,11 +62,10 @@ public class ConditionalDeleteTests : CapabilityDrivenTestBase
             $"identifier=http://hospital.example.org/mrn|{uniqueIdentifier}");
 
         // Assert
-        response.StatusCode.ShouldBe(HttpStatusCode.NotFound, "server should return 404 when search returns 0 matches");
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent, "zero matches are a successful delete no-op");
 
-        // Verify OperationOutcome is returned
         var responseJson = await response.Content.ReadAsStringAsync();
-        responseJson.ShouldContain("OperationOutcome", customMessage: "error response should include OperationOutcome");
+        responseJson.ShouldBeEmpty();
     }
 
     /// <summary>
@@ -73,8 +73,8 @@ public class ConditionalDeleteTests : CapabilityDrivenTestBase
     /// Expected: Deletes the resource and returns 204 No Content.
     /// </summary>
     /// <remarks>
-    /// FHIR R4 Section 3.1.0.6: If one match is found, the server deletes the resource
-    /// and returns 204 No Content.
+    /// R4 section 3.1.0.7.1 applies ordinary DELETE semantics when one match is found.
+    /// Ignixa returns 204 without a payload for single mode.
     /// </remarks>
     [Fact]
     public async Task GivenConditionalDelete_WhenOneMatch_ThenDeletesResource()
@@ -111,8 +111,8 @@ public class ConditionalDeleteTests : CapabilityDrivenTestBase
     /// Expected: Returns 412 Precondition Failed without deleting anything.
     /// </summary>
     /// <remarks>
-    /// FHIR R4 Section 3.1.0.6: If multiple matches are found in single mode (no _count),
-    /// the server returns 412 Precondition Failed with an OperationOutcome.
+    /// Ignixa advertises single conditional delete and returns 412 for ambiguous criteria.
+    /// R4 permits this policy; _count is Ignixa's separate opt-in deletion-limit extension.
     /// </remarks>
     [Fact]
     public async Task GivenConditionalDelete_WhenMultipleMatchesInSingleMode_ThenReturnsPreconditionFailed()
@@ -161,8 +161,8 @@ public class ConditionalDeleteTests : CapabilityDrivenTestBase
     /// Expected: Deletes up to _count resources and returns 200 OK with OperationOutcome.
     /// </summary>
     /// <remarks>
-    /// FHIR R4 Section 3.1.0.6: When _count parameter is provided (multiple mode),
-    /// the server deletes up to _count matching resources and returns 200 OK with OperationOutcome.
+    /// Ignixa's _count extension deletes up to the requested limit and reports the result.
+    /// This partial-deletion limit protocol is not specified by R4.
     /// </remarks>
     [Fact]
     public async Task GivenConditionalDeleteWithCount_WhenMatchesExist_ThenDeletesUpToCount()

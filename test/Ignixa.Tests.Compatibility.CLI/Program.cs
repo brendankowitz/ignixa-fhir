@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Linq;
 using Xunit.Runners;
@@ -29,68 +30,84 @@ class Program
         public const string Gray = ESC + "[90m";
     }
 
-    static async Task<int> Main(string[] args)
+    static Task<int> Main(string[] args) => InvokeAsync(args, CancellationToken.None);
+
+    internal static async Task<int> InvokeAsync(string[] args, CancellationToken cancellationToken)
     {
-        var urlOption = new Option<string>(
-            name: "--url",
-            description: "FHIR server base URL",
-            getDefaultValue: () => "http://localhost:5000");
+        var urlOption = new Option<string>("--url")
+        {
+            Description = "FHIR server base URL",
+            DefaultValueFactory = _ => "http://localhost:5000"
+        };
 
-        var outputOption = new Option<string>(
-            name: "--output",
-            description: "Output JSON report file path",
-            getDefaultValue: () => "compatibility-report.json");
+        var outputOption = new Option<string>("--output")
+        {
+            Description = "Output JSON report file path",
+            DefaultValueFactory = _ => "compatibility-report.json"
+        };
 
-        var filterOption = new Option<string>(
-            name: "--filter",
-            description: "Filter test names (e.g., 'CreateTests' or comma-separated: 'CreateTests,UpdateTests,SearchTests')",
-            getDefaultValue: () => string.Empty);
+        var filterOption = new Option<string>("--filter")
+        {
+            Description = "Filter test names (e.g., 'CreateTests' or comma-separated: 'CreateTests,UpdateTests,SearchTests')",
+            DefaultValueFactory = _ => string.Empty
+        };
 
-        var skipOption = new Option<string>(
-            name: "--skip",
-            description: "Skip test categories (comma-separated). Options: Import, Export, Convert, Bulk, Auth, Metrics, Audit, CustomConvert, CustomImport, CustomExport",
-            getDefaultValue: () => "Import,Export,Convert,Bulk,CustomConvert,CustomImport,CustomExport");
+        var skipOption = new Option<string>("--skip")
+        {
+            Description = "Skip test categories (comma-separated). Options: Import, Export, Convert, Bulk, Auth, Metrics, Audit, CustomConvert, CustomImport, CustomExport",
+            DefaultValueFactory = _ => "Import,Export,Convert,Bulk,CustomConvert,CustomImport,CustomExport"
+        };
 
         // Viewer command options
         var viewerCommand = new Command("viewer", "Launch the test results viewer UI");
 
-        var portOption = new Option<int>(
-            name: "--port",
-            description: "HTTP server port for the viewer",
-            getDefaultValue: () => 8080);
-
-        var reportOption = new Option<string>(
-            name: "--report",
-            description: "Auto-load a test report JSON file",
-            getDefaultValue: () => string.Empty);
-
-        viewerCommand.AddOption(portOption);
-        viewerCommand.AddOption(reportOption);
-
-        viewerCommand.SetHandler(async (port, report) =>
+        var portOption = new Option<int>("--port")
         {
-            await TestResultsViewerCommand.RunViewerAsync(port, string.IsNullOrEmpty(report) ? null : report);
-        }, portOption, reportOption);
-
-        var rootCommand = new RootCommand("FHIR Compatibility Test Tool - Runs Microsoft.Health.Fhir.R4.Tests.E2E against target server")
-        {
-            urlOption,
-            outputOption,
-            filterOption,
-            skipOption,
-            viewerCommand
+            Description = "HTTP server port for the viewer",
+            DefaultValueFactory = _ => 8080
         };
 
-        rootCommand.SetHandler(async (url, output, filter, skip) =>
+        var reportOption = new Option<string>("--report")
         {
-            await RunCompatibilityTests(url, output, filter, skip);
-        }, urlOption, outputOption, filterOption, skipOption);
+            Description = "Auto-load a test report JSON file",
+            DefaultValueFactory = _ => string.Empty
+        };
 
-        return await rootCommand.InvokeAsync(args);
+        viewerCommand.Options.Add(portOption);
+        viewerCommand.Options.Add(reportOption);
+
+        viewerCommand.SetAction(async (parseResult, cancellationToken) =>
+        {
+            var report = parseResult.GetValue(reportOption);
+            await TestResultsViewerCommand.RunViewerAsync(
+                parseResult.GetValue(portOption), string.IsNullOrEmpty(report) ? null : report);
+        });
+
+        var rootCommand = new RootCommand("FHIR Compatibility Test Tool - Runs Microsoft.Health.Fhir.R4.Tests.E2E against target server");
+        rootCommand.Options.Add(urlOption);
+        rootCommand.Options.Add(outputOption);
+        rootCommand.Options.Add(filterOption);
+        rootCommand.Options.Add(skipOption);
+        rootCommand.Subcommands.Add(viewerCommand);
+
+        rootCommand.SetAction((parseResult, actionCancellationToken) => RunCompatibilityTests(
+            parseResult.GetValue(urlOption),
+            parseResult.GetValue(outputOption),
+            parseResult.GetValue(filterOption),
+            parseResult.GetValue(skipOption),
+            actionCancellationToken));
+
+        return await rootCommand.Parse(args).InvokeAsync(cancellationToken: cancellationToken);
     }
 
-    static async Task RunCompatibilityTests(string baseUrl, string outputPath, string testFilter, string skipCategories)
+    static async Task<int> RunCompatibilityTests(
+        string baseUrl, string outputPath, string testFilter, string skipCategories, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            await Console.Error.WriteLineAsync("Compatibility run cancelled before execution.");
+            return 130;
+        }
         PrintHeader();
         Console.WriteLine($"{Color.Blue}▶ Target Server:{Color.Reset}   {Color.Cyan}{baseUrl}{Color.Reset}");
         Console.WriteLine($"{Color.Blue}▶ Output Report:{Color.Reset}   {Color.Cyan}{outputPath}{Color.Reset}");
@@ -118,8 +135,8 @@ class Program
 
         if (!File.Exists(e2eAssemblyPath))
         {
-            Console.WriteLine($"{Color.Red}✗ ERROR:{Color.Reset} E2E test assembly not found at: {e2eAssemblyPath}");
-            return;
+            await Console.Error.WriteLineAsync($"{Color.Red}✗ ERROR:{Color.Reset} E2E test assembly not found at: {e2eAssemblyPath}");
+            return 2;
         }
 
         Console.WriteLine($"{Color.Gray}[*] Loading test assembly...{Color.Reset}");
@@ -142,11 +159,15 @@ class Program
             TestRunDate = DateTime.UtcNow,
             Results = new List<TestResult>()
         };
+        var results = new ConcurrentQueue<TestResult>();
+        var runnerErrors = new ConcurrentQueue<string>();
 
-        var finished = new ManualResetEvent(false);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         using (var runner = AssemblyRunner.WithoutAppDomain(e2eAssemblyPath))
         {
+            runner.OnErrorMessage = info => runnerErrors.Enqueue($"{info.ExceptionType}: {info.ExceptionMessage}");
+
             // Parse skip categories
             var categoriesToSkip = string.IsNullOrEmpty(skipCategories)
                 ? new List<string>()
@@ -189,12 +210,10 @@ class Program
                 return matchesDataStore;
             };
 
-            var discoveredCount = 0;
             runner.OnDiscoveryComplete = info =>
             {
-                discoveredCount = info.TestCasesDiscovered;
                 Console.WriteLine($"{Color.Cyan}✓ Discovery Complete{Color.Reset}");
-                Console.WriteLine($"  {Color.Bold}{info.TestCasesDiscovered}{Color.Reset} test cases discovered (filtered for {Color.Yellow}SqlServer + Json{Color.Reset})");
+                Console.WriteLine($"  {Color.Bold}{info.TestCasesDiscovered}{Color.Reset} test cases discovered; {Color.Bold}{info.TestCasesToRun}{Color.Reset} selected after filters and skips");
                 Console.WriteLine();
             };
 
@@ -218,7 +237,7 @@ class Program
                 report.Failed = info.TestsFailed;
                 report.Skipped = info.TestsSkipped;
 
-                finished.Set();
+                finished.TrySetResult();
             };
 
             runner.OnTestStarting = info =>
@@ -230,7 +249,7 @@ class Program
             {
                 Console.WriteLine($"{Color.Green}✓{Color.Reset} {GetTestCategory(info.TestDisplayName)} - {Color.Gray}{info.ExecutionTime:F2}s{Color.Reset}");
 
-                report.Results.Add(new TestResult
+                results.Enqueue(new TestResult
                 {
                     TestName = info.TestDisplayName,
                     Category = GetTestCategory(info.TestDisplayName),
@@ -250,7 +269,7 @@ class Program
                     Console.WriteLine($"  {Color.Gray}→ {shortError}{Color.Reset}");
                 }
 
-                report.Results.Add(new TestResult
+                results.Enqueue(new TestResult
                 {
                     TestName = info.TestDisplayName,
                     Category = GetTestCategory(info.TestDisplayName),
@@ -267,7 +286,7 @@ class Program
             {
                 Console.WriteLine($"{Color.Yellow}⊘{Color.Reset} {GetTestCategory(info.TestDisplayName)}");
 
-                report.Results.Add(new TestResult
+                results.Enqueue(new TestResult
                 {
                     TestName = info.TestDisplayName,
                     Category = GetTestCategory(info.TestDisplayName),
@@ -277,18 +296,31 @@ class Program
                 });
             };
 
-            Console.WriteLine($"{Color.Bold}{Color.Cyan}▶ Running {discoveredCount} tests...{Color.Reset}");
+            Console.WriteLine($"{Color.Bold}{Color.Cyan}▶ Discovering and running selected compatibility tests...{Color.Reset}");
             Console.WriteLine();
 
             runner.Start();
 
-            finished.WaitOne();
-            finished.Dispose();
+            try
+            {
+                await finished.Task.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                runner.Cancel();
+                // xUnit cannot abort a currently executing test. Finish its cleanup before disposing the runner.
+                await finished.Task;
+            }
         }
+
+        report.Results = results.ToList();
+        report.RunnerErrors = runnerErrors.ToList();
+        report.Cancelled = cancellationToken.IsCancellationRequested;
 
         // Save JSON report
         var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(outputPath, json);
+        // A cancelled run still needs its partial report and cancellation marker persisted.
+        await File.WriteAllTextAsync(outputPath, json, CancellationToken.None);
 
         Console.WriteLine();
         Console.WriteLine($"{Color.Green}✓{Color.Reset} Report saved to: {Color.Cyan}{outputPath}{Color.Reset}");
@@ -308,6 +340,31 @@ class Program
         if (report.Skipped > 0)
             Console.WriteLine($"  {Color.Yellow}⊘ Skipped:{Color.Reset}           {Color.Yellow}{Color.Bold}{report.Skipped}{Color.Reset}");
         PrintSeparator();
+
+        if (report.Cancelled)
+        {
+            await Console.Error.WriteLineAsync($"{Color.Red}✗ Compatibility run cancelled; report may be partial.{Color.Reset}");
+            return 130;
+        }
+        if (report.RunnerErrors.Count > 0)
+        {
+            foreach (var error in report.RunnerErrors)
+            {
+                await Console.Error.WriteLineAsync($"{Color.Red}✗ Test runner error: {error}{Color.Reset}");
+            }
+            return 2;
+        }
+        if (report.Failed > 0)
+        {
+            await Console.Error.WriteLineAsync($"{Color.Red}✗ Required compatibility tests failed.{Color.Reset}");
+            return 1;
+        }
+        if (report.Passed == 0)
+        {
+            await Console.Error.WriteLineAsync($"{Color.Red}✗ No compatibility tests executed successfully: selection was empty or all tests were skipped.{Color.Reset}");
+            return 2;
+        }
+        return 0;
     }
 
     static void PrintHeader()
@@ -417,6 +474,8 @@ class CompatibilityReport
     public int Failed { get; set; }
     public int Skipped { get; set; }
     public List<TestResult> Results { get; set; } = new();
+    public List<string> RunnerErrors { get; set; } = new();
+    public bool Cancelled { get; set; }
     public double PassRate => TotalTests > 0 ? (double)Passed / TotalTests : 0;
 }
 

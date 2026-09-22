@@ -7,6 +7,7 @@ using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Terminology.Models;
 using Ignixa.Application.BackgroundOperations.Terminology.Orchestrations;
 using Ignixa.Application.Events.Terminology;
+using Ignixa.Domain.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 
@@ -19,20 +20,39 @@ namespace Ignixa.Application.BackgroundOperations.Terminology.EventHandlers;
 public class TerminologyImportTriggeredHandler : INotificationHandler<TerminologyImportTriggeredEvent>
 {
     private readonly TaskHubClient _taskHubClient;
+    private readonly IPackageResourceRepository _packageResources;
     private readonly ILogger<TerminologyImportTriggeredHandler> _logger;
 
     public TerminologyImportTriggeredHandler(
         TaskHubClient taskHubClient,
-        ILogger<TerminologyImportTriggeredHandler> logger)
+        ILogger<TerminologyImportTriggeredHandler> logger,
+        IPackageResourceRepository packageResources)
     {
         _taskHubClient = taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _packageResources = packageResources ?? throw new ArgumentNullException(nameof(packageResources));
     }
 
     public async Task HandleAsync(TerminologyImportTriggeredEvent notification, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(notification);
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
+            var ids = notification.PackageResourceIds.ToHashSet();
+            if (ids.Count != notification.PackageResourceIds.Count)
+            {
+                throw new InvalidOperationException("Terminology import requests require distinct package resource IDs.");
+            }
+            var resources = await _packageResources.ListPackageResourcesAsync(
+                notification.PackageId, notification.PackageVersion, cancellationToken: cancellationToken);
+            var selected = resources.Where(resource => ids.Contains(resource.PackageResourceId)).ToArray();
+            if (selected.Length != ids.Count)
+            {
+                throw new InvalidOperationException("Terminology import resources are missing from the active package version.");
+            }
+            var plan = TerminologyImportPlanner.Create(selected);
+
             // Create unique instance ID for this package
             // Format: terminology-import-{tenantId}-{packageId}-{packageVersion}
             // This ensures idempotency: re-triggering for the same package reuses the same orchestration
@@ -42,7 +62,8 @@ public class TerminologyImportTriggeredHandler : INotificationHandler<Terminolog
                 TenantId: notification.TenantId,
                 PackageId: notification.PackageId,
                 PackageVersion: notification.PackageVersion,
-                PackageResourceIds: notification.PackageResourceIds);
+                PackageResourceIds: notification.PackageResourceIds,
+                DependencyPlan: plan);
 
             _logger.LogInformation(
                 "Starting TerminologyImportOrchestration {InstanceId} for {Count} resources from package {PackageId}@{PackageVersion}",
@@ -60,6 +81,10 @@ public class TerminologyImportTriggeredHandler : INotificationHandler<Terminolog
                 "Successfully created orchestration instance {InstanceId}",
                 instance.InstanceId);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(
@@ -69,8 +94,9 @@ public class TerminologyImportTriggeredHandler : INotificationHandler<Terminolog
                 notification.PackageVersion,
                 ex.Message);
 
-            // Don't throw - allow event handling to complete even if orchestration fails to start
-            // The package load should succeed, and terminology import can be retried manually
+            // Package-load and bootstrap callers own the recoverable boundary. They must see creation
+            // failures rather than logging a published job that was never submitted.
+            throw;
         }
     }
 }

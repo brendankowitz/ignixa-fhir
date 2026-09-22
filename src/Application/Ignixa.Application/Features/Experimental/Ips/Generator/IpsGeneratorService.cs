@@ -169,7 +169,7 @@ public class IpsGeneratorService(
 
         var searchOptions = new SearchOptions
         {
-            ResourceType = null, // Multi-resource type search
+            ResourceType = "Patient", // Operation anchor; the expression selects the section resource types.
             Expression = expression,
             MaxItemCount = DefaultMaxIpsResources,
             Total = TotalType.None

@@ -314,7 +314,7 @@ public class NarrativeCheckTests
 
         // Assert
         Assert.False(result.IsValid);
-        Assert.Contains(result.Issues, i => i.Message.Contains("Invalid entity in the XHTML ('&reg;')", StringComparison.Ordinal));
+        Assert.Contains(result.Issues, i => i.Message.Contains("undefined entities", StringComparison.Ordinal));
     }
 
     [Fact]

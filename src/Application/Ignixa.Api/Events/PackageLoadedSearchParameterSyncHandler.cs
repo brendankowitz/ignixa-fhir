@@ -83,6 +83,15 @@ public class PackageLoadedSearchParameterSyncHandler(
                 return;
             }
 
+            if (string.Equals(tenantConfig.Storage.Type, "FileSystem", StringComparison.OrdinalIgnoreCase))
+            {
+                await capabilityCacheInvalidator.InvalidateForTenantAsync(notification.TenantId, cancellationToken);
+                logger.LogInformation(
+                    "Invalidated capability cache for FileSystem tenant {TenantId}; SQL catalog synchronization is not applicable",
+                    notification.TenantId);
+                return;
+            }
+
             var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
 
             logger.LogDebug(
@@ -149,9 +158,8 @@ public class PackageLoadedSearchParameterSyncHandler(
         {
             logger.LogError(
                 ex,
-                "Failed to sync search parameters for {PackageId}@{PackageVersion} in tenant {TenantId}. "
-                + "Resources written for this tenant will be missing index rows for any parameter that did not "
-                + "reach dbo.SearchParam, so this is surfaced rather than swallowed.",
+                "Failed to refresh search-parameter state for {PackageId}@{PackageVersion} in tenant {TenantId}. "
+                + "SQL catalog synchronization and capability invalidation failures are surfaced rather than swallowed.",
                 notification.PackageId,
                 notification.PackageVersion,
                 notification.TenantId);

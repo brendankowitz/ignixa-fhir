@@ -133,14 +133,14 @@ public class SqlServerSearchIndexReferenceDataCacheSyncTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenAnOverrideTargetWithNoRow_WhenSyncSearchParametersToDatabase_ThenTheParameterIsCachedUnderItsOwnId()
+    public async Task GivenAnOverrideTargetWithNoRow_WhenSyncSearchParametersToDatabase_ThenItsRootIsProvisionedBeforeIndexing()
     {
-        // Arrange: the override target is unknown to the database, so there is no id to alias to.
         const string overridingUrl = "http://example.org/SearchParameter/orphan-override";
+        const string rootUrl = "http://example.org/SearchParameter/never-created";
         var overridingParameter = new SearchParameterInfo(
             "orphan-override", "orphan-override", SearchParamType.Token, new Uri(overridingUrl))
         {
-            OverridesUrl = new Uri("http://example.org/SearchParameter/never-created"),
+            OverridesUrl = new Uri(rootUrl),
         };
         var manager = new StubSearchParameterDefinitionManager(
             new Dictionary<string, SearchParameterInfo>(StringComparer.Ordinal) { [overridingUrl] = overridingParameter });
@@ -151,7 +151,40 @@ public class SqlServerSearchIndexReferenceDataCacheSyncTests : IAsyncLifetime
         // Assert
         var ownId = await _database.ExecuteScalarAsync<short>(
             $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{overridingUrl}'");
-        _cache.TryGetSearchParamIdFromCache(overridingUrl).ShouldBe(ownId);
+        (await _database.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.SearchParam WHERE Uri = '{rootUrl}'")).ShouldBe(1);
+        var rootId = await _database.ExecuteScalarAsync<short>(
+            $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{rootUrl}'");
+        _cache.TryGetSearchParamIdFromCache(overridingUrl).ShouldBe(rootId);
+        rootId.ShouldNotBe(ownId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenAnUnanchoredOverrideCycle_WhenSyncing_ThenItFailsBeforeWritingCatalogRows(bool selfCycle)
+    {
+        const string firstUrl = "http://example.org/SearchParameter/cycle-first";
+        const string secondUrl = "http://example.org/SearchParameter/cycle-second";
+        var first = new SearchParameterInfo("cycle", "cycle", SearchParamType.Token, new Uri(firstUrl))
+        {
+            OverridesUrl = new Uri(selfCycle ? firstUrl : secondUrl)
+        };
+        var second = new SearchParameterInfo("cycle", "cycle", SearchParamType.Token, new Uri(secondUrl))
+        {
+            OverridesUrl = new Uri(firstUrl)
+        };
+        var manager = new StubSearchParameterDefinitionManager(new Dictionary<string, SearchParameterInfo>
+        {
+            [firstUrl] = first,
+            [secondUrl] = second
+        });
+
+        var failure = await Should.ThrowAsync<InvalidOperationException>(
+            () => _cache.SyncSearchParametersToDatabaseAsync([firstUrl, secondUrl], manager, CancellationToken.None));
+
+        failure.Message.ShouldContain("cycle");
+        (await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.SearchParam")).ShouldBe(0);
     }
 
     [Fact]

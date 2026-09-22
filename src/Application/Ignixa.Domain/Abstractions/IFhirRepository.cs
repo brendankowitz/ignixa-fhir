@@ -123,6 +123,37 @@ public interface IFhirRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Counts stored versions of a resource, including current, historical, and deleted versions.
+    /// Applies the inclusive Since/Until filters but ignores pagination and sort. Does not load
+    /// resource bodies or validate their contents. Storage/metadata errors must propagate rather
+    /// than returning an incomplete total; totals exceeding Int32.MaxValue must fail explicitly.
+    /// The count and a subsequent page are separate reads, not a snapshot.
+    /// </summary>
+    Task<int> CountResourceHistoryAsync(
+        ResourceKey key,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts all stored versions of a resource type in the tenant, with the same filtering,
+    /// body-free counting, and failure contract as <see cref="CountResourceHistoryAsync"/>.
+    /// </summary>
+    Task<int> CountTypeHistoryAsync(
+        string resourceType,
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts all stored versions in the tenant, with the same filtering, body-free counting,
+    /// and failure contract as <see cref="CountResourceHistoryAsync"/>.
+    /// </summary>
+    Task<int> CountSystemHistoryAsync(
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes a resource (soft delete per FHIR R4 specification).
     /// Creates a new version marked as deleted (tombstone) with incremented version number.
     /// DELETE [base]/[type]/[id]
@@ -163,8 +194,18 @@ public interface IFhirRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Deletes all versions and indexes only if the selected resource is still current and expired.
+    /// Revalidates identity and expiry atomically with deletion. Returns false for a stale candidate;
+    /// callers must not count or audit that result as a completed deletion.
+    /// </summary>
+    Task<bool> TryHardDeleteExpiredResourceAsync(
+        ExpiredResourceInfo resource,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Hard deletes a resource: removes all versions, all search indexes, and TTL entry.
-    /// Used for TTL expiration and GDPR right-to-be-forgotten.
+    /// Used for explicit erasure such as GDPR right-to-be-forgotten, regardless of TTL.
+    /// TTL cleanup must use TryHardDeleteExpiredResourceAsync instead.
     /// This is PHYSICAL deletion, not FHIR logical deletion.
     /// </summary>
     /// <param name="resourceTypeId">Resource type ID (short).</param>

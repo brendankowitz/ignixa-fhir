@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Api.Http;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
@@ -93,7 +94,10 @@ public class ResourceTypeValidationFilter : IEndpointFilter
                 Diagnostics = $"Resource type '{resourceType}' is not supported by this server (FHIR {tenantConfig.FhirVersion})"
             });
 
-            return Results.Json(outcome, statusCode: StatusCodes.Status404NotFound);
+            return Results.Content(
+                outcome.SerializeToString(),
+                KnownContentTypes.ApplicationFhirJson,
+                statusCode: StatusCodes.Status404NotFound);
         }
 
         // Resource type is valid - continue to handler

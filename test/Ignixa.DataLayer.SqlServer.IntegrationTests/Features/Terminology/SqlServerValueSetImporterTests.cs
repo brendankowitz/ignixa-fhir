@@ -114,8 +114,7 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
         await ImportValueSetAsync(
             url, TerminologyTestFixture.ExpandedValueSetJson(url, CodeSystemUrl, "car", "truck", "building"));
 
-        // Shouldly 4.3 has no value-returning NotThrowAsync, so the result is read back on a second call --
-        // which the service answers from its own cache rather than the database.
+        // Shouldly 4.3 has no value-returning NotThrowAsync, so read the result with a second SQL-backed call.
         var service = _fixture.CreateTerminologyService();
 
         await Should.NotThrowAsync(() => service.ExpandValueSetAsync(
@@ -130,7 +129,7 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenAValueSetWithoutAName_WhenImported_ThenItFailsOntoThePackageRowRatherThanThrowing()
+    public async Task GivenAValueSetWithoutAName_WhenImported_ThenItCompletesWithoutFabricatingMetadata()
     {
         const string url = "http://example.org/fhir/ValueSet/ported-nameless";
 
@@ -139,8 +138,9 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
 
         var importer = _fixture.CreateSqlServerImporter();
 
-        await Should.NotThrowAsync(() => importer.ImportValueSetAsync(
-            _fixture.SystemPartitionId, packageResource, CancellationToken.None));
+        var result = await importer.ImportValueSetAsync(
+            _fixture.SystemPartitionId, packageResource, CancellationToken.None);
+        result.Success.ShouldBeTrue();
 
         var status = await _fixture.ExecuteScalarAsync<string>(
             "SELECT TOP 1 TerminologyImportStatus FROM dbo.PackageResource " +
@@ -149,8 +149,11 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
             "SELECT TOP 1 ISNULL(ImportErrorMessage, '') FROM dbo.PackageResource " +
             $"WHERE PackageResourceId = {packageResource.PackageResourceId}", CancellationToken.None);
 
-        status.ShouldBe("Failed");
-        error.ShouldContain("name is required");
+        status.ShouldBe("Completed");
+        error.ShouldBeEmpty();
+        (await _fixture.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.TermValueSet WHERE PackageResourceId = {packageResource.PackageResourceId} AND Name IS NULL",
+            CancellationToken.None)).ShouldBe(1);
     }
 
     [Fact]

@@ -2,7 +2,7 @@ CREATE TABLE dbo.TermCodeSystem (
     TermCodeSystemId BIGINT         NOT NULL IDENTITY (1, 1),
     PackageResourceId BIGINT        NOT NULL,
     SystemId          INT           NOT NULL,
-    Version           NVARCHAR (100) NULL,
+    Version           NVARCHAR (100) COLLATE Latin1_General_100_CS_AS NULL,
     ConceptCount      INT           NOT NULL,
     Content           NVARCHAR (50) NOT NULL,
     IsHierarchical    BIT           NOT NULL,

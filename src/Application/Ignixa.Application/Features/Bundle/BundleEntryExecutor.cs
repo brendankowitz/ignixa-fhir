@@ -114,23 +114,20 @@ public class BundleEntryExecutor
             // Create mini HttpContext for bundle entry
             var httpContext = new DefaultHttpContext();
             var responseBodyStream = _memoryStreamManager.GetStream("bundle-entry-response");
+            var parentHttpContext = _httpContextAccessor.HttpContext
+                ?? throw new InvalidOperationException("No parent HTTP context available for bundle entry execution");
 
-            // Copy RequestServices from parent HttpContext if available
-            // This allows endpoints to resolve dependencies via [FromServices]
-            if (_httpContextAccessor.HttpContext?.RequestServices != null)
-            {
-                httpContext.RequestServices = _httpContextAccessor.HttpContext.RequestServices;
-
-                // NOTE: Tenant context propagation now handled by IFhirRequestContext (AsyncLocal storage)
-                // No need to copy HttpContext.Items - the isolated context is already set above (lines 76-106)
-            }
+            httpContext.RequestServices = parentHttpContext.RequestServices;
+            httpContext.User = parentHttpContext.User;
 
             // Set request properties
             httpContext.Request.Protocol = "HTTP/1.1";
-            httpContext.Request.Scheme = "http";
+            httpContext.RequestAborted = cancellationToken;
+            httpContext.Request.Scheme = parentHttpContext.Request.Scheme;
+            httpContext.Request.Host = parentHttpContext.Request.Host;
             httpContext.Request.Method = entry.HttpVerb.ToUpperInvariant();
             httpContext.Request.PathBase = string.Empty;
-            httpContext.Request.Path = ParsePath(entry.RequestUrl).Value ?? string.Empty;
+            httpContext.Request.Path = $"/tenant/{parentContext.TenantId}" + ParsePath(entry.RequestUrl).Value;
             httpContext.Request.QueryString = ParseQueryString(entry.RequestUrl);
             httpContext.Request.Body = Stream.Null;
 
@@ -156,9 +153,7 @@ public class BundleEntryExecutor
                     entry.IfMatch);
             }
 
-            var parentHttpContext = _httpContextAccessor.HttpContext;
-            if (parentHttpContext is not null &&
-                parentHttpContext.Request.Headers.TryGetValue("X-TTL", out var ttlHeader) &&
+            if (parentHttpContext.Request.Headers.TryGetValue("X-TTL", out var ttlHeader) &&
                 entry.HttpVerb is "POST" or "PUT" or "PATCH")
             {
                 httpContext.Request.Headers["X-TTL"] = ttlHeader;
@@ -186,7 +181,12 @@ public class BundleEntryExecutor
             await _pipelineExecutor.ExecuteAsync(httpContext);
 
             // Extract response from HttpContext
-            return await ExtractResponseAsync(httpContext, cancellationToken);
+            var response = await ExtractResponseAsync(httpContext, cancellationToken);
+            return HttpMethods.IsHead(entry.HttpVerb) ? response with { ResourceJson = null } : response;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (ResourceVersionConflictException conflictEx)
         {

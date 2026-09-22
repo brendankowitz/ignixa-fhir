@@ -60,7 +60,7 @@ public class ValidationBehaviorResourceScopeTests
         var behavior = BuildBehavior(recordingCheck, out var request);
 
         // Act
-        await behavior.HandleAsync(request, () => Task.FromResult(new ResourceKey("Patient", "patient-123")), CancellationToken.None);
+        await behavior.HandleAsync(request, () => Task.FromResult(CommittedResult()), CancellationToken.None);
 
         // Assert
         recordingCheck.WasInvoked.ShouldBeTrue();
@@ -90,7 +90,7 @@ public class ValidationBehaviorResourceScopeTests
         // Wraps the real invariant so the test can tell "validation passed" apart from "validation never
         // ran": with only result.ShouldNotBeNull()/Id assertions, a behavior that silently skipped the
         // Profile/Full tier entirely (e.g. a broken depth or tier filter) would return the same successful
-        // ResourceKey and this test would pass for the wrong reason.
+        // UpdateResult and this test would pass for the wrong reason.
         var recordingInvariant = new InvocationRecordingCheck(invariant);
 
         // Profile tier at Full depth: that is where FhirPathInvariantCheck actually runs, so this is the
@@ -101,14 +101,17 @@ public class ValidationBehaviorResourceScopeTests
         // Act
         var result = await behavior.HandleAsync(
             request,
-            () => Task.FromResult(new ResourceKey("Patient", "patient-123")),
+            () => Task.FromResult(CommittedResult()),
             CancellationToken.None);
 
         // Assert
         recordingInvariant.WasInvoked.ShouldBeTrue("the Profile/Full validation path must actually run the invariant, not just skip through to success");
         result.ShouldNotBeNull();
-        result.Id.ShouldBe("patient-123");
+        result.Key.Id.ShouldBe("patient-123");
     }
+
+    private static UpdateResult CommittedResult() =>
+        new(new ResourceKey("Patient", "patient-123"), ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow);
 
     private enum ValidationTier
     {
@@ -143,6 +146,7 @@ public class ValidationBehaviorResourceScopeTests
         };
 
         var fhirContext = Substitute.For<IFhirRequestContext>();
+        fhirContext.TenantId.Returns(1);
         fhirContext.TenantConfiguration.Returns(tenantConfiguration);
         fhirContext.FhirVersion.Returns(FhirVersion.R4);
 
@@ -159,7 +163,7 @@ public class ValidationBehaviorResourceScopeTests
         return new ValidationBehavior(
             contextAccessor,
             versionContext,
-            _ => schemaResolver,
+            (_, _) => schemaResolver,
             Substitute.For<ITerminologyService>(),
             NullLogger<ValidationBehavior>.Instance);
     }

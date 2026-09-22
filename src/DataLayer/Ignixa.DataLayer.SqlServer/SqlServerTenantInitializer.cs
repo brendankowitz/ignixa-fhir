@@ -20,10 +20,10 @@ namespace Ignixa.DataLayer.SqlServer;
 /// <b>Seed and preload are one step against one instance, deliberately.</b> The seed used to run against
 /// the EF cache and the preload against the SqlServer one -- two caches, one of which the write path never
 /// consulted. <see cref="SqlServerSearchIndexCacheRegistry"/> now owns the single per-tenant instance, and
-/// it preloads on creation, so the cache is obtained (preloaded) and then seeded against that same
-/// instance. <c>SyncSearchParametersToDatabaseAsync</c> caches each id as it writes it, so seeding after
-/// the preload leaves the map exactly as complete as seeding before it would have; what matters is that
-/// both touch the one instance the write path reads.
+/// it seeds authoritative definitions and preloads on creation. Core definitions are then seeded against
+/// that same instance without replacing its authority. Both seeding and preloading populate the one
+/// instance the write path reads; standalone caches without authoritative definitions adopt the core
+/// manager here and can subsequently gain package definitions through synchronization.
 /// </para>
 /// </summary>
 public sealed class SqlServerTenantInitializer(
@@ -35,13 +35,17 @@ public sealed class SqlServerTenantInitializer(
     private readonly SqlServerSearchIndexCacheRegistry _cacheRegistry = cacheRegistry ?? throw new ArgumentNullException(nameof(cacheRegistry));
     private readonly ILogger<SqlServerTenantInitializer> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
+    public Task<SqlServerSearchIndexReferenceDataCache> GetReferenceDataCacheAsync(
+        int tenantId, CancellationToken cancellationToken) =>
+        _cacheRegistry.GetOrCreateAsync(tenantId, cancellationToken);
+
     /// <summary>
     /// Runs the four initialization steps for <paramref name="tenantId"/> and returns the tenant's shared
     /// reference data cache, ready for the write and search paths.
     /// </summary>
     /// <param name="searchParameterDefinitionManager">
-    /// Supplies the canonical URLs to seed, and the <c>OverridesUrl</c> aliasing applied while caching the
-    /// resulting ids.
+    /// Supplies the core definitions to seed alongside the cache's authoritative tenant definitions.
+    /// Adopted as the definition manager only when the cache does not already have one.
     /// </param>
     public async Task<SqlServerSearchIndexReferenceDataCache> InitializeAsync(
         int tenantId,
@@ -52,22 +56,15 @@ public sealed class SqlServerTenantInitializer(
 
         await DeploySchemaAsync(tenantId, cancellationToken);
 
-        var cache = await _cacheRegistry.GetOrCreateAsync(tenantId, cancellationToken);
+        var cache = await GetReferenceDataCacheAsync(tenantId, cancellationToken);
 
-        var searchParameterUrls = searchParameterDefinitionManager.AllSearchParameters
-            .Where(sp => sp.Url is not null)
-            .Select(sp => sp.Url!.ToString())
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-
-        var syncedCount = await cache.SyncSearchParametersToDatabaseAsync(
-            searchParameterUrls, searchParameterDefinitionManager, cancellationToken);
+        var syncedCount = await cache.SeedSearchParametersToDatabaseAsync(
+            searchParameterDefinitionManager, cancellationToken);
 
         _logger.LogInformation(
-            "Search parameter catalog synced for tenant {TenantId}: {SyncedCount} of {TotalCount} URLs",
+            "Search parameter catalog seeded for tenant {TenantId}: {SyncedCount} new URLs",
             tenantId,
-            syncedCount,
-            searchParameterUrls.Count);
+            syncedCount);
 
         return cache;
     }

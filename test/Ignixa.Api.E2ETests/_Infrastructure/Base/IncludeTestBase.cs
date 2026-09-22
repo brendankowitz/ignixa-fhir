@@ -19,6 +19,8 @@ namespace Ignixa.Api.E2ETests._Infrastructure.Base;
 /// </summary>
 public abstract class IncludeTestBase : CapabilityDrivenTestBase
 {
+    protected const string TestTagSystem = "http://ignixa.io/fhir/CodeSystem/test-isolation";
+
     protected IncludeTestBase(IgnixaApiFixture fixture) : base(fixture)
     {
     }
@@ -77,7 +79,7 @@ public abstract class IncludeTestBase : CapabilityDrivenTestBase
             {
                 new JsonObject
                 {
-                    ["system"] = "testTag",
+                    ["system"] = TestTagSystem,
                     ["code"] = tag
                 }
             }

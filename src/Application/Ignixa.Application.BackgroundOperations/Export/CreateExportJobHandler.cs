@@ -6,12 +6,15 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
+using Ignixa.Application.Features.Search;
 using Ignixa.DataLayer.BlobStorage;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 using Ignixa.SqlOnFhir.Parsing;
+using Ignixa.Specification.ValueSets.Normative;
 using Medino;
 
 namespace Ignixa.Application.BackgroundOperations.Export;
@@ -25,15 +28,24 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
     private readonly TaskHubClient _taskHubClient;
     private readonly IBackgroundJobRepository<ExportJobDefinition> _jobRepository;
     private readonly ViewDefinitionLoader? _viewDefinitionLoader;
+    private readonly ITenantConfigurationStore _tenantConfigurationStore;
+    private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly ExportGroupResolver _groupResolver;
 
     public CreateExportJobHandler(
         TaskHubClient taskHubClient,
         IBackgroundJobRepository<ExportJobDefinition> jobRepository,
+        ITenantConfigurationStore tenantConfigurationStore,
+        IFhirVersionContext fhirVersionContext,
+        ExportGroupResolver groupResolver,
         ViewDefinitionLoader? viewDefinitionLoader = null)
     {
         _taskHubClient = taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
         _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
         _viewDefinitionLoader = viewDefinitionLoader;
+        _tenantConfigurationStore = tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
+        _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
+        _groupResolver = groupResolver ?? throw new ArgumentNullException(nameof(groupResolver));
     }
 
     public async Task<CreateExportJobResult> HandleAsync(
@@ -89,6 +101,39 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
             }
         }
 
+        var tenant = await _tenantConfigurationStore.GetTenantConfigurationAsync(request.TenantId, cancellationToken)
+            ?? throw new InvalidOperationException($"Tenant {request.TenantId} not found or inactive");
+        var version = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
+        var schema = _fhirVersionContext.GetSchemaProvider(version, request.TenantId);
+
+        if (!string.IsNullOrEmpty(request.GroupId))
+        {
+            // Validate even when there are no resource ranges and no worker will run.
+            await _groupResolver.ResolvePatientIdsAsync(request.TenantId, request.GroupId, schema, cancellationToken);
+        }
+
+        if (request.ResourceTypes.Count == 0)
+        {
+            IEnumerable<string> resourceTypes = schema.ResourceTypeNames
+                .Where(type => !(schema.GetTypeDefinition(type)
+                    ?? throw new InvalidOperationException($"Tenant schema declares '{type}' without a type definition.")).Info.IsAbstract);
+            if (!string.IsNullOrEmpty(request.GroupId))
+            {
+                var compartments = _fhirVersionContext.GetCompartmentDefinitionManager(version);
+                resourceTypes = resourceTypes.Where(type => type == "Patient" ||
+                    (compartments.TryGetSearchParams(type, CompartmentType.Patient, out var parameters) &&
+                        parameters.Count > 0));
+            }
+
+            // Persist discovery in new input; the orchestrator's empty-list fallback belongs to old histories.
+            var snapshot = resourceTypes.Order(StringComparer.Ordinal).ToArray();
+            if (snapshot.Length == 0)
+            {
+                throw new InvalidOperationException("Tenant schema has no applicable export resource types.");
+            }
+            request = request with { ResourceTypes = snapshot };
+        }
+
         // Generate job ID
         var jobId = Guid.NewGuid().ToString();
 
@@ -96,6 +141,7 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
         var job = new BackgroundJob<ExportJobDefinition>
         {
             JobId = jobId,
+            OrchestrationInstanceId = jobId,
             JobType = (int)BackgroundJobType.Export,
             Status = "Queued",
             Definition = new ExportJobDefinition
@@ -105,8 +151,9 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
                 Since = request.Since,
                 TypeFilters = request.TypeFilters,
                 OutputFormat = request.OutputFormat,
-                OutputPath = $"tenant/{request.TenantId}/export/{jobId}",
-                GroupId = request.GroupId
+                OutputPath = $"partition/{request.TenantId}/export/{jobId}",
+                GroupId = request.GroupId,
+                RequestUrl = request.RequestUrl
             },
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
@@ -130,11 +177,6 @@ public class CreateExportJobHandler : IRequestHandler<CreateExportJobCommand, Cr
             typeof(ExportOrchestration),
             jobId, // Use jobId as instance ID for easy lookup
             orchestrationInput);
-
-        // Update job with orchestration instance ID and mark when processing started
-        job.OrchestrationInstanceId = instance.InstanceId;
-        job.StartDate = DateTimeOffset.UtcNow;
-        await _jobRepository.UpdateAsync(job, request.TenantId, cancellationToken);
 
         return new CreateExportJobResult
         {

@@ -75,7 +75,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
 
         // Use FHIR version from context
         var fhirVersionEnum = context.FhirVersion;
-        var schemaProvider = _fhirVersionContext.GetBaseSchemaProvider(fhirVersionEnum);
+        var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersionEnum, context.TenantId);
 
         // Tenant ID available from context for tenant-aware search indexing
         int? tenantId = context.TenantId;
@@ -127,7 +127,10 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             result = new UpdateResult(
                 Key: key,
                 ResourceBytes: System.Text.Encoding.UTF8.GetBytes(resourceJson),
-                LastModified: DateTimeOffset.UtcNow);
+                LastModified: command.JsonNode.Meta.LastUpdatedOffset ?? DateTimeOffset.UtcNow)
+            {
+                IsCreated = coordinator.IsCreated(entryIndex)
+            };
         }
         else
         {
@@ -277,6 +280,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         {
             FhirVersion = fhirVersionEnum.ToVersionString(), // Convert enum to string for storage
             SearchIndices = searchIndices?.ToArray(),
+            ExpectedVersionId = command.IfMatch,
             ExpiresAt = command.ExpiresAt
         };
     }

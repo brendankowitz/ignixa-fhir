@@ -53,6 +53,8 @@ public class SqlServerCodeSystemImporterCommandTimeoutTests
             TestSystemPartitionId, CreatePackageResource(), CancellationToken.None);
 
         result.Status.ShouldBe(TerminologyImportStatus.Completed);
+        sqlExecutionService.GuardTransactions.ShouldBe(1);
+        sqlExecutionService.GuardProbes.ShouldBe(1);
         sqlExecutionService.ImportCommand.ShouldNotBeNull();
         sqlExecutionService.ImportCommand.CommandTimeout.ShouldBe(7);
     }
@@ -70,22 +72,51 @@ public class SqlServerCodeSystemImporterCommandTimeoutTests
             new FixedSystemRepository(systemId: 1),
             NullLogger<SqlServerCodeSystemImporter>.Instance);
 
-        await importer.ImportCodeSystemAsync(TestSystemPartitionId, CreatePackageResource(), CancellationToken.None);
+        var result = await importer.ImportCodeSystemAsync(TestSystemPartitionId, CreatePackageResource(), CancellationToken.None);
 
+        result.Status.ShouldBe(TerminologyImportStatus.Completed);
+        sqlExecutionService.GuardTransactions.ShouldBe(1);
+        sqlExecutionService.GuardProbes.ShouldBe(1);
         sqlExecutionService.ImportCommand.ShouldNotBeNull();
         sqlExecutionService.ImportCommand.CommandTimeout.ShouldBe(
             SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds);
     }
 
+    [Fact]
+    public async Task GivenSeparateContentDatabases_WhenImportIsRequested_ThenTheGuardRejectsBeforePackageReadOrImport()
+    {
+        var sqlExecutionService = new CommandCapturingSqlExecutionService { SharedDatabase = false };
+        var importer = new SqlServerCodeSystemImporter(
+            sqlExecutionService,
+            TestSystemPartitionId,
+            new FixedSystemRepository(systemId: 1),
+            NullLogger<SqlServerCodeSystemImporter>.Instance);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => importer.ImportCodeSystemAsync(
+            TestSystemPartitionId, CreatePackageResource(), CancellationToken.None));
+
+        error.Message.ShouldContain("same shared SQL database");
+        sqlExecutionService.GuardTransactions.ShouldBe(1);
+        sqlExecutionService.GuardProbes.ShouldBe(1);
+        sqlExecutionService.PackageRowReads.ShouldBe(0);
+        sqlExecutionService.ImportCommand.ShouldBeNull();
+    }
+
     /// <summary>
-    /// Answers the two calls <see cref="SqlServerCodeSystemImporter.ImportCodeSystemAsync"/> makes through
-    /// <see cref="ISqlExecutionService.ExecuteReaderAsync{TResult}"/> -- the package-row read (keyed off
-    /// <c>TResult</c> being the content-hash/status tuple) and the <c>dbo.ImportTermCodeSystem</c> call
-    /// itself (keyed off <c>TResult</c> being <see langword="long"/>) -- without touching a real
-    /// <see cref="SqlDataReader"/>, and records the <see cref="SqlCommand"/> the procedure call ran with.
+    /// Models the database-local lock probe, package read and import command without constructing a
+    /// SqlDataReader. The real guard callback must acquire a transaction-owned nonce and probe that same
+    /// nonce before package access is allowed. Real SQL topology semantics are covered by integration tests.
     /// </summary>
     private sealed class CommandCapturingSqlExecutionService : ISqlExecutionService
     {
+        private bool _transactionActive;
+        private string? _lockedResource;
+        private bool _guardVerified;
+
+        public bool SharedDatabase { get; init; } = true;
+        public int GuardTransactions { get; private set; }
+        public int GuardProbes { get; private set; }
+        public int PackageRowReads { get; private set; }
         public SqlCommand? ImportCommand { get; private set; }
 
         public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
@@ -95,14 +126,31 @@ public class SqlServerCodeSystemImporterCommandTimeoutTests
             CancellationToken cancellationToken,
             SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         {
-            if (typeof(TResult) == typeof(long))
+            cancellationToken.ThrowIfCancellationRequested();
+            tenantId.ShouldBe(TestSystemPartitionId);
+            if (typeof(TResult) == typeof(int) && command.CommandText.Contains("APPLOCK_TEST", StringComparison.Ordinal))
             {
+                _transactionActive.ShouldBeTrue();
+                _lockedResource.ShouldNotBeNullOrWhiteSpace();
+                command.Parameters["@resource"].Value.ShouldBe(_lockedResource);
+                GuardProbes++;
+                _guardVerified = SharedDatabase;
+                return Task.FromResult<IReadOnlyList<TResult>>([(TResult)(object)(SharedDatabase ? 0 : 1)]);
+            }
+
+            _guardVerified.ShouldBeTrue("the real shared-content guard must complete before package access");
+            _transactionActive.ShouldBeFalse("the guard's probe transaction must end before import");
+            if (typeof(TResult) == typeof(long) && command.CommandText == "dbo.ImportTermCodeSystem")
+            {
+                command.CommandType.ShouldBe(System.Data.CommandType.StoredProcedure);
                 ImportCommand = command;
                 return Task.FromResult<IReadOnlyList<TResult>>([(TResult)(object)1L]);
             }
 
-            if (typeof(TResult) == typeof((string? ContentHash, string? Status)))
+            if (typeof(TResult) == typeof((string? ContentHash, string? Status))
+                && command.CommandText.Contains("PackageResource", StringComparison.Ordinal))
             {
+                PackageRowReads++;
                 // No existing package row content: ImportAsync's unchanged-content guard must not skip the
                 // import, or the procedure call this test is pinning would never run.
                 return Task.FromResult<IReadOnlyList<TResult>>(
@@ -116,19 +164,60 @@ public class SqlServerCodeSystemImporterCommandTimeoutTests
         public Task<int> ExecuteNonQueryAsync(
             int tenantId, SqlCommand command, CancellationToken cancellationToken,
             SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
-            => Task.FromResult(0);
+            => throw new NotSupportedException($"Unexpected non-query: {command.CommandText}");
 
-        public Task<TResult> ExecuteInTransactionAsync<TResult>(
+        public async Task<TResult> ExecuteInTransactionAsync<TResult>(
             int tenantId,
             Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
             CancellationToken cancellationToken)
-            => throw new NotSupportedException("SqlServerCodeSystemImporter does not use ExecuteInTransactionAsync.");
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            tenantId.ShouldBe(1);
+            _transactionActive.ShouldBeFalse();
+            _transactionActive = true;
+            GuardTransactions++;
+            try
+            {
+                return await work(new ProbeTransaction(this), cancellationToken);
+            }
+            finally
+            {
+                _lockedResource = null;
+                _transactionActive = false;
+            }
+        }
 
-        public Task ExecuteInTransactionAsync(
+        public async Task ExecuteInTransactionAsync(
             int tenantId,
             Func<ISqlTransactionContext, CancellationToken, Task> work,
             CancellationToken cancellationToken)
-            => throw new NotSupportedException("SqlServerCodeSystemImporter does not use ExecuteInTransactionAsync.");
+        {
+            await ExecuteInTransactionAsync(tenantId, async (transaction, token) =>
+            {
+                await work(transaction, token);
+                return true;
+            }, cancellationToken);
+        }
+
+        private sealed class ProbeTransaction(CommandCapturingSqlExecutionService owner) : ISqlTransactionContext
+        {
+            public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
+                SqlCommand command, Func<SqlDataReader, TResult> readRow, CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                owner._transactionActive.ShouldBeTrue();
+                owner._lockedResource.ShouldBeNull();
+                typeof(TResult).ShouldBe(typeof(int));
+                command.CommandText.ShouldContain("sys.sp_getapplock");
+                command.CommandText.ShouldContain("@LockOwner = 'Transaction'");
+                owner._lockedResource = command.Parameters["@resource"].Value.ShouldBeOfType<string>();
+                owner._lockedResource.ShouldNotBeNullOrWhiteSpace();
+                return Task.FromResult<IReadOnlyList<TResult>>([(TResult)(object)0]);
+            }
+
+            public Task<int> ExecuteNonQueryAsync(SqlCommand command, CancellationToken cancellationToken)
+                => throw new NotSupportedException($"Unexpected transaction non-query: {command.CommandText}");
+        }
     }
 
     private sealed class FixedSystemRepository(int systemId) : ISystemRepository

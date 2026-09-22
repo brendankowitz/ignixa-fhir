@@ -4,28 +4,29 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using Ignixa.Domain.Exceptions;
 
 namespace Ignixa.Application.Features.Bundle;
 
 /// <summary>
 /// Context for resolving urn:uuid references within a bundle.
-/// Maps temporary urn:uuid identifiers to actual server-assigned resource IDs.
+/// Maps temporary urn:uuid identifiers to resolved relative resource references.
 /// Thread-safe for concurrent access during parallel bundle processing.
 /// </summary>
 public class ReferenceResolutionContext
 {
-    private readonly ConcurrentDictionary<string, string> _referenceMap = new();
+    private readonly ConcurrentDictionary<string, string> _referenceMap = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Gets the reference map (urn:uuid -> actual resource ID).
+    /// Gets the reference map (urn:uuid -> resourceType/resourceId).
     /// </summary>
     public IReadOnlyDictionary<string, string> ReferenceMap => _referenceMap;
 
     /// <summary>
-    /// Adds a reference mapping from urn:uuid to an actual resource ID.
+    /// Adds a reference mapping from urn:uuid to a resolved resource reference.
     /// </summary>
     /// <param name="urnUuid">The urn:uuid identifier (e.g., "urn:uuid:05efabf0-4be2-4561-91ce-51548425acb9").</param>
-    /// <param name="actualId">The actual server-assigned resource ID (e.g., "a1b2c3d4-e5f6-7890-abcd-ef1234567890").</param>
+    /// <param name="actualId">The resolved reference (e.g., "Patient/a1b2c3d4-e5f6-7890-abcd-ef1234567890").</param>
     /// <exception cref="ArgumentNullException">If urnUuid or actualId is null or whitespace.</exception>
     public void AddReference(string urnUuid, string actualId)
     {
@@ -45,14 +46,17 @@ public class ReferenceResolutionContext
             throw new ArgumentException($"Invalid urn:uuid format: {urnUuid}", nameof(urnUuid));
         }
 
-        _referenceMap[urnUuid] = actualId;
+        if (!_referenceMap.TryAdd(urnUuid, actualId))
+        {
+            throw new BadRequestException($"Duplicate transaction fullUrl alias '{urnUuid}'.");
+        }
     }
 
     /// <summary>
-    /// Attempts to resolve a urn:uuid reference to an actual resource ID.
+    /// Attempts to resolve a urn:uuid reference to a relative resource reference.
     /// </summary>
     /// <param name="urnUuid">The urn:uuid identifier to resolve.</param>
-    /// <returns>The actual resource ID if found; otherwise, null.</returns>
+    /// <returns>The resolved reference if found; otherwise, null.</returns>
     public string? ResolveReference(string urnUuid)
     {
         if (string.IsNullOrWhiteSpace(urnUuid))

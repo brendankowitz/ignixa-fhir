@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Microsoft.Extensions.Logging;
@@ -34,55 +34,52 @@ public class UpdateProgressActivity : AsyncTaskActivity<UpdateProgressInput, boo
         TaskContext context,
         UpdateProgressInput input)
     {
-        try
+        var job = await _jobRepository.GetAsync(input.JobId, input.TenantId, CancellationToken.None)
+            ?? throw new InvalidOperationException($"Import job {input.JobId} not found for progress update.");
+
+        if (job.Status is "Completed" or "Failed" or "Cancelled")
         {
-            var job = await _jobRepository.GetAsync(input.JobId, input.TenantId, CancellationToken.None);
-
-            if (job == null)
-            {
-                _logger.LogWarning("Job {JobId} not found for progress update (tenant {TenantId})", input.JobId, input.TenantId);
-                return false;
-            }
-
-            // Calculate progress percentage
-            // Use files as progress indicator (more accurate than resource count)
-            var progressPercentage = input.TotalFiles > 0
-                ? Math.Round((double)input.ProcessedFiles / input.TotalFiles * 100, 2)
-                : 0;
-
-            // Update progress as JSON using strongly-typed POCO
-            var progress = new ImportJobProgress
-            {
-                ProcessedResources = input.ProcessedResources,
-                ProcessedFiles = input.ProcessedFiles,
-                CurrentFile = input.CurrentFile,
-                ProgressPercentage = progressPercentage
-            };
-
-            job.Progress = JsonNode.Parse(JsonSerializer.Serialize(progress));
-
-            // Update status to Running if not already
-            if (job.Status == "Queued")
-            {
-                job.Status = "Running";
-                job.StartDate = DateTimeOffset.UtcNow;
-            }
-
-            await _jobRepository.UpdateAsync(job, input.TenantId, CancellationToken.None);
-
-            _logger.LogDebug(
-                "Updated progress for job {JobId}: {ProcessedFiles}/{TotalFiles} files ({Percentage}%)",
-                input.JobId,
-                input.ProcessedFiles,
-                input.TotalFiles,
-                progressPercentage);
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating progress for job {JobId}", input.JobId);
+            _logger.LogInformation("Import progress for {JobId} is superseded by {Status}", input.JobId, job.Status);
             return false;
         }
+
+        var progressPercentage = input.TotalFiles > 0
+            ? Math.Round((double)input.ProcessedFiles / input.TotalFiles * 100, 2)
+            : 0;
+
+        var progress = new ImportJobProgress
+        {
+            ProcessedResources = input.ProcessedResources,
+            ProcessedFiles = input.ProcessedFiles,
+            CurrentFile = input.CurrentFile,
+            ProgressPercentage = progressPercentage
+        };
+
+        job.Progress = JsonSerializer.SerializeToNode(progress);
+
+        if (job.Status == "Queued")
+        {
+            job.Status = "Running";
+            job.StartDate = DateTimeOffset.UtcNow;
+        }
+
+        try
+        {
+            await _jobRepository.UpdateAsync(job, input.TenantId, CancellationToken.None);
+        }
+        catch (BackgroundJobUpdateConflictException)
+        {
+            var authoritative = await _jobRepository.GetAsync(input.JobId, input.TenantId, CancellationToken.None)
+                ?? throw new InvalidOperationException($"Import job {input.JobId} disappeared after a terminal update conflict.");
+            _logger.LogInformation(
+                "Import progress for {JobId} was superseded; preserving {Status}",
+                input.JobId, authoritative.Status);
+            return false;
+        }
+
+        _logger.LogDebug(
+            "Updated progress for job {JobId}: {ProcessedFiles}/{TotalFiles} files ({Percentage}%)",
+            input.JobId, input.ProcessedFiles, input.TotalFiles, progressPercentage);
+        return true;
     }
 }

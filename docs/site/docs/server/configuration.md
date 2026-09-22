@@ -25,7 +25,7 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
         "IsSystemPartition": true,
         "Storage": {
           "Type": "SqlServer",
-          "InheritConnectionStringFromTenant": true
+          "InheritConnectionStringFromTenant": 1
         }
       },
       {
@@ -49,9 +49,18 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
 |---------|-------------|
 | `Mode` | `Isolated` - each tenant has separate data. (`Distributed` planned but not yet implemented) |
 | `TenantId` | Unique identifier. `0` is reserved for system operations |
-| `FhirVersion` | `4.0` (R4), `4.3` (R4B), `5.0` (R5), or `6.0` (R6) |
+| `FhirVersion` | `3.0` (STU3), `4.0` (R4), `4.3` (R4B), `5.0` (R5), or `6.0` (R6 ballot) |
 | `Storage.Type` | `SqlServer` (recommended). `SqlEntityFramework` is accepted as a legacy alias for the same storage. |
-| `InheritConnectionStringFromTenant` | System partition inherits from Tenant 1 |
+| `Storage.InheritConnectionStringFromTenant` | Integer source tenant ID (default `1`). Used when the system partition has no connection string of its own. |
+
+`InheritConnectionStringFromTenant` is **not a boolean**. Replace older examples using `true` with
+the numeric source tenant ID, normally `1`, including environment overrides such as
+`Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant=1`. To give the system
+partition an explicit connection string, configure `Storage.ConnectionString` rather than setting
+inheritance to `false`. SQL-backed package/terminology storage currently requires the system
+partition and tenant 1 to share the same resolved physical database, regardless of connection-string
+or server-alias spelling. The shared-database check holds two SQL connections concurrently; do not
+limit a shared connection pool to `Max Pool Size=1`.
 
 ### Hostname-based Tenant Resolution
 
@@ -245,10 +254,12 @@ controls how long those commands are allowed to run before ADO.NET gives up on t
 |---------|---------|-------------|
 | `TerminologyImportCommandTimeoutSeconds` | `120` | `SqlCommand.CommandTimeout`, in seconds, for the terminology import procedures and the ValueSet compose-resolution reads that can run before them |
 
-Left unset, `SqlCommand` defaults to ADO.NET's 30-second timeout. A command that overruns it is classified
-as a transient SQL failure and retried up to three more times before the import is marked `Failed` — and
-`Failed` is not a terminal status, so the same package is re-offered and re-fails on every subsequent
-startup. This setting covers:
+Omitting this setting still uses Ignixa's **120-second** default, not ADO.NET's underlying 30-second
+`SqlCommand` default. A command that overruns the configured timeout is classified
+as a transient SQL failure and retried up to three more times before the package import attempt is
+marked `Failed`. That attempt remains eligible for retry on a subsequent startup. A failed transactional
+replacement does not remove previously installed active terminology; the package records its failure
+and error separately from the effective status of surviving content. This setting covers:
 
 - `dbo.ImportTermCodeSystem`, `dbo.ImportTermValueSet` and `dbo.ImportTermConceptMap` — the three
   procedures that insert a whole CodeSystem, ValueSet or ConceptMap as a table-valued parameter and
@@ -346,7 +357,8 @@ Bulk import/export uses DurableTask for orchestration. SQL Server backend is rec
 }
 ```
 
-The SQL Server provider uses the same database as Tenant 0 (system partition), eliminating additional infrastructure dependencies. Schema is created automatically on startup.
+The SQL Server provider uses the same database as Tenant 0 (system partition). Its orchestration
+schema is created on startup; this does not enable automatic deployment of the separate FHIR schema.
 
 ### Alternative Providers
 
@@ -362,6 +374,24 @@ The SQL Server provider uses the same database as Tenant 0 (system partition), e
   }
 }
 ```
+
+### Background Job Metadata
+
+The job metadata repository is configured separately from the DurableTask orchestration provider:
+
+```json
+{
+  "BackgroundJobs": {
+    "Repository": "SqlServer"
+  }
+}
+```
+
+`SqlServer` persists job metadata in tenant 1's shared `dbo.BackgroundJobs` table. `InMemory`
+keeps metadata only for the life of the process and is the default when the setting is absent or
+empty. Both explicit values are case-insensitive; misspellings fail startup rather than falling
+back to volatile storage. For persistent bulk-job status across restarts, configure the SQL
+repository as well as the desired DurableTask provider.
 
 ## Service Base URI
 
@@ -648,7 +678,7 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
         "IsSystemPartition": true,
         "Storage": {
           "Type": "SqlServer",
-          "InheritConnectionStringFromTenant": true
+          "InheritConnectionStringFromTenant": 1
         }
       },
       {

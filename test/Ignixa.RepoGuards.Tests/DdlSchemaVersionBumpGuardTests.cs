@@ -51,6 +51,7 @@ public class DdlSchemaVersionBumpGuardTests
     private static readonly (int Version, string Fingerprint)[] PinnedFingerprints =
     [
         (2, "960c429bd4b96ab2378a72f89407bcab215a7b149ddbd51959194b67a05c8b81"),
+        (3, "31811adc88090dfa6369730c21e4c62ec3ef0b57921c2b0020f899a1fbc36ee9"),
     ];
 
     private const string DatabaseProjectRelativePath = "src/DataLayer/Ignixa.DataLayer.SqlServer.Database";

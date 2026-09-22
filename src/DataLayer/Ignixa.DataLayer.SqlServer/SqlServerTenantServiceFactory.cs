@@ -97,12 +97,13 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
     // CA1725 requires the parameter name to match IFhirRepositoryFactory's declaration, which is "ct".
     public async Task<IFhirRepository> GetRepositoryAsync(int tenantId, CancellationToken ct = default)
     {
-        var services = await GetOrInitializeTenantAsync(tenantId, ct);
+        await GetOrInitializeTenantAsync(tenantId, ct);
+        var cache = await _tenantInitializer.GetReferenceDataCacheAsync(tenantId, ct);
 
         return SqlServerRepositoryFactory.CreateRepository(
             _sqlExecutionService,
             tenantId,
-            services.ReferenceDataCache,
+            cache,
             _memoryStreamManager,
             _loggerFactory);
     }
@@ -112,11 +113,12 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
     public async Task<ISearchService> GetSearchServiceAsync(int tenantId, CancellationToken ct = default)
     {
         var services = await GetOrInitializeTenantAsync(tenantId, ct);
+        var cache = await _tenantInitializer.GetReferenceDataCacheAsync(tenantId, ct);
 
         return SqlServerRepositoryFactory.CreateSearchService(
             _sqlExecutionService,
             tenantId,
-            services.ReferenceDataCache,
+            cache,
             services.Definitions.CompartmentManager,
             services.Definitions.ParameterManager,
             _memoryStreamManager,
@@ -193,12 +195,12 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
             tenantConfig.DisplayName,
             fhirVersion);
 
-        var referenceDataCache = await _tenantInitializer.InitializeAsync(
+        await _tenantInitializer.InitializeAsync(
             tenantId, definitions.ParameterManager, cancellationToken);
 
         _logger.LogInformation("SQL Server services initialized for tenant {TenantId}", tenantId);
 
-        return new TenantServices(referenceDataCache, definitions);
+        return new TenantServices(definitions);
     }
 
     private DefinitionManagers GetOrCreateDefinitionManagers(FhirVersion fhirVersion)
@@ -215,6 +217,5 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
         ISearchParameterDefinitionManager ParameterManager);
 
     private sealed record TenantServices(
-        SqlServerSearchIndexReferenceDataCache ReferenceDataCache,
         DefinitionManagers Definitions);
 }

@@ -57,12 +57,16 @@ the same shape the server itself reads its tenant configuration from:
 ```
 
 `"Type": "SqlServer"` and `"Type": "SqlEntityFramework"` are accepted as the same storage type by
-`TenantConnectionStringResolver.IsSqlServerStorage`. Every `appsettings*.json` under
-`src/Application/Ignixa.Web/` uses `SqlEntityFramework`, so if you copy `Storage` from a running
-server's own configuration (as this section recommends), expect to see that value, not `SqlServer`.
+`TenantConnectionStringResolver.IsSqlServerStorage`. The shipped server configuration uses
+`SqlServer`; existing deployments using the legacy alias do not need to rename it.
+
+A separate deployment container does not inherit the server's environment. For tenant 2 or later,
+provide that tenant's complete configuration (including `TenantId`, `IsActive`, `FhirVersion`, and
+`Storage.Type`/`ConnectionString`) via `--config` or environment variables. Changing only
+`--tenant-id` does not create a configuration entry.
 
 The configuration file passed via `--config` is not the only source of settings: `Program.cs` also
-layers `appsettings.{ASPNETCORE_ENVIRONMENT ?? "Production"}.json` (optional, same directory) and
+layers `appsettings.{ASPNETCORE_ENVIRONMENT ?? "Production"}.json` (optional, from the current working directory) and
 then environment variables on top of it, exactly like the server does. If `ASPNETCORE_ENVIRONMENT`
 is set in the shell you run this tool from -- common in a deployed environment -- values from that
 environment-specific file or from environment variables can silently override what `--config`
@@ -77,8 +81,8 @@ resolves it by inheriting the connection string of another tenant, named by
 `--tenant-id 0` deploys schema to that other tenant's database, not a system-only database --
 including under `--allow-data-loss`. This is deliberate single-tenant-deployment behavior (see the
 comments in `TenantConnectionStringResolver.ResolveAsync`), but it means the blast radius of a
-`--tenant-id 0` run depends on how the target tenant configures that setting. See #395 for a
-related issue with how `InheritConnectionStringFromTenant` binds from configuration.
+`--tenant-id 0` run depends on how the target tenant configures that setting. The setting is an
+integer source tenant ID (for example `1`), not a boolean.
 
 ## Exit Codes
 

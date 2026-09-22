@@ -25,7 +25,7 @@ internal static class IncludeStagePlanner
         IReadOnlyList<IncludeExpression> revIncludes,
         SymbolTable symbols,
         string matchResourceType,
-        int includeLimit)
+        int? includeLimit)
     {
         if (includes.Count == 0 && revIncludes.Count == 0)
         {

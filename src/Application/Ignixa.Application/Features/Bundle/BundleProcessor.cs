@@ -6,6 +6,7 @@
 using EnsureThat;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Models;
 using Ignixa.Serialization.Models;
@@ -31,6 +32,7 @@ public class BundleProcessor
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<BundleProcessor> _logger;
+    private readonly IFhirVersionContext _fhirVersionContext;
 
     public BundleProcessor(
         BundleReferencePreProcessor referencePreProcessor,
@@ -40,7 +42,8 @@ public class BundleProcessor
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
         ILoggerFactory loggerFactory,
-        ILogger<BundleProcessor> logger)
+        ILogger<BundleProcessor> logger,
+        IFhirVersionContext fhirVersionContext)
     {
         _referencePreProcessor = EnsureArg.IsNotNull(referencePreProcessor, nameof(referencePreProcessor));
         _channelExecutor = EnsureArg.IsNotNull(channelExecutor, nameof(channelExecutor));
@@ -50,6 +53,7 @@ public class BundleProcessor
         _contextAccessor = EnsureArg.IsNotNull(contextAccessor, nameof(contextAccessor));
         _loggerFactory = EnsureArg.IsNotNull(loggerFactory, nameof(loggerFactory));
         _logger = EnsureArg.IsNotNull(logger, nameof(logger));
+        _fhirVersionContext = EnsureArg.IsNotNull(fhirVersionContext, nameof(fhirVersionContext));
     }
 
     /// <summary>
@@ -68,6 +72,11 @@ public class BundleProcessor
     {
         EnsureArg.IsNotNull(entryStream, nameof(entryStream));
         EnsureArg.IsNotNull(options, nameof(options));
+
+        if (options.Type == BundleType.Transaction)
+        {
+            return await ProcessAtomicTransactionAsync(entryStream, options, cancellationToken);
+        }
 
         _logger.LogInformation("Processing {Type} bundle with two-phase streaming", options.Type);
 
@@ -277,6 +286,75 @@ public class BundleProcessor
         return entry.FullUrl?.StartsWith("urn:uuid:", StringComparison.Ordinal) == true ||
                entry.RequestUrl?.StartsWith("urn:uuid:", StringComparison.Ordinal) == true ||
                entry.RequestUrl?.Contains('?', StringComparison.Ordinal) == true;
+    }
+
+    private async Task<FhirBundle> ProcessAtomicTransactionAsync(
+        IAsyncEnumerable<BundleEntryContext> entryStream,
+        BundleProcessingOptions options,
+        CancellationToken cancellationToken)
+    {
+        var entries = new List<BundleEntryContext>();
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+        var resourceTypes = _fhirVersionContext.GetSchemaProvider(context.FhirVersion, context.TenantId)
+            .ResourceTypeNames.ToHashSet(StringComparer.Ordinal);
+        await foreach (var entry in entryStream.WithCancellation(cancellationToken))
+        {
+            entries.Add(TransactionRequestValidator.Validate(entry, resourceTypes));
+        }
+
+        var hasWrites = entries.Any(entry => entry.HttpVerb is not ("GET" or "HEAD"));
+        if (hasWrites && entries.Any(entry =>
+            (entry.HttpVerb is "GET" or "HEAD") && !TransactionRequestValidator.IsStagedPointRead(entry)))
+        {
+            throw new Domain.Exceptions.NotImplementedException(
+                "Transactions containing writes support only plain point GET/HEAD reads. " +
+                "Search, history, version-specific and parameterized reads require a read-only transaction or a separate request. " +
+                "No entries were executed.");
+        }
+        var referenceContext = _referencePreProcessor.PreProcessReferences(entries, BundleType.Transaction);
+        var coordinator = hasWrites
+            ? await DeferredWriteCoordinator.CreateAsync(options.ChannelCapacity,
+                _repositoryFactory, _partitionStrategy, _contextAccessor,
+                _loggerFactory.CreateLogger<DeferredWriteCoordinator>(), atomic: true, cancellationToken)
+            : null;
+        var responses = new Dictionary<int, BundleEntryResponse>();
+        var referenceAliases = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var entry in ReorderByVerb(entries))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var response = await _channelExecutor.ExecuteEntryAsync(entry, referenceContext, coordinator, cancellationToken);
+            if (response.StatusCode >= 400)
+            {
+                throw new BundleTransactionException(
+                    $"Transaction entry {entry.Index} ({entry.HttpVerb} {entry.RequestUrl}) failed with status {response.StatusCode}. No transaction writes were committed.",
+                    response.StatusCode);
+            }
+            responses.Add(entry.Index, response);
+            if (entry.HttpVerb == "POST" && entry.FullUrl != null &&
+                referenceContext.ResolveReference(entry.FullUrl) is { } plannedReference)
+            {
+                var location = response.Location?.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (location is not { Length: >= 4 } || location[^2] != "_history")
+                {
+                    throw new InvalidOperationException("A successful transaction create must provide its versioned location.");
+                }
+                var actualReference = $"{location[^4]}/{location[^3]}";
+                if (actualReference != plannedReference)
+                {
+                    referenceAliases.Add(plannedReference, actualReference);
+                }
+            }
+        }
+
+        coordinator?.ResolveReferenceAliases(referenceAliases, _fhirVersionContext, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (coordinator != null)
+        {
+            await coordinator.CommitAtomicAsync(cancellationToken);
+        }
+        return _responseBuilder.BuildResponse(responses.OrderBy(r => r.Key)
+            .Select(r => coordinator?.CompleteResponse(r.Key, r.Value, referenceAliases) ?? r.Value).ToList(), BundleType.Transaction);
     }
 
     /// <summary>

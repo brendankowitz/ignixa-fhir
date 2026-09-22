@@ -14,11 +14,8 @@ namespace Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 /// 4. Waits for all workers to complete in parallel
 /// 5. Returns aggregated results
 ///
-/// This design achieves >10K resources/sec by:
-/// - Eliminating pagination (no continuation tokens)
-/// - Streaming directly from DB to file (no intermediate buffering)
-/// - Parallel execution of 24-48 worker activities (6 types × 4-8 ranges each)
-/// - Zero-copy serialization (raw bytes from SearchEntryResult)
+/// Workers page within fixed partition boundaries and stream raw resource bytes to the writer.
+/// New jobs persist schema-discovered types before scheduling; empty type lists retain legacy replay behavior.
 /// </summary>
 public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, ExportCoordinatorInput>
 {
@@ -153,7 +150,7 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                         TenantId: input.TenantId,
                         Success: false,
                         ExportedFiles: new Dictionary<string, string>(),
-                        TotalResourcesExported: (int)totalResourcesExported,
+                        TotalResourcesExported: totalResourcesExported,
                         ErrorMessage: $"Worker execution failed: {ex.Message}");
 
                     await context.ScheduleTask<bool>(
@@ -184,11 +181,14 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
 
             // Phase 4: Build exported files dictionary from worker results
             var exportedFiles = new Dictionary<string, string>();
-            foreach (var workerOutput in workerResults)
+            var exportedFileCounts = new Dictionary<string, long>();
+            // NDJSON writers do not create blobs when filtering leaves a partition empty.
+            foreach (var workerOutput in workerResults.Where(worker => worker.ResourcesExported != 0))
             {
                 var fileKey = $"{workerOutput.ResourceType}-{workerOutput.StartSurrogateId}-{workerOutput.EndSurrogateId}";
-                var filePath = $"tenant/{input.TenantId}/export/{input.JobId}/{workerOutput.ResourceType}-{workerOutput.StartSurrogateId}-{workerOutput.EndSurrogateId}{fileExtension}";
-                exportedFiles[fileKey] = filePath;
+                var filePath = $"partition/{input.TenantId}/export/{input.JobId}/{workerOutput.ResourceType}-{workerOutput.StartSurrogateId}-{workerOutput.EndSurrogateId}{fileExtension}";
+                exportedFiles.Add(fileKey, filePath);
+                exportedFileCounts.Add(fileKey, workerOutput.ResourcesExported);
             }
 
             // Phase 5: Complete the job (update database with final results)
@@ -197,20 +197,21 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                 TenantId: input.TenantId,
                 Success: true,
                 ExportedFiles: exportedFiles,
-                TotalResourcesExported: (int)totalResourcesExported,
-                ErrorMessage: null);
+                TotalResourcesExported: totalResourcesExported,
+                ErrorMessage: null,
+                ExportedFileCounts: exportedFileCounts);
 
-            await context.ScheduleTask<bool>(
+            var completed = await context.ScheduleTask<bool>(
                 typeof(CompleteJobActivity),
                 completeInput);
 
             // Return success result with detailed worker outputs
             return new ExportCoordinatorOutput(
-                Success: true,
+                Success: completed,
                 TotalResourcesExported: totalResourcesExported,
                 TotalBytesWritten: totalBytesWritten,
                 WorkerResults: workerResults.AsReadOnly(),
-                ErrorMessage: null,
+                ErrorMessage: completed ? null : "Export was superseded by an authoritative terminal outcome.",
                 FailurePhase: null);
         }
         catch (Exception ex)
@@ -225,7 +226,7 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
                     TenantId: input.TenantId,
                     Success: false,
                     ExportedFiles: new Dictionary<string, string>(),
-                    TotalResourcesExported: (int)totalResourcesExported,
+                    TotalResourcesExported: totalResourcesExported,
                     ErrorMessage: $"Unexpected failure during export: {ex.Message}");
 
                 await context.ScheduleTask<bool>(
@@ -250,6 +251,7 @@ public class ExportOrchestration : TaskOrchestration<ExportCoordinatorOutput, Ex
 
     private static List<string> GetDefaultResourceTypes()
     {
+        // This order is committed in old DurableTask histories. New jobs persist explicit types.
         return new List<string>
         {
             "Patient",

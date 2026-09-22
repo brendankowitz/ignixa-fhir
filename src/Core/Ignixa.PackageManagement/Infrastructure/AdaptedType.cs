@@ -34,7 +34,8 @@ internal sealed class AdaptedType : ITypeExtended
         IReadOnlyList<string> referenceTargets,
         string? contentReference,
         SlicingMetadata? slicing = null,
-        bool inSummary = false)
+        bool inSummary = false,
+        string? canonicalUrl = null)
     {
         Info = info;
         IsCollection = isCollection;
@@ -53,9 +54,11 @@ internal sealed class AdaptedType : ITypeExtended
         ReferenceTargets = referenceTargets ?? Array.Empty<string>();
         ContentReference = contentReference;
         Slicing = slicing;
+        CanonicalUrl = canonicalUrl;
     }
 
     public TypeInfo Info { get; }
+    public string? CanonicalUrl { get; }
     public bool IsCollection { get; }
     public bool IsRequired { get; }
     public bool InSummary { get; }

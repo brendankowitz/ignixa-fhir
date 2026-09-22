@@ -1,9 +1,9 @@
 CREATE TABLE dbo.TermValueSet (
     TermValueSetId         BIGINT         NOT NULL IDENTITY (1, 1),
     PackageResourceId      BIGINT         NOT NULL,
-    Canonical              NVARCHAR (512) NOT NULL,
-    Version                NVARCHAR (100) NULL,
-    Name                   NVARCHAR (256) NOT NULL,
+    Canonical              NVARCHAR (512) COLLATE Latin1_General_100_CS_AS NOT NULL,
+    Version                NVARCHAR (100) COLLATE Latin1_General_100_CS_AS NULL,
+    Name                   NVARCHAR (256) NULL,
     Immutable              BIT            NOT NULL,
     IsExpanded             BIT            NOT NULL,
     LastExpansionDate      DATETIMEOFFSET NULL,

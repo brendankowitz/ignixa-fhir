@@ -60,6 +60,28 @@ file sealed class CapturingLogger<T> : ILogger<T>
 /// </remarks>
 public sealed class BackgroundJobsModuleRepositorySelectionTests
 {
+    [Theory]
+    [InlineData("InMemory")]
+    [InlineData("inmemory")]
+    [InlineData("INMEMORY")]
+    public void GivenExplicitInMemoryRepository_WhenResolvingService_ThenUsesSharedInMemoryRepository(string value)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["BackgroundJobs:Repository"] = value })
+            .Build();
+        var builder = new ContainerBuilder();
+        builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+        builder.RegisterInstance(Substitute.For<ITenantConfigurationStore>()).As<ITenantConfigurationStore>();
+        builder.RegisterModule(new BackgroundJobsModule(configuration));
+        using var container = builder.Build();
+        using var scope = container.BeginLifetimeScope();
+
+        var repository = container.Resolve<IBackgroundJobRepository<ExportJobDefinition>>();
+
+        repository.ShouldBeOfType<Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs.InMemoryBackgroundJobRepository<ExportJobDefinition>>();
+        scope.Resolve<IBackgroundJobRepository<ExportJobDefinition>>().ShouldBeSameAs(repository);
+    }
+
     [Fact]
     public void GivenAbsentBackgroundJobsRepositoryKey_WhenLoadingTheModule_ThenInMemoryRepositoryIsRegisteredAndNoThrowOccurs()
     {

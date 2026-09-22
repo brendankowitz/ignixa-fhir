@@ -75,13 +75,9 @@ public class SqlServerHistoryQueryExecutorTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenCountIsMaxValue_WhenQueriedAsHistoryCountHelperDoesForTotalAccurate_ThenDoesNotOverflowTheFetchRowcount()
+    public async Task GivenCountIsMaxValue_WhenQueriedDirectly_ThenValidatesThePageSizeWithoutOverflow()
     {
-        // HistoryCountHelper deliberately sets Count = int.MaxValue ("no limit, count everything")
-        // when answering _history?_total=accurate. AddSharedHistoryParameters used to bind
-        // @CountPlusOne as Count + 1 unconditionally, which overflows int.MaxValue to
-        // int.MinValue; SQL Server then rejects the negative FETCH NEXT rowcount on every call
-        // (measured: "The number of rows provided for a FETCH clause must be greater then [sic] zero.").
+        // The executor is public, so it must bound direct callers as well as repository callers.
         var resourceTypeId = await _database.ExecuteScalarAsync<short>(
             "SELECT ResourceTypeId FROM dbo.ResourceType WHERE Name = 'Patient'");
 

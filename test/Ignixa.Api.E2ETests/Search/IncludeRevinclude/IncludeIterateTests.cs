@@ -49,13 +49,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
 
         // Create MedicationRequest referencing patient
         var medRequest = new ResourceJsonNode { ResourceType = "MedicationRequest" };
-        medRequest.MutableNode["meta"] = new JsonObject
-        {
-            ["tag"] = new JsonArray
-            {
-                new JsonObject { ["system"] = "testTag", ["code"] = tag }
-            }
-        };
+        medRequest.MutableNode["meta"] = CreateMetaTagJson(tag);
         medRequest.MutableNode["status"] = "completed";
         medRequest.MutableNode["intent"] = "order";
         medRequest.MutableNode["subject"] = new JsonObject
@@ -73,13 +67,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
 
         // Create MedicationDispense referencing the request
         var medDispense = new ResourceJsonNode { ResourceType = "MedicationDispense" };
-        medDispense.MutableNode["meta"] = new JsonObject
-        {
-            ["tag"] = new JsonArray
-            {
-                new JsonObject { ["system"] = "testTag", ["code"] = tag }
-            }
-        };
+        medDispense.MutableNode["meta"] = CreateMetaTagJson(tag);
         medDispense.MutableNode["status"] = "in-progress";
         medDispense.MutableNode["authorizingPrescription"] = new JsonArray
         {
@@ -159,13 +147,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
 
         // Create MedicationRequest referencing patient
         var medRequest = new ResourceJsonNode { ResourceType = "MedicationRequest" };
-        medRequest.MutableNode["meta"] = new JsonObject
-        {
-            ["tag"] = new JsonArray
-            {
-                new JsonObject { ["system"] = "testTag", ["code"] = tag }
-            }
-        };
+        medRequest.MutableNode["meta"] = CreateMetaTagJson(tag);
         medRequest.MutableNode["status"] = "completed";
         medRequest.MutableNode["intent"] = "order";
         medRequest.MutableNode["subject"] = new JsonObject
@@ -183,13 +165,7 @@ public class IncludeSearchTests_Iterate : IncludeTestBase
 
         // Create MedicationDispense referencing the request
         var medDispense = new ResourceJsonNode { ResourceType = "MedicationDispense" };
-        medDispense.MutableNode["meta"] = new JsonObject
-        {
-            ["tag"] = new JsonArray
-            {
-                new JsonObject { ["system"] = "testTag", ["code"] = tag }
-            }
-        };
+        medDispense.MutableNode["meta"] = CreateMetaTagJson(tag);
         medDispense.MutableNode["status"] = "in-progress";
         medDispense.MutableNode["authorizingPrescription"] = new JsonArray
         {

@@ -41,11 +41,13 @@ public class BackgroundJobsModule(IConfiguration configuration) : Module
         var repository = configuration["BackgroundJobs:Repository"];
 
         // Validate: non-empty, unrecognized values are configuration typos and should fail fast.
-        if (!string.IsNullOrEmpty(repository) && !string.Equals(repository, "SqlServer", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrEmpty(repository)
+            && !string.Equals(repository, "InMemory", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(repository, "SqlServer", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
                 $"Unrecognized BackgroundJobs:Repository configuration value '{repository}'. " +
-                $"Accepted values: 'SqlServer' (case-insensitive), or empty/absent for the InMemory default.");
+                $"Accepted values: 'InMemory' or 'SqlServer' (case-insensitive), or empty/absent for the InMemory default.");
         }
 
         if (string.Equals(repository, "SqlServer", StringComparison.OrdinalIgnoreCase))
