@@ -340,12 +340,16 @@ public sealed class SqlServerTerminologyService(
 
         // A caller-supplied url scopes the translation to that one ConceptMap (and its version, when given);
         // omitting url preserves the legitimate "search across every imported ConceptMap" behaviour.
-        var mapFilter = string.IsNullOrEmpty(parameters.Url)
-            ? string.Empty
-            : $" AND cm.{maps.Column("Canonical").Name} = @url" +
-              (parameters.ConceptMapVersion is null
-                  ? string.Empty
-                  : $" AND cm.{maps.Column("Version").Name} = @conceptMapVersion");
+        var mapFilter = string.Empty;
+        if (!string.IsNullOrEmpty(parameters.Url))
+        {
+            mapFilter = $" AND cm.{maps.Column("Canonical").Name} = @url";
+
+            if (parameters.ConceptMapVersion is not null)
+            {
+                mapFilter += $" AND cm.{maps.Column("Version").Name} = @conceptMapVersion";
+            }
+        }
 
         var rows = await ReadTranslationsAsync(MatchMode.CaseSensitive);
         if (rows.Count == 0)
@@ -798,7 +802,11 @@ public sealed class SqlServerTerminologyService(
         };
     }
 
-    private (IReadOnlyList<PropertyValue>?, IReadOnlyList<Designation>?) ParsePropertiesJson(string? propertiesJson)
+    /// <summary>
+    /// Internal rather than private so <c>Ignixa.DataLayer.SqlServer.Tests</c> can exercise the
+    /// concept-property/designation JSON parsing directly, without a database.
+    /// </summary>
+    internal (IReadOnlyList<PropertyValue>?, IReadOnlyList<Designation>?) ParsePropertiesJson(string? propertiesJson)
     {
         if (string.IsNullOrEmpty(propertiesJson))
         {
@@ -832,10 +840,57 @@ public sealed class SqlServerTerminologyService(
             .Where(item => item.ValueKind == JsonValueKind.Object && item.TryGetProperty("code", out _))
             .Select(item => new PropertyValue(
                 item.GetProperty("code").GetString() ?? string.Empty,
-                item.TryGetProperty("value", out var value) ? value.ToString() : null))
+                ReadPropertyValue(item)))
             .ToList();
 
         return values.Count > 0 ? values : null;
+    }
+
+    /// <summary>
+    /// FHIR represents <c>CodeSystem.concept.property.value[x]</c> with a type-suffixed key rather than a
+    /// literal "value" key; this mirrors the typed-key lookup in
+    /// <see cref="SqlServerValueSetComposer"/>'s ReadPropertyValues.
+    /// </summary>
+    private static string? ReadPropertyValue(JsonElement item)
+    {
+        if (item.TryGetProperty("valueCode", out var valueCode) && valueCode.ValueKind == JsonValueKind.String)
+        {
+            return valueCode.GetString();
+        }
+
+        if (item.TryGetProperty("valueString", out var valueString) && valueString.ValueKind == JsonValueKind.String)
+        {
+            return valueString.GetString();
+        }
+
+        if (item.TryGetProperty("valueDateTime", out var valueDateTime) && valueDateTime.ValueKind == JsonValueKind.String)
+        {
+            return valueDateTime.GetString();
+        }
+
+        if (item.TryGetProperty("valueBoolean", out var valueBoolean)
+            && valueBoolean.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            return valueBoolean.GetBoolean().ToString();
+        }
+
+        if (item.TryGetProperty("valueInteger", out var valueInteger) && valueInteger.ValueKind == JsonValueKind.Number)
+        {
+            return valueInteger.ToString();
+        }
+
+        if (item.TryGetProperty("valueDecimal", out var valueDecimal) && valueDecimal.ValueKind == JsonValueKind.Number)
+        {
+            return valueDecimal.ToString();
+        }
+
+        if (item.TryGetProperty("valueCoding", out var valueCoding) && valueCoding.ValueKind == JsonValueKind.Object
+            && valueCoding.TryGetProperty("code", out var codingCode) && codingCode.ValueKind == JsonValueKind.String)
+        {
+            return codingCode.GetString();
+        }
+
+        return null;
     }
 
     private static IReadOnlyList<Designation>? ReadDesignations(JsonElement root)
@@ -848,9 +903,16 @@ public sealed class SqlServerTerminologyService(
         var values = designation.EnumerateArray()
             .Where(item => item.ValueKind == JsonValueKind.Object)
             .Select(item => new Designation(
-                item.TryGetProperty("language", out var language) ? language.GetString() : null,
-                item.TryGetProperty("use", out var use) ? use.GetString() : null,
-                item.TryGetProperty("value", out var value) ? value.GetString() ?? string.Empty : string.Empty))
+                item.TryGetProperty("language", out var language) && language.ValueKind == JsonValueKind.String
+                    ? language.GetString()
+                    : null,
+                item.TryGetProperty("use", out var use) && use.ValueKind == JsonValueKind.Object
+                    && use.TryGetProperty("code", out var useCode) && useCode.ValueKind == JsonValueKind.String
+                        ? useCode.GetString()
+                        : null,
+                item.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.String
+                    ? value.GetString() ?? string.Empty
+                    : string.Empty))
             .ToList();
 
         return values.Count > 0 ? values : null;
