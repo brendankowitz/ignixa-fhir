@@ -799,8 +799,9 @@ public sealed class SqlServerCodeSystemImporter(
 
     /// <summary>
     /// Downgrades the <c>Completed</c> the import procedure just committed. A second statement rather than a
-    /// procedure change because the procedures own their transaction. If this statement fails, the caller's
-    /// failure handling records <c>Failed</c>, which is retried; the drop is never reported as clean success.
+    /// procedure change because the procedures own their transaction. Best effort: if this statement itself
+    /// fails, the caller's failure handling records <c>Failed</c> (retried on the next load); if that write
+    /// also fails, the row is left at the procedure's <c>Completed</c> rather than the drop going unreported.
     /// </summary>
     private async Task RecordPartiallyCompletedAsync(
         long packageResourceId, string reason, CancellationToken cancellationToken)

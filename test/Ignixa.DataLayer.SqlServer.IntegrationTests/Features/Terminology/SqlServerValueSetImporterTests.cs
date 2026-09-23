@@ -242,7 +242,9 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
     public async Task GivenAnExpansionEntryWithNoSystem_WhenImported_ThenItIsSkippedAndTheRestStillLand()
     {
         // THE FIX. TermValueSetExpansion.SystemId is a foreign key; the EF importer wrote id 0 for an entry
-        // with no system, and no System row has id 0, so one such entry failed the entire import.
+        // with no system, and no System row has id 0, so one such entry failed the entire import. A code
+        // present without a system is a dropped code (not a code-less grouper), so the row is now
+        // PartiallyCompleted rather than a clean Completed.
         const string url = "http://example.org/fhir/ValueSet/ported-systemless";
 
         await ImportValueSetAsync(url,
@@ -258,8 +260,12 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
         var status = await _fixture.ExecuteScalarAsync<string>(
             "SELECT TOP 1 TerminologyImportStatus FROM dbo.PackageResource " +
             $"WHERE Canonical = '{url}' ORDER BY PackageResourceId DESC", CancellationToken.None);
+        var errorMessage = await _fixture.ExecuteScalarAsync<string>(
+            "SELECT TOP 1 ImportErrorMessage FROM dbo.PackageResource " +
+            $"WHERE Canonical = '{url}' ORDER BY PackageResourceId DESC", CancellationToken.None);
 
-        status.ShouldBe("Completed");
+        status.ShouldBe("PartiallyCompleted");
+        errorMessage.ShouldStartWith("1 expansion entr(y/ies) not imported");
     }
 
     [Fact]
