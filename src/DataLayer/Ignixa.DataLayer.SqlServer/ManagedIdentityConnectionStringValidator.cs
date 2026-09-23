@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.DataLayer.SqlServer;
@@ -48,8 +49,7 @@ public sealed class ManagedIdentityConnectionStringValidator(
             return;
         }
 
-        var hasPassword = connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase) ||
-                          connectionString.Contains("pwd=", StringComparison.OrdinalIgnoreCase);
+        var hasPassword = !string.IsNullOrEmpty(ExtractPassword(connectionString));
 
         if (hasPassword)
         {
@@ -66,4 +66,14 @@ public sealed class ManagedIdentityConnectionStringValidator(
 
         _logger.LogInformation("Tenant {TenantId} validated for Managed Identity authentication", tenantId);
     }
+
+    /// <summary>
+    /// Parses with <see cref="SqlConnectionStringBuilder"/> rather than a substring scan for "Password=" /
+    /// "pwd=": the builder recognizes every keyword alias and tolerates the whitespace ADO.NET connection
+    /// strings otherwise allow around "=" (e.g. "Password ="), which a literal substring match does not.
+    /// A malformed connection string cannot be evaluated for credentials at all, so it is treated the same
+    /// as a programmer error and left to throw rather than silently passed as password-free.
+    /// </summary>
+    private static string? ExtractPassword(string connectionString)
+        => new SqlConnectionStringBuilder(connectionString).Password;
 }

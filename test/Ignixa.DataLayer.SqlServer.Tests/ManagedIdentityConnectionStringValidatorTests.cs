@@ -33,6 +33,52 @@ public class ManagedIdentityConnectionStringValidatorTests
         ex.Message.ShouldContain("1");
     }
 
+    /// <summary>
+    /// THE FIX. A literal <c>"Password="</c> substring scan misses this: ADO.NET connection strings allow
+    /// whitespace around <c>=</c>, so <c>SqlConnectionStringBuilder</c> is the only thing that reliably
+    /// recognizes every legal spelling of the keyword.
+    /// </summary>
+    [Fact]
+    public void GivenProduction_WhenValidatingAConnectionStringWithWhitespaceAroundTheEquals_ThenItStillThrows()
+    {
+        // Arrange
+        var validator = CreateValidator("Production");
+        const string connectionString = "Server=tcp:fhir.database.windows.net,1433;Database=Fhir;User ID = sa;Password = hunter2;";
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => validator.Validate(connectionString, 1));
+    }
+
+    /// <summary>
+    /// <c>pwd</c> is a documented alias for the same keyword, so it must be caught exactly like
+    /// <c>Password</c> rather than only being covered by coincidence.
+    /// </summary>
+    [Fact]
+    public void GivenProduction_WhenValidatingAConnectionStringUsingThePwdAlias_ThenItThrows()
+    {
+        // Arrange
+        var validator = CreateValidator("Production");
+        const string connectionString = "Server=tcp:fhir.database.windows.net,1433;Database=Fhir;User ID=sa;pwd=hunter2;";
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => validator.Validate(connectionString, 1));
+    }
+
+    /// <summary>
+    /// A connection string too malformed to parse cannot be evaluated for credentials, so it is left to
+    /// throw rather than silently treated as password-free.
+    /// </summary>
+    [Fact]
+    public void GivenProduction_WhenValidatingAMalformedConnectionString_ThenItThrows()
+    {
+        // Arrange
+        var validator = CreateValidator("Production");
+        const string connectionString = "this is not a connection string==;;";
+
+        // Act & Assert
+        Should.Throw<ArgumentException>(() => validator.Validate(connectionString, 1));
+    }
+
     [Fact]
     public void GivenDevelopment_WhenValidatingAPasswordBearingConnectionString_ThenItDoesNotThrow()
     {
