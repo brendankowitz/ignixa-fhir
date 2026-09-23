@@ -65,18 +65,39 @@ public class ManagedIdentityConnectionStringValidatorTests
     }
 
     /// <summary>
-    /// A connection string too malformed to parse cannot be evaluated for credentials, so it is left to
-    /// throw rather than silently treated as password-free.
+    /// A connection string too malformed to parse cannot be evaluated for credentials, so it is rethrown as
+    /// an <see cref="InvalidOperationException"/> naming the tenant rather than left as a bare
+    /// <see cref="ArgumentException"/> that gives no indication of which tenant's configuration is bad.
     /// </summary>
     [Fact]
-    public void GivenProduction_WhenValidatingAMalformedConnectionString_ThenItThrows()
+    public void GivenProduction_WhenValidatingAMalformedConnectionString_ThenItThrowsNamingTheTenant()
     {
         // Arrange
         var validator = CreateValidator("Production");
         const string connectionString = "this is not a connection string==;;";
 
+        // Act
+        var ex = Should.Throw<InvalidOperationException>(() => validator.Validate(connectionString, 7));
+
+        // Assert
+        ex.Message.ShouldContain("7");
+    }
+
+    /// <summary>
+    /// An explicit but empty password ("Password=;") is a known, accepted gap: <see cref="SqlConnectionStringBuilder"/>
+    /// itself drops an empty value from its keyword collection when parsing, so there is no parsed
+    /// representation left to distinguish "explicitly empty" from "absent". This pins the current,
+    /// intentional behavior rather than asserting a guarantee the validator cannot make.
+    /// </summary>
+    [Fact]
+    public void GivenProduction_WhenValidatingAConnectionStringWithAnExplicitEmptyPassword_ThenItDoesNotThrow()
+    {
+        // Arrange
+        var validator = CreateValidator("Production");
+        const string connectionString = "Server=tcp:fhir.database.windows.net,1433;Database=Fhir;User ID=sa;Password=;";
+
         // Act & Assert
-        Should.Throw<ArgumentException>(() => validator.Validate(connectionString, 1));
+        Should.NotThrow(() => validator.Validate(connectionString, 1));
     }
 
     [Fact]
