@@ -49,6 +49,12 @@ public sealed class SqlServerCodeSystemImporter(
 
     private static readonly TableDescriptor Packages = SqlCatalog.Default.Table("PackageResource");
 
+    private readonly int _commandTimeoutSeconds = commandTimeoutSeconds > 0
+        ? commandTimeoutSeconds
+        : throw new ArgumentOutOfRangeException(
+            nameof(commandTimeoutSeconds), commandTimeoutSeconds, "Command timeout must be positive.");
+
+
     public Task<TerminologyImportResult> ImportCodeSystemAsync(
         int tenantId, PackageResource packageResource, CancellationToken cancellationToken)
         => ImportAsync(tenantId, packageResource, "CodeSystem", ImportCodeSystemCoreAsync, cancellationToken);
@@ -302,7 +308,7 @@ public sealed class SqlServerCodeSystemImporter(
         using var command = new SqlCommand("dbo.ImportTermCodeSystem")
         {
             CommandType = CommandType.StoredProcedure,
-            CommandTimeout = commandTimeoutSeconds,
+            CommandTimeout = _commandTimeoutSeconds,
         };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
@@ -361,7 +367,7 @@ public sealed class SqlServerCodeSystemImporter(
         using var command = new SqlCommand("dbo.ImportTermValueSet")
         {
             CommandType = CommandType.StoredProcedure,
-            CommandTimeout = commandTimeoutSeconds,
+            CommandTimeout = _commandTimeoutSeconds,
         };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
@@ -391,7 +397,7 @@ public sealed class SqlServerCodeSystemImporter(
         using var command = new SqlCommand("dbo.ImportTermConceptMap")
         {
             CommandType = CommandType.StoredProcedure,
-            CommandTimeout = commandTimeoutSeconds,
+            CommandTimeout = _commandTimeoutSeconds,
         };
 
         command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);

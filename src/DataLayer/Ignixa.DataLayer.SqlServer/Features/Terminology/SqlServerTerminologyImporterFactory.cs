@@ -33,6 +33,11 @@ public sealed class SqlServerTerminologyImporterFactory(
     int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds,
     int packageTenantId = 1) : ITerminologyImporterFactory
 {
+    private readonly int _commandTimeoutSeconds = commandTimeoutSeconds > 0
+        ? commandTimeoutSeconds
+        : throw new ArgumentOutOfRangeException(
+            nameof(commandTimeoutSeconds), commandTimeoutSeconds, "Command timeout must be positive.");
+
     public async Task<ITerminologyImporter> CreateAsync(CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(cacheRegistry);
@@ -51,7 +56,7 @@ public sealed class SqlServerTerminologyImporterFactory(
             systemPartitionId,
             systemRepository,
             loggerFactory.CreateLogger<SqlServerCodeSystemImporter>(),
-            commandTimeoutSeconds,
+            _commandTimeoutSeconds,
             packageTenantId);
     }
 }

@@ -59,6 +59,28 @@ public class SqlServerCodeSystemImporterCommandTimeoutTests
         sqlExecutionService.ImportCommand.CommandTimeout.ShouldBe(7);
     }
 
+    /// <summary>
+    /// A zero or negative <see cref="SqlCommand.CommandTimeout"/> is not "unbounded" in ADO.NET -- it either
+    /// disables the timeout entirely (0) or is rejected downstream with an opaque error (negative), neither
+    /// of which is the intent of a misconfigured value. Failing at construction turns a configuration mistake
+    /// into an immediate, diagnosable error instead of a command that silently never times out or a cryptic
+    /// failure the first time an import runs.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void GivenANonPositiveCommandTimeout_WhenConstructed_ThenItThrows(int commandTimeoutSeconds)
+    {
+        var error = Should.Throw<ArgumentOutOfRangeException>(() => new SqlServerCodeSystemImporter(
+            new CommandCapturingSqlExecutionService(),
+            TestSystemPartitionId,
+            new FixedSystemRepository(systemId: 1),
+            NullLogger<SqlServerCodeSystemImporter>.Instance,
+            commandTimeoutSeconds));
+
+        error.ParamName.ShouldBe("commandTimeoutSeconds");
+    }
+
     [Fact]
     public async Task GivenNoCommandTimeoutIsSpecified_WhenACodeSystemIsImported_ThenItDefaultsToTheConfiguredDefault()
     {

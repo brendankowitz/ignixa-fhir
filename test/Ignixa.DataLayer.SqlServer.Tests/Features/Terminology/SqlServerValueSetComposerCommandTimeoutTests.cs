@@ -65,6 +65,31 @@ public class SqlServerValueSetComposerCommandTimeoutTests
         sqlExecutionService.ReadExpansionCommand.CommandTimeout.ShouldBe(11);
     }
 
+    /// <summary>
+    /// Mirrors <c>SqlServerCodeSystemImporterCommandTimeoutTests</c>' constructor guard: a non-positive
+    /// timeout must fail fast at composition rather than silently disabling the timeout (0) or producing an
+    /// opaque downstream error (negative) the first time a command using it runs.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task GivenANonPositiveCommandTimeout_WhenComposed_ThenItThrows(int commandTimeoutSeconds)
+    {
+        var sqlExecutionService = new CommandCapturingSqlExecutionService();
+        var compose = ComposeWithWholeSystemInclude();
+
+        var error = await Should.ThrowAsync<ArgumentOutOfRangeException>(() => SqlServerValueSetComposer.ComposeAsync(
+            compose,
+            sqlExecutionService,
+            TestSystemPartitionId,
+            new FixedSystemRepository(systemId: 1),
+            NullLogger.Instance,
+            commandTimeoutSeconds,
+            CancellationToken.None));
+
+        error.ParamName.ShouldBe("commandTimeoutSeconds");
+    }
+
     [Fact]
     public async Task GivenManyExplicitCodes_WhenComposed_ThenComparisonPolicyIsReadOnceWithoutReadingConcepts()
     {

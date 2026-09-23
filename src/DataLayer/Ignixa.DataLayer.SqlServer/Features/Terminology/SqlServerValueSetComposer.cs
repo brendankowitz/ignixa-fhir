@@ -86,7 +86,10 @@ internal sealed class SqlServerValueSetComposer
         _systemPartitionId = systemPartitionId;
         _systemRepository = systemRepository;
         _logger = logger;
-        _commandTimeoutSeconds = commandTimeoutSeconds;
+        _commandTimeoutSeconds = commandTimeoutSeconds > 0
+            ? commandTimeoutSeconds
+            : throw new ArgumentOutOfRangeException(
+                nameof(commandTimeoutSeconds), commandTimeoutSeconds, "Command timeout must be positive.");
     }
 
     /// <param name="commandTimeoutSeconds">
