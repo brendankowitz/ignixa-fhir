@@ -66,15 +66,19 @@ public class ManagedIdentityConnectionStringValidatorTests
 
     /// <summary>
     /// A connection string too malformed to parse cannot be evaluated for credentials, so it is rethrown as
-    /// an <see cref="InvalidOperationException"/> naming the tenant rather than left as a bare
-    /// <see cref="ArgumentException"/> that gives no indication of which tenant's configuration is bad.
+    /// an <see cref="InvalidOperationException"/> naming the tenant rather than left as a bare parse
+    /// exception that gives no indication of which tenant's configuration is bad.
+    /// <see cref="SqlConnectionStringBuilder"/> throws different exception types depending which keyword is
+    /// malformed: an unrecognized value throws <see cref="ArgumentException"/>, a numeric keyword given
+    /// non-numeric text throws <see cref="FormatException"/>. Both must be caught the same way.
     /// </summary>
-    [Fact]
-    public void GivenProduction_WhenValidatingAMalformedConnectionString_ThenItThrowsNamingTheTenant()
+    [Theory]
+    [InlineData("this is not a connection string==;;")]
+    [InlineData("Server=tcp:fhir.database.windows.net,1433;Database=Fhir;Connect Timeout=abc;")]
+    public void GivenProduction_WhenValidatingAMalformedConnectionString_ThenItThrowsNamingTheTenant(string connectionString)
     {
         // Arrange
         var validator = CreateValidator("Production");
-        const string connectionString = "this is not a connection string==;;";
 
         // Act
         var ex = Should.Throw<InvalidOperationException>(() => validator.Validate(connectionString, 7));

@@ -33,8 +33,8 @@ public sealed class ManagedIdentityConnectionStringValidator(
         logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <exception cref="InvalidOperationException">
-    /// The environment is Production and <paramref name="connectionString"/> carries a password, or one
-    /// <see cref="SqlConnectionStringBuilder"/> cannot parse.
+    /// The environment is Production and <paramref name="connectionString"/> carries a password, or
+    /// <see cref="SqlConnectionStringBuilder"/> cannot parse it.
     /// </exception>
     public void Validate(string connectionString, int tenantId)
     {
@@ -84,8 +84,9 @@ public sealed class ManagedIdentityConnectionStringValidator(
     /// <para>
     /// A connection string too malformed to parse cannot be evaluated for credentials at all, so it is
     /// rethrown as an <see cref="InvalidOperationException"/> naming the tenant, rather than left to
-    /// surface as a bare <see cref="ArgumentException"/> with no indication of which tenant's
-    /// configuration is bad.
+    /// surface as a bare parse exception (<see cref="ArgumentException"/>, <see cref="FormatException"/>,
+    /// or <see cref="OverflowException"/> depending which keyword is malformed) with no indication of
+    /// which tenant's configuration is bad.
     /// </para>
     /// </summary>
     private bool HasPasswordKeyword(string connectionString, int tenantId)
@@ -94,7 +95,7 @@ public sealed class ManagedIdentityConnectionStringValidator(
         {
             return !string.IsNullOrEmpty(new SqlConnectionStringBuilder(connectionString).Password);
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or FormatException or OverflowException)
         {
             _logger.LogError(ex, "Tenant {TenantId} connection string could not be parsed", tenantId);
             throw new InvalidOperationException(
