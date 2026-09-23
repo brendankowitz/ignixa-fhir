@@ -36,17 +36,16 @@ public class HybridTerminologyService(
         CancellationToken cancellationToken)
     {
         var status = await importStatusProvider.GetImportStatusAsync(system, cancellationToken);
+        var service = status == TerminologyImportStatus.Completed ? sqlService : fallbackService;
 
-        if (status == TerminologyImportStatus.Completed)
-        {
-            logger.LogDebug("Using SQL service for lookup: {System}|{Code} (imported)", system, code);
-            return await sqlService.LookupCodeAsync(system, code, version, cancellationToken);
-        }
-        else
-        {
-            logger.LogDebug("Using fallback service for lookup: {System}|{Code} (not imported)", system, code);
-            return await fallbackService.LookupCodeAsync(system, code, version, cancellationToken);
-        }
+        logger.LogDebug(
+            "Using {Service} service for lookup: {System}|{Code} ({Reason})",
+            status == TerminologyImportStatus.Completed ? "SQL" : "fallback",
+            system,
+            code,
+            status == TerminologyImportStatus.Completed ? "imported" : "not imported");
+
+        return await service.LookupCodeAsync(system, code, version, cancellationToken);
     }
 
     /// <summary>
@@ -59,17 +58,15 @@ public class HybridTerminologyService(
         ArgumentNullException.ThrowIfNull(parameters);
 
         var status = await importStatusProvider.GetImportStatusAsync(parameters.Url, cancellationToken);
+        var service = status == TerminologyImportStatus.Completed ? sqlService : fallbackService;
 
-        if (status == TerminologyImportStatus.Completed)
-        {
-            logger.LogDebug("Using SQL service for expand: {Url} (imported)", parameters.Url);
-            return await sqlService.ExpandValueSetAsync(parameters, cancellationToken);
-        }
-        else
-        {
-            logger.LogDebug("Using fallback service for expand: {Url} (not imported)", parameters.Url);
-            return await fallbackService.ExpandValueSetAsync(parameters, cancellationToken);
-        }
+        logger.LogDebug(
+            "Using {Service} service for expand: {Url} ({Reason})",
+            status == TerminologyImportStatus.Completed ? "SQL" : "fallback",
+            parameters.Url,
+            status == TerminologyImportStatus.Completed ? "imported" : "not imported");
+
+        return await service.ExpandValueSetAsync(parameters, cancellationToken);
     }
 
     /// <summary>
@@ -91,17 +88,16 @@ public class HybridTerminologyService(
         }
 
         var status = await importStatusProvider.GetImportStatusAsync(valueSetUrl, cancellationToken);
+        var service = status == TerminologyImportStatus.Completed ? sqlService : fallbackService;
 
-        if (status == TerminologyImportStatus.Completed)
-        {
-            logger.LogDebug("Using SQL service for validate: {ValueSet}|{Code} (imported)", valueSetUrl, code);
-            return await sqlService.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
-        }
-        else
-        {
-            logger.LogDebug("Using fallback service for validate: {ValueSet}|{Code} (not imported)", valueSetUrl, code);
-            return await fallbackService.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
-        }
+        logger.LogDebug(
+            "Using {Service} service for validate: {ValueSet}|{Code} ({Reason})",
+            status == TerminologyImportStatus.Completed ? "SQL" : "fallback",
+            valueSetUrl,
+            code,
+            status == TerminologyImportStatus.Completed ? "imported" : "not imported");
+
+        return await service.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
     }
 
     /// <summary>
@@ -117,38 +113,34 @@ public class HybridTerminologyService(
         string? version,
         CancellationToken cancellationToken)
     {
-        var status = await importStatusProvider.GetImportStatusAsync(valueSetUrl, cancellationToken);
+        if (string.IsNullOrEmpty(valueSetUrl))
+        {
+            return new BindingValidationResult(
+                IsValid: false,
+                Strength: strength,
+                Severity: IssueSeverity.Error,
+                Message: "ValueSet URL is required",
+                SuggestedDisplay: null);
+        }
 
-        if (status == TerminologyImportStatus.Completed)
-        {
-            logger.LogDebug(
-                "Using SQL service for binding validation: {ValueSet}|{Code} (imported)",
-                valueSetUrl,
-                code);
-            return await sqlService.ValidateBindingAsync(
-                valueSetUrl,
-                strength,
-                system,
-                code,
-                display,
-                version,
-                cancellationToken);
-        }
-        else
-        {
-            logger.LogDebug(
-                "Using fallback service for binding validation: {ValueSet}|{Code} (not imported)",
-                valueSetUrl,
-                code);
-            return await fallbackService.ValidateBindingAsync(
-                valueSetUrl,
-                strength,
-                system,
-                code,
-                display,
-                version,
-                cancellationToken);
-        }
+        var status = await importStatusProvider.GetImportStatusAsync(valueSetUrl, cancellationToken);
+        var service = status == TerminologyImportStatus.Completed ? sqlService : fallbackService;
+
+        logger.LogDebug(
+            "Using {Service} service for binding validation: {ValueSet}|{Code} ({Reason})",
+            status == TerminologyImportStatus.Completed ? "SQL" : "fallback",
+            valueSetUrl,
+            code,
+            status == TerminologyImportStatus.Completed ? "imported" : "not imported");
+
+        return await service.ValidateBindingAsync(
+            valueSetUrl,
+            strength,
+            system,
+            code,
+            display,
+            version,
+            cancellationToken);
     }
 
     /// <summary>

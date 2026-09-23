@@ -191,6 +191,30 @@ public class HybridTerminologyServiceRoutingTests
         await _fallback.DidNotReceiveWithAnyArgs().ValidateCodeAsync(default, default, default, default, default);
     }
 
+    /// <summary>
+    /// Mirrors <see cref="GivenNoValueSetUrl_WhenValidatingACode_ThenNeitherServiceIsConsulted"/>: without a
+    /// ValueSet there is no canonical to ask about, so the routing decision is never made and neither
+    /// service is consulted.
+    /// </summary>
+    [Fact]
+    public async Task GivenNoValueSetUrl_WhenValidatingABinding_ThenNeitherServiceIsConsulted()
+    {
+        // Act
+        var result = await CreateHybrid().ValidateBindingAsync(
+            valueSetUrl: string.Empty, BindingStrength.Required, "http://example.org", "abc", "Display", null,
+            CancellationToken.None);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Severity.ShouldBe(IssueSeverity.Error);
+        result.Strength.ShouldBe(BindingStrength.Required);
+        await _importStatus.DidNotReceiveWithAnyArgs().GetImportStatusAsync(default!, default);
+        await _sql.DidNotReceiveWithAnyArgs()
+            .ValidateBindingAsync(default!, default, default, default, default, default, default);
+        await _fallback.DidNotReceiveWithAnyArgs()
+            .ValidateBindingAsync(default!, default, default, default, default, default, default);
+    }
+
     [Fact]
     public async Task GivenAnImportedValueSet_WhenValidatingABinding_ThenTheSqlServiceIsUsed()
     {
