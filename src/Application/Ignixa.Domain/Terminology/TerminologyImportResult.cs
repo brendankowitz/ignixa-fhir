@@ -23,7 +23,8 @@ public class TerminologyImportResult
     public int ItemCount { get; init; }
 
     /// <summary>
-    /// Error message if import failed (null if succeeded).
+    /// Error message if import failed, or which entries were dropped if it partially completed (null if it
+    /// fully succeeded).
     /// </summary>
     public string? ErrorMessage { get; init; }
 
@@ -56,6 +57,25 @@ public class TerminologyImportResult
             ItemCount = 0,
             ErrorMessage = errorMessage,
             Status = TerminologyImportStatus.Failed
+        };
+    }
+
+    /// <summary>
+    /// Creates a partially completed result: the resource imported, but malformed entries were dropped.
+    /// Still a success — the kept entries are in the terminology tables — so dependent imports proceed.
+    /// </summary>
+    /// <param name="itemCount">Number of entries actually imported.</param>
+    /// <param name="reason">How many entries were dropped and why.</param>
+    public static TerminologyImportResult CreatePartial(int itemCount, string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+
+        return new TerminologyImportResult
+        {
+            Success = true,
+            ItemCount = itemCount,
+            ErrorMessage = reason,
+            Status = TerminologyImportStatus.PartiallyCompleted
         };
     }
 

@@ -676,7 +676,7 @@ public sealed class SqlServerPackageResourceRepository(
             $"{Packages.Column("PackageResourceId").Name} FROM {QualifiedTable} " +
             $"WHERE {ActiveOnly} " +
             $"AND {Packages.Column("ResourceType").Name} IN ('CodeSystem', 'ValueSet', 'ConceptMap') " +
-            $"AND ({status} IS NULL OR {status} NOT IN ('Completed', 'Skipped'))" +
+            $"AND ({status} IS NULL OR {status} NOT IN ('Completed', 'Skipped', 'PartiallyCompleted'))" +
             $"{filters} " +
             $"ORDER BY {Packages.Column("PackageId").Name}, {Packages.Column("PackageVersion").Name}, " +
             $"{Packages.Column("PackageResourceId").Name}";

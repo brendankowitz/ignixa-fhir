@@ -284,10 +284,10 @@ public interface IPackageResourceRepository
     /// Lists the active terminology resources (CodeSystem, ValueSet, ConceptMap) whose import has not
     /// reached a terminal outcome, grouped by the package version they came from.
     /// <para>
-    /// Terminal means <c>Completed</c> or <c>Skipped</c>, and everything else is owed work. A skipped
-    /// resource is one that was examined and will never import — a CodeSystem with
+    /// Terminal means <c>Completed</c>, <c>Skipped</c> or <c>PartiallyCompleted</c>, and everything else is
+    /// owed work. A skipped resource is one that was examined and will never import — a CodeSystem with
     /// <c>content=not-present</c>, or a supplement — so re-offering it on every scan would queue work that
-    /// is guaranteed to do nothing.
+    /// is guaranteed to do nothing. A partially completed one would drop the same malformed entries again.
     /// </para>
     /// <para>
     /// Defined by excluding the terminal statuses rather than by listing the non-terminal ones, so that a

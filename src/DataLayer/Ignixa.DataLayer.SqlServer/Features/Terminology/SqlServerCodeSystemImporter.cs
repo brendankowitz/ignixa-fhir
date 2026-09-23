@@ -150,7 +150,7 @@ public sealed class SqlServerCodeSystemImporter(
         }
 
         var systemId = await systemRepository.GetOrCreateAsync(metadata.Url, cancellationToken);
-        var concepts = FlattenConcepts(codeSystem["concept"]?.AsArray());
+        var (concepts, droppedCount) = FlattenConcepts(codeSystem["concept"]?.AsArray());
 
         logger.LogInformation(
             "Importing {ConceptCount} concepts for CodeSystem '{Canonical}'",
@@ -158,23 +158,53 @@ public sealed class SqlServerCodeSystemImporter(
 
         await ExecuteCodeSystemImportAsync(packageResource, contentHash, systemId, metadata, concepts, cancellationToken);
 
-        return TerminologyImportResult.CreateSuccess(concepts.Count);
+        return await ResultOfImportAsync(
+            packageResource.PackageResourceId,
+            concepts.Count,
+            droppedCount,
+            "concept(s) not imported: missing required code (a code-less concept's descendants are dropped with it)",
+            cancellationToken);
     }
 
     /// <summary>
-    /// The two statuses that mean "this content has already been dealt with", and so make an unchanged hash
+    /// The procedures always record <c>Completed</c>, so a resource that lost entries on the way in is
+    /// downgraded to <c>PartiallyCompleted</c> afterwards. Without that, the package row reads exactly as if
+    /// the resource had been well-formed and the loss is visible only in the logs.
+    /// </summary>
+    private async Task<TerminologyImportResult> ResultOfImportAsync(
+        long packageResourceId,
+        int importedCount,
+        int droppedCount,
+        string droppedDescription,
+        CancellationToken cancellationToken)
+    {
+        if (droppedCount == 0)
+        {
+            return TerminologyImportResult.CreateSuccess(importedCount);
+        }
+
+        var reason = $"{droppedCount} {droppedDescription}";
+        await RecordPartiallyCompletedAsync(packageResourceId, reason, cancellationToken);
+
+        return TerminologyImportResult.CreatePartial(importedCount, reason);
+    }
+
+    /// <summary>
+    /// The statuses that mean "this content has already been dealt with", and so make an unchanged hash
     /// sufficient to do nothing.
     /// <para>
     /// <c>Skipped</c> belongs here alongside <c>Completed</c>. A resource skipped for its own sake — a
     /// CodeSystem with <c>content=not-present</c>, or a supplement — has its hash stamped by
     /// <see cref="RecordSkippedAsync"/> and will never import no matter how often it is retried. Matching
     /// only <c>Completed</c> meant re-parsing and re-deciding every one of those on every package load.
+    /// <c>PartiallyCompleted</c> is terminal for the same reason: the same content drops the same entries.
     /// </para>
     /// </summary>
     private static TerminologyImportStatus? TerminalStatusOf(string? status) => status switch
     {
         nameof(TerminologyImportStatus.Completed) => TerminologyImportStatus.Completed,
         nameof(TerminologyImportStatus.Skipped) => TerminologyImportStatus.Skipped,
+        nameof(TerminologyImportStatus.PartiallyCompleted) => TerminologyImportStatus.PartiallyCompleted,
         _ => null,
     };
 
@@ -207,12 +237,13 @@ public sealed class SqlServerCodeSystemImporter(
         var metadata = ExtractValueSetMetadata(valueSet);
 
         IReadOnlyList<ValueSetExpansionRow> entries = [];
+        var droppedCount = 0;
         var isPartial = false;
         string? partialReason = null;
 
         if (valueSet["expansion"] is JsonObject expansion)
         {
-            entries = await BuildExpansionRowsAsync(expansion, cancellationToken);
+            (entries, droppedCount) = await BuildExpansionRowsAsync(expansion, cancellationToken);
         }
         else if (valueSet["compose"] is JsonObject compose)
         {
@@ -234,18 +265,30 @@ public sealed class SqlServerCodeSystemImporter(
         await ExecuteValueSetImportAsync(
             packageResource, contentHash, metadata, entries, isPartial, partialReason, cancellationToken);
 
-        return TerminologyImportResult.CreateSuccess(entries.Count);
+        // Only the expansion path drops entries. A partial compose is already recorded on the ValueSet row
+        // itself as IsPartialExpansion, so it leaves droppedCount at zero.
+        return await ResultOfImportAsync(
+            packageResource.PackageResourceId,
+            entries.Count,
+            droppedCount,
+            "expansion entr(y/ies) not imported: code present without a system",
+            cancellationToken);
     }
 
     private async Task<TerminologyImportResult> ImportConceptMapCoreAsync(
         PackageResource packageResource, JsonObject conceptMap, string contentHash, CancellationToken cancellationToken)
     {
         var metadata = ExtractConceptMapMetadata(conceptMap);
-        var elements = await BuildConceptMapElementsAsync(conceptMap, cancellationToken);
+        var (elements, droppedCount) = await BuildConceptMapElementsAsync(conceptMap, cancellationToken);
 
         await ExecuteConceptMapImportAsync(packageResource, contentHash, metadata, elements, cancellationToken);
 
-        return TerminologyImportResult.CreateSuccess(elements.Count);
+        return await ResultOfImportAsync(
+            packageResource.PackageResourceId,
+            elements.Count,
+            droppedCount,
+            "ConceptMap element(s) not imported: missing source code",
+            cancellationToken);
     }
 
     private async Task ExecuteCodeSystemImportAsync(
@@ -427,11 +470,17 @@ public sealed class SqlServerCodeSystemImporter(
     /// Flattens <c>expansion.contains</c> breadth-first. The EF implementation read only the top level, so a
     /// hierarchical expansion — a grouping entry with its real codes nested underneath — imported as the
     /// groupers alone, or as nothing at all when they carried no code of their own.
+    /// <para>
+    /// The dropped count covers only entries that carry a code but no system: that code is lost. An entry
+    /// without a code is a grouper and loses nothing by being skipped, so counting it would report every
+    /// hierarchical expansion as partial.
+    /// </para>
     /// </summary>
-    private async Task<IReadOnlyList<ValueSetExpansionRow>> BuildExpansionRowsAsync(
+    private async Task<(IReadOnlyList<ValueSetExpansionRow> Rows, int DroppedCount)> BuildExpansionRowsAsync(
         JsonObject expansion, CancellationToken cancellationToken)
     {
         var rows = new List<ValueSetExpansionRow>();
+        var droppedCount = 0;
         var queue = new Queue<JsonObject>(ObjectsOf(expansion["contains"]));
 
         while (queue.Count > 0)
@@ -454,6 +503,12 @@ public sealed class SqlServerCodeSystemImporter(
                 // failed the whole import on a constraint violation.
                 logger.LogWarning(
                     "Skipping expansion entry without a code or system: {Entry}", entry.ToJsonString());
+
+                if (!string.IsNullOrEmpty(code))
+                {
+                    droppedCount++;
+                }
+
                 continue;
             }
 
@@ -464,13 +519,14 @@ public sealed class SqlServerCodeSystemImporter(
                 SystemVersion: entry["version"]?.GetValue<string>()));
         }
 
-        return rows;
+        return (rows, droppedCount);
     }
 
-    private async Task<IReadOnlyList<ConceptMapElementRow>> BuildConceptMapElementsAsync(
+    private async Task<(IReadOnlyList<ConceptMapElementRow> Rows, int DroppedCount)> BuildConceptMapElementsAsync(
         JsonObject conceptMap, CancellationToken cancellationToken)
     {
         var rows = new List<ConceptMapElementRow>();
+        var droppedCount = 0;
         var groupIndex = -1;
 
         foreach (var group in ObjectsOf(conceptMap["group"]))
@@ -489,7 +545,7 @@ public sealed class SqlServerCodeSystemImporter(
 
             var target = group["target"]?.GetValue<string>();
 
-            rows.AddRange(BuildGroupElements(
+            var (groupRows, groupDroppedCount) = BuildGroupElements(
                 group,
                 groupIndex,
                 sourceSystemId: await systemRepository.GetOrCreateAsync(source, cancellationToken),
@@ -497,15 +553,21 @@ public sealed class SqlServerCodeSystemImporter(
                 // nullable precisely because a mapping can name a target code whose system it never states.
                 targetSystemId: string.IsNullOrEmpty(target)
                     ? null
-                    : await systemRepository.GetOrCreateAsync(target, cancellationToken)));
+                    : await systemRepository.GetOrCreateAsync(target, cancellationToken));
+
+            rows.AddRange(groupRows);
+            droppedCount += groupDroppedCount;
         }
 
-        return rows;
+        return (rows, droppedCount);
     }
 
-    private IEnumerable<ConceptMapElementRow> BuildGroupElements(
+    private (List<ConceptMapElementRow> Rows, int DroppedCount) BuildGroupElements(
         JsonObject group, int groupIndex, int sourceSystemId, int? targetSystemId)
     {
+        var rows = new List<ConceptMapElementRow>();
+        var droppedCount = 0;
+
         foreach (var element in ObjectsOf(group["element"]))
         {
             var sourceCode = element["code"]?.GetValue<string>();
@@ -513,14 +575,14 @@ public sealed class SqlServerCodeSystemImporter(
             if (string.IsNullOrEmpty(sourceCode))
             {
                 logger.LogWarning("ConceptMap element missing source code, skipping");
+                droppedCount++;
                 continue;
             }
 
-            foreach (var row in BuildTargetRows(element, sourceCode, groupIndex, sourceSystemId, targetSystemId))
-            {
-                yield return row;
-            }
+            rows.AddRange(BuildTargetRows(element, sourceCode, groupIndex, sourceSystemId, targetSystemId));
         }
+
+        return (rows, droppedCount);
     }
 
     private static IEnumerable<ConceptMapElementRow> BuildTargetRows(
@@ -565,14 +627,19 @@ public sealed class SqlServerCodeSystemImporter(
     /// <summary>
     /// Flattens nested <c>concept[]</c> breadth-first, carrying each concept's parent <b>code</b>. Ids
     /// cannot be carried: they are assigned by the insert. The procedure resolves codes to ids server-side.
+    /// <para>
+    /// A concept without a code has no parent code to give its children, so its whole subtree is dropped
+    /// and counted.
+    /// </para>
     /// </summary>
-    private List<ConceptRow> FlattenConcepts(JsonArray? concepts)
+    private (List<ConceptRow> Concepts, int DroppedCount) FlattenConcepts(JsonArray? concepts)
     {
         var result = new List<ConceptRow>();
+        var droppedCount = 0;
 
         if (concepts is null || concepts.Count == 0)
         {
-            return result;
+            return (result, droppedCount);
         }
 
         var queue = new Queue<(JsonObject Concept, string? ParentCode, int Level)>();
@@ -595,6 +662,7 @@ public sealed class SqlServerCodeSystemImporter(
                 // A concept without a code is skipped rather than failing the import, so one malformed
                 // entry does not cost the whole CodeSystem.
                 logger.LogWarning("Skipping concept with missing code: {Concept}", concept.ToJsonString());
+                droppedCount += CountSubtree(concept);
                 continue;
             }
 
@@ -625,8 +693,11 @@ public sealed class SqlServerCodeSystemImporter(
             }
         }
 
-        return result;
+        return (result, droppedCount);
     }
+
+    private static int CountSubtree(JsonObject concept)
+        => 1 + ObjectsOf(concept["concept"]).Sum(CountSubtree);
 
     private static string? SerializePropertiesJson(JsonNode? property, JsonNode? designation)
     {
@@ -721,6 +792,27 @@ public sealed class SqlServerCodeSystemImporter(
 #pragma warning restore CA2100
         command.Parameters.AddWithValue("@contentHash", contentHash);
         command.Parameters.AddWithValue("@reason", (object?)reason ?? DBNull.Value);
+        command.Parameters.AddWithValue("@packageResourceId", packageResourceId);
+
+        await sqlExecutionService.ExecuteNonQueryAsync(systemPartitionId, command, cancellationToken);
+    }
+
+    /// <summary>
+    /// Downgrades the <c>Completed</c> the import procedure just committed. A second statement rather than a
+    /// procedure change because the procedures own their transaction. If this statement fails, the caller's
+    /// failure handling records <c>Failed</c>, which is retried; the drop is never reported as clean success.
+    /// </summary>
+    private async Task RecordPartiallyCompletedAsync(
+        long packageResourceId, string reason, CancellationToken cancellationToken)
+    {
+#pragma warning disable CA2100
+        using var command = new SqlCommand(
+            $"UPDATE {Packages.SchemaName}.{Packages.TableName} SET " +
+            $"{Packages.Column("TerminologyImportStatus").Name} = 'PartiallyCompleted', " +
+            $"{Packages.Column("ImportErrorMessage").Name} = @reason " +
+            $"WHERE {Packages.Column("PackageResourceId").Name} = @packageResourceId");
+#pragma warning restore CA2100
+        command.Parameters.AddWithValue("@reason", reason);
         command.Parameters.AddWithValue("@packageResourceId", packageResourceId);
 
         await sqlExecutionService.ExecuteNonQueryAsync(systemPartitionId, command, cancellationToken);

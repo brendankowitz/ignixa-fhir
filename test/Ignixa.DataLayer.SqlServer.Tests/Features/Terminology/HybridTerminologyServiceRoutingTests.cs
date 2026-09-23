@@ -80,6 +80,7 @@ public class HybridTerminologyServiceRoutingTests
     [InlineData(TerminologyImportStatus.InProgress)]
     [InlineData(TerminologyImportStatus.Failed)]
     [InlineData(TerminologyImportStatus.Skipped)]
+    [InlineData(TerminologyImportStatus.PartiallyCompleted)]
     public async Task GivenACodeSystemThatIsNotFullyImported_WhenLookingUpACode_ThenTheFallbackServiceIsUsed(
         TerminologyImportStatus status)
     {
