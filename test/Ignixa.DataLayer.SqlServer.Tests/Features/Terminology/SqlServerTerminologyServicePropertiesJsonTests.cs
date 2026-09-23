@@ -119,6 +119,6 @@ public class SqlServerTerminologyServicePropertiesJsonTests
         var (properties, _) = CreateService().ParsePropertiesJson(json);
 
         properties.ShouldNotBeNull();
-        properties![0].Value.ShouldBe("True");
+        properties![0].Value.ShouldBe("true");
     }
 }

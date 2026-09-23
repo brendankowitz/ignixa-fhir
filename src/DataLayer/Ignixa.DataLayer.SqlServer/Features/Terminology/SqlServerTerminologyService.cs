@@ -871,7 +871,7 @@ public sealed class SqlServerTerminologyService(
         if (item.TryGetProperty("valueBoolean", out var valueBoolean)
             && valueBoolean.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
-            return valueBoolean.GetBoolean().ToString();
+            return valueBoolean.GetBoolean() ? "true" : "false";
         }
 
         if (item.TryGetProperty("valueInteger", out var valueInteger) && valueInteger.ValueKind == JsonValueKind.Number)
