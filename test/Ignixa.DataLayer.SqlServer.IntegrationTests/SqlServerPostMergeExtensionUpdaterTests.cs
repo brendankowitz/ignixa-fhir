@@ -1,5 +1,6 @@
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.DataLayer.SqlServer.RowGenerators;
+using Ignixa.DataLayer.SqlServer.Tests.Fixtures;
 using Microsoft.Extensions.Logging;
 using Shouldly;
 using Xunit;
@@ -75,10 +76,59 @@ public class SqlServerPostMergeExtensionUpdaterTests : IAsyncLifetime
         _logger.Errors.ShouldContain(message =>
             message.Contains("TokenSearchParam", StringComparison.Ordinal) &&
             message.Contains($"tenant {_database.TenantId}", StringComparison.Ordinal) &&
-            message.Contains("ExpectedRows=1", StringComparison.Ordinal) &&
-            message.Contains("AffectedRows=0", StringComparison.Ordinal));
+            message.Contains("MissedCount=1", StringComparison.Ordinal) &&
+            message.Contains("TotalCount=1", StringComparison.Ordinal));
         _logger.Messages(LogLevel.Information).ShouldNotContain(
             message => message.Contains("Updated 1 TokenSearchParam extension records", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GivenExtensionsSpanningTwoBatches_WhenUpdateTokenSearchParamExtensionsAsyncCalled_ThenMissesAreAccumulatedAcrossBatches()
+    {
+        // BatchSize is 100, so 101 extensions span two batches (100 + 1). Seed a matching row for every
+        // extension except one in each batch -- index 50 (first batch) and index 100 (the lone second
+        // batch). If @Missed were reset per batch instead of accumulated into totalMissed across the
+        // foreach loop, the final log would report 1 miss (whichever batch happened to run last), not
+        // the true total of 2, so this proves accumulation rather than just per-batch correctness.
+        const int extensionCount = 101;
+        const int missedIndexInFirstBatch = 50;
+        const int missedIndexInSecondBatch = 100;
+
+        var extensions = new List<TokenSearchParamExtensionData>();
+        for (var i = 0; i < extensionCount; i++)
+        {
+            var resourceSurrogateId = 2000 + i;
+            var isMissed = i is missedIndexInFirstBatch or missedIndexInSecondBatch;
+
+            if (!isMissed)
+            {
+                await _database.ExecuteNonQueryAsync(
+                    $"INSERT INTO dbo.TokenSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code) VALUES (1, {resourceSurrogateId}, 1, NULL, 'code-{i}')");
+            }
+
+            extensions.Add(new TokenSearchParamExtensionData(
+                ResourceTypeId: 1,
+                ResourceSurrogateId: resourceSurrogateId,
+                SearchParamId: 1,
+                SystemId: null,
+                Code: $"code-{i}",
+                IdentifierTypeSystemId: 42,
+                IdentifierTypeCode: "MR"));
+        }
+
+        await _updater.UpdateTokenSearchParamExtensionsAsync(extensions, CancellationToken.None);
+
+        _logger.Errors.ShouldContain(message =>
+            message.Contains("TokenSearchParam", StringComparison.Ordinal) &&
+            message.Contains($"tenant {_database.TenantId}", StringComparison.Ordinal) &&
+            message.Contains("MissedCount=2", StringComparison.Ordinal) &&
+            message.Contains($"TotalCount={extensionCount}", StringComparison.Ordinal));
+
+        // Every non-missed row across both batches was actually updated, confirming the batching
+        // itself still does its job end to end and the two seeded misses are the only misses.
+        var updatedCount = await _database.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.TokenSearchParam WHERE IdentifierTypeCode = 'MR'");
+        updatedCount.ShouldBe(extensionCount - 2);
     }
 
     [Fact]
@@ -137,8 +187,8 @@ public class SqlServerPostMergeExtensionUpdaterTests : IAsyncLifetime
         _logger.Errors.ShouldContain(message =>
             message.Contains("UriSearchParam", StringComparison.Ordinal) &&
             message.Contains($"tenant {_database.TenantId}", StringComparison.Ordinal) &&
-            message.Contains("ExpectedRows=1", StringComparison.Ordinal) &&
-            message.Contains("AffectedRows=0", StringComparison.Ordinal));
+            message.Contains("MissedCount=1", StringComparison.Ordinal) &&
+            message.Contains("TotalCount=1", StringComparison.Ordinal));
         _logger.Messages(LogLevel.Information).ShouldNotContain(
             message => message.Contains("Updated 1 UriSearchParam extension records", StringComparison.Ordinal));
     }

@@ -37,4 +37,9 @@
     <None Include="Fixtures\*.dacpac" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Reuses the Tests project's RecordingLogger rather than duplicating it here. -->
+    <Compile Include="..\Ignixa.DataLayer.SqlServer.Tests\Fixtures\RecordingLogger.cs" Link="Fixtures\RecordingLogger.cs" />
+  </ItemGroup>
+
 </Project>

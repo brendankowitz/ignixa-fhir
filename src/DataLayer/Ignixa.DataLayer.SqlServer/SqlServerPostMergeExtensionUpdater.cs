@@ -41,11 +41,18 @@ public class SqlServerPostMergeExtensionUpdater(
 
         _logger.LogDebug("Updating {Count} TokenSearchParam extension records in batches", extensionList.Count);
 
-        var totalAffected = 0;
+        var totalMissed = 0;
 
         foreach (var batch in extensionList.Chunk(BatchSize))
         {
+            // TokenSearchParam has no unique key (no DISTINCT in MergeResources.sql, no PK on the TVP, and
+            // Code is truncated to 256 chars with no CodeOverflow in this WHERE clause), so one extension's
+            // UPDATE can legitimately match zero, one, or more than one row. Summing affected-row counts
+            // across the batch would let an over-match on one extension mask a genuine zero-match miss on
+            // another. @Missed instead counts how many of *this batch's* UPDATE statements affected no rows
+            // at all -- that is the only shape of failure worth surfacing.
             var sqlBuilder = new StringBuilder();
+            sqlBuilder.AppendLine("DECLARE @Missed INT = 0;");
             var parameters = new List<SqlParameter>();
 
             for (var i = 0; i < batch.Length; i++)
@@ -68,8 +75,11 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
   AND ResourceSurrogateId = @ResourceSurrogateId{i}
   AND SearchParamId = @SearchParamId{i}
   AND ((@SystemId{i} IS NULL AND SystemId IS NULL) OR SystemId = @SystemId{i})
-  AND Code = @Code{i};");
+  AND Code = @Code{i};
+SET @Missed = @Missed + CASE WHEN @@ROWCOUNT = 0 THEN 1 ELSE 0 END;");
             }
+
+            sqlBuilder.AppendLine("SELECT @Missed AS Missed;");
 
             // CA2100 suppressed: SQL is constructed from safe loop-variable suffixes (0, 1, 2, ...), not user input
 #pragma warning disable CA2100
@@ -80,18 +90,20 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
                 command.Parameters.Add(parameter);
             }
 
-            totalAffected += await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
+            var missedRows = await _sqlExecutionService.ExecuteReaderAsync(
+                tenantId, command, reader => reader.GetInt32(0), cancellationToken);
+            totalMissed += missedRows[0];
         }
 
-        if (totalAffected != extensionList.Count)
+        if (totalMissed > 0)
         {
             _logger.LogError(
-                "Post-merge {Kind} extension update was incomplete for tenant {TenantId}. ExpectedRows={ExpectedRows}, AffectedRows={AffectedRows}",
-                "TokenSearchParam", tenantId, extensionList.Count, totalAffected);
+                "Post-merge {Kind} extension update missed rows for tenant {TenantId}. MissedCount={MissedCount}, TotalCount={TotalCount}",
+                "TokenSearchParam", tenantId, totalMissed, extensionList.Count);
         }
         else
         {
-            _logger.LogInformation("Updated {Count} TokenSearchParam extension records", totalAffected);
+            _logger.LogInformation("Updated {Count} TokenSearchParam extension records", extensionList.Count);
         }
     }
 
@@ -112,11 +124,16 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
 
         _logger.LogDebug("Updating {Count} UriSearchParam extension records in batches", extensionList.Count);
 
-        var totalAffected = 0;
+        var totalMissed = 0;
 
         foreach (var batch in extensionList.Chunk(BatchSize))
         {
+            // See the comment in UpdateTokenSearchParamExtensionsAsync: UriSearchParam has the same
+            // no-unique-key shape (no DISTINCT in MergeResources.sql, no PK on the TVP), so a summed
+            // affected-row total is not a reliable success signal. @Missed counts UPDATE statements in this
+            // batch that affected zero rows -- the only failure shape worth surfacing.
             var sqlBuilder = new StringBuilder();
+            sqlBuilder.AppendLine("DECLARE @Missed INT = 0;");
             var parameters = new List<SqlParameter>();
 
             for (var i = 0; i < batch.Length; i++)
@@ -137,8 +154,11 @@ SET Version = @Version{i},
 WHERE ResourceTypeId = @ResourceTypeId{i}
   AND ResourceSurrogateId = @ResourceSurrogateId{i}
   AND SearchParamId = @SearchParamId{i}
-  AND Uri = @Uri{i};");
+  AND Uri = @Uri{i};
+SET @Missed = @Missed + CASE WHEN @@ROWCOUNT = 0 THEN 1 ELSE 0 END;");
             }
+
+            sqlBuilder.AppendLine("SELECT @Missed AS Missed;");
 
             // CA2100 suppressed: SQL is constructed from safe loop-variable suffixes (0, 1, 2, ...), not user input
 #pragma warning disable CA2100
@@ -149,18 +169,20 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
                 command.Parameters.Add(parameter);
             }
 
-            totalAffected += await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
+            var missedRows = await _sqlExecutionService.ExecuteReaderAsync(
+                tenantId, command, reader => reader.GetInt32(0), cancellationToken);
+            totalMissed += missedRows[0];
         }
 
-        if (totalAffected != extensionList.Count)
+        if (totalMissed > 0)
         {
             _logger.LogError(
-                "Post-merge {Kind} extension update was incomplete for tenant {TenantId}. ExpectedRows={ExpectedRows}, AffectedRows={AffectedRows}",
-                "UriSearchParam", tenantId, extensionList.Count, totalAffected);
+                "Post-merge {Kind} extension update missed rows for tenant {TenantId}. MissedCount={MissedCount}, TotalCount={TotalCount}",
+                "UriSearchParam", tenantId, totalMissed, extensionList.Count);
         }
         else
         {
-            _logger.LogInformation("Updated {Count} UriSearchParam extension records", totalAffected);
+            _logger.LogInformation("Updated {Count} UriSearchParam extension records", extensionList.Count);
         }
     }
 
