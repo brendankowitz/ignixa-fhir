@@ -72,8 +72,12 @@ public class SharedContentDatabaseTopologyTests
         var database = await TestTenantDatabase.CreateEmptyAsync();
         try
         {
-            var server = await database.ExecuteScalarAsync<string>("SELECT CONVERT(nvarchar(128), SERVERPROPERTY('ServerName'))");
-            var alternate = new SqlConnectionStringBuilder(database.ConnectionString) { DataSource = server };
+            var original = new SqlConnectionStringBuilder(database.ConnectionString);
+            var alternate = new SqlConnectionStringBuilder(database.ConnectionString)
+            {
+                DataSource = EquivalentAlias(original.DataSource),
+            };
+            alternate.DataSource.ShouldNotBe(original.DataSource);
             var sql = CreateSql(database.ConnectionString, alternate.ConnectionString);
             using var registry = new SqlServerSearchIndexCacheRegistry(sql, NullLoggerFactory.Instance);
             var factory = new SqlServerTerminologyImporterFactory(sql, registry, 0, NullLoggerFactory.Instance);
@@ -84,6 +88,24 @@ public class SharedContentDatabaseTopologyTests
         {
             await database.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// A textually different data source that reaches the same endpoint: toggles an explicit protocol
+    /// prefix. Not SERVERPROPERTY('ServerName'): in a container that is the container's internal hostname,
+    /// which the test host cannot resolve.
+    /// </summary>
+    private static string EquivalentAlias(string dataSource)
+    {
+        foreach (var prefix in (string[])["tcp:", "np:", "lpc:"])
+        {
+            if (dataSource.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return dataSource[prefix.Length..];
+            }
+        }
+
+        return "tcp:" + dataSource;
     }
 
     internal static SqlExecutionService CreateSql(string packages, string terminology) => new(
