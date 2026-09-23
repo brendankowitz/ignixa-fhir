@@ -1,6 +1,6 @@
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.DataLayer.SqlServer.RowGenerators;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Shouldly;
 using Xunit;
 
@@ -9,13 +9,14 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 public class SqlServerPostMergeExtensionUpdaterTests : IAsyncLifetime
 {
     private TestTenantDatabase _database = null!;
+    private RecordingLogger<SqlServerPostMergeExtensionUpdater> _logger = null!;
     private SqlServerPostMergeExtensionUpdater _updater = null!;
 
     public async Task InitializeAsync()
     {
         _database = await TestTenantDatabase.CreateEmptyAsync();
-        _updater = new SqlServerPostMergeExtensionUpdater(
-            _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
+        _logger = new RecordingLogger<SqlServerPostMergeExtensionUpdater>();
+        _updater = new SqlServerPostMergeExtensionUpdater(_database.SqlExecutionService, _database.TenantId, _logger);
     }
 
     public async Task DisposeAsync() => await _database.DisposeAsync();
@@ -47,6 +48,37 @@ public class SqlServerPostMergeExtensionUpdaterTests : IAsyncLifetime
         var identifierTypeCode = await _database.ExecuteScalarAsync<string>(
             "SELECT IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = 1000");
         identifierTypeCode.ShouldBe("MR");
+
+        // Rows affected (1) matched the input count (1): success is logged at Information, not Error.
+        _logger.Errors.ShouldBeEmpty();
+        _logger.Messages(LogLevel.Information).ShouldContain(
+            message => message.Contains("Updated 1 TokenSearchParam extension records", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GivenATokenSearchParamRowThatDoesNotMatchTheUpdateKey_WhenUpdateTokenSearchParamExtensionsAsyncCalled_ThenAnErrorIsLoggedWithTheExpectedAndActualCounts()
+    {
+        // No matching dbo.TokenSearchParam row is seeded, so the batch UPDATE's WHERE clause matches
+        // nothing and 0 rows are affected -- simulating a race/ordering bug where the merge's row isn't
+        // there (or isn't there yet) when the post-merge extension update runs.
+        var extension = new TokenSearchParamExtensionData(
+            ResourceTypeId: 1,
+            ResourceSurrogateId: 1000,
+            SearchParamId: 1,
+            SystemId: null,
+            Code: "test-code",
+            IdentifierTypeSystemId: 42,
+            IdentifierTypeCode: "MR");
+
+        await _updater.UpdateTokenSearchParamExtensionsAsync([extension], CancellationToken.None);
+
+        _logger.Errors.ShouldContain(message =>
+            message.Contains("TokenSearchParam", StringComparison.Ordinal) &&
+            message.Contains($"tenant {_database.TenantId}", StringComparison.Ordinal) &&
+            message.Contains("ExpectedRows=1", StringComparison.Ordinal) &&
+            message.Contains("AffectedRows=0", StringComparison.Ordinal));
+        _logger.Messages(LogLevel.Information).ShouldNotContain(
+            message => message.Contains("Updated 1 TokenSearchParam extension records", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -79,5 +111,35 @@ public class SqlServerPostMergeExtensionUpdaterTests : IAsyncLifetime
         var fragment = await _database.ExecuteScalarAsync<string>(
             "SELECT Fragment FROM dbo.UriSearchParam WHERE ResourceSurrogateId = 1000");
         fragment.ShouldBe("section1");
+
+        // Rows affected (1) matched the input count (1): success is logged at Information, not Error.
+        _logger.Errors.ShouldBeEmpty();
+        _logger.Messages(LogLevel.Information).ShouldContain(
+            message => message.Contains("Updated 1 UriSearchParam extension records", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GivenAUriSearchParamRowThatDoesNotMatchTheUpdateKey_WhenUpdateUriSearchParamExtensionsAsyncCalled_ThenAnErrorIsLoggedWithTheExpectedAndActualCounts()
+    {
+        // No matching dbo.UriSearchParam row is seeded, so the batch UPDATE's WHERE clause matches
+        // nothing and 0 rows are affected -- simulating a race/ordering bug where the merge's row isn't
+        // there (or isn't there yet) when the post-merge extension update runs.
+        var extension = new UriSearchParamExtensionData(
+            ResourceTypeId: 1,
+            ResourceSurrogateId: 1000,
+            SearchParamId: 1,
+            Uri: "http://example.com/uri",
+            Version: "1.0",
+            Fragment: "section1");
+
+        await _updater.UpdateUriSearchParamExtensionsAsync([extension], CancellationToken.None);
+
+        _logger.Errors.ShouldContain(message =>
+            message.Contains("UriSearchParam", StringComparison.Ordinal) &&
+            message.Contains($"tenant {_database.TenantId}", StringComparison.Ordinal) &&
+            message.Contains("ExpectedRows=1", StringComparison.Ordinal) &&
+            message.Contains("AffectedRows=0", StringComparison.Ordinal));
+        _logger.Messages(LogLevel.Information).ShouldNotContain(
+            message => message.Contains("Updated 1 UriSearchParam extension records", StringComparison.Ordinal));
     }
 }

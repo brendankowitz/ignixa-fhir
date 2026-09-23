@@ -41,6 +41,8 @@ public class SqlServerPostMergeExtensionUpdater(
 
         _logger.LogDebug("Updating {Count} TokenSearchParam extension records in batches", extensionList.Count);
 
+        var totalAffected = 0;
+
         foreach (var batch in extensionList.Chunk(BatchSize))
         {
             var sqlBuilder = new StringBuilder();
@@ -78,10 +80,19 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
                 command.Parameters.Add(parameter);
             }
 
-            await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
+            totalAffected += await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
         }
 
-        _logger.LogInformation("Updated {Count} TokenSearchParam extension records", extensionList.Count);
+        if (totalAffected != extensionList.Count)
+        {
+            _logger.LogError(
+                "Post-merge {Kind} extension update was incomplete for tenant {TenantId}. ExpectedRows={ExpectedRows}, AffectedRows={AffectedRows}",
+                "TokenSearchParam", tenantId, extensionList.Count, totalAffected);
+        }
+        else
+        {
+            _logger.LogInformation("Updated {Count} TokenSearchParam extension records", totalAffected);
+        }
     }
 
     /// <summary>
@@ -100,6 +111,8 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
         }
 
         _logger.LogDebug("Updating {Count} UriSearchParam extension records in batches", extensionList.Count);
+
+        var totalAffected = 0;
 
         foreach (var batch in extensionList.Chunk(BatchSize))
         {
@@ -136,10 +149,19 @@ WHERE ResourceTypeId = @ResourceTypeId{i}
                 command.Parameters.Add(parameter);
             }
 
-            await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
+            totalAffected += await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
         }
 
-        _logger.LogInformation("Updated {Count} UriSearchParam extension records", extensionList.Count);
+        if (totalAffected != extensionList.Count)
+        {
+            _logger.LogError(
+                "Post-merge {Kind} extension update was incomplete for tenant {TenantId}. ExpectedRows={ExpectedRows}, AffectedRows={AffectedRows}",
+                "UriSearchParam", tenantId, extensionList.Count, totalAffected);
+        }
+        else
+        {
+            _logger.LogInformation("Updated {Count} UriSearchParam extension records", totalAffected);
+        }
     }
 
     /// <summary>
