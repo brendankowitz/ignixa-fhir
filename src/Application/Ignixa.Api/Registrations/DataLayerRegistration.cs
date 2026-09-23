@@ -161,12 +161,10 @@ public static class DataLayerRegistration
         // Register package resource repository
         RegisterPackageRepository(builder);
 
-        // ISystemRepository is deliberately not registered. The EF registration here could never resolve --
-        // SqlSystemRepository needs a FhirDbContext and only IDbContextFactory<FhirDbContext> is registered
-        // -- and nothing resolved it: its sole consumer, ImportTerminologyResourceActivity, constructs the
-        // repository and the importer by hand from a tenant-scoped context. Replacing a dead registration
-        // with an equally dead one would only look like wiring. Task 6 gives the terminology path its own
-        // per-tenant construction.
+        // ISystemRepository is deliberately not registered directly. Its terminology-import consumer,
+        // ImportTerminologyResourceActivity, resolves ITerminologyImporterFactory instead (registered
+        // below), which builds a per-call SqlServerSystemRepository against the system partition's cache.
+        // A direct ISystemRepository registration would have no other consumer and nothing would resolve it.
 
         return builder;
     }
