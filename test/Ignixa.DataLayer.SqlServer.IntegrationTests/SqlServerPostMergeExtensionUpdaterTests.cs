@@ -50,14 +50,15 @@ public class SqlServerPostMergeExtensionUpdaterTests : IAsyncLifetime
             "SELECT IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = 1000");
         identifierTypeCode.ShouldBe("MR");
 
-        // Rows affected (1) matched the input count (1): success is logged at Information, not Error.
+        // The single UPDATE statement affected a row, so it is not counted as a miss: success is logged
+        // at Information, not Error.
         _logger.Errors.ShouldBeEmpty();
         _logger.Messages(LogLevel.Information).ShouldContain(
             message => message.Contains("Updated 1 TokenSearchParam extension records", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task GivenATokenSearchParamRowThatDoesNotMatchTheUpdateKey_WhenUpdateTokenSearchParamExtensionsAsyncCalled_ThenAnErrorIsLoggedWithTheExpectedAndActualCounts()
+    public async Task GivenATokenSearchParamRowThatDoesNotMatchTheUpdateKey_WhenUpdateTokenSearchParamExtensionsAsyncCalled_ThenAnErrorIsLoggedWithMissedAndTotalCounts()
     {
         // No matching dbo.TokenSearchParam row is seeded, so the batch UPDATE's WHERE clause matches
         // nothing and 0 rows are affected -- simulating a race/ordering bug where the merge's row isn't
@@ -83,13 +84,93 @@ public class SqlServerPostMergeExtensionUpdaterTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenTwoIdenticalTokenSearchParamRowsMatchingOneExtension_WhenUpdateTokenSearchParamExtensionsAsyncCalled_ThenTheOverMatchIsNotLoggedAsAnError()
+    {
+        // TokenSearchParam has no unique key (see the class comment on SqlServerPostMergeExtensionUpdater),
+        // so seeding two rows with an identical (ResourceTypeId, ResourceSurrogateId, SearchParamId,
+        // SystemId, Code) is a legal duplicate, not a test artifact. The one extension's UPDATE therefore
+        // affects 2 rows -- an over-match -- which must not be treated as a miss.
+        await _database.ExecuteNonQueryAsync(
+            "INSERT INTO dbo.TokenSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code) VALUES (1, 4000, 1, NULL, 'dup-code')");
+        await _database.ExecuteNonQueryAsync(
+            "INSERT INTO dbo.TokenSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code) VALUES (1, 4000, 1, NULL, 'dup-code')");
+
+        var extension = new TokenSearchParamExtensionData(
+            ResourceTypeId: 1,
+            ResourceSurrogateId: 4000,
+            SearchParamId: 1,
+            SystemId: null,
+            Code: "dup-code",
+            IdentifierTypeSystemId: 42,
+            IdentifierTypeCode: "MR");
+
+        await _updater.UpdateTokenSearchParamExtensionsAsync([extension], CancellationToken.None);
+
+        // The over-match affected rows (not zero), so it is not counted as a miss: success is logged at
+        // Information, not Error.
+        _logger.Errors.ShouldBeEmpty();
+        _logger.Messages(LogLevel.Information).ShouldContain(
+            message => message.Contains("Updated 1 TokenSearchParam extension records", StringComparison.Ordinal));
+
+        var updatedCount = await _database.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = 4000 AND IdentifierTypeCode = 'MR'");
+        updatedCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenAnOverMatchedExtensionAndAGenuineMiss_WhenUpdateTokenSearchParamExtensionsAsyncCalled_ThenTheMissIsNotHiddenBehindTheOverMatch()
+    {
+        // This is the regression scenario the @@ROWCOUNT miss-counting fix exists for. Under the old
+        // summed-affected-rows check, the over-matched extension's UPDATE affecting 2 rows and the missed
+        // extension's UPDATE affecting 0 rows would sum to 2 -- exactly extensionList.Count -- so the old
+        // check saw "2 affected == 2 expected" and logged success, silently hiding the genuine miss. The
+        // current per-statement miss count instead sees one UPDATE that affected zero rows and reports
+        // MissedCount=1 regardless of how many rows the other UPDATE in the same batch over-matched.
+        await _database.ExecuteNonQueryAsync(
+            "INSERT INTO dbo.TokenSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code) VALUES (1, 5000, 1, NULL, 'dup-code')");
+        await _database.ExecuteNonQueryAsync(
+            "INSERT INTO dbo.TokenSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code) VALUES (1, 5000, 1, NULL, 'dup-code')");
+        // No row is seeded for ResourceSurrogateId 5001: that extension's UPDATE will affect zero rows.
+
+        var overMatchedExtension = new TokenSearchParamExtensionData(
+            ResourceTypeId: 1,
+            ResourceSurrogateId: 5000,
+            SearchParamId: 1,
+            SystemId: null,
+            Code: "dup-code",
+            IdentifierTypeSystemId: 42,
+            IdentifierTypeCode: "MR");
+        var missedExtension = new TokenSearchParamExtensionData(
+            ResourceTypeId: 1,
+            ResourceSurrogateId: 5001,
+            SearchParamId: 1,
+            SystemId: null,
+            Code: "missing-code",
+            IdentifierTypeSystemId: 42,
+            IdentifierTypeCode: "MR");
+
+        await _updater.UpdateTokenSearchParamExtensionsAsync(
+            [overMatchedExtension, missedExtension], CancellationToken.None);
+
+        _logger.Errors.ShouldContain(message =>
+            message.Contains("TokenSearchParam", StringComparison.Ordinal) &&
+            message.Contains($"tenant {_database.TenantId}", StringComparison.Ordinal) &&
+            message.Contains("MissedCount=1", StringComparison.Ordinal) &&
+            message.Contains("TotalCount=2", StringComparison.Ordinal));
+        _logger.Messages(LogLevel.Information).ShouldNotContain(
+            message => message.Contains("Updated 2 TokenSearchParam extension records", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task GivenExtensionsSpanningTwoBatches_WhenUpdateTokenSearchParamExtensionsAsyncCalled_ThenMissesAreAccumulatedAcrossBatches()
     {
         // BatchSize is 100, so 101 extensions span two batches (100 + 1). Seed a matching row for every
         // extension except one in each batch -- index 50 (first batch) and index 100 (the lone second
-        // batch). If @Missed were reset per batch instead of accumulated into totalMissed across the
-        // foreach loop, the final log would report 1 miss (whichever batch happened to run last), not
-        // the true total of 2, so this proves accumulation rather than just per-batch correctness.
+        // batch). @Missed is genuinely scoped to a single batch by design (it is declared inside each
+        // batch's own SQL text, so it always starts at 0 per batch); what this test actually pins down is
+        // the accumulation across batches in the C# foreach loop -- totalMissed += missedRows[0] must be
+        // used, not totalMissed = missedRows[0], or the final log would report only 1 miss (whichever
+        // batch happened to run last) instead of the true total of 2.
         const int extensionCount = 101;
         const int missedIndexInFirstBatch = 50;
         const int missedIndexInSecondBatch = 100;
@@ -162,14 +243,15 @@ public class SqlServerPostMergeExtensionUpdaterTests : IAsyncLifetime
             "SELECT Fragment FROM dbo.UriSearchParam WHERE ResourceSurrogateId = 1000");
         fragment.ShouldBe("section1");
 
-        // Rows affected (1) matched the input count (1): success is logged at Information, not Error.
+        // The single UPDATE statement affected a row, so it is not counted as a miss: success is logged
+        // at Information, not Error.
         _logger.Errors.ShouldBeEmpty();
         _logger.Messages(LogLevel.Information).ShouldContain(
             message => message.Contains("Updated 1 UriSearchParam extension records", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task GivenAUriSearchParamRowThatDoesNotMatchTheUpdateKey_WhenUpdateUriSearchParamExtensionsAsyncCalled_ThenAnErrorIsLoggedWithTheExpectedAndActualCounts()
+    public async Task GivenAUriSearchParamRowThatDoesNotMatchTheUpdateKey_WhenUpdateUriSearchParamExtensionsAsyncCalled_ThenAnErrorIsLoggedWithMissedAndTotalCounts()
     {
         // No matching dbo.UriSearchParam row is seeded, so the batch UPDATE's WHERE clause matches
         // nothing and 0 rows are affected -- simulating a race/ordering bug where the merge's row isn't
