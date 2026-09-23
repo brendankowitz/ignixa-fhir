@@ -54,7 +54,6 @@ public sealed class SqlServerCodeSystemImporter(
         : throw new ArgumentOutOfRangeException(
             nameof(commandTimeoutSeconds), commandTimeoutSeconds, "Command timeout must be positive.");
 
-
     public Task<TerminologyImportResult> ImportCodeSystemAsync(
         int tenantId, PackageResource packageResource, CancellationToken cancellationToken)
         => ImportAsync(tenantId, packageResource, "CodeSystem", ImportCodeSystemCoreAsync, cancellationToken);
@@ -254,7 +253,7 @@ public sealed class SqlServerCodeSystemImporter(
         else if (valueSet["compose"] is JsonObject compose)
         {
             var composed = await SqlServerValueSetComposer.ComposeAsync(
-                compose, sqlExecutionService, systemPartitionId, systemRepository, logger, commandTimeoutSeconds, cancellationToken);
+                compose, sqlExecutionService, systemPartitionId, systemRepository, logger, _commandTimeoutSeconds, cancellationToken);
 
             entries = composed.Entries;
             isPartial = composed.IsPartial;

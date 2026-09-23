@@ -113,6 +113,7 @@ public class SqlServerPackageResourceRepositoryTerminologyTests : IAsyncLifetime
     {
         await InsertAsync("pkg.d", "1.0.0", "CodeSystem", "http://example.org/d/cs", "Completed");
         await InsertAsync("pkg.d", "1.0.0", "ValueSet", "http://example.org/d/vs", "Skipped");
+        await InsertAsync("pkg.d", "1.0.0", "ConceptMap", "http://example.org/d/cm", "PartiallyCompleted");
 
         var pending = await CreateRepository().ListPendingTerminologyImportsAsync(
             "pkg.d", "1.0.0", CancellationToken.None);
