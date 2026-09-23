@@ -23,7 +23,10 @@ namespace Ignixa.Api.Services;
 /// partitioned at all, so there was never more than one place to look.
 /// </para>
 /// </summary>
-public class TerminologyImportBootstrapService : BackgroundService
+public class TerminologyImportBootstrapService(
+    IServiceProvider serviceProvider,
+    ILogger<TerminologyImportBootstrapService> logger,
+    TimeSpan? startupDelay = null) : BackgroundService
 {
     // The tenant stamped on the published event, for the import orchestration's request context. It does
     // not select which resources are found -- package content is global.
@@ -31,19 +34,11 @@ public class TerminologyImportBootstrapService : BackgroundService
 
     private static readonly TimeSpan DefaultStartupDelay = TimeSpan.FromSeconds(5);
 
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<TerminologyImportBootstrapService> _logger;
-    private readonly TimeSpan _startupDelay;
-
-    public TerminologyImportBootstrapService(
-        IServiceProvider serviceProvider,
-        ILogger<TerminologyImportBootstrapService> logger,
-        TimeSpan? startupDelay = null)
-    {
-        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _startupDelay = startupDelay ?? DefaultStartupDelay;
-    }
+    private readonly IServiceProvider _serviceProvider =
+        serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+    private readonly ILogger<TerminologyImportBootstrapService> _logger =
+        logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly TimeSpan _startupDelay = startupDelay ?? DefaultStartupDelay;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
