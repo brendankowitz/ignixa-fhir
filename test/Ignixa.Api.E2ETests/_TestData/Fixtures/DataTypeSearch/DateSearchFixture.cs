@@ -36,8 +36,8 @@ public class DateSearchTestFixture : IAsyncLifetime
     /// [1] = effectiveDateTime="1980" (year precision - entire 1980)
     /// [2] = effectiveDateTime="1980-05" (month precision - May 1980)
     /// [3] = effectiveDateTime="1980-05-11" (day precision)
-    /// [4] = effectiveDateTime="1980-05-11T16:32:15" (second precision)
-    /// [5] = effectiveDateTime="1980-05-11T16:32:15.500" (millisecond precision)
+    /// [4] = effectiveDateTime="1980-05-11T16:32:15Z" (second precision)
+    /// [5] = effectiveDateTime="1980-05-11T16:32:15.500Z" (millisecond precision)
     /// [6] = effectiveDateTime="1981-01-01" (after 1980 boundary)
     /// [7] = effectivePeriod={start: "1980-05-16", end: "1980-05-17"} (period datatype)
     /// </summary>
@@ -65,11 +65,11 @@ public class DateSearchTestFixture : IAsyncLifetime
             // [3] - 1980-05-11 (day precision)
             CreateObservationWithDateTime(testCode, "1980-05-11"),
 
-            // [4] - 1980-05-11T16:32:15 (second precision)
-            CreateObservationWithDateTime(testCode, "1980-05-11T16:32:15"),
+            // [4] - Explicit UTC preserves the search parser's implicit UTC and second precision.
+            CreateObservationWithDateTime(testCode, "1980-05-11T16:32:15Z"),
 
-            // [5] - 1980-05-11T16:32:15.500 (millisecond precision)
-            CreateObservationWithDateTime(testCode, "1980-05-11T16:32:15.500"),
+            // [5] - Millisecond precision is preserved; choice-valued dateTimes require a timezone.
+            CreateObservationWithDateTime(testCode, "1980-05-11T16:32:15.500Z"),
 
             // [6] - 1981-01-01 (day precision - after 1980)
             CreateObservationWithDateTime(testCode, "1981-01-01"),

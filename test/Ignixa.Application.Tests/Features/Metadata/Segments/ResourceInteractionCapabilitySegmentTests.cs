@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Application.Features.Metadata;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
@@ -24,6 +25,7 @@ namespace Ignixa.Application.Tests.Features.Metadata.Segments;
 public class ResourceInteractionCapabilitySegmentTests
 {
     private readonly ResourceInteractionCapabilitySegment _segment;
+    private readonly IFhirRepositoryFactory _repositoryFactory;
 
     public ResourceInteractionCapabilitySegmentTests()
     {
@@ -33,9 +35,19 @@ public class ResourceInteractionCapabilitySegmentTests
         var versionContext = Substitute.For<IFhirVersionContext>();
         versionContext.GetSchemaProvider(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(schemaProvider);
 
+        _repositoryFactory = CreateRepositoryFactory();
         _segment = new ResourceInteractionCapabilitySegment(
             versionContext,
-            NullLogger<ResourceInteractionCapabilitySegment>.Instance);
+            NullLogger<ResourceInteractionCapabilitySegment>.Instance,
+            _repositoryFactory);
+    }
+
+    private static IFhirRepositoryFactory CreateRepositoryFactory()
+    {
+        var repository = Substitute.For<IFhirRepository, IAtomicFhirRepository, IVersionedResourceRepository>();
+        var factory = Substitute.For<IFhirRepositoryFactory>();
+        factory.GetRepositoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(repository);
+        return factory;
     }
 
     [Theory]
@@ -61,13 +73,39 @@ public class ResourceInteractionCapabilitySegmentTests
     }
 
     [Fact]
-    public async Task GivenNoVreadEndpointExists_WhenApplyingSegment_ThenVreadIsNotDeclared()
+    public async Task GivenVersionReadIsSupported_WhenApplyingSegment_ThenVreadIsDeclared()
     {
         var patient = await ApplyAndGetResourceAsync("Patient");
 
-        patient.Interaction!.Select(i => i.Code).ShouldNotContain(
-            TypeRestfulInteraction.Vread,
-            "No route serves vread; declaring it would make conformance clients run tests the server cannot satisfy.");
+        patient.Interaction!.Select(i => i.Code).ShouldContain(TypeRestfulInteraction.Vread);
+    }
+
+    [Fact]
+    public async Task GivenProviderWithoutOptionalCapabilities_WhenApplyingSegment_ThenDeclarationsRemainHonest()
+    {
+        _repositoryFactory.GetRepositoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<IFhirRepository>());
+
+        var rest = await ApplyAndGetRestAsync();
+
+        rest.Interaction.Select(i => i.Code).ShouldNotContain(SystemRestfulInteraction.Transaction);
+        rest.Interaction.Select(i => i.Code).ShouldContain(SystemRestfulInteraction.Batch);
+        var patient = rest.Resource.Single(r => r.Type == "Patient");
+        patient.Interaction.Select(i => i.Code).ShouldNotContain(TypeRestfulInteraction.Vread);
+        patient.ReadHistory.ShouldBe(false);
+    }
+
+    [Fact]
+    public async Task GivenChangedProviderCapabilities_WhenHashingSegment_ThenCachedDeclarationIsInvalidated()
+    {
+        var context = new CapabilityContext(FhirVersion.R4, 1);
+        var original = await _segment.GetVersionHashAsync(context, CancellationToken.None);
+        _repositoryFactory.GetRepositoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Substitute.For<IFhirRepository>());
+
+        var changed = await _segment.GetVersionHashAsync(context, CancellationToken.None);
+
+        changed.ShouldNotBe(original);
     }
 
     [Fact]

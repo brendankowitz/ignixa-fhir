@@ -78,8 +78,11 @@ public class SearchOptionsForwardingTests
         SearchOptions executed = CapturedOptions();
         ShouldKeepConstraints(executed, options);
 
-        // The one property this handler deliberately varies: pageSize + 1 for has-more detection.
-        executed.MaxItemCount.ShouldBe(options.MaxItemCount + 1);
+        // The one property this handler deliberately varies: it asks for a probe row rather than inflating
+        // the page size, so the data layer still knows which rows are genuinely on the page.
+        executed.MaxItemCount.ShouldBe(options.MaxItemCount);
+        executed.ProbeExtraRow.ShouldBeTrue();
+        options.ProbeExtraRow.ShouldBeFalse();
 
         // Total=Accurate also runs a COUNT. It must carry the same constraints, or the count leaks the
         // cardinality of resources the caller may not read.
@@ -110,18 +113,19 @@ public class SearchOptionsForwardingTests
         SearchOptions executed = CapturedOptions();
         ShouldKeepConstraints(executed, options);
 
-        // The properties this handler deliberately varies: it widens the page to reach the includes, so it
-        // must not inherit the caller's page boundary or ask for a total. Both includes cursors are
-        // consumed here, so they must not travel downstream either.
-        executed.ContinuationToken.ShouldBeNull();
+        // Include continuations must resolve exactly the same match page as the original search.
+        // Only include pagination is consumed here, not the match cursor or page size.
+        executed.ContinuationToken.ShouldBe(options.ContinuationToken);
         executed.Total.ShouldBe(TotalType.None);
-        executed.MaxItemCount.ShouldBe(options.MaxItemCount * 10);
+        executed.MaxItemCount.ShouldBe(options.MaxItemCount);
         executed.IncludesContinuationToken.ShouldBeNull();
         executed.IncludesMaxItemCount.ShouldBeNull();
+        executed.ProbeExtraRow.ShouldBeTrue();
+        options.ProbeExtraRow.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task GivenALargePageSize_WhenFetchingIncludes_ThenTheWidenedPageIsCapped()
+    public async Task GivenALargeMatchPage_WhenFetchingIncludes_ThenTheOriginalMatchPageIsPreserved()
     {
         // Arrange
         SearchOptions options = ConstrainedOptions();
@@ -136,8 +140,7 @@ public class SearchOptionsForwardingTests
         // Act
         await handler.HandleAsync(new IncludesResourceQuery("Patient", options), CancellationToken.None);
 
-        // Assert: 5000 * 10 exceeds the 10000 ceiling, so the multiplier is capped rather than applied.
-        CapturedOptions().MaxItemCount.ShouldBe(10000);
+        CapturedOptions().MaxItemCount.ShouldBe(5000);
     }
 
     [Fact]

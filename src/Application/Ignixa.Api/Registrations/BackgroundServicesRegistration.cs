@@ -9,6 +9,7 @@ using Ignixa.Api.Configuration;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Export;
+using Ignixa.Application.BackgroundOperations.Import;
 using Ignixa.Application.BackgroundOperations.Jobs;
 using Medino;
 
@@ -37,9 +38,6 @@ public static class BackgroundServicesRegistration
 
         // Tenant package preload service
         services.AddHostedService<TenantPackagePreloadService>();
-
-        // SQL reference data preload handler
-        services.AddSingleton<SqlReferenceDataPreloadHandler>();
 
         // Terminology import bootstrap service (conditional)
         if (terminologyAutoImportEnabled)
@@ -70,8 +68,13 @@ public static class BackgroundServicesRegistration
         ArgumentNullException.ThrowIfNull(builder);
 
         // Export job handlers
+        builder.RegisterType<ExportGroupResolver>().AsSelf().InstancePerDependency();
         builder.RegisterType<CreateExportJobHandler>()
             .As<IRequestHandler<CreateExportJobCommand, CreateExportJobResult>>()
+            .InstancePerDependency();
+
+        builder.RegisterType<CreateImportJobHandler>()
+            .As<IRequestHandler<CreateImportJobCommand, CreateImportJobResult>>()
             .InstancePerDependency();
 
         builder.RegisterType<GetJobStatusHandler>()

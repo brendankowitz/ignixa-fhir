@@ -84,6 +84,120 @@ public class StreamingBundleSerializerPaginationTests
     }
 
     [Fact]
+    public async Task SerializeWithPaginationAsync_WithUnmappableProbeRow_StillHasNextLinkAndRendersOnlyPageSize()
+    {
+        // Arrange: the data layer fetched pageSize+1 rows, but the (pageSize+1)th -- the probe --
+        // could not be turned into content (corrupt payload, or a concurrent-delete miss). It is
+        // represented by an IsPagingProbe sentinel rather than a real Match entry.
+        //
+        // NOT LOAD-BEARING for the IsPagingProbe guard itself: with a full pageSize of real Match
+        // entries ahead of it, entryCount already equals pageSize by the time the sentinel arrives,
+        // so the OLD pre-fix overflow-counting branch (entryCount >= pageSize => hasMore, skip
+        // rendering) already gets this exact arrangement right regardless of whether the sentinel is
+        // recognised -- removing the IsPagingProbe check does not fail this test. It documents the
+        // "probe lands exactly at the page boundary" shape and keeps that shape covered, but the
+        // sibling below (...WithUnmappableProbeRowAndAnEarlierSkippedRow_...), where the page is
+        // short of pageSize when the sentinel arrives, is the one that actually fails without the
+        // guard and is the real regression test for this defect.
+        var entries = CreateMatchEntries(count: PageSize);
+        entries.Add(CreatePagingProbeSentinel());
+        var searchOptions = new SearchOptions { MaxItemCount = PageSize };
+
+        var outputStream = new MemoryStream();
+
+        // Act
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            outputStream,
+            "searchset",
+            5000,
+            CreateAsyncEnumerable(entries),
+            searchOptions,
+            BaseUrl,
+            QueryString);
+
+        // Assert
+        var result = ParseBundleResponse(outputStream);
+
+        // Exactly pageSize entries render -- the sentinel carries no content and must not appear.
+        result.EntryCount.ShouldBe(PageSize);
+
+        // The whole point of the fix: a next link must still be produced even though the probe row
+        // itself was unusable.
+        result.HasNextLink.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SerializeWithPaginationAsync_WithUnmappableProbeRowAndAnEarlierSkippedRow_StillHasNextLinkAndNeverRendersTheSentinel()
+    {
+        // Arrange: a page that came up SHORT of pageSize because one of the page's own rows was
+        // ALSO unmappable (an accepted, unchanged behaviour -- see TryBuildSearchEntryResult), on
+        // top of the probe row itself being unmappable. This is the case a naive fix -- yielding a
+        // plain Match-mode placeholder instead of an IsPagingProbe-flagged one -- gets wrong: with
+        // entryCount landing below pageSize when the placeholder arrives, a plain Match entry would
+        // be counted and RENDERED as real page content (an empty resourceType/id stub), and the
+        // page would still wrongly report no further page. Only a signal the serializer special-cases
+        // ahead of the Match/Include branching -- never counted, never rendered -- gets both right.
+        var entries = CreateMatchEntries(count: PageSize - 1);
+        entries.Add(CreatePagingProbeSentinel());
+        var searchOptions = new SearchOptions { MaxItemCount = PageSize };
+
+        var outputStream = new MemoryStream();
+
+        // Act
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            outputStream,
+            "searchset",
+            null,
+            CreateAsyncEnumerable(entries),
+            searchOptions,
+            BaseUrl,
+            QueryString);
+
+        // Assert
+        var result = ParseBundleResponse(outputStream);
+
+        // The page is genuinely short by one (the other, unrelated skip) -- the sentinel must not
+        // paper over that by being rendered as a stand-in entry.
+        result.EntryCount.ShouldBe(PageSize - 1);
+
+        // The probe's mere presence still proves a further page exists.
+        result.HasNextLink.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SerializeWithPaginationAsync_WithSkippedResourceOutcome_RendersOutcomeEntryUnconditionally()
+    {
+        // Arrange: one of the page's own rows (not the probe) was corrupt and the data layer
+        // substituted a client-visible OperationOutcome entry (search.mode="outcome") in its place --
+        // mirroring SqlServerCompiledSearchService.BuildSkippedResourceOutcome. Outcome entries are
+        // written unconditionally by the existing entry loop (they satisfy neither the Match nor the
+        // Include branch), so this only needs to prove that behaviour still holds and the entry is
+        // visible to the client rather than silently missing.
+        var entries = CreateMatchEntries(count: PageSize - 1);
+        entries.Add(CreateSkippedResourceOutcomeEntry("patient-corrupt"));
+        var searchOptions = new SearchOptions { MaxItemCount = PageSize };
+
+        var outputStream = new MemoryStream();
+
+        // Act
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            outputStream,
+            "searchset",
+            null,
+            CreateAsyncEnumerable(entries),
+            searchOptions,
+            BaseUrl,
+            QueryString);
+
+        // Assert
+        var result = ParseBundleResponse(outputStream);
+
+        result.Entries.Count(e => e.SearchMode == "match").ShouldBe(PageSize - 1);
+        result.Entries.Count(e => e.SearchMode == "outcome").ShouldBe(1);
+        result.EntryCount.ShouldBe(PageSize);
+    }
+
+    [Fact]
     public async Task SerializeWithPaginationAsync_WithIncludesAfterPaging_RendersAllIncludes()
     {
         // Arrange:
@@ -326,6 +440,42 @@ public class StreamingBundleSerializerPaginationTests
         }
 
         return entries;
+    }
+
+    /// <summary>
+    /// Mirrors SqlServerCompiledSearchService.PagingProbeSentinel / SqlServerHistoryQueryExecutor's
+    /// twin: a content-free entry whose only meaningful property is IsPagingProbe.
+    /// </summary>
+    private static SearchEntryResult CreatePagingProbeSentinel() =>
+        new(
+            ResourceType: string.Empty,
+            ResourceId: string.Empty,
+            VersionId: string.Empty,
+            LastModified: DateTimeOffset.UnixEpoch,
+            ResourceBytes: ReadOnlyMemory<byte>.Empty)
+        {
+            IsPagingProbe = true,
+        };
+
+    /// <summary>
+    /// Mirrors SqlServerCompiledSearchService.BuildSkippedResourceOutcome: a search.mode="outcome"
+    /// entry standing in for a matched resource whose stored content could not be read.
+    /// </summary>
+    private static SearchEntryResult CreateSkippedResourceOutcomeEntry(string resourceId)
+    {
+        var outcomeJson = $$"""
+        {"resourceType":"OperationOutcome","issue":[{"severity":"warning","code":"incomplete","diagnostics":"could not be read"}]}
+        """;
+
+        return new SearchEntryResult(
+            ResourceType: "Patient",
+            ResourceId: resourceId,
+            VersionId: "1",
+            LastModified: DateTimeOffset.UtcNow,
+            ResourceBytes: Encoding.UTF8.GetBytes(outcomeJson))
+        {
+            SearchMode = SearchEntryMode.Outcome,
+        };
     }
 
     private List<SearchEntryResult> CreateIncludeEntries(int count, string resourceType, int startId)

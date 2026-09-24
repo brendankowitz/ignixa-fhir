@@ -30,7 +30,8 @@ public class BundleChannelExecutor
         ["POST"] = 2,
         ["PUT"] = 3,
         ["PATCH"] = 4,
-        ["GET"] = 5
+        ["GET"] = 5,
+        ["HEAD"] = 5
     };
 
     public BundleChannelExecutor(
@@ -49,6 +50,13 @@ public class BundleChannelExecutor
     {
         return VerbOrderPriority.TryGetValue(httpVerb, out int priority) ? priority : int.MaxValue;
     }
+
+    public Task<BundleEntryResponse> ExecuteEntryAsync(
+        BundleEntryContext entry,
+        ReferenceResolutionContext referenceContext,
+        DeferredWriteCoordinator? coordinator,
+        CancellationToken cancellationToken) =>
+        _entryExecutor.ExecuteAsync(entry, referenceContext, cancellationToken, coordinator);
 
     /// <summary>
     /// Executes bundle entries in streaming mode - processes entries as they arrive and yields responses in order.

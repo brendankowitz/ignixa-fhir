@@ -54,7 +54,7 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [0] - code1 with system1 (single coding, no display)
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithCodedValue("code1", "system1")
                 .Build(),
@@ -62,7 +62,7 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [1] - system2|code2 (single coding)
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithCodedValue("code2", "system2")
                 .Build(),
@@ -70,7 +70,7 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [2] - text only (no coding, just text field)
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithTextOnlyCodedValue("text")
                 .Build(),
@@ -78,7 +78,7 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [3] - text2 display with system1|code2
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithCodedValue("code2", "system1", "text2")
                 .Build(),
@@ -86,7 +86,7 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [4] - system3|code3 with display "text"
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithCodedValue("code3", "system3", "text")
                 .Build(),
@@ -94,7 +94,7 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [5] - Multiple codings: system1|code1 + system3|code2, with text
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithCodedValue("code1", "system1")
                 .WithCodedValue("code2", "system3", null, "text")
@@ -103,7 +103,7 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [6] - Multiple codings: system2|code1 + system3|code3 with display text2
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithCodedValue("code1", "system2")
                 .WithCodedValue("code3", "system3", "text2")
@@ -112,7 +112,7 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [7] - code3 with no system
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithCodedValue("code3", null)
                 .Build(),
@@ -120,16 +120,16 @@ public class TokenSearchTestFixture : IAsyncLifetime
             // [8] - Empty value-concept, but has category (for :not testing over missing values)
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithEmptyCodedValue()
-                .WithCategory("test", "system")
+                .WithCategory("test", "http://example.org/test-category")
                 .Build(),
 
             // [9] - Case-sensitive identifier test (empty value, multiple identifiers)
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("registered")
                 .WithEmptyCodedValue()
                 .WithIdentifier("VALUE", "test")

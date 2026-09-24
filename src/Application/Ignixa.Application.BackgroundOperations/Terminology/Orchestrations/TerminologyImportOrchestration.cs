@@ -23,36 +23,34 @@ public class TerminologyImportOrchestration : TaskOrchestration<TerminologyImpor
 
         try
         {
-            // Process terminology resources in parallel with concurrency limit
-            // Limit to 5 concurrent imports to avoid overwhelming database connection pool
-            // Each activity uses ITerminologyImporter which may perform bulk inserts
             const int maxConcurrent = 5;
 
-            // Create tasks for all resources
-            var allTasks = input.PackageResourceIds.Select(packageResourceId =>
+            if (input.DependencyPlan is not null)
             {
-                var activityInput = new ImportTerminologyResourceInput(
-                    TenantId: input.TenantId,
-                    PackageResourceId: packageResourceId);
-
-                return context.ScheduleTask<ImportTerminologyResourceOutput>(
-                    typeof(ImportTerminologyResourceActivity),
-                    activityInput);
-            }).ToList();
-
-            // Process in batches to limit concurrency
-            for (int i = 0; i < allTasks.Count; i += maxConcurrent)
+                await RunDependencyPlanAsync(context, input, results, maxConcurrent);
+            }
+            else
             {
-                var batch = allTasks.Skip(i).Take(maxConcurrent).ToList();
-                var batchResults = await Task.WhenAll(batch);
+                // Persisted legacy jobs committed all schedules eagerly. Preserve their activity order;
+                // only newly created jobs carry a dependency plan and use bounded scheduling.
+                var allTasks = input.PackageResourceIds.Select(packageResourceId =>
+                {
+                    var activityInput = new ImportTerminologyResourceInput(
+                        TenantId: input.TenantId,
+                        PackageResourceId: packageResourceId);
 
-                results.AddRange(batchResults.Select(r => new TerminologyImportResourceResult(
-                    r.PackageResourceId,
-                    r.Canonical,
-                    r.ResourceType,
-                    r.Success,
-                    r.ConceptCount,
-                    r.ErrorMessage)));
+                    return context.ScheduleTask<ImportTerminologyResourceOutput>(
+                        typeof(ImportTerminologyResourceActivity),
+                        activityInput);
+                }).ToList();
+
+                for (int i = 0; i < allTasks.Count; i += maxConcurrent)
+                {
+                    var batch = allTasks.Skip(i).Take(maxConcurrent).ToList();
+                    var batchResults = await Task.WhenAll(batch);
+
+                    results.AddRange(batchResults.Select(ToResult));
+                }
             }
 
             // Aggregate results
@@ -86,4 +84,80 @@ public class TerminologyImportOrchestration : TaskOrchestration<TerminologyImpor
                 FailurePhase: "Orchestration");
         }
     }
+
+    private static async Task RunDependencyPlanAsync(
+        OrchestrationContext context,
+        TerminologyImportOrchestrationInput input,
+        List<TerminologyImportResourceResult> results,
+        int maxConcurrent)
+    {
+        var plan = input.DependencyPlan!;
+        var byId = plan.ToDictionary(resource => resource.PackageResourceId);
+        if (byId.Count != input.PackageResourceIds.Count || !byId.Keys.ToHashSet().SetEquals(input.PackageResourceIds))
+        {
+            throw new InvalidOperationException("Terminology dependency plan does not match the requested resource IDs.");
+        }
+        if (plan.Any(resource => resource.DependsOn.Any(id => !byId.ContainsKey(id))))
+        {
+            throw new InvalidOperationException("Terminology dependency plan references a resource outside this job.");
+        }
+
+        var remainingDependencies = plan.ToDictionary(resource => resource.PackageResourceId, resource => resource.DependsOn.Count);
+        var dependents = plan.SelectMany(resource => resource.DependsOn.Select(id => (Dependency: id, Resource: resource)))
+            .ToLookup(edge => edge.Dependency, edge => edge.Resource);
+        var ready = new Queue<TerminologyImportDependency>(plan.Where(resource => remainingDependencies[resource.PackageResourceId] == 0));
+        var completed = new Dictionary<long, ImportTerminologyResourceOutput>();
+        while (completed.Count < plan.Count)
+        {
+            if (ready.Count == 0)
+            {
+                foreach (var blocked in plan.Where(resource => !completed.ContainsKey(resource.PackageResourceId)).Chunk(maxConcurrent))
+                {
+                    var failures = await Task.WhenAll(blocked.Select(resource =>
+                        context.ScheduleTask<ImportTerminologyResourceOutput>(typeof(ImportTerminologyResourceActivity),
+                            new ImportTerminologyResourceInput(input.TenantId, resource.PackageResourceId,
+                                "Unresolvable in-package terminology dependency cycle."))));
+                    results.AddRange(failures.Select(ToResult));
+                }
+                return;
+            }
+
+            var batch = new List<TerminologyImportDependency>(maxConcurrent);
+            while (batch.Count < maxConcurrent && ready.TryDequeue(out var resource))
+            {
+                batch.Add(resource);
+            }
+            var tasks = batch.Select(resource =>
+            {
+                var failedDependencies = resource.DependsOn.Where(id => !completed[id].Success).ToArray();
+                var failure = failedDependencies.Length == 0
+                    ? null
+                    : $"In-package terminology dependencies failed: {string.Join(", ", failedDependencies)}.";
+                return context.ScheduleTask<ImportTerminologyResourceOutput>(typeof(ImportTerminologyResourceActivity),
+                    new ImportTerminologyResourceInput(input.TenantId, resource.PackageResourceId, failure));
+            }).ToArray();
+            var outputs = await Task.WhenAll(tasks);
+            for (var index = 0; index < batch.Count; index++)
+            {
+                var id = batch[index].PackageResourceId;
+                var output = outputs[index];
+                if (output.PackageResourceId != id)
+                {
+                    throw new InvalidOperationException("Terminology activity returned a different package resource ID.");
+                }
+                completed.Add(id, output);
+                results.Add(ToResult(output));
+                foreach (var dependent in dependents[id])
+                {
+                    if (--remainingDependencies[dependent.PackageResourceId] == 0)
+                    {
+                        ready.Enqueue(dependent);
+                    }
+                }
+            }
+        }
+    }
+
+    private static TerminologyImportResourceResult ToResult(ImportTerminologyResourceOutput result)
+        => new(result.PackageResourceId, result.Canonical, result.ResourceType, result.Success, result.ConceptCount, result.ErrorMessage);
 }

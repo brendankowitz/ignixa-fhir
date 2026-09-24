@@ -191,7 +191,8 @@ public static class PatchEndpoints
             tenantId,
             resourceType,
             id,
-            patchDocument);
+            patchDocument,
+            IfMatch: Application.Utilities.ConditionalHeaderParser.ParseIfNoneMatch(context.Request.Headers["If-Match"].FirstOrDefault()));
 
         var result = await mediator.SendAsync(command, cancellationToken);
 

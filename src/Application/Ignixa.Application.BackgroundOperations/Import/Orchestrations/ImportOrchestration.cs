@@ -3,7 +3,9 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Data.Common;
 using DurableTask.Core;
+using DurableTask.Core.Exceptions;
 using Ignixa.Application.BackgroundOperations.Import.Activities;
 using Ignixa.Domain.Models;
 using Ignixa.Application.BackgroundOperations.Import.Models;
@@ -24,6 +26,64 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
         var totalResources = 0;
         var totalErrors = 0;
         var errorLogEntries = new List<ImportErrorLogEntry>();
+        var processedFiles = 0;
+        var filesScheduled = false;
+        var countsAreComplete = true;
+        int? resourcesWithUnknownOutcome = 0;
+        string? failureMessage = null;
+
+        Task<StreamingImportFileOutput>[] ScheduleFiles(IEnumerable<InputFileInfo> files) =>
+            files.Select(inputFile => context.ScheduleTask<StreamingImportFileOutput>(
+                typeof(StreamingImportFileActivity),
+                new StreamingImportFileInput
+                {
+                    JobId = input.JobId,
+                    TenantId = input.TenantId,
+                    FileUrl = inputFile.Url,
+                    ResourceType = inputFile.Type,
+                    Mode = input.Mode,
+                    BatchSize = input.BatchSize,
+                    ChannelCapacity = input.ChannelCapacity
+                })).ToArray();
+
+        async Task<bool> RecordOutputsAsync(IReadOnlyList<StreamingImportFileOutput> outputs)
+        {
+            var checkpointResources = totalResources;
+            // All these file activities have completed; retain their counts even if checkpointing fails.
+            foreach (var output in outputs)
+            {
+                totalResources += output.SuccessCount;
+                totalErrors += output.ErrorCount;
+                errorLogEntries.AddRange(output.Errors);
+            }
+
+            var checkpointed = true;
+            foreach (var output in outputs)
+            {
+                processedFiles++;
+                checkpointResources += output.SuccessCount;
+                var accepted = await context.ScheduleTask<bool>(
+                    typeof(UpdateProgressActivity),
+                    new UpdateProgressInput
+                    {
+                        JobId = input.JobId,
+                        TenantId = input.TenantId,
+                        ProcessedResources = checkpointResources,
+                        ProcessedFiles = processedFiles,
+                        TotalFiles = input.InputFiles.Count,
+                        CurrentFile = processedFiles < input.InputFiles.Count ? input.InputFiles[processedFiles].Url : null
+                    });
+                if (!accepted)
+                {
+                    checkpointed = false;
+                    if (input.BoundedFileScheduling)
+                    {
+                        break;
+                    }
+                }
+            }
+            return checkpointed;
+        }
 
         try
         {
@@ -41,88 +101,59 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
 
             if (!validationResult.IsValid)
             {
-                return new ImportOrchestrationOutput
-                {
-                    JobId = input.JobId,
-                    Status = "Failed",
-                    ErrorMessage = validationResult.ErrorMessage,
-                    TotalResources = 0,
-                    TotalErrors = 0
-                };
+                throw new InvalidOperationException(validationResult.ErrorMessage ?? "Import file validation failed.");
             }
 
-            // Step 2: Process files with global concurrency limit to prevent thread pool starvation
-            // MaxConcurrentFiles is a global setting (read from configuration via DurableTask context)
-            // that limits parallel StreamingImportFileActivity instances.
-            // ConsumerCount per activity is also a global setting read by the activity from IConfiguration.
-            // Example: 2 concurrent files × (1 producer + 8 consumers) = 18 task pool threads
-            // vs 5 files × 9 = 45 threads, leaving plenty for API requests.
-            //
-            // Note: We use a fixed value of 2 here as MaxConcurrentFiles is not passed via input.
-            // This should be consistent with configuration. Activities read ConsumerCount from config.
-            const int maxConcurrentFiles = 2; // Global constant - also configured in appsettings.json
-
-            var fileOutputs = new List<StreamingImportFileOutput>();
-            var allFileTasks = input.InputFiles.Select((inputFile, index) =>
+            if (input.BoundedFileScheduling)
             {
-                var streamingInput = new StreamingImportFileInput
+                if (input.MaxConcurrentFiles < 1)
                 {
-                    JobId = input.JobId,
-                    TenantId = input.TenantId,
-                    FileUrl = inputFile.Url,
-                    ResourceType = inputFile.Type,
-                    Mode = input.Mode,
-                    BatchSize = input.BatchSize,
-                    ChannelCapacity = input.ChannelCapacity
-                };
-
-                return context.ScheduleTask<StreamingImportFileOutput>(
-                    typeof(StreamingImportFileActivity),
-                    streamingInput);
-            }).ToList();
-
-            // Process files in batches using the global maxConcurrentFiles limit
-            for (int i = 0; i < allFileTasks.Count; i += maxConcurrentFiles)
-            {
-                var batchTasks = allFileTasks.Skip(i).Take(maxConcurrentFiles).ToList();
-                var batchOutputs = await Task.WhenAll(batchTasks);
-                fileOutputs.AddRange(batchOutputs);
-            }
-
-            // Aggregate results from all files
-            var processedFiles = 0;
-            foreach (var fileOutput in fileOutputs)
-            {
-                totalResources += fileOutput.SuccessCount;
-                totalErrors += fileOutput.ErrorCount;
-
-                if (fileOutput.Errors.Any())
-                {
-                    errorLogEntries.AddRange(fileOutput.Errors);
+                    throw new InvalidOperationException("Import MaxConcurrentFiles must be positive.");
                 }
 
-                processedFiles++;
-
-                // Update progress after each file completes
-                var progressInput = new UpdateProgressInput
+                foreach (var inputBatch in input.InputFiles.Chunk(input.MaxConcurrentFiles))
                 {
-                    JobId = input.JobId,
-                    TenantId = input.TenantId,
-                    ProcessedResources = totalResources,
-                    ProcessedFiles = processedFiles,
-                    TotalFiles = input.InputFiles.Count,
-                    CurrentFile = processedFiles < input.InputFiles.Count
-                        ? input.InputFiles[processedFiles].Url
-                        : null
-                };
-
-                await context.ScheduleTask<bool>(
-                    typeof(UpdateProgressActivity),
-                    progressInput);
+                    filesScheduled = true;
+                    var outputs = await Task.WhenAll(ScheduleFiles(inputBatch));
+                    if (!await RecordOutputsAsync(outputs))
+                    {
+                        failureMessage = "Import progress checkpoint was not accepted; further file scheduling stopped.";
+                        countsAreComplete = false;
+                        break;
+                    }
+                }
             }
+            else
+            {
+                // Preserve old history: schedule all files first, await pairs, then checkpoint in input order.
+                filesScheduled = true;
+                var tasks = ScheduleFiles(input.InputFiles);
+                var outputs = new List<StreamingImportFileOutput>();
+                foreach (var taskBatch in tasks.Chunk(2))
+                {
+                    outputs.AddRange(await Task.WhenAll(taskBatch));
+                }
 
-            // Step 3: Complete job (upload error logs if any)
-            var completeInput = new CompleteJobInput
+                if (!await RecordOutputsAsync(outputs))
+                {
+                    failureMessage = "Import progress checkpoint was not accepted.";
+                }
+            }
+        }
+        catch (Exception ex) when (ex is TaskFailedException or TaskFailureException or IOException
+            or DbException or InvalidOperationException or TimeoutException or OperationCanceledException)
+        {
+            // This is the workflow's fatal-error boundary, not a record-rejection fallback.
+            countsAreComplete = false;
+            resourcesWithUnknownOutcome = filesScheduled ? null : 0;
+            failureMessage = $"{ex.Message} Import stopped. Counts are confirmed lower bounds from completed files; " +
+                (filesScheduled ? "other write/commit outcomes are unknown." : "no file writes were scheduled.");
+        }
+
+        // Finalization is outside the processing catch: a storage failure here must not re-enter it.
+        var completeOutput = await context.ScheduleTask<CompleteJobOutput>(
+            typeof(CompleteJobActivity),
+            new CompleteJobInput
             {
                 JobId = input.JobId,
                 TenantId = input.TenantId,
@@ -130,33 +161,24 @@ public class ImportOrchestration : TaskOrchestration<ImportOrchestrationOutput, 
                 TotalErrors = totalErrors,
                 ErrorLogEntries = errorLogEntries,
                 StorageDetail = input.StorageDetail,
-                StartDate = startDate
-            };
-
-            var completeOutput = await context.ScheduleTask<CompleteJobOutput>(
-                typeof(CompleteJobActivity),
-                completeInput);
-
-            return new ImportOrchestrationOutput
-            {
-                JobId = input.JobId,
-                Status = "Completed",
-                TotalResources = totalResources,
-                TotalErrors = totalErrors,
-                ErrorFileUrl = completeOutput.ErrorFileUrl
-            };
-        }
-        catch (Exception ex)
+                StartDate = startDate,
+                ErrorMessage = failureMessage,
+                CountsAreComplete = countsAreComplete,
+                ResourcesWithUnknownOutcome = resourcesWithUnknownOutcome
+            });
+        return new ImportOrchestrationOutput
         {
-            // Orchestration failed - log and return error
-            return new ImportOrchestrationOutput
-            {
-                JobId = input.JobId,
-                Status = "Failed",
-                ErrorMessage = ex.Message,
-                TotalResources = totalResources,
-                TotalErrors = totalErrors
-            };
-        }
+            JobId = input.JobId,
+            Status = completeOutput.Status ?? (failureMessage == null ? "Completed" : "Failed"),
+            ErrorMessage = completeOutput.Status == null ? failureMessage : completeOutput.ErrorMessage,
+            TotalResources = completeOutput.Result?.TotalResources ?? totalResources,
+            TotalErrors = completeOutput.Result?.TotalErrors ?? totalErrors,
+            CountsAreComplete = completeOutput.Result?.CountsAreComplete
+                ?? (completeOutput.Status == null && countsAreComplete),
+            ResourcesWithUnknownOutcome = completeOutput.Result != null
+                ? completeOutput.Result.ResourcesWithUnknownOutcome
+                : completeOutput.Status == null ? resourcesWithUnknownOutcome : null,
+            ErrorFileUrl = completeOutput.ErrorFileUrl
+        };
     }
 }

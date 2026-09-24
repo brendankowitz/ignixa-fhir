@@ -10,14 +10,14 @@ namespace Ignixa.Domain.Abstractions;
 /// <summary>
 /// Generic repository for background job storage (system-wide, partition 0).
 /// Provides unified interface for managing DurableTask orchestration metadata.
-/// TenantId is stored in the Definition/payload, not queried as a schema column.
+/// TenantId is carried in the Definition; providers enforce immutable persisted ownership.
 /// Requires T to implement IJobDefinition for compile-time tenant access (no reflection needed).
 /// </summary>
 /// <typeparam name="T">The strongly-typed job definition/input parameters that implement IJobDefinition.</typeparam>
 public interface IBackgroundJobRepository<T> where T : class, IJobDefinition
 {
     /// <summary>
-    /// Creates a new background job.
+    /// Creates a new background job from a detached snapshot, including its definition and JSON metadata.
     /// </summary>
     /// <param name="job">The job to create. TenantId should be stored in Definition.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -30,15 +30,22 @@ public interface IBackgroundJobRepository<T> where T : class, IJobDefinition
     /// <param name="jobId">Job ID.</param>
     /// <param name="tenantId">Tenant ID for authorization check.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The job if found and owned by the tenant, null otherwise.</returns>
+    /// <returns>A detached snapshot if found and accessible to the tenant, null otherwise. Mutating it does not persist changes.</returns>
     Task<BackgroundJob<T>?> GetAsync(string jobId, int tenantId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Updates a background job with tenant validation.
+    /// The stored owner is immutable. The first Completed, Failed, or Cancelled state is authoritative:
+    /// subsequent updates, including repeated terminal writes, are rejected atomically.
+    /// Retry/requeue uses a new job ID. An accepted update persists a detached snapshot.
     /// </summary>
     /// <param name="job">The job to update. Must include TenantId in Definition.</param>
     /// <param name="tenantId">Tenant ID for authorization check.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="Ignixa.Domain.Exceptions.BackgroundJobUpdateConflictException">
+    /// The stored job is already terminal and this update was superseded. Reload authoritative state.
+    /// This is distinct from a missing job or unauthorized access.
+    /// </exception>
     Task UpdateAsync(BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken);
 
     /// <summary>
@@ -46,7 +53,7 @@ public interface IBackgroundJobRepository<T> where T : class, IJobDefinition
     /// </summary>
     /// <param name="jobType">Optional: Filter by job type.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of all jobs (filter by tenantId in Definition if needed).</returns>
+    /// <returns>Detached snapshots of all jobs (filter by tenantId in Definition if needed).</returns>
     Task<IReadOnlyList<BackgroundJob<T>>> ListAsync(int? jobType = null, CancellationToken cancellationToken = default);
 
     /// <summary>

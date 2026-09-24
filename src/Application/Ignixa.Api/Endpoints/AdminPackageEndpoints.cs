@@ -15,8 +15,9 @@ public static class AdminPackageEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapAdminPackageEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        // POST /tenant/{tenantId}/admin/packages/load - Load a package into tenant
-        endpoints.MapPost("/tenant/{tenantId}/admin/packages/load", HandleLoadPackage)
+        // Match the FHIR route's tenant constraint so the literal admin segments take precedence.
+        // POST /tenant/{tenantId:int}/admin/packages/load - Load a package into tenant
+        endpoints.MapPost("/tenant/{tenantId:int}/admin/packages/load", HandleLoadPackage)
             .WithName("LoadPackage")
             .WithDescription("Load a FHIR package from NPM registry into a tenant's database")
             .Accepts<LoadPackageRequest>("application/json")
@@ -24,15 +25,15 @@ public static class AdminPackageEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status500InternalServerError);
 
-        // GET /tenant/{tenantId}/admin/packages - List packages loaded in tenant
-        endpoints.MapGet("/tenant/{tenantId}/admin/packages", HandleListPackages)
+        // GET /tenant/{tenantId:int}/admin/packages - List packages loaded in tenant
+        endpoints.MapGet("/tenant/{tenantId:int}/admin/packages", HandleListPackages)
             .WithName("ListPackages")
             .WithDescription("List all loaded FHIR packages for a specific tenant")
             .Produces<ListPackagesResponse>(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status500InternalServerError);
 
-        // DELETE /tenant/{tenantId}/admin/packages/{packageId}/{version} - Unload package from tenant
-        endpoints.MapDelete("/tenant/{tenantId}/admin/packages/{packageId}/{version}", HandleUnloadPackage)
+        // DELETE /tenant/{tenantId:int}/admin/packages/{packageId}/{version} - Unload package from tenant
+        endpoints.MapDelete("/tenant/{tenantId:int}/admin/packages/{packageId}/{version}", HandleUnloadPackage)
             .WithName("UnloadPackage")
             .WithDescription("Unload (deactivate) a FHIR package from a tenant's database")
             .Produces<UnloadPackageResponse>(StatusCodes.Status200OK, contentType: "application/json")
@@ -44,7 +45,7 @@ public static class AdminPackageEndpoints
     }
 
     /// <summary>
-    /// POST /tenant/{tenantId}/admin/packages/load
+    /// POST /tenant/{tenantId:int}/admin/packages/load
     /// Loads a FHIR package from the NPM registry into a tenant's database.
     /// </summary>
     private static async Task<IResult> HandleLoadPackage(
@@ -107,7 +108,7 @@ public static class AdminPackageEndpoints
     }
 
     /// <summary>
-    /// GET /tenant/{tenantId}/admin/packages
+    /// GET /tenant/{tenantId:int}/admin/packages
     /// Lists all loaded FHIR packages for a specific tenant.
     /// </summary>
     private static async Task<IResult> HandleListPackages(
@@ -149,7 +150,7 @@ public static class AdminPackageEndpoints
     }
 
     /// <summary>
-    /// DELETE /tenant/{tenantId}/admin/packages/{packageId}/{version}
+    /// DELETE /tenant/{tenantId:int}/admin/packages/{packageId}/{version}
     /// Unloads (deactivates) a FHIR package from a tenant's database.
     /// </summary>
     private static async Task<IResult> HandleUnloadPackage(

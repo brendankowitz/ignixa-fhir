@@ -3,8 +3,10 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Data.Common;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 using DurableTask.Core;
 using Ignixa.Abstractions;
@@ -39,6 +41,8 @@ namespace Ignixa.Application.BackgroundOperations.Import.Activities;
 /// </summary>
 public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFileInput, StreamingImportFileOutput>
 {
+    // GetNextTransactionIdAsync reserves 1,000 surrogate IDs in the SQL repository.
+    private const int MaxBatchSize = 1000;
     private readonly IFhirRepositoryFactory _repositoryFactory;
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
@@ -108,21 +112,6 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive");
             }
 
-            // Get first repository instance to allocate transaction ID
-            // (All threads will share the same transaction ID, but use separate DbContext instances for writes)
-            var allocatorRepository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
-
-            // Allocate transaction ID from tenant's repository (Isolated mode)
-            // In isolated mode: Each tenant has its own database, so tenant repository = tenant database
-            // In distributed mode: Must use system repository (Partition 0) for transaction allocation
-            //                      TODO: Repository factory should handle this logic based on mode
-            var transactionId = await allocatorRepository.GetNextTransactionIdAsync(CancellationToken.None);
-
-            _logger.LogDebug(
-                "Allocated transaction ID {TransactionId} for import (Tenant {TenantId})",
-                transactionId,
-                input.TenantId);
-
             // Get FHIR schema and indexer using tenant's configured FHIR version
             var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
             var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
@@ -131,6 +120,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
             // Read global configuration for consumer count
             var consumerCount = _configuration.GetValue<int>("Import:ConsumerCount", 8);
             if (consumerCount < 1) consumerCount = 1;
+            var batchSize = Math.Clamp(input.BatchSize, 1, MaxBatchSize);
 
             // Create bounded channel for streaming resources from producer to consumers
             var channel = Channel.CreateBounded<ImportEntry>(
@@ -140,6 +130,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                     SingleReader = false,  // Multiple consumers
                     SingleWriter = true    // Single producer
                 });
+            using var pipelineCancellation = new CancellationTokenSource();
 
             // Shared state for tracking results across consumers
             var successCountLock = new object();
@@ -148,19 +139,23 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
             // Producer task: Download file and stream resources to channel
             var producerTask = Task.Run(async () =>
             {
+                var completed = false;
                 try
                 {
-                    await ProduceResourcesAsync(input.FileUrl, channel.Writer, CancellationToken.None);
+                    await ProduceResourcesAsync(input.FileUrl, channel.Writer, pipelineCancellation.Token);
+                    completed = true;
                 }
-                catch (Exception ex)
+                catch (OperationCanceledException) when (pipelineCancellation.IsCancellationRequested)
                 {
-                    _logger.LogError(ex, "Producer failed for file {FileUrl}", input.FileUrl);
-                    channel.Writer.Complete(ex);
-                    throw;
+                    // A failed consumer stops the producer; Task.WhenAll still propagates that failure.
                 }
                 finally
                 {
-                    channel.Writer.Complete();
+                    channel.Writer.TryComplete();
+                    if (!completed)
+                    {
+                        await pipelineCancellation.CancelAsync();
+                    }
                     _logger.LogDebug("Producer completed for file {FileUrl}", input.FileUrl);
                 }
             }, CancellationToken.None);
@@ -174,13 +169,13 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                     var localSuccessCount = 0;
                     var localErrors = new List<ImportErrorLogEntry>();
 
-                    // Each consumer thread gets its own repository instance
-                    var consumerRepository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
-
+                    var completed = false;
                     try
                     {
-                        await foreach (var entry in channel.Reader.ReadAllAsync(CancellationToken.None))
+                        var consumerRepository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
+                        await foreach (var entry in channel.Reader.ReadAllAsync(pipelineCancellation.Token))
                         {
+                            pipelineCancellation.Token.ThrowIfCancellationRequested();
                             var batchOperations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>();
 
                             // Add current entry to batch
@@ -192,7 +187,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                 localErrors));
 
                             // Try to fill batch with more entries (non-blocking)
-                            while (batchOperations.Count < input.BatchSize &&
+                            while (batchOperations.Count < batchSize &&
                                    channel.Reader.TryRead(out var nextEntry))
                             {
                                 batchOperations.Add(PrepareResource(
@@ -206,63 +201,47 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                             // Filter out null entries (parse errors)
                             var validOperations = batchOperations
                                 .Where(op => op.resource != null!)
+                                .Select((op, index) => (op.resourceType, op.resourceId, op.resource, op.searchIndexes, op.httpMethod, entryIndex: index))
                                 .ToList();
 
                             if (validOperations.Count > 0)
                             {
+                                pipelineCancellation.Token.ThrowIfCancellationRequested();
+                                _logger.LogDebug(
+                                    "Consumer {ConsumerId} executing batch of {Count} resources",
+                                    consumerId, validOperations.Count);
+
+                                // A file can outgrow a reserved range, and blank lines are not resource offsets.
+                                var transactionId = await consumerRepository.GetNextTransactionIdAsync(CancellationToken.None);
+                                var keys = await consumerRepository.BatchWriteAsync(
+                                    transactionId, validOperations, CancellationToken.None);
                                 try
                                 {
-                                    _logger.LogDebug(
-                                        "Consumer {ConsumerId} executing batch of {Count} resources",
-                                        consumerId,
-                                        validOperations.Count);
-
-                                    var keys = await consumerRepository.BatchWriteAsync(
-                                        transactionId,
-                                        validOperations,
-                                        CancellationToken.None);
-
-                                    localSuccessCount += keys.Count;
-
-                                    _logger.LogDebug(
-                                        "Consumer {ConsumerId} completed batch: {Count} resources written",
-                                        consumerId,
-                                        keys.Count);
+                                    await consumerRepository.CommitTransactionAsync(transactionId, CancellationToken.None);
                                 }
-                                catch (Exception ex)
+                                catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
                                 {
-                                    _logger.LogError(
-                                        ex,
-                                        "Consumer {ConsumerId} batch write failed for {Count} resources",
-                                        consumerId,
-                                        validOperations.Count);
-
-                                    // Mark all operations in batch as failed
-                                    foreach (var op in validOperations)
-                                    {
-                                        localErrors.Add(new ImportErrorLogEntry
-                                        {
-                                            ResourceType = op.resourceType,
-                                            ResourceId = op.resourceId,
-                                            ErrorCode = "BatchWriteError",
-                                            ErrorMessage = ex.Message,
-                                            ResourceJson = op.resource.SerializeToString()
-                                        });
-                                    }
+                                    throw new InvalidOperationException(
+                                        $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({validOperations.Count} resources). {ex.Message}", ex);
                                 }
+                                localSuccessCount += keys.Count;
+                                _logger.LogDebug(
+                                    "Consumer {ConsumerId} completed batch: {Count} resources written",
+                                    consumerId, keys.Count);
                             }
                         }
+                        completed = true;
                     }
-                    catch (Exception ex)
+                    catch (OperationCanceledException) when (pipelineCancellation.IsCancellationRequested)
                     {
-                        _logger.LogError(
-                            ex,
-                            "Consumer {ConsumerId} failed",
-                            consumerId);
-                        throw;
+                        // Another pipeline task failed; do not start more writes.
                     }
                     finally
                     {
+                        if (!completed)
+                        {
+                            await pipelineCancellation.CancelAsync();
+                        }
                         // Aggregate local results into shared state
                         lock (successCountLock)
                         {
@@ -287,11 +266,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 .ToArray();
 
             // Wait for producer and all consumers to complete
-            await producerTask;
-            await Task.WhenAll(consumerTasks);
-
-            // Commit transaction (use allocator repository for consistency)
-            await allocatorRepository.CommitTransactionAsync(transactionId, CancellationToken.None);
+            await Task.WhenAll(consumerTasks.Append(producerTask));
 
             stopwatch.Stop();
 
@@ -314,21 +289,9 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 Errors = errors
             };
         }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-
-            _logger.LogError(
-                ex,
-                "Streaming import failed: Job={JobId}, File={FileUrl}, Duration={Duration:F2}s",
-                input.JobId,
-                input.FileUrl,
-                stopwatch.Elapsed.TotalSeconds);
-
-            throw;
-        }
         finally
         {
+            stopwatch.Stop();
             _fhirContextAccessor.RequestContext = previousContext;
         }
     }
@@ -425,27 +388,13 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 _logger.LogDebug("Generated ID for {ResourceType}: {Id}", expectedResourceType, resourceId);
             }
 
-            // Extract search indices (best effort)
-            IReadOnlyList<object> searchIndices = Array.Empty<object>();
-            try
-            {
-                var typedElement = jsonNode.ToElement(schemaProvider);
-                var indices = searchIndexer.Extract((IElement)typedElement);
-                searchIndices = indices.ToArray();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "Failed to extract search indices for {ResourceType}/{Id}, skipping indexing",
-                    expectedResourceType,
-                    resourceId);
-            }
+            var typedElement = jsonNode.ToElement(schemaProvider);
+            IReadOnlyList<object> searchIndices = searchIndexer.Extract((IElement)typedElement).ToArray();
 
             // Return tuple for BatchWriteAsync
             return (expectedResourceType, resourceId, jsonNode, searchIndices, "PUT", entry.LineNumber);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException or InvalidOperationException)
         {
             _logger.LogError(ex, "Error parsing resource at line {LineNumber}", entry.LineNumber);
             errors.Add(new ImportErrorLogEntry

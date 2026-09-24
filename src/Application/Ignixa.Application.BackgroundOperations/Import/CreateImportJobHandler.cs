@@ -9,6 +9,7 @@ using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Medino;
+using Microsoft.Extensions.Configuration;
 
 namespace Ignixa.Application.BackgroundOperations.Import;
 
@@ -20,19 +21,28 @@ public class CreateImportJobHandler : IRequestHandler<CreateImportJobCommand, Cr
 {
     private readonly TaskHubClient _taskHubClient;
     private readonly IBackgroundJobRepository<ImportJobDefinition> _jobRepository;
+    private readonly IConfiguration? _configuration;
 
     public CreateImportJobHandler(
         TaskHubClient taskHubClient,
-        IBackgroundJobRepository<ImportJobDefinition> jobRepository)
+        IBackgroundJobRepository<ImportJobDefinition> jobRepository,
+        IConfiguration? configuration = null)
     {
         _taskHubClient = taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
         _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
+        _configuration = configuration;
     }
 
     public async Task<CreateImportJobResult> HandleAsync(
         CreateImportJobCommand request,
         CancellationToken cancellationToken)
     {
+        var maxConcurrentFiles = _configuration?.GetValue<int>("Import:MaxConcurrentFiles", 2) ?? 2;
+        if (maxConcurrentFiles < 1)
+        {
+            throw new InvalidOperationException("Import:MaxConcurrentFiles must be a positive integer.");
+        }
+
         // Validate mode
         if (request.Mode != "InitialLoad" && request.Mode != "IncrementalLoad")
         {
@@ -68,6 +78,7 @@ public class CreateImportJobHandler : IRequestHandler<CreateImportJobCommand, Cr
         var job = new BackgroundJob<ImportJobDefinition>
         {
             JobId = jobId,
+            OrchestrationInstanceId = jobId,
             JobType = (int)BackgroundJobType.Import,
             Status = "Queued",
             Definition = new ImportJobDefinition
@@ -92,6 +103,8 @@ public class CreateImportJobHandler : IRequestHandler<CreateImportJobCommand, Cr
             InputFiles = request.InputFiles,
             Mode = request.Mode,
             StorageDetail = request.StorageDetail,
+            BoundedFileScheduling = true,
+            MaxConcurrentFiles = maxConcurrentFiles,
             BatchSize = batchSize,
             ChannelCapacity = channelCapacity
         };
@@ -100,10 +113,6 @@ public class CreateImportJobHandler : IRequestHandler<CreateImportJobCommand, Cr
             typeof(ImportOrchestration),
             jobId, // Use jobId as instance ID for easy lookup
             orchestrationInput);
-
-        // Update job with orchestration instance ID
-        job.OrchestrationInstanceId = instance.InstanceId;
-        await _jobRepository.UpdateAsync(job, request.TenantId, cancellationToken);
 
         return new CreateImportJobResult
         {

@@ -15,13 +15,13 @@ namespace Ignixa.Application.Features.Resource;
 
 /// <summary>
 /// Handler for the $includes operation. Fetches additional included resources from a previous search.
-/// This handler re-executes the search but only returns Include entries (not Match entries),
-/// supporting independent pagination for _include/_revinclude results.
+/// This handler re-executes the original match page and returns Include and Outcome entries,
+/// supporting independent pagination for _include/_revinclude without discarding warnings.
 ///
 /// Flow:
 /// 1. Decode the IncludesContinuationToken to get pagination offset
-/// 2. Re-execute the search with include resolution
-/// 3. Filter to only Include entries (skip Match entries)
+/// 2. Re-execute the original match page with include resolution
+/// 3. Skip Match/probe entries while preserving Outcome entries
 /// 4. Apply pagination based on IncludesMaxItemCount
 /// 5. Generate new IncludesContinuationToken for further pages
 /// </summary>
@@ -31,9 +31,6 @@ public class IncludesResourceHandler(
     IFhirRequestContextAccessor contextAccessor,
     ILogger<IncludesResourceHandler> logger) : IRequestHandler<IncludesResourceQuery, SearchResourcesResult>
 {
-    private const int IncludesSearchMultiplier = 10;
-    private const int MaxIncludesSearchLimit = 10000;
-
     public Task<SearchResourcesResult> HandleAsync(
         IncludesResourceQuery request,
         CancellationToken cancellationToken)
@@ -70,13 +67,12 @@ public class IncludesResourceHandler(
             }
         }
 
-        // Both includes cursors are consumed above and applied by this handler, so they must not travel
-        // downstream: a data layer that honoured either would apply the offset twice or cap away the
-        // extra row FilterIncludesWithPaginationAsync needs to detect a further page.
-        var searchOptionsWithoutLimit = new SearchOptions(request.SearchOptions)
+        // Only include pagination is consumed here. Changing the match count or cursor would resolve
+        // a different include set, making the include offset skip or duplicate resources.
+        var searchOptionsForIncludes = new SearchOptions(request.SearchOptions)
         {
-            MaxItemCount = Math.Min(request.SearchOptions.MaxItemCount * IncludesSearchMultiplier, MaxIncludesSearchLimit),
-            ContinuationToken = null,
+            // Match the original search's probe exclusion and include-seed boundary.
+            ProbeExtraRow = true,
             Total = TotalType.None,
             IncludesContinuationToken = null,
             IncludesMaxItemCount = null,
@@ -89,7 +85,7 @@ public class IncludesResourceHandler(
 
         var resourceStream = executionStrategy.SearchStreamAsync(
             partition,
-            searchOptionsWithoutLimit,
+            searchOptionsForIncludes,
             cancellationToken);
 
         var filteredStream = FilterIncludesWithPaginationAsync(
@@ -119,6 +115,17 @@ public class IncludesResourceHandler(
 
         await foreach (var entry in entries.WithCancellation(cancellationToken))
         {
+            if (entry.IsPagingProbe)
+            {
+                continue;
+            }
+
+            if (entry.SearchMode == SearchEntryMode.Outcome)
+            {
+                yield return entry;
+                continue;
+            }
+
             if (entry.SearchMode != SearchEntryMode.Include)
             {
                 continue;

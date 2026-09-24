@@ -10,7 +10,8 @@ internal static class IncludeEmitter
     /// <summary>
     /// Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by
     /// reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. The ordinary
-    /// path selects <c>TOP (Limit + 1)</c> ordered by (T1, Sid1); the IncludesOnly path drops both. The body is
+    /// path selects <c>TOP (Limit + 1)</c> ordered by (T1, Sid1) when bounded; an unbounded stage or the
+    /// IncludesOnly path drops both. The body is
     /// never filtered by the resume boundary — it seeds downstream <c>:iterate</c> stages (<see cref="EmitSeedExists"/>).
     /// </summary>
     internal static string EmitIncludeStage(
@@ -59,8 +60,9 @@ internal static class IncludeEmitter
 
         // Drop the per-stage TOP and its ORDER BY for the IncludesOnly page: the budget is applied once
         // globally, and a CTE ORDER BY without TOP is illegal T-SQL anyway.
-        var topClause = includesOnly ? string.Empty : $"TOP ({stage.Limit + 1}) ";
-        var orderByClause = includesOnly ? string.Empty : "\n    ORDER BY T1 ASC, Sid1 ASC";
+        var bounded = !includesOnly && stage.Limit.HasValue;
+        var topClause = bounded ? $"TOP ({stage.Limit + 1}) " : string.Empty;
+        var orderByClause = bounded ? "\n    ORDER BY T1 ASC, Sid1 ASC" : string.Empty;
 
         return $"    SELECT DISTINCT {topClause}{selectColumns}\n" +
                $"    FROM dbo.ReferenceSearchParam rsp\n" +

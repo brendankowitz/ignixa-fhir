@@ -521,6 +521,25 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task GivenAValidTypeModifierOnTheSameParameter_WhenSearched_ThenItStillSucceeds()
+    {
+        // The control for the test above: without it, asserting a 400 passes equally well if the parameter
+        // were broken outright rather than only its invalid modifier being rejected.
+        RequireSearchParameter("Observation", "performer");
+
+        var tag = Guid.NewGuid().ToString();
+        var scenario = SchemaProvider.GetIncludeSearchScenario(tag);
+        await Harness.CreateResourcesAsync([.. scenario.AllResources]);
+
+        var practitionerId = scenario.Practitioner.Id!;
+
+        var response = await Client.SendAsync(new HttpRequestMessage(
+            HttpMethod.Get, $"/Observation?performer:Practitioner={practitionerId}&_tag={tag}"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
     /// <summary>
     /// Tests that combining type modifier with other search parameters works correctly (AND logic).
     /// Example: subject:Patient={id} AND status=final.

@@ -1,11 +1,12 @@
+-- The code column(s) below are CS_AS for the reason given in full on TermConcept.sql.
 CREATE TABLE dbo.TermConceptMapElement (
     TermConceptMapElementId BIGINT NOT NULL IDENTITY (1, 1),
     TermConceptMapId BIGINT NOT NULL,
     SourceSystemId INT NOT NULL,
-    SourceCode NVARCHAR (256) NOT NULL,
+    SourceCode NVARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
     SourceDisplay NVARCHAR (500) NULL,
     TargetSystemId INT NULL,
-    TargetCode NVARCHAR (256) NULL,
+    TargetCode NVARCHAR (256) COLLATE Latin1_General_100_CS_AS NULL,
     TargetDisplay NVARCHAR (500) NULL,
     Equivalence NVARCHAR (50) NOT NULL,
     Comment NVARCHAR (MAX) NULL,
@@ -15,6 +16,12 @@ CREATE TABLE dbo.TermConceptMapElement (
     CONSTRAINT FK_TermConceptMapElement_SourceSystem FOREIGN KEY (SourceSystemId) REFERENCES dbo.System (SystemId),
     CONSTRAINT FK_TermConceptMapElement_TargetSystem FOREIGN KEY (TargetSystemId) REFERENCES dbo.System (SystemId)
 );
+
+GO
+
+-- Convention-only here, not load-bearing: this table is not partitioned, so AUTO escalates to TABLE
+-- level exactly like SQL Server's un-set default. See TermCodeSystem.sql for the full explanation.
+ALTER TABLE dbo.TermConceptMapElement SET (LOCK_ESCALATION = AUTO);
 
 GO
 

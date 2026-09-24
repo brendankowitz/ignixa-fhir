@@ -25,6 +25,12 @@
   <ItemGroup>
     <!-- Project references -->
     <ProjectReference Include="..\..\Application\Ignixa.Domain\Ignixa.Domain.csproj" />
+    <!-- Owns ISourceEventStore, which SqlServerSourceEventStore implements (Phase F Task 1) -->
+    <ProjectReference Include="..\..\Application\Ignixa.Conformance.Events\Ignixa.Conformance.Events.csproj" />
+    <!-- Owns ITerminologyService, which SqlServerTerminologyService implements (Phase F Task 6) -->
+    <ProjectReference Include="..\..\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <!-- RowGenerators (Phase D Task 1 copy) reference SqlCatalog for column/table facts -->
+    <ProjectReference Include="..\..\Core\Ignixa.Search.Sql\Ignixa.Search.Sql.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -44,6 +50,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.Tests" />
     <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.IntegrationTests" />
+    <!-- Ignixa.SchemaUpgrade.Cli (Phase C Task 6) re-uses SqlExecutionService.ResolveConnectionStringAsync
+         rather than duplicating tenant-storage-type/inheritance resolution logic. -->
+    <InternalsVisibleTo Include="Ignixa.SchemaUpgrade.Cli" />
   </ItemGroup>
 
 </Project>

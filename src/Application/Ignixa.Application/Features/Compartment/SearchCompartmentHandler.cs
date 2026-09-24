@@ -79,10 +79,18 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
             filteredResourceTypes == null ? "all" : string.Join(",", filteredResourceTypes));
 
         // Combine with existing search options
-        // If SearchOptions.Expression already exists, AND it with the compartment expression
-        Expression finalExpression = request.SearchOptions.Expression != null
-            ? Expression.And(compartmentExpression, request.SearchOptions.Expression)
-            : compartmentExpression;
+        // If SearchOptions.Expression already exists, AND it with the compartment expression.
+        // When the existing expression is already a flat And, splice the compartment expression
+        // into it rather than nesting a new And around it -- a nested And would hide any
+        // resource-column predicate (e.g. _id/_type/_lastUpdated) buried inside the existing And
+        // from the compiler's top-level extraction logic.
+        Expression finalExpression = request.SearchOptions.Expression switch
+        {
+            null => compartmentExpression,
+            MultiaryExpression { MultiaryOperation: MultiaryOperator.And } existingAnd =>
+                Expression.And([compartmentExpression, .. existingAnd.Expressions]),
+            var other => Expression.And(compartmentExpression, other),
+        };
 
         // Copied rather than mutated: the caller still holds request.SearchOptions.
         var compartmentSearchOptions = new SearchOptions(request.SearchOptions)

@@ -24,8 +24,8 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
         "IsActive": true,
         "IsSystemPartition": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
-          "InheritConnectionStringFromTenant": true
+          "Type": "SqlServer",
+          "InheritConnectionStringFromTenant": 1
         }
       },
       {
@@ -34,7 +34,7 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
         "FhirVersion": "4.0",
         "IsActive": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "ConnectionString": "Server=localhost;Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
         }
       }
@@ -49,9 +49,18 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
 |---------|-------------|
 | `Mode` | `Isolated` - each tenant has separate data. (`Distributed` planned but not yet implemented) |
 | `TenantId` | Unique identifier. `0` is reserved for system operations |
-| `FhirVersion` | `4.0` (R4), `4.3` (R4B), `5.0` (R5), or `6.0` (R6) |
-| `Storage.Type` | `SqlEntityFramework` (recommended) |
-| `InheritConnectionStringFromTenant` | System partition inherits from Tenant 1 |
+| `FhirVersion` | `3.0` (STU3), `4.0` (R4), `4.3` (R4B), `5.0` (R5), or `6.0` (R6 ballot) |
+| `Storage.Type` | `SqlServer` (recommended). `SqlEntityFramework` is accepted as a legacy alias for the same storage. |
+| `Storage.InheritConnectionStringFromTenant` | Integer source tenant ID (default `1`). Used when the system partition has no connection string of its own. |
+
+`InheritConnectionStringFromTenant` is **not a boolean**. Replace older examples using `true` with
+the numeric source tenant ID, normally `1`, including environment overrides such as
+`Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant=1`. To give the system
+partition an explicit connection string, configure `Storage.ConnectionString` rather than setting
+inheritance to `false`. SQL-backed package/terminology storage currently requires the system
+partition and tenant 1 to share the same resolved physical database, regardless of connection-string
+or server-alias spelling. The shared-database check holds two SQL connections concurrently; do not
+limit a shared connection pool to `Max Pool Size=1`.
 
 ### Hostname-based Tenant Resolution
 
@@ -67,7 +76,7 @@ Each tenant may declare a `Hostnames` array to enable resolution by request `Hos
         "TenantId": 1,
         "DisplayName": "Production Database",
         "Hostnames": ["fhir1.example.org", "fhir1-backup.example.org"],
-        "Storage": { "Type": "SqlEntityFramework", "ConnectionString": "..." }
+        "Storage": { "Type": "SqlServer", "ConnectionString": "..." }
       }
     ]
   }
@@ -136,7 +145,7 @@ For production SQL Server:
 ```json
 {
   "Storage": {
-    "Type": "SqlEntityFramework",
+    "Type": "SqlServer",
     "ConnectionString": "Server=your-server.database.windows.net;Database=FHIR_R4;Authentication=Active Directory Default;TrustServerCertificate=true"
   }
 }
@@ -147,7 +156,7 @@ For local development with Windows Auth:
 ```json
 {
   "Storage": {
-    "Type": "SqlEntityFramework",
+    "Type": "SqlServer",
     "ConnectionString": "Server=(local);Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
   }
 }
@@ -227,6 +236,56 @@ the tenant database must already exist before the first request for that tenant 
 export SqlServer__AutomaticSchemaDeploymentEnabled=true
 ```
 
+## Terminology Import Timeout
+
+Terminology packages (CodeSystem, ValueSet, ConceptMap) import through a handful of SQL Server commands
+that can carry a whole CodeSystem's or ValueSet's worth of rows in one call. The `SqlServer` section also
+controls how long those commands are allowed to run before ADO.NET gives up on them.
+
+```json
+{
+  "SqlServer": {
+    "TerminologyImportCommandTimeoutSeconds": 120
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `TerminologyImportCommandTimeoutSeconds` | `120` | `SqlCommand.CommandTimeout`, in seconds, for the terminology import procedures and the ValueSet compose-resolution reads that can run before them |
+
+Omitting this setting still uses Ignixa's **120-second** default, not ADO.NET's underlying 30-second
+`SqlCommand` default. A command that overruns the configured timeout is classified
+as a transient SQL failure and retried up to three more times before the package import attempt is
+marked `Failed`. That attempt remains eligible for retry on a subsequent startup. A failed transactional
+replacement does not remove previously installed active terminology; the package records its failure
+and error separately from the effective status of surviving content. This setting covers:
+
+- `dbo.ImportTermCodeSystem`, `dbo.ImportTermValueSet` and `dbo.ImportTermConceptMap` — the three
+  procedures that insert a whole CodeSystem, ValueSet or ConceptMap as a table-valued parameter and
+  resolve its hierarchy server-side in one transaction.
+- The reads `SqlServerValueSetComposer` runs to resolve a ValueSet's `compose` element *before*
+  `dbo.ImportTermValueSet` runs. These can be just as large: an `include` naming a whole CodeSystem with
+  no `concept` or `filter` array reads every concept in that system, and an `include` naming a previously
+  expanded ValueSet reads every one of its rows.
+
+:::note
+Measured against a local, otherwise-idle SQL Server: importing 100,000 flat concepts took under 2 seconds,
+a 350,000-concept import (SNOMED CT's rough scale) took under 6 seconds, and re-importing 100,000 concepts
+(a cascade delete of the previous import plus a full re-insert) took about 3 seconds. Real CodeSystems
+carry per-concept `property` and `designation` payloads that benchmark did not, and a production database
+adds network latency, a lower-throughput SKU, and lock contention from concurrent terminology activity on
+top of that baseline — the default of 120 seconds is set well above the measured numbers, not at them.
+Raise it further for Azure SQL deployments seeing terminology import failures under real package sizes or
+concurrent load; a genuinely stuck command still fails eventually rather than hanging forever.
+:::
+
+### Environment variable override
+
+```bash
+export SqlServer__TerminologyImportCommandTimeoutSeconds=180
+```
+
 ## Blob Storage
 
 Configure blob storage for bulk import/export operations:
@@ -298,7 +357,8 @@ Bulk import/export uses DurableTask for orchestration. SQL Server backend is rec
 }
 ```
 
-The SQL Server provider uses the same database as Tenant 0 (system partition), eliminating additional infrastructure dependencies. Schema is created automatically on startup.
+The SQL Server provider uses the same database as Tenant 0 (system partition). Its orchestration
+schema is created on startup; this does not enable automatic deployment of the separate FHIR schema.
 
 ### Alternative Providers
 
@@ -314,6 +374,24 @@ The SQL Server provider uses the same database as Tenant 0 (system partition), e
   }
 }
 ```
+
+### Background Job Metadata
+
+The job metadata repository is configured separately from the DurableTask orchestration provider:
+
+```json
+{
+  "BackgroundJobs": {
+    "Repository": "SqlServer"
+  }
+}
+```
+
+`SqlServer` persists job metadata in tenant 1's shared `dbo.BackgroundJobs` table. `InMemory`
+keeps metadata only for the life of the process and is the default when the setting is absent or
+empty. Both explicit values are case-insensitive; misspellings fail startup rather than falling
+back to volatile storage. For persistent bulk-job status across restarts, configure the SQL
+repository as well as the desired DurableTask provider.
 
 ## Service Base URI
 
@@ -599,8 +677,8 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
         "IsActive": true,
         "IsSystemPartition": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
-          "InheritConnectionStringFromTenant": true
+          "Type": "SqlServer",
+          "InheritConnectionStringFromTenant": 1
         }
       },
       {
@@ -609,7 +687,7 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
         "FhirVersion": "4.0",
         "IsActive": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "ConnectionString": "Server=sql.example.com;Database=FHIR_R4;Authentication=Active Directory Default"
         }
       }

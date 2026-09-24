@@ -136,15 +136,61 @@ public class TenantConnectionStringResolverTests
     }
 
     [Fact]
-    public async Task GivenAConnectionStringWithNoDatabaseName_WhenResolved_ThenThrowsBeforeReachingDacFx()
+    public async Task GivenAConnectionStringWithNoDatabaseName_WhenResolvedForSchemaDeployment_ThenThrowsBeforeReachingDacFx()
     {
         var store = new FakeTenantConfigurationStore();
         store.Tenants[1] = Tenant(1, connectionString: "Server=localhost;Integrated Security=true;");
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(
-            () => TenantConnectionStringResolver.ResolveAsync(store, 1, CancellationToken.None));
+            () => TenantConnectionStringResolver.ResolveForSchemaDeploymentAsync(store, 1, CancellationToken.None));
 
         ex.Message.ShouldContain("no database name");
+    }
+
+    // The other half of that rule: the query path deliberately does not require a database name, because a
+    // connection string relying on the login's default database connects fine and rejecting it would break
+    // deployments that work today. Without this test the two methods could quietly converge again.
+    [Fact]
+    public async Task GivenAConnectionStringWithNoDatabaseName_WhenResolvedForQueries_ThenItIsAccepted()
+    {
+        var store = new FakeTenantConfigurationStore();
+        store.Tenants[1] = Tenant(1, connectionString: "Server=localhost;Integrated Security=true;");
+
+        var result = await TenantConnectionStringResolver.ResolveAsync(store, 1, CancellationToken.None);
+
+        result.ShouldBe("Server=localhost;Integrated Security=true;");
+    }
+
+    // Resolution returns the tenant's string verbatim, not SqlConnectionStringBuilder's normalised
+    // rendering of it. Round-tripping through the builder reorders and rewrites keywords, which would
+    // silently change what reaches SqlConnection and DacFx.
+    [Fact]
+    public async Task GivenAValidConnectionString_WhenResolved_ThenTheRawStringIsReturnedUnchanged()
+    {
+        const string raw = "Server=localhost;Database=IgnixaTenant1;Integrated Security=true;Application Name=Ignixa;";
+        var store = new FakeTenantConfigurationStore();
+        store.Tenants[1] = Tenant(1, connectionString: raw);
+
+        var result = await TenantConnectionStringResolver.ResolveAsync(store, 1, CancellationToken.None);
+
+        result.ShouldBe(raw);
+    }
+
+    // The system partition is not merely missing a connection string on the shipped configurations -- it is
+    // missing from the bound tenant list altogether, because ConfigurationBinder drops an element whose
+    // nested property fails to convert. "Tenant 0 does not exist" alone sends an operator looking at an
+    // appsettings.json that visibly contains tenant 0.
+    [Fact]
+    public async Task GivenAnAbsentTenant_WhenResolved_ThenTheErrorPointsAtConfigurationBinding()
+    {
+        var store = new FakeTenantConfigurationStore();
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => TenantConnectionStringResolver.ResolveAsync(store, 0, CancellationToken.None));
+
+        ex.Message.ShouldContain("Tenant 0 does not exist or is inactive.");
+        ex.Message.ShouldContain("TenantId 0");
+        ex.Message.ShouldContain("dropped");
     }
 
     // A malformed connection string is the most likely appsettings typo. SqlConnectionStringBuilder

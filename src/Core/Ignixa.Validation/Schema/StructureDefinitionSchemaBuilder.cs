@@ -3,10 +3,12 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using Ignixa.FhirPath;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Specification;
+using Ignixa.Specification.Extensions;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Checks;
 using Microsoft.Extensions.Logging;
@@ -31,6 +33,8 @@ public class StructureDefinitionSchemaBuilder
     /// their own visited set without locking.
     /// </summary>
     private static readonly System.Threading.AsyncLocal<HashSet<string>?> _activeTypeNames = new();
+    private static readonly AsyncLocal<(IType Root, Dictionary<IType, ValidationSchema> Schemas)?> _buildContext = new();
+    private static readonly ConcurrentDictionary<FhirVersion, Lazy<IFhirSchemaProvider>> _generatedSchemas = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StructureDefinitionSchemaBuilder"/> class.
@@ -61,19 +65,72 @@ public class StructureDefinitionSchemaBuilder
         ITerminologyService? terminologyService = null,
         IReadOnlySet<string>? validResourceTypes = null,
         IValidationSchemaResolver? validationSchemaResolver = null)
+        => BuildSchema(typeDefinition, schema, terminologyService, validResourceTypes, validationSchemaResolver, canonicalUrl: null);
+
+    // Preserve the public builder signature while retaining installed identities in resolver-built schemas.
+    internal ValidationSchema BuildSchema(
+        IType typeDefinition,
+        ISchema schema,
+        ITerminologyService? terminologyService,
+        IReadOnlySet<string>? validResourceTypes,
+        IValidationSchemaResolver? validationSchemaResolver,
+        string? canonicalUrl,
+        IType? snapshotRoot = null)
     {
         ArgumentNullException.ThrowIfNull(typeDefinition);
         ArgumentNullException.ThrowIfNull(schema);
 
+        var previousContext = _buildContext.Value;
+        bool ownsContext = previousContext == null;
+        if (ownsContext)
+        {
+            _buildContext.Value = (typeDefinition, new Dictionary<IType, ValidationSchema>(ReferenceEqualityComparer.Instance));
+        }
+        else if (snapshotRoot != null)
+        {
+            _buildContext.Value = (snapshotRoot, previousContext!.Value.Schemas);
+        }
+        try
+        {
+            return BuildSchemaCore(typeDefinition, schema, terminologyService,
+                validResourceTypes, validationSchemaResolver, canonicalUrl);
+        }
+        finally
+        {
+            _buildContext.Value = previousContext;
+        }
+    }
+
+    private ValidationSchema BuildSchemaCore(
+        IType typeDefinition, ISchema schema, ITerminologyService? terminologyService,
+        IReadOnlySet<string>? validResourceTypes, IValidationSchemaResolver? validationSchemaResolver,
+        string? canonicalUrl)
+    {
+        var schemas = _buildContext.Value!.Value.Schemas;
+        if (schemas.TryGetValue(typeDefinition, out var existing))
+        {
+            return existing;
+        }
         var elements = typeDefinition.Children;
+        bool isResource = typeDefinition.Info.IsResource
+            || validResourceTypes?.Contains(typeDefinition.Info.Name) == true;
 
         // Tier 1 (Fast): Universal checks - always run regardless of tier
         // Includes basic cardinality and type checks to align with Microsoft FHIR Server default
         var universalChecks = new List<IValidationCheck>();
+        var specChecks = new List<IValidationCheck>();
+        var profileChecks = new List<IValidationCheck>();
+        canonicalUrl ??= (typeDefinition as ITypeExtended)?.CanonicalUrl;
+        canonicalUrl ??= typeDefinition.Info.Name.Contains(':', StringComparison.Ordinal)
+            ? typeDefinition.Info.Name : $"http://hl7.org/fhir/StructureDefinition/{typeDefinition.Info.Name}";
+        var result = new ValidationSchema(canonicalUrl, typeDefinition.Info.Name, universalChecks, specChecks, profileChecks);
+        // Reserve the schema before descending. Recursive contentReferences point to this same
+        // instance, which is fully populated before the root is returned to any validator.
+        schemas.Add(typeDefinition, result);
 
-        // Only add resource-level checks for actual FHIR resources, not BackboneElements or complex datatypes
-        // BackboneElements (e.g., AuditEvent.Agent) and complex types (e.g., Address) don't have resourceType
-        if (typeDefinition.Info.IsResource)
+        // Server-admitted logical models need resource-level checks too, without changing their
+        // logical type metadata. Nested backbones/datatypes never receive the admission set.
+        if (isResource)
         {
             universalChecks.Add(new JsonStructureCheck());
 
@@ -146,7 +203,6 @@ public class StructureDefinitionSchemaBuilder
         universalChecks.AddRange(typeChecks);
 
         // Tier 2 (Spec): Schema-driven checks from StructureDefinition
-        var specChecks = new List<IValidationCheck>();
 
         // Extract structural-shape checks: enforce that the raw JSON shape of each declared
         // element matches its definition (array-vs-scalar, null, ele-1 emptiness, primitive-vs-object).
@@ -190,7 +246,7 @@ public class StructureDefinitionSchemaBuilder
         // leaves for complex datatypes (CodeableConcept, Coding, ...) that never get their own nested
         // schema, so an empty array nested inside one (e.g. category[0].coding: []) would otherwise
         // go unchecked. Runs once per resource via a single raw-JSON walk; see EmptyArrayCheck remarks.
-        if (typeDefinition.Info.IsResource)
+        if (isResource)
         {
             specChecks.Add(new EmptyArrayCheck());
         }
@@ -303,7 +359,7 @@ public class StructureDefinitionSchemaBuilder
         {
             foreach (var e in elements)
             {
-                if (ResolveNestedType(e, typeDefinition, schema, out _, out _) == NestedTypeResolution.Resolved)
+                if (ResolveNestedType(e, typeDefinition, schema, out _, out _, out _) == NestedTypeResolution.Resolved)
                 {
                     nestedElementNames.Add(e.Info.Name);
                 }
@@ -345,13 +401,12 @@ public class StructureDefinitionSchemaBuilder
 
         // Add contained resource check for resources (requires schema resolver)
         // Contained resources must be validated against their own StructureDefinition, not the parent's
-        if (typeDefinition.Info.IsResource && validationSchemaResolver is not null)
+        if (isResource && validationSchemaResolver is not null)
         {
             specChecks.Add(new ContainedResourceCheck(validationSchemaResolver));
         }
 
         // Tier 3 (Profile): Advanced checks - FHIRPath invariants, slicing, advanced terminology
-        var profileChecks = new List<IValidationCheck>();
 
         // Extract FHIRPath invariant checks from ITypeExtended
         // This includes constraints like ele-1, dom-1, resource-specific invariants
@@ -363,7 +418,7 @@ public class StructureDefinitionSchemaBuilder
         // Reference-integrity (Full tier): flag local references (#id, intra-Bundle Type/id) that
         // fail to resolve against the scoped resolver. No-ops when no resolver is seeded, so it is
         // inert outside the scoped validation pipeline.
-        if (typeDefinition.Info.IsResource)
+        if (isResource)
         {
             profileChecks.Add(new ReferenceResolutionCheck());
 
@@ -433,15 +488,7 @@ public class StructureDefinitionSchemaBuilder
             .Select(e => new SlicingCheck(SlicedElementName(e), ((ITypeExtended)e).Slicing!, _logger));
         profileChecks.AddRange(slicingChecks);
 
-        // Build the canonical URL from the type name
-        var canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{typeDefinition.Info.Name}";
-
-        return new ValidationSchema(
-            canonicalUrl: canonicalUrl,
-            resourceType: typeDefinition.Info.Name,
-            universalChecks: universalChecks,
-            specChecks: specChecks,
-            profileChecks: profileChecks);
+        return result;
     }
 
     /// <summary>
@@ -636,7 +683,7 @@ public class StructureDefinitionSchemaBuilder
 
         foreach (var element in elements)
         {
-            switch (ResolveNestedType(element, typeDefinition, schema, out var nestedTypeName, out var nestedTypeDefinition))
+            switch (ResolveNestedType(element, typeDefinition, schema, out var nestedTypeName, out var nestedTypeDefinition, out var snapshotRoot))
             {
                 case NestedTypeResolution.NotNested:
                     continue;
@@ -652,7 +699,8 @@ public class StructureDefinitionSchemaBuilder
 
             // Build the nested schema
             var nestedBuilder = new StructureDefinitionSchemaBuilder(parser, logger);
-            var nestedSchema = nestedBuilder.BuildSchema(nestedTypeDefinition!, schema, terminologyService);
+            var nestedSchema = nestedBuilder.BuildSchema(nestedTypeDefinition!, schema, terminologyService,
+                validResourceTypes: null, validationSchemaResolver: null, canonicalUrl: null, snapshotRoot);
 
             // Inject constraints owned by THIS element (e.g. Patient.contact's pat-1) into the
             // nested schema so they are evaluated once per occurrence, in the element's own
@@ -660,7 +708,7 @@ public class StructureDefinitionSchemaBuilder
             // constraints already hoisted to the resource root (ele-1, ext-1) are excluded to
             // avoid duplicate evaluation. Parser is always supplied by BuildSchema; guard keeps
             // the nullable signature honest.
-            if (parser is not null)
+            if (parser is not null && !ReferenceEquals(element, nestedTypeDefinition))
             {
                 var elementScopedChecks = BuildElementScopedInvariantChecks(
                     element, rootScopedConstraintKeys, schema, parser, logger);
@@ -672,7 +720,16 @@ public class StructureDefinitionSchemaBuilder
                         universalChecks: Array.Empty<IValidationCheck>(),
                         specChecks: Array.Empty<IValidationCheck>(),
                         profileChecks: elementScopedChecks);
-                    nestedSchema = ValidationSchema.Compose(new[] { nestedSchema, injection });
+                    if (element is ITypeExtended { ContentReference: { Length: > 0 } })
+                    {
+                        // A recursive target may still be under construction; do not copy its
+                        // unfinished check lists while adding constraints on the reference site.
+                        checks.Add(new NestedComplexTypeCheck(element.Info.Name, element.IsCollection, injection));
+                    }
+                    else
+                    {
+                        nestedSchema = ValidationSchema.Compose(new[] { nestedSchema, injection });
+                    }
                 }
             }
 
@@ -714,17 +771,84 @@ public class StructureDefinitionSchemaBuilder
         IType typeDefinition,
         ISchema schema,
         out string nestedTypeName,
-        out IType? nestedTypeDefinition)
+        out IType? nestedTypeDefinition,
+        out IType? snapshotRoot)
     {
         nestedTypeName = string.Empty;
         nestedTypeDefinition = null;
+        snapshotRoot = null;
 
         if (element.Info.IsPrimitive || element.Info.IsChoiceElement)
         {
             return NestedTypeResolution.NotNested;
         }
 
+        if (element is ITypeExtended { ContentReference: { Length: > 0 } reference })
+        {
+            snapshotRoot = _buildContext.Value!.Value.Root;
+            if (reference.StartsWith('#'))
+            {
+                nestedTypeDefinition = FindInlineReference(snapshotRoot, reference[1..]);
+                // Generated backbone metadata may be built directly rather than through its
+                // resource root; its explicit qualified type still identifies the target.
+                if (nestedTypeDefinition == null || nestedTypeDefinition.Children.Count == 0)
+                {
+                    string declaredType = GetTypeName(element);
+                    if (declaredType.Contains('.', StringComparison.Ordinal) && !declaredType.Contains(':', StringComparison.Ordinal))
+                    {
+                        nestedTypeDefinition = schema.GetTypeDefinition(declaredType) ?? nestedTypeDefinition;
+                    }
+                    if (nestedTypeDefinition == null
+                        && (snapshotRoot as ITypeExtended)?.CanonicalUrl == null)
+                    {
+                        string generatedName = string.Join('.', reference[1..].Split('.').Select(CapitalizeFirst));
+                        nestedTypeDefinition = schema.GetTypeDefinition(generatedName);
+                    }
+                }
+            }
+            else
+            {
+                int hash = reference.IndexOf('#', StringComparison.Ordinal);
+                if (hash > 0)
+                {
+                    // A versioned profile/model's self-reference belongs to that same snapshot,
+                    // not the provider's default version of an otherwise identical canonical.
+                    if ((snapshotRoot as ITypeExtended)?.CanonicalUrl != reference[..hash])
+                    {
+                        snapshotRoot = schema.GetTypeDefinition(reference[..hash]);
+                    }
+                    nestedTypeDefinition = snapshotRoot == null
+                        ? null : FindInlineReference(snapshotRoot, reference[(hash + 1)..]);
+                    if ((nestedTypeDefinition == null || nestedTypeDefinition.Children.Count == 0)
+                        && (snapshotRoot as ITypeExtended)?.CanonicalUrl == null)
+                    {
+                        // Core snapshots expose named generated backbones rather than an inline
+                        // tree. Resolve only an exact core identity, never a layered ID alias.
+                        var generated = FindGeneratedCoreReference(
+                            schema, reference[..hash], reference[(hash + 1)..], out var generatedRoot);
+                        if (generated != null)
+                        {
+                            nestedTypeDefinition = generated;
+                            snapshotRoot = generatedRoot;
+                        }
+                    }
+                }
+            }
+            if (nestedTypeDefinition == null)
+            {
+                throw new InvalidOperationException($"Cannot resolve snapshot contentReference '{reference}'.");
+            }
+            nestedTypeName = nestedTypeDefinition.Info.Name;
+            return NestedTypeResolution.Resolved;
+        }
+
         var typeName = GetTypeName(element);
+        if (typeName is "BackboneElement" or "Element" && element.Children.Count > 0)
+        {
+            nestedTypeName = element.Info.Name;
+            nestedTypeDefinition = element;
+            return NestedTypeResolution.Resolved;
+        }
 
         // No type found, or type is same as element name (no extended metadata) - skip.
         if (string.IsNullOrEmpty(typeName) || typeName == element.Info.Name)
@@ -775,6 +899,55 @@ public class StructureDefinitionSchemaBuilder
 
         nestedTypeDefinition = resolved;
         return NestedTypeResolution.Resolved;
+    }
+
+    private static IType? FindGeneratedCoreReference(
+        ISchema schema, string canonical, string path, out IType? root)
+    {
+        root = null;
+        const string prefix = "http://hl7.org/fhir/StructureDefinition/";
+        if (schema is not IFhirSchemaProvider provider || !canonical.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+        string typeName = canonical[prefix.Length..];
+        int pipe = typeName.IndexOf('|', StringComparison.Ordinal);
+        if (pipe >= 0)
+        {
+            if (typeName[(pipe + 1)..] != provider.FullVersion)
+            {
+                return null;
+            }
+            typeName = typeName[..pipe];
+        }
+        if (typeName.Length == 0 || typeName.Contains('/', StringComparison.Ordinal)
+            || typeName.Contains('.', StringComparison.Ordinal)
+            || !path.StartsWith(typeName + ".", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        var core = _generatedSchemas.GetOrAdd(provider.Version,
+            static version => new Lazy<IFhirSchemaProvider>(() => version.GetSchemaProvider())).Value;
+        root = core.GetTypeDefinition(typeName);
+        return root?.Info.Name == typeName ? core.GetTypeDefinition(path) : null;
+    }
+
+    private static IType? FindInlineReference(IType root, string path)
+    {
+        if (!path.StartsWith(root.Info.Name + ".", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        IType? current = root;
+        foreach (string part in path[(root.Info.Name.Length + 1)..].Split('.'))
+        {
+            current = current.Children.FirstOrDefault(child => child.Info.Name == part);
+            if (current == null)
+            {
+                return null;
+            }
+        }
+        return current;
     }
 
     /// <summary>

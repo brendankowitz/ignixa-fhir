@@ -1,5 +1,20 @@
 # -------------------------------------------------------------------------------------------------
-# IGNIXA FHIR SERVER - PRODUCTION DOCKER COMPOSE
+# IGNIXA FHIR SERVER - SQL SERVER DOCKER COMPOSE (SA-PASSWORD, SELF-PROVISIONING)
+#
+# This stack authenticates to SQL Server with a local "sa" password against a fresh, empty SQL
+# Server container, not the Managed Identity + pre-provisioned-database shape of a real production
+# deployment (see deploy/azure for that). ASPNETCORE_ENVIRONMENT is pinned to "Development" below,
+# which does three things this stack needs:
+#   1. Satisfies ManagedIdentityConnectionStringValidator, which defaults to Production when the
+#      environment is unset and then rejects any password-bearing connection string -- exactly what
+#      this stack's SA_PASSWORD connection string is.
+#   2. Makes SchemaDeployer create tenant 1's database itself on first run (that bootstrap is gated
+#      on IsDevelopment(); the sqlserver container starts with no databases at all).
+#   3. Layers appsettings.Development.json over appsettings.json, which sets
+#      SqlServer:AutomaticSchemaDeploymentEnabled to true -- required for SchemaDeployer to publish
+#      the schema to that newly-created empty database instead of throwing.
+# "Staging" or another non-Production name would satisfy only (1); the compose stack would still
+# never get a database. For an actual Managed-Identity production deployment, use deploy/azure.
 #
 # Configuration:
 # This file relies on environment variables from a '.env' file.
@@ -17,9 +32,12 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # See the header comment: Development satisfies the Managed Identity guard and is also
+      # load-bearing for self-provisioning a fresh database and schema on first run.
+      ASPNETCORE_ENVIRONMENT: Development
       # Configure Tenant 1 to use SQL Server
       # Note: Tenant 0 (System) inherits this connection string automatically
-      Tenants__Configurations__1__Storage__Type: SqlEntityFramework
+      Tenants__Configurations__1__Storage__Type: SqlServer
       Tenants__Configurations__1__Storage__ConnectionString: "Server=sqlserver;Database=IgnixaFhir;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;"
       
       # Configure Logging
@@ -29,7 +47,7 @@ services:
       - ignixa-net
 
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04
+    image: mcr.microsoft.com/mssql/server:2025-CU2-GDR1-ubuntu-22.04
     container_name: ignixa-sql
     environment:
       ACCEPT_EULA: Y

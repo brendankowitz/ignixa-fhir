@@ -68,6 +68,10 @@ public class ExpandValueSetHandler : IRequestHandler<ExpandValueSetQuery, Expand
                 timestamp = result.Timestamp.ToString("o"),
                 total = result.Total,
                 offset = result.Offset,
+
+                // Only written when the expansion really is incomplete: WhenWritingNull drops the null, so a
+                // complete expansion carries no flag at all rather than one that says "false".
+                incomplete = result.Incomplete ? true : (bool?)null,
                 contains = result.Contains.Select(c => new
                 {
                     system = c.System,

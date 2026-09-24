@@ -71,8 +71,36 @@ public class AppSettingsTenantConfigurationStore : ITenantConfigurationStore
 
     private TenantConfiguration[] LoadTenants()
     {
-        var tenantList = _configuration.GetSection("Tenants:Configurations")
-            .Get<List<TenantConfiguration>>() ?? new List<TenantConfiguration>();
+        var configurationsSection = _configuration.GetSection("Tenants:Configurations");
+        var childSections = configurationsSection.GetChildren().ToList();
+        var tenantList = configurationsSection.Get<List<TenantConfiguration>>() ?? new List<TenantConfiguration>();
+
+        // ConfigurationBinder.Get<List<T>>() silently drops any element that fails to bind (e.g. a
+        // boolean value where TenantStorageConfiguration.InheritConnectionStringFromTenant expects an
+        // int) instead of throwing -- the tenant just vanishes with no error. Binding each child
+        // section on its own does throw, so use that to catch the drop here and name the culprit
+        // instead of letting a downstream GetTenantConfigurationAsync(0) return null.
+        if (tenantList.Count != childSections.Count)
+        {
+            var failures = new List<string>();
+            foreach (var child in childSections)
+            {
+                try
+                {
+                    child.Get<TenantConfiguration>();
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"index {child.Key}: {ex.Message}");
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"Tenants:Configurations declares {childSections.Count} entries but only {tenantList.Count} " +
+                "bound successfully. Microsoft.Extensions.Configuration silently drops a list element that " +
+                "fails to bind instead of throwing, so a misconfigured tenant disappears with no error. " +
+                $"Failed entries: {(failures.Count > 0 ? string.Join("; ", failures) : "unable to isolate the specific failing entry")}.");
+        }
 
         // Validate: TenantId should match array index for efficient O(1) lookup
         for (int i = 0; i < tenantList.Count; i++)

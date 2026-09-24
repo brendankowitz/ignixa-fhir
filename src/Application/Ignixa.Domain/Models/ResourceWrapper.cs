@@ -16,6 +16,12 @@ public record ResourceWrapper(
     bool IsDeleted = false)
 {
     /// <summary>
+    /// Client's required current version. Storage must compare this at the atomic write boundary,
+    /// independently of the server-assigned version stored in the resource payload.
+    /// </summary>
+    public string? ExpectedVersionId { get; init; }
+
+    /// <summary>
     /// Optional: FHIR version of the resource (e.g., "4.0" for R4, "5.0" for R5).
     /// Defaults to "4.0" (R4) if not specified.
     /// </summary>

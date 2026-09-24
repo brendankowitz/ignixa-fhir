@@ -14,6 +14,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
@@ -52,7 +53,8 @@ public class SearchResourcesTool : TenantAwareMcpTool
     }
 
     [McpServerTool(Name = "search_fhir_resources")]
-    [Description(@"Search FHIR resources. Returns max 10 results by default (specify count up to 50 for more).
+    [Description(@"Search FHIR resources. Returns max 10 matching resources by default (specify count up to 50 for more).
+    Included resources and OperationOutcome entries are retained separately from the matching-resource limit.
 Use elements='id,field1,field2' to limit fields and reduce response size (highly recommended).
 Use summary='true' for core fields only, summary='data' to exclude narrative text, or summary='count' for count-only.
 Use total='accurate' to return the total matching resource count.
@@ -144,8 +146,28 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
 
         // Materialize streaming results (MCP tools need full response, not IAsyncEnumerable)
         var entries = new List<ResourceEntryDto>();
+        var matchCount = 0;
+        var hasMore = result.HasMore;
+        // The upstream match page is bounded. Drain its stream so a short-page probe and trailing
+        // includes/outcomes are not lost; only Match entries consume the requested count.
         await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
         {
+            if (entry.IsPagingProbe)
+            {
+                hasMore = true;
+                continue;
+            }
+
+            if (entry.SearchMode == SearchEntryMode.Match)
+            {
+                if (matchCount >= effectiveCount)
+                {
+                    hasMore = true;
+                    continue;
+                }
+                matchCount++;
+            }
+
             // Convert SearchEntryResult to ResourceEntryDto (optimized DTO with just Resource + SearchMode)
             // ResourceBytes contains UTF-8 JSON bytes
             var resourceJson = JsonDocument.Parse(entry.ResourceBytes);
@@ -155,11 +177,6 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
                 SearchMode = entry.SearchMode.ToString().ToUpperInvariant()
             });
 
-            // Respect MaxItemCount limit (SearchResourcesHandler returns pageSize + 1 for pagination detection)
-            if (entries.Count >= effectiveCount)
-            {
-                break;
-            }
         }
 
         return new SearchResultsDto
@@ -167,8 +184,8 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
             ResourceType = resourceType,
             Entries = entries,
             Total = result.Total,
-            HasMore = entries.Count >= effectiveCount, // If we got full page, there might be more
-            ContinuationToken = result.ContinuationToken
+            HasMore = hasMore,
+            ContinuationToken = hasMore ? result.ContinuationToken : null
         };
     }
 

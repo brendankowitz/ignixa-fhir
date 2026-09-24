@@ -269,6 +269,43 @@ public static class PreferHeaderParser
     }
 
     /// <summary>
+    /// True only when the client explicitly asked for <c>Prefer: handling=lenient</c>.
+    /// </summary>
+    /// <param name="headers">HTTP request headers.</param>
+    /// <returns>True if handling=lenient was sent; false if strict, absent, or any other value.</returns>
+    /// <remarks>
+    /// Distinct from <c>!IsStrictHandling(headers)</c>, which cannot tell "lenient was requested" from
+    /// "no Prefer header at all". The difference matters for failures FHIR R4 says a server SHALL reject —
+    /// an unsupported modifier, say — where the default has to be rejection and only an explicit lenient
+    /// request may downgrade it to a warning.
+    /// </remarks>
+    public static bool IsLenientHandling(IHeaderDictionary headers)
+    {
+        if (!headers.TryGetValue("Prefer", out var preferHeader))
+        {
+            return false;
+        }
+
+        var preferValue = preferHeader.ToString();
+        if (string.IsNullOrWhiteSpace(preferValue))
+        {
+            return false;
+        }
+
+        foreach (var preference in preferValue.Split(','))
+        {
+            var trimmedPref = preference.Trim();
+            if (trimmedPref.StartsWith("handling=", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = trimmedPref.Substring("handling=".Length).Trim();
+                return value.Equals("lenient", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Parses a single validation level value.
     /// </summary>
     private static ValidationDepth? ParseValidationLevelValue(string value, ILogger? logger)
