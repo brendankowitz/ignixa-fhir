@@ -4,19 +4,19 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Events.Package;
-using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
+using Ignixa.Application.Features.Experimental.GraphQl.Schema;
 using Medino;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.GraphQl.Events;
 
 public sealed class PackageLoadedSchemaInvalidationHandler(
-    IReadOnlyList<IFhirTypeModule> typeModules,
+    FhirTypeModuleCatalog typeModules,
     ILogger<PackageLoadedSchemaInvalidationHandler> logger) : INotificationHandler<PackageLoadedEvent>
 {
     public Task HandleAsync(PackageLoadedEvent notification, CancellationToken cancellationToken)
     {
-        foreach (var module in typeModules)
+        foreach (var module in typeModules.Created)
         {
             try
             {
