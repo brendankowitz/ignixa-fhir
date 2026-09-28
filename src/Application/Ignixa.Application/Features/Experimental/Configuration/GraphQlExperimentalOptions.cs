@@ -9,7 +9,13 @@ namespace Ignixa.Application.Features.Experimental.Configuration;
 
 public sealed class GraphQlExperimentalOptions
 {
-    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// Whether the $graphql operation is enabled. Defaults to false: GraphQL is an
+    /// experimental feature with known gaps (see issues #273, #274) and must be opted
+    /// in per deployment via Experimental:Features:GraphQl:Enabled. Gates both service
+    /// registration and endpoint mapping.
+    /// </summary>
+    public bool Enabled { get; set; }
     public int MaxQueryDepth { get; set; } = 15;
     public bool EnableIntrospection { get; set; } = true;
 
