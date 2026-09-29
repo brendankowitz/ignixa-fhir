@@ -73,10 +73,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Introspection
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenGraphQlAdvertised_WhenIntrospectingSchema_ThenReturnsQueryAndMutationTypes()
     {
-                var result = await PostGraphQlAsync(
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
             "{ __schema { queryType { name } mutationType { name } } }");
 
         AssertNoErrors(result);
@@ -84,10 +86,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         result["data"]!["__schema"]!["mutationType"]!["name"]!.GetValue<string>().ShouldBe("Mutation");
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenGraphQlAdvertised_WhenIntrospectingPatientType_ThenReturnsFields()
     {
-                var result = await PostGraphQlAsync(
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
             "{ __type(name: \"Patient\") { name fields { name } } }");
 
         AssertNoErrors(result);
@@ -98,14 +102,34 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         fields.ShouldContain(f => f!["name"]!.GetValue<string>() == "birthDate");
     }
 
+    [SkippableFact(typeof(SkipException))]
+    public async Task GivenGraphQlAdvertised_WhenIntrospectingPatientType_ThenReverseFieldsOnlyExistForReferencingTypes()
+    {
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
+            "{ __type(name: \"Patient\") { fields { name } } }");
+
+        AssertNoErrors(result);
+        var fieldNames = result["data"]!["__type"]!["fields"]!.AsArray()
+            .Select(f => f!["name"]!.GetValue<string>())
+            .ToHashSet();
+        fieldNames.ShouldContain("ObservationList");
+        fieldNames.ShouldContain("ObservationConnection");
+        fieldNames.ShouldNotContain("CodeSystemList");
+        fieldNames.ShouldNotContain("ValueSetConnection");
+    }
+
     // ========================================================================
     // Single Resource Read
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientExists_WhenReadingById_ThenReturnsPatientFields()
     {
-                var tag = Guid.NewGuid().ToString();
+        RequireOperationAnywhere("graphql");
+
+        var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient().WithGivenName("GraphQlRead").WithFamilyName("TestPatient").WithTag(tag).Build());
 
@@ -119,10 +143,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         patient["name"]![0]!["family"]!.GetValue<string>().ShouldBe("TestPatient");
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientDoesNotExist_WhenReadingById_ThenReturnsNull()
     {
-                var result = await PostGraphQlAsync(
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
             """{ Patient(_id: "nonexistent-graphql-test-id") { id } }""");
 
         AssertNoErrors(result);
@@ -133,10 +159,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // GET Method Support
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenGraphQlAdvertised_WhenUsingGetMethod_ThenReturnsData()
     {
-                using var response = await Client.GetAsync(
+        RequireOperationAnywhere("graphql");
+
+        using var response = await Client.GetAsync(
             "/$graphql?query=" + Uri.EscapeDataString("{ __typename }"));
 
         response.EnsureSuccessStatusCode();
@@ -150,9 +178,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Simple List Search
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientsExist_WhenListSearching_ThenReturnsArray()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         await Harness.CreateResourceAsync(
             CreatePatient().WithFamilyName("ListTest1").WithTag(tag).Build());
@@ -167,9 +197,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         list.Count.ShouldBeGreaterThanOrEqualTo(2);
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientsExist_WhenSearchingByName_ThenReturnsMatching()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var uniqueName = $"GqlNameSearch{tag[..8]}";
         await Harness.CreateResourceAsync(
@@ -188,9 +220,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Connection Search (Paginated)
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientsExist_WhenConnectionSearch_ThenReturnsPaginatedResult()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         for (int i = 0; i < 3; i++)
         {
@@ -213,9 +247,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Instance-Level Queries
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientExists_WhenInstanceQuery_ThenReturnsResourceFields()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient().WithGivenName("Instance").WithFamilyName("QueryTest").WithTag(tag).Build());
@@ -233,10 +269,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Reference Resolution
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithOrganization_WhenResolvingReference_ThenReturnsReferencedResource()
     {
-                var tag = Guid.NewGuid().ToString();
+        RequireOperationAnywhere("graphql");
+
+        var tag = Guid.NewGuid().ToString();
         var org = await Harness.CreateResourceAsync(
             CreateOrganization().WithName("GqlRefOrg").WithTag(tag).Build());
         var patient = await Harness.CreateResourceAsync(
@@ -254,10 +292,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Variables
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientExists_WhenUsingVariables_ThenResolvesCorrectly()
     {
-                var tag = Guid.NewGuid().ToString();
+        RequireOperationAnywhere("graphql");
+
+        var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient().WithFamilyName("VarTest").WithTag(tag).Build());
 
@@ -274,9 +314,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Directives
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithMultipleNames_WhenUsingFirstDirective_ThenReturnsSingleName()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient()
@@ -293,9 +335,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         name["family"].ShouldNotBeNull();
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatient_WhenUsingSkipDirective_ThenOmitsField()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient().WithFamilyName("SkipTest").WithTag(tag).Build());
@@ -313,10 +357,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Mutations
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenValidResource_WhenCreatingViaGraphQl_ThenReturnsCreatedResource()
     {
-                var familyName = $"GqlCreate{Guid.NewGuid().ToString()[..8]}";
+        RequireOperationAnywhere("graphql");
+
+        var familyName = $"GqlCreate{Guid.NewGuid().ToString()[..8]}";
         var resourceJson = $$$"""{"resourceType":"Patient","name":[{"family":"{{{familyName}}}","given":["Test"]}]}""";
         var escaped = resourceJson.Replace("\"", "\\\"", StringComparison.Ordinal);
 
@@ -329,10 +375,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         created["name"]![0]!["family"]!.GetValue<string>().ShouldBe(familyName);
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenCreatedResource_WhenDeletingViaGraphQl_ThenReturnsTrue()
     {
-                // First create a patient
+        RequireOperationAnywhere("graphql");
+
+        // First create a patient
         var resourceJson = """{"resourceType":"Patient","name":[{"family":"GqlDeleteTest"}]}""";
         var escaped = resourceJson.Replace("\"", "\\\"", StringComparison.Ordinal);
         var createResult = await PostGraphQlAsync(
@@ -351,10 +399,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Multi-Resource Queries
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenGraphQlAdvertised_WhenQueryingMultipleResourceTypes_ThenReturnsAll()
     {
-                var result = await PostGraphQlAsync(
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync(
             """{ patients: PatientList(_count: 2) { id } observations: ObservationList(_count: 2) { id } }""");
 
         AssertNoErrors(result);
@@ -366,10 +416,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Error Handling
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenInvalidQuery_WhenPosting_ThenReturnsGraphQlError()
     {
-                var body = """{"query":"{ invalidField }"}""";
+        RequireOperationAnywhere("graphql");
+
+        var body = """{"query":"{ invalidField }"}""";
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
         using var response = await Client.PostAsync("/$graphql", content);
 
@@ -380,10 +432,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         result["errors"].ShouldNotBeNull();
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenEmptyQuery_WhenPosting_ThenReturnsBadRequest()
     {
-                var body = """{"query":""}""";
+        RequireOperationAnywhere("graphql");
+
+        var body = """{"query":""}""";
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
         using var response = await Client.PostAsync("/$graphql", content);
 
@@ -394,10 +448,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Primitive Extensions
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithBirthDate_WhenQueryingPrimitiveExtension_ThenReturnsCompanionField()
     {
-                var tag = Guid.NewGuid().ToString();
+        RequireOperationAnywhere("graphql");
+
+        var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient().WithBirthDate(1990, 6, 15).WithFamilyName("ExtTest").WithTag(tag).Build());
 
@@ -412,10 +468,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // List Navigation
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithMultipleNames_WhenUsingOffsetAndLimit_ThenReturnsPaginatedNames()
     {
-                var tag = Guid.NewGuid().ToString();
+        RequireOperationAnywhere("graphql");
+
+        var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient()
                 .WithFamilyName("NavTest")
@@ -438,9 +496,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Extension Filtering
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithExtensions_WhenFilteringByUrl_ThenReturnsMatchingExtensions()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient()
@@ -460,9 +520,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         extensions[0]!["valueString"]!.GetValue<string>().ShouldBe("FirstExtension");
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithNestedExtensions_WhenFilteringByUrl_ThenReturnsMatchingNestedExtensions()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient()
@@ -499,9 +561,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Flatten Directive
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithIdentifiers_WhenUsingFlattenDirective_ThenCollatesProperties()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient()
@@ -531,9 +595,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Slice Directive
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithNames_WhenUsingSliceByProperty_ThenSuffixesByPropertyValue()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var resourceJson = $$"""{"resourceType":"Patient","id":"{{Guid.NewGuid()}}","meta":{"tag":[{"system":"http://test.ignixa.io/tag","code":"{{tag}}"}]},"name":[{"use":"official","family":"Chalmers","given":["Peter","James"]},{"use":"usual","given":["Jim"]}]}""";
         var created = await Harness.CreateResourceAsync(ResourceJsonNode.Parse(resourceJson));
@@ -549,9 +615,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         patient["given.usual"]!.AsArray().Count.ShouldBe(1);
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithNames_WhenUsingSliceByIndex_ThenSuffixesByIndex()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var resourceJson = $$"""{"resourceType":"Patient","id":"{{Guid.NewGuid()}}","meta":{"tag":[{"system":"http://test.ignixa.io/tag","code":"{{tag}}"}]},"name":[{"family":"First","given":["A"]},{"family":"Second","given":["B"]}]}""";
         var created = await Harness.CreateResourceAsync(ResourceJsonNode.Parse(resourceJson));
@@ -572,9 +640,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Sub-Property Filters
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithMultipleNames_WhenFilteringBySubProperty_ThenReturnsMatchingNames()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient()
@@ -598,9 +668,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Reverse References at Instance Level
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithCondition_WhenQueryingInstanceReverseReference_ThenReturnsCondition()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var patient = await Harness.CreateResourceAsync(
             CreatePatient().WithFamilyName("ReverseRef").WithTag(tag).Build());
@@ -623,9 +695,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Search Parameter Array Syntax
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenMultiplePatients_WhenQueryingWithArrayId_ThenReturnsMatchingPatients()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var patient1 = await Harness.CreateResourceAsync(
             CreatePatient().WithFamilyName("ArrayTest1").WithTag(tag).Build());
@@ -650,10 +724,12 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Multi-Tenant
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenGraphQlAdvertised_WhenQueryingViaTenantRoute_ThenReturnsData()
     {
-                var result = await PostGraphQlAsync("{ __typename }", "/tenant/1/$graphql");
+        RequireOperationAnywhere("graphql");
+
+        var result = await PostGraphQlAsync("{ __typename }", "/tenant/1/$graphql");
 
         AssertNoErrors(result);
         result["data"]!["__typename"]!.GetValue<string>().ShouldBe("Query");
@@ -663,9 +739,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Tenant Isolation
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenSystemPartitionRoute_WhenPostingGraphQl_ThenRejectedWithBadRequest()
     {
+        RequireOperationAnywhere("graphql");
+
         var body = JsonSerializer.Serialize(new { query = "{ __typename }" });
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
 
@@ -674,9 +752,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientInTenant1_WhenQueryingViaInactiveTenant2Route_ThenIsolationIsEnforced()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient().WithFamilyName("Tenant1Only").WithTag(tag).Build());
@@ -696,9 +776,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Instance Injection Hardening
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenHostileResourceTypeSegment_WhenInstanceQuery_ThenReturnsGraphQlErrorNotServerError()
     {
+        RequireOperationAnywhere("graphql");
+
         var hostileResourceType = Uri.EscapeDataString("""Patient(_id:"x"){id}""");
         var body = JsonSerializer.Serialize(new { query = "{ id }" });
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
@@ -715,9 +797,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
             $"Injected selections must not execute. Response: {result.ToJsonString()}");
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenHostileResourceTypeSegment_WhenInstanceGet_ThenReturnsGraphQlErrorNotServerError()
     {
+        RequireOperationAnywhere("graphql");
+
         var hostileResourceType = Uri.EscapeDataString("""Patient(_id:"x"){id}""");
 
         using var response = await Client.GetAsync(
@@ -732,9 +816,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Singleton Directive Violation
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenPatientWithMultipleIdentifiers_WhenUsingSingletonDirective_ThenReturnsViolationError()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient()
@@ -762,9 +848,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Query Depth Limit
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenDeeplyNestedQuery_WhenExecuting_ThenReturnsDepthLimitErrorNotServerError()
     {
+        RequireOperationAnywhere("graphql");
+
         var nested = new StringBuilder("{ __type(name: \"Patient\") { ofType ");
         const int depth = 18;
         for (int i = 0; i < depth; i++)
@@ -793,9 +881,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Cursor Round-Trip Pagination
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenMultiplePages_WhenFollowingCursor_ThenReturnsDistinctResourcesUntilExhausted()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         const int totalPatients = 6;
         for (int i = 0; i < totalPatients; i++)
@@ -843,9 +933,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Mutation Failure Envelope
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenInvalidResourceJson_WhenUpdatingViaGraphQl_ThenReturnsOperationOutcomeWithInvalidResourceCode()
     {
+        RequireOperationAnywhere("graphql");
+
         var malformedJson = "{ this is not valid fhir";
         var escaped = malformedJson.Replace("\"", "\\\"", StringComparison.Ordinal);
 
@@ -860,9 +952,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         resource["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenExistingResource_WhenUpdatingViaGraphQl_ThenReturnsUpdatedResource()
     {
+        RequireOperationAnywhere("graphql");
+
         var tag = Guid.NewGuid().ToString();
         var created = await Harness.CreateResourceAsync(
             CreatePatient().WithFamilyName("BeforeUpdate").WithTag(tag).Build());
@@ -884,9 +978,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Missing Instance
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenMissingInstance_WhenInstanceQuery_ThenReturnsNullDataWithNotFoundError()
     {
+        RequireOperationAnywhere("graphql");
+
         var body = JsonSerializer.Serialize(new { query = "{ id name { family } }" });
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
 
@@ -906,9 +1002,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
     // Empty / Malformed Body
     // ========================================================================
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenMalformedJsonBody_WhenPosting_ThenReturnsBadRequestWithParseInfo()
     {
+        RequireOperationAnywhere("graphql");
+
         var body = "{ \"query\": ";
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
 
@@ -919,9 +1017,11 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         responseText.ShouldContain("Invalid JSON");
     }
 
-    [Fact]
+    [SkippableFact(typeof(SkipException))]
     public async Task GivenMalformedQueryString_WhenPosting_ThenReturnsSyntaxErrorEnvelope()
     {
+        RequireOperationAnywhere("graphql");
+
         var body = JsonSerializer.Serialize(new { query = "{ this is { not valid graphql" });
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
 
