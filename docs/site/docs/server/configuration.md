@@ -509,6 +509,9 @@ Enable or disable experimental features:
       "Summary": {
         "Enabled": true,
         "MaxResources": 1000
+      },
+      "GraphQl": {
+        "Enabled": false
       }
     }
   }
@@ -521,6 +524,9 @@ Enable or disable experimental features:
 | `Transform` | FHIR Mapping Language `$transform` operation |
 | `Terminology` | `$expand`, `$translate`, `$subsumes` operations |
 | `Summary` | Patient `$summary` (IPS) operation |
+| `GraphQl` | FHIR `$graphql` operation. Off by default (see below) |
+
+GraphQL is opt-in because of its memory cost. Each FHIR version's schema takes about 215 MB of live heap for R4. Versions listed in `WarmupVersions` are built at startup, and other versions are built on first use. With GraphQL off, a server at rest uses about 140 MB of private memory; with it on, expect roughly 750 MB. To enable it, set `Experimental__Features__GraphQl__Enabled=true`.
 
 ## Bulk Import Tuning
 

@@ -16,6 +16,7 @@ using Ignixa.Application.Features.Experimental.GraphQl.DataLoaders;
 using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
 using Microsoft.Extensions.Logging;
 using FhirIType = Ignixa.Abstractions.IType;
 using FhirITypeExtended = Ignixa.Abstractions.ITypeExtended;
@@ -120,11 +121,14 @@ public sealed class FhirTypeModule(
                 types.Add(BuildDataTypeObjectType(dtName, dtDef));
         }
 
+        var reverseReferences = ReverseReferenceIndex.Build(concreteResourceTypes, GetSearchParameters);
+
         foreach (var resourceTypeName in concreteResourceTypes)
         {
             var fhirType = schemaProvider.GetTypeDefinition(resourceTypeName);
             if (fhirType is null) continue;
-            types.Add(BuildResourceObjectType(resourceTypeName, fhirType, concreteResourceTypes));
+            types.Add(BuildResourceObjectType(
+                resourceTypeName, fhirType, reverseReferences.GetReferencingTypes(resourceTypeName)));
         }
 
         types.Add(BuildResourceReferenceType());
@@ -310,7 +314,7 @@ public sealed class FhirTypeModule(
     private ObjectType BuildResourceObjectType(
         string resourceTypeName,
         FhirIType fhirType,
-        IReadOnlyList<string> allResourceTypes)
+        IReadOnlyList<string> referencingResourceTypes)
     {
         return new ObjectType(descriptor =>
         {
@@ -331,8 +335,8 @@ public sealed class FhirTypeModule(
                     AddFieldForElement(descriptor, child, resourceTypeName);
             }
 
-            // Reverse reference fields for instance-level queries
-            foreach (var otherType in allResourceTypes)
+            // Reverse reference fields for instance-level queries, only for types that can reference this one
+            foreach (var otherType in referencingResourceTypes)
             {
                 var capturedOtherType = otherType;
 
@@ -923,6 +927,9 @@ public sealed class FhirTypeModule(
         fieldDescriptor.Argument("_total", a => a.Type<StringType>()
             .Description("Total count mode: none | estimate | accurate"));
     }
+
+    private IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType) =>
+        searchParameterManager.TryGetSearchParameters(resourceType, out var searchParams) ? searchParams : [];
 
     private void AddResourceSearchArguments(
         IObjectFieldDescriptor fieldDescriptor,
