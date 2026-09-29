@@ -254,19 +254,6 @@ public static class ExperimentalAutofacRegistration
             .As<IGraphQlExecutionService>()
             .InstancePerLifetimeScope();
 
-        builder.Register(c =>
-        {
-            var sp = c.Resolve<IServiceProvider>();
-            var modules = new List<IFhirTypeModule>();
-            foreach (var version in GraphQlNamingHelper.SupportedVersions)
-            {
-                var module = sp.GetKeyedService<IFhirTypeModule>(version);
-                if (module is not null)
-                    modules.Add(module);
-            }
-            return (IReadOnlyList<IFhirTypeModule>)modules;
-        }).SingleInstance();
-
         builder.RegisterType<PackageLoadedSchemaInvalidationHandler>()
             .As<INotificationHandler<PackageLoadedEvent>>()
             .InstancePerDependency();

@@ -4,16 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using HotChocolate.AspNetCore;
-using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.Configuration;
-using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Ignixa.Application.Features.Experimental.GraphQl.Directives;
 using Ignixa.Application.Features.Experimental.GraphQl.Pipeline;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
-using Ignixa.Application.Features.Search;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.Infrastructure;
 
@@ -69,31 +65,19 @@ public static class ExperimentalServicesRegistration
         this IServiceCollection services,
         GraphQlExperimentalOptions graphQlOptions)
     {
+        services.AddSingleton<FhirTypeModuleCatalog>();
+
         foreach (var version in GraphQlNamingHelper.SupportedVersions)
         {
             var schemaName = GraphQlNamingHelper.GetSchemaName(version);
             var capturedVersion = version;
-
-            services.AddKeyedSingleton<IFhirTypeModule>(version, (sp, _) =>
-            {
-                var versionContext = sp.GetRequiredService<IFhirVersionContext>();
-                var schemaProvider = versionContext.GetBaseSchemaProvider(capturedVersion);
-                var searchParamManager = versionContext.GetSearchParameterDefinitionManager(capturedVersion);
-                var baseUriProvider = sp.GetRequiredService<IFhirBaseUriProvider>();
-                var logger = sp.GetRequiredService<ILogger<FhirTypeModule>>();
-                return (IFhirTypeModule)new FhirTypeModule(schemaProvider, searchParamManager, baseUriProvider, logger);
-            });
 
             var maxDepth = graphQlOptions.MaxQueryDepth;
             var timeout = TimeSpan.FromSeconds(graphQlOptions.ExecutionTimeoutSeconds);
             var enableIntrospection = graphQlOptions.EnableIntrospection;
 
             services.AddGraphQLServer(schemaName)
-                .AddTypeModule(sp =>
-                {
-                    var module = sp.GetRequiredKeyedService<IFhirTypeModule>(capturedVersion);
-                    return (HotChocolate.Execution.Configuration.ITypeModule)module;
-                })
+                .AddTypeModule(sp => sp.GetRequiredService<FhirTypeModuleCatalog>().GetOrCreate(capturedVersion))
                 .AddMaxExecutionDepthRule(maxDepth)
                 .DisableIntrospection(!enableIntrospection)
                 .ModifyRequestOptions(o => o.ExecutionTimeout = timeout)
