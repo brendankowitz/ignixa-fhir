@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Full history for GitVersion (GitVersion.MsBuild needs it or the build fails)
 
