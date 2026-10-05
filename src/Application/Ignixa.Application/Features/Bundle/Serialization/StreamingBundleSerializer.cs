@@ -622,8 +622,6 @@ public static class StreamingBundleSerializer
 
         // Stu3 bdl-4 prohibits entry.response in a history bundle; R4 reversed this and R4B/R5 carry
         // the reversal forward, so the element is required from R4 on and must be suppressed for Stu3.
-        // A Stu3 deleted version consequently loses lastModified: its resource stub carries no meta,
-        // and a conformant Stu3 history bundle has nowhere else to put it.
         if (fhirVersion >= FhirVersion.R4)
         {
             entryWriter.WriteObject("response", w => w

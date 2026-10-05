@@ -29,8 +29,8 @@ namespace Ignixa.DataLayer.FileSystem.FileSystem;
 /// </remarks>
 public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposable
 {
-    // StreamWriter writes a preamble whenever it starts at position 0; every write here starts from
-    // a fresh buffer, so on append a BOM would land mid-file and break NDJSON parsing of that line.
+    // Each StreamWriter here targets a fresh pooled MemoryStream at position 0, so Encoding.UTF8 would
+    // emit a preamble; appended onto an existing file, that BOM lands mid-file and breaks NDJSON parsing.
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     private readonly string _baseDirectory;
@@ -289,7 +289,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
     /// <summary>
     /// Writes the resolved version and timestamp into the caller's resource <c>meta</c> so the stored
-    /// bytes agree with the sidecar <see cref="ResourceMetadata"/> (mirrors SqlEntityFrameworkRepository).
+    /// bytes agree with the sidecar <see cref="ResourceMetadata"/> (mirrors SqlServerFhirRepository).
     /// </summary>
     /// <returns>The version id to record in the sidecar.</returns>
     private static string StampVersion(ResourceJsonNode resource, int version, DateTimeOffset timestamp)
