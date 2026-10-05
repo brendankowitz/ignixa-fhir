@@ -106,6 +106,12 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // GraphQL is opt-in, and AddExperimentalServices reads its switch while Program is still
+        // registering services, before ConfigureAppConfiguration sources below are applied. A value
+        // set there reaches only the later Autofac registrations, leaving GraphQL half-registered.
+        // UseSetting feeds host configuration, which is visible from the start.
+        builder.UseSetting("Experimental:Features:GraphQl:Enabled", "true");
+
         builder.ConfigureAppConfiguration((context, config) =>
         {
             // Override configuration for tests
@@ -168,9 +174,6 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
                 // Disable MCP for tests
                 ["Experimental:Features:Mcp:Enabled"] = "false",
-
-                // Enable GraphQL for E2E tests
-                ["Experimental:Features:GraphQl:Enabled"] = "true",
 
                 // Disable terminology auto-import for faster test startup
                 ["Experimental:Features:Terminology:EnableAutoImport"] = "false",

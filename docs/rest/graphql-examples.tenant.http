@@ -5,6 +5,7 @@
 ### ============================================================================
 ### These examples demonstrate tenant-scoped GraphQL queries.
 ### Single-tenant deployments can use /$graphql directly (see graphql-examples.http).
+### GraphQL is opt-in: start the server with Experimental__Features__GraphQl__Enabled=true.
 ### ============================================================================
 
 ### 1.1 Get Admin Token (for authenticated endpoints)
