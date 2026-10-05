@@ -526,7 +526,9 @@ Enable or disable experimental features:
 | `Summary` | Patient `$summary` (IPS) operation |
 | `GraphQl` | FHIR `$graphql` operation. Off by default (see below) |
 
-GraphQL is opt-in because of its memory cost. Each FHIR version's schema takes about 215 MB of live heap for R4. Versions listed in `WarmupVersions` are built at startup, and other versions are built on first use. With GraphQL off, a server at rest uses about 140 MB of private memory; with it on, expect roughly 750 MB. To enable it, set `Experimental__Features__GraphQl__Enabled=true`.
+GraphQL is opt-in because of its memory cost: each FHIR version's schema holds about 215 MB of managed heap (measured for R4), and under Server GC the process commits several times that. When GraphQL is enabled, the R4 schema and any versions added under `Experimental:Features:GraphQl:WarmupVersions` are built at startup; other versions are built on first use. To enable it, set `Experimental__Features__GraphQl__Enabled=true`.
+
+Instance-level reverse fields (for example `Patient.ObservationList` and `Patient.ObservationConnection`) exist only for resource types that have a base-specification reference search parameter able to target the instance's type. Queries that name a field for an unrelated pair, such as `Patient.OrganizationList`, fail schema validation. The GraphQL schema is shared across tenants, so a tenant package search parameter cannot add a reverse field. If the pair already has a field because of a base parameter, its `_reference` argument accepts the tenant parameter's code. Otherwise use REST search, for example `GET /Organization?my-patient-param=Patient/123`.
 
 ## Bulk Import Tuning
 

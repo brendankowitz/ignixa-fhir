@@ -11,7 +11,7 @@
 ###
 ### GraphQL is opt-in: start the server with Experimental__Features__GraphQl__Enabled=true.
 ###
-### Interactive IDE (opt-in, dev only): set Features:GraphQl:EnableGraphQlIde=true, then open
+### Interactive IDE (opt-in, dev only): also set Experimental__Features__GraphQl__EnableGraphQlIde=true, then open
 ### {{hostname}}/graphql in a browser for Banana Cake Pop (served behind the tenant/auth pipeline)
 ### ============================================================================
 

@@ -3,9 +3,13 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Experimental.GraphQl.Schema;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Models;
+using Ignixa.Specification.Extensions;
 using Ignixa.Specification.ValueSets.Normative;
+using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Experimental.GraphQl;
@@ -96,5 +100,28 @@ public class ReverseReferenceIndexTests
         index.GetReferencingTypes("Group").ShouldBeEmpty();
         foreach (var target in ResourceTypes)
             index.GetReferencingTypes(target).ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenBaseSearchParameters_WhenBuilding_ThenKnownReferencesAreKeptAndUnrelatedPairsArePruned(FhirVersion version)
+    {
+        var definitions = new SearchParameterDefinitionManager(
+            version.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        var resourceTypes = definitions.ResourceTypeNames.Order(StringComparer.Ordinal).ToList();
+
+        var index = ReverseReferenceIndex.Build(
+            resourceTypes,
+            resourceType => definitions.TryGetSearchParameters(resourceType, out var parameters) ? parameters : []);
+
+        var patientReferencers = index.GetReferencingTypes("Patient");
+        patientReferencers.ShouldContain("Observation");
+        patientReferencers.ShouldContain("Encounter");
+        index.GetReferencingTypes("Encounter").ShouldNotContain("Organization");
+        index.GetReferencingTypes("Encounter").Count.ShouldBeLessThan(resourceTypes.Count);
     }
 }

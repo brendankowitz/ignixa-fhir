@@ -21,15 +21,12 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="Xunit.SkippableFact" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <!-- Xunit.SkippableFact also defines Xunit.SkipException; the suite's capability gates throw this one. -->
-    <Using Include="Ignixa.Api.E2ETests._Infrastructure.Exceptions.SkipException" Alias="SkipException" />
   </ItemGroup>
 
   <ItemGroup>

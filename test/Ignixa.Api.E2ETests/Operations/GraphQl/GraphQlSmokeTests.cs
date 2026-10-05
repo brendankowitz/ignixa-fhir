@@ -22,7 +22,7 @@ public class GraphQlSmokeTests : CapabilityDrivenTestBase
     {
     }
 
-    [SkippableFact(typeof(SkipException))]
+    [Fact]
     public async Task GivenGraphQlAdvertised_WhenPostingSystemQuery_ThenReturnsDataWithoutErrors()
     {
         // Arrange
@@ -40,7 +40,7 @@ public class GraphQlSmokeTests : CapabilityDrivenTestBase
         AssertGraphQlSuccessEnvelope(responseJson);
     }
 
-    [SkippableFact(typeof(SkipException))]
+    [Fact]
     public async Task GivenGraphQlAdvertisedAndPatientExists_WhenPostingInstanceQuery_ThenReturnsDataWithoutErrors()
     {
         // Arrange
@@ -59,7 +59,7 @@ public class GraphQlSmokeTests : CapabilityDrivenTestBase
         AssertGraphQlSuccessEnvelope(responseJson);
     }
 
-    [SkippableFact(typeof(SkipException))]
+    [Fact]
     public async Task GivenGraphQlAdvertised_WhenGettingSystemQuery_ThenReturnsDataWithoutErrors()
     {
         // Arrange

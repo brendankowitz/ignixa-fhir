@@ -9,14 +9,16 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Application.Features.Experimental.GraphQl.Schema;
 
 /// <summary>
-/// For each resource type, the resource types that can reference it through a reference search parameter.
+/// Maps each referenced (target) resource type to the source types that hold a reference search parameter
+/// able to point at it.
 /// </summary>
 /// <remarks>
 /// Drives the instance-level reverse fields (<c>Patient.ObservationList</c>, <c>Patient.ObservationConnection</c>).
-/// A reverse field's <c>_reference</c> argument names a search parameter on the source type, so a source type
-/// with no reference parameter that can point at the target has no value that could ever match. Emitting a
-/// field for every pair made the schema quadratic in the resource-type count: about 2.3 million HotChocolate
-/// arguments and 560 MB of live heap for R4 alone.
+/// A reverse field's <c>_reference</c> argument names a search parameter on the source type, so pairs with no
+/// such parameter are omitted; emitting every pair makes the schema grow quadratically with the resource-type
+/// count. The index uses the version's base search parameters because the schema is shared across tenants,
+/// so a tenant package parameter cannot add a reverse field. It can still be named in <c>_reference</c> when a
+/// base parameter already links the pair; otherwise the link is reachable only through REST search.
 /// </remarks>
 public sealed class ReverseReferenceIndex
 {

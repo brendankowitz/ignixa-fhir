@@ -10,11 +10,12 @@ namespace Ignixa.Application.Features.Experimental.Configuration;
 public sealed class GraphQlExperimentalOptions
 {
     /// <summary>
-    /// Whether the $graphql operation is enabled. Defaults to false: building a FHIR version's schema
-    /// holds about 215 MB of live heap for R4 (the process commits several times that under Server GC),
-    /// and <see cref="WarmupVersions"/> builds schemas at startup. Enable explicitly where GraphQL is
-    /// needed and memory is budgeted for it.
+    /// Whether the $graphql operation is registered. Defaults to false.
     /// </summary>
+    /// <remarks>
+    /// Opt-in because each built schema holds hundreds of megabytes of heap, and enabling GraphQL builds
+    /// the schemas in <see cref="WarmupVersions"/> at startup.
+    /// </remarks>
     public bool Enabled { get; set; }
     public int MaxQueryDepth { get; set; } = 15;
     public bool EnableIntrospection { get; set; } = true;

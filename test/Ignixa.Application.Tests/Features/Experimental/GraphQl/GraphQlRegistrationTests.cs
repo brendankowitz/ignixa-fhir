@@ -3,8 +3,8 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Application.Features.Experimental.GraphQl.Contracts;
 using Ignixa.Application.Features.Experimental.GraphQl.Pipeline;
+using Ignixa.Application.Features.Experimental.GraphQl.Schema;
 using Ignixa.Application.Features.Experimental.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,13 +24,29 @@ public class GraphQlRegistrationTests
         return new ServiceCollection().AddExperimentalServices(configuration);
     }
 
-    [Fact]
-    public void GivenExperimentalEnabledWithoutGraphQlSetting_WhenAddingServices_ThenGraphQlIsNotRegistered()
+    public static TheoryData<Dictionary<string, string?>> GraphQlDisabledSettings => new()
     {
-        var services = AddExperimentalServices(new() { ["Experimental:Enabled"] = "true" });
+        new() { ["Experimental:Enabled"] = "true" },
+        new()
+        {
+            ["Experimental:Enabled"] = "true",
+            ["Experimental:Features:GraphQl:Enabled"] = "false",
+        },
+        new()
+        {
+            ["Experimental:Enabled"] = "false",
+            ["Experimental:Features:GraphQl:Enabled"] = "true",
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(GraphQlDisabledSettings))]
+    public void GivenGraphQlNotEnabled_WhenAddingServices_ThenGraphQlIsNotRegistered(Dictionary<string, string?> settings)
+    {
+        var services = AddExperimentalServices(settings);
 
         services.ShouldNotContain(d => d.ImplementationType == typeof(GraphQlSchemaWarmupService));
-        services.ShouldNotContain(d => d.ServiceType == typeof(IFhirTypeModule));
+        services.ShouldNotContain(d => d.ServiceType == typeof(FhirTypeModuleCatalog));
     }
 
     [Fact]
@@ -43,6 +59,6 @@ public class GraphQlRegistrationTests
         });
 
         services.ShouldContain(d => d.ImplementationType == typeof(GraphQlSchemaWarmupService));
-        services.ShouldContain(d => d.ServiceType == typeof(IFhirTypeModule));
+        services.ShouldContain(d => d.ServiceType == typeof(FhirTypeModuleCatalog));
     }
 }
