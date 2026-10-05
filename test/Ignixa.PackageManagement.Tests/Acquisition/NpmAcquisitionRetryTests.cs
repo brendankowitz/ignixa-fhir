@@ -227,6 +227,49 @@ public class NpmAcquisitionRetryTests
         registry.Requests.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task GivenAuthenticatorWrapsCallerCancellation_WhenAcquired_ThenPropagatesCallerCancellation()
+    {
+        using var registry = new SyntheticNpmRegistry();
+        using var caller = new CancellationTokenSource();
+        using var acquirer = registry.Acquirer(async (_, _, _) =>
+        {
+            await caller.CancelAsync();
+            throw new IOException("secret wrapped cancellation");
+        });
+        var error = await Should.ThrowAsync<OperationCanceledException>(() => acquirer.AcquireAsync(
+            SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), caller.Token));
+        error.CancellationToken.ShouldBe(caller.Token);
+        error.ToString().ShouldNotContain("secret");
+        registry.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAuthenticatorWrapsAttemptTimeout_WhenAcquired_ThenRetriesAsTimeout()
+    {
+        using var registry = new SyntheticNpmRegistry();
+        var clock = new ManualAcquisitionTime();
+        int calls = 0;
+        using var acquirer = registry.Acquirer((_, _, _) =>
+        {
+            if (++calls == 1)
+            {
+                clock.Advance(TimeSpan.FromSeconds(120));
+                throw new IOException("secret wrapped timeout");
+            }
+            return ValueTask.FromResult<System.Net.Http.Headers.AuthenticationHeaderValue?>(null);
+        }, clock);
+        Task<AcquiredNpmPackage> task = acquirer.AcquireAsync(
+            SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), CancellationToken.None);
+        for (int i = 0; i < 100 && !task.IsCompleted; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            await Task.Yield();
+        }
+        (await task.WaitAsync(TimeSpan.FromSeconds(5))).Identity.ShouldBe(SyntheticNpmRegistry.Identity);
+        calls.ShouldBeGreaterThan(1);
+    }
+
     [Theory]
     [InlineData(401)]
     [InlineData(404)]

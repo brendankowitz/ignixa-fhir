@@ -61,8 +61,8 @@ IReadOnlyList<StrictPackageEntry> allJson = raw.JsonEntries;
   Authorization compares decoded canonical directory paths; requests/auth callbacks
   preserve exact escaped path/query spelling, including escape case, `+`, duplicates
   and parameter order. Queries never enter cache identity or acquisition diagnostics.
-  Callback URIs disable .NET path/query canonicalization to retain that spelling;
-  use `AbsolutePath`/`PathAndQuery`, not `GetComponents`, for those components.
+  Artifact and redirect callback URIs disable .NET path/query canonicalization to retain
+  that spelling; use `AbsolutePath`/`PathAndQuery`, not `GetComponents`, for those components.
   Userinfo, fragments, controls, raw whitespace/backslashes, malformed escapes/UTF-8,
   dot segments, repeated slashes, encoded path separators/delimiters and nested path
   escaping (`%25`) are rejected. Escape non-ASCII query values; query values are not
@@ -83,7 +83,8 @@ IReadOnlyList<StrictPackageEntry> allJson = raw.JsonEntries;
   or allowlist. No Authorization header is copied from the preceding request.
   Cookies are never supported. Authenticator exceptions, including cancellation
   unrelated to the supplied token, become safe permanent authentication diagnostics.
-  Actual caller/deadline cancellation propagates; the authenticator must honor its token.
+  Actual caller/deadline cancellation propagates, even when wrapped by the authenticator;
+  the authenticator must honor its token.
   Reuse the acquirer; callbacks must support concurrent calls. Do not dispose it while
   acquisitions are active. The acquirer owns its client/transport, not the extractor,
   authenticator, certificate callback, clock or cache.
@@ -116,11 +117,13 @@ IReadOnlyList<StrictPackageEntry> allJson = raw.JsonEntries;
   without nested transport messages, URLs, response bodies or credentials. Timeout
   is distinct from permanent failures; caller cancellation remains cancellation.
   Strict `PackageExtractionException` is permanent **even though it derives from
-  IOException**. Cache I/O/corruption errors are explicit; no success-shaped fallback.
+  IOException**. Cache I/O errors and corrupted cached artifacts (including a keyed
+  digest mismatch) are explicit `CacheFailure`; no success-shaped fallback or eviction.
 - The optional filesystem cache uses SHA-256 opaque filenames derived from source,
   exact name/version and expected SHA-512 digest. Every call still resolves current
   trusted metadata and policy; hits repeat compressed bounds, digest and strict
-  extraction/identity checks. Publication is atomic and create-only. Concurrent
+  extraction/identity checks. Publication writes through, then renames atomically and
+  create-only. Concurrent
   winners are reread and compared; only the caller's unique staging file is cleaned
   up. Protect the cache directory from untrusted local writers. This is not installed
   inventory, durable activation state, an offline registry or a cache eviction service.
@@ -281,12 +284,15 @@ input implementations must honor the token. Synchronous CPU parsing is cooperati
   The result also reports logical entries, payload bytes and actual compressed/expanded bytes.
 - JSON depth counts the outer object/array as one, independently for every JSON file.
   Malformed JSON, invalid Unicode, duplicate properties and invalid `resourceType` values fail.
+  One leading UTF-8 byte-order mark is ignored and omitted from the retained JSON.
 - Exactly `package/package.json` is required once. Paths are relative POSIX paths below
   `package/`; traversal, backslashes, case-insensitive collisions and links are rejected.
   Benign directories are permitted. A leaf equal to `package.json` (case-insensitively) at
   another path is rejected; longer filenames such as `SearchParameter-package.json` are ordinary JSON.
 - `Manifest.FhirVersion` preserves the declared singular value or null; `FhirVersions`
-  preserves the declared array (empty when absent). Neither sets a resource's running version.
+  preserves the declared array (empty when absent). When present, they must be a nonblank
+  string and an array of nonblank strings; JSON null or other shapes fail with `InvalidManifest`.
+  Neither sets a resource's running version.
   Original manifest JSON is retained, including other metadata. There is **no strict R4 fallback**;
   the existing permissive method retains its historical `4.0.1` default.
 - `JsonEntries` preserves non-manifest JSON and resolved archive paths without requiring,

@@ -171,8 +171,9 @@ Paths are decoded for authorization, but the original escaped path and query are
 preserved on the wire and in the authentication callback: escape case, `+`, parameter
 order, duplicate keys and empty values are not rewritten. Queries are not interpreted
 as paths and never enter cache identity or acquisition diagnostics.
-The callback URI disables .NET path/query canonicalization; use `AbsolutePath` and
-`PathAndQuery` rather than `GetComponents` for path/query access.
+Artifact and redirect URIs passed to the callback disable .NET path/query canonicalization;
+use `AbsolutePath` and `PathAndQuery` rather than `GetComponents`, which throws for them.
+The locally built metadata URI is an ordinary `Uri`.
 
 Userinfo, fragments, controls, raw whitespace/backslashes, malformed percent escapes
 or UTF-8, dot segments, repeated slashes and encoded path separators/delimiters fail.
@@ -203,7 +204,8 @@ It must select credentials for that source **and destination**, never blindly fo
 registry credentials to another allowlisted origin. Only the returned Authorization
 header is applied; cookies are unsupported. Authentication failure is permanent and
 sanitized, including an `OperationCanceledException` unrelated to the supplied token.
-Actual caller or deadline cancellation propagates; the authenticator must honor its token.
+Actual caller or deadline cancellation propagates, even when the authenticator wraps it in
+another exception; the authenticator must honor its token.
 
 The optional `validateServerCertificate` is a `RemoteCertificateValidationCallback`,
 not a handler-configuration hook. It changes only TLS server trust, for example a
@@ -274,10 +276,13 @@ success. In-memory byte bounds are not peak heap, concurrency or process CPU lim
 exact name, exact version and expected SHA-512 integrity. Every call still obtains trusted
 metadata and validates active URL policy. Cache hits repeat compressed bounds, digest,
 strict extraction, manifest identity and all active extraction limits.
-Corruption or filesystem errors fail explicitly without a silent network fallback.
+Corruption or filesystem errors fail explicitly with `CacheFailure`, without a silent network
+fallback. A cached artifact failing its keyed digest is reported as `CacheFailure`, never the
+upstream `DigestMismatch`; it is not evicted, so the host must remove it. Artifacts are
+`<64 hex>.tgz` and owned staging files are `<32 hex>.partial` in the cache directory.
 
-Publication uses a unique same-directory staging file and atomic create-only rename
-after verification. A concurrent winner is bounded-reread and compared against verified
+Publication writes through to storage in a unique same-directory staging file, then performs
+an atomic create-only rename after verification. A concurrent winner is bounded-reread and compared against verified
 bytes; partial artifacts are never published. Normal failure/cancellation cleans only
 the owned staging file; no broad recursive cleanup occurs. A crash may leave an orphan
 staging file, which is never read as an artifact. Protect this directory from untrusted
@@ -434,7 +439,8 @@ No extracted paths are written to disk.
 
 The result contains a `StrictPackageManifest`, `IReadOnlyList<StrictPackageEntry> JsonEntries`,
 and `PackageExtractionStatistics`. Each entry has `Path`, original UTF-8-decoded `Json`, and
-nullable `ResourceType`. Every non-manifest `.json` file (case-insensitive extension) is retained:
+nullable `ResourceType`. One leading UTF-8 byte-order mark is ignored (RFC 8259) and omitted
+from `Json`; any further mark is invalid JSON. Every non-manifest `.json` file (case-insensitive extension) is retained:
 
 - A nonempty string `resourceType` identifies a resource candidate, including types outside
   the legacy conformance allowlist. Unknown resource-type strings remain for host validation.
@@ -448,7 +454,9 @@ nullable `ResourceType`. Every non-manifest `.json` file (case-insensitive exten
 Exactly one manifest at **`package/package.json`** is required, independent of tar order.
 `Name` and `Version` must be nonblank strings; this is not a SemVer/source identity validator.
 `FhirVersion` preserves singular `fhirVersion` or null when absent. `FhirVersions` preserves
-the plural string array, in declared order, or an empty list when absent. Both can coexist;
+the plural string array, in declared order, or an empty list when absent. When present,
+`fhirVersion` must be a nonblank string and `fhirVersions` an array of nonblank strings;
+JSON null or any other shape fails with `InvalidManifest`. Both can coexist;
 conflicts and compatibility with a running FHIR version are host policy. `Json` retains the
 entire manifest, including dependencies and the distinction between absent and empty arrays.
 There is **no strict version fallback**. The unchanged permissive API still defaults missing

@@ -84,7 +84,7 @@ public class NpmAcquisitionCacheTests
     }
 
     [Fact]
-    public async Task GivenCorruptedCache_WhenAcquired_ThenFailsExplicitlyWithoutRedownload()
+    public async Task GivenCorruptedCache_WhenAcquired_ThenFailsAsCacheFailureWithoutRedownload()
     {
         using var directory = new OwnedCacheDirectory();
         using var registry = new SyntheticNpmRegistry();
@@ -96,7 +96,7 @@ public class NpmAcquisitionCacheTests
         await File.WriteAllBytesAsync(cached, corrupted);
         (await Should.ThrowAsync<PackageAcquisitionException>(() => acquirer.AcquireAsync(
             SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), CancellationToken.None)))
-            .Error.ShouldBe(PackageAcquisitionError.DigestMismatch);
+            .Error.ShouldBe(PackageAcquisitionError.CacheFailure);
         registry.Requests.Count.ShouldBe(3);
     }
 
@@ -126,8 +126,31 @@ public class NpmAcquisitionCacheTests
             ? registry.Metadata(integrity: digestMismatch ? "sha512-" + Convert.ToBase64String(new byte[64]) : null)
             : registry.Tarball));
         using var acquirer = CreateAcquirer(registry, directory.Path);
-        _ = await Should.ThrowAsync<Exception>(() => acquirer.AcquireAsync(
-            SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), CancellationToken.None));
+        Task acquisition = acquirer.AcquireAsync(SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), CancellationToken.None);
+        if (digestMismatch)
+        {
+            (await Should.ThrowAsync<PackageAcquisitionException>(() => acquisition)).Error.ShouldBe(PackageAcquisitionError.DigestMismatch);
+        }
+        else
+        {
+            (await Should.ThrowAsync<PackageExtractionException>(() => acquisition)).Diagnostic.Code.ShouldBe(PackageExtractionError.InvalidArchive);
+        }
+        registry.Requests.Count.ShouldBe(2);
+        Directory.GetFiles(directory.Path).ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("""{"name":"other.pkg","version":"1.2.3","fhirVersion":"4.0.1"}""")]
+    [InlineData("""{"name":"test.pkg","version":"1.2.4","fhirVersion":"4.0.1"}""")]
+    public async Task GivenMismatchedManifestWithValidDigest_WhenAcquired_ThenRejectsWithoutPublishing(string manifest)
+    {
+        using var directory = new OwnedCacheDirectory();
+        using var registry = new SyntheticNpmRegistry { Tarball = SyntheticNpmRegistry.CreateTarball(manifest) };
+        using var acquirer = CreateAcquirer(registry, directory.Path);
+        (await Should.ThrowAsync<PackageAcquisitionException>(() => acquirer.AcquireAsync(
+            SyntheticNpmRegistry.Identity, SyntheticNpmRegistry.Policy(), CancellationToken.None)))
+            .Error.ShouldBe(PackageAcquisitionError.ManifestIdentityMismatch);
+        registry.Requests.Count.ShouldBe(2);
         Directory.GetFiles(directory.Path).ShouldBeEmpty();
     }
 

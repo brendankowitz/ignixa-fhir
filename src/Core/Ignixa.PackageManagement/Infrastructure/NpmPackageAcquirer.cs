@@ -88,6 +88,19 @@ public sealed class NpmPackageAcquirer : IDisposable
         };
     }
 
+    /// <summary>Downloads, verifies and strictly extracts one exact package version from an approved source.</summary>
+    /// <param name="identity">Exact requested name and version; the strict manifest must match it.</param>
+    /// <param name="policy">Administrator-approved source, URL prefixes, limits and retry policy.</param>
+    /// <param name="cancellationToken">Caller cancellation; surfaces as <see cref="OperationCanceledException"/>.</param>
+    /// <param name="integrityPin">
+    /// Optional administrator SHA-512 integrity; required when metadata omits <c>dist.integrity</c>, and must match it otherwise.
+    /// </param>
+    /// <returns>The verified package. It is not installed or activated.</returns>
+    /// <exception cref="PackageAcquisitionException">
+    /// Trust, metadata, integrity, HTTP, transport, timeout, authentication or cache failure; see <see cref="PackageAcquisitionException.Error"/>.
+    /// </exception>
+    /// <exception cref="PackageExtractionException">The verified tarball fails strict extraction. Never retried.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     public async Task<AcquiredNpmPackage> AcquireAsync(
         NpmPackageIdentity identity, NpmPackageSourcePolicy policy, CancellationToken cancellationToken,
         NpmPackageIntegrity? integrityPin = null)
@@ -209,7 +222,9 @@ public sealed class NpmPackageAcquirer : IDisposable
         checkBudget();
         byte[] tarball = cached ?? await GetBytesAsync(selected.Tarball, policy, metadata: false, cancellationToken).ConfigureAwait(false);
         checkBudget();
-        VerifyDigest(tarball, selected.Integrity, cancellationToken);
+        // A cached artifact failing its keyed digest is local corruption, not an upstream mismatch.
+        VerifyDigest(tarball, selected.Integrity,
+            cached is null ? PackageAcquisitionError.DigestMismatch : PackageAcquisitionError.CacheFailure, cancellationToken);
         checkBudget();
         using var stream = new MemoryStream(tarball, writable: false);
         StrictPackageExtractionResult extraction = await _extractor.ExtractStrictAsync(
@@ -251,6 +266,8 @@ public sealed class NpmPackageAcquirer : IDisposable
                 }
                 catch (Exception)
                 {
+                    // Callbacks may wrap real cancellation; preserve it before sanitizing as an auth failure.
+                    cancellationToken.ThrowIfCancellationRequested();
                     // Auth infrastructure is a trust boundary; its exception may contain credentials.
                     throw new PackageAcquisitionException(PackageAcquisitionError.AuthenticationFailure);
                 }
@@ -405,13 +422,14 @@ public sealed class NpmPackageAcquirer : IDisposable
         }
     }
 
-    private static void VerifyDigest(byte[] bytes, NpmPackageIntegrity integrity, CancellationToken cancellationToken)
+    private static void VerifyDigest(
+        byte[] bytes, NpmPackageIntegrity integrity, PackageAcquisitionError mismatchError, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         byte[] actual = SHA512.HashData(bytes);
         if (!CryptographicOperations.FixedTimeEquals(actual, Convert.FromBase64String(integrity.Integrity[7..])))
         {
-            throw new PackageAcquisitionException(PackageAcquisitionError.DigestMismatch);
+            throw new PackageAcquisitionException(mismatchError);
         }
         cancellationToken.ThrowIfCancellationRequested();
     }

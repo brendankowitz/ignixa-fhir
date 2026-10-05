@@ -39,6 +39,31 @@ public class StrictPackageExtractorTests
         input.Disposed.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task GivenUtf8ByteOrderMarkPrefixedJson_WhenStrictExtracting_ThenStripsMarkAndParses()
+    {
+        const string resource = """{"resourceType":"Patient","id":"p"}""";
+        byte[] package = StrictPackageFixture.Gzip(StrictPackageFixture.Tar(
+            ("package/package.json", "\uFEFF" + StrictPackageFixture.Manifest),
+            ("package/patient.json", "\uFEFF" + resource)));
+
+        var result = await Extract(package);
+
+        result.Manifest.Name.ShouldBe("example.fhir.search");
+        result.Manifest.Json.ShouldBe(StrictPackageFixture.Manifest);
+        result.JsonEntries.ShouldBe([new StrictPackageEntry("package/patient.json", resource, "Patient")]);
+    }
+
+    [Fact]
+    public async Task GivenRepeatedByteOrderMark_WhenStrictExtracting_ThenRejectsInvalidJson()
+    {
+        byte[] package = StrictPackageFixture.Package(("package/patient.json", "\uFEFF\uFEFF{}"));
+
+        var error = await Should.ThrowAsync<PackageExtractionException>(() => Extract(package));
+
+        error.Diagnostic.Code.ShouldBe(PackageExtractionError.InvalidJson);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

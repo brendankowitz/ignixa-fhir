@@ -8,7 +8,8 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// <remarks>
 /// Entries are opaque hashes of source ID, exact name/version and expected digest, never installed state.
 /// Only the acquirer can publish after verification. Reads always undergo its active bounds, digest and
-/// strict manifest checks. Cache I/O errors are permanent and explicit, not download fallbacks.
+/// strict manifest checks. Cache I/O errors and corrupted entries are permanent CacheFailure, not download
+/// fallbacks; corrupted entries are not evicted.
 /// </remarks>
 public sealed class VerifiedPackageCache
 {
@@ -62,8 +63,9 @@ public sealed class VerifiedPackageCache
             {
                 checkBudget();
 #pragma warning disable CA2000 // WriteStagingAsync owns disposal, including exceptional write/flush paths.
+                // Write-through makes bytes durable before the rename publishes them.
                 var stream = new FileStream(staging, FileMode.CreateNew, FileAccess.Write,
-                    FileShare.None, 65536, FileOptions.Asynchronous);
+                    FileShare.None, 65536, FileOptions.Asynchronous | FileOptions.WriteThrough);
 #pragma warning restore CA2000
                 ownsStaging = true;
                 await WriteStagingAsync(stream, verifiedBytes, cancellationToken).ConfigureAwait(false);

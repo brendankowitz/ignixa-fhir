@@ -7,6 +7,8 @@ namespace Ignixa.PackageManagement.Infrastructure;
 
 public partial class PackageExtractor
 {
+    private static ReadOnlySpan<byte> Utf8ByteOrderMark => [0xEF, 0xBB, 0xBF];
+
     /// <summary>
     /// Validates and extracts one bounded .tgz from the current position through EOF.
     /// Leaves the caller's stream open. Cancellation is propagated, not converted to a diagnostic.
@@ -83,9 +85,11 @@ public partial class PackageExtractor
                 }
 
                 byte[] content = await ReadStrictEntryAsync(entry, limits.MaxEntryBytes, physicalIndex, cancellationToken);
+                // RFC 8259 permits parsers to ignore a UTF-8 BOM; the legacy loader accepts it too.
+                ReadOnlyMemory<byte> jsonBytes = content.AsSpan().StartsWith(Utf8ByteOrderMark) ? content.AsMemory(3) : content;
                 PackageExtractionError jsonError = isManifest ? PackageExtractionError.InvalidManifest : PackageExtractionError.InvalidJson;
-                using JsonDocument document = ParseStrictJson(content, limits.MaxJsonDepth, physicalIndex, jsonError, cancellationToken);
-                string json = Encoding.UTF8.GetString(content);
+                using JsonDocument document = ParseStrictJson(jsonBytes, limits.MaxJsonDepth, physicalIndex, jsonError, cancellationToken);
+                string json = Encoding.UTF8.GetString(jsonBytes.Span);
                 if (isManifest)
                 {
                     manifest = ParseStrictManifest(document.RootElement, json, physicalIndex);
@@ -198,13 +202,13 @@ public partial class PackageExtractor
     }
 
     private static JsonDocument ParseStrictJson(
-        byte[] content, int maxDepth, int entry, PackageExtractionError error, CancellationToken cancellationToken)
+        ReadOnlyMemory<byte> content, int maxDepth, int entry, PackageExtractionError error, CancellationToken cancellationToken)
     {
         try
         {
             // Inspect depth explicitly to give a stable limit diagnostic rather than parsing
             // localized JsonException messages. Duplicate properties have no unambiguous identity.
-            var reader = new Utf8JsonReader(content, new JsonReaderOptions { MaxDepth = int.MaxValue });
+            var reader = new Utf8JsonReader(content.Span, new JsonReaderOptions { MaxDepth = int.MaxValue });
             var objects = new Stack<HashSet<string>>();
             while (reader.Read())
             {
