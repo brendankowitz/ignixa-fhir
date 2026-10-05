@@ -22,6 +22,8 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// The adapter is a pure function: parse JSON, build tree, return root. It has no
 /// I/O, logging, or dependencies on FHIR-version-specific schema providers, which
 /// makes it cheap to call per profile and easy to test deterministically.
+/// Logical models may identify their type by an absolute URI; their tree is rooted
+/// at the snapshot path, while package providers retain the full canonical lookup identity.
 /// </para>
 /// </summary>
 public sealed class StructureDefinitionTypeAdapter
@@ -80,12 +82,26 @@ public sealed class StructureDefinitionTypeAdapter
             elements.Add(new ElementSnapshot(path, order++, el.Clone()));
         }
 
-        if (elements.Count == 0 || elements[0].Path != rootTypeName)
+        if (elements.Count == 0)
         {
             return null;
         }
 
-        return BuildNode(elements, 0, rootTypeName!, isResource, isAbstract, parentOrder: 0);
+        var rootPath = elements[0].Path;
+        if (rootPath != rootTypeName)
+        {
+            // Logical-model types are canonical URIs, not ElementDefinition paths. The URL's
+            // final segment is only a recommended name; the snapshot owns the actual root.
+            if (kind != "logical" || !Uri.TryCreate(rootTypeName, UriKind.Absolute, out _)
+                || rootPath.Contains('.', StringComparison.Ordinal)
+                || elements.Any(element => element.Path != rootPath
+                    && !element.Path.StartsWith(rootPath + ".", StringComparison.Ordinal)))
+            {
+                return null;
+            }
+        }
+
+        return BuildNode(elements, 0, rootPath, isResource, isAbstract, parentOrder: 0, ReadString(root, "url"));
     }
 
     /// <summary>
@@ -98,7 +114,8 @@ public sealed class StructureDefinitionTypeAdapter
         string path,
         bool isResource,
         bool isAbstract,
-        int parentOrder)
+        int parentOrder,
+        string? definitionCanonical)
     {
         var self = elements[startIndex];
 
@@ -177,7 +194,7 @@ public sealed class StructureDefinitionTypeAdapter
             }
 
             // Direct child. Recurse, then advance past the whole subtree.
-            var child = BuildNode(elements, i, candidate, isResource: false, isAbstract: false, parentOrder: i);
+            var child = BuildNode(elements, i, candidate, isResource: false, isAbstract: false, parentOrder: i, definitionCanonical);
             children.Add(child);
             i = AdvancePastSubtree(elements, i);
         }
@@ -200,7 +217,9 @@ public sealed class StructureDefinitionTypeAdapter
             defaultTypeName: fhirTypeName,
             referenceTargets: referenceTargets,
             contentReference: ReadString(self.Element, "contentReference"),
-            slicing: slicing);
+            slicing: slicing,
+            canonicalUrl: startIndex == 0 || definitionCanonical == null
+                ? definitionCanonical : $"{definitionCanonical}#{path}");
     }
 
     /// <summary>

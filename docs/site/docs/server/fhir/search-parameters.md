@@ -43,6 +43,60 @@ Control how package search parameters are loaded:
 | `UseSemanticVersioning` | Newer versions win when no explicit priority |
 | `EagerLoadPackageSearchParameters` | Load all at startup vs. lazy per resource type |
 
+Both loading modes retain inherited base FHIR parameters such as `_id`, `_lastUpdated`,
+and `_tag` on derived resources alongside package-defined parameters.
+Package-only resource types such as `ViewDefinition` also retain these universal
+`Resource` parameters alongside their package parameters, including after cache reloads.
+
+When a package parameter declares `OverridesUrl`, SQL indexing uses the overridden
+parameter's existing search identity. Re-synchronizing that package, or loading
+another package, preserves the identity so previously indexed resources remain
+searchable alongside newly indexed resources.
+Cold caches reconstruct these aliases from replayed package definitions, including
+after eviction or restart. Web startup deploys or verifies the SQL schemas and
+replays conformance events before constructing tenant repositories and their caches.
+The hosted initializer skips that completed replay. SQL cache initialization still
+rejects premature access rather than publishing physical IDs that would split the index.
+
+A fresh SQL resource database also seeds the replayed tenant's active package parameters
+and their storage roots before publishing its reference cache, even when its conformance
+events are stored in another database. Core catalog seeding preserves those authoritative
+definitions. The first strict search and first resource write therefore support both
+overriding and additional package parameters without waiting for a remote activation poll.
+
+Repeated activations of the same canonical and chains of overriding canonicals retain
+the original storage identity. Replay reconstructs that root from canonical ancestry,
+validating inherited IDs, including historical self-referencing upgrade events; superseded canonicals keep
+their root mappings without becoming active search parameters again. SQL synchronization
+provisions a missing declared root in the same batch rather than temporarily indexing
+under the overriding parameter's own ID. Unanchored cycles and conflicting inherited
+identities fail explicitly.
+
+Package activation stages the complete event batch against a detached copy of current
+conformance state before appending it. Conflicts, including conflicts between parameters
+in the same package and attempts to move an existing canonical to another storage root,
+reject the activation without appending events or publishing partial state. Persisted
+history still undergoes the same identity checks during replay.
+For multi-instance activation, the SQL event store checks the validated snapshot's
+global event position under its existing append lock, in the insertion transaction.
+A concurrent commit rejects the stale activation with `CONFORMANCE_CONFLICT`;
+refresh conformance state and retry. The stale proposed batch is never blindly retried.
+
+### Multi-instance package activation
+
+Servers sharing the conformance event store poll for remote activations using
+`Conformance:SyncIntervalSeconds` (30 seconds by default). Each instance synchronizes
+the existing SQL reference caches for its configured tenants and awaits schema
+invalidation before publishing refreshed search definitions and indexers. It then
+invalidates tenant capability statements without replaying package imports or
+terminology side effects.
+
+Event replay and consumer refresh have separate checkpoints. If SQL synchronization
+or schema/capability invalidation fails after events have been applied, the next poll
+retries the refresh even when there are no new events. Logs report the applied and
+successfully refreshed event IDs. Activation does not backfill existing resources;
+reindex those resources when adding a search parameter.
+
 ## Basic Search
 
 ```bash
@@ -237,6 +291,10 @@ GET /Patient?_revinclude=Observation:subject
 
 Control the number of included resources returned separately from primary matches:
 
+`_count` limits matching resources, not their includes. If `_includesCount` is omitted,
+all resolved includes are returned. Rows fetched only to detect the next match page
+do not seed `_include`, `_revinclude`, or `:iterate`.
+
 ```bash
 # Limit primary results to 10, includes to 50
 GET /Patient?_include=Patient:organization&_count=10&_includesCount=50
@@ -258,6 +316,11 @@ When `_includesCount` is specified:
 - If more includes exist, a "related" link is added with `_includesContinuationToken`
 - Use the `$includes` operation to fetch additional included resources
 
+Related links retain the original match page, including its `after` cursor. Follow
+`related` links to finish that page's includes; follow `next` to advance the primary
+matches. Warnings about unreadable resources remain outcome entries on include
+continuations and do not consume the `_includesCount` budget.
+
 See [$includes operation](/docs/server/fhir/operations#includes) for details on fetching additional included resources.
 
 ## Result Modifiers
@@ -276,6 +339,11 @@ GET /Patient?_sort=family,given        # Multiple
 GET /Patient?_count=50
 GET /Patient?_count=50&_offset=100
 ```
+
+Follow the Bundle's `next` link to continue a search. If stored content cannot be read,
+the response includes a warning OperationOutcome and omits that resource. A page can
+therefore contain fewer than `_count` matches while still having a `next` link;
+the link follows the selected database page, not the number of readable resources.
 
 ### Total Count
 

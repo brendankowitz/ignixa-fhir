@@ -1,8 +1,9 @@
+-- The code column(s) below are CS_AS for the reason given in full on TermConcept.sql.
 CREATE TABLE dbo.TermValueSetExpansion (
     TermValueSetExpansionId BIGINT         NOT NULL IDENTITY (1, 1),
     TermValueSetId          BIGINT         NOT NULL,
     SystemId                INT            NOT NULL,
-    Code                    NVARCHAR (256) NOT NULL,
+    Code                    NVARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
     Display                 NVARCHAR (500) NULL,
     SystemVersion           NVARCHAR (100) NULL,
     IsActive                BIT            NOT NULL,
@@ -11,6 +12,12 @@ CREATE TABLE dbo.TermValueSetExpansion (
     CONSTRAINT FK_TermValueSetExpansion_System FOREIGN KEY (SystemId) REFERENCES dbo.System (SystemId),
     CONSTRAINT FK_TermValueSetExpansion_ValueSet FOREIGN KEY (TermValueSetId) REFERENCES dbo.TermValueSet (TermValueSetId) ON DELETE CASCADE
 );
+
+GO
+
+-- Convention-only here, not load-bearing: this table is not partitioned, so AUTO escalates to TABLE
+-- level exactly like SQL Server's un-set default. See TermCodeSystem.sql for the full explanation.
+ALTER TABLE dbo.TermValueSetExpansion SET (LOCK_ESCALATION = AUTO);
 
 GO
 

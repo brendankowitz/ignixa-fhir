@@ -19,6 +19,17 @@ public record ImportOrchestrationInput
     public required string Mode { get; init; } // "InitialLoad" or "IncrementalLoad"
     public Parameters? StorageDetail { get; init; } // SAS tokens, etc.
 
+    /// <summary>
+    /// New jobs bound file scheduling. Missing on older persisted inputs, whose activity order
+    /// must remain unchanged when DurableTask replays their history.
+    /// </summary>
+    public bool BoundedFileScheduling { get; init; }
+
+    /// <summary>
+    /// Server-configured file concurrency; defaults to two for previously persisted bounded workflows.
+    /// </summary>
+    public int MaxConcurrentFiles { get; init; } = 2;
+
     // Per-import performance tuning
     /// <summary>
     /// Resources per batch (default: 100).

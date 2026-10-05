@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Api.Extensions;
+using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 
@@ -51,6 +52,29 @@ public static class FhirResults
     public static FhirResult NotModified()
     {
         return new FhirResult(StatusCodes.Status304NotModified);
+    }
+
+    /// <summary>
+    /// Creates a deleted-resource response with a FHIR OperationOutcome, or no body for HEAD.
+    /// </summary>
+    public static FhirResult Gone(string resourceType, string id, HttpContext httpContext)
+    {
+        if (HttpMethods.IsHead(httpContext.Request.Method))
+        {
+            return new FhirResult(StatusCodes.Status410Gone);
+        }
+
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new OperationOutcomeIssue
+        {
+            SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+            IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Deleted,
+            Diagnostics = $"{resourceType}/{id} has been deleted."
+        });
+        return new FhirResult(
+            StatusCodes.Status410Gone,
+            outcome.SerializeToBytes(httpContext.Request.Query.GetPrettyParameter()),
+            httpContext: httpContext);
     }
 
     /// <summary>

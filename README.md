@@ -56,7 +56,7 @@ Designed for the cloud, Ignixa supports multi-tenancy out of the box, with data 
 Ignixa can be deployed to Azure using **Bicep** (Infrastructure as Code). This provisions a complete, secure environment with:
 
 - **App Service (Linux)** for hosting the container.
-- **SQL Server** with auto-provisioned tenant databases.
+- **SQL Server**, with tenant database schema deployed by running the schema-upgrade CLI once after first deploy (see the [Azure Deployment Guide](deploy/azure/README.md#8-database-schema-deployment)) -- it is not auto-provisioned.
 - **Storage Accounts** for FHIR data and DurableTask orchestration.
 - **Managed Identity** for zero-trust, passwordless security.
 
@@ -95,9 +95,9 @@ docker pull ghcr.io/brendankowitz/ignixa-fhir:release
 
 ```
 
-#### Production Mode (SQL Server) 🚀
+#### SQL Server via Docker Compose
 
-For a complete, high-performance experience with **SQL Server**, use Docker Compose. This enables full ACID transactions, advanced indexing, and concurrency support.
+For a complete, high-performance local development experience with **SQL Server**, use Docker Compose. This enables full ACID transactions, advanced indexing, and concurrency support.
 
 ```bash
 docker compose up -d
@@ -107,6 +107,8 @@ docker compose up -d
 The server will be available at `http://localhost:8080/metadata`.
 
 > __Configuration__: You must create a `.env` file (see `.env.example`) to set the `SQL_SA_PASSWORD` and optionally the image tag.
+
+> **Note**: This Docker Compose setup is for **local development only**. For production deployments, see the [Azure Deployment Guide](deploy/azure/README.md), which uses Managed Identity for authentication instead of hardcoded credentials.
 
 ## 🛠️ Quick Start (Local Development)
 

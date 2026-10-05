@@ -177,7 +177,7 @@ public class FhirPatchParametersParser
 /// <summary>
 /// Exception thrown when FHIR Patch validation fails.
 /// </summary>
-public class FhirPatchException : Exception
+public class FhirPatchException : Ignixa.Domain.Exceptions.BadRequestException
 {
     public FhirPatchException(string message) : base(message)
     {

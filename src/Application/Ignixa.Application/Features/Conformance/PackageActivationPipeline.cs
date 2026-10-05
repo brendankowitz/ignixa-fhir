@@ -73,22 +73,34 @@ public class PackageActivationPipeline(
             resources.StructureDefinitions.Count);
 
         // 2. Validate against current state
-        var validation = ValidateActivation(resources, _state);
+        var validation = ValidateCompositeComponents(resources, _state);
         if (!validation.Success)
         {
-            _logger.LogWarning(
-                "Package activation validation failed: {Issues}",
-                string.Join(", ", validation.Issues.Select(i => i.Message)));
-            return ActivationResult.Failed(validation.Issues);
+            return RejectActivation(validation.Issues);
         }
 
-        // 3. Build activation events
-        var events = BuildActivationEvents(packageId, version, resources);
+        // Build and apply every proposed event to detached state before anything is durable.
+        var expectedLastEventId = _state.LastProcessedEventId;
+        using var staged = _state.CreateStagingCopy();
+        var (events, issue) = BuildAndValidateActivationEvents(packageId, version, resources, staged);
+        if (issue is not null)
+        {
+            return RejectActivation([issue]);
+        }
 
         _logger.LogDebug("Built {EventCount} activation events", events.Count);
 
-        // 4. Append events atomically to event store and get assigned EventIds
-        var persistedEvents = await _eventStore.AppendAsync(events, cancellationToken);
+        // The process-local lock cannot protect this snapshot from another host's activation.
+        // Compare its durable event position under the store's existing append lock.
+        IReadOnlyList<SourceEvent> persistedEvents;
+        try
+        {
+            persistedEvents = await _eventStore.AppendAsync(events, expectedLastEventId, cancellationToken);
+        }
+        catch (SourceEventConcurrencyException exception)
+        {
+            return RejectActivation([new ValidationIssue("CONFORMANCE_CONFLICT", exception.Message)]);
+        }
 
         // 5. Apply events with correct EventIds to in-memory state
         foreach (var evt in persistedEvents)
@@ -111,28 +123,10 @@ public class PackageActivationPipeline(
         return ActivationResult.Succeeded(reindexNeeded);
     }
 
-    private ValidationResult ValidateActivation(PackageResources resources, ConformanceState state)
+    private static ValidationResult ValidateCompositeComponents(PackageResources resources, ConformanceState state)
     {
         var issues = new List<ValidationIssue>();
 
-        // Phase 1: Validate non-composite SearchParameters
-        foreach (var sp in resources.SearchParameters.Where(sp => sp.Type != SearchParamType.Composite))
-        {
-            foreach (var resourceType in sp.BaseResourceTypes)
-            {
-                var existing = state.GetSearchParameter(resourceType, sp.Code);
-                if (existing is not null && !IsValidOverride(sp, existing))
-                {
-                    issues.Add(new ValidationIssue(
-                        "SP_CONFLICT",
-                        $"SearchParameter '{sp.Code}' on {resourceType} conflicts with existing from {existing.SourcePackage}",
-                        resourceType,
-                        sp.Code));
-                }
-            }
-        }
-
-        // Phase 2: Validate composite SearchParameters (components must exist)
         var allCanonicals = new HashSet<string>(
             state.AllSearchParameters.Values.Select(sp => sp.Canonical)
                 .Concat(resources.SearchParameters.Select(sp => sp.Canonical)));
@@ -159,6 +153,13 @@ public class PackageActivationPipeline(
         }
 
         return issues.Count == 0 ? ValidationResult.Valid() : ValidationResult.Invalid(issues);
+    }
+
+    private ActivationResult RejectActivation(IReadOnlyList<ValidationIssue> issues)
+    {
+        _logger.LogWarning("Package activation validation failed: {Issues}",
+            string.Join(", ", issues.Select(issue => issue.Message)));
+        return ActivationResult.Failed(issues);
     }
 
     private bool IsValidOverride(SearchParameterInfo newSp, ActiveSearchParameter existing)
@@ -191,10 +192,11 @@ public class PackageActivationPipeline(
         return newRank < existingRank;
     }
 
-    private List<NewSourceEvent> BuildActivationEvents(
+    private (List<NewSourceEvent> Events, ValidationIssue? Issue) BuildAndValidateActivationEvents(
         string packageId,
         string version,
-        PackageResources resources)
+        PackageResources resources,
+        ConformanceState staged)
     {
         var events = new List<NewSourceEvent>();
         var streamId = $"package:{packageId}@{version}";
@@ -205,20 +207,27 @@ public class PackageActivationPipeline(
         {
             foreach (var resourceType in sp.BaseResourceTypes)
             {
-                var existing = _state.GetSearchParameter(resourceType, sp.Code);
+                var existing = staged.GetSearchParameter(resourceType, sp.Code);
                 OverrideInfo? overrides = null;
 
-                if (existing is not null && IsValidOverride(sp, existing))
+                if (existing is not null)
                 {
-                    overrides = new OverrideInfo(existing.Canonical, existing.SearchParamId);
+                    if (!IsValidOverride(sp, existing))
+                    {
+                        return (events, new ValidationIssue(
+                            "SP_CONFLICT",
+                            $"SearchParameter '{sp.Code}' on {resourceType} conflicts with existing from {existing.SourcePackage}",
+                            resourceType, sp.Code));
+                    }
+                    overrides = new OverrideInfo(existing.OverridesCanonical ?? existing.Canonical, existing.SearchParamId);
                 }
 
-                var searchParamId = _state.GetOrAllocateSearchParamId(sp.Canonical, existing);
+                var searchParamId = staged.GetSearchParamIdForActivation(sp.Canonical, existing);
 
                 var componentData = sp.Components?.Select(c =>
                     new SearchParameterComponentData(c.DefinitionUrl, c.Expression)).ToList();
 
-                events.Add(new NewSourceEvent(
+                var proposed = new NewSourceEvent(
                     streamId,
                     nameof(SearchParameterActivated),
                     new SearchParameterActivated(
@@ -233,14 +242,19 @@ public class PackageActivationPipeline(
                         sp.TargetResourceTypes,
                         componentData,
                         sp.Name,
-                        sp.Description)));
+                        sp.Description));
+                if (staged.ApplyProposedEvent(proposed) is { } issue)
+                {
+                    return (events, issue);
+                }
+                events.Add(proposed);
             }
         }
 
         // Emit StructureDefinition events
         foreach (var sd in resources.StructureDefinitions)
         {
-            events.Add(new NewSourceEvent(
+            var proposed = new NewSourceEvent(
                 streamId,
                 nameof(StructureDefinitionActivated),
                 new StructureDefinitionActivated(
@@ -248,7 +262,12 @@ public class PackageActivationPipeline(
                     sd.Type,
                     sd.Kind,
                     packageKey,
-                    sd.SnapshotJson)));
+                    sd.SnapshotJson));
+            if (staged.ApplyProposedEvent(proposed) is { } issue)
+            {
+                return (events, issue);
+            }
+            events.Add(proposed);
         }
 
         // Emit package activated event
@@ -257,12 +276,17 @@ public class PackageActivationPipeline(
             .Concat(resources.StructureDefinitions.Select(sd => new ActivatedResource("StructureDefinition", sd.Canonical)))
             .ToList();
 
-        events.Add(new NewSourceEvent(
+        var packageEvent = new NewSourceEvent(
             streamId,
             nameof(PackageActivated),
-            new PackageActivated(packageId, version, activatedResources)));
+            new PackageActivated(packageId, version, activatedResources));
+        if (staged.ApplyProposedEvent(packageEvent) is { } packageIssue)
+        {
+            return (events, packageIssue);
+        }
+        events.Add(packageEvent);
 
-        return events;
+        return (events, null);
     }
 
     private List<string> DetectReindexRequirements(PackageResources resources)

@@ -16,6 +16,8 @@ public class DurableTaskHostedService : BackgroundService
     private readonly TaskHubWorker _worker;
     private readonly IOrchestrationService _orchestrationService;
     private readonly ILogger<DurableTaskHostedService> _logger;
+    private readonly object _stopLock = new();
+    private Task? _stopTask;
 
     private const int MaxRetries = 10;
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromSeconds(10);
@@ -209,7 +211,17 @@ public class DurableTaskHostedService : BackgroundService
             && !ex.Message.Contains("login failed", StringComparison.OrdinalIgnoreCase);
     }
 
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    public override Task StopAsync(CancellationToken cancellationToken)
+    {
+        // Concurrent host shutdown requests must finish together, before either caller disposes
+        // the worker or logging providers still in use by the other.
+        lock (_stopLock)
+        {
+            return _stopTask ??= StopWorkerAsync(cancellationToken);
+        }
+    }
+
+    private async Task StopWorkerAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Stopping DurableTask worker...");
         try

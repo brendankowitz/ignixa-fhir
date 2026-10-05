@@ -80,6 +80,23 @@ GET /metadata
 }
 ```
 
+## Package-Defined Resource Types
+
+Concrete custom StructureDefinition specializations can contribute resource types without a
+server restart. Their snapshot root supplies the simple type name, while `rest.resource.profile`
+retains the actual package canonical. For the embedded ViewDefinition model this is
+`https://sql-on-fhir.org/ig/StructureDefinition/ViewDefinition`, not a core FHIR URL.
+
+Profiles and abstract definitions do not create resource-type aliases. A package ID cannot
+replace a core type, and conflicting canonicals declaring the same custom type name do not
+receive an ambiguous alias. Capability enforcement remains active for all requests.
+Admitted custom types inherit universal Resource search parameters even when their package
+does not define any additional SearchParameters.
+
+A successful package load or unload refreshes the affected tenant's schema and capability caches
+before returning, including when `/metadata` was already requested. Unsupported resource types
+remain rejected with HTTP 404 and a FHIR `OperationOutcome`, not an empty JSON object.
+
 ## Operations
 
 | Operation | Level | Description |
@@ -104,6 +121,16 @@ Ignixa supports resource versioning:
 - `versionId` auto-increments on each update
 - `lastUpdated` timestamp on every modification
 - Full version history accessible via `/_history`
+
+Version identifiers in vread URLs are opaque FHIR `id` values: 1-64 ASCII letters, digits,
+hyphens or periods. SQL Server generates canonical positive integer versions, but a legal
+unavailable identifier (including a UUID) returns HTTP 404, not a malformed-input error.
+Alternate spellings such as `01` do not alias stored version `1`. Invalid FHIR ID syntax returns
+HTTP 400.
+
+A successful PUT-as-create, including conditional PUT creation, returns a version-specific
+`Location` ending in `/{resourceType}/{id}/_history/{versionId}`. This URL continues to identify
+that created version after later updates.
 
 ### Version-Aware Updates
 
@@ -141,6 +168,15 @@ PUT /Patient?identifier=12345
 ```bash
 DELETE /Patient?identifier=12345
 ```
+
+No matches is a successful no-op, not a search-not-found error. In default single mode,
+zero or one match returns HTTP 204 without a body; ambiguous multiple matches return HTTP 412,
+consistent with `conditionalDelete: single`.
+
+Ignixa's optional `_count` deletion-limit extension returns HTTP 200 with an informational
+OperationOutcome, including when zero resources match. This partial-deletion limit is not an
+R4 requirement. Microsoft-specific `hardDelete` and `_includesCount` cascade semantics are not
+implemented by this contract.
 
 ## Formats
 

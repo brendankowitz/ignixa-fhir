@@ -36,5 +36,25 @@
     <ProjectReference Include="..\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The snapshot tests read these at runtime. They used to be located via [CallerFilePath], a
+         compile-time path that becomes /_/... under ContinuousIntegrationBuild, so the tests passed
+         locally and threw DirectoryNotFoundException on every CI run. -->
+    <None Update="Features\Bundle\Serialization\Snapshots\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real shipped appsettings.json, copied (not embedded via [CallerFilePath]) so the same
+         DirectoryNotFoundException-under-CI trap noted above can't recur. See
+         TenantConfigurationShippedSettingsTests, which binds this file directly to guard against the
+         appsettings.json / appsettings.Development.json regression where a boolean value for
+         InheritConnectionStringFromTenant silently dropped tenant 0 from the bound list. -->
+    <None Include="..\..\src\Application\Ignixa.Web\appsettings.json" Link="TestData\Ignixa.Web.appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
 

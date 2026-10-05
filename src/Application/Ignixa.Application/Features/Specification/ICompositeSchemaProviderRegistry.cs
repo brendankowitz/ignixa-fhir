@@ -25,7 +25,7 @@ public interface ICompositeSchemaProviderRegistry
     void RegisterProvider(int tenantId, IFhirSchemaProvider provider);
 
     /// <summary>
-    /// Invalidates cache for all instances of a loaded package with debounce protection.
+    /// Invalidates this tenant's package schema caches before returning.
     /// Multiple requests within debounce window are coalesced.
     /// Called when a new package is loaded to refresh validation.
     /// </summary>
@@ -42,6 +42,12 @@ public interface ICompositeSchemaProviderRegistry
     /// <param name="tenantId">Tenant identifier</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task InvalidateCachesForTenantAsync(int tenantId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Invalidates tenant schema caches before returning, without scheduling a debounced request.
+    /// Used before publishing consumers of replayed conformance state.
+    /// </summary>
+    Task InvalidateCachesForTenantImmediatelyAsync(int tenantId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets the current debounce delay setting (for testing/monitoring).

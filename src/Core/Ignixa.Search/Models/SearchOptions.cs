@@ -47,6 +47,7 @@ public sealed class SearchOptions
 
         MaxItemCount = other.MaxItemCount;
         ProbeExtraRow = other.ProbeExtraRow;
+        UseExportContinuation = other.UseExportContinuation;
         ContinuationToken = other.ContinuationToken;
         Expression = other.Expression;
         Sort = other.Sort;
@@ -90,6 +91,12 @@ public sealed class SearchOptions
     /// and an over-guess pulls in resources for a match row the caller is about to trim.
     /// </remarks>
     public bool ProbeExtraRow { get; set; }
+
+    /// <summary>
+    /// Requests a provider-owned export cursor on the paging probe. The cursor advances past
+    /// the selected page, including resources that disappeared before materialization.
+    /// </summary>
+    public bool UseExportContinuation { get; set; }
 
     /// <summary>
     /// Gets or sets the continuation token for paging.

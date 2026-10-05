@@ -162,7 +162,7 @@ internal static class Lower
     private static void RejectUnsupportedOptions(
         int? top,
         bool topIncludesProbeRow,
-        int includeLimit,
+        int? includeLimit,
         SortPhase sortPhase,
         ResultShape shape,
         IReadOnlyList<SortExpression> sort)

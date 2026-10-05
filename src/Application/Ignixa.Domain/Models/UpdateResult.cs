@@ -13,6 +13,12 @@ public record UpdateResult(
     DateTimeOffset LastModified)
 {
     /// <summary>
+    /// True when the write creates a live resource, including recreation after deletion.
+    /// Null preserves version-one inference for storage providers not reporting this distinction.
+    /// </summary>
+    public bool? IsCreated { get; init; }
+
+    /// <summary>
     /// Optional request context (HTTP method, URL) associated with this result.
     /// </summary>
     public ResourceRequest? Request { get; init; }

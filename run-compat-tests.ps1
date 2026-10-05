@@ -1,26 +1,32 @@
 #!/usr/bin/env pwsh
+#Requires -Version 7.0
 <#
 .SYNOPSIS
     Runs FHIR compatibility tests against the Ignixa API server.
 
 .DESCRIPTION
-    This script starts the Ignixa.Api server, waits for it to be ready,
-    runs the compatibility tests using the CLI test runner, and then stops the server.
+    This script builds and starts Ignixa.Web, waits for its own listener to be ready,
+    runs the compatibility tests using the CLI test runner, and then stops only that server.
+    An occupied port is an error; an existing server is never stopped or reused.
+    Requires PowerShell 7 or newer for owned process-tree cleanup.
 
 .PARAMETER Filter
     Optional filter for test names (e.g., 'CreateTests', 'Metadata', 'SearchTests')
 
 .PARAMETER Url
-    Server URL to test against (default: http://localhost:5000)
+    Local loopback server URL (default: http://localhost:5000).
+    Use the compatibility CLI directly to test an existing or remote server.
 
 .PARAMETER Output
-    Output JSON report file path (default: compatibility-report.json)
+    Output JSON report file path, relative to the caller's directory unless absolute
+    (default: compatibility-report.json).
 
 .PARAMETER SkipBuild
     Skip building the projects before running
 
 .PARAMETER KeepServerRunning
-    Don't stop the API server after tests complete
+    Don't stop a successfully started API server after tests complete.
+    Failed startup is always cleaned up.
 
 .PARAMETER Silent
     Don't launch the viewer after tests complete
@@ -73,11 +79,41 @@ function Write-ErrorMsg {
     Write-Host "[ERROR] $Message" -ForegroundColor Red
 }
 
-$apiProject = "src/Application/Ignixa.Api/Ignixa.Api.csproj"
-$testProject = "test/Ignixa.Tests.Compatibility.CLI/Ignixa.Tests.Compatibility.CLI.csproj"
+function Get-PortListeners {
+    param([int]$Port)
+    Get-NetTCPConnection -ErrorAction Stop |
+        Where-Object { $_.LocalPort -eq $Port -and $_.State -eq 'Listen' }
+}
+
+$apiDirectory = Join-Path $PSScriptRoot 'src\Application\Ignixa.Web'
+$apiProject = Join-Path $apiDirectory 'Ignixa.Web.csproj'
+$testProject = Join-Path $PSScriptRoot 'test\Ignixa.Tests.Compatibility.CLI\Ignixa.Tests.Compatibility.CLI.csproj'
 $serverProcess = $null
+$ready = $false
+$testExitCode = 1
 
 try {
+    $outputProvider = $null
+    $outputDrive = $null
+    $Output = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+        $Output, [ref]$outputProvider, [ref]$outputDrive)
+    if ($outputProvider.Name -ne 'FileSystem') {
+        throw 'Output must resolve to a filesystem path.'
+    }
+
+    $serverUri = [System.Uri]$Url
+    if (-not $serverUri.IsAbsoluteUri -or
+        $serverUri.Scheme -notin @('http', 'https') -or
+        -not $serverUri.IsLoopback -or $serverUri.Port -le 0 -or
+        $serverUri.AbsolutePath -ne '/' -or $serverUri.Query -or
+        $serverUri.Fragment -or $serverUri.UserInfo) {
+        throw 'Url must be an absolute HTTP(S) loopback URL without a path, query, or credentials.'
+    }
+    $Url = $serverUri.AbsoluteUri.TrimEnd('/')
+    $port = $serverUri.Port
+    if (@(Get-PortListeners -Port $port).Count -gt 0) {
+        throw "Port $port is already in use. Choose another port; existing processes will not be stopped."
+    }
     # Step 1: Build projects (unless skipped)
     if (-not $SkipBuild) {
         Write-Step "Building API and test projects..."
@@ -95,45 +131,58 @@ try {
     # Step 2: Start API server in background
     Write-Step "Starting API server at $Url..."
 
-    # Kill any existing processes on port 5000
-    $port = ([System.Uri]$Url).Port
-    $existingProcess = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty OwningProcess -Unique
-
-    if ($existingProcess) {
-        Write-Step "Stopping existing process on port $port..."
-        Stop-Process -Id $existingProcess -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+    $projectXml = [xml](Get-Content -LiteralPath $apiProject -Raw)
+    $framework = $projectXml.SelectSingleNode('/Project/PropertyGroup/TargetFramework')
+    if (-not $framework -or [string]::IsNullOrWhiteSpace($framework.InnerText)) {
+        throw 'Ignixa.Web must declare a single TargetFramework to locate its executable.'
+    }
+    $apiAssembly = Join-Path $apiDirectory "bin\Release\$($framework.InnerText)\Ignixa.Web.dll"
+    if (-not (Test-Path -LiteralPath $apiAssembly -PathType Leaf)) {
+        throw "Server assembly '$apiAssembly' does not exist. Run without -SkipBuild."
     }
 
+    # Launch the managed executable directly: its PID, not a dotnet-run parent, owns the listener.
     $serverProcess = Start-Process `
         -FilePath "dotnet" `
-        -ArgumentList "run --project $apiProject --no-build --configuration Release --urls $Url" `
+        -ArgumentList @("`"$apiAssembly`"", '--urls', "`"$Url`"") `
+        -WorkingDirectory $apiDirectory `
         -PassThru `
         -NoNewWindow
 
     # Step 3: Wait for server to be ready
     Write-Step "Waiting for server to be ready..."
     $maxAttempts = 30
-    $attempt = 0
-    $ready = $false
+    $lastProbeError = 'No listener was created.'
 
-    while ($attempt -lt $maxAttempts -and -not $ready) {
-        try {
-            $response = Invoke-WebRequest -Uri "$Url/metadata" -Method GET -TimeoutSec 2 -ErrorAction SilentlyContinue
-            if ($response.StatusCode -eq 200) {
-                $ready = $true
-                Write-Success "Server is ready"
+    for ($attempt = 0; $attempt -lt $maxAttempts -and -not $ready; $attempt++) {
+        if ($serverProcess.HasExited) {
+            throw "Server exited with code $($serverProcess.ExitCode) before becoming ready."
+        }
+        $listeners = @(Get-PortListeners -Port $port)
+        if (@($listeners | Where-Object { $_.OwningProcess -ne $serverProcess.Id }).Count -gt 0) {
+            throw "Port $port was acquired by another process. Refusing to probe or test that server."
+        }
+        if ($listeners.Count -gt 0) {
+            try {
+                $response = Invoke-WebRequest -Uri "$Url/metadata" -Method GET -TimeoutSec 2 -ErrorAction Stop
+                if ($response.StatusCode -eq 200 -and -not $serverProcess.HasExited) {
+                    $ready = $true
+                    Write-Success "Server is ready"
+                } else {
+                    $lastProbeError = "Metadata returned HTTP $($response.StatusCode)."
+                }
+            } catch {
+                $lastProbeError = $_.Exception.Message
             }
-        } catch {
-            $attempt++
+        }
+        if (-not $ready) {
             Write-Host "." -NoNewline
             Start-Sleep -Seconds 1
         }
     }
 
     if (-not $ready) {
-        throw "Server failed to start within 30 seconds"
+        throw "Server did not become ready after $maxAttempts probes. $lastProbeError"
     }
 
     Write-Host ""
@@ -161,15 +210,19 @@ try {
     $testExitCode = $LASTEXITCODE
 
     # Launch viewer after tests complete (unless Silent flag is set)
-    if ((Test-Path $Output) -and -not $Silent) {
+    if ((Test-Path -LiteralPath $Output) -and -not $Silent) {
         Write-Step "Launching test results viewer..."
-        dotnet run --project $testProject --no-build --configuration Release -- viewer
+        dotnet run --project $testProject --no-build --configuration Release -- viewer --report $Output
+        if ($LASTEXITCODE -ne 0) {
+            Write-ErrorMsg "Viewer failed (exit code: $LASTEXITCODE)"
+            if ($testExitCode -eq 0) { $testExitCode = $LASTEXITCODE }
+        }
     }
 
     # Step 5: Display results
     Write-Host ""
-    if (Test-Path $Output) {
-        $report = Get-Content $Output | ConvertFrom-Json
+    if (Test-Path -LiteralPath $Output) {
+        $report = Get-Content -LiteralPath $Output -Raw | ConvertFrom-Json
 
         Write-Host "=== Test Results ===" -ForegroundColor Cyan
         Write-Host "Server: $($report.ServerUrl)"
@@ -194,17 +247,34 @@ try {
 
 } catch {
     Write-ErrorMsg "Error: $_"
-    exit 1
+    $testExitCode = 1
 } finally {
     # Step 6: Cleanup
-    if ($serverProcess -and -not $KeepServerRunning) {
-        Write-Step "Stopping API server..."
-        Stop-Process -Id $serverProcess.Id -Force -ErrorAction SilentlyContinue
-        Write-Success "Server stopped"
-    } elseif ($KeepServerRunning) {
-        Write-Step "Server is still running (KeepServerRunning parameter specified)"
-        $pidText = "Server PID: $($serverProcess.Id)"
-        Write-Host $pidText -ForegroundColor Yellow
+    if ($serverProcess) {
+        try {
+            if (-not $KeepServerRunning -or -not $ready) {
+                Write-Step "Stopping owned API server (PID $($serverProcess.Id))..."
+                if (-not $serverProcess.HasExited) {
+                    try {
+                        $serverProcess.Kill($true)
+                    } catch [System.InvalidOperationException] {
+                        if (-not $serverProcess.HasExited) { throw }
+                    }
+                    if (-not $serverProcess.WaitForExit(10000)) {
+                        throw "Owned server PID $($serverProcess.Id) did not exit after termination."
+                    }
+                }
+                Write-Success "Server stopped"
+            } elseif (-not $serverProcess.HasExited) {
+                Write-Step "Server is still running (KeepServerRunning parameter specified)"
+                Write-Host "Server PID: $($serverProcess.Id)" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-ErrorMsg "Server cleanup failed: $_"
+            $testExitCode = 1
+        } finally {
+            $serverProcess.Dispose()
+        }
     }
 }
 

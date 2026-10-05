@@ -10,6 +10,7 @@ using Ignixa.Application.Features.Experimental.Mcp.Dtos;
 using Ignixa.Application.Features.Experimental.Mcp.Tools;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Medino;
 using ModelContextProtocol.Server;
 
@@ -79,8 +80,35 @@ Example: jobId='abc123', jobType='Import'")]
             StartDate = jobStatus.StartDate,
             EndDate = jobStatus.EndDate,
             ErrorMessage = jobStatus.ErrorMessage,
-            Definition = jobStatus.Definition,
-            Result = jobStatus.Result
+            Definition = jobStatus.Definition switch
+            {
+                ImportJobDefinition definition => new
+                {
+                    inputFormat = definition.InputFormat,
+                    inputSource = definition.InputSource,
+                    mode = definition.Mode,
+                    inputFileCount = definition.InputFiles.Count
+                },
+                ExportJobDefinition definition => new
+                {
+                    resourceTypes = definition.ResourceTypes,
+                    since = definition.Since,
+                    outputFormat = definition.OutputFormat,
+                    outputPath = definition.OutputPath
+                },
+                _ => jobStatus.Definition
+            },
+            Result = jobStatus.Result switch
+            {
+                ExportJobResult result => new { outputFiles = result.ExportedFiles, totalResources = result.TotalResources },
+                ImportJobResult result => new
+                {
+                    totalResources = result.TotalResources,
+                    totalErrors = result.TotalErrors,
+                    errorFileUrl = result.ErrorFileUrl
+                },
+                _ => jobStatus.Result
+            }
         };
     }
 }

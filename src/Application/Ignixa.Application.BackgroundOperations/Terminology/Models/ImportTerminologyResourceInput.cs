@@ -7,8 +7,12 @@ namespace Ignixa.Application.BackgroundOperations.Terminology.Models;
 
 /// <summary>
 /// Input for importing a single terminology resource.
-/// Identifies the PackageResource to import.
+/// Identifies the PackageResource to import. DependencyFailure records a blocked new-plan resource as
+/// failed without invoking the importer; omitted values retain the legacy serialized input shape.
 /// </summary>
 public record ImportTerminologyResourceInput(
     int TenantId,
-    long PackageResourceId);
+    long PackageResourceId,
+    [property: Newtonsoft.Json.JsonProperty(NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? DependencyFailure = null);

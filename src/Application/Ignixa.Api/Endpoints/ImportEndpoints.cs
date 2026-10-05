@@ -4,12 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Import;
 using Ignixa.Application.BackgroundOperations.Jobs;
 using Medino;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
 using Ignixa.Serialization;
@@ -57,7 +57,7 @@ public static class ImportEndpoints
         string requestBody;
         using (var reader = new StreamReader(httpContext.Request.Body))
         {
-            requestBody = await reader.ReadToEndAsync();
+            requestBody = await reader.ReadToEndAsync(httpContext.RequestAborted);
         }
 
         // Parse as ResourceJsonNode first
@@ -181,6 +181,7 @@ public static class ImportEndpoints
         [FromRoute] int tenantId,
         [FromRoute] string jobId,
         [FromServices] IMediator mediator,
+        [FromServices] IBlobStorageClient blobStorage,
         HttpContext httpContext)
     {
         try
@@ -194,13 +195,16 @@ public static class ImportEndpoints
 
             var jobStatus = await mediator.SendAsync(query, httpContext.RequestAborted);
 
-            // Deserialize progress for display
-            var progressText = jobStatus.ProgressDescription ?? "Starting...";
-            if (jobStatus.ProgressPercentage.HasValue && jobStatus.Definition != null)
+            if (jobStatus.Status == "Completed" && jobStatus.Result is ImportJobResult { ErrorFileUrl: not null } completed &&
+                !await blobStorage.BlobExistsAsync(completed.ErrorFileUrl, httpContext.RequestAborted))
             {
-                var def = jobStatus.Definition as dynamic;
-                var inputFileCount = def?.inputFileCount ?? 0;
-                progressText = jobStatus.ProgressDescription ?? $"{jobStatus.ProgressPercentage:F2}% complete";
+                return JobFailure("The import error artifact is missing from blob storage.", StatusCodes.Status500InternalServerError);
+            }
+
+            if (jobStatus.Status is "Queued" or "Running")
+            {
+                httpContext.Response.Headers.RetryAfter = "1";
+                httpContext.Response.Headers["X-Progress"] = jobStatus.ProgressDescription;
             }
 
             // Return response based on status
@@ -219,12 +223,12 @@ public static class ImportEndpoints
                             new
                             {
                                 url = "http://hl7.org/fhir/StructureDefinition/import-progress",
-                                valueString = progressText
+                                valueString = jobStatus.ProgressDescription ?? "Starting..."
                             }
                         }
                     }),
 
-                "Completed" => Results.Ok(new
+                "Completed" when jobStatus.Result is ImportJobResult result => Results.Ok(new
                 {
                     transactionTime = jobStatus.CreateDate,
                     request = $"/tenant/{tenantId}/$import",
@@ -234,56 +238,34 @@ public static class ImportEndpoints
                         new
                         {
                             type = "OperationOutcome",
-                            count = (jobStatus.Result as dynamic)?.totalResources ?? 0,
-                            inputUrl = (jobStatus.Definition as dynamic)?.inputSource ?? ""
+                            count = result.TotalResources
                         }
                     },
-                    error = (jobStatus.Result as dynamic)?.errorFileUrl != null
+                    error = result.ErrorFileUrl != null
                         ? new[]
                         {
                             new
                             {
                                 type = "OperationOutcome",
-                                url = (jobStatus.Result as dynamic)!.errorFileUrl
+                                url = await blobStorage.GetBlobUrlAsync(result.ErrorFileUrl, TimeSpan.FromHours(24), httpContext.RequestAborted),
+                                count = result.TotalErrors
                             }
                         }
                         : Array.Empty<object>()
                 }),
 
-                "Failed" => Results.Ok(new
-                {
-                    transactionTime = jobStatus.CreateDate,
-                    request = $"/tenant/{tenantId}/$import",
-                    error = new[]
-                    {
-                        new
-                        {
-                            type = "OperationOutcome",
-                            message = jobStatus.ErrorMessage
-                        }
-                    }
-                }),
-
-                "Cancelled" => Results.Ok(new
-                {
-                    transactionTime = jobStatus.CreateDate,
-                    request = $"/tenant/{tenantId}/$import",
-                    error = new[]
-                    {
-                        new
-                        {
-                            type = "OperationOutcome",
-                            message = "Import cancelled by user"
-                        }
-                    }
-                }),
-
-                _ => Results.StatusCode(500)
+                "Failed" => JobFailure(jobStatus.ErrorMessage ?? "Import failed", StatusCodes.Status500InternalServerError),
+                "Cancelled" => JobFailure("Import cancelled by user", StatusCodes.Status410Gone),
+                _ => JobFailure($"Unexpected import job status or result: {jobStatus.Status}", StatusCodes.Status500InternalServerError)
             };
         }
-        catch (InvalidOperationException)
+        catch (System.Collections.Generic.KeyNotFoundException)
         {
             return Results.NotFound(new { error = "Import job not found" });
+        }
+        catch (JsonException)
+        {
+            return JobFailure("Import job has an invalid persisted result or progress record.", StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -295,6 +277,7 @@ public static class ImportEndpoints
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
         [FromServices] IBackgroundJobRepository<ImportJobDefinition> jobRepository,
+        [FromServices] ILoggerFactory loggerFactory,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -304,13 +287,36 @@ public static class ImportEndpoints
             return Results.NotFound(new { error = "Import job not found" });
         }
 
+        var logger = loggerFactory.CreateLogger("Ignixa.Api.Endpoints.ImportEndpoints");
+        if (job.Status is "Completed" or "Failed" or "Cancelled")
+        {
+            logger.LogInformation("Import cancellation for {JobId} is superseded by {Status}", jobId, job.Status);
+            return CancellationResult(job.Status);
+        }
+
         // Terminate the orchestration
         var instance = new OrchestrationInstance { InstanceId = jobId };
         await taskHubClient.TerminateInstanceAsync(instance, "Cancelled by user");
 
         job.Status = "Cancelled";
         job.EndDate = DateTimeOffset.UtcNow;
-        await jobRepository.UpdateAsync(job, tenantId, cancellationToken);
+        try
+        {
+            await jobRepository.UpdateAsync(job, tenantId, cancellationToken);
+        }
+        catch (BackgroundJobUpdateConflictException)
+        {
+            var authoritative = await jobRepository.GetAsync(jobId, tenantId, cancellationToken);
+            if (authoritative == null)
+            {
+                logger.LogInformation("Import job {JobId} was removed before cancellation conflict reload", jobId);
+                return Results.NotFound(new { error = "Import job not found" });
+            }
+            logger.LogInformation(
+                "Import cancellation for {JobId} lost to {Status}; preserving authoritative metadata",
+                jobId, authoritative.Status);
+            return CancellationResult(authoritative.Status);
+        }
 
         return Results.NoContent();
     }
@@ -329,4 +335,17 @@ public static class ImportEndpoints
         });
         return outcome;
     }
+
+    private static IResult CancellationResult(string status) =>
+        status == "Cancelled"
+            ? Results.NoContent()
+            : JobFailure($"Import is already {status}; cancellation did not change its terminal outcome.",
+                StatusCodes.Status409Conflict, "conflict");
+
+    private static IResult JobFailure(string diagnostics, int statusCode, string code = "exception") =>
+        Results.Json(new
+        {
+            resourceType = "OperationOutcome",
+            issue = new[] { new { severity = "error", code, diagnostics } }
+        }, contentType: "application/fhir+json", statusCode: statusCode);
 }

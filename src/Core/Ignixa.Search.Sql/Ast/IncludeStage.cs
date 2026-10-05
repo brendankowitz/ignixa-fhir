@@ -5,7 +5,7 @@ namespace Ignixa.Search.Sql.Ast;
 /// they occupy their own index space, emitted as an incN/incNlim CTE pair for ordinary includes or an incN CTE
 /// for includes-only pages. SeedStages holds the indices of earlier stages this one seeds from (topo-sorted by
 /// Lower); SeedFromMatch adds the plan's canonical include seed as a source. A stage with neither seed is invalid
-/// and rejected before SQL is emitted.
+/// and rejected before SQL is emitted. A null Limit leaves the stage unbounded.
 /// </summary>
 public sealed record IncludeStage(
     IncludeDirection Direction,
@@ -15,7 +15,7 @@ public sealed record IncludeStage(
     IReadOnlyList<int> SeedStages,
     bool SeedFromMatch,
     bool Iterate,
-    int Limit,
+    int? Limit,
     IReadOnlyList<IncludeConstraint>? Constraints = null);
 
 /// <summary>

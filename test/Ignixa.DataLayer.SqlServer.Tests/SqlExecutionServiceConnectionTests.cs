@@ -117,12 +117,22 @@ public class SqlExecutionServiceConnectionTests
             => new((TenantConfiguration?)null);
     }
 
+    // "Development" for every test here that isn't about the credential guard itself: the guard is exercised
+    // deliberately by SqlExecutionServiceCredentialGuardTests, and a Production validator would reject the
+    // password-bearing loopback connection string these tests use before the behaviour under test ran.
+    private static SqlExecutionService CreateService(
+        ITenantConfigurationStore store, ILogger<SqlExecutionService>? logger = null)
+        => new(
+            store,
+            new ManagedIdentityConnectionStringValidator("Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
+            logger ?? NullLogger<SqlExecutionService>.Instance);
+
     [Fact]
     public async Task GivenATenantThatDoesNotExist_WhenOpeningAConnection_ThenThrowsInvalidOperationException()
     {
         // Arrange
         var store = new FakeTenantConfigurationStore();
-        var service = new SqlExecutionService(store, NullLogger<SqlExecutionService>.Instance);
+        var service = CreateService(store);
 
         // Act & Assert
         var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
@@ -142,7 +152,7 @@ public class SqlExecutionServiceConnectionTests
             FhirVersion = "4.0",
             Storage = new TenantStorageConfiguration { Type = "FileSystem" },
         };
-        var service = new SqlExecutionService(store, NullLogger<SqlExecutionService>.Instance);
+        var service = CreateService(store);
 
         // Act & Assert
         var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
@@ -163,7 +173,7 @@ public class SqlExecutionServiceConnectionTests
             FhirVersion = "4.0",
             Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = null },
         };
-        var service = new SqlExecutionService(store, NullLogger<SqlExecutionService>.Instance);
+        var service = CreateService(store);
 
         // Act & Assert
         var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
@@ -213,7 +223,7 @@ public class SqlExecutionServiceConnectionTests
     public async Task GivenANullCommand_WhenExecutingReaderAsync_ThenThrowsArgumentNullException()
     {
         // Arrange
-        var service = new SqlExecutionService(new FakeTenantConfigurationStore(), NullLogger<SqlExecutionService>.Instance);
+        var service = CreateService(new FakeTenantConfigurationStore());
 
         // Act & Assert
         await Should.ThrowAsync<ArgumentNullException>(() =>
@@ -224,7 +234,7 @@ public class SqlExecutionServiceConnectionTests
     public async Task GivenANullReadRow_WhenExecutingReaderAsync_ThenThrowsArgumentNullException()
     {
         // Arrange
-        var service = new SqlExecutionService(new FakeTenantConfigurationStore(), NullLogger<SqlExecutionService>.Instance);
+        var service = CreateService(new FakeTenantConfigurationStore());
         await using var command = new SqlCommand("SELECT 1");
 
         // Act & Assert
@@ -236,7 +246,7 @@ public class SqlExecutionServiceConnectionTests
     public async Task GivenANullCommand_WhenExecutingNonQueryAsync_ThenThrowsArgumentNullException()
     {
         // Arrange
-        var service = new SqlExecutionService(new FakeTenantConfigurationStore(), NullLogger<SqlExecutionService>.Instance);
+        var service = CreateService(new FakeTenantConfigurationStore());
 
         // Act & Assert
         await Should.ThrowAsync<ArgumentNullException>(() =>
@@ -262,7 +272,7 @@ public class SqlExecutionServiceConnectionTests
             Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = listener.ConnectionString },
         };
         var logger = new CountingLogger<SqlExecutionService>();
-        var service = new SqlExecutionService(store, logger);
+        var service = CreateService(store, logger);
         await using var command = new SqlCommand("SELECT 1");
 
         // Act
@@ -277,10 +287,42 @@ public class SqlExecutionServiceConnectionTests
         logger.ErrorCount.ShouldBe(1);
     }
 
+    // The asymmetry this closes: every INSERT ... OUTPUT INSERTED in this layer goes through
+    // ExecuteReaderAsync -- it needs the generated identity back -- and ExecuteReaderAsync had no opt-out at
+    // all, so a -2 command timeout retried a non-idempotent insert unconditionally. SqlServerSourceEventStore
+    // is the production caller that now declares NonIdempotent.
     [Fact]
-    public async Task GivenATransientConnectionFailureAndDisableRetriesIsTrue_WhenExecutingNonQueryAsync_ThenFailsOnFirstAttemptWithoutRetrying()
+    public async Task GivenATransientConnectionFailureAndANonIdempotentCommand_WhenExecutingReaderAsync_ThenFailsOnFirstAttemptWithoutRetrying()
     {
-        // Arrange -- same unresponsive listener as above, but with disableRetries: true. Proves the
+        // Arrange
+        using var listener = new UnresponsiveTcpListener();
+        var store = new FakeTenantConfigurationStore();
+        store.Tenants[1] = new TenantConfiguration
+        {
+            TenantId = 1,
+            DisplayName = "Test Tenant",
+            FhirVersion = "4.0",
+            Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = listener.ConnectionString },
+        };
+        var logger = new CountingLogger<SqlExecutionService>();
+        var service = CreateService(store, logger);
+        await using var command = new SqlCommand("INSERT INTO t (v) OUTPUT INSERTED.Id VALUES (1)");
+
+        // Act
+        var ex = await Should.ThrowAsync<SqlException>(() =>
+            service.ExecuteReaderAsync(1, command, reader => reader.GetInt32(0), CancellationToken.None, SqlCommandIdempotency.NonIdempotent));
+
+        // Assert -- no OnRetry firings at all: the pipeline was bypassed, not merely configured with zero
+        // retries. The default-idempotent test above is the negative control that keeps this honest.
+        ex.Number.ShouldBe(-2);
+        logger.WarningCount.ShouldBe(0);
+        logger.ErrorCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GivenATransientConnectionFailureAndANonIdempotentCommand_WhenExecutingNonQueryAsync_ThenFailsOnFirstAttemptWithoutRetrying()
+    {
+        // Arrange -- same unresponsive listener as above, but with SqlCommandIdempotency.NonIdempotent. Proves the
         // opt-out actually bypasses the pipeline rather than just being accepted and ignored.
         using var listener = new UnresponsiveTcpListener();
         var store = new FakeTenantConfigurationStore();
@@ -292,12 +334,12 @@ public class SqlExecutionServiceConnectionTests
             Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = listener.ConnectionString },
         };
         var logger = new CountingLogger<SqlExecutionService>();
-        var service = new SqlExecutionService(store, logger);
+        var service = CreateService(store, logger);
         await using var command = new SqlCommand("SELECT 1");
 
         // Act
         var ex = await Should.ThrowAsync<SqlException>(() =>
-            service.ExecuteNonQueryAsync(1, command, CancellationToken.None, disableRetries: true));
+            service.ExecuteNonQueryAsync(1, command, CancellationToken.None, SqlCommandIdempotency.NonIdempotent));
 
         // Assert -- no OnRetry firings at all: the pipeline was bypassed, not merely configured
         // with zero retries.

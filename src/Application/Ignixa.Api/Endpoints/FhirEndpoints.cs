@@ -46,6 +46,7 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class FhirEndpoints
 {
+    private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
     /// <summary>
     /// Registers FHIR RESTful endpoints for all resource types.
     ///
@@ -88,7 +89,7 @@ public static class FhirEndpoints
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id} - Read resource
-        tenantGroup.MapGet("/{resourceType}/{id}", HandleGetResource)
+        tenantGroup.MapMethods("/{resourceType}/{id}", ReadMethods, HandleGetResource)
             .WithName("GetResource")
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces(StatusCodes.Status404NotFound);
@@ -199,7 +200,7 @@ public static class FhirEndpoints
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id} - Read resource (agnostic)
-        agnosticGroup.MapGet("/{resourceType}/{id}", (HttpContext context, string resourceType, string id,
+        agnosticGroup.MapMethods("/{resourceType}/{id}", ReadMethods, (HttpContext context, string resourceType, string id,
             [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
             HandleGetResource(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, loggerFactory, ct))
             .WithName("GetResourceAgnostic")
@@ -353,6 +354,13 @@ public static class FhirEndpoints
                 return Results.NotFound();
             }
 
+            if (conditionalResult.Resource.IsDeleted)
+            {
+                return FhirResults.Gone(resourceType, id, context)
+                    .WithETag(conditionalResult.Resource.VersionId)
+                    .WithLastModified(conditionalResult.Resource.LastModified);
+            }
+
             if (conditionalResult.NotModified)
             {
                 // 304 Not Modified: Include ETag and Last-Modified headers but no body
@@ -364,7 +372,9 @@ public static class FhirEndpoints
 
             // Resource modified: Return resource with headers
             logger.LogInformation("Resource {ResourceType}/{Id} modified, returning resource", resourceType.SanitizeForLog(), id.SanitizeForLog());
-            return FhirResults.Ok(conditionalResult.Resource.ResourceBytes, context)
+            return (HttpMethods.IsHead(context.Request.Method)
+                ? new FhirResult(StatusCodes.Status200OK)
+                : FhirResults.Ok(conditionalResult.Resource.ResourceBytes, context))
                 .WithETag(conditionalResult.Resource.VersionId)
                 .WithLastModified(conditionalResult.Resource.LastModified);
         }
@@ -388,17 +398,15 @@ public static class FhirEndpoints
                 id.SanitizeForLog(),
                 result.VersionId);
 
-            // Return 410 Gone per FHIR R4 specification (Section 3.1.0.1.2)
-            // 410 Gone = resource existed but has been deleted
-            // 404 Not Found = resource never existed
-            return Results.Problem(
-                statusCode: StatusCodes.Status410Gone,
-                title: "Resource Deleted",
-                detail: $"{resourceType}/{id} has been deleted (last version: {result.VersionId})");
+            return FhirResults.Gone(resourceType, id, context)
+                .WithETag(result.VersionId)
+                .WithLastModified(result.LastModified);
         }
 
         // Return raw JSON bytes with FHIR headers (zero-copy serialization)
-        return FhirResults.Ok(result.ResourceBytes, context)
+        return (HttpMethods.IsHead(context.Request.Method)
+            ? new FhirResult(StatusCodes.Status200OK)
+            : FhirResults.Ok(result.ResourceBytes, context))
             .WithETag(result.VersionId)
             .WithLastModified(result.LastModified);
     }
@@ -515,7 +523,7 @@ public static class FhirEndpoints
         }
 
         // Determine if created or updated
-        bool isCreated = result.Key.VersionId == "1";
+        bool isCreated = result.IsCreated ?? result.Key.VersionId == "1";
 
         // Determine actual return preference: default to representation (FHIR spec), unless minimal explicitly requested
         var actualReturnPreference = returnPreference == ReturnPreference.Minimal
@@ -528,7 +536,7 @@ public static class FhirEndpoints
             context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
         }
 
-        var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Key.Id}";
+        var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Key.Id}/_history/{result.Key.VersionId}";
 
         if (isCreated)
         {
@@ -1167,7 +1175,7 @@ public static class FhirEndpoints
                 bool pretty = context.Request.Query.GetPrettyParameter();
 
                 // Stream responses directly to HTTP (headers are now locked)
-                await StreamingBundleSerializer.SerializeStreamAsync(
+                var streamResult = await StreamingBundleSerializer.SerializeStreamAsync(
                     outputStream: context.Response.Body,
                     bundleType: "batch-response",
                     entryResponses: streamingContext.ResponseStream,
@@ -1180,7 +1188,22 @@ public static class FhirEndpoints
                 // Complete background tasks
                 await streamingContext.CompleteAsync();
 
-                logger.LogInformation("Successfully processed bundle (streaming mode)");
+                // The response body is already committed at this point (design doc Section 8), so the
+                // HTTP status cannot change - but a failed or truncated bundle must not be logged as a
+                // success, or there is nothing left for anyone to alert on.
+                if (streamResult.Succeeded)
+                {
+                    logger.LogInformation("Successfully processed bundle (streaming mode)");
+                }
+                else if (streamResult.ClientDisconnected)
+                {
+                    // Nobody is listening for this response any more - log quietly rather than as an error.
+                    logger.LogDebug(streamResult.Exception, "Client disconnected while streaming bundle response");
+                }
+                else
+                {
+                    logger.LogError(streamResult.Exception, "Streaming bundle response ended early; a fatal entry was appended for the client");
+                }
 
                 // Response already written to stream
                 return Results.Empty;
@@ -1296,8 +1319,8 @@ public static class FhirEndpoints
 
         if (result.WasCreated)
         {
-            // 201 Created - include Location header (absolute URL per FHIR spec)
-            var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}";
+            // Use the documented version-specific location for PUT-as-create.
+            var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}";
 
             if (actualReturnPreference == ReturnPreference.Minimal)
             {
@@ -1428,7 +1451,7 @@ public static class FhirEndpoints
         var result = await mediator.SendAsync(command, ct);
 
         // Return appropriate response based on mode
-        if (!count.HasValue && result.DeletedCount == 1)
+        if (!count.HasValue)
         {
             // Single mode: 204 No Content
             return Results.NoContent();
@@ -1492,7 +1515,7 @@ public static class FhirEndpoints
         var queryParameters = queryParser.Parse(context.Request.Query);
 
         // Build SearchOptions for base-level search (resourceType = null for system-wide search)
-        // This will search across all resource types (handled by SqlEntityFrameworkSearchService)
+        // This will search across all resource types (handled by the configured search service)
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
@@ -1690,8 +1713,23 @@ public static class FhirEndpoints
     /// Returns a BadRequest result if an unsupported modifier was used, or if strict handling is
     /// requested and unsupported parameters exist.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An unknown or unsupported <i>parameter</i> SHOULD be ignored — proxies and HTTP stacks inject
+    /// parameters the client never sent, and the self link reports what was actually used — so it only
+    /// fails the request when the client asked for <c>Prefer: handling=strict</c>.
+    /// </para>
+    /// <para>
+    /// An unsupported <i>modifier</i> is a SHALL: "Server SHALL reject any search request that ... is
+    /// suffixed by a modifier that the server does not support for that parameter ... using an HTTP 400
+    /// error". Ignoring one does not narrow the query, it widens it — <c>_id:above=abc</c> would return
+    /// every resource — and the client cannot tell that from a filter that matched everything. So it fails
+    /// by default and only an explicit <c>handling=lenient</c> downgrades it to the bundle warning the
+    /// search options already carry.
+    /// </para>
+    /// </remarks>
     /// <param name="context">The HTTP context.</param>
-    /// <param name="searchOptions">The search options containing unsupported params.</param>
+    /// <param name="searchOptions">The search options carrying the unsupported parameter lists.</param>
     /// <param name="resourceType">Optional resource type for error message context.</param>
     /// <param name="logger">Logger for warnings.</param>
     /// <returns>BadRequest result if the request must be rejected, null otherwise.</returns>
@@ -1704,9 +1742,18 @@ public static class FhirEndpoints
         // FHIR R4 SHALL rejects a search suffixed by a modifier the server does not support for that
         // parameter (https://hl7.org/fhir/R4/search.html#modifiers), unlike an unsupported *parameter*,
         // which only SHOULD be rejected and is opt-in via Prefer: handling=strict below. Silently
-        // dropping the modifier would widen the result set instead of narrowing it, so this check is
-        // unconditional -- it does not depend on the Prefer header.
-        if (searchOptions.UnsupportedModifierParams.Count > 0)
+        // dropping the modifier would widen the result set instead of narrowing it, so rejecting is the
+        // default whenever the client has not said otherwise.
+        //
+        // handling=lenient is the client saying otherwise, and it is not an error case: R4's
+        // http.html#2.21.0.2 has the server ignore what it could not honour and report it, which is what
+        // the reference implementation does -- 200, a warning issue in the bundle, and the offending
+        // parameter dropped from the self link. All three already happen for free here, because the
+        // builder records an unsupported modifier in BOTH UnsupportedParams (which drives the bundle
+        // warning and the self-link filter) and UnsupportedModifierParams (which drives this rejection).
+        // So the only thing lenient has to do is decline to reject.
+        if (searchOptions.UnsupportedModifierParams.Count > 0 &&
+            !PreferHeaderParser.IsLenientHandling(context.Request.Headers))
         {
             logger.LogWarning(
                 "Unsupported search modifier(s) found: {UnsupportedModifierParams}",
@@ -1722,7 +1769,7 @@ public static class FhirEndpoints
         }
 
         logger.LogWarning(
-            "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
+            "Rejecting search: unsupported parameters {UnsupportedParams}",
             string.Join(", ", searchOptions.UnsupportedParams.Select(p => p.SanitizeForLog())));
 
         return BuildUnsupportedParametersResult(searchOptions.UnsupportedParams, resourceType, isModifierRejection: false);

@@ -13,4 +13,8 @@ public record ExpiredResourceInfo(
     short ResourceTypeId,
     string ResourceId,
     DateTimeOffset ExpiresAt,
-    string ResourceType);
+    string ResourceType)
+{
+    /// <summary>The selected SQL version's identity, used to reject stale cleanup candidates.</summary>
+    public long? ResourceSurrogateId { get; init; }
+}

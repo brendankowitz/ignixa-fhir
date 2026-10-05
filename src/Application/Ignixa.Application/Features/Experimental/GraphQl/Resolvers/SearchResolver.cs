@@ -44,17 +44,8 @@ public sealed class SearchResolver(
             var query = new SearchResourcesQuery(resourceType, searchOptions);
             var result = await mediator.SendAsync(query, cancellationToken);
 
-            var entries = new List<JsonElement>();
-            await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
-            {
-                if (!entry.IsDeleted)
-                    entries.Add(FieldResolver.ParseResourceBytes(entry.ResourceBytes));
-
-                if (entries.Count >= searchOptions.MaxItemCount)
-                    break;
-            }
-
-            return entries;
+            var (edges, _) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
+            return edges.Select(edge => edge.Resource).ToArray();
         }
         catch (OperationCanceledException) { throw; }
         catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Search {resourceType}", logger); }
@@ -75,6 +66,7 @@ public sealed class SearchResolver(
             var result = await mediator.SendAsync(query, cancellationToken);
 
             var (edges, hasMore) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
+            hasMore |= result.HasMore;
             var offset = DecodeOffset(searchOptions.ContinuationToken);
 
             return new SearchConnectionResult
@@ -112,17 +104,8 @@ public sealed class SearchResolver(
             var query = new SearchResourcesQuery(targetResourceType, searchOptions);
             var result = await mediator.SendAsync(query, cancellationToken);
 
-            var entries = new List<JsonElement>();
-            await foreach (var entry in result.Resources.WithCancellation(cancellationToken))
-            {
-                if (!entry.IsDeleted)
-                    entries.Add(FieldResolver.ParseResourceBytes(entry.ResourceBytes));
-
-                if (entries.Count >= searchOptions.MaxItemCount)
-                    break;
-            }
-
-            return entries;
+            var (edges, _) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
+            return edges.Select(edge => edge.Resource).ToArray();
         }
         catch (OperationCanceledException) { throw; }
         catch (FhirException ex) { throw FhirGraphQlErrorMapping.Map(ex, $"Reverse search {targetResourceType}", logger); }
@@ -150,6 +133,7 @@ public sealed class SearchResolver(
             var result = await mediator.SendAsync(query, cancellationToken);
 
             var (edges, hasMore) = await CollectEdgesAsync(result.Resources, searchOptions.MaxItemCount, cancellationToken);
+            hasMore |= result.HasMore;
             var offset = DecodeOffset(searchOptions.ContinuationToken);
 
             return new SearchConnectionResult
@@ -173,22 +157,37 @@ public sealed class SearchResolver(
     {
         var edges = new List<SearchEdge>();
         var hasMore = false;
+        var matchCount = 0;
 
+        // Lists and connections share page assembly; trailing includes/outcomes still belong to the
+        // page after its match budget is full or its content-free boundary signal has arrived.
         await foreach (var entry in resources.WithCancellation(cancellationToken))
         {
+            if (entry.IsPagingProbe)
+            {
+                hasMore = true;
+                continue;
+            }
+
             if (entry.IsDeleted)
                 continue;
 
-            if (edges.Count >= maxItemCount)
+            if (entry.SearchMode == SearchEntryMode.Match)
             {
-                hasMore = true;
-                break;
+                if (matchCount >= maxItemCount)
+                {
+                    hasMore = true;
+                    continue;
+                }
+                matchCount++;
             }
 
             edges.Add(new SearchEdge
             {
                 Resource = FieldResolver.ParseResourceBytes(entry.ResourceBytes),
-                Mode = "match",
+#pragma warning disable CA1308 // FHIR search modes are lowercase protocol literals.
+                Mode = entry.SearchMode.ToString().ToLowerInvariant(),
+#pragma warning restore CA1308
             });
         }
 
@@ -275,4 +274,3 @@ public sealed class SearchResolver(
         return searchOptions;
     }
 }
-

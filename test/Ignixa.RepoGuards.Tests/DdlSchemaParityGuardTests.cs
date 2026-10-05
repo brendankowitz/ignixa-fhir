@@ -12,10 +12,17 @@ namespace Ignixa.RepoGuards.Tests;
 /// Guards against <c>src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/*.sql</c> -- the DDL
 /// <see cref="SqlCatalogGenerator"/> reads to derive column widths the SQL compiler trusts (see
 /// <see cref="Ignixa.Search.Sql.TokenColumnEquality"/> and <c>SearchParamColumnWidths</c>) -- silently
-/// drifting from <c>src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Resources/97.sql</c>, the script
-/// that actually provisions the database. Nothing else checks the two agree: the generator only parses
-/// whichever DDL it is pointed at, so a column renamed or re-widened in one file and not the other would
-/// build clean and silently emit SQL against the wrong shape.
+/// drifting from <c>test/Ignixa.RepoGuards.Tests/Fixtures/deployed-base-schema-97.sql</c>. Nothing else
+/// checks the two agree: the generator only parses whichever DDL it is pointed at, so a column renamed or
+/// re-widened in one file and not the other would build clean and silently emit SQL against the wrong shape.
+/// <para>
+/// That fixture is a frozen copy of the former <c>Ignixa.DataLayer.SqlEntityFramework/Resources/97.sql</c>.
+/// The SSDT project is now the only thing that provisions a database, so this is no longer a check against
+/// a live second provisioner -- it is a check against the schema existing databases were actually built
+/// from. That is the shape the compiler's column widths must keep matching for those databases to stay
+/// queryable, so the guard keeps its value even though the EF layer that shipped the script is gone.
+/// Deliberately frozen: it records history and must not be edited to match a new <c>Tables/*.sql</c>.
+/// </para>
 /// </summary>
 /// <remarks>
 /// <c>97.sql</c> is the base schema; a handful of columns arrive afterward via EF migrations that alter
@@ -25,7 +32,9 @@ namespace Ignixa.RepoGuards.Tests;
 /// table or column showing up in <c>Tables/*.sql</c> outside those lists, unexplained by either baseline,
 /// fails loud here instead of shipping unverified. <see cref="KnownExtensionColumns"/>' values are the
 /// column shape the migration actually declares, not just a name to suppress -- so a re-widened extension
-/// column is still caught, not silently allowlisted away.
+/// column is still caught, not silently allowlisted away. <see cref="IntentionalCollationChanges"/> is the
+/// third such closed set, for a column the current DDL deliberately collates where the frozen script does
+/// not; it pins the collation rather than merely excusing the column, for the same reason.
 /// <para>
 /// The comparison itself (<see cref="FindMismatches"/>) is exercised directly against hand-written
 /// fixtures in <see cref="GivenAColumnTypeMismatchNotOnTheAllowlist_WhenCompared_ThenItIsReported"/> and
@@ -72,13 +81,39 @@ public class DdlSchemaParityGuardTests
         "TermValueSetExpansion",
     ];
 
+    /// <summary>
+    /// Columns on a shared table whose collation <c>Tables/*.sql</c> deliberately declares and the frozen
+    /// <c>97.sql</c> does not. The value is the collation the DDL must declare -- an entry pins it rather
+    /// than excusing the column, so changing an allowlisted column to some OTHER collation still fails, as
+    /// does re-typing, re-widening or re-nullabling it.
+    /// <para>
+    /// Tolerated only where <c>97.sql</c> is SILENT. A column the frozen script does collate records a
+    /// collation deployed databases actually carry, and quietly reversing one of those is precisely the
+    /// drift <see cref="GivenACollationMismatchNotOnTheAllowlist_WhenCompared_ThenItIsReported"/> exists to
+    /// catch -- so no entry here can excuse it.
+    /// </para>
+    /// <para>
+    /// <c>dbo.System.Value</c>: made <c>Latin1_General_100_CS_AS</c> by commit e059d64f, because FHIR
+    /// compares system URIs case-sensitively and the column is the clustered primary key -- under the
+    /// database default, <c>http://loinc.org</c> and <c>http://LOINC.org</c> collapsed onto one SystemId.
+    /// <c>dbo.QuantityCode</c> is the same table shape (INT IDENTITY id, NVARCHAR(256) Value, UNIQUE on the
+    /// id, PRIMARY KEY CLUSTERED on Value) and <c>97.sql</c> already collates ITS Value
+    /// <c>Latin1_General_100_CS_AS</c>, so this is the frozen schema's own convention applied to the one
+    /// table of that shape that was missing it, not a new policy.
+    /// </para>
+    /// </summary>
+    private static readonly Dictionary<(string Table, string Column), string> IntentionalCollationChanges = new()
+    {
+        [("System", "Value")] = "Latin1_General_100_CS_AS",
+    };
+
     [Fact]
     public void GivenTheDecomposedTableDdl_WhenComparedToTheDatabaseProvisioningScript_ThenSharedTablesAgreeColumnForColumn()
     {
         // Arrange
         var repoRoot = RepoRoot.Find();
         var baseSchema = IndexByTable(ParseFile(
-            repoRoot, "src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Resources/97.sql"));
+            repoRoot, "test/Ignixa.RepoGuards.Tests/Fixtures/deployed-base-schema-97.sql"));
         var catalogTablesDir = Path.Combine(
             repoRoot, "src", "DataLayer", "Ignixa.DataLayer.SqlServer.Database", "Tables");
         var decomposedDdl = string.Join(
@@ -95,7 +130,8 @@ public class DdlSchemaParityGuardTests
         TablesNotInBaseSchema.ShouldBeSubsetOf(decomposed.Keys);
 
         // Act
-        var mismatches = FindMismatches(baseSchema, decomposed, KnownExtensionColumns, TablesNotInBaseSchema);
+        var mismatches = FindMismatches(
+            baseSchema, decomposed, KnownExtensionColumns, TablesNotInBaseSchema, IntentionalCollationChanges);
 
         // Assert -- a mismatch here means the compiler is deriving widths from a file that no longer
         // describes the deployed database.
@@ -110,7 +146,7 @@ public class DdlSchemaParityGuardTests
         var decomposed = Schema(Table("TokenSearchParam", Column("Code", "nvarchar", 256, isNullable: false)));
 
         // Act
-        var mismatches = FindMismatches(baseSchema, decomposed, [], []);
+        var mismatches = FindMismatches(baseSchema, decomposed, [], [], []);
 
         // Assert
         mismatches.ShouldHaveSingleItem();
@@ -131,11 +167,119 @@ public class DdlSchemaParityGuardTests
             Column("Code", "varchar", 256, isNullable: false, collation: "Latin1_General_100_CI_AI")));
 
         // Act
-        var mismatches = FindMismatches(baseSchema, decomposed, [], []);
+        var mismatches = FindMismatches(baseSchema, decomposed, [], [], []);
 
         // Assert
         mismatches.ShouldHaveSingleItem();
         mismatches[0].ShouldContain("TokenSearchParam.Code");
+        mismatches[0].ShouldContain(nameof(IntentionalCollationChanges));
+    }
+
+    [Fact]
+    public void GivenACollationTheFrozenScriptDoesNotDeclareAndTheAllowlistRecords_WhenCompared_ThenNothingIsReported()
+    {
+        // Arrange -- the real dbo.System.Value shape: 97.sql declares no collation, Tables/*.sql
+        // declares exactly the one the allowlist records.
+        var baseSchema = Schema(Table("System", Column("Value", "nvarchar", 256, isNullable: false)));
+        var decomposed = Schema(Table(
+            "System",
+            Column("Value", "nvarchar", 256, isNullable: false, collation: "Latin1_General_100_CS_AS")));
+
+        // Act
+        var mismatches = FindMismatches(
+            baseSchema,
+            decomposed,
+            knownExtensionColumns: [],
+            tablesNotInBaseSchema: [],
+            intentionalCollationChanges: new Dictionary<(string, string), string>
+            {
+                [("System", "Value")] = "Latin1_General_100_CS_AS",
+            });
+
+        // Assert
+        mismatches.ShouldBeEmpty(string.Join("\n", mismatches));
+    }
+
+    [Fact]
+    public void GivenAnAllowlistedColumnCollatedDifferentlyThanRecorded_WhenCompared_ThenItIsReported()
+    {
+        // Arrange -- being on the allowlist must pin the collation, not excuse the column. A change to
+        // some OTHER collation (here case-INsensitive, the opposite of what was recorded) is drift.
+        var baseSchema = Schema(Table("System", Column("Value", "nvarchar", 256, isNullable: false)));
+        var decomposed = Schema(Table(
+            "System",
+            Column("Value", "nvarchar", 256, isNullable: false, collation: "Latin1_General_100_CI_AI")));
+
+        // Act
+        var mismatches = FindMismatches(
+            baseSchema,
+            decomposed,
+            knownExtensionColumns: [],
+            tablesNotInBaseSchema: [],
+            intentionalCollationChanges: new Dictionary<(string, string), string>
+            {
+                [("System", "Value")] = "Latin1_General_100_CS_AS",
+            });
+
+        // Assert
+        mismatches.ShouldHaveSingleItem();
+        mismatches[0].ShouldContain("System.Value");
+    }
+
+    [Fact]
+    public void GivenAnAllowlistedColumnTheFrozenScriptAlreadyCollates_WhenCompared_ThenItIsReported()
+    {
+        // Arrange -- the allowlist tolerates the frozen script's SILENCE only. Where 97.sql declares a
+        // collation, that collation is one deployed databases actually carry, and reversing it is the
+        // drift this guard exists to catch -- an allowlist entry must not be able to excuse that.
+        var baseSchema = Schema(Table(
+            "System",
+            Column("Value", "nvarchar", 256, isNullable: false, collation: "Latin1_General_100_CI_AI")));
+        var decomposed = Schema(Table(
+            "System",
+            Column("Value", "nvarchar", 256, isNullable: false, collation: "Latin1_General_100_CS_AS")));
+
+        // Act
+        var mismatches = FindMismatches(
+            baseSchema,
+            decomposed,
+            knownExtensionColumns: [],
+            tablesNotInBaseSchema: [],
+            intentionalCollationChanges: new Dictionary<(string, string), string>
+            {
+                [("System", "Value")] = "Latin1_General_100_CS_AS",
+            });
+
+        // Assert
+        mismatches.ShouldHaveSingleItem();
+        mismatches[0].ShouldContain("System.Value");
+    }
+
+    [Fact]
+    public void GivenAnAllowlistedColumnReWidenedAlongsideItsCollation_WhenCompared_ThenItIsReported()
+    {
+        // Arrange -- the collation matches what the allowlist records, but the column was also
+        // re-widened. An entry excuses the collation and nothing else, so this must still fail: the
+        // widths are exactly what SqlCatalogGenerator feeds the SQL compiler.
+        var baseSchema = Schema(Table("System", Column("Value", "nvarchar", 256, isNullable: false)));
+        var decomposed = Schema(Table(
+            "System",
+            Column("Value", "nvarchar", 512, isNullable: false, collation: "Latin1_General_100_CS_AS")));
+
+        // Act
+        var mismatches = FindMismatches(
+            baseSchema,
+            decomposed,
+            knownExtensionColumns: [],
+            tablesNotInBaseSchema: [],
+            intentionalCollationChanges: new Dictionary<(string, string), string>
+            {
+                [("System", "Value")] = "Latin1_General_100_CS_AS",
+            });
+
+        // Assert
+        mismatches.ShouldHaveSingleItem();
+        mismatches[0].ShouldContain("System.Value");
     }
 
     [Fact]
@@ -149,7 +293,7 @@ public class DdlSchemaParityGuardTests
         var decomposed = Schema(Table("TokenSearchParam", Column("Code", "varchar", 256, isNullable: false)));
 
         // Act
-        var mismatches = FindMismatches(baseSchema, decomposed, [], []);
+        var mismatches = FindMismatches(baseSchema, decomposed, [], [], []);
 
         // Assert
         mismatches.ShouldHaveSingleItem();
@@ -169,7 +313,7 @@ public class DdlSchemaParityGuardTests
             Column("MysteryColumn", "int", null, isNullable: true)));
 
         // Act
-        var mismatches = FindMismatches(baseSchema, decomposed, [], []);
+        var mismatches = FindMismatches(baseSchema, decomposed, [], [], []);
 
         // Assert
         mismatches.ShouldHaveSingleItem();
@@ -196,7 +340,8 @@ public class DdlSchemaParityGuardTests
             {
                 [("UriSearchParam", "Fragment")] = Column("Fragment", "nvarchar", 128, isNullable: true),
             },
-            tablesNotInBaseSchema: []);
+            tablesNotInBaseSchema: [],
+            intentionalCollationChanges: []);
 
         // Assert
         mismatches.ShouldHaveSingleItem();
@@ -211,7 +356,7 @@ public class DdlSchemaParityGuardTests
         var decomposed = Schema(Table("MysteryTable", Column("Id", "int", null, isNullable: false)));
 
         // Act
-        var mismatches = FindMismatches(baseSchema, decomposed, [], []);
+        var mismatches = FindMismatches(baseSchema, decomposed, [], [], []);
 
         // Assert
         mismatches.ShouldHaveSingleItem();
@@ -230,7 +375,7 @@ public class DdlSchemaParityGuardTests
         var decomposed = Schema();
 
         // Act
-        var mismatches = FindMismatches(baseSchema, decomposed, [], []);
+        var mismatches = FindMismatches(baseSchema, decomposed, [], [], []);
 
         // Assert
         mismatches.ShouldHaveSingleItem();
@@ -258,7 +403,8 @@ public class DdlSchemaParityGuardTests
             {
                 [("UriSearchParam", "Fragment")] = Column("Fragment", "nvarchar", 128, isNullable: true),
             },
-            tablesNotInBaseSchema: ["SourceEvents"]);
+            tablesNotInBaseSchema: ["SourceEvents"],
+            intentionalCollationChanges: []);
 
         // Assert
         mismatches.ShouldBeEmpty(string.Join("\n", mismatches));
@@ -274,7 +420,8 @@ public class DdlSchemaParityGuardTests
         IReadOnlyDictionary<string, DdlTable> baseSchema,
         IReadOnlyDictionary<string, DdlTable> decomposed,
         Dictionary<(string Table, string Column), DdlColumn> knownExtensionColumns,
-        HashSet<string> tablesNotInBaseSchema)
+        HashSet<string> tablesNotInBaseSchema,
+        Dictionary<(string Table, string Column), string> intentionalCollationChanges)
     {
         var mismatches = new List<string>();
 
@@ -309,11 +456,16 @@ public class DdlSchemaParityGuardTests
                     continue;
                 }
 
-                if (!ColumnsMatch(baseColumn, decomposedColumn))
+                if (!ColumnsMatch(baseColumn, decomposedColumn)
+                    && !IsRecordedCollationChange(tableName, baseColumn, decomposedColumn, intentionalCollationChanges))
                 {
+                    var collationHint = DiffersOnlyByCollation(baseColumn, decomposedColumn)
+                        ? $" If the collation change is deliberate, record it in {nameof(IntentionalCollationChanges)}."
+                        : string.Empty;
+
                     mismatches.Add(
                         $"{tableName}.{columnName}: 97.sql has {Describe(baseColumn)}, " +
-                        $"Tables/*.sql has {Describe(decomposedColumn)}.");
+                        $"Tables/*.sql has {Describe(decomposedColumn)}.{collationHint}");
                 }
             }
 
@@ -363,6 +515,29 @@ public class DdlSchemaParityGuardTests
             && expected.MaxLength == actual.MaxLength
             && expected.IsNullable == actual.IsNullable
             && expected.Collation == actual.Collation;
+
+    private static bool DiffersOnlyByCollation(DdlColumn baseColumn, DdlColumn decomposedColumn) =>
+        baseColumn.Collation != decomposedColumn.Collation
+            && baseColumn.SqlType == decomposedColumn.SqlType
+            && baseColumn.MaxLength == decomposedColumn.MaxLength
+            && baseColumn.IsNullable == decomposedColumn.IsNullable;
+
+    /// <summary>
+    /// Whether the ONLY difference between the two declarations is a collation
+    /// <see cref="IntentionalCollationChanges"/> records, added where the frozen script declares none.
+    /// Everything else about the column -- type, width, nullability -- must still agree exactly, and the
+    /// decomposed DDL's collation must be the recorded one, so an entry cannot excuse a second change
+    /// riding along with the first.
+    /// </summary>
+    private static bool IsRecordedCollationChange(
+        string tableName,
+        DdlColumn baseColumn,
+        DdlColumn decomposedColumn,
+        IReadOnlyDictionary<(string Table, string Column), string> intentionalCollationChanges) =>
+        DiffersOnlyByCollation(baseColumn, decomposedColumn)
+            && baseColumn.Collation is null
+            && intentionalCollationChanges.TryGetValue((tableName, baseColumn.Name), out var recordedCollation)
+            && decomposedColumn.Collation == recordedCollation;
 
     private static string Describe(DdlColumn column) =>
         $"{column.SqlType}({column.MaxLength?.ToString() ?? "n/a"}), nullable={column.IsNullable}, " +

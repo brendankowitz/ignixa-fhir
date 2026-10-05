@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Data.Common;
+using System.Text.Json;
 using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Domain.Models;
@@ -116,17 +118,6 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
             // Get tenant repository
             var repository = await _repositoryFactory.GetRepositoryAsync(input.TenantId, CancellationToken.None);
 
-            // Allocate transaction ID from tenant's repository (Isolated mode)
-            // In isolated mode: Each tenant has its own database, so tenant repository = tenant database
-            // In distributed mode: Must use system repository (Partition 0) for transaction allocation
-            //                      TODO: Repository factory should handle this logic based on mode
-            var transactionId = await repository.GetNextTransactionIdAsync(CancellationToken.None);
-
-            _logger.LogDebug(
-                "Allocated transaction ID {TransactionId} for import batch (Tenant {TenantId})",
-                transactionId,
-                input.TenantId);
-
             // 3. Parse and validate resources, build batch operations
             var operations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>();
             var errors = new List<ImportErrorLogEntry>();
@@ -165,27 +156,13 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
                         _logger.LogDebug("Generated ID for {ResourceType}: {Id}", input.ResourceType, resourceId);
                     }
 
-                    // Extract search indices (best effort)
-                    IReadOnlyList<object> searchIndices = Array.Empty<object>();
-                    try
-                    {
-                        var typedElement = jsonNode.ToElement(schemaProvider);
-                        var indices = searchIndexer.Extract((IElement)typedElement);
-                        searchIndices = indices.ToArray();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(
-                            ex,
-                            "Failed to extract search indices for {ResourceType}/{Id}, skipping indexing",
-                            input.ResourceType,
-                            resourceId);
-                    }
+                    var typedElement = jsonNode.ToElement(schemaProvider);
+                    IReadOnlyList<object> searchIndices = searchIndexer.Extract((IElement)typedElement).ToArray();
 
                     // Add to batch operations with entry index for surrogate ID calculation
                     operations.Add((input.ResourceType, resourceId, jsonNode, searchIndices, "PUT", entryIndex)); // Import uses PUT (upsert)
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException or InvalidOperationException)
                 {
                     _logger.LogError(ex, "Error parsing resource");
                     errors.Add(new ImportErrorLogEntry
@@ -203,41 +180,22 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
             var successCount = 0;
             if (operations.Count > 0)
             {
+                var transactionId = await repository.GetNextTransactionIdAsync(CancellationToken.None);
+                _logger.LogDebug(
+                    "Executing BatchWriteAsync for {Count} resources with transaction {TransactionId}",
+                    operations.Count, transactionId);
+                var keys = await repository.BatchWriteAsync(transactionId, operations, CancellationToken.None);
                 try
                 {
-                    _logger.LogDebug(
-                        "Executing BatchWriteAsync for {Count} resources with transaction {TransactionId}",
-                        operations.Count,
-                        transactionId);
-
-                    var keys = await repository.BatchWriteAsync(transactionId, operations, CancellationToken.None);
-
-                    // 5. Commit transaction
                     await repository.CommitTransactionAsync(transactionId, CancellationToken.None);
-
-                    successCount = keys.Count;
-
-                    _logger.LogInformation(
-                        "Batch write completed: {SuccessCount} resources written",
-                        successCount);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
                 {
-                    _logger.LogError(ex, "Error during batch write");
-
-                    // Mark all operations as failed
-                    foreach (var op in operations)
-                    {
-                        errors.Add(new ImportErrorLogEntry
-                        {
-                            ResourceType = op.resourceType,
-                            ResourceId = op.resourceId,
-                            ErrorCode = "BatchWriteError",
-                            ErrorMessage = ex.Message,
-                            ResourceJson = op.resource.SerializeToString()
-                        });
-                    }
+                    throw new InvalidOperationException(
+                        $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({operations.Count} resources). {ex.Message}", ex);
                 }
+                successCount = keys.Count;
+                _logger.LogInformation("Batch write completed: {SuccessCount} resources written", successCount);
             }
 
             var errorCount = errors.Count;

@@ -58,15 +58,14 @@ public record GetJobStatusResult
 
     /// <summary>
     /// Job definition (input parameters).
-    /// For Import: inputFormat, inputSource, mode, inputFiles count.
-    /// For Export: resourceTypes, since, outputFormat, outputPath.
+    /// An ImportJobDefinition or ExportJobDefinition, depending on JobType.
     /// </summary>
     public object? Definition { get; init; }
 
     /// <summary>
     /// Job result (output data). Only populated when status is Completed.
-    /// For Import: totalResources, totalErrors, errorFileUrl.
-    /// For Export: file URLs, resource counts.
+    /// An ImportJobResult or ExportJobResult, depending on JobType.
+    /// Output paths are resolved to provider URLs at the HTTP boundary.
     /// </summary>
     public object? Result { get; init; }
 }

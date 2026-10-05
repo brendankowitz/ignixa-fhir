@@ -208,6 +208,7 @@ public class OperationsSegment : ICapabilitySegment
             FhirVersion.R4 => "R4",
             FhirVersion.R4B => "R4B",
             FhirVersion.R5 => "R5",
+            FhirVersion.R6 => "R6",
             FhirVersion.Stu3 => "Stu3",
             _ => throw new ArgumentOutOfRangeException(nameof(fhirVersion), fhirVersion, "Unsupported FHIR version"),
         };

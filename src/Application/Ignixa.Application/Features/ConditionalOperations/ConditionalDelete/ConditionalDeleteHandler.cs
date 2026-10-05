@@ -85,13 +85,12 @@ public class ConditionalDeleteHandler : IRequestHandler<ConditionalDeleteCommand
         // Step 5: Handle based on mode and match count
         if (matchCount == 0)
         {
-            // 0 matches: 404 Not Found (both modes)
-            _logger.LogWarning("No matches found for conditional delete");
-            throw new ConditionalOperationException(
-                "ConditionalDelete",
-                $"No resources match the search criteria '{request.SearchCriteria}'.",
-                matchCount: 0,
-                searchCriteria: request.SearchCriteria);
+            _logger.LogInformation("Conditional delete matched no resources; completed as a no-op");
+            return new ConditionalDeleteResult(
+                DeletedCount: 0,
+                TotalMatches: 0,
+                IsPartialDelete: false,
+                DeletedIds: []);
         }
 
         if (isSingleMode)

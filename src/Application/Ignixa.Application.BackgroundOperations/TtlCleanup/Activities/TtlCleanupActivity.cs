@@ -77,10 +77,19 @@ public class TtlCleanupActivity(
                         resource.ExpiresAt,
                         input.TenantId);
 
-                    await repository.HardDeleteResourceAsync(
-                        resource.ResourceTypeId,
-                        resource.ResourceId,
+                    var deleted = await repository.TryHardDeleteExpiredResourceAsync(
+                        resource,
                         CancellationToken.None);
+
+                    if (!deleted)
+                    {
+                        _logger.LogInformation(
+                            "Skipped stale TTL candidate {ResourceType}/{ResourceId} for tenant {TenantId}",
+                            resource.ResourceType,
+                            resource.ResourceId,
+                            input.TenantId);
+                        continue;
+                    }
 
                     deletedCount++;
 

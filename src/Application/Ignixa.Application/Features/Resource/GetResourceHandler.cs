@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
+using System.Text;
 
 namespace Ignixa.Application.Features.Resource;
 
@@ -49,6 +51,13 @@ public class GetResourceHandler : IRequestHandler<GetResourceQuery, SearchEntryR
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
 
+        if (query.VersionId == null && context.DeferredWriteCoordinator?.FindStagedResource(query.ResourceType, query.Id) is { } staged)
+        {
+            return new SearchEntryResult(staged.ResourceType, staged.ResourceId, staged.VersionId,
+                staged.Resource.Meta.LastUpdatedOffset ?? staged.LastModified,
+                Encoding.UTF8.GetBytes(staged.Resource.SerializeToString())) { IsDeleted = staged.IsDeleted };
+        }
+
         _logger.LogDebug("Processing GetResource for {ResourceType}/{Id}", query.ResourceType, query.Id);
 
         // Create partition resolution context from FHIR request context
@@ -85,8 +94,20 @@ public class GetResourceHandler : IRequestHandler<GetResourceQuery, SearchEntryR
         var repository = await _repositoryFactory.GetRepositoryAsync(resolvedTenantId, cancellationToken);
 
         // 4. Execute GetAsync directly - returns SearchEntryResult with raw bytes for zero-copy serialization
-        var key = new ResourceKey(query.ResourceType, query.Id);
-        SearchEntryResult? result = await repository.GetAsync(key, cancellationToken);
+        var key = new ResourceKey(query.ResourceType, query.Id, query.VersionId, resolvedTenantId);
+        SearchEntryResult? result;
+        if (query.VersionId != null)
+        {
+            if (repository is not IVersionedResourceRepository versionedRepository)
+            {
+                throw new Domain.Exceptions.NotImplementedException("This resource provider does not support version-specific reads.");
+            }
+            result = await versionedRepository.GetAsync(key, cancellationToken);
+        }
+        else
+        {
+            result = await repository.GetAsync(key, cancellationToken);
+        }
 
         if (result == null)
         {

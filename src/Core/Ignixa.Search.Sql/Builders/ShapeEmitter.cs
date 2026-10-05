@@ -180,13 +180,15 @@ internal static class ShapeEmitter
         (string Type, string Surrogate)? resumeParams)
     {
         var budget = includes[0].Limit;
+        var top = budget.HasValue ? $"TOP ({budget + 1}) " : string.Empty;
+        var partial = budget.HasValue ? $"CASE WHEN COUNT_BIG(*) OVER() > {budget} THEN 1 ELSE 0 END" : "0";
         var passThrough = ProjectionPassThroughColumns(plan.Projection);
 
         using (writer.Section(IncludePage, SqlRangeKind.IncludePage))
         {
             writer.Append(
-                $"SELECT DISTINCT TOP ({budget + 1}) T1, Sid1, IsMatch,\n" +
-                $"       CAST(CASE WHEN COUNT_BIG(*) OVER() > {budget} THEN 1 ELSE 0 END AS bit) AS IsPartial{passThrough}\n" +
+                $"SELECT DISTINCT {top}T1, Sid1, IsMatch,\n" +
+                $"       CAST({partial} AS bit) AS IsPartial{passThrough}\n" +
                 "FROM (\n");
 
             using (writer.Section(Assembly, SqlRangeKind.Assembly))
@@ -293,7 +295,9 @@ internal static class ShapeEmitter
     /// union column and breaks the documented bit contract.
     /// </remarks>
     private static string EmitIncludeLimitStage(IncludeStage stage, int index)
-        => $"    SELECT TOP ({stage.Limit + 1}) T1, Sid1,\n" +
+        => stage.Limit is null
+            ? $"    SELECT T1, Sid1, CAST(0 AS bit) AS IsPartial\n    FROM {IncludeLabel(index)}"
+            : $"    SELECT TOP ({stage.Limit + 1}) T1, Sid1,\n" +
            $"           CAST(CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
            $"    FROM {IncludeLabel(index)}\n" +
            $"    ORDER BY T1 ASC, Sid1 ASC";

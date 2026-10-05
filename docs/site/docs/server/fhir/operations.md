@@ -383,6 +383,89 @@ GET /Patient/$summary?identifier=http://example.org|12345
 GET /Patient/{id}/$summary?profile=http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips
 ```
 
+### Package-backed terminology imports
+
+Package administration uses tenant-explicit routes:
+
+- `GET /tenant/{tenantId}/admin/packages` lists loaded packages.
+- `POST /tenant/{tenantId}/admin/packages/load` loads a package.
+- `DELETE /tenant/{tenantId}/admin/packages/{packageId}/{version}` unloads a package.
+
+`tenantId` must be an integer identifying an active tenant. System partition `0` remains inaccessible
+through these routes. Package administration paths take precedence over generic FHIR resource routes.
+
+Package content in tenant 1 and terminology in system partition 0 must use the **same SQL database**.
+The server checks the resolved SQL server/database destination before shared package writes and
+terminology imports. Connection-string inheritance and aliases resolving to that same destination are
+supported; separate package and terminology databases are rejected before mutation. Other tenants may
+use their own SQL databases or FileSystem resource storage. The identity check uses a short-lived
+database-local application lock, writes no content rows, and needs two concurrent SQL connections
+(the default connection pool supports this).
+
+CodeSystem, ValueSet and ConceptMap imports replace by **case-sensitive canonical URL and resource version**,
+not by package-row identity. URL paths and version labels differing only by case identify different content.
+An omitted resource version identifies the unversioned canonical. The last
+successful import owns that terminology content, including when it arrives in a newer package version.
+Earlier package rows retain their completed import history, so unchanged startup/load retries do not
+replace newer content with an older package.
+
+New terminology jobs persist an in-package dependency plan before they start. ValueSet compose clauses
+that read CodeSystem concepts (whole-system includes and filtered includes/excludes) wait for matching
+CodeSystems. Unfiltered whole-system exclusions do not require CodeSystem content and are not blocked
+by that CodeSystem's import failure. ValueSet references in includes or excludes wait for their in-job
+ValueSets; a `url|version` reference matches only that exact, case-sensitive URL and business version.
+An unversioned reference retains the most-recently-imported expanded ValueSet policy.
+Precomputed expansions bypass compose, and absent external dependencies
+retain the existing partial-expansion behavior. At most five resource activities are scheduled at once.
+Failed internal prerequisites and unresolved ValueSet cycles leave dependents failed and retryable instead
+of recording an incomplete successful import. Package-load notifications and startup retry scans both use
+this job-creation path.
+
+Within one compose include or exclude clause, the system/version selection, explicit concepts or filters,
+and all referenced ValueSets are intersected. Different include clauses are unioned, and each exclude
+clause subtracts its selection. Specifying both `concept` and `filter` in one clause is invalid and fails
+the import. Referenced partial expansions propagate their incomplete state and reasons through both
+includes and excludes, including when no known codes remain. A required system version is not guessed
+for referenced codes that omit it; such restrictions are reported as incomplete. Whole-system exclusions
+still operate on included codes without requiring the CodeSystem's content.
+
+Version restrictions carried by referenced expansions have the same uncertainty rules as explicit
+restrictions: intersections do not invent a pinned version for unknown-version codes, and pinned
+exclusions retain unknown-version codes while marking the result incomplete. Unqualified concept
+selections and exclusions keep their all-version behavior. Set intersection, subtraction, and
+deduplication honor the imported CodeSystem's `caseSensitive` policy for the applicable version,
+without changing code spelling or the case-sensitive canonical/version identity rules. Comparison
+metadata is read once per composition, not per code. If an unknown version could select conflicting
+case policies, the result is incomplete rather than guessing which policy applies.
+
+Persisted jobs without a dependency plan replay their original activity sequence. This does not rewrite
+already completed legacy partial expansions, and dependency ordering is scoped to the resources in one
+package job rather than coordinating independently running package jobs.
+
+Replacement data, hierarchy, completion status and content hash commit together. Failed replacements
+record a failed attempt and remain retryable; previously usable terminology stays available. Effective
+terminology routing continues using the surviving SQL content rather than switching to fallback merely
+because a replacement failed. Cancellation propagates separately from an import failure. A lost connection
+at commit can still leave an uncertain outcome; inspect the recorded import status before retrying.
+
+SQL-backed lookup, expansion, and validation results are not memoized in application memory. A request
+started after replacement commits reads current SQL data, including previously missing concepts and
+dependent binding/display decisions, without a TTL delay or process-local invalidation event. This also
+applies when another server process imports the replacement. An operation overlapping a commit can observe
+different committed states across its SQL statements; there is no operation-wide snapshot guarantee, but
+an older in-flight result cannot repopulate a shared result cache.
+
+The tradeoff is additional database I/O compared with a warm memory-cache hit. Within the SQL terminology
+service, common exact-match paths perform two reads for lookup, three for a nonempty expansion, and three
+for ValueSet validation with an explicit system. Hybrid routing adds its import-status query;
+case-insensitive fallback and binding checks may require more. Reference-data and immutable specification
+caches are unaffected.
+
+ValueSet and ConceptMap `name` is optional and is stored as SQL `NULL` when absent. This requires schema
+version 3; upgrading preserves existing resource identities, search-index references and terminology.
+CodeSystems with `content=not-present` or `content=supplement` remain skipped with a recorded hash, rather
+than being retried on every startup.
+
 ### $expand (ValueSet)
 
 [FHIR Spec](https://hl7.org/fhir/valueset-operation-expand.html)
@@ -394,6 +477,11 @@ GET /ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/observation-codes
 GET /ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/observation-codes&filter=blood
 GET /ValueSet/$expand?url=http://hl7.org/fhir/ValueSet/observation-codes&count=100&offset=0
 ```
+
+An unknown or unavailable ValueSet returns HTTP 404 with a FHIR `OperationOutcome`.
+Operation-level missing-parameter errors from `$expand`, `$translate`, and `$subsumes` return
+HTTP 400 with a FHIR `OperationOutcome`. These error responses use `application/fhir+json`
+on both tenant-explicit and tenant-agnostic routes.
 
 ### $translate (ConceptMap)
 

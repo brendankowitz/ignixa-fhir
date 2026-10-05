@@ -1,13 +1,13 @@
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Jobs;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
-using Ignixa.Application.BackgroundOperations.Export.Models;
-using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
+using Microsoft.AspNetCore.Http.Extensions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
 using Ignixa.Serialization.Models;
@@ -36,6 +36,9 @@ public static class ExportEndpoints
         // POST /Group/{groupId}/$export - Group-scoped export
         app.MapPost("/Group/{groupId}/$export", StartGroupExportAsync)
             .WithName("StartGroupExport");
+
+        app.MapPost("/tenant/{tenantId:int}/Group/{groupId}/$export", StartGroupExportAsync)
+            .WithName("StartGroupExportForTenant");
 
         // GET /tenant/{tenantId}/_export/{jobId} - Poll export job status
         app.MapGet("/tenant/{tenantId:int}/_export/{jobId}", GetExportStatusAsync)
@@ -191,7 +194,8 @@ public static class ExportEndpoints
                 TypeFilters = typeFilters,
                 OutputFormat = outputFormat ?? ExportConstants.MediaTypeNdjson,
                 ViewDefinitionId = viewDefinition,
-                GroupId = groupId
+                GroupId = groupId,
+                RequestUrl = httpContext.Request.GetDisplayUrl()
             };
 
             var result = await mediator.SendAsync(command, httpContext.RequestAborted);
@@ -311,7 +315,8 @@ public static class ExportEndpoints
                 Since = since,
                 TypeFilters = typeFilters,
                 OutputFormat = outputFormat ?? ExportConstants.MediaTypeNdjson,
-                ViewDefinitionId = viewDefinition
+                ViewDefinitionId = viewDefinition,
+                RequestUrl = httpContext.Request.GetDisplayUrl()
             };
 
             var result = await mediator.SendAsync(command, httpContext.RequestAborted);
@@ -356,6 +361,14 @@ public static class ExportEndpoints
             };
 
             var jobStatus = await mediator.SendAsync(query, httpContext.RequestAborted);
+            var definition = jobStatus.Definition as ExportJobDefinition;
+            var ownerTenantId = definition?.TenantId ?? tenantId;
+
+            if (jobStatus.Status is "Queued" or "Running")
+            {
+                httpContext.Response.Headers.RetryAfter = "1";
+                httpContext.Response.Headers["X-Progress"] = jobStatus.ProgressDescription;
+            }
 
             // Return response based on status
             return jobStatus.Status switch
@@ -371,33 +384,31 @@ public static class ExportEndpoints
 
                 "Completed" => Results.Ok(new
                 {
-                    transactionTime = jobStatus.EndDate ?? jobStatus.CreateDate,
-                    request = $"/tenant/{tenantId}/$export",
+                    transactionTime = jobStatus.CreateDate,
+                    request = definition?.RequestUrl
+                        ?? $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.PathBase}/tenant/{ownerTenantId}/$export",
                     requiresAccessToken = false,
-                    output = await BuildOutputManifestFromResultAsync(jobStatus.Result, blobStorage, httpContext.RequestAborted),
+                    output = await BuildOutputManifestFromResultAsync(jobStatus.Result, ownerTenantId, jobStatus.JobId, blobStorage, httpContext.RequestAborted),
                     error = Array.Empty<object>(),
                 }),
 
-                "Failed" => Results.Ok(new
-                {
-                    transactionTime = jobStatus.EndDate ?? jobStatus.CreateDate,
-                    request = $"/tenant/{tenantId}/$export",
-                    error = new[]
-                    {
-                        new
-                        {
-                            type = "OperationOutcome",
-                            message = jobStatus.ErrorMessage,
-                        },
-                    },
-                }),
+                "Failed" => JobFailure(jobStatus.ErrorMessage ?? "Export failed", StatusCodes.Status500InternalServerError),
+                "Cancelled" => JobFailure("Export cancelled by user", StatusCodes.Status410Gone),
 
-                _ => Results.StatusCode(500),
+                _ => JobFailure($"Unexpected export job status: {jobStatus.Status}", StatusCodes.Status500InternalServerError),
             };
         }
-        catch (InvalidOperationException)
+        catch (System.Collections.Generic.KeyNotFoundException)
         {
             return Results.NotFound(new { error = "Export job not found" });
+        }
+        catch (JsonException)
+        {
+            return JobFailure("Export job has an invalid persisted result or progress record.", StatusCodes.Status500InternalServerError);
+        }
+        catch (FileNotFoundException)
+        {
+            return JobFailure("An output file for this export job is missing from blob storage.", StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -409,6 +420,7 @@ public static class ExportEndpoints
         [FromRoute] string jobId,
         [FromServices] TaskHubClient taskHubClient,
         [FromServices] IBackgroundJobRepository<ExportJobDefinition> jobRepository,
+        [FromServices] ILoggerFactory loggerFactory,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -418,13 +430,36 @@ public static class ExportEndpoints
             return Results.NotFound(new { error = "Export job not found" });
         }
 
+        var logger = loggerFactory.CreateLogger("Ignixa.Api.Endpoints.ExportEndpoints");
+        if (job.Status is "Completed" or "Failed" or "Cancelled")
+        {
+            logger.LogInformation("Export cancellation for {JobId} is superseded by {Status}", jobId, job.Status);
+            return CancellationResult(job.Status);
+        }
+
         // Terminate the orchestration
         var instance = new OrchestrationInstance { InstanceId = jobId };
         await taskHubClient.TerminateInstanceAsync(instance, "Cancelled by user");
 
         job.Status = "Cancelled";
         job.EndDate = DateTimeOffset.UtcNow;
-        await jobRepository.UpdateAsync(job, tenantId, cancellationToken);
+        try
+        {
+            await jobRepository.UpdateAsync(job, tenantId, cancellationToken);
+        }
+        catch (BackgroundJobUpdateConflictException)
+        {
+            var authoritative = await jobRepository.GetAsync(jobId, tenantId, cancellationToken);
+            if (authoritative == null)
+            {
+                logger.LogInformation("Export job {JobId} was removed before cancellation conflict reload", jobId);
+                return Results.NotFound(new { error = "Export job not found" });
+            }
+            logger.LogInformation(
+                "Export cancellation for {JobId} lost to {Status}; preserving authoritative metadata",
+                jobId, authoritative.Status);
+            return CancellationResult(authoritative.Status);
+        }
 
         return Results.NoContent();
     }
@@ -434,32 +469,63 @@ public static class ExportEndpoints
     /// </summary>
     private static async Task<List<object>> BuildOutputManifestFromResultAsync(
         object? result,
+        int tenantId,
+        string jobId,
         IBlobStorageClient blobStorage,
         CancellationToken cancellationToken)
     {
         var outputManifest = new List<object>();
 
-        if (result != null)
+        if (result is not ExportJobResult exportResult)
         {
-            var resultDynamic = result as dynamic;
-            var outputFiles = resultDynamic?.outputFiles as Dictionary<string, string>;
+            throw new JsonException("Completed export job has no typed result.");
+        }
 
-            if (outputFiles != null)
+        foreach (var (fileKey, filePath) in exportResult.ExportedFiles)
+        {
+            var outputPath = filePath;
+            var exists = await blobStorage.BlobExistsAsync(outputPath, cancellationToken);
+            var legacyPrefix = $"tenant/{tenantId}/export/{jobId}/";
+            if (!exists && exportResult.ExportedFileCounts == null &&
+                filePath.StartsWith(legacyPrefix, StringComparison.OrdinalIgnoreCase))
             {
-                foreach (var (resourceType, filePath) in outputFiles)
-                {
-                    var url = await blobStorage.GetBlobUrlAsync(filePath, TimeSpan.FromHours(24), cancellationToken);
-                    outputManifest.Add(new
-                    {
-                        type = resourceType,
-                        url,
-                    });
-                }
+                // Older coordinators persisted tenant/... while their workers wrote partition/....
+                outputPath = $"partition/{filePath["tenant/".Length..]}";
+                exists = await blobStorage.BlobExistsAsync(outputPath, cancellationToken);
+            }
+
+            if (!exists)
+            {
+                throw new FileNotFoundException("Export output blob not found.", filePath);
+            }
+            var resourceType = fileKey.Split('-', 2)[0];
+            var url = await blobStorage.GetBlobUrlAsync(outputPath, TimeSpan.FromHours(24), cancellationToken);
+            if (exportResult.ExportedFileCounts is { } counts)
+            {
+                outputManifest.Add(new { type = resourceType, url, count = counts[fileKey] });
+            }
+            else
+            {
+                // Older persisted jobs have no per-partition counts; do not invent them.
+                outputManifest.Add(new { type = resourceType, url });
             }
         }
 
         return outputManifest;
     }
+
+    private static IResult CancellationResult(string status) =>
+        status == "Cancelled"
+            ? Results.NoContent()
+            : JobFailure($"Export is already {status}; cancellation did not change its terminal outcome.",
+                StatusCodes.Status409Conflict, "conflict");
+
+    private static IResult JobFailure(string diagnostics, int statusCode, string code = "exception") =>
+        Results.Json(new
+        {
+            resourceType = "OperationOutcome",
+            issue = new[] { new { severity = "error", code, diagnostics } }
+        }, contentType: "application/fhir+json", statusCode: statusCode);
 
     /// <summary>
     /// Parses the _typeFilter parameter into a dictionary of resource type to filter query.

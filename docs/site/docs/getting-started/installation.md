@@ -37,6 +37,11 @@ See [Azure Deployment](/docs/server/deployment/azure) for CLI options.
 
 ### From Source
 
+Install .NET SDK 10.0.401 or a later compatible SDK selected by `global.json`.
+This minimum includes the Source Link security fix for
+[GHSA-23fw-v26w-5fgq](https://github.com/advisories/GHSA-23fw-v26w-5fgq);
+the build uses the SDK's built-in Source Link support.
+
 ```bash
 git clone https://github.com/brendankowitz/ignixa-fhir.git
 cd ignixa-fhir

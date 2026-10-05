@@ -19,7 +19,7 @@ public sealed class SchemaVersionResolver : ISchemaVersionResolver
 
     public async Task<int> GetCurrentVersionAsync(int tenantId, CancellationToken cancellationToken)
     {
-        var connectionString = await TenantConnectionStringResolver.ResolveAsync(
+        var connectionString = await TenantConnectionStringResolver.ResolveForSchemaDeploymentAsync(
             _tenantConfigurationStore, tenantId, cancellationToken);
 
         await using var connection = new SqlConnection(connectionString);

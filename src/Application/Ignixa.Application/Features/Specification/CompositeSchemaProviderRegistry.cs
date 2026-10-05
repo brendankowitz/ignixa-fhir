@@ -70,22 +70,16 @@ public sealed class CompositeSchemaProviderRegistry : ICompositeSchemaProviderRe
     }
 
     /// <summary>
-    /// Invalidates cache for all instances of a loaded package with debounce protection.
-    /// Multiple requests within debounce window are coalesced.
-    /// Called when a new package is loaded to refresh validation.
+    /// Invalidates this tenant's schemas before a package mutation is acknowledged.
+    /// Package load/unload must not return while route admission still uses the old generation.
     /// </summary>
     public Task InvalidateCacheForPackageAsync(string packageId, int tenantId, CancellationToken cancellationToken)
     {
         _logger.LogDebug("Requesting cache invalidation for package {PackageId} tenant {TenantId}",
             packageId, tenantId);
 
-        // Use debounce strategy instead of directly invalidating
-        _debounceStrategy.RequestInvalidation(
-            tenantId,
-            async () => await ExecuteInvalidationAsync(tenantId, cancellationToken),
-            cancellationToken);
-
-        return Task.CompletedTask;
+        cancellationToken.ThrowIfCancellationRequested();
+        return ExecuteInvalidationAsync(tenantId, cancellationToken);
     }
 
     /// <summary>
@@ -104,6 +98,12 @@ public sealed class CompositeSchemaProviderRegistry : ICompositeSchemaProviderRe
             cancellationToken);
 
         return Task.CompletedTask;
+    }
+
+    public Task InvalidateCachesForTenantImmediatelyAsync(int tenantId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ExecuteInvalidationAsync(tenantId, cancellationToken);
     }
 
     private Task ExecuteInvalidationAsync(int tenantId, CancellationToken cancellationToken)

@@ -6,10 +6,12 @@
 using System.Security.Cryptography;
 using System.Text;
 using Ignixa.Abstractions;
+using Ignixa.Domain.Abstractions;
 using IType = Ignixa.Abstractions.IType;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Specification;
 using Ignixa.Search.Definition;
 using Ignixa.Specification.ValueSets.Normative;
 
@@ -22,29 +24,33 @@ namespace Ignixa.Application.Features.Metadata.Segments;
 /// </summary>
 public class ResourceInteractionCapabilitySegment : ICapabilitySegment
 {
-    private const int InteractionSetRevision = 2;
+    private const int InteractionSetRevision = 4;
 
     private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<ResourceInteractionCapabilitySegment> _logger;
+    private readonly IFhirRepositoryFactory _repositoryFactory;
 
     public ResourceInteractionCapabilitySegment(
         IFhirVersionContext versionContext,
-        ILogger<ResourceInteractionCapabilitySegment> logger)
+        ILogger<ResourceInteractionCapabilitySegment> logger,
+        IFhirRepositoryFactory repositoryFactory)
     {
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
     }
 
     public string SegmentKey => "interactions";
 
     public int Priority => 20; // Execute after static
 
-    public ValueTask ApplyAsync(
+    public async ValueTask ApplyAsync(
         CapabilityStatementJsonNode statement,
         CapabilityContext context,
         CancellationToken cancellationToken)
     {
         _logger.LogDebug("Applying resource interaction capability segment for {FhirVersion}", context.FhirVersion);
+        var capabilities = await GetStorageCapabilitiesAsync(context, cancellationToken);
 
         // Get schema provider for this FHIR version and tenant (includes custom resource types)
         var schemaProvider = _versionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
@@ -79,8 +85,12 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
                 continue;
             }
 
-            // Build canonical URL from resource type name
-            string canonicalUrl = $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
+            string? canonicalUrl = GetResourceCanonical(schemaProvider, resourceType);
+            if (canonicalUrl == null)
+            {
+                _logger.LogWarning("Could not resolve defining canonical for resource type {ResourceType}", resourceType);
+                continue;
+            }
 
             var resourceComponent = new ResourceComponentJsonNode
             {
@@ -88,7 +98,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
                 Type = resourceType,
                 Profile = ReferenceOrCanonicalJsonNode.FromCanonical(canonicalUrl),
                 Versioning = ResourceComponentJsonNode.ResourceVersionPolicy.Versioned,
-                ReadHistory = true,
+                ReadHistory = capabilities.VersionedRead,
                 UpdateCreate = true,
                 ConditionalCreate = true,
                 ConditionalUpdate = true,
@@ -96,7 +106,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
             };
 
             // Add interactions (will be populated by SearchParameterCapabilitySegment for SearchParam)
-            foreach (var interaction in BuildResourceInteractions(resourceType))
+            foreach (var interaction in BuildResourceInteractions(resourceType, capabilities.VersionedRead))
             {
                 resourceComponent.Interaction.Add(interaction);
             }
@@ -106,17 +116,16 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
 
         // Add system-level interactions
         restComponent.Interaction.Clear();
-        foreach (var interaction in BuildSystemInteractions())
+        foreach (var interaction in BuildSystemInteractions(capabilities.AtomicWrite))
         {
             restComponent.Interaction.Add(interaction);
         }
 
         _logger.LogDebug("Added {Count} resource components with interactions", resourceTypes.Count);
 
-        return ValueTask.CompletedTask;
     }
 
-    public ValueTask<string> GetVersionHashAsync(
+    public async ValueTask<string> GetVersionHashAsync(
         CapabilityContext context,
         CancellationToken cancellationToken)
     {
@@ -130,18 +139,35 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         // InteractionSetRevision participates so that changing the declared interaction set
         // invalidates statements cached under the old hash; the resource type list alone would
         // not move. Bump it whenever BuildResourceInteractions or BuildSystemInteractions changes.
-        var hashInput = $"{context.FhirVersion}|{string.Join(",", resourceTypes)}|{InteractionSetRevision}";
+        var capabilities = await GetStorageCapabilitiesAsync(context, cancellationToken);
+        var identities = resourceTypes.Select(type => $"{type}:{GetResourceCanonical(schemaProvider, type)}");
+        var hashInput = $"{context.FhirVersion}|{string.Join(",", identities)}|{InteractionSetRevision}|{capabilities}";
 
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(hashInput));
-        return ValueTask.FromResult(Convert.ToBase64String(hashBytes));
+        return Convert.ToBase64String(hashBytes);
     }
 
-    private IReadOnlyList<ResourceInteractionJsonNode> BuildResourceInteractions(string resourceType)
+    private static string? GetResourceCanonical(IFhirSchemaProvider provider, string resourceType)
+        => provider is CompositeStructureDefinitionSummaryProvider composite
+            ? composite.GetResourceCanonical(resourceType)
+            : $"http://hl7.org/fhir/StructureDefinition/{resourceType}";
+
+    private async ValueTask<(bool AtomicWrite, bool VersionedRead)> GetStorageCapabilitiesAsync(
+        CapabilityContext context, CancellationToken cancellationToken)
+    {
+        if (context.TenantId is not { } tenantId)
+        {
+            return (false, false);
+        }
+        var repository = await _repositoryFactory.GetRepositoryAsync(tenantId, cancellationToken);
+        return (repository is IAtomicFhirRepository, repository is IVersionedResourceRepository);
+    }
+
+    private IReadOnlyList<ResourceInteractionJsonNode> BuildResourceInteractions(string resourceType, bool versionedRead)
     {
         // History is served by HistoryEndpoints for every resource type. Undeclared interactions
         // are indistinguishable from unimplemented ones to a conformance client, which silently
-        // skips the corresponding tests rather than reporting them. Vread stays undeclared
-        // because no endpoint serves it.
+        // skips the corresponding tests rather than reporting them.
         var interactions = new List<ResourceInteractionJsonNode>
         {
             new() { Code = TypeRestfulInteraction.Read },
@@ -150,6 +176,10 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
             new() { Code = TypeRestfulInteraction.HistoryInstance },
             new() { Code = TypeRestfulInteraction.HistoryType },
         };
+        if (versionedRead)
+        {
+            interactions.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Vread });
+        }
 
         // AuditEvent special case: no mutating interactions (per FHIR spec)
         if (resourceType != "AuditEvent")
@@ -162,13 +192,17 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         return interactions;
     }
 
-    private IReadOnlyList<SystemInteractionJsonNode> BuildSystemInteractions()
+    private IReadOnlyList<SystemInteractionJsonNode> BuildSystemInteractions(bool atomicWrite)
     {
-        return new List<SystemInteractionJsonNode>
+        var interactions = new List<SystemInteractionJsonNode>
         {
-            new() { Code = SystemRestfulInteraction.Transaction },
             new() { Code = SystemRestfulInteraction.Batch },
             new() { Code = SystemRestfulInteraction.HistorySystem },
         };
+        if (atomicWrite)
+        {
+            interactions.Add(new SystemInteractionJsonNode { Code = SystemRestfulInteraction.Transaction });
+        }
+        return interactions;
     }
 }

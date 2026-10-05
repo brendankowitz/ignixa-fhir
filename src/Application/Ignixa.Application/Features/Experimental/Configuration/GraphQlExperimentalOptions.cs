@@ -9,7 +9,14 @@ namespace Ignixa.Application.Features.Experimental.Configuration;
 
 public sealed class GraphQlExperimentalOptions
 {
-    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// Whether the $graphql operation is registered. Defaults to false.
+    /// </summary>
+    /// <remarks>
+    /// Opt-in because each built schema holds hundreds of megabytes of heap, and enabling GraphQL builds
+    /// the schemas in <see cref="WarmupVersions"/> at startup.
+    /// </remarks>
+    public bool Enabled { get; set; }
     public int MaxQueryDepth { get; set; } = 15;
     public bool EnableIntrospection { get; set; } = true;
 

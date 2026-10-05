@@ -74,7 +74,7 @@ public class CanonicalSearchFixture : IAsyncLifetime
             // [0] - Profile with version 1: http://example.org/.../observation-profile|1
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("final")
                 .WithProfile(ObservationProfileV1)
                 .Build(),
@@ -82,7 +82,7 @@ public class CanonicalSearchFixture : IAsyncLifetime
             // [1] - Profile with version 2: http://example.org/.../observation-profile|2
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("final")
                 .WithProfile(ObservationProfileV2)
                 .Build(),
@@ -90,7 +90,7 @@ public class CanonicalSearchFixture : IAsyncLifetime
             // [2] - Profile with version 2 and fragment: http://example.org/.../observation-profile|2#section
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("final")
                 .WithProfile(ObservationProfileV2WithFragment)
                 .Build(),
@@ -98,7 +98,7 @@ public class CanonicalSearchFixture : IAsyncLifetime
             // [3] - Multiple profiles: base profile + alternate profile (no version)
             ObservationBuilder.Create(_apiFixture.SchemaProvider)
                 .WithTag(Tag)
-                .WithCode("code", "system")
+                .WithCode("code", "http://example.org/test-code")
                 .WithStatus("final")
                 .WithProfile(ObservationProfileUri)
                 .WithProfile(ObservationProfileUriAlternate)

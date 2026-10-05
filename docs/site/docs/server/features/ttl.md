@@ -113,9 +113,9 @@ X-TTL: 0
 {"resourceType": "Patient", "id": "temp-patient", "active": true}
 ```
 
-### Update without changing TTL
+### Update without a TTL header
 
-Simply omit the `X-TTL` header - the existing TTL is preserved:
+Omitting `X-TTL` on PUT clears the existing expiration and makes the new version permanent:
 
 ```http
 PUT /Patient/temp-patient
@@ -130,18 +130,22 @@ Content-Type: application/fhir+json
 
 TTL is implemented as a server-managed database column, not FHIR resource content:
 
-- **Storage**: `ExpiresAt` column on resource table (nullable `DATETIMEOFFSET`)
+- **Storage**: SQL `ResourceTtl` table with an `ExpiresAt` timestamp; absence of a row means no expiration
 - **Input**: `X-TTL` HTTP header on PUT/POST requests
 - **Search**: `_ttl` built-in parameter (like `_id` and `_lastUpdated`)
 - **Cleanup**: Background DurableTask orchestration hard-deletes expired resources
 
 ### Key Design Decisions
 
-1. **No versioning impact** - TTL changes update a column, not the resource. No new versions are created for TTL-only changes.
+1. **Separate expiration metadata** - TTL is stored outside resource JSON. A PUT still creates a resource version, and its expiration is updated or cleared atomically with the core write.
 
 2. **TTL not visible in resource JSON** - By design, TTL is operational metadata separate from clinical content. Use `_ttl:missing=false` to find resources with TTL.
 
 3. **Hard delete on expiration** - Expired resources are permanently removed, including all history versions and search indexes.
+
+   SQL cleanup rechecks the selected version and expiration while holding locks in the deletion transaction.
+   A resource renewed, replaced, or made permanent after selection is skipped with its history and indexes intact.
+   Skips are not counted or audited as successful deletions. Explicit hard deletion remains independent of TTL.
 
 4. **Header-only input** - TTL cannot be set via the resource body or PATCH. This is intentional - TTL is infrastructure, not clinical data.
 

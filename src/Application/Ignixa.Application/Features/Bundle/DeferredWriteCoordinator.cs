@@ -1,34 +1,21 @@
-// -------------------------------------------------------------------------------------------------
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-// -------------------------------------------------------------------------------------------------
-
+using System.Globalization;
+using System.Collections.Concurrent;
 using System.Threading.Channels;
-using EnsureThat;
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
-using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Domain.Constants;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Bundle;
 
 /// <summary>
-/// Coordinates deferred write operations for bundle processing.
-/// Uses a channel-based approach with TaskCompletionSource to enable:
-/// 1. Handlers queue writes and immediately return a Task
-/// 2. Background batch processor drains channel and writes in batches
-/// 3. Handlers' awaits complete when batch processor finishes writing
-/// 4. All batches use the same transaction ID for atomicity
-///
-/// Multi-Tenancy (ADR-2523 Phase 20 - Isolated Mode):
-/// - Transaction IDs allocated from TENANT'S repository (not Partition 0)
-/// - Each tenant manages its own transactions in its own datastore
-/// - Transaction IDs only need to be unique per-tenant (not globally)
-/// - Bundles restricted to single tenant (cross-tenant bundles not supported in Isolated mode)
-/// - Uses IPartitionStrategy to validate all resources belong to same partition
+/// Transactions stage their complete write set before one atomic core merge.
+/// Batch entries commit independently, including each entry's own version precondition.
 /// </summary>
 public class DeferredWriteCoordinator
 {
@@ -37,8 +24,8 @@ public class DeferredWriteCoordinator
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<DeferredWriteCoordinator> _logger;
-    private readonly TransactionId _transactionId;
-    private readonly HashSet<int> _touchedPartitions;
+    private readonly List<(int EntryIndex, ResourceWrapper Resource)> _stagedWrites = [];
+    private readonly ConcurrentDictionary<int, bool> _createdEntries = new();
 
     private DeferredWriteCoordinator(
         int channelCapacity,
@@ -46,448 +33,208 @@ public class DeferredWriteCoordinator
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
         ILogger<DeferredWriteCoordinator> logger,
-        TransactionId transactionId)
+        bool atomic)
     {
-        EnsureArg.IsGt(channelCapacity, 0, nameof(channelCapacity));
-        EnsureArg.IsNotNull(repositoryFactory, nameof(repositoryFactory));
-        EnsureArg.IsNotNull(partitionStrategy, nameof(partitionStrategy));
-        EnsureArg.IsNotNull(contextAccessor, nameof(contextAccessor));
-        EnsureArg.IsNotNull(logger, nameof(logger));
-
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channelCapacity);
         _repositoryFactory = repositoryFactory;
         _partitionStrategy = partitionStrategy;
         _contextAccessor = contextAccessor;
         _logger = logger;
-        _transactionId = transactionId;
-        _touchedPartitions = new HashSet<int>();
-
-        // Create bounded channel with backpressure
-        _writeChannel = Channel.CreateBounded<DeferredWriteOperation>(
-            new BoundedChannelOptions(channelCapacity)
-            {
-                FullMode = BoundedChannelFullMode.Wait
-            });
-
-        _logger.LogDebug(
-            "DeferredWriteCoordinator created with capacity {Capacity}, system transaction ID {TransactionId}",
-            channelCapacity,
-            transactionId);
+        IsAtomic = atomic;
+        _writeChannel = Channel.CreateBounded<DeferredWriteOperation>(channelCapacity);
     }
 
-    /// <summary>
-    /// Creates a new DeferredWriteCoordinator instance with a reserved transaction ID.
-    /// Multi-Tenancy: Allocates globally unique transaction ID from Partition 0 (system partition).
-    /// This ensures transaction IDs are unique across the entire system, not just per tenant.
-    /// </summary>
-    /// <param name="channelCapacity">Maximum number of pending write operations.</param>
-    /// <param name="repositoryFactory">Factory for obtaining partition-specific repositories.</param>
-    /// <param name="partitionStrategy">Strategy for determining which partition(s) to write to.</param>
-    /// <param name="contextAccessor">Accessor for FHIR request context (needed to extract tenant context per operation).</param>
-    /// <param name="logger">Logger instance.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
+    public bool IsAtomic { get; }
+    public int PendingOperationCount => _writeChannel.Reader.Count;
+    public bool IsCompleted => _writeChannel.Reader.Completion.IsCompleted;
+
     public static async Task<DeferredWriteCoordinator> CreateAsync(
         int channelCapacity,
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
         ILogger<DeferredWriteCoordinator> logger,
+        bool atomic = false,
         CancellationToken cancellationToken = default)
     {
-        // Get FHIR request context (populated by FhirRequestContextMiddleware)
         var context = contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
-
-        // Extract tenant ID from context
-        // In Isolated mode, tenant ID equals partition ID
-        var tenantId = context.TenantId;
-
-        // Allocate transaction from the TENANT'S repository (not Partition 0)
-        // This ensures the transaction exists in the correct datastore
-        // (e.g., SQL's Transactions table for SQL tenants, FileSystem for FileSystem tenants)
-        var tenantRepository = await repositoryFactory.GetRepositoryAsync(tenantId, cancellationToken);
-        var transactionId = await tenantRepository.GetNextTransactionIdAsync(cancellationToken);
-
-        logger.LogDebug(
-            "Allocated transaction ID {TransactionId} from tenant repository (Partition {PartitionId})",
-            transactionId,
-            tenantId);
-
-        return new DeferredWriteCoordinator(
-            channelCapacity,
-            repositoryFactory,
-            partitionStrategy,
-            contextAccessor,
-            logger,
-            transactionId);
+        var repository = await repositoryFactory.GetRepositoryAsync(context.TenantId, cancellationToken);
+        if (atomic && repository is not IAtomicFhirRepository)
+        {
+            throw new Domain.Exceptions.NotImplementedException("This storage provider does not support atomic transactions.");
+        }
+        return new DeferredWriteCoordinator(channelCapacity, repositoryFactory, partitionStrategy,
+            contextAccessor, logger, atomic);
     }
 
-    /// <summary>
-    /// Queues a write operation and returns a Task that completes when the write finishes.
-    /// </summary>
-    /// <param name="wrapper">The resource wrapper containing all resource data.</param>
-    /// <param name="entryIndex">The entry index (for logging). Defaults to 0 when called from handler context.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Task that completes with ResourceKey when write finishes.</returns>
     public async Task<ResourceKey> QueueWriteAsync(
         ResourceWrapper wrapper,
         int entryIndex = 0,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(wrapper);
-
-        // Create TaskCompletionSource with RunContinuationsAsynchronously flag
-        // This is CRITICAL: Without this flag, continuations run on the batch processor thread,
-        // causing deadlocks and poor performance.
-        var tcs = new TaskCompletionSource<ResourceKey>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var operation = new DeferredWriteOperation
+        if (IsAtomic)
+        {
+            return await StageWriteAsync(wrapper, entryIndex, cancellationToken);
+        }
+        var completion = new TaskCompletionSource<ResourceKey>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await _writeChannel.Writer.WriteAsync(new DeferredWriteOperation
         {
             Wrapper = wrapper,
-            CompletionSource = tcs,
-            EntryIndex = entryIndex
-        };
-
-        _logger.LogWarning(
-            "QUEUE: Entry {EntryIndex} - {ResourceType}/{ResourceId}",
-            entryIndex,
-            wrapper.ResourceType,
-            wrapper.ResourceId);
-
-        // Write to channel (may block if channel is full - provides backpressure)
-        await _writeChannel.Writer.WriteAsync(operation, cancellationToken);
-
-        // Return the Task - handler awaits this, it completes when batch processor writes
-        return await tcs.Task;
+            EntryIndex = entryIndex,
+            CompletionSource = completion
+        }, cancellationToken);
+        return await completion.Task.WaitAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Processes a batch of queued write operations.
-    /// Called by background batch processor task.
-    /// Multi-Tenancy: Groups operations by partition using IPartitionStrategy and writes to each partition.
-    /// </summary>
-    /// <param name="batchSize">Maximum number of operations to process in one batch.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of exceptions that occurred during processing (empty if all succeeded).</returns>
-    public async Task<List<Exception>> ProcessBatchAsync(
-        int batchSize,
-        CancellationToken cancellationToken)
+    public async Task<List<Exception>> ProcessBatchAsync(int batchSize, CancellationToken cancellationToken)
     {
-        EnsureArg.IsGt(batchSize, 0, nameof(batchSize));
-
-        var batch = new List<DeferredWriteOperation>();
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
         var errors = new List<Exception>();
-
-        // Read up to batchSize operations from channel
-        // Wait for at least one operation to be available
         if (!await _writeChannel.Reader.WaitToReadAsync(cancellationToken))
         {
-            return errors; // Channel completed with no data
-        }
-
-        // Read all currently available operations (up to batchSize)
-        while (batch.Count < batchSize && _writeChannel.Reader.TryRead(out var operation))
-        {
-            batch.Add(operation);
-        }
-
-        if (batch.Count == 0)
-        {
-            return errors; // No operations to process
-        }
-
-        _logger.LogDebug("Processing batch of {Count} write operations", batch.Count);
-
-        // Group operations by partition using IPartitionStrategy
-        var operationsByPartition = new Dictionary<int, List<(DeferredWriteOperation Operation, int Index)>>();
-
-        try
-        {
-            // Get FHIR request context (populated by FhirRequestContextMiddleware)
-            var context = _contextAccessor.RequestContext
-                ?? throw new InvalidOperationException("FHIR request context not available");
-
-            var partitionContext = new PartitionResolutionContext
-            {
-                TenantId = context.TenantId,
-                TenantConfiguration = context.TenantConfiguration
-            };
-
-            // Determine partition for each operation
-            for (int i = 0; i < batch.Count; i++)
-            {
-                var operation = batch[i];
-
-                // Use partition strategy to determine where this resource should be written
-                var partition = _partitionStrategy.DetermineWritePartition(partitionContext, operation.Wrapper.Resource);
-
-                // Validate single partition (writes always go to one partition)
-                if (partition.PartitionIds.Count != 1)
-                {
-                    _logger.LogError(
-                        "Write operation for entry {EntryIndex} ({ResourceType}/{ResourceId}) requires exactly 1 partition, received {Count} partition IDs",
-                        operation.EntryIndex,
-                        operation.Wrapper.ResourceType,
-                        operation.Wrapper.ResourceId,
-                        partition.PartitionIds.Count);
-                    throw new InvalidOperationException(
-                        $"Write operation requires exactly 1 partition, received {partition.PartitionIds.Count} partition IDs");
-                }
-
-                int partitionId = partition.PartitionIds[0];
-
-                // Group by partition
-                if (!operationsByPartition.ContainsKey(partitionId))
-                {
-                    operationsByPartition[partitionId] = new List<(DeferredWriteOperation, int)>();
-                }
-
-                operationsByPartition[partitionId].Add((operation, i));
-            }
-
-            _logger.LogDebug(
-                "Grouped {TotalCount} operations into {PartitionCount} partition(s): {Partitions}",
-                batch.Count,
-                operationsByPartition.Count,
-                string.Join(", ", operationsByPartition.Select(kvp => $"Partition {kvp.Key} ({kvp.Value.Count} ops)")));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to group operations by partition");
-
-            // Fail all operations
-            foreach (var operation in batch)
-            {
-                operation.CompletionSource.SetException(ex);
-            }
-
-            errors.Add(ex);
             return errors;
         }
-
-        // Write to each partition's repository
-        var allResults = new ResourceKey[batch.Count];
-
-        foreach (var (partitionId, operations) in operationsByPartition)
+        for (var i = 0; i < batchSize && _writeChannel.Reader.TryRead(out var operation); i++)
         {
             try
             {
-                // Get partition-specific repository
+                var partitionId = ResolvePartition(operation.Wrapper);
                 var repository = await _repositoryFactory.GetRepositoryAsync(partitionId, cancellationToken);
-
-                // Convert to batch write operations, including entryIndex for surrogate ID calculation
-                var batchOperations = operations
-                    .Select(tuple => (
-                        tuple.Operation.Wrapper.ResourceType,
-                        tuple.Operation.Wrapper.ResourceId,
-                        tuple.Operation.Wrapper.Resource,
-                        tuple.Operation.Wrapper.SearchIndices ?? (IReadOnlyList<object>)Array.Empty<object>(),
-                        tuple.Operation.Wrapper.Request.Method,
-                        tuple.Operation.EntryIndex  // Pass entry index for surrogate ID calculation
-                    ))
-                    .ToList();
-
-                _logger.LogDebug(
-                    "Writing batch of {Count} resources to Partition {PartitionId}: {Resources}",
-                    batchOperations.Count,
-                    partitionId,
-                    string.Join(", ", batchOperations.Select(op => $"{op.ResourceType}/{op.ResourceId} (entry {op.EntryIndex})")));
-
-                // Execute batch write using the coordinator's transaction ID
-                // Each operation's entryIndex is used directly for surrogate ID calculation
-                var results = await repository.BatchWriteAsync(_transactionId, batchOperations, cancellationToken);
-
-                // Track partition
-                _touchedPartitions.Add(partitionId);
-
-                // Store results in correct positions
-                for (int i = 0; i < operations.Count; i++)
-                {
-                    var (operation, originalIndex) = operations[i];
-                    var result = results[i];
-
-                    allResults[originalIndex] = result;
-
-                    _logger.LogDebug(
-                        "Write completed for entry {EntryIndex}: {ResourceType}/{ResourceId} version {VersionId} (Partition {PartitionId})",
-                        operation.EntryIndex,
-                        result.ResourceType,
-                        result.Id,
-                        result.VersionId,
-                        partitionId);
-                }
-
-                _logger.LogDebug(
-                    "Batch write to Partition {PartitionId} complete: {Count} resources written",
-                    partitionId,
-                    operations.Count);
+                var result = await repository.CreateOrUpdateAsync(operation.Wrapper, cancellationToken);
+                _createdEntries[operation.EntryIndex] = result.IsCreated ?? result.Key.VersionId == "1";
+                operation.CompletionSource.TrySetResult(result.Key);
             }
-            catch (ResourceVersionConflictException conflictEx)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning(
-                    "Resource conflict in batch write for Partition {PartitionId}: {ResourceType}/{ResourceId} " +
-                    "(Attempted SurrogateId: {AttemptedId}, Existing SurrogateId: {ExistingId})",
-                    partitionId,
-                    conflictEx.ResourceType,
-                    conflictEx.ResourceId,
-                    conflictEx.AttemptedSurrogateId,
-                    conflictEx.ExistingSurrogateId);
-
-                // Fail all operations in this partition with the conflict exception
-                foreach (var (operation, _) in operations)
-                {
-                    operation.CompletionSource.TrySetException(conflictEx);
-                }
-
-                errors.Add(conflictEx);
+                operation.CompletionSource.TrySetCanceled(cancellationToken);
+                throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
-                    "Batch write failed for Partition {PartitionId} ({Count} resources)",
-                    partitionId,
-                    operations.Count);
-
-                // Fail all operations in this partition
-                foreach (var (operation, _) in operations)
-                {
-                    operation.CompletionSource.SetException(ex);
-                }
-
+                _logger.LogWarning(ex, "Batch entry {EntryIndex} failed independently", operation.EntryIndex);
+                operation.CompletionSource.TrySetException(ex);
                 errors.Add(ex);
             }
         }
-
-        // Complete all successful TaskCompletionSources
-        for (int i = 0; i < batch.Count; i++)
-        {
-            var operation = batch[i];
-            var result = allResults[i];
-
-            if (result != null && !operation.CompletionSource.Task.IsCompleted)
-            {
-                operation.CompletionSource.SetResult(result);
-            }
-        }
-
-        if (errors.Count == 0)
-        {
-            _logger.LogDebug(
-                "Batch processing complete: {Count} resources written successfully across {PartitionCount} partition(s)",
-                batch.Count,
-                operationsByPartition.Count);
-        }
-
         return errors;
     }
 
-    /// <summary>
-    /// Signals that no more writes will be queued.
-    /// Call this after all entries have been queued.
-    /// </summary>
-    public void CompleteWrites()
+    private int ResolvePartition(ResourceWrapper wrapper)
     {
-        _writeChannel.Writer.Complete();
-        _logger.LogDebug("Write channel completed (no more writes will be queued)");
-    }
-
-    /// <summary>
-    /// Signals that no more writes will be queued due to an error.
-    /// </summary>
-    /// <param name="exception">The exception that caused the failure.</param>
-    public void CompleteWrites(Exception exception)
-    {
-        EnsureArg.IsNotNull(exception, nameof(exception));
-
-        _writeChannel.Writer.Complete(exception);
-        _logger.LogWarning(exception, "Write channel completed with error");
-    }
-
-    /// <summary>
-    /// Gets the number of pending write operations in the channel.
-    /// Useful for diagnostics and monitoring.
-    /// </summary>
-    public int PendingOperationCount => _writeChannel.Reader.Count;
-
-    /// <summary>
-    /// Gets whether the write channel has been completed (no more writes will be queued).
-    /// Used by background processors to determine when to exit.
-    /// </summary>
-    public bool IsCompleted => _writeChannel.Reader.Completion.IsCompleted;
-
-    /// <summary>
-    /// Waits for data to become available in the channel or for the channel to complete.
-    /// Returns true when data is available, false when channel is completed with no data.
-    /// </summary>
-    public async Task<bool> WaitToReadAsync(CancellationToken cancellationToken = default)
-    {
-        return await _writeChannel.Reader.WaitToReadAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Commits the transaction by renaming the lock file to committed file.
-    /// Should be called after all batches are complete and writes are finished.
-    /// Multi-Tenancy: Commits transaction across all partitions that were written to during bundle processing.
-    /// </summary>
-    public async Task CommitAsync(CancellationToken cancellationToken = default)
-    {
-        if (_touchedPartitions.Count == 0)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+        var partition = _partitionStrategy.DetermineWritePartition(new PartitionResolutionContext
         {
-            _logger.LogWarning(
-                "Transaction {TransactionId} has no partitions to commit (no writes were processed)",
-                _transactionId);
+            TenantId = context.TenantId,
+            TenantConfiguration = context.TenantConfiguration
+        }, wrapper.Resource);
+        if (partition.PartitionIds.Count != 1 || (IsAtomic && partition.PartitionIds[0] != context.TenantId))
+        {
+            throw new BadRequestException("A transaction must target exactly one tenant partition.");
+        }
+        return partition.PartitionIds[0];
+    }
+
+    private async Task<ResourceKey> StageWriteAsync(ResourceWrapper wrapper, int entryIndex, CancellationToken cancellationToken)
+    {
+        var partitionId = ResolvePartition(wrapper);
+        if (_stagedWrites.Any(write =>
+            write.Resource.ResourceType == wrapper.ResourceType && write.Resource.ResourceId == wrapper.ResourceId))
+        {
+            throw new BadRequestException("A transaction cannot write the same resource more than once.");
+        }
+        var repository = await _repositoryFactory.GetRepositoryAsync(partitionId, cancellationToken);
+        var existing = await repository.GetAsync(new ResourceKey(wrapper.ResourceType, wrapper.ResourceId), cancellationToken);
+        if (wrapper.ExpectedVersionId != null && wrapper.ExpectedVersionId != existing?.VersionId)
+        {
+            throw new PreconditionFailedException("The supplied If-Match version is not current.");
+        }
+        var version = checked(int.Parse(existing?.VersionId ?? "0", CultureInfo.InvariantCulture) + 1).ToString(CultureInfo.InvariantCulture);
+        wrapper.Resource.Meta.VersionId = version;
+        wrapper.Resource.Meta.LastUpdatedOffset = DateTimeOffset.UtcNow;
+        _stagedWrites.Add((entryIndex, wrapper with { ExpectedVersionId = existing?.VersionId ?? "0", VersionId = version }));
+        _createdEntries[entryIndex] = existing == null || existing.IsDeleted;
+        return new ResourceKey(wrapper.ResourceType, wrapper.ResourceId, version, partitionId);
+    }
+
+    public bool IsCreated(int entryIndex) => _createdEntries[entryIndex];
+
+    public ResourceWrapper? FindStagedResource(string resourceType, string resourceId) =>
+        _stagedWrites.FirstOrDefault(write =>
+            write.Resource.ResourceType == resourceType && write.Resource.ResourceId == resourceId).Resource;
+
+    public async Task CommitAtomicAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+        var repository = await _repositoryFactory.GetRepositoryAsync(context.TenantId, cancellationToken);
+        await ((IAtomicFhirRepository)repository).WriteTransactionAsync(
+            _stagedWrites.Select(write => write.Resource).ToArray(), cancellationToken);
+    }
+
+    public void ResolveReferenceAliases(
+        IReadOnlyDictionary<string, string> aliases,
+        IFhirVersionContext versionContext,
+        CancellationToken cancellationToken)
+    {
+        if (aliases.Count == 0)
+        {
             return;
         }
-
-        _logger.LogDebug(
-            "Committing transaction {TransactionId} across {Count} partition(s): {Partitions}",
-            _transactionId,
-            _touchedPartitions.Count,
-            string.Join(", ", _touchedPartitions));
-
-        // Commit transaction on all touched partitions
-        var commitErrors = new List<Exception>();
-
-        foreach (var partitionId in _touchedPartitions)
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+        var schemaProvider = versionContext.GetBaseSchemaProvider(context.FhirVersion);
+        var indexer = versionContext.GetSearchIndexer(context.FhirVersion, context.TenantId);
+        for (var index = 0; index < _stagedWrites.Count; index++)
         {
-            try
+            cancellationToken.ThrowIfCancellationRequested();
+            var (entryIndex, wrapper) = _stagedWrites[index];
+            if (BundleReferencePreProcessor.RewriteReferenceAliases(wrapper.Resource.MutableNode, aliases))
             {
-                var repository = await _repositoryFactory.GetRepositoryAsync(partitionId, cancellationToken);
-                await repository.CommitTransactionAsync(_transactionId, cancellationToken);
-
-                _logger.LogDebug(
-                    "Transaction {TransactionId} committed successfully on Partition {PartitionId}",
-                    _transactionId,
-                    partitionId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Failed to commit transaction {TransactionId} on Partition {PartitionId}",
-                    _transactionId,
-                    partitionId);
-                commitErrors.Add(ex);
+                // Conditional creates may select existing IDs. JSON and reference indexes must both
+                // reflect those final identities before the single core write.
+                wrapper.Resource.InvalidateCaches();
+                _stagedWrites[index] = (entryIndex, wrapper with
+                {
+                    SearchIndices = indexer.Extract((IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray()
+                });
             }
         }
-
-        if (commitErrors.Count > 0)
-        {
-            throw new AggregateException(
-                $"Failed to commit transaction {_transactionId} on {commitErrors.Count} partition(s)",
-                commitErrors);
-        }
-
-        _logger.LogInformation(
-            "Transaction {TransactionId} committed successfully across {Count} partition(s): {Partitions}",
-            _transactionId,
-            _touchedPartitions.Count,
-            string.Join(", ", _touchedPartitions));
     }
 
-    /// <summary>
-    /// Gets the transaction ID for this coordinator.
-    /// </summary>
-    public TransactionId TransactionId => _transactionId;
+    public BundleEntryResponse CompleteResponse(
+        int entryIndex,
+        BundleEntryResponse response,
+        IReadOnlyDictionary<string, string> aliases)
+    {
+        var writes = _stagedWrites.Where(write => write.EntryIndex == entryIndex).Take(2).ToArray();
+        if (writes.Length == 1)
+        {
+            var resource = writes[0].Resource;
+            response = response with
+            {
+                ResourceJson = response.ResourceJson == null || resource.IsDeleted ? response.ResourceJson : resource.Resource.SerializeToString(),
+                LastModified = resource.Resource.Meta.LastUpdatedOffset
+            };
+        }
+        if (aliases.Count > 0 && response.ResourceJson != null)
+        {
+            var json = JsonNode.Parse(response.ResourceJson);
+            if (BundleReferencePreProcessor.RewriteReferenceAliases(json, aliases))
+            {
+                response = response with { ResourceJson = json!.ToJsonString() };
+            }
+        }
+        return response;
+    }
+
+    public void CompleteWrites() => _writeChannel.Writer.TryComplete();
+    public void CompleteWrites(Exception exception) => _writeChannel.Writer.TryComplete(exception);
+    public async Task<bool> WaitToReadAsync(CancellationToken cancellationToken = default) =>
+        await _writeChannel.Reader.WaitToReadAsync(cancellationToken);
+
+    public Task CommitAsync(CancellationToken cancellationToken = default) =>
+        IsAtomic ? CommitAtomicAsync(cancellationToken) : Task.CompletedTask;
 }

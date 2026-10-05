@@ -127,7 +127,7 @@ The API supports multi-tenant deployments with isolated data stores per tenant. 
         "FhirVersion": "4.0",
         "IsActive": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "ConnectionString": "Server=...;Database=FhirClinicA;..."
         }
       }

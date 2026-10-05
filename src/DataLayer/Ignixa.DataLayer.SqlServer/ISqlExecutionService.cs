@@ -16,11 +16,17 @@ public interface ISqlExecutionService
     /// <paramref name="command"/>.Connection is overwritten by this call and must not be relied
     /// upon by the caller afterward.
     /// </summary>
+    /// <param name="idempotency">
+    /// Whether <paramref name="command"/> is safe for the transient-fault pipeline to execute more than
+    /// once. Reads are; an <c>INSERT ... OUTPUT INSERTED</c> -- which comes through this method rather than
+    /// <see cref="ExecuteNonQueryAsync"/> precisely because it needs the generated identity back -- is not.
+    /// </param>
     Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
         int tenantId,
         SqlCommand command,
         Func<SqlDataReader, TResult> readRow,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent);
 
     /// <summary>
     /// Executes <paramref name="command"/> against <paramref name="tenantId"/>'s database as a
@@ -28,18 +34,49 @@ public interface ISqlExecutionService
     /// <paramref name="command"/>.Connection is overwritten by this call and must not be relied
     /// upon by the caller afterward. Transient SQL errors (including command timeouts) are
     /// retried by default; because a timeout does not guarantee the server did not already commit
-    /// the statement, <paramref name="command"/> must be safe to execute more than once
-    /// (idempotent) unless <paramref name="disableRetries"/> is set.
+    /// the statement, <paramref name="command"/> must be safe to execute more than once unless
+    /// <paramref name="idempotency"/> says otherwise.
     /// </summary>
-    /// <param name="disableRetries">
-    /// When <c>true</c>, disables the transient-fault retry pipeline for this call. Set this for
-    /// commands whose side effects are not safe to execute more than once and that the caller
-    /// hasn't made idempotent (e.g. via an idempotency key); a transient failure then propagates
+    /// <param name="idempotency">
+    /// Whether <paramref name="command"/> is safe for the transient-fault pipeline to execute more than
+    /// once. <see cref="SqlCommandIdempotency.NonIdempotent"/> makes a transient failure propagate
     /// immediately instead of being retried.
     /// </param>
     Task<int> ExecuteNonQueryAsync(
         int tenantId,
         SqlCommand command,
         CancellationToken cancellationToken,
-        bool disableRetries = false);
+        SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent);
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against one connection inside one SQL transaction, committing when it
+    /// returns and rolling back when it throws. Without this, every multi-statement operation in this layer
+    /// is a sequence of independently auto-committed statements on independent connections, and a failure
+    /// part-way leaves the earlier ones applied.
+    /// </summary>
+    /// <param name="work">
+    /// The unit of work. It receives an <see cref="ISqlTransactionContext"/> to run its commands through --
+    /// commands run any other way do not join the transaction. <b>It may be invoked more than once</b>: a
+    /// transient fault before the commit rolls the transaction back and restarts the whole unit, which is
+    /// what makes retrying it safe. It must therefore build its own commands and not depend on in-memory
+    /// state a previous attempt mutated.
+    /// </param>
+    /// <exception cref="SqlTransactionCommitException">
+    /// The commit itself failed, so whether the work was applied is unknown. This is never retried -- see
+    /// that type for why.
+    /// </exception>
+    Task<TResult> ExecuteInTransactionAsync<TResult>(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The no-result overload of
+    /// <see cref="ExecuteInTransactionAsync{TResult}(int, Func{ISqlTransactionContext, CancellationToken, Task{TResult}}, CancellationToken)"/>,
+    /// for units of work whose whole point is their side effects.
+    /// </summary>
+    Task ExecuteInTransactionAsync(
+        int tenantId,
+        Func<ISqlTransactionContext, CancellationToken, Task> work,
+        CancellationToken cancellationToken);
 }

@@ -83,13 +83,13 @@ public class ProfileAwareValidationSchemaResolverTests
     }
 
     [Fact]
-    public void GivenMetaProfileWithVersionSuffix_WhenResolving_ThenStripsVersionForLookup()
+    public void GivenMetaProfileWithVersionSuffix_WhenResolving_ThenPreservesVersionForLookup()
     {
         var inner = Substitute.For<IValidationSchemaResolver>();
         inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")
             .Returns(MakeEmptySchema("http://hl7.org/fhir/StructureDefinition/Patient", "Patient"));
         var profileSchema = MakeEmptySchema("http://example.org/StructureDefinition/MyPatient", "Patient");
-        inner.GetSchema("http://example.org/StructureDefinition/MyPatient")
+        inner.GetSchema("http://example.org/StructureDefinition/MyPatient|2.1.0")
             .Returns(profileSchema);
 
         var resolver = new ProfileAwareValidationSchemaResolver(inner);
@@ -100,8 +100,8 @@ public class ProfileAwareValidationSchemaResolverTests
         var resolved = resolver.ResolveForElement(element);
 
         resolved.ShouldNotBeNull();
-        // The inner resolver must have been queried with the unversioned canonical.
-        inner.Received(1).GetSchema("http://example.org/StructureDefinition/MyPatient");
+        inner.Received(1).GetSchema("http://example.org/StructureDefinition/MyPatient|2.1.0");
+        inner.DidNotReceive().GetSchema("http://example.org/StructureDefinition/MyPatient");
     }
 
     [Fact]
@@ -176,17 +176,37 @@ public class ProfileAwareValidationSchemaResolverTests
 
         var resolver = new ProfileAwareValidationSchemaResolver(inner);
         var element = ParseElement("""
-            {"resourceType":"Patient","id":"x","meta":{"profile":["http://example.org/profile","http://example.org/profile|2.0.0"]}}
+            {"resourceType":"Patient","id":"x","meta":{"profile":["http://example.org/profile","http://example.org/profile"]}}
             """);
 
         var resolved = resolver.ResolveForElement(element);
 
         resolved.ShouldNotBeNull();
-        // Inner resolver should have been queried for the profile exactly once,
-        // even though meta.profile listed it twice (with and without version suffix).
+        // Identical asserted identities are composed once.
         inner.Received(1).GetSchema("http://example.org/profile");
         // Composed schema should contain the profile's check exactly once.
         resolved!.Checks.Count(c => ReferenceEquals(c, profileCheck)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenTwoAssertedVersions_WhenResolving_ThenKeepsBothProfileChecks()
+    {
+        var inner = Substitute.For<IValidationSchemaResolver>();
+        inner.GetSchema("http://hl7.org/fhir/StructureDefinition/Patient")
+            .Returns(MakeEmptySchema("http://hl7.org/fhir/StructureDefinition/Patient", "Patient"));
+        var first = Substitute.For<IValidationCheck>();
+        var second = Substitute.For<IValidationCheck>();
+        inner.GetSchema("http://example.org/profile|1")
+            .Returns(MakeSchemaWithProfileCheck("http://example.org/profile|1", "Patient", first));
+        inner.GetSchema("http://example.org/profile|2")
+            .Returns(MakeSchemaWithProfileCheck("http://example.org/profile|2", "Patient", second));
+        var element = ParseElement("""
+            {"resourceType":"Patient","meta":{"profile":["http://example.org/profile|1","http://example.org/profile|2"]}}
+            """);
+        var schema = new ProfileAwareValidationSchemaResolver(inner).ResolveForElement(element)!;
+        schema.Checks.ShouldContain(first);
+        schema.Checks.ShouldContain(second);
+        inner.DidNotReceive().GetSchema("http://example.org/profile");
     }
 
     // ===== IValidationSchemaResolver interface contract (drop-in replacement) =====

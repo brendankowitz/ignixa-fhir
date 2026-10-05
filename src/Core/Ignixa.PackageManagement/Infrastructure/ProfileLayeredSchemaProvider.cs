@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.PackageManagement.Infrastructure.Snapshot;
@@ -15,9 +16,8 @@ namespace Ignixa.PackageManagement.Infrastructure;
 /// <summary>
 /// <see cref="IFhirSchemaProvider"/> that delegates to a base FHIR-version schema provider
 /// and additionally exposes profile <c>StructureDefinition</c>s extracted from one or more
-/// loaded IG packages. Profiles are indexed by their resource <c>id</c> - the last URL
-/// segment that <c>StructureDefinitionSchemaResolver</c> uses to look up via
-/// <see cref="ISchema.GetTypeDefinition(string)"/>.
+/// loaded IG packages. Profiles are indexed by full canonical and business version.
+/// Resource-id aliases remain available for existing direct type-name callers.
 /// <para>
 /// When multiple packages declare a profile with the same id, the last one added wins.
 /// Use ordering to express precedence (e.g. layer IG-specific profiles after their
@@ -28,6 +28,8 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
 {
     private readonly IFhirSchemaProvider _base;
     private readonly Dictionary<string, IType> _profileTypes;
+    private readonly Dictionary<string, IType> _profileIdentities;
+    private readonly ConcurrentDictionary<string, IType> _snapshotTypes = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Initializes a new instance with the given base provider and a collection of
@@ -52,6 +54,7 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
 
         _base = baseProvider;
         _profileTypes = new Dictionary<string, IType>(StringComparer.Ordinal);
+        _profileIdentities = new Dictionary<string, IType>(StringComparer.Ordinal);
         var log = logger ?? NullLogger<ProfileLayeredSchemaProvider>.Instance;
 
         var provider = new PackageResourceProvider(
@@ -91,6 +94,14 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
                         res.Canonical);
                 }
                 _profileTypes[res.ResourceId] = type;
+                if (!string.IsNullOrEmpty(res.Canonical))
+                {
+                    _profileIdentities[res.Canonical] = type;
+                    if (!string.IsNullOrEmpty(res.Version))
+                    {
+                        _profileIdentities[$"{res.Canonical}|{res.Version}"] = type;
+                    }
+                }
             }
             else
             {
@@ -181,11 +192,52 @@ public sealed class ProfileLayeredSchemaProvider : IFhirSchemaProvider
 
     /// <inheritdoc/>
     public IType? GetTypeDefinition(string typeName)
-        => _profileTypes.TryGetValue(typeName, out var profile) ? profile : _base.GetTypeDefinition(typeName);
+    {
+        if (_profileIdentities.TryGetValue(typeName, out var profile))
+        {
+            return profile;
+        }
+        if (_snapshotTypes.TryGetValue(typeName, out var snapshotType))
+        {
+            return snapshotType;
+        }
+        snapshotType = PackageResourceProvider.ResolveSnapshotType(typeName, rootName =>
+            _profileIdentities.GetValueOrDefault(rootName) ?? _profileTypes.GetValueOrDefault(rootName));
+        if (snapshotType != null)
+        {
+            return _snapshotTypes.GetOrAdd(typeName, snapshotType);
+        }
+        if (!typeName.Contains(':', StringComparison.Ordinal))
+        {
+            return _profileTypes.TryGetValue(typeName, out profile) ? profile : _base.GetTypeDefinition(typeName);
+        }
+
+        var baseType = _base.GetTypeDefinition(typeName);
+        const string corePrefix = "http://hl7.org/fhir/StructureDefinition/";
+        if (baseType != null || !typeName.StartsWith(corePrefix, StringComparison.Ordinal))
+        {
+            return baseType;
+        }
+
+        // A canonical core lookup must not follow an unrelated profile's legacy resource-id alias.
+        string coreName = typeName[corePrefix.Length..];
+        int pipe = coreName.IndexOf('|', StringComparison.Ordinal);
+        if (pipe >= 0)
+        {
+            if (coreName[(pipe + 1)..] != FullVersion)
+            {
+                return null;
+            }
+            coreName = coreName[..pipe];
+        }
+        return coreName.Length > 0 && !coreName.Contains('/', StringComparison.Ordinal)
+            ? _base.GetTypeDefinition(coreName)
+            : null;
+    }
 
     /// <inheritdoc/>
     public bool IsKnownType(string typeName)
-        => _profileTypes.ContainsKey(typeName) || _base.IsKnownType(typeName);
+        => GetTypeDefinition(typeName) != null;
 
     /// <summary>
     /// Bridges a <see cref="ILogger{TCategoryName}"/> of one category to another typed logger,

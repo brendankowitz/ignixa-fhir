@@ -13,5 +13,6 @@ public record CompleteJobInput(
     int TenantId,
     bool Success,
     Dictionary<string, string> ExportedFiles,
-    int TotalResourcesExported,
-    string? ErrorMessage);
+    long TotalResourcesExported,
+    string? ErrorMessage,
+    Dictionary<string, long>? ExportedFileCounts = null);

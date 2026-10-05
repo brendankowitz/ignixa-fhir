@@ -54,7 +54,9 @@ public class SchemaDeployerConnectionTests
         var ex = await Should.ThrowAsync<InvalidOperationException>(
             () => deployer.DeployIfEmptyAsync(999, CancellationToken.None));
 
-        ex.Message.ShouldBe("Tenant 999 does not exist or is inactive.");
+        // ShouldStartWith, not ShouldBe: the sentence now continues into the configuration-binding hint
+        // that makes the system partition's absence diagnosable. The identifying half is still pinned.
+        ex.Message.ShouldStartWith("Tenant 999 does not exist or is inactive.");
     }
 
     [Fact]

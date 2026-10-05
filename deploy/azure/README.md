@@ -8,7 +8,7 @@ The deployment uses **Bicep templates** or **ARM JSON templates** with **Managed
 
 - **App Service (Linux)**: Runs the FHIR Server Docker container with System-Assigned Managed Identity
 - **Azure SQL Server**: Shared SQL server for all tenants
-- **Tenant Databases**: One database per tenant (1-50 tenants supported) with Azure AD-only authentication
+- **Tenant Databases**: ARM creates the single `FhirDatabase` catalog; Bicep supports 1-50 tenant databases
 - **Blob Storage (2 accounts)**: FHIR data storage + DurableTask orchestration backend
 - **Application Insights**: Application monitoring and logging
 - **Log Analytics**: Centralized logging workspace
@@ -16,12 +16,15 @@ The deployment uses **Bicep templates** or **ARM JSON templates** with **Managed
 
 ## Multi-Tenant Support
 
-The deployment supports **1-50 tenants**, where each tenant gets its own isolated SQL database:
+The **Bicep** deployment supports **1-50 tenants**, where each tenant gets its own isolated SQL database:
 
 - **Tenant 0**: System partition (reserved for transaction IDs) - shares database with Tenant 1
 - **Tenant 1-N**: Active tenants, each with their own database (`FhirTenant1`, `FhirTenant2`, etc.)
 - **Configuration**: Automatically injected into App Service as environment variables
 - **Authentication**: All tenants use Managed Identity for SQL access
+
+The single-tenant **ARM** template instead creates `FhirDatabase` for tenant 1; tenant 0 inherits
+that same catalog. Do not substitute Bicep's `FhirTenant1` name into an ARM deployment.
 
 ## Deployment Options
 
@@ -275,44 +278,146 @@ az webapp restart \
   --name ignixa-fhir-demo
 ```
 
-### 8. Application Auto-Initialization
+### 8. Database Schema Deployment
 
-The FHIR Server **automatically initializes all tenant databases** on first run. No manual SQL scripts needed!
+**Schema deployment is opt-in, not automatic.** `SchemaDeployer` only deploys or upgrades a tenant's
+schema when `SqlServer:AutomaticSchemaDeploymentEnabled` is `true`; it defaults to `false`
+(`SqlServerOptions.cs`) precisely so a deployment opts in rather than out, and this template does not
+set it. That default is deliberate: the flag drives live DacFx deploys against a production database
+with no environment guard of its own, so silently defaulting it on for every ARM/Bicep deployment
+would be worse than requiring one explicit operator step. Leaving the flag unset means a freshly
+deployed tenant database has no schema, and `SchemaDeployer` throws
+`"Tenant {id}'s database is not initialized and ...AutomaticSchemaDeploymentEnabled is false"` during
+initialization of that tenant (including application startup), directing you to the schema-upgrade CLI below.
 
-**What Gets Configured:**
+The templates select a SQL UAMI through the connection string's client-ID `User ID` field. ARM uses
+`Authentication=Active Directory Default`; Bicep uses `Active Directory Managed Identity`. Preserve
+the deployed connection string rather than reconstructing its server, catalog, or authentication mode.
+For the managed-identity deployment path below, run the CLI on compute carrying the selected UAMI;
+`az login` on an arbitrary workstation does not attach that identity. The image contains the CLI alongside the server (see the Dockerfile), so the
+lowest-friction option is a short-lived Azure Container Instance with that identity attached:
+
+Before running it, provision the SQL database user and deployment permissions explicitly (see
+[`scripts/setup-sql-mi.sql`](scripts/setup-sql-mi.sql)). `User ID` in the connection string is the
+UAMI's **client ID**, not its resource name, principal/object ID, or a request to create a SQL user.
+The runtime and CLI do not provision identities.
+
+Use the **actual App Service settings** for the target configuration entry. The read commands below
+capture values without displaying them; do not echo these variables or enable shell tracing/debug
+output. Connection settings are sent to ACI as **secure** environment variables, not public values.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$resourceGroup = 'fhir-dev-rg'
+$appName = 'fhir-dev-yourorg'
+$tenantIndex = 1 # ARM's tenant 1 entry; choose the actual entry index for a Bicep tenant.
+$prefix = "Tenants__Configurations__${tenantIndex}__"
+
+$settingsJson = az webapp config appsettings list --resource-group $resourceGroup --name $appName `
+    --query "[?starts_with(name, '$prefix')]" --output json
+if ($LASTEXITCODE -ne 0) { throw 'Could not read the deployed tenant settings.' }
+$settings = @{}
+foreach ($setting in ($settingsJson | ConvertFrom-Json)) { $settings[$setting.name] = $setting.value }
+$required = @('TenantId', 'DisplayName', 'FhirVersion', 'IsActive', 'Storage__Type', 'Storage__ConnectionString')
+foreach ($key in $required) {
+    if ([string]::IsNullOrWhiteSpace($settings["$prefix$key"])) { throw "Missing deployed setting: $prefix$key" }
+}
+$tenantId = [int]$settings["${prefix}TenantId"]
+if ($tenantId -le 0 -or $settings["${prefix}IsActive"] -ne 'true') { throw 'Select an active, non-system tenant.' }
+if ($settings["${prefix}Storage__Type"] -notin @('SqlServer', 'SqlEntityFramework')) { throw 'Select a SQL tenant.' }
+$connectionString = $settings["${prefix}Storage__ConnectionString"]
+
+# Find the attached identity selected by this connection string, not an assumed template output.
+$connection = [System.Data.Common.DbConnectionStringBuilder]::new()
+$connection.set_ConnectionString($connectionString)
+if (-not $connection.ContainsKey('User ID')) { throw 'This example requires a configured SQL UAMI client ID.' }
+$identityJson = az webapp identity show --resource-group $resourceGroup --name $appName --output json
+if ($LASTEXITCODE -ne 0) { throw 'Could not read attached managed identities.' }
+$identities = ($identityJson | ConvertFrom-Json).userAssignedIdentities
+$matches = @($identities.PSObject.Properties | Where-Object { $_.Value.clientId -eq $connection['User ID'] })
+if ($matches.Count -ne 1) { throw 'The SQL client ID must identify one UAMI attached to this App Service.' }
+$uamiResourceId = $matches[0].Name
+$uamiJson = az identity show --ids $uamiResourceId --output json
+if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the selected UAMI resource.' }
+$uami = $uamiJson | ConvertFrom-Json
+if ($uami.clientId -ne $connection['User ID']) { throw 'The resolved UAMI does not match the SQL identity selector.' }
+# Use $uami.name for the SQL CREATE USER placeholder in setup-sql-mi.sql, not its client ID.
+
+$publicVariables = @(
+    "${prefix}TenantId=$tenantId"
+    "${prefix}DisplayName=$($settings["${prefix}DisplayName"])"
+    "${prefix}FhirVersion=$($settings["${prefix}FhirVersion"])"
+    "${prefix}IsActive=true"
+    "${prefix}IsSystemPartition=false"
+    "${prefix}Storage__Type=$($settings["${prefix}Storage__Type"])"
+)
+$secureVariables = @("${prefix}Storage__ConnectionString=$connectionString")
+$containerName = 'ignixa-schema-upgrade'
+az container create --resource-group $resourceGroup --name $containerName `
+    --image ghcr.io/brendankowitz/ignixa-fhir:release --os-type Linux --cpu 1 --memory 2 `
+    --assign-identity $uamiResourceId --restart-policy Never `
+    --environment-variables @publicVariables --secure-environment-variables @secureVariables `
+    --command-line "dotnet Ignixa.SchemaUpgrade.Cli.dll --tenant-id $tenantId --confirm" --output none
+if ($LASTEXITCODE -ne 0) { throw 'Could not create the schema-upgrade container.' }
+
+# Retain a failed or still-running container for diagnosis; do not terminate an in-progress upgrade.
+for ($attempt = 0; $attempt -lt 180; $attempt++) {
+    $state = az container show --resource-group $resourceGroup --name $containerName `
+        --query 'containers[0].instanceView.currentState.state' --output tsv
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read schema-upgrade state.' }
+    if ($state -eq 'Terminated') { break }
+    Start-Sleep -Seconds 10
+}
+az container logs --resource-group $resourceGroup --name $containerName
+if ($state -ne 'Terminated') { throw 'Schema CLI has not finished; inspect the retained container.' }
+$exitCode = az container show --resource-group $resourceGroup --name $containerName `
+    --query 'containers[0].instanceView.currentState.exitCode' --output tsv
+if ($LASTEXITCODE -ne 0 -or $exitCode -ne '0') { throw "Schema CLI did not succeed (exit $exitCode)." }
+az container delete --resource-group $resourceGroup --name $containerName --yes --output none
+```
+
+Repeat the lookup with the target `$tenantIndex` for each Bicep tenant; the catalog, FHIR version and
+tenant ID come from deployed settings. ARM tenant 1 targets `FhirDatabase`, not `FhirTenant1`.
+**Changing only
+`--tenant-id` is insufficient:** the separate ACI does not inherit App Service settings and the image
+only defines tenants 0/1. Supply every target tenant field above, or mount a complete tenant JSON
+configuration into the container and pass `--config /config/appsettings.json`. Environment variables
+and environment-specific JSON can override that file; verify the effective target connection before
+deployment. Tenant 0 inherits tenant 1's database and does not need a second deployment. See
+[`tools/Ignixa.SchemaUpgrade.Cli/README.md`](../../tools/Ignixa.SchemaUpgrade.Cli/README.md) for the
+full option list, including `--allow-incompatible-platform` for non-Azure SQL targets and
+`--allow-data-loss` for diffs `DeployReportClassifier` flags as unsafe.
+
+**This step is not only for a first deployment.** Because this template leaves
+`AutomaticSchemaDeploymentEnabled` unset, the app never applies a schema change on its own -- so any
+release that raises `SchemaVersionConstants.CurrentVersion` needs the same CLI run again, once per
+tenant, before that release serves traffic. Until then, initializing an out-of-date tenant
+fails with `"Tenant {id}'s database is behind schema version {n} and
+SqlServer:AutomaticSchemaDeploymentEnabled is false"`, naming the version the build expects.
+`SELECT MAX(Version) FROM dbo.SchemaVersion` in a tenant's database reports where that tenant
+currently stands; the changelog in `SchemaVersionConstants.cs` says what each version added.
+
+**What Gets Configured (once the CLI has run):**
 - ✅ **Tenant 0** (System Partition) - Shares database with Tenant 1, used for transaction IDs
 - ✅ **Tenant 1-N** (Production Tenants) - Each configured with their own SQL database
-- ✅ **Database Schema** - Auto-created with all tables, indexes, and stored procedures (per tenant database)
-- ✅ **Managed Identity** - Database user auto-created with permissions (per tenant database)
+- ✅ **Database Schema** - Deployed from the server's embedded dacpac (tables, indexes, stored procedures) per tenant database
 - ✅ **DurableTask Backend** - Connected to Azure Storage with Managed Identity
 - ✅ **Export/Import Storage** - Connected to Azure Blob Storage with Managed Identity
 
-**Multi-Tenant Initialization:**
+The schema-upgrade CLI does not create the database user for the SQL user-assigned Managed Identity --
+run [`scripts/setup-sql-mi.sql`](scripts/setup-sql-mi.sql) against each tenant database (as an Azure
+AD admin) beforehand, substituting the identity's name for the script's placeholder.
 
-For a deployment with `tenantCount=10`, the application automatically:
-1. Initializes schema in all 10 tenant databases (`FhirTenant1` through `FhirTenant10`)
-2. Creates managed identity users in each database
-3. Configures tenant routing for `/tenant/1/`, `/tenant/2/`, etc.
+**Multi-Tenant Initialization (Bicep only):**
+
+For a deployment with `tenantCount=10`, after running the CLI and `setup-sql-mi.sql` against each tenant:
+1. All 10 tenant databases (`FhirTenant1` through `FhirTenant10`) have schema deployed
+2. Managed identity users exist in each database
+3. Tenant routing is configured for `/tenant/1/`, `/tenant/2/`, etc.
 4. System partition (Tenant 0) shares `FhirTenant1` database
 
-**Automatic Full Initialization** (On First Run):
-
-1. **Schema Creation** (if database is empty)
-   - ✅ Detects empty database automatically
-   - ✅ Loads embedded schema (97.sql) from application assembly
-   - ✅ Creates all tables, views, indexes, functions, stored procedures
-   - ✅ Configures partition functions for performance
-   - ✅ Creates all 17 Table-Valued Parameter types
-
-2. **Managed Identity Setup** (if User ID in connection string)
-   - ✅ Extracts User ID from connection string
-   - ✅ Creates database user for App Service MI
-   - ✅ Assigns `db_datareader` role (read permissions)
-   - ✅ Assigns `db_datawriter` role (write permissions)
-   - ✅ Grants EXECUTE on schema (for stored procedures/functions)
-   - ✅ Grants CREATE TABLE (for schema evolution)
-
-**No manual deployment needed** - The App Service automatically pulls and runs your Docker image from ACR!
+**The App Service image deployment itself is still hands-off** - it automatically pulls and runs your
+Docker image from ACR/GHCR on restart. Only the database schema step above requires a manual run.
 
 **Verify Setup** (Optional - Check logs or database after deployment):
 ```sql
@@ -325,25 +430,33 @@ SELECT DP1.name as DatabaseUser, DP2.name as RoleName
 FROM sys.database_role_members as DRM
 RIGHT OUTER JOIN sys.database_principals as DP1 on DRM.member_principal_id = DP1.principal_id
 LEFT OUTER JOIN sys.database_principals as DP2 on DRM.role_principal_id = DP2.principal_id
-WHERE DP1.name = 'fhir-dev-yourorg';
+WHERE DP1.name = '<SQL UAMI display name>';
 ```
 
 ### 9. Configure Application Settings (Optional)
 
-Add application configuration to the deployed App Service. The connection string includes the App Service name (`User ID` parameter) for automatic MI setup:
+Both templates already configure the tenant's SQL connection. Do not replace that setting merely
+to apply unrelated application options, and never redirect an ARM deployment from `FhirDatabase`
+to an assumed `FhirTenant1` catalog.
 
 ```bash
-# Set environment variables with MI User ID for auto-setup
+# This updates only application options; it preserves the deployed database destination.
 az webapp config appsettings set \
   --resource-group fhir-dev-rg \
   --name fhir-dev-yourorg \
   --settings \
     ASPNETCORE_ENVIRONMENT=production \
-    Tenants:Mode=Isolated \
-    "ConnectionStrings:FhirDatabase=Server=tcp:fhir-dev-yourorg-sql.database.windows.net,1433;Initial Catalog=FhirDatabase;User ID=fhir-dev-yourorg;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;Authentication=Active Directory Managed Identity;"
+    Tenants__Mode=Isolated \
+  --output none
 ```
 
-The `User ID=fhir-dev-yourorg` parameter tells the application to automatically create and configure the Managed Identity database user on first run.
+For an intentional connection change, use the actual entry's
+`Tenants__Configurations__{index}__Storage__ConnectionString` key and verify its current catalog
+and selected identity using step 8 before changing anything. `User ID` selects an existing managed
+identity's client ID, resolved with `az identity show --ids <verified-resource-id>`, not an App Service name.
+Provision the corresponding SQL
+user and grants before startup; authentication or permission failures are errors, not a
+warning-and-continue setup path.
 
 ### 10. Test Deployment
 
@@ -396,12 +509,12 @@ curl "$APP_URL/tenant/2/Patient?name=Smith"
 - `/metadata` and `/tenant/{id}/metadata` return CapabilityStatement (FHIR conformance)
 - `/tenant/1/Patient/test-123` creates and returns the Patient resource
 - `/tenant/2/Patient/test-456` creates a separate Patient in Tenant 2's database
-- Data is isolated per tenant (Tenant 1 data stored in `FhirTenant1`, Tenant 2 in `FhirTenant2`)
+- For Bicep, data is isolated per tenant (`FhirTenant1`, `FhirTenant2`, etc.); ARM's single tenant uses `FhirDatabase`
 - All operations use Managed Identity (no credentials exposed)
 
 ## Deployment Outputs
 
-The deployment produces the following outputs:
+The **ARM** template produces the following outputs:
 
 | Output | Purpose |
 |--------|---------|
@@ -417,18 +530,24 @@ The deployment produces the following outputs:
 | `appInsightsConnectionString` | Application Insights connection string |
 | `dockerImageDeployed` | Full Docker image name deployed to App Service |
 
+Bicep's top-level `main.bicep` exposes `tenantDatabases` instead of `databaseName`, and does not expose
+the ARM-only UAMI client/principal outputs or an identity resource-ID output. For either template,
+step 8 resolves the SQL UAMI from the App Service's attached identities and verifies it with
+`az identity show`; it does not rely on those template-specific output names.
+
 ## Default Configuration
 
 After deployment, the FHIR server is configured with:
 
 ### Tenant Configuration
 
-- **Tenant 0** (System Partition) - FileSystem storage, used for transaction ID allocation
+- **Tenant 0** (System Partition) - SQL storage inherited from tenant 1, used for system operations
 - **Tenant 1** (Production) - **Azure SQL Database** (auto-configured)
-  - Storage Type: `SqlEntityFramework`
-  - FHIR Version: Configurable via `fhirVersion` parameter (default: 4.3/R4B)
+  - Storage Type: `SqlServer`
+  - FHIR Version: Configurable via `fhirVersion` (ARM default: 4.3/R4B; Bicep default: 4.0/R4)
+  - Catalog: ARM uses `FhirDatabase`; Bicep uses `FhirTenant1` for tenant 1
   - Connection: Uses Managed Identity authentication
-  - Database: Auto-initialized on first startup
+  - Database: Schema is not auto-initialized -- run the schema-upgrade CLI once after first deploy (see [step 8](#8-database-schema-deployment))
 
 ### Storage Configuration
 
@@ -452,7 +571,9 @@ The deployment creates **two Managed Identities** with different purposes:
    - Created as a standalone Azure resource
    - Assigned as SQL Server administrator with Entra ID-only authentication
    - Client ID embedded in connection strings for SQL authentication
-   - Outputs: `userAssignedIdentityPrincipalId`, `userAssignedIdentityClientId`
+   - ARM outputs: `userAssignedIdentityPrincipalId`, `userAssignedIdentityClientId`
+   - For either template, resolve the attached identity resource and its `id`/`clientId`/`principalId`
+     using the lookup in step 8 rather than assuming those outputs exist
 
 2. **System-Assigned Managed Identity (SAMI)** - Automatic identity for Azure resources
    - Automatically created with the App Service
@@ -477,34 +598,40 @@ Generate a GitHub Personal Access Token (PAT) with `read:packages` scope and pro
 
 ### Connection Strings
 
-**SQL Database with Auto-MI Setup** (uses Managed Identity at runtime):
+**SQL Database with a User-Assigned Managed Identity**:
 
-The application **automatically detects and configures the MI user** if you embed the App Service name in the User ID parameter:
+The deployment selects the SQL UAMI by its client ID. The example below illustrates the
+`Active Directory Managed Identity` form; ARM currently emits `Active Directory Default`.
+Use the actual deployed setting from step 8 for schema deployment. An intentional configuration
+change belongs under `Tenants__Configurations__1__Storage__ConnectionString` (or the actual entry index):
 
 ```
 Server=tcp:fhir-dev-yourorg-sql.database.windows.net,1433;
-Initial Catalog=FhirDatabase;
-User ID=fhir-dev-yourorg;
+Initial Catalog=<actual deployed tenant catalog>;
+User ID=<clientId from az identity show>;
 Encrypt=true;
 TrustServerCertificate=false;
 Connection Timeout=30;
 Authentication=Active Directory Managed Identity;
 ```
 
-**Without Explicit User ID** (uses running process identity):
+**Without Explicit User ID** (uses the system-assigned managed identity):
 
-Alternatively, if you omit the User ID parameter, the application uses the running process identity (App Service Managed Identity):
+If intentionally selecting the App Service's system-assigned managed identity instead, omit
+`User ID`. This is a different principal from the template's SQL UAMI and needs its own SQL user
+and grants:
 
 ```
 Server=tcp:fhir-dev-yourorg-sql.database.windows.net,1433;
-Initial Catalog=FhirDatabase;
+Initial Catalog=<actual deployed tenant catalog>;
 Encrypt=true;
 TrustServerCertificate=false;
 Connection Timeout=30;
 Authentication=Active Directory Managed Identity;
 ```
 
-In this case, you must manually set up the MI user on the database (or the app will log a warning and continue).
+In both cases, explicitly provision the selected identity in each database using an Entra administrator.
+Neither the application nor the schema CLI creates the user. Missing users or grants fail SQL operations.
 
 **Azure Storage** (uses Managed Identity at runtime):
 ```csharp

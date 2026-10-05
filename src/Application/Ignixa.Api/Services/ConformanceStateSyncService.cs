@@ -15,9 +15,12 @@ namespace Ignixa.Api.Services;
 public class ConformanceStateSyncService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
+    ConformanceCacheRefresher cacheRefresher,
     ILogger<ConformanceStateSyncService> logger,
     IConfiguration configuration) : BackgroundService
 {
+    private long _lastRefreshedEventId;
+
     private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(
         configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
 
@@ -47,7 +50,11 @@ public class ConformanceStateSyncService(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "ConformanceStateSyncService encountered an error during sync, will retry");
+                logger.LogWarning(
+                    ex,
+                    "Conformance sync failed at applied EventId {AppliedEventId}, refreshed EventId {RefreshedEventId}; will retry",
+                    conformanceState.LastProcessedEventId,
+                    _lastRefreshedEventId);
             }
         }
 
@@ -60,7 +67,20 @@ public class ConformanceStateSyncService(
 
         await conformanceState.CatchUpAsync(eventStore, cancellationToken);
 
+        // CatchUpAsync takes this same lock. Acquire it only after catch-up has returned, and
+        // hold it through refresh so local activation cannot change the definitions being synced.
+        using var activationLock = await conformanceState.AcquireActivationLockAsync(cancellationToken);
         var afterEventId = conformanceState.LastProcessedEventId;
+
+        if (afterEventId > _lastRefreshedEventId)
+        {
+            await cacheRefresher.RefreshAsync(cancellationToken);
+
+            // Applying events and refreshing their consumers are separate checkpoints. In particular,
+            // an empty subsequent poll must retry a failed refresh of an already-applied event.
+            _lastRefreshedEventId = afterEventId;
+            logger.LogInformation("Refreshed conformance consumers through EventId {EventId}", afterEventId);
+        }
 
         if (afterEventId > beforeEventId)
         {

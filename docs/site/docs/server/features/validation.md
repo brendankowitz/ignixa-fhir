@@ -29,6 +29,31 @@ Ignixa performs the following validation checks:
 
 Note: Detailed configuration of validation levels is managed through installed FHIR packages and StructureDefinitions. For custom validation behavior, use invariants in StructureDefinitions.
 
+### Installed Logical Models
+
+Installed logical models retain their defining package canonical rather than being treated as
+core FHIR resources. Snapshot children and recursive `contentReference` definitions are validated
+at their instance locations, including required fields inside nested `select` and `unionAll`
+branches. Unresolvable content references are schema errors, not permission to skip a subtree.
+
+The embedded SQL-on-FHIR package supports R4, R4B and R5. Its ViewDefinition snapshot inherits
+required `status` from CanonicalResource; a minimal example is:
+
+```json
+{
+  "resourceType": "ViewDefinition",
+  "status": "active",
+  "resource": "Patient",
+  "select": [{
+    "column": [{ "name": "id", "path": "id" }]
+  }]
+}
+```
+
+At Spec depth, missing `status`, `select`, or a nested column's `path` is rejected.
+Full depth additionally evaluates the model's invariants, such as allowing at most one of
+`forEach`, `forEachOrNull`, and `repeat` on each selection.
+
 ## Validation Flow
 
 ```
@@ -167,12 +192,56 @@ Validation results are returned as OperationOutcome:
 
 ## Validation Configuration
 
-The server validates resources during create and update operations. Validation behavior is controlled by installed FHIR packages and their StructureDefinitions.
+Create and update requests run validation through the registered mediator pipeline,
+before resource persistence and search indexing. Validation errors return HTTP 400
+with a FHIR `OperationOutcome`; a rejected update does not create a new version.
+
+`Tenants:Configurations:<index>:ValidationDepth` defaults to `Spec`. The
+`Prefer: validation=minimal|spec|full` request header overrides that tenant default.
+`Minimal` is **not** a validation-off switch: it runs the schema's universal
+structural checks, including required fields, primitive types, and narrative checks.
+`Spec` adds schema checks and required terminology bindings. `Full` additionally
+evaluates profile invariants, slicing, and advanced terminology checks. Selecting a
+lower tier does not disable logical-ID validation.
+
+Logical IDs must contain 1–64 ASCII letters, digits, hyphens, or periods. Narrative
+`text.div` must be a well-formed XHTML `div` in the XHTML namespace, using FHIR's
+permitted formatting subset without active content. Escaped markup and ordinary
+text mentioning scripts are not executable markup. `pre` permits
+`xml:space="preserve"`; that attribute is not accepted on arbitrary elements.
+CSS checks distinguish actual properties/functions and URL schemes from quoted
+text or passive HTTPS paths containing script-like words. Accepted narrative text
+is preserved, not rewritten or sanitized. Narrative validation is not a
+replacement for the [FHIR rendering security guidance](https://hl7.org/fhir/R4/security.html#narrative).
+
+Validation depth is not a claim that every possible FHIR constraint is checked.
+In particular, existing non-choice `dateTime` validation accepts loose timezone
+precision at `Spec` (for example, `Period.start = "2021-10-13+02:00"`), but rejects
+it at `Full`. Choice-valued dateTimes such as `Observation.effectiveDateTime` use
+strict primitive syntax, including at `Spec`. The loose form is **not conformant
+FHIR dateTime**; this is a compatibility policy, not a change to the FHIR grammar.
+Use `Full` when strict non-choice dateTime syntax is required.
+
+Installed FHIR packages and their StructureDefinitions supply profile rules.
+The write pipeline resolves schemas and typed elements for the current request
+tenant. `meta.profile` canonicals are looked up by their complete identity:
+`https://example.org/StructureDefinition/patient|2.0` selects that business
+version, never another profile that happens to share the final path segment.
+The current package adapter requires a StructureDefinition **snapshot**; it does
+not generate snapshots from differentials.
+
+Unavailable asserted profiles (including unavailable requested versions) retain
+the existing warning policy at Spec/Full: available schemas are still applied,
+the unavailable profile is not treated as validated, and the warning is logged.
+Missing the **base** schema is different: an admitted resource cannot be
+validated at all, so the server returns HTTP 500 with a FHIR `OperationOutcome`
+and does not write the resource. This represents server schema availability,
+not a finding that the submitted resource is invalid.
 
 To control which profiles validate resources:
 1. Install FHIR packages using the package management endpoints
 2. Configure StructureDefinitions with validation rules and invariants
-3. Resources will automatically be validated against installed profiles
+3. Declare applicable installed profile canonicals in the resource's `meta.profile`
 
 ## Custom Validation Rules
 

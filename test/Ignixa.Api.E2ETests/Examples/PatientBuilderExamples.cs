@@ -43,6 +43,7 @@ public class PatientBuilderE2EExamples : CapabilityDrivenTestBase
         var tag = Guid.NewGuid().ToString();
 
         var scenario = CreateScenario()
+            .WithResolvedReferences()
             .WithName("Complete Clinical Scenario")
             .WithDescription("Demonstrates PatientBuilder integration with clinical states")
             .WithTag(tag)

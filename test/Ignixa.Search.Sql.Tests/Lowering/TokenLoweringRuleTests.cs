@@ -19,7 +19,7 @@ public class TokenLoweringRuleTests
     /// these tests pin the relationship to the schema rather than one schema's current number. That the row
     /// generators really split here — rather than at a literal that happens to agree — is pinned from the
     /// writers' side by TokenCodeOverflowSplitPointTests in
-    /// Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.
+    /// Ignixa.DataLayer.SqlServer.Tests.
     /// </summary>
     private static readonly int InlineCodeWidth =
         Sql.Catalog.SqlCatalog.Default.Table("TokenSearchParam").Column("Code").MaxLength!.Value;

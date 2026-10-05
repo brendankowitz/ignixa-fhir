@@ -68,6 +68,12 @@ namespace Ignixa.Abstractions;
 /// </remarks>
 public interface ITypeExtended : IType
 {
+    /// <summary>
+    /// Canonical identity of the defining StructureDefinition, with an element fragment for
+    /// inline types. Null when the provider exposes only generated core type metadata.
+    /// </summary>
+    string? CanonicalUrl => null;
+
     // ===== CRITICAL PROPERTIES (Required for core functionality) =====
 
     /// <summary>

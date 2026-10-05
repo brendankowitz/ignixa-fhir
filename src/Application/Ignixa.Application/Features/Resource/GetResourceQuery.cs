@@ -16,7 +16,7 @@ namespace Ignixa.Application.Features.Resource;
 /// </summary>
 /// <param name="ResourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
 /// <param name="Id">The resource ID.</param>
-public record GetResourceQuery(string ResourceType, string Id) : IRequest<SearchEntryResult?>, IRequireCapability
+public record GetResourceQuery(string ResourceType, string Id, string? VersionId = null) : IRequest<SearchEntryResult?>, IRequireCapability
 {
     /// <summary>
     /// Returns FHIRPath expression to validate read capability for this resource type.

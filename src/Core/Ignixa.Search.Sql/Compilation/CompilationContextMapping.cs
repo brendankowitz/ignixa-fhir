@@ -36,6 +36,8 @@ internal static class CompilationContextMapping
             "Reaches the compiler structurally, on whichever paging mechanism the adapter chose: OffsetSpec.ProbeExtraRow for an OFFSET/FETCH page, SearchPaging.Keyset.TopIncludesProbeRow for a Top-capped keyset page. Both must be forwarded -- a Top cap built as MaxItemCount + 1 without the flag seeds _include stages from the probe row. The AST models the over-fetch structurally, so there is nothing left for a separate compilation input to say.",
         [nameof(SearchOptions.ContinuationToken)] =
             "Decoding it into a keyset or OFFSET page is adapter logic in a different layer. The decoded result arrives as the SearchPaging on ResultShape.Matches.",
+        [nameof(SearchOptions.UseExportContinuation)] =
+            "The adapter selects bounded keyset paging and attaches the selected-page cursor to the export probe; the compiler receives that choice through SearchPaging.",
         [nameof(SearchOptions.Elements)] =
             "A serialization-time projection of the returned resource body, applied after the rows are read.",
         [nameof(SearchOptions.Total)] =

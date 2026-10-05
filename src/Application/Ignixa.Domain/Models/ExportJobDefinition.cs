@@ -56,4 +56,10 @@ public class ExportJobDefinition : IJobDefinition
     /// Optional: Group ID for Group-scoped export.
     /// </summary>
     public string? GroupId { get; set; }
+
+    /// <summary>
+    /// Original absolute HTTP request URL, including export filters, for the completion manifest.
+    /// Absent for older jobs and exports initiated outside HTTP.
+    /// </summary>
+    public string? RequestUrl { get; init; }
 }

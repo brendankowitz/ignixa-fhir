@@ -3,66 +3,70 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using DurableTask.Core;
-using Microsoft.Extensions.Logging;
-using System.Threading.Channels;
-using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
-using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
-using Ignixa.Specification;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Export.Activities;
 
 /// <summary>
 /// DurableTask activity that exports a single partition (resource type + surrogate ID range).
-/// Streams resources directly from database to file without pagination or buffering the entire result set.
+/// Exhausts the partition in bounded pages without buffering the entire result set.
 /// Each worker instance runs independently and in parallel with other workers.
 /// </summary>
 public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportWorkerOutput>
 {
+    private const int PageSize = 1000;
     private readonly ISearchServiceFactory _searchServiceFactory;
     private readonly IExportStreamWriterFactory _writerFactory;
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly IQueryParameterParser _parameterParser;
-    private readonly ISearchOptionsBuilder _searchOptionsBuilder;
+    private readonly ISearchOptionsBuilderFactory _searchOptionsBuilderFactory;
     private readonly ViewDefinitionLoader _viewDefinitionLoader;
     private readonly IBlobStorageClient _blobStorageClient;
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ExportWorkerActivity> _logger;
+    private readonly ExportGroupResolver _groupResolver;
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor;
 
     public ExportWorkerActivity(
         ISearchServiceFactory searchServiceFactory,
         IExportStreamWriterFactory writerFactory,
         ITenantConfigurationStore tenantConfigurationStore,
         IQueryParameterParser parameterParser,
-        ISearchOptionsBuilder searchOptionsBuilder,
+        ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
         ViewDefinitionLoader viewDefinitionLoader,
         IBlobStorageClient blobStorageClient,
         IFhirVersionContext fhirVersionContext,
         ILoggerFactory loggerFactory,
-        ILogger<ExportWorkerActivity> logger)
+        ILogger<ExportWorkerActivity> logger,
+        ExportGroupResolver groupResolver,
+        IFhirRequestContextAccessor fhirContextAccessor)
     {
         _searchServiceFactory = searchServiceFactory ?? throw new ArgumentNullException(nameof(searchServiceFactory));
         _writerFactory = writerFactory ?? throw new ArgumentNullException(nameof(writerFactory));
         _tenantConfigurationStore = tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
         _parameterParser = parameterParser ?? throw new ArgumentNullException(nameof(parameterParser));
-        _searchOptionsBuilder = searchOptionsBuilder ?? throw new ArgumentNullException(nameof(searchOptionsBuilder));
+        _searchOptionsBuilderFactory = searchOptionsBuilderFactory ?? throw new ArgumentNullException(nameof(searchOptionsBuilderFactory));
         _viewDefinitionLoader = viewDefinitionLoader ?? throw new ArgumentNullException(nameof(viewDefinitionLoader));
         _blobStorageClient = blobStorageClient ?? throw new ArgumentNullException(nameof(blobStorageClient));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _groupResolver = groupResolver ?? throw new ArgumentNullException(nameof(groupResolver));
+        _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
     }
 
     protected override async Task<ExportWorkerOutput> ExecuteAsync(
@@ -76,6 +80,7 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
             input.StartSurrogateId,
             input.EndSurrogateId);
 
+        var previousContext = _fhirContextAccessor.RequestContext;
         try
         {
             // Get tenant configuration to determine FHIR version
@@ -88,10 +93,16 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                 throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive");
             }
 
+            var version = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+            _fhirContextAccessor.RequestContext = FhirRequestContextFactory.CreateBackgroundContext(
+                input.TenantId, tenantConfig, version, input.ResourceType);
+
             // Get search service for this tenant
             var searchService = await _searchServiceFactory.GetSearchServiceAsync(
                 input.TenantId,
                 CancellationToken.None);
+            var schema = _fhirVersionContext.GetSchemaProvider(version, input.TenantId);
+            var searchOptionsBuilder = _searchOptionsBuilderFactory.Create(version, input.TenantId);
 
             // Create streaming writer (writes to blob storage as we process)
             IExportStreamWriter writer;
@@ -111,10 +122,6 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                     input.ViewDefinitionId,
                     CancellationToken.None);
 
-                // Get structure provider for tenant's FHIR version
-                var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-                var structureProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
-
                 // Create ViewDefinition export writer with schema derived from ViewDefinition
                 // This constructor builds the Parquet schema from ViewDefinition columns
 #pragma warning disable CA2000 // Dispose ownership transferred to 'await using' statement
@@ -122,7 +129,7 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                     _blobStorageClient,
                     input.OutputPath,
                     viewDefNode,
-                    structureProvider,
+                    schema,
                     _loggerFactory);
 #pragma warning restore CA2000
             }
@@ -150,36 +157,22 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                         queryStringBuilder.Append(input.TypeFilters[input.ResourceType]);
                     }
 
-                    // Add _since parameter for temporal filtering (FHIR spec: resources modified since this time)
+                    // Bulk _since is not a search parameter; translate it to the inclusive timestamp predicate.
                     if (input.Since.HasValue)
                     {
                         if (queryStringBuilder.Length > 0)
                         {
                             queryStringBuilder.Append('&');
                         }
-                        queryStringBuilder.Append("_since=");
-                        queryStringBuilder.Append(Uri.EscapeDataString(input.Since.Value.ToString("O")));
+                        queryStringBuilder.Append("_lastUpdated=ge");
+                        queryStringBuilder.Append(Uri.EscapeDataString(input.Since.Value.ToString("O", CultureInfo.InvariantCulture)));
                     }
 
-                    // If GroupId is specified, add _id filter to only export resources for Group members
-                    if (!string.IsNullOrEmpty(input.GroupId) && input.ResourceType == "Patient")
+                    Expression? groupExpression = null;
+                    if (!string.IsNullOrEmpty(input.GroupId))
                     {
-                        // Use search service to resolve Group members
-                        // Query: GET /Group/{id}?_include=Group:member&_include:iterate=Group:member
-                        // This resolves all members including nested groups
-                        var groupQueryString = $"_id={Uri.EscapeDataString(input.GroupId)}&_include=Group:member&_include:iterate=Group:member";
-                        var groupFilterParams = _parameterParser.Parse(groupQueryString);
-                        var groupSearchOptions = _searchOptionsBuilder.Build("Group", groupFilterParams);
-                        SearchModifierNotSupportedException.ThrowIfAny(groupSearchOptions);
-
-                        var patientIds = new List<string>();
-                        await foreach (var resource in searchService.SearchStreamAsync(groupSearchOptions, CancellationToken.None))
-                        {
-                            if (resource.ResourceType == "Patient")
-                            {
-                                patientIds.Add(resource.ResourceId);
-                            }
-                        }
+                        var patientIds = await _groupResolver.ResolvePatientIdsAsync(
+                            input.TenantId, input.GroupId, schema, CancellationToken.None);
 
                         if (patientIds.Count == 0)
                         {
@@ -187,13 +180,20 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                             return new ExportWorkerOutput(input.ResourceType, input.StartSurrogateId, input.EndSurrogateId, 0, 0);
                         }
 
-                        // Add _id filter for the patient IDs
-                        var idFilter = "_id=" + string.Join(",", patientIds.Select(Uri.EscapeDataString));
-                        if (queryStringBuilder.Length > 0)
+                        if (input.ResourceType == "Patient")
                         {
-                            queryStringBuilder.Append('&');
+                            if (queryStringBuilder.Length > 0)
+                            {
+                                queryStringBuilder.Append('&');
+                            }
+                            queryStringBuilder.Append("_id=" + string.Join(",", patientIds.Select(Uri.EscapeDataString)));
                         }
-                        queryStringBuilder.Append(idFilter);
+                        else
+                        {
+                            groupExpression = Expression.Or(patientIds.Select(id =>
+                                (Expression)new CompartmentSearchExpression(
+                                    "Patient", id, new HashSet<string>(StringComparer.Ordinal) { input.ResourceType })).ToArray());
+                        }
 
                         _logger.LogInformation("Group export: Resolved {Count} patient members from Group {GroupId}", patientIds.Count, input.GroupId);
                     }
@@ -202,11 +202,26 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                     var filterParams = _parameterParser.Parse(queryStringBuilder.ToString());
 
                     // Use SearchOptionsBuilder to properly parse filters into expressions
-                    var searchOptions = _searchOptionsBuilder.Build(input.ResourceType, filterParams);
+                    var searchOptions = searchOptionsBuilder.Build(input.ResourceType, filterParams);
                     SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+                    if (groupExpression is not null)
+                    {
+                        searchOptions.Expression = searchOptions.Expression switch
+                        {
+                            null => groupExpression,
+                            MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and =>
+                                Expression.And([groupExpression, .. and.Expressions]),
+                            var other => Expression.And(groupExpression, other)
+                        };
+                    }
 
                     // Add partition boundaries (surrogate ID range)
-                    searchOptions.MaxItemCount = 50_000;  // Large batches (memory-safe due to streaming)
+                    searchOptions.MaxItemCount = PageSize;
+                    // Bulk output is unordered; use the provider's stable traversal order for continuation.
+                    searchOptions.Sort = [];
+                    searchOptions.ProbeExtraRow = true;
+                    searchOptions.UseExportContinuation = true;
+                    searchOptions.ContinuationToken = null;
                     searchOptions.StartSurrogateId = input.StartSurrogateId;
                     searchOptions.EndSurrogateId = input.EndSurrogateId;
 
@@ -220,48 +235,25 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                             filterParams.Count);
                     }
 
-                    // Producer-consumer pattern: decouple database reading from writing/ViewDefinition evaluation
-                    // Producer reads from search service and writes to channel
-                    // Consumer(s) read from channel, evaluate ViewDefinition, and write to file sequentially
-                    var channel = Channel.CreateBounded<SearchEntryResult>(
-                        new BoundedChannelOptions(capacity: 500)
-                        {
-                            FullMode = BoundedChannelFullMode.Wait
-                        });
-
-                    // Producer task: Read from search stream and write to channel
-                    var producerTask = Task.Run(async () =>
+                    while (true)
                     {
-                        try
+                        string? nextPage = null;
+                        await foreach (var resource in searchService.SearchStreamAsync(searchOptions, CancellationToken.None))
                         {
-                            await foreach (var resource in searchService.SearchStreamAsync(searchOptions, CancellationToken.None))
+                            if (resource.IsPagingProbe)
                             {
-                                await channel.Writer.WriteAsync(resource, CancellationToken.None);
+                                nextPage = resource.ContinuationToken;
+                                if (string.IsNullOrEmpty(nextPage))
+                                {
+                                    throw new InvalidOperationException("The export provider returned a paging probe without a continuation.");
+                                }
+                                continue;
                             }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(
-                                ex,
-                                "Producer task failed: Job={JobId}, Type={ResourceType}",
-                                input.JobId,
-                                input.ResourceType);
-                            throw;
-                        }
-                        finally
-                        {
-                            channel.Writer.Complete();
-                        }
-                    });
+                            if (resource.SearchMode != SearchEntryMode.Match)
+                            {
+                                throw new InvalidOperationException("Export searches must return only matching resources, not includes or paging probes.");
+                            }
 
-                    // Consumer: Process from channel, evaluate ViewDefinition, write sequentially
-                    try
-                    {
-                        await foreach (var resource in channel.Reader.ReadAllAsync(CancellationToken.None))
-                        {
-                            // Write resource directly to file stream
-                            // (buffered internally by IExportStreamWriter, then flushed periodically)
-                            // ViewDefinition evaluation happens inside WriteResourceAsync
                             await writer.WriteResourceAsync(resource, CancellationToken.None);
                             resourcesExported++;
 
@@ -277,19 +269,18 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                                     resourcesExported);
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(
-                            ex,
-                            "Consumer task failed: Job={JobId}, Type={ResourceType}",
-                            input.JobId,
-                            input.ResourceType);
-                        throw;
-                    }
 
-                    // Wait for producer to complete (ensures all errors are propagated)
-                    await producerTask;
+                        if (nextPage is null)
+                        {
+                            break;
+                        }
+
+                        if (nextPage == searchOptions.ContinuationToken)
+                        {
+                            throw new InvalidOperationException("The export provider returned a non-advancing continuation.");
+                        }
+                        searchOptions.ContinuationToken = nextPage;
+                    }
 
                     // Final flush ensures all remaining data is written to blob storage
                     await writer.FlushAsync(CancellationToken.None);
@@ -321,6 +312,10 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                         input.EndSurrogateId);
 
                     throw;
+                }
+                finally
+                {
+                    _fhirContextAccessor.RequestContext = previousContext;
                 }
             }
         }

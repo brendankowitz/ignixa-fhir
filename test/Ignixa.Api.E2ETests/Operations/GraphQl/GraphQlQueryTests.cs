@@ -98,6 +98,22 @@ public class GraphQlQueryTests : CapabilityDrivenTestBase
         fields.ShouldContain(f => f!["name"]!.GetValue<string>() == "birthDate");
     }
 
+    [Fact]
+    public async Task GivenGraphQlAdvertised_WhenIntrospectingPatientType_ThenReverseFieldsOnlyExistForReferencingTypes()
+    {
+        var result = await PostGraphQlAsync(
+            "{ __type(name: \"Patient\") { fields { name } } }");
+
+        AssertNoErrors(result);
+        var fieldNames = result["data"]!["__type"]!["fields"]!.AsArray()
+            .Select(f => f!["name"]!.GetValue<string>())
+            .ToHashSet();
+        fieldNames.ShouldContain("ObservationList");
+        fieldNames.ShouldContain("ObservationConnection");
+        fieldNames.ShouldNotContain("CodeSystemList");
+        fieldNames.ShouldNotContain("ValueSetConnection");
+    }
+
     // ========================================================================
     // Single Resource Read
     // ========================================================================

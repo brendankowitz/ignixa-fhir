@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
+using Ignixa.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Bundle;
@@ -43,9 +45,18 @@ public class BundleReferencePreProcessor
             entries.Count,
             bundleType);
 
-        // Scan all POST operations that have urn:uuid fullUrl
+        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
         {
+            if (IsUrnUuid(entry.FullUrl) && !aliases.Add(entry.FullUrl!))
+            {
+                throw new BadRequestException($"Duplicate transaction fullUrl alias '{entry.FullUrl}'.");
+            }
+            if (IsUrnUuid(entry.FullUrl) && TransactionRequestValidator.IsExplicitPut(entry))
+            {
+                context.AddReference(entry.FullUrl!, $"{entry.ResourceType}/{entry.ResourceId}");
+                continue;
+            }
             if (entry.HttpVerb == "POST" && IsUrnUuid(entry.FullUrl))
             {
                 // Assign a new GUID for this resource
@@ -53,7 +64,7 @@ public class BundleReferencePreProcessor
                 entry.AssignedResourceId = assignedId;
 
                 // Map urn:uuid -> assigned ID
-                context.AddReference(entry.FullUrl!, assignedId);
+                context.AddReference(entry.FullUrl!, $"{entry.ResourceType}/{assignedId}");
 
                 _logger.LogDebug(
                     "Assigned ID for POST entry {Index}: {UrnUuid} -> {AssignedId} (ResourceType={ResourceType})",
@@ -64,11 +75,55 @@ public class BundleReferencePreProcessor
             }
         }
 
+        if (bundleType == BundleType.Transaction)
+        {
+            foreach (var entry in entries.Where(e => e.RawJson != null))
+            {
+                var json = JsonNode.Parse(entry.RawJson!);
+                RewriteReferences(json, reference => IsUrnUuid(reference)
+                    ? context.ResolveReference(reference) ?? throw new BadRequestException($"Unresolved transaction reference '{reference}'.")
+                    : reference);
+                entry.RawJson = json!.ToJsonString();
+            }
+        }
+
         _logger.LogInformation(
             "Pre-processing complete: {ReferenceCount} urn:uuid references mapped",
             context.Count);
 
         return context;
+    }
+
+    internal static bool RewriteReferenceAliases(JsonNode? node, IReadOnlyDictionary<string, string> aliases) =>
+        RewriteReferences(node, reference => aliases.TryGetValue(reference, out var resolved) ? resolved : reference);
+
+    private static bool RewriteReferences(JsonNode? node, Func<string, string> resolve)
+    {
+        var changed = false;
+        if (node is JsonObject obj)
+        {
+            if (obj["reference"] is JsonValue value && value.TryGetValue<string>(out var reference))
+            {
+                var resolved = resolve(reference);
+                if (resolved != reference)
+                {
+                    obj["reference"] = resolved;
+                    changed = true;
+                }
+            }
+            foreach (var property in obj)
+            {
+                changed |= RewriteReferences(property.Value, resolve);
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                changed |= RewriteReferences(item, resolve);
+            }
+        }
+        return changed;
     }
 
     /// <summary>

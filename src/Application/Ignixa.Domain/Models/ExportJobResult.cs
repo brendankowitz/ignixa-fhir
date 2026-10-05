@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Text.Json.Serialization;
+
 namespace Ignixa.Domain.Models;
 
 /// <summary>
@@ -13,12 +15,19 @@ public class ExportJobResult
     /// <summary>
     /// Total number of resources exported.
     /// </summary>
-    public int TotalResources { get; set; }
+    [JsonRequired]
+    public long TotalResources { get; set; }
 
     /// <summary>
-    /// Exported files as a dictionary: resourceType -> filePath.
+    /// Exported files keyed by resource type and partition, or resource type for older jobs.
     /// </summary>
+    [JsonRequired]
     public Dictionary<string, string> ExportedFiles { get; init; } = new();
+
+    /// <summary>
+    /// Resource counts keyed identically to ExportedFiles. Absent for older persisted jobs.
+    /// </summary>
+    public Dictionary<string, long>? ExportedFileCounts { get; init; }
 
     /// <summary>
     /// Completion timestamp.

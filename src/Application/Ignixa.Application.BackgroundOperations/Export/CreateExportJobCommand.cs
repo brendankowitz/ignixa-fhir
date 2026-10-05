@@ -51,4 +51,6 @@ public record CreateExportJobCommand : IRequest<CreateExportJobResult>
     /// When specified, only exports resources for patients that are members of this Group.
     /// </summary>
     public string? GroupId { get; init; }
+
+    public string? RequestUrl { get; init; }
 }

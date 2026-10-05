@@ -1,0 +1,675 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Text;
+using System.Text.Json;
+using Ignixa.Abstractions;
+using Ignixa.Application.Features.Bundle;
+using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Domain.Models;
+using Ignixa.Search.Models;
+using NSubstitute;
+using Shouldly;
+
+namespace Ignixa.Application.Tests.Features.Bundle.Serialization;
+
+/// <summary>
+/// Tests for mid-stream failure handling in StreamingBundleSerializer: per-entry buffering across
+/// SerializeWithPaginationAsync, SerializeAsync, and SerializeStreamAsync.
+/// Most tests cover the two-tier recovery keyed on Utf8JsonWriter.BytesCommitted that
+/// SerializeWithPaginationAsync and SerializeAsync share: tier 1 (nothing committed) discards the
+/// buffer and rethrows so the exception middleware can still produce a status-coded error; tier 2
+/// (response started) completes the bundle with a fatal OperationOutcome entry and rethrows.
+/// SerializeStreamAsync is the exception (design doc Section 8): it gets per-entry buffering but
+/// deliberately has no two-tier recovery -- it never rethrows, because its caller depends on that.
+/// </summary>
+public class StreamingBundleSerializerFailureTests
+{
+    private const string WarningEntryFullUrl = "urn:uuid:00000000-0000-0000-0000-0000000000d0";
+    private const string ErrorEntryFullUrl = "urn:uuid:00000000-0000-0000-0000-0000000000e0";
+
+    [Fact]
+    public async Task GivenAnEnumeratorThatThrowsBeforeAnyFlush_WhenSerializing_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+        var boom = new InvalidOperationException("boom");
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, boom), NewOptions(), "http://x", "");
+
+        // Assert
+        (await act.ShouldThrowAsync<InvalidOperationException>()).ShouldBeSameAs(boom);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAnEnumeratorThatThrowsOnFirstMoveNext_WhenSerializing_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+        var boom = new InvalidOperationException("boom");
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(0, boom), NewOptions(), "http://x", "");
+
+        // Assert
+        (await act.ShouldThrowAsync<InvalidOperationException>()).ShouldBeSameAs(boom);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAnEnumeratorThatThrowsAfterACommittedFlush_WhenSerializing_ThenTheBundleIsValidAndCarriesAFatalOutcome()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new InvalidOperationException("boom")),
+            NewOptions(), "http://x", "", flushThresholdBytes: 1);
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        root.GetProperty("entry").EnumerateArray()
+            .Any(e => e.TryGetProperty("search", out var s) && s.GetProperty("mode").GetString() == "outcome")
+            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenCorruptResourceBytesBeforeAnyFlush_WhenSerializing_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, EntriesWithCorruptResourceJsonAsync(2), NewOptions(), "http://x", "");
+
+        // Assert
+        await act.ShouldThrowAsync<JsonException>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenCorruptResourceBytesAfterACommittedFlush_WhenSerializing_ThenTheBundleIsValidAndCarriesAFatalOutcome()
+    {
+        // Arrange -- the mid-entry tier-2 case: without per-entry buffering the main writer is
+        // left mid-entry and closing the bundle is impossible, producing truncated JSON.
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, EntriesWithCorruptResourceJsonAsync(2), NewOptions(), "http://x", "",
+            flushThresholdBytes: 1);
+
+        // Assert
+        await act.ShouldThrowAsync<JsonException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(3);
+        entries[^1].GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+        entries[^1].GetProperty("search").GetProperty("mode").GetString().ShouldBe("outcome");
+        entries[^1].GetProperty("resource").GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
+    }
+
+    [Fact]
+    public async Task GivenCancellationBeforeAnyFlush_WhenSerializing_ThenNothingIsWrittenAndCancellationPropagates()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new OperationCanceledException()),
+            NewOptions(), "http://x", "");
+
+        // Assert
+        await act.ShouldThrowAsync<OperationCanceledException>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenCancellationAfterACommittedFlush_WhenSerializing_ThenTheBundleIsValidWithNoOutcomeEntry()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new OperationCanceledException()),
+            NewOptions(), "http://x", "", flushThresholdBytes: 1);
+
+        // Assert
+        await act.ShouldThrowAsync<OperationCanceledException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(2);
+        entries.ShouldAllBe(e => e.GetProperty("search").GetProperty("mode").GetString() == "match");
+    }
+
+    [Fact]
+    public async Task GivenMoreResultsThanThePageAndATierTwoFailure_WhenSerializing_ThenOnlyTheSelfLinkIsEmitted()
+    {
+        // Arrange
+        var options = NewOptions();
+        options.MaxItemCount = 1;
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(3, new InvalidOperationException("boom")),
+            options, "http://x", "", flushThresholdBytes: 1);
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        root.GetProperty("link").EnumerateArray()
+            .Select(l => l.GetProperty("relation").GetString())
+            .ShouldBe(["self"]);
+    }
+
+    [Fact]
+    public async Task GivenANonAbsoluteBaseUrlWithIncludesPendingBeforeAnyFlush_WhenSerializing_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange -- the related-link build calls new Uri(baseUrl, UriKind.Absolute), which the
+        // hoist brings inside the guarded region.
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, MatchThenIncludeAsync(), IncludesPendingOptions(), "not-a-url", "");
+
+        // Assert
+        await act.ShouldThrowAsync<UriFormatException>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenANonAbsoluteBaseUrlWithIncludesPendingAfterACommittedFlush_WhenSerializing_ThenTheBundleIsValidAndCarriesAFatalOutcome()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, MatchThenIncludeAsync(), IncludesPendingOptions(), "not-a-url", "",
+            flushThresholdBytes: 1);
+
+        // Assert
+        await act.ShouldThrowAsync<UriFormatException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        root.GetProperty("entry").EnumerateArray().Last()
+            .GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+    }
+
+    [Fact]
+    public async Task GivenATierTwoFailure_WhenSerializingForEachSupportedVersion_ThenTheSearchsetOutcomeEntryShapeIsIdentical()
+    {
+        foreach (var schemaProvider in new[] { Stu3Schema(), R4Schema(), R5Schema() })
+        {
+            // Arrange
+            var stream = new MemoryStream();
+
+            // Act
+            var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+                stream, "searchset", null, ThrowAfterAsync(2, new InvalidOperationException("boom")),
+                NewOptions(), "http://x", "", schemaProvider, flushThresholdBytes: 1);
+
+            // Assert
+            await act.ShouldThrowAsync<InvalidOperationException>();
+            var errorEntry = JsonDocument.Parse(stream.ToArray()).RootElement
+                .GetProperty("entry").EnumerateArray().Last();
+            errorEntry.GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+            errorEntry.GetProperty("search").GetProperty("mode").GetString().ShouldBe("outcome");
+            errorEntry.GetProperty("resource").GetProperty("resourceType").GetString().ShouldBe("OperationOutcome");
+            errorEntry.TryGetProperty("request", out _).ShouldBeFalse();
+            errorEntry.TryGetProperty("response", out _).ShouldBeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task GivenAThrowDuringThePrologue_WhenSerializing_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange -- empty Severity throws inside WriteBundleIssuesPreR5, which Task 2
+        // deliberately left unguarded; this fires before any entry, so it must be tier 1.
+        var options = NewOptions();
+        options.BundleIssues = [new IssueComponent("", "incomplete", Diagnostics: "d")];
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, TwoEntriesAsync(), options, "http://x", "", schemaProvider: R4Schema());
+
+        // Assert
+        await act.ShouldThrowAsync<Exception>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("", "incomplete")]
+    [InlineData("   ", "incomplete")]
+    [InlineData("warning", "")]
+    [InlineData("warning", "   ")]
+    public async Task GivenABundleIssueWithAnEmptyOrWhitespaceSeverityOrCodeOnAnR5Tenant_WhenSerializing_ThenNothingIsWrittenAndTheExceptionPropagates(string severity, string code)
+    {
+        // Arrange -- on R5, WriteBundleIssues (not the pre-R5 prologue helper) writes Severity/Code,
+        // and it runs after the guard closes, outside any try/catch in this method. Before the
+        // ValidateBundleIssues guard-region check, this exception escaped the recovery entirely and
+        // resurrected the dispose-flush truncation bug instead of being tier-1 recoverable.
+        var options = NewOptions();
+        options.BundleIssues = [new IssueComponent(severity, code, Diagnostics: "d")];
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, TwoEntriesAsync(), options, "http://x", "", schemaProvider: R5Schema());
+
+        // Assert
+        await act.ShouldThrowAsync<Exception>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenWarningIssuesAndATierTwoFailure_WhenSerializing_ThenBothOutcomeEntriesHaveDistinctFullUrls()
+    {
+        // Arrange
+        var options = NewOptions();
+        options.BundleIssues = [new IssueComponent("warning", "incomplete", Diagnostics: "d")];
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new InvalidOperationException("boom")),
+            options, "http://x", "", schemaProvider: R4Schema(), flushThresholdBytes: 1);
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        var fullUrls = JsonDocument.Parse(stream.ToArray()).RootElement.GetProperty("entry")
+            .EnumerateArray()
+            .Where(e => e.TryGetProperty("fullUrl", out var f) && f.GetString()!.StartsWith("urn:uuid:", StringComparison.Ordinal))
+            .Select(e => e.GetProperty("fullUrl").GetString())
+            .ToList();
+        fullUrls.ShouldBe([WarningEntryFullUrl, ErrorEntryFullUrl]);
+    }
+
+    [Fact]
+    public async Task GivenWarningIssuesAndATierTwoFailureOnAnR5Tenant_WhenSerializing_ThenTheBundleCarriesBothTheIssuesPropertyAndTheFatalOutcomeEntry()
+    {
+        // Arrange
+        var options = NewOptions();
+        options.BundleIssues = [new IssueComponent("warning", "incomplete", Diagnostics: "d")];
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new InvalidOperationException("boom")),
+            options, "http://x", "", schemaProvider: R5Schema(), flushThresholdBytes: 1);
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+
+        root.TryGetProperty("issues", out var issues).ShouldBeTrue();
+        issues.GetProperty("resourceType").GetString().ShouldBe("OperationOutcome");
+        issues.GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("warning");
+
+        var errorEntry = root.GetProperty("entry").EnumerateArray().Last();
+        errorEntry.GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+        errorEntry.GetProperty("resource").GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
+    }
+
+    [Fact]
+    public async Task GivenAnEnumeratorThatThrowsBeforeAnyEntry_WhenSerializingSimpleAsync_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+        var boom = new InvalidOperationException("boom");
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, ThrowAfterAsync(0, boom));
+
+        // Assert
+        (await act.ShouldThrowAsync<InvalidOperationException>()).ShouldBeSameAs(boom);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenCorruptResourceBytesOnTheFirstEntry_WhenSerializingSimpleAsync_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, EntriesWithCorruptResourceJsonAsync(0));
+
+        // Assert
+        await act.ShouldThrowAsync<JsonException>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAnEnumeratorThatThrowsAfterAnEntryIsFlushed_WhenSerializingSimpleAsync_ThenTheBundleIsValidAndCarriesAFatalOutcome()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, ThrowAfterAsync(1, new InvalidOperationException("boom")));
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(2);
+        entries[^1].GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+        entries[^1].GetProperty("search").GetProperty("mode").GetString().ShouldBe("outcome");
+    }
+
+    [Fact]
+    public async Task GivenCorruptResourceBytesAfterAnEntryIsFlushed_WhenSerializingSimpleAsync_ThenTheBundleIsValidAndCarriesAFatalOutcome()
+    {
+        // Arrange -- SerializeAsync flushes per entry (design §2), so tier 2 is reachable from the
+        // second entry onward, same as SerializeHistoryAsync. This fails against a non-buffered
+        // implementation: the main writer is left mid-entry and closing the bundle is impossible.
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, EntriesWithCorruptResourceJsonAsync(1));
+
+        // Assert
+        await act.ShouldThrowAsync<JsonException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(2);
+        entries[^1].GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+        entries[^1].GetProperty("resource").GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
+    }
+
+    [Fact]
+    public async Task GivenATierOneFailure_WhenSerializingWithPagination_ThenTheOutputStreamIsNeverFlushed()
+    {
+        // Arrange -- asserting on bytes is not enough. Utf8JsonWriter disposal flushes its
+        // destination unconditionally, and a zero-byte flush on Response.Body starts a Kestrel
+        // response (headers sent, status 200), which defeats tier 1 without writing a single byte.
+        var stream = new FlushRecordingStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new InvalidOperationException("boom")),
+            NewOptions(), "http://x", "");
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        stream.FlushCount.ShouldBe(0);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenATierOneCancellation_WhenSerializingWithPagination_ThenTheOutputStreamIsNeverFlushed()
+    {
+        // Arrange
+        var stream = new FlushRecordingStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new OperationCanceledException()),
+            NewOptions(), "http://x", "");
+
+        // Assert
+        await act.ShouldThrowAsync<OperationCanceledException>();
+        stream.FlushCount.ShouldBe(0);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenATierOneFailure_WhenSerializingSimpleAsync_ThenTheOutputStreamIsNeverFlushed()
+    {
+        // Arrange -- SerializeAsync flushes per entry, so tier 1 requires a throw before the first.
+        var stream = new FlushRecordingStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, ThrowAfterAsync(0, new InvalidOperationException("boom")));
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        stream.FlushCount.ShouldBe(0);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenATierOneFailure_WhenSerializingHistory_ThenTheOutputStreamIsNeverFlushed()
+    {
+        // Arrange -- SerializeHistoryAsync also flushes per entry.
+        var stream = new FlushRecordingStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeHistoryAsync(
+            stream, "history", null, ThrowAfterAsync(0, new InvalidOperationException("boom")));
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        stream.FlushCount.ShouldBe(0);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Counts flushes reaching the output stream. A flush is the event that starts an HTTP response,
+    /// so it is the observable a tier-1 assertion must key on - byte counts stay at zero either way.
+    /// </summary>
+    private sealed class FlushRecordingStream : MemoryStream
+    {
+        public int FlushCount { get; private set; }
+
+        public override void Flush()
+        {
+            FlushCount++;
+            base.Flush();
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            FlushCount++;
+            return base.FlushAsync(cancellationToken);
+        }
+    }
+
+    private static SearchOptions NewOptions() => new() { MaxItemCount = 10 };
+
+    private static SearchOptions IncludesPendingOptions() => new()
+    {
+        MaxItemCount = 10,
+        IncludesMaxItemCount = 0,
+        ResourceType = "Patient",
+    };
+
+    private static ISchema Stu3Schema() => SchemaFor(FhirVersion.Stu3);
+
+    private static ISchema R4Schema() => SchemaFor(FhirVersion.R4);
+
+    private static ISchema R5Schema() => SchemaFor(FhirVersion.R5);
+
+    private static ISchema SchemaFor(FhirVersion version)
+    {
+        var schemaProvider = Substitute.For<ISchema>();
+        schemaProvider.Version.Returns(version);
+        return schemaProvider;
+    }
+
+    private static SearchEntryResult CreateEntry(string id)
+    {
+        var resourceJson = $$"""{"resourceType":"Patient","id":"{{id}}","name":[{"family":"Test"}]}""";
+
+        return new SearchEntryResult(
+            ResourceType: "Patient",
+            ResourceId: id,
+            VersionId: "1",
+            LastModified: DateTimeOffset.UnixEpoch,
+            ResourceBytes: Encoding.UTF8.GetBytes(resourceJson))
+        {
+            SearchMode = SearchEntryMode.Match,
+        };
+    }
+
+    private static async IAsyncEnumerable<SearchEntryResult> ThrowAfterAsync(int count, Exception ex)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return CreateEntry($"p{i}");
+            await Task.Yield();
+        }
+
+        throw ex;
+    }
+
+    private static async IAsyncEnumerable<SearchEntryResult> EntriesWithCorruptResourceJsonAsync(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return CreateEntry($"p{i}");
+            await Task.Yield();
+        }
+
+        yield return CreateEntry("corrupt") with { ResourceBytes = Encoding.UTF8.GetBytes("{\"resourceType\":") };
+        await Task.Yield();
+    }
+
+    private static async IAsyncEnumerable<SearchEntryResult> TwoEntriesAsync()
+    {
+        yield return CreateEntry("p0");
+        await Task.Yield();
+        yield return CreateEntry("p1");
+        await Task.Yield();
+    }
+
+    private static async IAsyncEnumerable<SearchEntryResult> MatchThenIncludeAsync()
+    {
+        yield return CreateEntry("p0");
+        await Task.Yield();
+        yield return CreateEntry("o0") with { SearchMode = SearchEntryMode.Include };
+        await Task.Yield();
+    }
+
+    [Fact]
+    public async Task GivenAMidEntryFailure_WhenStreamingABatchResponse_ThenTheBundleIsValidAndNoExceptionEscapes()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act — must NOT throw
+        var result = await StreamingBundleSerializer.SerializeStreamAsync(
+            stream, "batch-response", EntriesWithCorruptResourceJsonResponseAsync());
+
+        // Assert
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        root.GetProperty("entry").EnumerateArray()
+            .Any(e => e.GetProperty("response").GetProperty("status").GetString() == "500 Internal Server Error")
+            .ShouldBeTrue();
+
+        // Defect (A): a failed batch must be observable to the caller instead of reporting success.
+        result.Succeeded.ShouldBeFalse();
+        result.Exception.ShouldNotBeNull();
+        result.ClientDisconnected.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenCancellationRaisedByAnUnrelatedToken_WhenStreamingABatchResponse_ThenAnErrorEntryIsWrittenAndTheResultIsNotClientDisconnected()
+    {
+        // Arrange -- simulates an OperationCanceledException surfacing from something other than the
+        // caller's own token (a linked token inside bundleProcessor, an internal timeout): the caller's
+        // `cancellationToken` parameter (default here) is never itself canceled. The client is still
+        // connected, so silently truncating the bundle behind a 200 would be the worst available outcome.
+        var stream = new MemoryStream();
+
+        // Act — must NOT throw
+        var result = await StreamingBundleSerializer.SerializeStreamAsync(
+            stream, "batch-response", ThrowAfterResponseAsync(1, new OperationCanceledException()));
+
+        // Assert
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(2);
+        entries[^1].GetProperty("response").GetProperty("status").GetString().ShouldBe("500 Internal Server Error");
+
+        result.Succeeded.ShouldBeFalse();
+        result.Exception.ShouldBeOfType<OperationCanceledException>();
+        result.ClientDisconnected.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenTheCallersOwnTokenIsCanceled_WhenStreamingABatchResponse_ThenTheBundleIsWellFormedWithNoErrorEntryAndTheResultReportsClientDisconnected()
+    {
+        // Arrange -- simulates a genuine client disconnect: the token passed in as `cancellationToken`
+        // is the one that gets canceled. Nobody is listening for the response any more, so there is no
+        // error entry to show - but the JSON must still close cleanly rather than leaving a truncated
+        // array (an already-canceled token makes a plain FlushAsync throw instead of completing the body).
+        var stream = new MemoryStream();
+        var cts = new CancellationTokenSource();
+
+        // Act — must NOT throw
+        var result = await StreamingBundleSerializer.SerializeStreamAsync(
+            stream, "batch-response", ThrowAfterResponseAndCancelAsync(1, cts), cancellationToken: cts.Token);
+
+        // Assert
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(1);
+        entries.Any(HasFatalErrorResponseStatus).ShouldBeFalse();
+
+        result.Succeeded.ShouldBeFalse();
+        result.Exception.ShouldBeOfType<OperationCanceledException>();
+        result.ClientDisconnected.ShouldBeTrue();
+    }
+
+    private static bool HasFatalErrorResponseStatus(JsonElement entry) =>
+        entry.TryGetProperty("response", out var response)
+        && response.GetProperty("status").GetString() == "500 Internal Server Error";
+
+    private static BundleEntryResponse CreateEntryResponse(string resourceJson) => new()
+    {
+        StatusCode = 200,
+        Status = "200 OK",
+        ResourceJson = resourceJson,
+    };
+
+    private static async IAsyncEnumerable<BundleEntryResponse> EntriesWithCorruptResourceJsonResponseAsync()
+    {
+        yield return CreateEntryResponse("""{"resourceType":"Patient","id":"p0"}""");
+        await Task.Yield();
+        yield return CreateEntryResponse("{\"resourceType\":");
+        await Task.Yield();
+    }
+
+    private static async IAsyncEnumerable<BundleEntryResponse> ThrowAfterResponseAsync(int count, Exception ex)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return CreateEntryResponse($$"""{"resourceType":"Patient","id":"p{{i}}"}""");
+            await Task.Yield();
+        }
+
+        throw ex;
+    }
+
+    private static async IAsyncEnumerable<BundleEntryResponse> ThrowAfterResponseAndCancelAsync(int count, CancellationTokenSource cts)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return CreateEntryResponse($$"""{"resourceType":"Patient","id":"p{{i}}"}""");
+            await Task.Yield();
+        }
+
+        cts.Cancel();
+        throw new OperationCanceledException(cts.Token);
+    }
+}

@@ -61,12 +61,12 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         GC.SuppressFinalize(this);
     }
 
-    public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken ct = default)
+    public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken cancellationToken = default)
     {
         try
         {
             // Find the latest metadata file for this resource
-            var metadataFile = await FindLatestMetadataFileAsync(key, ct).ConfigureAwait(false);
+            var metadataFile = await FindLatestMetadataFileAsync(key, cancellationToken).ConfigureAwait(false);
             if (metadataFile == null)
             {
                 LogResourceNotFound(_logger, key.ResourceType, key.Id);
@@ -74,7 +74,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             }
 
             // Read metadata
-            var metadata = await ReadMetadataFileAsync(metadataFile, ct).ConfigureAwait(false);
+            var metadata = await ReadMetadataFileAsync(metadataFile, cancellationToken).ConfigureAwait(false);
 
             // Extract transaction ID from metadata to locate resource file
             // Resource files are at: ResourceType/YYYY/MM/DD/tx-{transactionId}.ndjson
@@ -83,7 +83,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             string ndjsonPath = Path.Combine(resourceTypeDir, $"tx-{metadata.TransactionId}.ndjson");
 
             // Read resource from NDJSON file
-            string resourceJson = await ReadResourceFromNdjsonByIdAsync(ndjsonPath, key.Id, ct).ConfigureAwait(false);
+            string resourceJson = await ReadResourceFromNdjsonByIdAsync(ndjsonPath, key.Id, cancellationToken).ConfigureAwait(false);
 
             // Convert to UTF-8 bytes for zero-copy serialization (no parsing!)
             byte[] resourceJsonBytes = Encoding.UTF8.GetBytes(resourceJson);
@@ -112,11 +112,11 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         }
     }
 
-    public async ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default)
+    public async ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken cancellationToken = default)
     {
         var key = new ResourceKey(resource.ResourceType, resource.ResourceId);
 
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             // Generate transaction ID
@@ -124,7 +124,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             var timestamp = DateTimeOffset.UtcNow;
 
             // Increment version
-            int newVersion = await GetNextVersionAsync(key, ct).ConfigureAwait(false);
+            int newVersion = await GetNextVersionAsync(key, cancellationToken).ConfigureAwait(false);
 
             // Stamp the resolved version and timestamp into the resource's own meta before
             // serializing, so the stored bytes agree with the sidecar ResourceMetadata below
@@ -145,7 +145,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
             // Write NDJSON file (just the resource JSON, no bundle header)
             // Transaction metadata is stored in /transactions lock file
-            await File.WriteAllTextAsync(ndjsonPath, resourceJson, ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(ndjsonPath, resourceJson, cancellationToken).ConfigureAwait(false);
 
             // Write metadata sidecar in _internal directory
             string internalMetadataDir = Path.Combine(
@@ -170,7 +170,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             };
 
             string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
-            await File.WriteAllTextAsync(internalMetadataPath, metadataJson, ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(internalMetadataPath, metadataJson, cancellationToken).ConfigureAwait(false);
 
             LogResourceStored(_logger, resource.ResourceType, resource.ResourceId, metadata.VersionId, transactionId);
 
@@ -200,18 +200,18 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         ResourceKey key,
         ResourceRequest request,
         TransactionId? transactionId = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(request);
 
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             LogDeletingResource(_logger, key.ResourceType, key.Id);
 
             // Check if resource exists
-            var metadataFile = await FindLatestMetadataFileAsync(key, ct).ConfigureAwait(false);
+            var metadataFile = await FindLatestMetadataFileAsync(key, cancellationToken).ConfigureAwait(false);
             if (metadataFile == null)
             {
                 // Resource never existed - return null (404 Not Found)
@@ -220,7 +220,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             }
 
             // Read current metadata
-            var currentMetadata = await ReadMetadataFileAsync(metadataFile, ct).ConfigureAwait(false);
+            var currentMetadata = await ReadMetadataFileAsync(metadataFile, cancellationToken).ConfigureAwait(false);
 
             // Check if already deleted (idempotency)
             if (currentMetadata.IsDeleted)
@@ -248,7 +248,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
             // Write tombstone NDJSON file
             string ndjsonPath = Path.Combine(dateDirectory, $"tx-{txId}.ndjson");
-            await File.WriteAllTextAsync(ndjsonPath, tombstoneJson, ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(ndjsonPath, tombstoneJson, cancellationToken).ConfigureAwait(false);
 
             // Write metadata sidecar with IsDeleted = true
             string internalMetadataDir = Path.Combine(
@@ -273,7 +273,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             };
 
             string metadataJson = JsonSerializer.Serialize(deletedMetadata, _jsonOptions);
-            await File.WriteAllTextAsync(internalMetadataPath, metadataJson, ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(internalMetadataPath, metadataJson, cancellationToken).ConfigureAwait(false);
 
             var resultKey = new ResourceKey(key.ResourceType, key.Id, newVersion.ToString(), key.TenantId);
 
@@ -287,9 +287,9 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         }
     }
 
-    private async ValueTask<int> GetNextVersionAsync(ResourceKey key, CancellationToken ct)
+    private async ValueTask<int> GetNextVersionAsync(ResourceKey key, CancellationToken cancellationToken)
     {
-        var metadataFile = await FindLatestMetadataFileAsync(key, ct).ConfigureAwait(false);
+        var metadataFile = await FindLatestMetadataFileAsync(key, cancellationToken).ConfigureAwait(false);
         if (metadataFile == null)
         {
             return 1;
@@ -297,7 +297,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         try
         {
-            var metadata = await ReadMetadataFileAsync(metadataFile, ct).ConfigureAwait(false);
+            var metadata = await ReadMetadataFileAsync(metadataFile, cancellationToken).ConfigureAwait(false);
             return int.Parse(metadata.VersionId) + 1;
         }
         catch
@@ -316,7 +316,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             timestamp.Day.ToString("D2"));
     }
 
-    private async ValueTask<string?> FindLatestMetadataFileAsync(ResourceKey key, CancellationToken ct)
+    private async ValueTask<string?> FindLatestMetadataFileAsync(ResourceKey key, CancellationToken cancellationToken)
     {
         // New sparse metadata location: _internal/ResourceType/[resourceid]/*.metadata.json
         string metadataDir = Path.Combine(_baseDirectory, "_internal", key.ResourceType, key.Id);
@@ -335,7 +335,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         {
             try
             {
-                var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
                 if (metadata.LastModified > latestTimestamp)
                 {
                     latestTimestamp = metadata.LastModified;
@@ -351,28 +351,28 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         return latestFile;
     }
 
-    private async ValueTask<ResourceMetadata> ReadMetadataFileAsync(string path, CancellationToken ct)
+    private async ValueTask<ResourceMetadata> ReadMetadataFileAsync(string path, CancellationToken cancellationToken)
     {
-        string metadataJson = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+        string metadataJson = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Deserialize<ResourceMetadata>(metadataJson, _jsonOptions)
             ?? throw new InvalidOperationException($"Failed to deserialize metadata from {path}");
     }
 
-    private async ValueTask<string> ReadResourceFromNdjsonByIdAsync(string path, string resourceId, CancellationToken ct)
+    private async ValueTask<string> ReadResourceFromNdjsonByIdAsync(string path, string resourceId, CancellationToken cancellationToken)
     {
         // NDJSON file format: Just resources, one per line (no bundle header)
         // Transaction metadata is in /transactions files
 
         using var stream = _memoryStreamManager.GetStream("ndjson-read");
         using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
-        await fileStream.CopyToAsync(stream, ct).ConfigureAwait(false);
+        await fileStream.CopyToAsync(stream, cancellationToken).ConfigureAwait(false);
 
         stream.Position = 0;
         using var reader = new StreamReader(stream, Encoding.UTF8);
 
         // Read all resource lines and find matching ID
         string? resourceJson;
-        while ((resourceJson = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
+        while ((resourceJson = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)) != null)
         {
             if (string.IsNullOrEmpty(resourceJson))
             {
@@ -393,14 +393,14 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             $"Resource {resourceId} not found in NDJSON file {path}");
     }
 
-    public async ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken ct = default)
+    public async ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default)
     {
         // Generate a new transaction ID
         // In a production system, this might allocate from a sequence or global counter
         return await ValueTask.FromResult(TransactionId.Generate());
     }
 
-    public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken ct = default)
+    public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken cancellationToken = default)
     {
         var timestamp = DateTimeOffset.UtcNow;
 
@@ -430,7 +430,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
     public async ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
         TimeSpan stallThreshold,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var stalledTransactions = new List<TransactionId>();
 
@@ -451,7 +451,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         foreach (var lockFile in lockFiles)
         {
-            if (ct.IsCancellationRequested)
+            if (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
@@ -494,14 +494,14 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
         IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         if (operations == null || operations.Count == 0)
         {
             return Array.Empty<ResourceKey>();
         }
 
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var timestamp = DateTimeOffset.UtcNow;
@@ -541,7 +541,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             foreach (var operation in operations)
             {
                 var key = new ResourceKey(operation.resourceType, operation.resourceId);
-                int newVersion = await GetNextVersionAsync(key, ct).ConfigureAwait(false);
+                int newVersion = await GetNextVersionAsync(key, cancellationToken).ConfigureAwait(false);
 
                 // Stamp the resolved version and timestamp into the resource's own meta before
                 // it is serialized in Step 6 below, so the stored bytes agree with the sidecar
@@ -567,7 +567,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
             // Step 5: Write or append to lock file with transaction log
             bool lockFileExists = File.Exists(lockFilePath);
-            await WriteLockFileAsync(lockFilePath, transactionId, timestamp, operations, append: lockFileExists, ct).ConfigureAwait(false);
+            await WriteLockFileAsync(lockFilePath, transactionId, timestamp, operations, append: lockFileExists, cancellationToken).ConfigureAwait(false);
 
             if (lockFileExists)
             {
@@ -607,7 +607,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                     timestamp,
                     typeOperations,
                     append: fileExists,
-                    ct).ConfigureAwait(false);
+                    cancellationToken).ConfigureAwait(false);
             }
 
             // Step 7: Write sparse metadata sidecars (_internal/ResourceType/[resourceid]/[transactionid].metadata.json)
@@ -622,7 +622,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
                 string metadataPath = Path.Combine(metadataDir, $"{metadata.TransactionId}.metadata.json");
                 string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
-                await File.WriteAllTextAsync(metadataPath, metadataJson, ct).ConfigureAwait(false);
+                await File.WriteAllTextAsync(metadataPath, metadataJson, cancellationToken).ConfigureAwait(false);
 
                 LogMetadataWritten(_logger, metadataPath);
             }
@@ -644,7 +644,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         DateTimeOffset timestamp,
         IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
         bool append,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         if (append)
         {
@@ -669,11 +669,11 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 await writer.WriteLineAsync(JsonSerializer.Serialize(entry, _jsonOptions)).ConfigureAwait(false);
             }
 
-            await writer.FlushAsync(ct).ConfigureAwait(false);
+            await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
             stream.Position = 0;
 
             using var fileStream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.None, 4096, useAsync: true);
-            await stream.CopyToAsync(fileStream, ct).ConfigureAwait(false);
+            await stream.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
         }
         else
         {
@@ -695,7 +695,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             };
 
             string manifestJson = JsonSerializer.Serialize(manifest, _jsonOptions);
-            await File.WriteAllTextAsync(path, manifestJson, ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(path, manifestJson, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -705,7 +705,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         DateTimeOffset timestamp,
         List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
         bool append,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         using var stream = _memoryStreamManager.GetStream("resource-file-write");
 
@@ -733,7 +733,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             await writer.WriteLineAsync(rawJson).ConfigureAwait(false);
         }
 
-        await writer.FlushAsync(ct).ConfigureAwait(false);
+        await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
 
         // Write to file (create or append)
         stream.Position = 0;
@@ -744,7 +744,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             FileShare.None,
             4096,
             useAsync: true);
-        await stream.CopyToAsync(fileStream, ct).ConfigureAwait(false);
+        await stream.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -772,11 +772,11 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     /// Only loads the LATEST version of each resource (not historical versions).
     /// </summary>
     /// <param name="resourceType">Resource type to load metadata for</param>
-    /// <param name="ct">Cancellation token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Collection of (ResourceKey, SearchIndexEntries) tuples - one per resource ID</returns>
     public async ValueTask<IReadOnlyList<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)>> GetResourceMetadataAsync(
         string resourceType,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var results = new List<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)>();
 
@@ -796,7 +796,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         // For each resource ID directory, find the latest metadata file
         foreach (var resourceIdDir in resourceIdDirs)
         {
-            if (ct.IsCancellationRequested)
+            if (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
@@ -819,7 +819,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 {
                     try
                     {
-                        var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                        var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
                         if (metadata.LastModified > latestTimestamp)
                         {
                             latestTimestamp = metadata.LastModified;
@@ -835,7 +835,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 // Load the latest metadata file
                 if (latestFile != null)
                 {
-                    var latestMetadata = await ReadMetadataFileAsync(latestFile, ct).ConfigureAwait(false);
+                    var latestMetadata = await ReadMetadataFileAsync(latestFile, cancellationToken).ConfigureAwait(false);
 
                     var key = new ResourceKey(latestMetadata.ResourceType, latestMetadata.ResourceId, latestMetadata.VersionId);
                     var searchIndices = latestMetadata.SearchIndexes ?? new List<SearchIndexEntry>();
@@ -854,10 +854,76 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         return results;
     }
 
+    /// <inheritdoc/>
+    public Task<int> CountResourceHistoryAsync(
+        ResourceKey key,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return CountHistoryMetadataAsync(
+            Path.Combine(_baseDirectory, "_internal", key.ResourceType, key.Id), parameters, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> CountTypeHistoryAsync(
+        string resourceType,
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(resourceType);
+        return CountHistoryMetadataAsync(
+            Path.Combine(_baseDirectory, "_internal", resourceType), parameters, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> CountSystemHistoryAsync(
+        int tenantId,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken = default)
+        => CountHistoryMetadataAsync(Path.Combine(_baseDirectory, "_internal"), parameters, cancellationToken);
+
+    private async Task<int> CountHistoryMetadataAsync(
+        string directory,
+        HistoryQueryParameters parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            // Unlike Directory.Exists, this distinguishes absence from an inaccessible directory.
+            _ = File.GetAttributes(directory);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return 0;
+        }
+        catch (FileNotFoundException)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        foreach (string file in Directory.EnumerateFiles(directory, "*.metadata.json", SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
+            if ((!parameters.Since.HasValue || metadata.LastModified >= parameters.Since.Value)
+                && (!parameters.Until.HasValue || metadata.LastModified <= parameters.Until.Value))
+            {
+                count = checked(count + 1);
+            }
+        }
+
+        return count;
+    }
+
     public async IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
         ResourceKey key,
         HistoryQueryParameters parameters,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Validate parameters
         parameters = parameters.Validate();
@@ -876,11 +942,11 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         foreach (var file in metadataFiles)
         {
-            ct.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             try
             {
-                var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
                 allMetadata.Add(metadata);
             }
             catch (Exception ex)
@@ -898,7 +964,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         foreach (var metadata in filtered)
         {
-            ct.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Skip offset entries
             if (skipped < parameters.Offset)
@@ -914,7 +980,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             }
 
             // Load resource and yield
-            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, ct).ConfigureAwait(false);
+            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, cancellationToken).ConfigureAwait(false);
             if (result != null)
             {
                 returned++;
@@ -929,7 +995,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         string resourceType,
         int tenantId,
         HistoryQueryParameters parameters,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Validate parameters
         parameters = parameters.Validate();
@@ -948,16 +1014,16 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         foreach (var resourceIdDir in resourceIdDirs)
         {
-            ct.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             var metadataFiles = Directory.GetFiles(resourceIdDir, "*.metadata.json", SearchOption.TopDirectoryOnly);
             foreach (var file in metadataFiles)
             {
-                ct.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
 
                 try
                 {
-                    var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                    var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
                     allMetadata.Add(metadata);
                 }
                 catch (Exception ex)
@@ -976,7 +1042,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         foreach (var metadata in filtered)
         {
-            ct.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Skip offset entries
             if (skipped < parameters.Offset)
@@ -992,7 +1058,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             }
 
             // Load resource and yield
-            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, ct).ConfigureAwait(false);
+            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, cancellationToken).ConfigureAwait(false);
             if (result != null)
             {
                 returned++;
@@ -1006,7 +1072,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     public async IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
         int tenantId,
         HistoryQueryParameters parameters,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Validate parameters
         parameters = parameters.Validate();
@@ -1025,22 +1091,22 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         foreach (var resourceTypeDir in resourceTypeDirs)
         {
-            ct.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Scan all resource ID directories
             var resourceIdDirs = Directory.GetDirectories(resourceTypeDir, "*", SearchOption.TopDirectoryOnly);
             foreach (var resourceIdDir in resourceIdDirs)
             {
-                ct.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
 
                 var metadataFiles = Directory.GetFiles(resourceIdDir, "*.metadata.json", SearchOption.TopDirectoryOnly);
                 foreach (var file in metadataFiles)
                 {
-                    ct.ThrowIfCancellationRequested();
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     try
                     {
-                        var metadata = await ReadMetadataFileAsync(file, ct).ConfigureAwait(false);
+                        var metadata = await ReadMetadataFileAsync(file, cancellationToken).ConfigureAwait(false);
                         allMetadata.Add(metadata);
                     }
                     catch (Exception ex)
@@ -1060,7 +1126,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
         foreach (var metadata in filtered)
         {
-            ct.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Skip offset entries
             if (skipped < parameters.Offset)
@@ -1076,7 +1142,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             }
 
             // Load resource and yield
-            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, ct).ConfigureAwait(false);
+            SearchEntryResult? result = await LoadResourceVersionAsync(metadata, cancellationToken).ConfigureAwait(false);
             if (result != null)
             {
                 returned++;
@@ -1122,7 +1188,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     /// </summary>
     private async ValueTask<SearchEntryResult?> LoadResourceVersionAsync(
         ResourceMetadata metadata,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -1131,7 +1197,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             string ndjsonPath = Path.Combine(resourceTypeDir, $"tx-{metadata.TransactionId}.ndjson");
 
             // Read resource JSON from NDJSON file
-            string resourceJson = await ReadResourceFromNdjsonByIdAsync(ndjsonPath, metadata.ResourceId, ct).ConfigureAwait(false);
+            string resourceJson = await ReadResourceFromNdjsonByIdAsync(ndjsonPath, metadata.ResourceId, cancellationToken).ConfigureAwait(false);
 
             // Convert to bytes for zero-copy serialization
             byte[] resourceJsonBytes = Encoding.UTF8.GetBytes(resourceJson);
@@ -1157,7 +1223,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
 
     public Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
         int batchSize,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         LogExpiredResourcesNotImplemented(_logger);
         return Task.FromResult<IReadOnlyList<ExpiredResourceInfo>>(Array.Empty<ExpiredResourceInfo>());
@@ -1166,10 +1232,17 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     public Task HardDeleteResourceAsync(
         short resourceTypeId,
         string resourceId,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         LogHardDeleteNotImplemented(_logger);
         return Task.CompletedTask;
+    }
+
+    public Task<bool> TryHardDeleteExpiredResourceAsync(
+        ExpiredResourceInfo resource,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException("TTL cleanup is not supported by FileBasedFhirRepository.");
     }
 
     private class ResourceMetadata

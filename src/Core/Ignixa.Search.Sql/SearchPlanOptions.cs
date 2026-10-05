@@ -31,11 +31,11 @@ public sealed record SearchPlanOptions
     /// <see cref="ResultShape.Matches"/>, once over the union of every stage under
     /// <see cref="ResultShape.IncludesPage"/>. The extra row is over-fetched deliberately: it is returned,
     /// flagged <c>IsPartial</c>, and the caller trims it. That is how truncation stays detectable, and why
-    /// zero — the default — reports whether included resources exist without fetching any of them. There is
-    /// no uncapped setting. Rejected when negative, and at <see cref="int.MaxValue"/> because the extra row
-    /// overflows the cap.
+    /// zero — the default — reports whether included resources exist without fetching any of them.
+    /// Null leaves include and iterate traversal unbounded. Rejected when negative, and at
+    /// <see cref="int.MaxValue"/> because the extra row overflows the cap.
     /// </summary>
-    public int IncludeLimit { get; init; }
+    public int? IncludeLimit { get; init; } = 0;
 
     /// <summary>
     /// An inclusive surrogate-id bound. When set it wins over <c>SearchOptions.StartSurrogateId</c>/

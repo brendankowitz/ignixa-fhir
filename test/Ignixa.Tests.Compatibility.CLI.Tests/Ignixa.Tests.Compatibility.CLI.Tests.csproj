@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <StartupObject>Ignixa.Tests.Compatibility.CLI.Program</StartupObject>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <!-- Match the CLI's existing analyzer profile for its linked source. -->
+    <NoWarn>$(NoWarn);CA1303;CA1869;CA1861;CA2000;CA1307;CA1310</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.runner.utility" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Ignixa.Tests.Compatibility.CLI\Program.cs" Link="Cli\Program.cs" />
+    <Compile Include="..\Ignixa.Tests.Compatibility.CLI\TestResultsViewerCommand.cs" Link="Cli\TestResultsViewerCommand.cs" />
+    <Compile Remove="Fixtures\**\*.cs" />
+    <ProjectReference Include="Fixtures\CompatibilityContractFixtures.csproj" />
+  </ItemGroup>
+</Project>

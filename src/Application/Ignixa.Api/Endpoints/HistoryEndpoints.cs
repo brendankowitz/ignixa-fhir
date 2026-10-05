@@ -8,8 +8,12 @@ using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.History;
+using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
+using Ignixa.Domain.Utilities;
+using Ignixa.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,6 +25,7 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class HistoryEndpoints
 {
+    private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
 
     /// <summary>
     /// Registers FHIR _history endpoints.
@@ -56,6 +61,9 @@ public static class HistoryEndpoints
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history
+        tenantGroup.MapMethods("/{resourceType}/{id}/_history/{versionId}", ReadMethods, HandleVread)
+            .WithName("VreadResource");
+
         tenantGroup.MapGet("/{resourceType}/{id}/_history", HandleGetResourceHistory)
             .WithName("GetResourceHistory")
             .Produces(StatusCodes.Status200OK)
@@ -92,9 +100,13 @@ public static class HistoryEndpoints
             .AddEndpointFilter<ResourceTypeValidationFilter>();
 
         // GET /{resourceType}/{id}/_history - Instance-level history (agnostic)
+        agnosticGroup.MapMethods("/{resourceType}/{id}/_history/{versionId}", ReadMethods, HandleVread)
+            .WithName("VreadResourceAgnostic");
+
         agnosticGroup.MapGet("/{resourceType}/{id}/_history", (HttpContext context, string resourceType, string id,
-            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, CancellationToken ct) =>
-            HandleGetResourceHistory(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, ct))
+            [FromServices] IMediator mediator, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
+            [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
+            HandleGetResourceHistory(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, id, mediator, versionContext, fhirContextAccessor, loggerFactory, ct))
             .WithName("GetResourceHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
@@ -102,21 +114,55 @@ public static class HistoryEndpoints
 
         // GET /{resourceType}/_history - Type-level history (agnostic)
         agnosticGroup.MapGet("/{resourceType}/_history", (HttpContext context, string resourceType,
-            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, CancellationToken ct) =>
-            HandleGetTypeHistory(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, mediator, ct))
+            [FromServices] IMediator mediator, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
+            [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
+            HandleGetTypeHistory(context, fhirContextAccessor.RequestContext!.TenantId, resourceType, mediator, versionContext, fhirContextAccessor, loggerFactory, ct))
             .WithName("GetTypeHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
         // GET /_history - System-level history (agnostic, no resource type, no filter needed)
         endpoints.MapGet("/_history", (HttpContext context,
-            [FromServices] IMediator mediator, [FromServices] IFhirRequestContextAccessor fhirContextAccessor, CancellationToken ct) =>
-            HandleGetSystemHistory(context, fhirContextAccessor.RequestContext!.TenantId, mediator, ct))
+            [FromServices] IMediator mediator, [FromServices] IFhirVersionContext versionContext, [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
+            [FromServices] ILoggerFactory loggerFactory, CancellationToken ct) =>
+            HandleGetSystemHistory(context, fhirContextAccessor.RequestContext!.TenantId, mediator, versionContext, fhirContextAccessor, loggerFactory, ct))
             .WithName("GetSystemHistoryAgnostic")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
         return endpoints;
+    }
+
+    private static async Task<IResult> HandleVread(
+        HttpContext context,
+        string resourceType,
+        string id,
+        string versionId,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        if (!FhirIdSyntax.IsValid(versionId))
+        {
+            throw new Domain.Exceptions.BadRequestException(
+                "Version ID must contain 1-64 ASCII letters, digits, '-' or '.'.");
+        }
+
+        var result = await mediator.SendAsync(new GetResourceQuery(resourceType, id, versionId), cancellationToken);
+        if (result == null)
+        {
+            return Results.NotFound();
+        }
+        if (result.IsDeleted)
+        {
+            return FhirResults.Gone(resourceType, id, context)
+                .WithETag(result.VersionId)
+                .WithLastModified(result.LastModified);
+        }
+        return (HttpMethods.IsHead(context.Request.Method)
+            ? new FhirResult(StatusCodes.Status200OK)
+            : FhirResults.Ok(result.ResourceBytes, context))
+            .WithETag(result.VersionId)
+            .WithLastModified(result.LastModified);
     }
 
     /// <summary>
@@ -130,8 +176,25 @@ public static class HistoryEndpoints
         [FromRoute] string resourceType,
         [FromRoute] string id,
         [FromServices] IMediator mediator,
+        [FromServices] IFhirVersionContext versionContext,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger(typeof(HistoryEndpoints).FullName!);
+
+        // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
+        var fhirContext = fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
+        {
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for resourceType '{ResourceType}'", resourceType.SanitizeForLog());
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
+
         // Parse query parameters
         var parameters = HistoryQueryParametersParser.Parse(context.Request.Query);
 
@@ -161,6 +224,7 @@ public static class HistoryEndpoints
             total: result.TotalCount,
             entries: result.Entries,
             links: result.Links,
+            schemaProvider: schemaProvider,
             pretty: false,
             pageSize: parameters.Count,
             cancellationToken: ct);
@@ -179,8 +243,25 @@ public static class HistoryEndpoints
         [FromRoute] int tenantId,
         [FromRoute] string resourceType,
         [FromServices] IMediator mediator,
+        [FromServices] IFhirVersionContext versionContext,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger(typeof(HistoryEndpoints).FullName!);
+
+        // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
+        var fhirContext = fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
+        {
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for resourceType '{ResourceType}'", resourceType.SanitizeForLog());
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
+
         // Parse query parameters
         HistoryQueryParameters parameters = HistoryQueryParametersParser.Parse(context.Request.Query);
 
@@ -212,6 +293,7 @@ public static class HistoryEndpoints
             total: result.TotalCount,
             entries: result.Entries,
             links: result.Links,
+            schemaProvider: schemaProvider,
             pretty: pretty,
             pageSize: parameters.Count,
             cancellationToken: ct);
@@ -229,8 +311,25 @@ public static class HistoryEndpoints
         HttpContext context,
         [FromRoute] int tenantId,
         [FromServices] IMediator mediator,
+        [FromServices] IFhirVersionContext versionContext,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger(typeof(HistoryEndpoints).FullName!);
+
+        // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
+        var fhirContext = fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
+        {
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for system-level history");
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
+
         // Parse query parameters
         var parameters = HistoryQueryParametersParser.Parse(context.Request.Query);
 
@@ -261,6 +360,7 @@ public static class HistoryEndpoints
             total: result.TotalCount,
             entries: result.Entries,
             links: result.Links,
+            schemaProvider: schemaProvider,
             pretty: pretty,
             pageSize: parameters.Count,
             cancellationToken: ct);

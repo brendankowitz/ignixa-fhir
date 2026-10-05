@@ -15,14 +15,12 @@ namespace Ignixa.Validation.Schema;
 /// <see cref="IValidationSchemaResolver"/>, and composes the results with the
 /// base StructureDefinition schema into a single <see cref="ValidationSchema"/>.
 /// <para>
-/// Profile URLs with a <c>|version</c> suffix are stripped before lookup; the inner
-/// resolver is expected to key on unversioned canonicals (matching how
-/// <c>StructureDefinitionSchemaResolver</c> and <c>PackageResourceRepository</c>
-/// index profiles).
+/// Profile URLs retain any <c>|version</c> suffix during lookup and deduplication.
+/// A missing requested version follows the unavailable-profile warning policy;
+/// another installed version is never substituted.
 /// </para>
 /// <para>
-/// Unresolvable profile URLs are silently skipped (return value just omits them
-/// from the composed schema). The validator should not fail catastrophically just
+/// Unresolvable profile URLs produce warnings at Spec/Full depth. The validator should not fail catastrophically just
 /// because a referenced profile package isn't loaded; this is consistent with how
 /// the legacy MS FHIR Server treated missing profiles (warnings, not errors).
 /// </para>
@@ -67,6 +65,11 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
         }
 
         var baseSchema = _inner.GetSchema($"http://hl7.org/fhir/StructureDefinition/{resourceType}");
+        if (baseSchema == null && element.Type is ITypeExtended { CanonicalUrl: { Length: > 0 } canonical } definition
+            && definition.Info.Name == resourceType)
+        {
+            baseSchema = _inner.GetSchema(canonical);
+        }
         if (baseSchema == null)
         {
             return null;
@@ -76,16 +79,13 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
         var seenCanonicals = new HashSet<string>(StringComparer.Ordinal);
         foreach (var profileUrl in ExtractProfileUrls(element))
         {
-            var canonical = StripVersionSuffix(profileUrl);
             // meta.profile may contain duplicate URLs (the FHIR spec doesn't forbid it).
-            // Composing the same schema twice would double every profile-derived check;
-            // dedup at the canonical-URL level (after version-suffix stripping) so a
-            // resource declaring "...|2.1.0" and "...|2.2.0" still resolves once.
-            if (!seenCanonicals.Add(canonical))
+            // Only identical identities are duplicates; distinct business versions may differ.
+            if (!seenCanonicals.Add(profileUrl))
             {
                 continue;
             }
-            var profileSchema = _inner.GetSchema(canonical);
+            var profileSchema = _inner.GetSchema(profileUrl);
             if (profileSchema != null)
             {
                 schemas.Add(profileSchema);
@@ -94,7 +94,7 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
             {
                 // Emit a warning so callers know validation was partial, not full-profile.
                 var warnSchema = new ValidationSchema(
-                    canonicalUrl: canonical,
+                    canonicalUrl: profileUrl,
                     resourceType: baseSchema.ResourceType,
                     universalChecks: Array.Empty<IValidationCheck>(),
                     specChecks: [new UnresolvableProfileCheck(profileUrl)],
@@ -136,12 +136,6 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
         }
     }
 
-    private static string StripVersionSuffix(string canonicalUrl)
-    {
-        var pipe = canonicalUrl.IndexOf('|', StringComparison.Ordinal);
-        return pipe >= 0 ? canonicalUrl[..pipe] : canonicalUrl;
-    }
-
     private sealed class UnresolvableProfileCheck : IValidationCheck
     {
         private readonly string _profileUrl;
@@ -157,7 +151,7 @@ public sealed class ProfileAwareValidationSchemaResolver : IValidationSchemaReso
                 IssueSeverity.Warning,
                 "unresolvable-profile",
                 element.Location ?? string.Empty,
-                $"Profile '{_profileUrl}' declared in meta.profile could not be resolved. Validation was performed against the base resource definition only.");
+                $"Profile '{_profileUrl}' declared in meta.profile could not be resolved and was not validated. Available schemas were still applied.");
             return new ValidationResult(isValid: true, issues: [issue]);
         }
     }

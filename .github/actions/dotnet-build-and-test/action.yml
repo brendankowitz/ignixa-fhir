@@ -36,6 +36,14 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: global.json
+        dotnet-version: |
+          9.0.x
+          10.0.x
+
     - name: Install GitVersion
       uses: gittools/actions/gitversion/setup@v3
       with:
@@ -54,13 +62,6 @@ runs:
         echo "InformationalVersion: ${{ steps.gitversion.outputs.informationalVersion }}"
         echo "MajorMinorPatch (BasePackageVersion): ${{ steps.gitversion.outputs.majorMinorPatch }}"
       shell: bash
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: |
-          9.0.x
-          10.0.x
 
     - name: Restore dependencies
       run: dotnet restore "${{ inputs.solution-file }}"

@@ -10,7 +10,7 @@ namespace Ignixa.Application.Events.Package;
 /// Handles IPackageUnloaded events to invalidate validation schema caches.
 /// Ensures CompositeStructureDefinitionSummaryProvider removes unloaded profiles.
 /// </summary>
-public class PackageUnloadedNotificationHandler : INotificationHandler<IPackageUnloaded>
+public class PackageUnloadedNotificationHandler : INotificationHandler<IPackageUnloaded>, INotificationHandler<PackageUnloadedEvent>
 {
     private readonly ICompositeSchemaProviderRegistry _registry;
     private readonly ICapabilityCacheInvalidator _capabilityCacheInvalidator;
@@ -31,6 +31,9 @@ public class PackageUnloadedNotificationHandler : INotificationHandler<IPackageU
         _capabilityCacheInvalidator = capabilityCacheInvalidator ?? throw new ArgumentNullException(nameof(capabilityCacheInvalidator));
         _logger = logger;
     }
+
+    public Task HandleAsync(PackageUnloadedEvent evt, CancellationToken cancellationToken)
+        => HandleAsync((IPackageUnloaded)evt, cancellationToken);
 
     /// <summary>
     /// Handles the PackageUnloaded event by invalidating validation caches.

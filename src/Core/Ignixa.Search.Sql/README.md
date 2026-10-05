@@ -196,8 +196,39 @@ both default to *not fetching*:
 > bundle carries included resources for a match you are about to trim. The OFFSET/FETCH equivalent is
 > `OffsetSpec.ProbeExtraRow`.
 
-`IncludeLimit` always over-fetches one row so truncation is detectable: the extra row comes back flagged
-`IsPartial` and the caller trims it. There is no uncapped setting.
+A numeric `IncludeLimit` over-fetches one row so truncation is detectable: the extra row comes back flagged
+`IsPartial` and the caller trims it. Set `IncludeLimit = null` to preserve all include rows and iterate
+seeds without a SQL cap. The SQL search service uses this mode because the application owns
+`_includesCount` pagination over the complete traversal; `_count` bounds only match rows.
+
+#### Alpha API migration: nullable include budgets
+
+`SearchPlanOptions.IncludeLimit` and `IncludeStage.Limit` changed from `int` to `int?`.
+Recompile binary consumers: the property and record-constructor signatures changed.
+Source consumers that **read** these members must also handle the unbounded state:
+
+```csharp
+int? budget = options.IncludeLimit; // Previously: int budget = options.IncludeLimit;
+if (budget is int boundedLimit)
+{
+    Console.WriteLine($"Bounded traversal: {boundedLimit}");
+}
+else
+{
+    Console.WriteLine("Unbounded traversal");
+}
+
+var (_, _, _, _, _, _, _, stageLimit, _) = stage;
+// stageLimit is now int?. Explicitly typed deconstruction/out variables must use int? too.
+stage.Deconstruct(
+    out _, out _, out _, out _, out _, out _, out _, out int? decodedLimit, out _);
+```
+
+This also applies to arithmetic, comparisons, and calls that previously accepted the
+deconstructed `int` limit. Branch on the nullable value before passing it to a bounded-only
+API. Do not replace `null` with zero (`?? 0` or `GetValueOrDefault()`): zero is a real,
+bounded budget and would silently change unbounded traversal into truncation.
+Setting an ordinary numeric budget remains supported; the default is still zero.
 
 Counting is the same: `_summary=count` and `_total=accurate` are Bundle metadata that the compiler does not
 read. Set `Shape = new ResultShape.Count.AllMatches()` yourself when you want the `COUNT_BIG`.

@@ -43,5 +43,12 @@ public enum TerminologyImportStatus
     /// <summary>
     /// Import was intentionally skipped (e.g., CodeSystem with content=not-present).
     /// </summary>
-    Skipped = 5
+    Skipped = 5,
+
+    /// <summary>
+    /// Terminology import completed, but malformed entries were dropped on the way in (e.g., a CodeSystem
+    /// concept with no code). Everything else was extracted; ImportErrorMessage records how many entries were
+    /// dropped and why. Terminal: re-importing the same content drops the same entries.
+    /// </summary>
+    PartiallyCompleted = 6
 }

@@ -166,9 +166,8 @@ public sealed class SearchTestHarness
             new StringContent(json, System.Text.Encoding.UTF8, "application/fhir+json"),
             cancellationToken);
 
-        response.EnsureSuccessStatusCode();
-
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccessfulWrite(response, responseJson);
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(responseJson);
     }
 
@@ -194,14 +193,13 @@ public sealed class SearchTestHarness
             new StringContent(json, System.Text.Encoding.UTF8, "application/fhir+json"),
             cancellationToken);
 
-        response.EnsureSuccessStatusCode();
-
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccessfulWrite(response, responseJson);
         return JsonSourceNodeFactory.Parse<ResourceJsonNode>(responseJson);
     }
 
     /// <summary>
-    /// Creates multiple resources on the server using a FHIR batch bundle for better performance.
+    /// Creates multiple resources on the server using a FHIR transaction bundle.
     /// </summary>
     public async Task<ResourceJsonNode[]> CreateResourcesAsync(ResourceJsonNode[] resources, CancellationToken cancellationToken = default)
     {
@@ -239,10 +237,9 @@ public sealed class SearchTestHarness
             new StringContent(bundleJson, System.Text.Encoding.UTF8, "application/fhir+json"),
             cancellationToken);
 
-        response.EnsureSuccessStatusCode();
-
         // Parse response bundle
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccessfulWrite(response, responseJson);
         var responseBundle = JsonSourceNodeFactory.Parse<Bundle>(responseJson);
 
         // Extract created resources from response entries
@@ -250,6 +247,16 @@ public sealed class SearchTestHarness
             .Where(e => e.Resource is not null)
             .Select(e => e.Resource!)
             .ToArray();
+    }
+
+    private static void EnsureSuccessfulWrite(HttpResponseMessage response, string responseBody)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"Fixture write returned HTTP {(int)response.StatusCode}: {responseBody}",
+                inner: null, response.StatusCode);
+        }
     }
 
     /// <summary>

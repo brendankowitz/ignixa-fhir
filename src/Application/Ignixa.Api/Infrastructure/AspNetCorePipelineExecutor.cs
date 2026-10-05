@@ -26,6 +26,7 @@ public class AspNetCorePipelineExecutor : IPipelineExecutor
     private readonly IEnumerable<MatcherPolicy> _matcherPolicies;
     private readonly EndpointSelector _endpointSelector;
     private readonly TemplateBinderFactory _templateBinderFactory;
+    private readonly IComparer<Endpoint>[] _endpointComparers;
 
     public AspNetCorePipelineExecutor(
         EndpointDataSource endpointDataSource,
@@ -37,6 +38,8 @@ public class AspNetCorePipelineExecutor : IPipelineExecutor
         _matcherPolicies = matcherPolicies ?? throw new ArgumentNullException(nameof(matcherPolicies));
         _endpointSelector = endpointSelector ?? throw new ArgumentNullException(nameof(endpointSelector));
         _templateBinderFactory = templateBinderFactory ?? throw new ArgumentNullException(nameof(templateBinderFactory));
+        _endpointComparers = _matcherPolicies.OrderBy(policy => policy.Order)
+            .OfType<IEndpointComparerPolicy>().Select(policy => policy.Comparer).ToArray();
     }
 
     /// <summary>
@@ -82,11 +85,20 @@ public class AspNetCorePipelineExecutor : IPipelineExecutor
             return;
         }
 
-        // Phase 2: Apply policies (HTTP method, consumes, etc.) to narrow down candidates
+        // Preserve normal ASP.NET route priority. Equal scores for every template make literal tenant
+        // and history routes ambiguous with the less-specific compartment templates.
+        var ordered = routeCandidates.Keys
+            .OrderBy(endpoint => endpoint, Comparer<RouteEndpoint>.Create(CompareEndpoints)).ToArray();
+        var scores = new int[ordered.Length];
+        for (var index = 1; index < ordered.Length; index++)
+        {
+            scores[index] = scores[index - 1] +
+                (CompareEndpoints(ordered[index - 1], ordered[index]) == 0 ? 0 : 1);
+        }
         var candidateSet = new CandidateSet(
-            routeCandidates.Select(x => x.Key).Cast<Endpoint>().ToArray(),
-            routeCandidates.Select(x => x.Value).ToArray(),
-            Enumerable.Repeat(1, routeCandidates.Count).ToArray());
+            ordered.Cast<Endpoint>().ToArray(),
+            ordered.Select(endpoint => routeCandidates[endpoint]).ToArray(),
+            scores);
 
         // Policies apply filters / matches on attributes such as HTTP verbs, Consumes, etc.
         foreach (IEndpointSelectorPolicy policy in _matcherPolicies
@@ -111,5 +123,28 @@ public class AspNetCorePipelineExecutor : IPipelineExecutor
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
         }
+    }
+
+    private int CompareEndpoints(RouteEndpoint left, RouteEndpoint right)
+    {
+        var order = left.Order.CompareTo(right.Order);
+        if (order != 0)
+        {
+            return order;
+        }
+        var precedence = left.RoutePattern.InboundPrecedence.CompareTo(right.RoutePattern.InboundPrecedence);
+        if (precedence != 0)
+        {
+            return precedence;
+        }
+        foreach (var comparer in _endpointComparers)
+        {
+            var result = comparer.Compare(left, right);
+            if (result != 0)
+            {
+                return result;
+            }
+        }
+        return 0;
     }
 }

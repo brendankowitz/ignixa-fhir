@@ -329,7 +329,8 @@ public static class PlanExplainer
         var seedStageLabels = stage.SeedStages.Select(IncludeLabel);
         var seeds = stage.SeedFromMatch ? seedStageLabels.Prepend("match") : seedStageLabels;
         var iterate = stage.Iterate ? " iterate" : string.Empty;
-        return $"IncludeStage(ref={refParam}, seedTypes={seedTypes}, outputTypes={outputTypes}, seeds=[{string.Join(",", seeds)}], limit={stage.Limit}{iterate}, {stage.Direction})";
+        var limit = stage.Limit?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unbounded";
+        return $"IncludeStage(ref={refParam}, seedTypes={seedTypes}, outputTypes={outputTypes}, seeds=[{string.Join(",", seeds)}], limit={limit}{iterate}, {stage.Direction})";
     }
 
     private static string PrintCte(CteDefinition cte, int? top, EmittedParameterCursor cursor) => cte switch

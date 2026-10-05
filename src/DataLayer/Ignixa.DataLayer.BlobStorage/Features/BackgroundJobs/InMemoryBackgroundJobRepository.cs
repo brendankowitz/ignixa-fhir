@@ -4,7 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging;
 
@@ -16,6 +18,7 @@ namespace Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 /// Suitable for development and testing. Production should use SQL Server or similar.
 /// Enforces tenant isolation based on deployment mode (Isolated = validate, Distributed = skip).
 /// T is constrained to IJobDefinition for compile-time tenant access (no reflection required).
+/// Stored snapshots never escape to callers; atomic replacement makes the first terminal state authoritative.
 /// </summary>
 /// <typeparam name="T">The strongly-typed job definition/input parameters that implement IJobDefinition.</typeparam>
 public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobRepository<T> where T : class, IJobDefinition
@@ -57,7 +60,8 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
     {
         ArgumentNullException.ThrowIfNull(job);
 
-        if (!_jobs.TryAdd(job.JobId, job))
+        var snapshot = Snapshot(job);
+        if (!_jobs.TryAdd(snapshot.JobId, snapshot))
         {
             throw new InvalidOperationException($"Background job with ID '{job.JobId}' already exists");
         }
@@ -84,7 +88,7 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
             return Task.FromResult<BackgroundJob<T>?>(null); // Hide job existence from unauthorized tenants
         }
 
-        return Task.FromResult<BackgroundJob<T>?>(job);
+        return Task.FromResult<BackgroundJob<T>?>(Snapshot(job));
     }
 
     /// <inheritdoc/>
@@ -92,23 +96,34 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
     {
         ArgumentNullException.ThrowIfNull(job);
 
-        if (!_jobs.ContainsKey(job.JobId))
+        var snapshot = Snapshot(job);
+        while (_jobs.TryGetValue(snapshot.JobId, out var existing))
         {
-            throw new InvalidOperationException($"Background job with ID '{job.JobId}' does not exist");
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ShouldValidateTenant() && !ValidateTenantOwnership(existing, tenantId))
+            {
+                _logger.LogWarning("Job {JobId} update denied for tenant {TenantId}", snapshot.JobId, tenantId);
+                throw new InvalidOperationException($"Not authorized to update job {snapshot.JobId}");
+            }
+
+            if (snapshot.Definition.TenantId != existing.Definition.TenantId)
+            {
+                throw new InvalidOperationException($"Cannot change the owning tenant of background job {snapshot.JobId}");
+            }
+
+            if (IsTerminal(existing.Status))
+            {
+                throw new BackgroundJobUpdateConflictException(snapshot.JobId, existing.Status);
+            }
+
+            if (_jobs.TryUpdate(snapshot.JobId, snapshot, existing))
+            {
+                Log.UpdatedBackgroundJob(_logger, snapshot.JobId, snapshot.Status);
+                return Task.CompletedTask;
+            }
         }
 
-        // Validate tenant ownership based on deployment mode
-        if (ShouldValidateTenant() && !ValidateTenantOwnership(job, tenantId))
-        {
-            _logger.LogWarning("Job {JobId} update denied for tenant {TenantId}", job.JobId, tenantId);
-            throw new InvalidOperationException($"Not authorized to update job {job.JobId}");
-        }
-
-        _jobs[job.JobId] = job;
-
-        Log.UpdatedBackgroundJob(_logger, job.JobId, job.Status);
-
-        return Task.CompletedTask;
+        throw new InvalidOperationException($"Background job with ID '{snapshot.JobId}' does not exist");
     }
 
     /// <inheritdoc/>
@@ -117,6 +132,7 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
         var jobs = _jobs.Values
             .Where(j => jobType == null || j.JobType == jobType)
             .OrderByDescending(j => j.CreateDate)
+            .Select(Snapshot)
             .ToList();
 
         Log.ListedJobs(_logger, jobs.Count);
@@ -127,27 +143,33 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
     /// <inheritdoc/>
     public Task DeleteAsync(string jobId, int tenantId, CancellationToken cancellationToken)
     {
-        if (!_jobs.TryGetValue(jobId, out var job))
+        while (_jobs.TryGetValue(jobId, out var job))
         {
-            throw new InvalidOperationException($"Background job with ID '{jobId}' does not exist");
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ShouldValidateTenant() && !ValidateTenantOwnership(job, tenantId))
+            {
+                _logger.LogWarning("Job {JobId} delete denied for tenant {TenantId}", jobId, tenantId);
+                throw new InvalidOperationException($"Not authorized to delete job {jobId}");
+            }
+
+            if (_jobs.TryRemove(new KeyValuePair<string, BackgroundJob<T>>(jobId, job)))
+            {
+                Log.DeletedBackgroundJob(_logger, jobId);
+                return Task.CompletedTask;
+            }
         }
 
-        // Validate tenant ownership based on deployment mode
-        if (ShouldValidateTenant() && !ValidateTenantOwnership(job, tenantId))
-        {
-            _logger.LogWarning("Job {JobId} delete denied for tenant {TenantId}", jobId, tenantId);
-            throw new InvalidOperationException($"Not authorized to delete job {jobId}");
-        }
-
-        if (!_jobs.TryRemove(jobId, out _))
-        {
-            throw new InvalidOperationException($"Background job with ID '{jobId}' does not exist");
-        }
-
-        Log.DeletedBackgroundJob(_logger, jobId);
-
-        return Task.CompletedTask;
+        throw new InvalidOperationException($"Background job with ID '{jobId}' does not exist");
     }
+
+    // Definitions and their nested collections follow the same JSON contract as SQL persistence.
+    private static BackgroundJob<T> Snapshot(BackgroundJob<T> job)
+        => JsonSerializer.Deserialize<BackgroundJob<T>>(JsonSerializer.SerializeToUtf8Bytes(job))!;
+
+    private static bool IsTerminal(string status)
+        => status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("Failed", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Checks if tenant validation should be enforced based on deployment mode.

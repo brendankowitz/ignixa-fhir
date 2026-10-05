@@ -71,6 +71,42 @@ Each entry gets its own status - some may succeed while others fail:
 
 Transaction bundles are atomic - all entries succeed or all are rolled back. Use when creating related resources that reference each other.
 
+SQL Server transactions validate and stage every entry before submitting the complete resource
+write set to one core merge. Resource data, ordinary search indexes, and TTL changes commit together.
+Post-merge search extension updates remain a separate, monitored phase; they do not roll back
+the committed core write.
+
+A SQL transaction supports up to 79,999 resource writes. Larger write sets are rejected before
+allocation rather than wrapping the cyclic surrogate-ID allocator.
+
+Transactions must use tenant-relative resource interactions. Nested bundles, cross-tenant URLs,
+and `$operation` calls are rejected before execution because their side effects cannot participate
+in the resource transaction. A mutating transaction on a storage provider without atomic transaction
+support returns HTTP 501 before any entry is executed. Such providers do not advertise the full
+`transaction` interaction in their CapabilityStatement. Batch remains supported.
+
+Preflight validates every entry's method and canonical path against known FHIR resource types and
+supported route shapes. Administrative/job-control routes, encoded path tricks, dot-segment traversal,
+alternate separators and absolute/cross-tenant URLs cannot enter the staged write pipeline.
+
+Transactions containing only supported GET/HEAD resource interactions do not require atomic-write
+support. They return a `transaction-response` only when every read succeeds; a failed read returns
+one error `OperationOutcome`. These reads do **not** promise snapshot-read isolation.
+
+A transaction containing writes supports only plain point GET/HEAD read entries (`ResourceType/id`,
+without query parameters). Search, history, version-specific and parameterized reads in a mixed
+transaction return HTTP 501 **before any entry executes**. Use a separate request or a read-only
+transaction for these shapes; no early commit or second search engine is used to fabricate a staged
+search view.
+
+A conditional delete may select multiple resources under one bundle entry. All selected tombstones
+are staged in the same core write, while the response retains one entry with the complete deletion
+outcome. Mutating the same resource more than once in one transaction remains unsupported.
+
+The `vread` interaction is advertised only for repositories that honor explicit version reads.
+SQL Server supports it. The filesystem prototype supports history lists but not version-specific
+point reads; its vread requests return HTTP 501 rather than silently returning the latest version.
+
 ```json
 {
   "resourceType": "Bundle",
@@ -113,6 +149,11 @@ Transaction bundles are atomic - all entries succeed or all are rolled back. Use
 
 The `urn:uuid:patient-1` temporary reference is resolved to the actual Patient ID after creation. The Observation's `subject.reference` becomes `"Patient/abc123"` in the stored resource.
 
+Explicit-ID PUT entries may also declare UUID `fullUrl` aliases; these resolve to the validated
+request destination. Duplicate or contradictory UUID aliases and unresolved UUID references are
+rejected before execution. A UUID reference without a corresponding `fullUrl` declaration is not
+inferred from a resource's `id`.
+
 ### Transaction Response
 
 On success, all entries return their status:
@@ -129,23 +170,41 @@ On success, all entries return their status:
 }
 ```
 
-On failure, the entire transaction is rolled back:
+On validation or core-write failure, the server returns an HTTP error with an `OperationOutcome`,
+not a mixed-success `transaction-response`. No transaction resource writes are retained:
 
 ```json
 {
-  "resourceType": "Bundle",
-  "type": "transaction-response",
-  "entry": [{
-    "response": {
-      "status": "400",
-      "outcome": {
-        "resourceType": "OperationOutcome",
-        "issue": [{ "severity": "error", "diagnostics": "Validation failed..." }]
-      }
-    }
+  "resourceType": "OperationOutcome",
+  "issue": [{
+    "severity": "error",
+    "code": "invalid",
+    "diagnostics": "A transaction entry failed validation. No transaction writes were committed."
   }]
 }
 ```
+
+An entry's `request.ifMatch` carries the required current version (for example, `W/"2"`).
+It is checked at the SQL write boundary, not only before the write is queued. A mismatch returns
+HTTP 412 for the whole transaction; in a batch, only that entry fails. An unresolved `urn:uuid`
+reference also rejects a transaction without writes.
+
+When a conditional create selects an existing resource or assigns a different new ID, UUID references
+are resolved to that final identity before commit. Both stored references and their search indexes
+use the resolved ID.
+
+Connection loss during allocation or commit can leave an uncertain outcome. Such failures are
+logged for transaction reconciliation; allocation is never automatically replayed. Reconcile
+resource state before retrying after an ambiguous transport failure.
+
+A definitive SQL deadlock-victim rollback closes its failed allocation using uncancelled cleanup,
+while preserving the original write failure. Arbitrary transport failures and timeouts are not
+classified as known rollbacks.
+
+Successful SQL commit completion also advances the existing transaction visibility watermark.
+Newly committed compartment members are therefore available to `Patient/$everything?_since`
+without manually updating transaction rows. An earlier unfinished allocation still holds the
+visibility barrier until it is completed or reconciled.
 
 ### Processing Order
 
