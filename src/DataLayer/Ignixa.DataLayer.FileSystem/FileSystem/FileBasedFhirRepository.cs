@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -28,6 +29,10 @@ namespace Ignixa.DataLayer.FileSystem.FileSystem;
 /// </remarks>
 public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposable
 {
+    // StreamWriter writes a preamble whenever it starts at position 0; every write here starts from
+    // a fresh buffer, so on append a BOM would land mid-file and break NDJSON parsing of that line.
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     private readonly string _baseDirectory;
     private readonly ILogger<FileBasedFhirRepository> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -126,13 +131,8 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             // Increment version
             int newVersion = await GetNextVersionAsync(key, cancellationToken).ConfigureAwait(false);
 
-            // Stamp the resolved version and timestamp into the resource's own meta before
-            // serializing, so the stored bytes agree with the sidecar ResourceMetadata below
-            // (mirrors SqlEntityFrameworkRepository.CreateOrUpdateAsync).
-            resource.Resource.Meta.VersionId = newVersion.ToString();
-            resource.Resource.Meta.LastUpdatedOffset = timestamp;
+            string versionId = StampVersion(resource.Resource, newVersion, timestamp);
 
-            // Use RawJson if available (fast path), otherwise would need complex serialization
             string resourceJson = resource.Resource.SerializeToString();
 
             // Get date-based directory path
@@ -162,7 +162,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 TransactionId = transactionId.ToString(),
                 ResourceType = resource.ResourceType,
                 ResourceId = resource.ResourceId,
-                VersionId = newVersion.ToString(),
+                VersionId = versionId,
                 LastModified = timestamp,
                 IsDeleted = resource.IsDeleted,
                 Request = resource.Request,
@@ -285,6 +285,19 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         {
             _writeLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Writes the resolved version and timestamp into the caller's resource <c>meta</c> so the stored
+    /// bytes agree with the sidecar <see cref="ResourceMetadata"/> (mirrors SqlEntityFrameworkRepository).
+    /// </summary>
+    /// <returns>The version id to record in the sidecar.</returns>
+    private static string StampVersion(ResourceJsonNode resource, int version, DateTimeOffset timestamp)
+    {
+        string versionId = version.ToString(CultureInfo.InvariantCulture);
+        resource.Meta.VersionId = versionId;
+        resource.Meta.LastUpdatedOffset = timestamp;
+        return versionId;
     }
 
     private async ValueTask<int> GetNextVersionAsync(ResourceKey key, CancellationToken cancellationToken)
@@ -543,18 +556,14 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
                 var key = new ResourceKey(operation.resourceType, operation.resourceId);
                 int newVersion = await GetNextVersionAsync(key, cancellationToken).ConfigureAwait(false);
 
-                // Stamp the resolved version and timestamp into the resource's own meta before
-                // it is serialized in Step 6 below, so the stored bytes agree with the sidecar
-                // ResourceMetadata (mirrors the single-resource CreateOrUpdateAsync path above).
-                operation.resource.Meta.VersionId = newVersion.ToString();
-                operation.resource.Meta.LastUpdatedOffset = timestamp;
+                string versionId = StampVersion(operation.resource, newVersion, timestamp);
 
                 var metadata = new ResourceMetadata
                 {
                     TransactionId = transactionId.ToString(),
                     ResourceType = operation.resourceType,
                     ResourceId = operation.resourceId,
-                    VersionId = newVersion.ToString(),
+                    VersionId = versionId,
                     LastModified = timestamp,
                     IsDeleted = false,
                     Request = new ResourceRequest(operation.httpMethod, $"{operation.resourceType}/{operation.resourceId}"),
@@ -649,12 +658,8 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         if (append)
         {
             // Append batch operations to existing lock file (one line per operation).
-            // Use a BOM-less UTF-8 encoding: Encoding.UTF8 makes StreamWriter emit a 3-byte
-            // preamble on every call, and here that preamble lands mid-file after the bytes
-            // already on disk (see the identical fix and rationale on WriteResourceFileAsync
-            // below, which is the reachable, tested instance of this bug).
             using var stream = _memoryStreamManager.GetStream("lock-file-append");
-            using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), leaveOpen: true);
+            using var writer = new StreamWriter(stream, Utf8NoBom, leaveOpen: true);
 
             foreach (var op in operations)
             {
@@ -708,19 +713,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         CancellationToken cancellationToken)
     {
         using var stream = _memoryStreamManager.GetStream("resource-file-write");
-
-        // Encoding.UTF8 makes StreamWriter emit a 3-byte BOM preamble at the start of every
-        // buffer it writes to. This method always starts from a fresh in-memory stream/writer
-        // pair, including on the append path, so when append is true that preamble is copied
-        // onto the *middle* of the existing NDJSON file - right before the newly appended
-        // resource line - rather than only at the start of the file. The reader (see
-        // ReadResourceFromNdjsonByIdAsync's StreamReader below) only auto-detects and strips a
-        // BOM at position 0, so an embedded one corrupts JSON parsing for every resource
-        // appended after the first in a multi-batch transaction, and the failure is swallowed by
-        // LoadResourceVersionAsync/GetAsync's catch blocks - the resource silently vanishes from
-        // reads/history even though BatchWriteAsync reported success. Use a BOM-less UTF-8
-        // encoding so no preamble is ever written, on both the create and append paths.
-        using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), leaveOpen: true);
+        using var writer = new StreamWriter(stream, Utf8NoBom, leaveOpen: true);
 
         // Write resource JSON (one per line, no bundle header)
         // Transaction metadata is stored in /transactions files

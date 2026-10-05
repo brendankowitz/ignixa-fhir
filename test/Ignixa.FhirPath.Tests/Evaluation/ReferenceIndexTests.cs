@@ -104,7 +104,7 @@ public class ReferenceIndexTests
     public void GivenHistoryBundleWithTwoVersionsSharingFullUrl_WhenResolvingAbsoluteVersionedReference_ThenReturnsMatchingVersion()
     {
         // Arrange - a history-style bundle: two entries share the same fullUrl (the version-agnostic
-        // resource address) but differ by meta.versionId, the shape a vread history bundle produces.
+        // resource address) but differ by meta.versionId, the shape a _history interaction produces.
         // This is the gap from firely-net-sdk#3099: an absolute versioned reference like
         // "http://ex.org/fhir/Patient/123/_history/2" must resolve to the SPECIFIC version, not
         // fall through to the host resolver because only the plain fullUrl and relative
@@ -163,12 +163,24 @@ public class ReferenceIndexTests
     }
 
     [Fact]
+    public void GivenHistoryBundleWithTwoVersionsSharingFullUrl_WhenResolvingUnmatchedVersionOrForeignBase_ThenReturnsNull()
+    {
+        // Arrange
+        var element = ToElement(HistoryBundleWithTwoVersionsSharingFullUrlJson);
+        var index = ReferenceIndex.Build(element);
+
+        // Act / Assert - a missing version must not fall back to another version, and a different
+        // server base must not match the local entry's absolute key.
+        index.Resolve("http://ex.org/fhir/Patient/123/_history/3").ShouldBeNull();
+        index.Resolve("Patient/123/_history/3").ShouldBeNull();
+        index.Resolve("http://other.org/fhir/Patient/123/_history/2").ShouldBeNull();
+    }
+
+    [Fact]
     public void GivenBundleEntryWithFullUrlAndVersionIdButNoId_WhenResolvingAbsoluteVersionedReference_ThenStillResolves()
     {
-        // Arrange - a resource can legitimately carry a fullUrl and meta.versionId without an `id`
-        // (e.g. a not-yet-assigned resource in a batch/transaction response). The absolute versioned
-        // key (fullUrl/_history/versionId) requires only fullUrl and meta.versionId - it must not
-        // require resource.id, which the Type/id and Type/id/_history/versionId keys need instead.
+        // Arrange - the absolute versioned key (fullUrl/_history/versionId) needs only fullUrl and
+        // meta.versionId, not resource.id, which the Type/id and Type/id/_history/versionId keys need.
         var element = ToElement("""
         {
             "resourceType": "Bundle",
@@ -198,11 +210,8 @@ public class ReferenceIndexTests
     public void GivenBundleEntriesWithoutVersionId_WhenResolving_ThenAuthoredKeysResolveAndNoHistoryKeyIsRegistered()
     {
         // Arrange - entry 0 has no `meta` at all; entry 1 has `meta` but no `versionId`. Neither
-        // condition should register a fullUrl/_history/ or Type/id/_history/ key: this pins the
-        // VersionId presence guard in IndexBundleEntries' pass 2. Deleting that guard would still
-        // let both entries resolve by fullUrl/Type-id (asserted below), but would additionally
-        // register a malformed key ending in "/_history/" (empty-string interpolation of a null
-        // VersionId) - a lookup for that exact malformed string must return null.
+        // registers a fullUrl/_history/ or Type/id/_history/ key, so a lookup for a malformed key
+        // ending in "/_history/" must return null while the authored keys still resolve.
         var element = ToElement("""
         {
             "resourceType": "Bundle",
@@ -237,14 +246,8 @@ public class ReferenceIndexTests
     [Fact]
     public void GivenTwoEntriesWithIdenticalDerivedFullUrlHistoryKey_WhenResolvingSharedKey_ThenFirstEntryByOrderWins()
     {
-        // Arrange - a derived-vs-derived collision (as opposed to the authored-vs-derived
-        // collisions covered by the sibling collision tests below): both entries share the same
-        // fullUrl AND the same meta.versionId (a duplicate/data-quality bundle), so both
-        // synthesize the identical derived key "http://ex.org/fhir/Patient/1/_history/2" in pass
-        // 2. This pins first-wins ordering *between entries* in pass 2 - reversing pass 2's entry
-        // loop breaks it. Reversing the two per-entry TryAdd calls (the absolute and relative
-        // derived keys) does not: those calls write different key strings that both point at the
-        // same resource within one entry, so swapping their order changes nothing.
+        // Arrange - both entries share the same fullUrl AND meta.versionId (a duplicate/data-quality
+        // bundle), so both derive "http://ex.org/fhir/Patient/1/_history/2"; the first entry wins.
         var element = ToElement("""
         {
             "resourceType": "Bundle",
@@ -371,14 +374,9 @@ public class ReferenceIndexTests
     [Fact]
     public void GivenCrossEntryTypeIdHistoryCollisionWithRelativeFullUrl_WhenResolvingSharedKey_ThenReturnsAuthoringEntryNotSynthesizingEntry()
     {
-        // Arrange - pre-existing collision class, predating the fullUrl/_history/versionId key
-        // added alongside these tests: entry 1's own relative fullUrl "Patient/123/_history/2" is
-        // the exact string IndexBundleEntries synthesizes as the Type/id/_history/versionId key for
-        // entry 0 (id "123", meta.versionId "2"). Ignixa itself emitted this
-        // relative-fullUrl-with-embedded-history shape for history bundles until a fix landed in
-        // this same change, so such bundles exist in the wild. Entry 0 (the synthesizing entry) is
-        // indexed first, so a single-pass, order-sensitive implementation lets its derived key claim
-        // the shared string before entry 1 ever gets to author it.
+        // Arrange - older Ignixa history bundles authored relative fullUrls like
+        // "Patient/123/_history/2". Entry 1's authored key must win over entry 0's identical
+        // derived Type/id/_history/versionId key even though entry 0 is indexed first.
         var element = ToElement(@"{
             ""resourceType"": ""Bundle"",
             ""type"": ""collection"",

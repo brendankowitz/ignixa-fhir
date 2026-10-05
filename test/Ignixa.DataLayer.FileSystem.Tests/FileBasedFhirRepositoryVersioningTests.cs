@@ -13,10 +13,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Ignixa.DataLayer.FileSystem.Tests;
 
 /// <summary>
-/// Regression coverage for the stored-resource-bytes vs. sidecar-metadata versionId mismatch:
-/// <see cref="FileBasedFhirRepository"/> must stamp the resolved version into the resource's own
-/// <c>meta.versionId</c> before serializing it, not only into the metadata sidecar (see
-/// SqlEntityFrameworkRepository.CreateOrUpdateAsync for the equivalent SQL-layer behavior).
+/// Regression coverage for <see cref="FileBasedFhirRepository"/> write persistence: meta.versionId and
+/// meta.lastUpdated stamping, batch-write serialization, and BOM-free NDJSON appends.
 /// </summary>
 public sealed class FileBasedFhirRepositoryVersioningTests : IDisposable
 {
@@ -47,7 +45,7 @@ public sealed class FileBasedFhirRepositoryVersioningTests : IDisposable
     }
 
     [Fact]
-    public async Task GivenResourceWithMultipleVersions_WhenReadingHistory_ThenEachEntryResourceBytesVersionIdMatchesSearchEntryResultVersionId()
+    public async Task GivenResourceWithMultipleVersions_WhenReadingHistory_ThenEachEntryResourceBytesMetaMatchesSearchEntryResult()
     {
         // Arrange
         var key = new ResourceKey("Patient", "p2");
@@ -63,14 +61,40 @@ public sealed class FileBasedFhirRepositoryVersioningTests : IDisposable
         }
 
         // Assert
-        history.Count.ShouldBe(3);
+        history.Select(entry => entry.VersionId).Order().ShouldBe(["1", "2", "3"]);
         foreach (SearchEntryResult entry in history)
         {
-            // This is the property ReferenceIndex relies on when resolving versioned references
-            // (e.g. Patient/p2/_history/2): the bytes it parses must agree with the version the
-            // repository claims via SearchEntryResult.VersionId, not just the sidecar metadata.
+            // ReferenceIndex derives versioned keys from the bytes, so they must agree with the
+            // version and timestamp the repository reports.
             ExtractVersionIdFromBytes(entry.ResourceBytes).ShouldBe(entry.VersionId);
+            ExtractLastUpdatedFromBytes(entry.ResourceBytes).ShouldBe(entry.LastModified);
         }
+    }
+
+    [Fact]
+    public async Task GivenResourceWithStaleServerMeta_WhenCreatingOrUpdating_ThenVersionAndLastUpdatedAreReplacedAndOtherMetaIsKept()
+    {
+        // Arrange
+        var key = new ResourceKey("Patient", "p4");
+        var node = ResourceJsonNode.Parse("""
+            {"resourceType":"Patient","id":"p4","meta":{"versionId":"7","lastUpdated":"2000-01-01T00:00:00Z","tag":[{"code":"keep"}]}}
+            """);
+        var wrapper = CreateWrapper("Patient", "p4") with { Resource = node };
+
+        // Act
+        UpdateResult result = await _repository.CreateOrUpdateAsync(wrapper);
+        SearchEntryResult? current = await _repository.GetAsync(key);
+
+        // Assert
+        result.Key.VersionId.ShouldBe("1");
+        ExtractVersionIdFromBytes(result.ResourceBytes).ShouldBe("1");
+        ExtractLastUpdatedFromBytes(result.ResourceBytes).ShouldBe(result.LastModified);
+
+        current.ShouldNotBeNull();
+        ExtractVersionIdFromBytes(current.ResourceBytes).ShouldBe("1");
+        ExtractLastUpdatedFromBytes(current.ResourceBytes).ShouldBe(current.LastModified);
+        using JsonDocument document = JsonDocument.Parse(current.ResourceBytes);
+        document.RootElement.GetProperty("meta").GetProperty("tag")[0].GetProperty("code").GetString().ShouldBe("keep");
     }
 
     [Fact]
@@ -113,24 +137,11 @@ public sealed class FileBasedFhirRepositoryVersioningTests : IDisposable
             history.Add(entry);
         }
 
-        // Assert - both versions must be present. Today, v1 silently disappears from history:
-        // its stored bytes are "{}", so ReadResourceFromNdjsonByIdAsync can't find "p3" inside
-        // them, LoadResourceVersionAsync catches the failure and returns null, and the version is
-        // dropped without any test-visible error.
+        // Assert - both versions are present. Before the fix every batch-written resource was stored
+        // as "{}", so LoadResourceVersionAsync dropped each version from history.
         history.Count.ShouldBe(2);
-        SearchEntryResult? v1 = null;
-        SearchEntryResult? v2 = null;
-        foreach (SearchEntryResult entry in history)
-        {
-            if (entry.VersionId == "1")
-            {
-                v1 = entry;
-            }
-            else if (entry.VersionId == "2")
-            {
-                v2 = entry;
-            }
-        }
+        SearchEntryResult? v1 = history.SingleOrDefault(entry => entry.VersionId == "1");
+        SearchEntryResult? v2 = history.SingleOrDefault(entry => entry.VersionId == "2");
 
         v1.ShouldNotBeNull();
         v2.ShouldNotBeNull();
@@ -212,16 +223,7 @@ public sealed class FileBasedFhirRepositoryVersioningTests : IDisposable
     private static int CountUtf8BomOccurrences(byte[] bytes)
     {
         ReadOnlySpan<byte> bom = [0xEF, 0xBB, 0xBF];
-        int count = 0;
-        for (int i = 0; i + bom.Length <= bytes.Length; i++)
-        {
-            if (bytes.AsSpan(i, bom.Length).SequenceEqual(bom))
-            {
-                count++;
-            }
-        }
-
-        return count;
+        return bytes.AsSpan().Count(bom);
     }
 
     private static ResourceWrapper CreateWrapper(string resourceType, string resourceId)
@@ -252,6 +254,12 @@ public sealed class FileBasedFhirRepositoryVersioningTests : IDisposable
     {
         using JsonDocument document = JsonDocument.Parse(resourceBytes);
         return document.RootElement.GetProperty("gender").GetString()!;
+    }
+
+    private static DateTimeOffset ExtractLastUpdatedFromBytes(ReadOnlyMemory<byte> resourceBytes)
+    {
+        using JsonDocument document = JsonDocument.Parse(resourceBytes);
+        return document.RootElement.GetProperty("meta").GetProperty("lastUpdated").GetDateTimeOffset();
     }
 
     public void Dispose()

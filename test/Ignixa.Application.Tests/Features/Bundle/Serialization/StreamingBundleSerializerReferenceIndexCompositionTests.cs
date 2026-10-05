@@ -15,14 +15,8 @@ using Shouldly;
 namespace Ignixa.Application.Tests.Features.Bundle.Serialization;
 
 /// <summary>
-/// Guards that <see cref="StreamingBundleSerializer.SerializeHistoryAsync"/>'s version-agnostic
-/// <c>fullUrl</c> (fixing FHIR invariant bdl-8) composes with <see cref="ReferenceIndex"/>'s
-/// derived versioned keys: even though a serialized history entry's <c>fullUrl</c> no longer
-/// carries <c>/_history/{versionId}</c>, an in-bundle versioned reference still resolves to the
-/// specific version, because <see cref="ReferenceIndex"/> re-derives the versioned key from each
-/// entry's own <c>resource.meta.versionId</c>. The two halves are unit-tested in isolation by
-/// <c>StreamingBundleSerializerHistoryTests</c> (fullUrl construction) and
-/// <c>ReferenceIndexTests</c> (index construction); this test pins that they still work together.
+/// Verifies that history bundles with version-agnostic fullUrls (bdl-8) still resolve versioned
+/// in-bundle references via <see cref="ReferenceIndex"/>'s meta.versionId-derived keys.
 /// </summary>
 public class StreamingBundleSerializerReferenceIndexCompositionTests
 {
