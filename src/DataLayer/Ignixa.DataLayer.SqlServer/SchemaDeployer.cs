@@ -70,6 +70,8 @@ public sealed class SchemaDeployer : ISchemaDeployer
                 "Ignixa.DataLayer.SqlServer.Database dacpac) before starting the app, or enable automatic deployment.");
         }
 
+        await EnsureVectorTypeSupportedAsync(connectionString, cancellationToken);
+
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream(DacpacResourceName)
             ?? throw new InvalidOperationException($"Embedded resource '{DacpacResourceName}' not found in {typeof(SchemaDeployer).Assembly.FullName}.");
         using var package = DacPackage.Load(dacpacStream);
@@ -131,6 +133,8 @@ public sealed class SchemaDeployer : ISchemaDeployer
                 $"and {SqlServerOptions.SectionName}:{nameof(SqlServerOptions.AutomaticSchemaDeploymentEnabled)} is false. " +
                 "Apply the upgrade manually using the schema-upgrade CLI tool, or enable automatic deployment.");
         }
+
+        await EnsureVectorTypeSupportedAsync(connectionString, cancellationToken);
 
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream(DacpacResourceName)
             ?? throw new InvalidOperationException($"Embedded resource '{DacpacResourceName}' not found in {typeof(SchemaDeployer).Assembly.FullName}.");
@@ -199,6 +203,45 @@ public sealed class SchemaDeployer : ISchemaDeployer
         // forced through.
         AllowIncompatiblePlatform = !_environment.IsProduction() || _options.Value.AllowIncompatiblePlatform,
     };
+
+    private const string VectorTypeProbeQuery = "SELECT COUNT(*) FROM sys.types WHERE name = 'vector' AND is_user_defined = 0";
+
+    /// <summary>
+    /// Schema version 4 introduces dbo.VectorSearchParam, whose Embedding column is the native SQL
+    /// Database Engine <c>vector</c> type -- a type that does not exist on a box SQL Server older than
+    /// 2025. Deploying or upgrading onto such an engine anyway fails deep inside DacFx's own publish with
+    /// an opaque "Invalid data type 'vector'", which names no version and no remedy. This probe runs
+    /// first and fails with a clear, actionable message instead.
+    /// <para>
+    /// Queries <c>sys.types</c> rather than parsing <c>@@VERSION</c>: <c>is_user_defined = 0</c>
+    /// distinguishes the engine's own built-in type from a same-named type a tenant could theoretically
+    /// define itself, and Azure SQL Database -- a first-class deploy target for this schema -- ships the
+    /// type under no fixed <c>@@VERSION</c> string a parser could pin to.
+    /// </para>
+    /// </summary>
+    private static async Task EnsureVectorTypeSupportedAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = VectorTypeProbeQuery;
+        var vectorTypeCount = (int)(await command.ExecuteScalarAsync(cancellationToken))!;
+        EnsureVectorTypeSupported(vectorTypeCount);
+    }
+
+    /// <summary>
+    /// The pure decision behind <see cref="EnsureVectorTypeSupportedAsync"/>, split out so it is
+    /// unit-testable with a substituted probe result rather than a real engine -- matching
+    /// <see cref="CreateDeployOptions"/>'s reason for being internal rather than private.
+    /// </summary>
+    internal static void EnsureVectorTypeSupported(int vectorTypeCount)
+    {
+        if (vectorTypeCount == 0)
+        {
+            throw new InvalidOperationException(
+                "Ignixa schema version 4 requires a SQL engine with the native vector type (Azure SQL Database or SQL Server 2025+).");
+        }
+    }
 
     private static async Task<bool> CanConnectAsync(string connectionString, CancellationToken cancellationToken)
     {
