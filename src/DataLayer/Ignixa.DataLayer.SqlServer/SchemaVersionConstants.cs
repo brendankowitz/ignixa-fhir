@@ -58,4 +58,13 @@ public static class SchemaVersionConstants
     // CH_Resource_RawResource_Length's literal as 0x00, the form SQL Server stores, ending the perpetual
     // drift that made every upgrade re-add that constraint and re-validate it WITH CHECK -- a full scan of
     // dbo.Resource under a Sch-M lock. No stored definition changes.
+    // Version 4 (expand) -- semantic vector search, slice 1. Adds dbo.EmbeddingModel and
+    // dbo.VectorSearchParam (Embedding vector(1536), native SQL Database Engine type -- requires Azure SQL
+    // Database or SQL Server 2025+; SchemaDeployer refuses to deploy or upgrade onto an engine without it),
+    // the dbo.VectorResourceList and dbo.VectorSearchParamList table types, and dbo.MergeVectorSearchParams
+    // / dbo.GetOrCreateEmbeddingModel. HardDeleteResource.sql and DeleteHistory.sql gain a VectorSearchParam
+    // cleanup step alongside every other search-index table. dbo.MergeResources, its TVPs and
+    // dbo.MergeResourcesAndSearchParams are unchanged -- vectors are written by a separate post-merge
+    // procedure, never atomically with the resource write (see docs/features/semantic-search). No column
+    // or table used by an older build is dropped, renamed or retyped.
 }

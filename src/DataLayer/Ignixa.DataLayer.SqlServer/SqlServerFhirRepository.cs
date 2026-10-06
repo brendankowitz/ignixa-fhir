@@ -46,8 +46,12 @@ public class SqlServerFhirRepository(
     /// <summary>
     /// The one entry in <see cref="SearchIndexTables"/> with no ResourceTypeId column, and so the one that
     /// is neither clustered nor partitioned on it -- see Database/Tables/ResourceWriteClaim.sql. Every
-    /// other entry is both, which is why the hard-delete batch carries a resource-type predicate on the
-    /// fourteen and cannot on this one.
+    /// other entry has a ResourceTypeId column and is clustered on it, which is why the hard-delete batch
+    /// carries a resource-type predicate on the fifteen and cannot on this one. <c>VectorSearchParam</c> is
+    /// one of those fifteen but, unlike the rest, is not additionally partitioned on it -- see
+    /// Database/Tables/VectorSearchParam.sql for why the native <c>vector</c> column keeps it off
+    /// PartitionScheme_ResourceTypeId. That does not change this predicate's validity: a clustered leading
+    /// column is still seekable without partition elimination.
     /// </summary>
     private const string TableWithoutResourceTypeId = "ResourceWriteClaim";
 
@@ -67,6 +71,7 @@ public class SqlServerFhirRepository(
         "TokenQuantityCompositeSearchParam",
         "TokenStringCompositeSearchParam",
         "TokenNumberNumberCompositeSearchParam",
+        "VectorSearchParam",
         TableWithoutResourceTypeId
     ];
 
@@ -874,7 +879,7 @@ public class SqlServerFhirRepository(
         // transaction -- so a concurrent PUT can commit a whole new version, with a new surrogate ID,
         // after @SurrogateIds has been filled and before the batch reaches its end. That is why the final
         // resource DELETE is scoped to @SurrogateIds rather than to (ResourceTypeId, ResourceId): scoped to
-        // the resource ID it would remove the new version's row while the fifteen index deletes above,
+        // the resource ID it would remove the new version's row while the sixteen index deletes above,
         // which ARE scoped to @SurrogateIds, left that version's index rows untouched. Those rows would then
         // be orphans PERMANENTLY -- the next hard delete for this resource ID finds no dbo.Resource row to
         // collect a surrogate ID from and so can never sweep them.
@@ -906,7 +911,7 @@ public class SqlServerFhirRepository(
         // race window to tolerate, no lock hint, no scoping predicate, and no half-deleted outcome either:
         // a racing writer's version is simply neither deleted nor swept, leaving the resource whole. Not
         // taken here because it inverts the statement order this method inherited from the EF port -- the
-        // resource DELETE has to run before the fifteen index deletes rather than after -- and reordering
+        // resource DELETE has to run before the sixteen index deletes rather than after -- and reordering
         // the whole batch is a larger change than the race this fix closes. It is the shape to move to
         // when this method is next revisited.
         //
@@ -931,11 +936,14 @@ public class SqlServerFhirRepository(
                     return;
                 }
 
-                // Fourteen of the fifteen tables are clustered AND partitioned on
+                // Fourteen of the sixteen tables are clustered AND partitioned on
                 // (ResourceTypeId, ResourceSurrogateId), so leading with the resource type buys partition
                 // elimination and a seek on the clustering key instead of a probe across every partition.
-                // It also matches HardDeleteResource.sql, which carries the same predicate on the same
-                // tables. TableWithoutResourceTypeId is the exception and has no such column.
+                // VectorSearchParam is clustered the same way but not partitioned (see
+                // Database/Tables/VectorSearchParam.sql); the predicate still buys a clustered-index seek
+                // on it, just not partition elimination. It also matches HardDeleteResource.sql, which
+                // carries the same predicate on the same tables. TableWithoutResourceTypeId is the
+                // exception and has no such column.
                 var deleteStatements = string.Join("\n              ", SearchIndexTables.Select(table =>
                 {
                     var partitionPredicate =

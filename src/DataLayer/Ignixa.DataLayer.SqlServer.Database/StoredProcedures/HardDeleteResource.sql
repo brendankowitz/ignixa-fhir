@@ -140,6 +140,13 @@ BEGIN TRY
                    ON B.ResourceTypeId = @ResourceTypeId
                       AND B.ResourceSurrogateId = A.ResourceSurrogateId
             OPTION (MAXDOP 1);
+            DELETE B
+            FROM   @SurrogateIds AS A
+                   INNER LOOP JOIN
+                   dbo.VectorSearchParam AS B WITH (INDEX (1), FORCESEEK, PAGLOCK)
+                   ON B.ResourceTypeId = @ResourceTypeId
+                      AND B.ResourceSurrogateId = A.ResourceSurrogateId
+            OPTION (MAXDOP 1);
         END
     IF @@trancount > 0
         COMMIT TRANSACTION;
