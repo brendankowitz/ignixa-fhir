@@ -292,7 +292,7 @@ public class StreamingBundleSerializerHistoryTests
         await act.ShouldThrowAsync<OperationCanceledException>();
         var entries = ParseEntries(stream);
         entries.Count.ShouldBe(1);
-        entries[0].GetProperty("fullUrl").GetString().ShouldBe("Patient/p0/_history/1");
+        entries[0].GetProperty("fullUrl").GetString().ShouldBe("Patient/p0");
     }
 
     [Fact]

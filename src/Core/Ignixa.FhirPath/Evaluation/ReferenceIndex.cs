@@ -10,8 +10,9 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <summary>
 /// Scoped reference index that resolves FHIRPath <c>resolve()</c> targets within a single
 /// resource root. Indexes contained resources (by <c>#id</c>) and, when the root is a Bundle,
-/// sibling entry resources (by <c>fullUrl</c>, <c>Type/id</c>, and <c>Type/id/_history/versionId</c>);
-/// when the root is a Parameters resource, nested <c>parameter</c>/<c>part</c> resources (by
+/// sibling entry resources (by <c>fullUrl</c>, <c>fullUrl/_history/versionId</c>, <c>Type/id</c>,
+/// and <c>Type/id/_history/versionId</c>) so both relative and absolute versioned references
+/// resolve in-bundle; when the root is a Parameters resource, nested <c>parameter</c>/<c>part</c> resources (by
 /// <c>Type/id</c> only - a Parameters entry has no <c>fullUrl</c>). A bare <c>#</c> resolves to the
 /// container only when the current evaluation scope is itself one of that container's contained
 /// resources; see <see cref="ResolveContainerScope"/>. Root-level and Bundle-entry-level scope both
@@ -27,6 +28,14 @@ namespace Ignixa.FhirPath.Evaluation;
 /// + bundle resolution algorithm of Firely's <c>ScopedNode.BundledResources()</c> /
 /// <c>ContainedResources()</c> and the <c>locateContainer</c> local function inside
 /// <c>ScopedNodeExtensions.Resolve&lt;T&gt;</c>, without per-node parent pointers.
+/// </para>
+/// <para>
+/// Bundle entries have authored keys (the entry's own <c>fullUrl</c> and <c>Type/id</c>) and derived
+/// keys (<c>fullUrl/_history/versionId</c> and <c>Type/id/_history/versionId</c>, with versionId
+/// taken from <c>resource.meta.versionId</c>). An authored key always takes precedence over a
+/// colliding derived key regardless of entry order, because a bdl-8-invalid <c>fullUrl</c> that
+/// embeds <c>/_history/</c> names its own entry. Otherwise duplicate keys resolve to the first entry;
+/// that ambiguity is inherent to the input.
 /// </para>
 /// <para>
 /// Containment isolation without a parent pointer: <see cref="IElement"/> has no parent link, so
@@ -94,7 +103,7 @@ public sealed class ReferenceIndex
     /// (<c>#id</c>) lookups use the ROOT container's contained pool only; callers that need
     /// entry-scoped fragment isolation must use <see cref="Resolve(string, string?)"/>.
     /// </summary>
-    /// <param name="reference">A fragment reference (<c>#id</c>) or a Bundle/Parameters key (<c>fullUrl</c> / <c>Type/id</c>).</param>
+    /// <param name="reference">A fragment reference (<c>#id</c>) or a Bundle/Parameters key (<c>fullUrl</c> / <c>Type/id</c>, or for Bundle entries either one followed by <c>/_history/versionId</c>).</param>
     /// <returns>The matching element, or null when the reference is not present in this index.</returns>
     public IElement? Resolve(string reference)
     {
@@ -118,7 +127,7 @@ public sealed class ReferenceIndex
     /// sibling entry's contained resources. Bundle/Parameters entry keys (<c>fullUrl</c> /
     /// <c>Type/id</c>) are cross-entry by design and are resolved independently of the focus.
     /// </summary>
-    /// <param name="reference">A fragment reference (<c>#id</c>) or a Bundle/Parameters key (<c>fullUrl</c> / <c>Type/id</c>).</param>
+    /// <param name="reference">A fragment reference (<c>#id</c>) or a Bundle/Parameters key (<c>fullUrl</c> / <c>Type/id</c>, or for Bundle entries either one followed by <c>/_history/versionId</c>).</param>
     /// <param name="focusLocation">The <see cref="IElement.Location"/> of the reference element being resolved, or null.</param>
     /// <returns>The matching element, or null when the reference is not present in the enclosing scope.</returns>
     public IElement? Resolve(string reference, string? focusLocation)
@@ -254,6 +263,9 @@ public sealed class ReferenceIndex
         List<ContainedScope> nestedScopes,
         Dictionary<string, IElement> containerByContainedLocation)
     {
+        // Pass 1 registers authored keys and collects derived (versioned) keys for pass 2.
+        var derivedKeys = new List<(string Key, IElement Resource)>();
+
         foreach (var entry in bundle.Children("entry"))
         {
             var resourceChildren = entry.Children("resource");
@@ -273,19 +285,34 @@ public sealed class ReferenceIndex
             }
 
             var id = FirstChildValue(resource, "id");
-            if (string.IsNullOrEmpty(id))
+            if (!string.IsNullOrEmpty(id))
+            {
+                byBundleKey.TryAdd($"{resource.InstanceType}/{id}", resource);
+            }
+
+            // Without a versionId there is no derived key; never register one ending in "/_history/".
+            var versionId = MetaVersionId(resource);
+            if (string.IsNullOrEmpty(versionId))
             {
                 continue;
             }
 
-            var type = resource.InstanceType;
-            byBundleKey.TryAdd($"{type}/{id}", resource);
-
-            var versionId = MetaVersionId(resource);
-            if (!string.IsNullOrEmpty(versionId))
+            if (!string.IsNullOrEmpty(fullUrl))
             {
-                byBundleKey.TryAdd($"{type}/{id}/_history/{versionId}", resource);
+                derivedKeys.Add(($"{fullUrl}/_history/{versionId}", resource));
             }
+
+            if (!string.IsNullOrEmpty(id))
+            {
+                derivedKeys.Add(($"{resource.InstanceType}/{id}/_history/{versionId}", resource));
+            }
+        }
+
+        // Pass 2 runs after every authored key is registered, so TryAdd never lets a derived key
+        // shadow an authored one (e.g. a bdl-8-invalid fullUrl ending in /_history/{versionId}).
+        foreach (var (key, resource) in derivedKeys)
+        {
+            byBundleKey.TryAdd(key, resource);
         }
     }
 
