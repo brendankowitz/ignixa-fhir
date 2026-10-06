@@ -3,6 +3,7 @@ using System.Text.Json;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.RowGenerators;
+using Ignixa.DataLayer.SqlServer.SemanticSearch;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
@@ -28,7 +29,8 @@ public class SqlServerMergeRepository(
     GzipResourceCompressor compressor,
     SqlServerSearchIndexReferenceDataCache referenceDataCache,
     SqlServerPostMergeExtensionUpdater extensionUpdater,
-    ILogger<SqlServerMergeRepository> logger)
+    ILogger<SqlServerMergeRepository> logger,
+    SqlServerVectorIndexWriter? vectorIndexWriter = null)
 {
     private readonly ISqlExecutionService _sqlExecutionService =
         sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
@@ -38,6 +40,7 @@ public class SqlServerMergeRepository(
         extensionUpdater ?? throw new ArgumentNullException(nameof(extensionUpdater));
     private readonly ILogger<SqlServerMergeRepository> _logger =
         logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly SqlServerVectorIndexWriter? _vectorIndexWriter = vectorIndexWriter;
 
     private readonly ResourceRowGenerator _resourceRowGenerator =
         new(compressor ?? throw new ArgumentNullException(nameof(compressor)));
@@ -428,7 +431,85 @@ public class SqlServerMergeRepository(
             }
         }
 
+        // Persist semantic vectors, strictly after the core merge above has committed (never inside the
+        // same transaction -- see MergeVectorSearchParams.sql's header). Only resources whose VectorIndices
+        // was actually evaluated participate: null means semantic indexing did not run for this write (the
+        // feature is off, or this write path doesn't run it) and any already-persisted vectors must be left
+        // alone, so such a resource must not appear in @Evaluated at all. An empty (non-null) list DOES
+        // still participate -- the resource's semantic text was evaluated and found empty (e.g. removed on
+        // update), and dbo.MergeVectorSearchParams deletes that resource's prior vectors precisely because
+        // it is listed as evaluated with nothing in @Vectors (Review Focus 4).
+        if (_vectorIndexWriter is not null)
+        {
+            var vectorEvaluations = BuildVectorEvaluations(resources, resourceTypeIdMap, resourceSurrogateIdMap);
+            if (vectorEvaluations.Count > 0)
+            {
+                try
+                {
+                    await _vectorIndexWriter.WriteAsync(vectorEvaluations, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    // Never fail an already-committed resource write because vector persistence failed
+                    // (Global Constraints). This intentionally also swallows a caller-cancelled
+                    // cancellationToken surfacing here as OperationCanceledException: the core resources
+                    // above are committed either way, so a cancellation during this best-effort step is
+                    // just another reason vectors may be stale, not a reason to report the whole merge as
+                    // failed or cancelled.
+                    _logger.LogError(
+                        ex,
+                        "Failed to persist semantic vectors after merge (TenantId={TenantId}). Affected resources: {AffectedResources}. " +
+                        "Core resource data and search indices were successfully merged; semantic vectors may be stale or missing.",
+                        tenantId,
+                        FormatAffectedResourcesForLog(vectorEvaluations));
+                }
+            }
+        }
+
         return affectedRows;
+    }
+
+    /// <summary>
+    /// Builds the writer's evaluated-resource list from this call's own surrogate/type maps, including only
+    /// resources whose <see cref="ResourceWrapper.VectorIndices"/> is non-null (see the call site's remarks
+    /// on why a null entry must not appear here at all).
+    /// </summary>
+    private static IReadOnlyList<(short ResourceTypeId, long ResourceSurrogateId, IReadOnlyList<VectorIndexEntry> Entries)> BuildVectorEvaluations(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        List<(short, long, IReadOnlyList<VectorIndexEntry>)>? evaluations = null;
+        foreach (var resource in resources)
+        {
+            if (resource.VectorIndices is null)
+            {
+                continue;
+            }
+
+            // Every resource reaching this point was already accepted by the core merge above, which
+            // means ResourceRowGenerator already proved resourceTypeIdMap contains its ResourceType (it
+            // throws otherwise) and resourceSurrogateIdMap is built directly from this same resources list
+            // -- both lookups are guaranteed to succeed, so a miss here would be a genuine bug, not a
+            // recoverable condition to skip past quietly.
+            evaluations ??= [];
+            evaluations.Add((resourceTypeIdMap[resource.ResourceType], resourceSurrogateIdMap[resource], resource.VectorIndices));
+        }
+
+        return (IReadOnlyList<(short, long, IReadOnlyList<VectorIndexEntry>)>?)evaluations ?? [];
+    }
+
+    private const int MaxLoggedAffectedResources = 20;
+
+    private static string FormatAffectedResourcesForLog(
+        IReadOnlyList<(short ResourceTypeId, long ResourceSurrogateId, IReadOnlyList<VectorIndexEntry> Entries)> evaluations)
+    {
+        var shown = string.Join(", ", evaluations.Take(MaxLoggedAffectedResources)
+            .Select(e => $"{e.ResourceTypeId}/{e.ResourceSurrogateId}"));
+
+        return evaluations.Count > MaxLoggedAffectedResources
+            ? $"{shown}, ... ({evaluations.Count - MaxLoggedAffectedResources} more)"
+            : shown;
     }
 
     /// <summary>

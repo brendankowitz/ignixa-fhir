@@ -29,6 +29,24 @@ public class GzipResourceCompressor(RecyclableMemoryStreamManager memoryStreamMa
         return outputStream.ToArray();
     }
 
+    /// <summary>
+    /// Compresses plain UTF-8 text with the same Gzip settings <see cref="SerializeAndCompress"/> uses for
+    /// resource JSON. Used for semantic-search source passages (<c>dbo.VectorSearchParam.SourceTextCompressed</c>),
+    /// which are not FHIR resources and so have no <see cref="ResourceJsonNode"/> to serialize.
+    /// </summary>
+    public byte[] CompressText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+        using RecyclableMemoryStream outputStream = _memoryStreamManager.GetStream("gzip-compress-text");
+        using (var gzipStream = new GZipStream(outputStream, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            gzipStream.Write(bytes, 0, bytes.Length);
+        }
+        return outputStream.ToArray();
+    }
+
     public ReadOnlyMemory<byte> DecompressBytes(ReadOnlyMemory<byte> compressedData)
     {
         if (compressedData.Length == 0)
