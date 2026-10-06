@@ -424,6 +424,12 @@
   <data name="SearchSortParameterNotSupported" xml:space="preserve">
     <value>Sorting by the '{0}' parameter is not supported.</value>
   </data>
+  <data name="SemanticSearchChainNotSupported" xml:space="preserve">
+    <value>Semantic search chains are not supported.</value>
+  </data>
+  <data name="SemanticSearchModifierNotSupported" xml:space="preserve">
+    <value>Modifier '{0}' is not supported for semantic search parameter '{1}'.</value>
+  </data>
   <data name="ServerName" xml:space="preserve">
     <value>Microsoft FHIR Server</value>
   </data>

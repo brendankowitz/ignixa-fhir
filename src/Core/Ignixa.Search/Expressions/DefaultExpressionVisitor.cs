@@ -128,4 +128,9 @@ internal abstract class DefaultExpressionVisitor<TContext, TOutput> : IExpressio
     {
         return expression.WrappedExpression.AcceptVisitor(this, context);
     }
+
+    public virtual TOutput VisitVectorSearch(VectorSearchExpression expression, TContext context)
+    {
+        return default;
+    }
 }

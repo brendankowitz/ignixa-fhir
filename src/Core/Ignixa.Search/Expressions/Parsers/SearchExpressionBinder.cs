@@ -31,13 +31,38 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
         key switch
         {
             BoundParameterKey parameter => bindParameter(parameter),
-            BoundChainKey chain => Expression.Chained(
-                chain.ResourceTypes.ToArray(),
-                chain.ReferenceSearchParameter,
-                chain.TargetResourceTypes.ToArray(),
-                chain.Reversed,
-                BindKey(chain.Next, bindParameter)),
+            BoundChainKey chain => BindChain(chain, bindParameter),
             _ => throw new UnreachableException(),
+        };
+
+    /// <summary>
+    /// Builds a <see cref="ChainedExpression"/>, first rejecting a chain (forward or, via
+    /// <see cref="BoundChainKey.Reversed"/>, reverse/<c>_has</c>) whose terminal parameter is semantic:
+    /// a vector embedding has no reference identity to chain through, so <c>subject:Patient.semantic-text=x</c>
+    /// and the equivalent <c>_has</c> form are both rejected here rather than silently binding a
+    /// <see cref="VectorSearchExpression"/> no <see cref="ChainedExpression"/> consumer expects.
+    /// </summary>
+    private static Expression BindChain(BoundChainKey chain, Func<BoundParameterKey, Expression> bindParameter)
+    {
+        if (IsTerminalSemantic(chain.Next))
+        {
+            throw new InvalidSearchOperationException(Resources.SemanticSearchChainNotSupported);
+        }
+
+        return Expression.Chained(
+            chain.ResourceTypes.ToArray(),
+            chain.ReferenceSearchParameter,
+            chain.TargetResourceTypes.ToArray(),
+            chain.Reversed,
+            BindKey(chain.Next, bindParameter));
+    }
+
+    private static bool IsTerminalSemantic(BoundSearchKey key) =>
+        key switch
+        {
+            BoundParameterKey parameter => parameter.SearchParameter.IsSemantic,
+            BoundChainKey chain => IsTerminalSemantic(chain.Next),
+            _ => false,
         };
 
     internal static IncludeExpression BindInclude(
