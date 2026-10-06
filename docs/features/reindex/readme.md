@@ -43,6 +43,8 @@ Ignixa has no way to bring those rows up to date:
 - The web farm syncs conformance state by polling (`ConformanceStateSyncService`, default 30s). Polling
   convergence is not a closed barrier: new instances, idle imports, and paused processes can still write with old
   definitions. Correctness must be enforced by the database, not by timing.
+- A lagging instance's *searches* are a separate hazard that the write barrier cannot fence. The spec handles them
+  with two-phase extraction changes and a fail-closed staleness lease (spec §4.4, §4.5).
 - Transaction ids and visibility watermarks belong to each database. Every tenant needs its own cutoff; tenant
   1's `SourceEvents.TransactionId` cannot stand in for the others.
 - Normal reads and writes must keep running at production throughput while a reindex job runs on databases with
