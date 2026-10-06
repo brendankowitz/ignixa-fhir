@@ -81,7 +81,10 @@ public class CompositeSearchParameterDefinitionManagerVectorConfigTests
             state,
             null,
             NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true });
+            // VectorSearchEnabled = true: this file covers the vector-search-config -> IsSemantic/IsSupported
+            // conversion in isolation from the VectorSearchEnabled feature gate, which is
+            // SemanticSearchGateTests' concern (test/Ignixa.Application.Tests/Search).
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true, VectorSearchEnabled = true });
     }
 
     private static async IAsyncEnumerable<SourceEvent> Events(

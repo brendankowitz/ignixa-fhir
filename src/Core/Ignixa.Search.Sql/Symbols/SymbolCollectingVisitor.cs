@@ -220,6 +220,19 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
+    /// Overrides the base <see cref="ExpressionRewriter{TContext}"/>'s pass-through for
+    /// <see cref="VectorSearchExpression"/> back to a throw: the SQL compiler does not lower semantic
+    /// search yet (query-time SQL lowering is Task 7 in the slice-1 plan), so a query reaching this far
+    /// must fail loudly here rather than silently compile as if the parameter contributed no predicate at
+    /// all (which Resolve's accumulated symbol set would otherwise do, happily yielding a filter that
+    /// ignores the semantic condition entirely).
+    /// </summary>
+    public override Expression VisitVectorSearch(VectorSearchExpression expression, object? context)
+    {
+        throw new NotSupportedException($"{nameof(SymbolCollectingVisitor)} does not implement {nameof(VisitVectorSearch)}. Semantic search SQL lowering is not yet implemented.");
+    }
+
+    /// <summary>
     /// Records a parameter, skipping resource-column codes — those target dbo.Resource's own columns and
     /// never reach a SearchParamId lookup, so collecting them would make a resolver with no _id row report
     /// the query unresolvable when it compiles fine.
