@@ -155,9 +155,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Use the **Publish Release** workflow to publish and create a GitHub release." >> $GITHUB_STEP_SUMMARY
 
-  # Its own job, not a step in e2e-tests-sql. Two reasons: the suite serialises its schema deploys
-  # (sixteen concurrent DacFx deploys time each other out) so it runs long, and as a step it made the
-  # E2E tests conditional on it -- one integration failure skipped the E2E run entirely.
+  # Its own job, and the only place this suite runs: as a step in e2e-tests-sql it made the E2E tests
+  # conditional on it (one integration failure skipped the E2E run entirely), and running it in both jobs
+  # doubled the SQL test time for no extra coverage.
   integration-tests-sql:
     name: Integration Tests (SQL Server)
     runs-on: ubuntu-latest
@@ -192,6 +192,7 @@ jobs:
           SQL_SA_PASSWORD: ${{ env.SQL_SA_PASSWORD }}
 
       - name: Verify SQL Server connection
+        id: verify-sql
         run: |
           docker exec ignixa-test-sql /opt/mssql-tools18/bin/sqlcmd \
             -S localhost -C -U sa -P "${{ env.SQL_SA_PASSWORD }}" \
@@ -211,12 +212,29 @@ jobs:
           Logging__LogLevel__Default: "Warning"
           Logging__LogLevel__Microsoft: "Warning"
 
+      # The schema-upgrade CLI's safety-critical assertions (a genuinely destructive diff is refused,
+      # --allow-data-loss is load-bearing) need a live database. They're [SkippableFact]: harmless no-ops in
+      # the SQL-Server-less unit-test job, real here. Runs even when the integration suite fails, so one
+      # suite's failure doesn't hide the other's result, but not when SQL Server never came up.
+      - name: Run schema upgrade CLI tests
+        if: ${{ !cancelled() && steps.verify-sql.outcome == 'success' }}
+        run: |
+          dotnet test test/Ignixa.SchemaUpgrade.Cli.Tests/Ignixa.SchemaUpgrade.Cli.Tests.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=schema-upgrade-cli-tests.trx;verbosity=minimal" \
+            --logger "console;verbosity=minimal" \
+            --verbosity minimal
+        env:
+          TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=master;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+
       - name: Upload integration test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: integration-test-results
-          path: '**/integration-test-results.trx'
+          path: |
+            **/integration-test-results.trx
+            **/schema-upgrade-cli-tests.trx
 
       - name: Cleanup SQL Server container
         if: always()
@@ -265,40 +283,6 @@ jobs:
             -S localhost -C -U sa -P "${{ env.SQL_SA_PASSWORD }}" \
             -Q "SELECT @@VERSION" -b
         timeout-minutes: 2
-
-      # These carry the safety-critical assertions DeployReportClassifier/SchemaDeployer/the
-      # schema-upgrade CLI exist for (e.g. a genuinely destructive diff is refused, --allow-data-loss
-      # is load-bearing) -- previously [Fact(Skip = ...)]-marked and never run anywhere. They're
-      # [SkippableFact] now: each skips itself (not fails) when TEST_SQL_CONNECTION_STRING is unset,
-      # so the same test classes remain harmless no-ops in the SQL-Server-less unit-test job while
-      # actually running here, against the container already started above.
-      - name: Run SqlServer schema deploy/upgrade integration tests
-        run: |
-          docker exec ignixa-test-sql /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost -C -U sa -P "${{ env.SQL_SA_PASSWORD }}" \
-            -Q "CREATE DATABASE [IgnixaSchemaUpgradeTests]" -b
-          dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj \
-            --configuration Release \
-            --logger "trx;LogFileName=schema-deployer-integration-tests.trx;verbosity=minimal" \
-            --logger "console;verbosity=minimal" \
-            --verbosity minimal
-          dotnet test test/Ignixa.SchemaUpgrade.Cli.Tests/Ignixa.SchemaUpgrade.Cli.Tests.csproj \
-            --configuration Release \
-            --logger "trx;LogFileName=schema-upgrade-cli-tests.trx;verbosity=minimal" \
-            --logger "console;verbosity=minimal" \
-            --verbosity minimal
-        env:
-          TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=IgnixaSchemaUpgradeTests;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
-
-      - name: Upload SqlServer schema test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: schema-deployer-test-results
-          path: |
-            **/schema-deployer-integration-tests.trx
-            **/schema-upgrade-cli-tests.trx
-          retention-days: 30
 
       - name: Restore E2E test project
         run: dotnet restore test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj
@@ -514,7 +498,9 @@ jobs:
   build-and-push-container:
     name: Build and Push Container
     runs-on: ubuntu-latest
-    needs: [ build-and-unit-tests, e2e-tests-sql ]
+    # integration-tests-sql is the only job running the SQL data-layer and schema-upgrade CLI suites, so it
+    # must gate the image push.
+    needs: [ build-and-unit-tests, integration-tests-sql, e2e-tests-sql ]
     if: success() && !inputs.skip_docker
     permissions:
       contents: read
