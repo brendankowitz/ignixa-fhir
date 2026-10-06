@@ -19,11 +19,34 @@
 --      by ResourceId, not just the evaluated surrogate) before the new set is inserted, because a resource
 --      whose semantic text changed on update must not leave the previous version's chunks behind under a
 --      different ResourceSurrogateId.
+--
+-- DEADLOCK_PRIORITY LOW: this procedure's UPDLOCK, HOLDLOCK read takes dbo.Resource's lock BEFORE touching
+-- dbo.VectorSearchParam, the same order dbo.DeleteHistory.sql's sweep and dbo.HardDeleteResource.sql's
+-- per-type-locked batch use. The plain hard-delete path in SqlServerFhirRepository.cs's TTL-expiry-less
+-- branch (HardDeleteResourceCoreAsync called with expiredResource: null) does not: it has no equivalent
+-- UPDLOCK, HOLDLOCK read up front, so its batch takes dbo.VectorSearchParam's X lock first and
+-- dbo.Resource's X lock last -- the reverse of the order above. Two transactions taking the same two locks
+-- in opposite orders is a deadlock (1205) waiting to happen, not a maybe: SQL Server resolves it by killing
+-- whichever transaction is the cheaper rollback. This procedure's own writes are moot the instant a
+-- concurrent hard delete is in flight for the same resource -- whatever vectors it just inserted are about
+-- to be deleted by that same hard delete, or were already read as "not current" and skipped by rule 2
+-- above -- so it, not the hard delete, should always be the one sacrificed. DEADLOCK_PRIORITY LOW makes
+-- that choice explicit instead of leaving it to the engine's default (lowest estimated rollback cost, which
+-- usually but not provably favors the hard delete anyway).
+--
+-- Caller contract: a victim of 1205 has done nothing -- XACT_ABORT ON already rolled back this
+-- procedure's own transaction in full before the error reaches the caller, and this procedure places no
+-- row for the caller to have observed half-written. The post-merge vector writer (Task 6) must retry this
+-- call exactly once on SqlException.Number = 1205, and log (not throw) if the retry also fails -- matching
+-- the Global Constraints rule that a vector-persistence failure must never fail the resource write it
+-- follows. A second 1205 on the retry means the resource is still being hard-deleted, and the right outcome
+-- is the hard delete finishing the job, not this writer trying a third time.
 CREATE PROCEDURE dbo.MergeVectorSearchParams
 @Evaluated dbo.VectorResourceList READONLY, @Vectors dbo.VectorSearchParamList READONLY
 AS
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
+SET DEADLOCK_PRIORITY LOW;
 DECLARE @SP AS VARCHAR (100) = object_name(@@procid), @st AS DATETIME = getUTCdate(), @InitialTranCount AS INT = @@trancount, @CurrentRows AS INT, @DeletedRows AS INT, @InsertedRows AS INT, @Text AS VARCHAR (100);
 DECLARE @Mode AS VARCHAR (200) = 'Evaluated=' + CONVERT (VARCHAR, (SELECT count(*)
                                                                    FROM   @Evaluated)) + ' Vectors=' + CONVERT (VARCHAR, (SELECT count(*)

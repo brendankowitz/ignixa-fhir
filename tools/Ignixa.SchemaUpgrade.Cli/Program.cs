@@ -81,6 +81,10 @@ internal static class Program
 
         var connectionString = await TenantConnectionStringResolver.ResolveForSchemaDeploymentAsync(tenantConfigurationStore, tenantId, cancellationToken);
 
+        // First, before anything else touches the tenant: on an engine without the vector type the deploy
+        // below cannot succeed, so fail with the actionable message rather than plan or apply anything.
+        await SchemaDeployer.EnsureVectorTypeSupportedAsync(connectionString, cancellationToken);
+
         // Planned now, applied only after the operator confirms: declining must leave the database untouched.
         var currentVersion = await new SchemaVersionResolver(tenantConfigurationStore, NullLogger<SchemaVersionResolver>.Instance)
             .GetCurrentVersionAsync(tenantId, cancellationToken);

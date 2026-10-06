@@ -497,7 +497,7 @@ public class SqlServerFhirRepository(
 
                 await UpsertResourceTtlAsync(transaction, resourceTypeId, key.Id, expiresAt: null, transactionId?.Value, ct);
 
-                await DeleteSearchIndexEntriesAsync(transaction, currentSurrogateId, ct);
+                await DeleteSearchIndexEntriesAsync(transaction, resourceTypeId, currentSurrogateId, ct);
             },
             cancellationToken);
 
@@ -1341,13 +1341,27 @@ public class SqlServerFhirRepository(
     /// Wipes every search-index row for one resource version. Takes the unit of work rather than running
     /// standalone because its only caller, <see cref="DeleteAsync"/>, has to have this land with the
     /// tombstone: indexes swept without a tombstone make the resource unfindable while it is still current.
+    /// <para>
+    /// Carries a <c>ResourceTypeId = @ResourceTypeId AND</c> predicate on every table except
+    /// <see cref="TableWithoutResourceTypeId"/>, matching <see cref="HardDeleteResourceCoreAsync"/>'s
+    /// TTL-sweep batch. Without it, a delete against <c>dbo.VectorSearchParam</c> -- clustered on
+    /// (ResourceTypeId, ResourceSurrogateId) but, unlike its fourteen siblings, not partitioned on
+    /// ResourceTypeId (see Database/Tables/VectorSearchParam.sql) -- cannot seek: a predicate naming only
+    /// ResourceSurrogateId, the second key column, forces a full clustered-index scan of the whole table
+    /// to find the one matching row (measured 5,037 logical reads clearing 5,000 seeded rows). Adding the
+    /// leading-column predicate turns that into a seek.
+    /// </para>
     /// </summary>
     private async Task DeleteSearchIndexEntriesAsync(
-        ISqlTransactionContext transaction, long resourceSurrogateId, CancellationToken cancellationToken)
+        ISqlTransactionContext transaction, short resourceTypeId, long resourceSurrogateId, CancellationToken cancellationToken)
     {
         var deleteStatements = string.Join(
             "\n",
-            SearchIndexTables.Select(table => $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId = @ResourceSurrogateId;"));
+            SearchIndexTables.Select(table =>
+            {
+                var typePredicate = table == TableWithoutResourceTypeId ? string.Empty : "ResourceTypeId = @ResourceTypeId AND ";
+                return $"DELETE FROM dbo.{table} WHERE {typePredicate}ResourceSurrogateId = @ResourceSurrogateId;";
+            }));
 
         // CA2100 suppressed: deleteStatements is built exclusively from the fixed, hardcoded
         // SearchIndexTables array above -- never from caller/user input -- matching the identical
@@ -1355,10 +1369,13 @@ public class SqlServerFhirRepository(
 #pragma warning disable CA2100
         using var command = new SqlCommand(deleteStatements);
 #pragma warning restore CA2100
+        command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
         command.Parameters.Add("@ResourceSurrogateId", SqlDbType.BigInt).Value = resourceSurrogateId;
         await transaction.ExecuteNonQueryAsync(command, cancellationToken);
 
-        _logger.LogDebug("Deleted search index entries for ResourceSurrogateId={ResourceSurrogateId}", resourceSurrogateId);
+        _logger.LogDebug(
+            "Deleted search index entries for ResourceTypeId={ResourceTypeId}, ResourceSurrogateId={ResourceSurrogateId}",
+            resourceTypeId, resourceSurrogateId);
     }
 
     private async Task<int?> GetCurrentVersionOrderedBySurrogateIdAsync(short resourceTypeId, string resourceId, CancellationToken cancellationToken)
