@@ -237,6 +237,15 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             searchParamInfo.OverridesUrl = new Uri(asp.OverridesCanonical);
         }
 
+        if (asp.HasInvalidVectorConfig)
+        {
+            // Mirrors the IElement/runtime-registration path: a malformed vector-search-config
+            // extension keeps the parameter registered but unsupported (see SearchParameterInfo's
+            // IElement constructor), rather than silently acting as if vector search were never
+            // configured for it.
+            searchParamInfo.IsSupported = false;
+        }
+
         return searchParamInfo;
     }
 

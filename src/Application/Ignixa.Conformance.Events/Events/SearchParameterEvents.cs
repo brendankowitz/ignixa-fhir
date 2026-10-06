@@ -17,7 +17,8 @@ public record SearchParameterActivated(
     IReadOnlyList<SearchParameterComponentData>? Components,
     string? Name,
     string? Description,
-    VectorSearchConfig? VectorConfig = null);
+    VectorSearchConfig? VectorConfig = null,
+    bool HasInvalidVectorConfig = false);
 
 public record SearchParameterComponentData(
     string DefinitionUrl,

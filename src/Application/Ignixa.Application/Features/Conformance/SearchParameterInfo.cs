@@ -23,7 +23,8 @@ public record SearchParameterInfo(
     IReadOnlyList<string>? TargetResourceTypes,
     string? Name,
     string? Description,
-    VectorSearchConfig? VectorConfig = null);
+    VectorSearchConfig? VectorConfig = null,
+    bool HasInvalidVectorConfig = false);
 
 /// <summary>
 /// Component of a composite SearchParameter.
