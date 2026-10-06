@@ -44,4 +44,15 @@ public record ResourceWrapper(
     /// Null means resource lives forever, non-null means resource expires at this timestamp.
     /// </summary>
     public DateTimeOffset? ExpiresAt { get; init; }
+
+    /// <summary>
+    /// Per-semantic-search-parameter vector indices computed on the write path. <c>null</c> means
+    /// semantic indexing was not evaluated for this write -- semantic search is disabled, or this write
+    /// path does not run it (e.g. import) -- and any vectors already persisted for this resource must be
+    /// left untouched. An empty list means semantic indexing ran and found no semantic text to embed,
+    /// either because no semantic search parameter matched or because a prior version's semantic text was
+    /// removed -- any vectors already persisted for this resource must be deleted. Always empty for a
+    /// deleted wrapper (<see cref="IsDeleted"/>), since a tombstone has no indexable text.
+    /// </summary>
+    public IReadOnlyList<VectorIndexEntry>? VectorIndices { get; init; }
 }

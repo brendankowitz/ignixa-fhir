@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
@@ -24,6 +25,7 @@ public class DeferredWriteCoordinator
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<DeferredWriteCoordinator> _logger;
+    private readonly SemanticIndexer? _semanticIndexer;
     private readonly List<(int EntryIndex, ResourceWrapper Resource)> _stagedWrites = [];
     private readonly ConcurrentDictionary<int, bool> _createdEntries = new();
 
@@ -33,7 +35,8 @@ public class DeferredWriteCoordinator
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
         ILogger<DeferredWriteCoordinator> logger,
-        bool atomic)
+        bool atomic,
+        SemanticIndexer? semanticIndexer)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channelCapacity);
         _repositoryFactory = repositoryFactory;
@@ -41,6 +44,7 @@ public class DeferredWriteCoordinator
         _contextAccessor = contextAccessor;
         _logger = logger;
         IsAtomic = atomic;
+        _semanticIndexer = semanticIndexer;
         _writeChannel = Channel.CreateBounded<DeferredWriteOperation>(channelCapacity);
     }
 
@@ -55,6 +59,7 @@ public class DeferredWriteCoordinator
         IFhirRequestContextAccessor contextAccessor,
         ILogger<DeferredWriteCoordinator> logger,
         bool atomic = false,
+        SemanticIndexer? semanticIndexer = null,
         CancellationToken cancellationToken = default)
     {
         var context = contextAccessor.RequestContext
@@ -65,7 +70,7 @@ public class DeferredWriteCoordinator
             throw new Domain.Exceptions.NotImplementedException("This storage provider does not support atomic transactions.");
         }
         return new DeferredWriteCoordinator(channelCapacity, repositoryFactory, partitionStrategy,
-            contextAccessor, logger, atomic);
+            contextAccessor, logger, atomic, semanticIndexer);
     }
 
     public async Task<ResourceKey> QueueWriteAsync(
@@ -87,6 +92,14 @@ public class DeferredWriteCoordinator
         return await completion.Task.WaitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Reads up to <paramref name="batchSize"/> queued writes and commits each independently (a batch
+    /// bundle's entries do not share a transaction, so one entry's failure must not affect another's).
+    /// When semantic search is enabled, every wrapper read in this call is embedded together in one
+    /// <see cref="SemanticIndexer.IndexAsync"/> call before any of them reaches the repository -- an
+    /// embedding failure here fails this whole micro-batch the same way a repository failure fails one
+    /// entry, rather than silently committing resources with no vectors.
+    /// </summary>
     public async Task<List<Exception>> ProcessBatchAsync(int batchSize, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
@@ -95,7 +108,51 @@ public class DeferredWriteCoordinator
         {
             return errors;
         }
+        var operations = new List<DeferredWriteOperation>(batchSize);
         for (var i = 0; i < batchSize && _writeChannel.Reader.TryRead(out var operation); i++)
+        {
+            operations.Add(operation);
+        }
+
+        if (_semanticIndexer is not null)
+        {
+            IReadOnlyList<ResourceWrapper> indexed;
+            try
+            {
+                indexed = await _semanticIndexer.IndexAsync(
+                    operations.ConvertAll(op => op.Wrapper), cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                foreach (var operation in operations)
+                {
+                    operation.CompletionSource.TrySetCanceled(cancellationToken);
+                }
+                throw;
+            }
+            catch (Exception ex)
+            {
+                foreach (var operation in operations)
+                {
+                    _logger.LogWarning(ex, "Batch entry {EntryIndex} failed independently during semantic indexing", operation.EntryIndex);
+                    operation.CompletionSource.TrySetException(ex);
+                    errors.Add(ex);
+                }
+                return errors;
+            }
+
+            for (var i = 0; i < operations.Count; i++)
+            {
+                operations[i] = new DeferredWriteOperation
+                {
+                    Wrapper = indexed[i],
+                    EntryIndex = operations[i].EntryIndex,
+                    CompletionSource = operations[i].CompletionSource
+                };
+            }
+        }
+
+        foreach (var operation in operations)
         {
             try
             {
@@ -164,12 +221,31 @@ public class DeferredWriteCoordinator
         _stagedWrites.FirstOrDefault(write =>
             write.Resource.ResourceType == resourceType && write.Resource.ResourceId == resourceId).Resource;
 
+    /// <summary>
+    /// Commits every staged write in one atomic core merge. When semantic search is enabled, all staged
+    /// resources are embedded together in one <see cref="SemanticIndexer.IndexAsync"/> call first --
+    /// after <see cref="ResolveReferenceAliases"/> has already rewritten references and re-extracted
+    /// search indices, so semantic text reflects each resource's final, committed identity -- and before
+    /// <see cref="IAtomicFhirRepository.WriteTransactionAsync"/>, so an embedding failure propagates with
+    /// nothing written, exactly like any other pre-commit validation failure in this transaction.
+    /// </summary>
     public async Task CommitAtomicAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
         var repository = await _repositoryFactory.GetRepositoryAsync(context.TenantId, cancellationToken);
+
+        if (_semanticIndexer is not null && _stagedWrites.Count > 0)
+        {
+            var indexed = await _semanticIndexer.IndexAsync(
+                _stagedWrites.ConvertAll(write => write.Resource), cancellationToken);
+            for (var i = 0; i < _stagedWrites.Count; i++)
+            {
+                _stagedWrites[i] = (_stagedWrites[i].EntryIndex, indexed[i]);
+            }
+        }
+
         await ((IAtomicFhirRepository)repository).WriteTransactionAsync(
             _stagedWrites.Select(write => write.Resource).ToArray(), cancellationToken);
     }

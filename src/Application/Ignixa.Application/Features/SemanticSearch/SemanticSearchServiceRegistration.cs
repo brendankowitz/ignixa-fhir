@@ -14,9 +14,10 @@ namespace Ignixa.Application.Features.SemanticSearch;
 
 /// <summary>
 /// Registers semantic (vector) search services: bound and validated <see cref="VectorSearchOptions"/>,
-/// the <see cref="SemanticTextChunker"/>, and the Azure OpenAI-backed
-/// <see cref="IEmbeddingGenerator{TInput, TEmbedding}"/>. When semantic search is disabled, registers
-/// nothing -- no embedding generator is resolvable, and no provider call is possible.
+/// the <see cref="SemanticTextChunker"/>, the Azure OpenAI-backed
+/// <see cref="IEmbeddingGenerator{TInput, TEmbedding}"/>, and the write-path <see cref="SemanticIndexer"/>.
+/// When semantic search is disabled, registers nothing -- no embedding generator is resolvable, no
+/// provider call is possible, and <see cref="SemanticIndexer"/> is not constructed.
 /// </summary>
 public static class SemanticSearchServiceRegistration
 {
@@ -78,6 +79,16 @@ public static class SemanticSearchServiceRegistration
             var tokenizer = sp.GetRequiredService<SemanticTextChunker>();
             return new TokenBudgetBatchingEmbeddingGenerator(inner, tokenizer, options.Embedding.Dimensions);
         });
+
+        // Write-path indexer. Handlers and DeferredWriteCoordinator take this as an optional constructor
+        // dependency (see the IMcpAuthorizationService precedent for the same pattern): resolved when
+        // enabled, and -- because nothing is registered here when disabled -- Autofac supplies the
+        // constructor parameter's default value (null) instead of throwing, so disabled writes simply
+        // skip semantic indexing rather than needing an explicit "is this enabled" check at every call site.
+        services.AddSingleton(sp => new SemanticIndexer(
+            sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+            sp.GetRequiredService<SemanticTextChunker>(),
+            options));
 
         return services;
     }
