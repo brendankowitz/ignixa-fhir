@@ -7,6 +7,7 @@ using Ignixa.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Bundle;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -43,6 +44,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly Func<FhirVersion, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
+    private readonly SemanticIndexer? _semanticIndexer;
 
     public CreateOrUpdateResourceHandler(
         IPartitionStrategy partitionStrategy,
@@ -50,7 +52,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext fhirVersionContext,
         Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
-        ILogger<CreateOrUpdateResourceHandler> logger)
+        ILogger<CreateOrUpdateResourceHandler> logger,
+        SemanticIndexer? semanticIndexer = null)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
@@ -58,6 +61,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _schemaResolverFactory = schemaResolverFactory ?? throw new ArgumentNullException(nameof(schemaResolverFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _semanticIndexer = semanticIndexer;
     }
 
     public async Task<UpdateResult> HandleAsync(CreateOrUpdateResourceCommand command, CancellationToken cancellationToken)
@@ -173,10 +177,19 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             // 4. Get repository from factory
             var repository = await _repositoryFactory.GetRepositoryAsync(resolvedTenantId, cancellationToken);
 
-            // 5. Write immediately to repository - returns UpdateResult with ResourceKey + raw bytes
+            // 5. Embed semantic text before writing: a committed write must never leave the vector
+            // index stale, so embedding failures must surface before the repository call below, not
+            // after. Bundle writes are embedded separately by DeferredWriteCoordinator -- after alias
+            // rewrite/re-extraction, and batched across the whole transaction/micro-batch -- not here.
+            if (_semanticIndexer is not null)
+            {
+                wrapper = (await _semanticIndexer.IndexAsync([wrapper], cancellationToken))[0];
+            }
+
+            // 6. Write immediately to repository - returns UpdateResult with ResourceKey + raw bytes
             result = await repository.CreateOrUpdateAsync(wrapper, cancellationToken);
 
-            // 6. Process X-Provenance header if provided (only for standalone operations)
+            // 7. Process X-Provenance header if provided (only for standalone operations)
             // Provenance cannot be processed in bundle/deferred context because the main resource isn't persisted yet
             if (command.ProvenanceResource != null)
             {
@@ -376,6 +389,16 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             FhirVersion = fhirVersion.ToVersionString(),
             SearchIndices = searchIndices?.ToArray()
         };
+
+        // Embed before writing, same as the main resource. Provenance carries no semantic search
+        // parameter in any shipped definition, so this call has no passages and the indexer skips the
+        // provider round trip entirely -- but running it keeps Provenance's VectorIndices evaluated
+        // (empty, not null) rather than silently un-evaluated, consistent with every other non-deleted
+        // write when semantic search is enabled.
+        if (_semanticIndexer is not null)
+        {
+            provenanceWrapper = (await _semanticIndexer.IndexAsync([provenanceWrapper], cancellationToken))[0];
+        }
 
         // Persist the Provenance resource (validation was performed above by ValidateProvenance)
         var provenanceResult = await repository.CreateOrUpdateAsync(provenanceWrapper, cancellationToken);
