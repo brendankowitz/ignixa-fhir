@@ -218,8 +218,16 @@ public sealed class SchemaDeployer : ISchemaDeployer
     /// define itself, and Azure SQL Database -- a first-class deploy target for this schema -- ships the
     /// type under no fixed <c>@@VERSION</c> string a parser could pin to.
     /// </para>
+    /// <para>
+    /// Internal rather than private, via the same <c>InternalsVisibleTo</c> grant
+    /// <see cref="CreateDeployOptions"/> relies on: <c>Ignixa.SchemaUpgrade.Cli</c>'s own
+    /// <c>DacPackage.Load</c> call needs this exact probe run first too -- that tool is precisely the path
+    /// an operator uses when <see cref="DeployIfEmptyAsync"/>/<see cref="UpgradeIfNeededAsync"/> refused to
+    /// run automatically, so it must fail with the same actionable message rather than DacFx's opaque one,
+    /// and duplicating the query here would drift from it silently.
+    /// </para>
     /// </summary>
-    private static async Task EnsureVectorTypeSupportedAsync(string connectionString, CancellationToken cancellationToken)
+    internal static async Task EnsureVectorTypeSupportedAsync(string connectionString, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);

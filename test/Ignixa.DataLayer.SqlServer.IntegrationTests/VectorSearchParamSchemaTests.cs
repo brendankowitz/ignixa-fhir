@@ -222,6 +222,106 @@ public class VectorSearchParamSchemaTests : IAsyncLifetime
             1, "the current version's vectors must survive a history-only sweep");
     }
 
+    /// <summary>
+    /// Pins MergeVectorSearchParams.sql's "delete every version" behavior directly: the DELETE joins
+    /// dbo.VectorSearchParam to dbo.Resource by (ResourceTypeId, ResourceSurrogateId) and then to the
+    /// evaluated/current set by ResourceId -- not by matching the evaluated surrogate itself -- so a prior
+    /// version's orphaned rows are removed even though that prior surrogate was never in <c>@Evaluated</c>.
+    /// Every other test in this file that exercises the no-vectors-on-update path
+    /// (<see cref="GivenEvaluatedResourceWithNoVectors_WhenMerged_ThenPriorVersionRowsDeleted"/>) only ever
+    /// seeds and evaluates the SAME surrogate, so it stays green even if the delete were narrowed to match
+    /// on ResourceSurrogateId instead of ResourceId -- this test seeds v1's vectors raw, lets v2 become
+    /// current, and evaluates only v2, which the surrogate-matching mutation would NOT delete.
+    /// </summary>
+    [Fact]
+    public async Task GivenVectorsOnAPriorVersion_WhenMergedForTheCurrentVersionWithNoVectors_ThenThePriorVersionsVectorsAreDeleted()
+    {
+        const string ResourceId = "vector-merge-prior-version-1";
+        var (resourceTypeId, v1SurrogateId) = await CreatePatientAsync(ResourceId);
+        await InsertVectorRowRawAsync(resourceTypeId, v1SurrogateId);
+
+        await _database.Repository.CreateOrUpdateAsync(BuildPatientWrapper(ResourceId), CancellationToken.None);
+        var v2SurrogateId = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
+        v2SurrogateId.ShouldNotBe(v1SurrogateId);
+
+        (await _database.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.VectorSearchParam WHERE ResourceSurrogateId = {v1SurrogateId}")).ShouldBe(
+            1, "without a row to remove, this test cannot prove the delete matched by ResourceId");
+
+        // v2 is the evaluated/current surrogate but carries no vectors of its own (its semantic text
+        // evaluated to empty on this update). Only v1's (the prior, now-historical version's) rows exist
+        // to be deleted -- v2's own surrogate was never written to dbo.VectorSearchParam at all.
+        await MergeVectorSearchParamsAsync(evaluated: [(resourceTypeId, v2SurrogateId)], vectors: []);
+
+        (await _database.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.VectorSearchParam WHERE ResourceSurrogateId = {v1SurrogateId}")).ShouldBe(
+            0, "the prior version's vectors must be deleted even though only v2's surrogate was evaluated");
+    }
+
+    /// <summary>
+    /// Pins the UPDLOCK, HOLDLOCK race guard directly, rather than only through its externally-visible
+    /// "stale surrogate" consequence (<see
+    /// cref="GivenSurrogateNowHistory_WhenMerged_ThenNoRowsInsertedAndNewerVersionVectorsUntouched"/>, which
+    /// would also pass if the hint were removed and replaced by nothing, purely because that test's
+    /// concurrent write happens to land before the read). Also exercises the <c>@InitialTranCount > 0</c>
+    /// branch: connection A calls the procedure inside its OWN already-open transaction, so the procedure
+    /// must neither BEGIN nor COMMIT one of its own, and the lock it takes must outlive the EXEC and persist
+    /// until connection A's caller-owned transaction ends.
+    /// </summary>
+    [Fact]
+    public async Task GivenAnOpenOuterTransaction_WhenMergeVectorSearchParamsRunsInsideIt_ThenTheCurrentResourceRowStaysLockedUntilTheOuterTransactionEnds()
+    {
+        var (resourceTypeId, surrogateId) = await CreatePatientAsync("vector-lock-guard-1");
+
+        await using var connectionA = new SqlConnection(_database.ConnectionString);
+        await connectionA.OpenAsync(CancellationToken.None);
+        await using var transactionA = (SqlTransaction)await connectionA.BeginTransactionAsync(CancellationToken.None);
+
+        using (var command = connectionA.CreateCommand())
+        {
+            command.Transaction = transactionA;
+            command.CommandText = "dbo.MergeVectorSearchParams";
+            command.CommandType = CommandType.StoredProcedure;
+            command.Parameters.Add(new SqlParameter("@Evaluated", SqlDbType.Structured)
+            {
+                TypeName = "dbo.VectorResourceList",
+                Value = new List<SqlDataRecord> { BuildEvaluatedRecord(resourceTypeId, surrogateId) },
+            });
+            command.Parameters.Add(new SqlParameter("@Vectors", SqlDbType.Structured)
+            {
+                TypeName = "dbo.VectorSearchParamList",
+                // SQL Client requires NULL (not an empty list) for a TVP carrying zero rows.
+                Value = null,
+            });
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        try
+        {
+            await using var connectionB = new SqlConnection(_database.ConnectionString);
+            await connectionB.OpenAsync(CancellationToken.None);
+            using (var lockTimeoutCommand = connectionB.CreateCommand())
+            {
+                lockTimeoutCommand.CommandText = "SET LOCK_TIMEOUT 500";
+                await lockTimeoutCommand.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            using var updateCommand = connectionB.CreateCommand();
+            updateCommand.CommandText =
+                "UPDATE dbo.Resource SET IsHistory = 1 WHERE ResourceTypeId = @ResourceTypeId AND ResourceSurrogateId = @ResourceSurrogateId";
+            updateCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
+            updateCommand.Parameters.Add("@ResourceSurrogateId", SqlDbType.BigInt).Value = surrogateId;
+
+            var ex = await Should.ThrowAsync<SqlException>(() => updateCommand.ExecuteNonQueryAsync(CancellationToken.None));
+            ex.Number.ShouldBe(1222, "SQL Server's lock-request-timeout error number");
+        }
+        finally
+        {
+            await transactionA.RollbackAsync(CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task GivenSameModelKeyTwice_WhenGetOrCreate_ThenSameId()
     {
@@ -231,6 +331,36 @@ public class VectorSearchParamSchemaTests : IAsyncLifetime
         secondId.ShouldBe(firstId);
         (await _database.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM dbo.EmbeddingModel WHERE ModelKey = 'same-model-key'")).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Pins the SELECT-first fix: an insert-first GetOrCreateEmbeddingModel burns one IDENTITY value per
+    /// call for an EXISTING key too (the INSERT attempt consumes the next identity before its own
+    /// uniqueness violation is caught), so five lookups of the same key would leave the next genuinely new
+    /// key at id 6, not id 2. IDENT_CURRENT is asserted directly rather than inferred solely from the new
+    /// key's id, so a failure names the actual counter value rather than requiring the reader to do that
+    /// arithmetic themselves.
+    /// </summary>
+    [Fact]
+    public async Task GivenAnExistingModelKeyLookedUpRepeatedly_WhenANewKeyIsThenCreated_ThenNoIdentityValuesWereBurnedByTheLookups()
+    {
+        var firstId = await GetOrCreateEmbeddingModelAsync("repeated-lookup-key", 1536);
+        firstId.ShouldBe((short)1);
+
+        for (var i = 0; i < 4; i++)
+        {
+            (await GetOrCreateEmbeddingModelAsync("repeated-lookup-key", 1536)).ShouldBe(firstId);
+        }
+
+        (await _database.ExecuteScalarAsync<int>("SELECT CAST(IDENT_CURRENT('dbo.EmbeddingModel') AS INT)")).ShouldBe(
+            1, "five lookups of an existing key must not advance the IDENTITY counter");
+
+        var secondId = await GetOrCreateEmbeddingModelAsync("new-model-key-after-lookups", 1536);
+
+        secondId.ShouldBe(
+            (short)2,
+            "an insert-first design would have burned four IDENTITY values on the repeated lookups above, " +
+            "landing the next genuinely new key at 6, not 2");
     }
 
     [Fact]
