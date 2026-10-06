@@ -6,8 +6,10 @@
 using Autofac;
 using Ignixa.Api.Registrations;
 using Ignixa.Application.Features.Experimental.Infrastructure;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.DeId.Darts.Extensions;
 using Ignixa.DeId.Extensions;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Api.Extensions;
 
@@ -41,6 +43,13 @@ public static class ServiceCollectionExtensions
 
         // Search services configuration
         services.AddIgnixaSearchServices(configuration);
+
+        // Semantic (vector) search: options, chunker, embedding generator. Registers nothing when
+        // VectorSearch:Enabled is false. Validated and gated on the SQL Server data layer before any
+        // service is registered, so a misconfigured or unsupported deployment fails at startup rather
+        // than on the first write or query that needs an embedding.
+        ValidateVectorSearchDataLayer(configuration);
+        services.AddSemanticSearch(configuration);
 
         // Background services (hosted services, DurableTask)
         services.AddIgnixaBackgroundServices(configuration);
@@ -118,5 +127,42 @@ public static class ServiceCollectionExtensions
         builder.RegisterConformanceServices(configuration);
 
         return builder;
+    }
+
+    /// <summary>
+    /// Fails startup when semantic search is enabled for a deployment that is not entirely on the SQL
+    /// Server data layer. Vector persistence (schema version 4) only exists in
+    /// <c>Ignixa.DataLayer.SqlServer</c>; a tenant on <c>FileSystem</c> storage with VectorSearch enabled
+    /// would accept writes to a semantic parameter and silently never persist or query its vectors.
+    /// </summary>
+    /// <remarks>
+    /// Reads "Tenants:Configurations" directly from <paramref name="configuration"/>, the same way
+    /// <see cref="SearchServicesRegistration.ValidateTenantHostnames"/> does, rather than resolving
+    /// <c>ITenantConfigurationStore</c>: this runs from <see cref="AddIgnixaApi"/>, during
+    /// <c>IServiceCollection</c> registration, before any container exists to resolve a registered
+    /// service from. Per-tenant storage type is also the only per-deployment signal available this
+    /// early -- multi-tenant deployments with a mix of storage types are the reason this check is a
+    /// cross-tenant scan rather than a single global flag.
+    /// </remarks>
+    /// <exception cref="OptionsValidationException">
+    /// VectorSearch is enabled and at least one active tenant is not configured for SQL Server storage.
+    /// </exception>
+    internal static void ValidateVectorSearchDataLayer(IConfiguration configuration)
+    {
+        if (!configuration.GetValue("VectorSearch:Enabled", false))
+        {
+            return;
+        }
+
+        var tenants = configuration.GetSection("Tenants:Configurations").Get<List<TenantConfiguration>>() ?? [];
+        var hasNonSqlTenant = tenants.Any(tenant => tenant.IsActive && tenant.Storage.Type is not ("SqlServer" or "SqlEntityFramework"));
+
+        if (hasNonSqlTenant)
+        {
+            throw new OptionsValidationException(
+                VectorSearchOptions.SectionName,
+                typeof(VectorSearchOptions),
+                ["VectorSearch requires the SQL Server data layer."]);
+        }
     }
 }

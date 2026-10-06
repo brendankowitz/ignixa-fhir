@@ -33,8 +33,12 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.CommandLine" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.9" />
+    <!-- 10.0.12 (not 10.0.9): Microsoft.Extensions.AI 10.10.0's net10.0 dependency group floors both of
+         these at >= 10.0.12; CentralPackageTransitivePinningEnabled pins the whole graph to the version
+         listed here, so leaving these at 10.0.9 is a restore-time downgrade conflict (NU1605), not a
+         no-op. -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.9" />
@@ -70,7 +74,8 @@
     <PackageVersion Include="Superpower" Version="3.1.0" />
     <PackageVersion Include="System.Collections.Immutable" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
+    <!-- 10.0.12 (not 10.0.9): see the Microsoft.Extensions.DependencyInjection.Abstractions comment above. -->
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     <PackageVersion Include="JsonSchema.Net" Version="7.4.0" />
     <PackageVersion Include="Autofac" Version="8.4.0" />
     <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
@@ -128,5 +133,20 @@
     <!-- Security: transitive pins to eliminate known-High advisories (GHSA-pggp-6c3x-2xmx, GHSA-37gx-xxp4-5rgx, GHSA-w3x6-4m5h-cxqf) -->
     <PackageVersion Include="Snappier" Version="1.3.1" />
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.9" />
+    <!-- Semantic vector search (ADR-2610): embedding generation abstractions, Azure OpenAI provider and
+         the BPE tokenizer used to chunk and budget embedding requests. -->
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.10.1" />
+    <PackageVersion Include="Azure.AI.OpenAI" Version="2.1.0" />
+    <!-- Pinned explicitly (not left to float): Azure.AI.OpenAI 2.1.0 floors it at >= 2.1.0 and
+         Microsoft.Extensions.AI.OpenAI 10.10.1 floors it at >= 2.14.0; stating the higher floor here
+         keeps both satisfied without relying on unpinned transitive resolution. -->
+    <PackageVersion Include="OpenAI" Version="2.14.0" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="2.0.0" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="2.0.0" />
+    <!-- Transitive floor from Microsoft.ML.Tokenizers' netstandard2.0 dependency group; pinned up from
+         9.0.4 to clear a known high-severity advisory (GHSA-73j8-2gch-69rq). -->
+    <PackageVersion Include="Microsoft.Bcl.Memory" Version="10.0.12" />
   </ItemGroup>
 </Project>
