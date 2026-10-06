@@ -19,6 +19,9 @@ public class ActiveSearchParameter
     public string? Name { get; init; }
     public string? Description { get; init; }
 
+    public long ActivationEventId { get; init; }
+    public long? DeactivationEventId { get; set; }
+    public long? PreviousActivationEventId { get; init; }
     public SearchParameterStatus Status { get; set; }
     public string? ReindexJobId { get; set; }
 }

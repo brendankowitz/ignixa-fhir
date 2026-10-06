@@ -26,7 +26,8 @@ public record SearchParameterReindexStarted(
     string Code,
     string ResourceType,
     string JobId,
-    IReadOnlyList<string> AffectedResourceTypes);
+    IReadOnlyList<string> AffectedResourceTypes,
+    long? ActivationEventId = null);
 
 public record SearchParameterReindexCompleted(
     string Canonical,
@@ -34,14 +35,21 @@ public record SearchParameterReindexCompleted(
     string ResourceType,
     string JobId,
     long ResourcesIndexed,
-    TimeSpan Duration);
+    TimeSpan Duration,
+    long? ActivationEventId = null);
 
 public record SearchParameterReindexFailed(
     string Canonical,
     string Code,
     string ResourceType,
     string JobId,
-    string ErrorMessage);
+    string ErrorMessage,
+    long? ActivationEventId = null);
+
+public record SearchParameterTransitionCommitted(
+    int SearchParamId,
+    IReadOnlyList<long> ActivationEventIds,
+    IReadOnlyList<long> DeactivationEventIds);
 
 public record SearchParameterDeactivated(
     string Canonical,

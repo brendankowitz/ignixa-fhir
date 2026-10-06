@@ -158,7 +158,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         {
             var asp = kvp.Value;
 
-            if (asp.Status != SearchParameterStatus.Enabled && asp.Status != SearchParameterStatus.Pending)
+            if (!IsExtracted(asp.Status))
             {
                 continue;
             }
@@ -250,7 +250,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             }
 
             return _conformanceState.AllSearchParameters.Values
-                .Where(asp => asp.Status is SearchParameterStatus.Enabled or SearchParameterStatus.Pending)
+                .Where(asp => IsExtracted(asp.Status))
                 .Select(ConvertToSearchParameterInfo)
                 .Concat(_baseManager.AllSearchParameters)
                 .GroupBy(p => p.OverridesUrl ?? p.Url)
@@ -277,7 +277,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         var packageParameters = _conformanceState.AllSearchParameters.Values
             .Where(asp => string.Equals(asp.ResourceType, resourceType, StringComparison.OrdinalIgnoreCase) &&
-                (asp.Status is SearchParameterStatus.Enabled or SearchParameterStatus.Pending))
+                IsExtracted(asp.Status))
             .ToList();
         var baseParameters = GetBaseParameters(resourceType, packageParameters.Count > 0);
         var merged = new Dictionary<string, SearchParamInfo>(StringComparer.OrdinalIgnoreCase);
@@ -369,9 +369,9 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         }
 
         var active = _conformanceState.IsInitialized
-            ? _conformanceState.FindByCanonical(definitionUri.ToString())
+            ? _conformanceState.FindExtractedByCanonical(definitionUri.ToString())
             : null;
-        if (active?.Status is SearchParameterStatus.Enabled or SearchParameterStatus.Pending)
+        if (active is not null && IsExtracted(active.Status))
         {
             value = ConvertToSearchParameterInfo(active);
             _packageSearchParameterCache.TryAdd(definitionUri, value);
@@ -404,6 +404,12 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         return _baseManager.TryGetSearchParameterRootUrl(definitionUri, out rootUri);
     }
+
+    private static bool IsExtracted(SearchParameterStatus status) =>
+        status is SearchParameterStatus.Enabled
+            or SearchParameterStatus.Pending
+            or SearchParameterStatus.Reindexing
+            or SearchParameterStatus.Disabling;
 
     /// <inheritdoc/>
     public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap)

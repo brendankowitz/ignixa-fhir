@@ -112,7 +112,7 @@ public class PackageActivationPipeline(
         _fhirVersionContext.InvalidateSearchParameterCaches();
 
         // 7. Detect reindex requirements
-        var reindexNeeded = DetectReindexRequirements(resources);
+        var reindexNeeded = DetectReindexRequirements(packageKey);
 
         _logger.LogInformation(
             "Package {PackageId}@{Version} activated successfully. Pending reindex: {Count} resource types",
@@ -289,12 +289,11 @@ public class PackageActivationPipeline(
         return (events, null);
     }
 
-    private List<string> DetectReindexRequirements(PackageResources resources)
+    private List<string> DetectReindexRequirements(string packageKey)
     {
-        // Non-base-FHIR SearchParameters need reindexing
-        return resources.SearchParameters
-            .Where(sp => !IsBaseFhirPackage(sp.SourcePackageId))
-            .SelectMany(sp => sp.BaseResourceTypes)
+        return _state.AllSearchParameters.Values
+            .Where(sp => sp.SourcePackage == packageKey && sp.Status == SearchParameterStatus.Pending)
+            .Select(sp => sp.ResourceType)
             .Distinct()
             .ToList();
     }

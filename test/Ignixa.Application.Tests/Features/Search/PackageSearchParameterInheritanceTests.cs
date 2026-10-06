@@ -4,6 +4,7 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
+using Ignixa.Conformance.Events.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Exceptions;
 using Ignixa.Search.Models;
@@ -140,6 +141,45 @@ public class PackageSearchParameterInheritanceTests
             () => manager.GetSearchParameters("UnregisteredResource").ToList());
     }
 
+    [Fact]
+    public async Task GivenLifecycleStatuses_WhenDefinitionsAreLoaded_ThenExtractionIncludesTransitionalOwnersButNotStagedOverrides()
+    {
+        var baseManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(LifecycleEvents());
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var manager = new CompositeSearchParameterDefinitionManager(
+            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true });
+
+        await manager.InitializeAsync();
+
+        manager.TryGetSearchParameter("Patient", "reindexing", out _).ShouldBeTrue();
+        manager.TryGetSearchParameter("Patient", "disabling", out _).ShouldBeTrue();
+        manager.TryGetSearchParameter(new Uri("http://example.org/SearchParameter/staged"), out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenSameCanonicalUpgradeIsStaged_WhenResolvedByCanonical_ThenOutgoingDefinitionRemainsExtracted()
+    {
+        const string canonical = "http://example.org/SearchParameter/same-canonical";
+        var baseManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(SameCanonicalUpgradeEvents(canonical));
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var manager = new CompositeSearchParameterDefinitionManager(
+            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = false });
+        await manager.InitializeAsync();
+
+        manager.TryGetSearchParameter(new Uri(canonical), out var parameter).ShouldBeTrue();
+        parameter.Expression.ShouldBe("Patient.name");
+    }
+
     private static async IAsyncEnumerable<SourceEvent> Events(string resourceType = "Patient", string? expression = null)
     {
         await Task.CompletedTask;
@@ -148,6 +188,125 @@ public class PackageSearchParameterInheritanceTests
             new SearchParameterActivated(
                 "http://example.org/SearchParameter/package-custom", "package-custom", resourceType,
                 expression ?? $"{resourceType}.active", SearchParamType.Token, "inheritance.package@1.0", null, 1, null, null, null, null),
+            DateTimeOffset.UtcNow);
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> LifecycleEvents()
+    {
+        await Task.CompletedTask;
+        yield return Activation(1, "http://example.org/SearchParameter/reindexing", "reindexing", 1);
+        yield return new SourceEvent(
+            2,
+            "package-lifecycle",
+            nameof(SearchParameterReindexStarted),
+            new SearchParameterReindexStarted(
+                "http://example.org/SearchParameter/reindexing",
+                "reindexing",
+                "Patient",
+                "job",
+                ["Patient"],
+                1),
+            DateTimeOffset.UtcNow);
+        yield return Activation(3, "http://example.org/SearchParameter/disabling", "disabling", 2);
+        yield return new SourceEvent(
+            4,
+            "package-lifecycle",
+            nameof(SearchParameterDeactivated),
+            new SearchParameterDeactivated(
+                "http://example.org/SearchParameter/disabling",
+                "disabling",
+                "Patient",
+                "test"),
+            DateTimeOffset.UtcNow);
+        yield return Activation(
+            5,
+            "http://hl7.org/fhir/SearchParameter/Patient-name",
+            "name",
+            3,
+            "hl7.fhir.r4.core@4.0.1");
+        yield return new SourceEvent(
+            6,
+            "package-lifecycle",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://example.org/SearchParameter/staged",
+                "name",
+                "Patient",
+                "Patient.name",
+                SearchParamType.String,
+                "custom.package@1.0",
+                new OverrideInfo("http://hl7.org/fhir/SearchParameter/Patient-name", 3),
+                3,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow);
+    }
+
+    private static SourceEvent Activation(
+        long eventId,
+        string canonical,
+        string code,
+        int searchParamId,
+        string sourcePackage = "custom.package@1.0") =>
+        new(
+            eventId,
+            "package-lifecycle",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                canonical,
+                code,
+                "Patient",
+                $"Patient.{code}",
+                SearchParamType.Token,
+                sourcePackage,
+                null,
+                searchParamId,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow);
+
+    private static async IAsyncEnumerable<SourceEvent> SameCanonicalUpgradeEvents(string canonical)
+    {
+        await Task.CompletedTask;
+        yield return new SourceEvent(
+            1,
+            "package-same-canonical",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                canonical,
+                "same-canonical",
+                "Patient",
+                "Patient.name",
+                SearchParamType.String,
+                "custom.package@1.0",
+                null,
+                1,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow);
+        yield return new SourceEvent(
+            2,
+            "package-same-canonical",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                canonical,
+                "same-canonical",
+                "Patient",
+                "Patient.family",
+                SearchParamType.String,
+                "custom.package@2.0",
+                new OverrideInfo(canonical, 1),
+                1,
+                null,
+                null,
+                null,
+                null),
             DateTimeOffset.UtcNow);
     }
 }
