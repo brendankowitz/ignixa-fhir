@@ -22,6 +22,7 @@ public class ActiveSearchParameter
     public long ActivationEventId { get; init; }
     public long? DeactivationEventId { get; set; }
     public long? PreviousActivationEventId { get; init; }
+    public bool IsAvailable { get; set; } = true;
     public SearchParameterStatus Status { get; set; }
     public string? ReindexJobId { get; set; }
 }

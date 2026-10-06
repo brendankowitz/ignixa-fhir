@@ -131,7 +131,10 @@ public class SqlActivationPreflightTests
         replayed.IsInitialized.ShouldBeTrue();
         replayed.Packages.ShouldNotContainKey($"{PackageId}@2");
         replayed.Packages.ShouldContainKey($"{PackageId}@3");
-        replayed.GetSearchParameter("Patient", "identifier")!.OverridesCanonical.ShouldBe(RootOne);
+        replayed.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(RootOne);
+        var staged = replayed.FindByCanonical(OverrideUrl)!;
+        staged.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Staged);
+        staged.OverridesCanonical.ShouldBe(RootOne);
         (await CountEventsAsync(connectionString)).ShouldBe(eventsAfterValid);
     }
 

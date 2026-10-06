@@ -135,6 +135,7 @@ public sealed class ConformanceState : IDisposable
                 ActivationEventId = parameter.ActivationEventId,
                 DeactivationEventId = parameter.DeactivationEventId,
                 PreviousActivationEventId = parameter.PreviousActivationEventId,
+                IsAvailable = parameter.IsAvailable,
                 Status = parameter.Status,
                 ReindexJobId = parameter.ReindexJobId
             };
@@ -167,7 +168,7 @@ public sealed class ConformanceState : IDisposable
     internal ValidationIssue? ApplyProposedEvent(NewSourceEvent proposed)
     {
         if (proposed.Data is SearchParameterActivated parameter &&
-            ValidateStorageCanonical(parameter, out _) is { } issue)
+            ValidateSearchParameterActivation(parameter, out _) is { } issue)
         {
             return issue;
         }
@@ -300,14 +301,35 @@ public sealed class ConformanceState : IDisposable
     private void ApplySearchParameterActivated(SearchParameterActivated sp, long eventId)
     {
         var isBaseFhir = IsBaseFhirPackage(sp.SourcePackage.Split('@')[0]);
-        var issue = ValidateStorageCanonical(sp, out var storageCanonical);
-        if (issue is not null)
+        var ownershipIssue = ValidateOwnerSearchParamId(sp);
+        if (ownershipIssue is not null)
         {
-            throw new InvalidOperationException(issue.Message);
+            _logger?.LogWarning(
+                "Ignoring invalid {EventType} event {EventId} for {ResourceType}.{Code}: {Message}",
+                nameof(SearchParameterActivated),
+                eventId,
+                sp.ResourceType,
+                sp.Code,
+                ownershipIssue.Message);
+            return;
+        }
+
+        var storageIssue = ValidateStorageCanonical(sp, out var storageCanonical);
+        if (storageIssue is not null)
+        {
+            throw new InvalidOperationException(storageIssue.Message);
         }
 
         var key = (sp.ResourceType, sp.Code);
         _searchParameters.TryGetValue(key, out var existing);
+        if (isBaseFhir &&
+            existing is { Status: SearchParameterStatus.Enabled } &&
+            existing.Canonical == sp.Canonical &&
+            IsBaseFhirPackage(existing.SourcePackage.Split('@')[0]))
+        {
+            return;
+        }
+
         var latest = GetLatestActivation(sp.ResourceType, sp.Code);
 
         ActiveSearchParameter? outgoing = null;
@@ -342,6 +364,7 @@ public sealed class ConformanceState : IDisposable
             Description = sp.Description,
             ActivationEventId = eventId,
             PreviousActivationEventId = outgoing is not null ? latest?.ActivationEventId : null,
+            IsAvailable = true,
             Status = outgoing is not null
                 ? SearchParameterStatus.Staged
                 : isBaseFhir
@@ -363,6 +386,35 @@ public sealed class ConformanceState : IDisposable
             _nextSearchParamId = sp.SearchParamId + 1;
         }
 
+    }
+
+    private ValidationIssue? ValidateSearchParameterActivation(
+        SearchParameterActivated sp,
+        out string storageCanonical)
+    {
+        var issue = ValidateStorageCanonical(sp, out storageCanonical);
+        if (issue is not null)
+        {
+            return issue;
+        }
+
+        return ValidateOwnerSearchParamId(sp);
+    }
+
+    private ValidationIssue? ValidateOwnerSearchParamId(SearchParameterActivated sp)
+    {
+        if (_searchParameters.TryGetValue((sp.ResourceType, sp.Code), out var existing) &&
+            existing.Status is not SearchParameterStatus.Disabled &&
+            existing.SearchParamId != sp.SearchParamId)
+        {
+            return new ValidationIssue(
+                "SP_STORAGE_IDENTITY",
+                $"Search parameter {sp.Canonical} cannot replace {existing.Canonical} with a different parameter ID.",
+                sp.ResourceType,
+                sp.Code);
+        }
+
+        return null;
     }
 
     private ValidationIssue? ValidateStorageCanonical(SearchParameterActivated sp, out string storageCanonical)
@@ -470,47 +522,78 @@ public sealed class ConformanceState : IDisposable
     {
         var activationEventIds = transition.ActivationEventIds.ToHashSet();
         var deactivationEventIds = transition.DeactivationEventIds.ToHashSet();
-        var changed = false;
+        var staged = _searchParameterActivations.Where(
+            parameter => parameter.SearchParamId == transition.SearchParamId &&
+                parameter.Status == SearchParameterStatus.Staged &&
+                IsLatestActivation(parameter) &&
+                activationEventIds.Contains(parameter.ActivationEventId))
+            .ToList();
+        var outgoing = _searchParameters.Values.Where(
+            parameter => parameter.SearchParamId == transition.SearchParamId &&
+                parameter.Status == SearchParameterStatus.Disabling &&
+                parameter.DeactivationEventId is { } deactivationEventId &&
+                deactivationEventIds.Contains(deactivationEventId))
+            .ToList();
 
-        foreach (var parameter in _searchParameters.Values.Where(
-            sp => sp.SearchParamId == transition.SearchParamId &&
-                sp.Status == SearchParameterStatus.Disabling &&
-                sp.DeactivationEventId is { } deactivationEventId &&
-                deactivationEventIds.Contains(deactivationEventId)))
+        var valid = activationEventIds.All(
+                activationEventId => staged.Any(parameter => parameter.ActivationEventId == activationEventId)) &&
+            deactivationEventIds.All(
+                deactivationEventId => outgoing.Any(parameter => parameter.DeactivationEventId == deactivationEventId));
+
+        foreach (var parameter in staged)
         {
-            parameter.Status = SearchParameterStatus.Disabled;
-            parameter.ReindexJobId = null;
-            changed = true;
+            valid &= _searchParameters.TryGetValue((parameter.ResourceType, parameter.Code), out var owner) &&
+                owner.SearchParamId == transition.SearchParamId &&
+                owner.Status == SearchParameterStatus.Disabling &&
+                owner.DeactivationEventId is { } deactivationEventId &&
+                deactivationEventIds.Contains(deactivationEventId);
         }
 
-        foreach (var parameter in _searchParameterActivations.Where(
-            sp => sp.SearchParamId == transition.SearchParamId &&
-                sp.Status == SearchParameterStatus.Staged &&
-                IsLatestActivation(sp) &&
-                activationEventIds.Contains(sp.ActivationEventId)))
+        foreach (var parameter in outgoing)
         {
-            parameter.Status = SearchParameterStatus.Pending;
-            _searchParameters[(parameter.ResourceType, parameter.Code)] = parameter;
-            changed = true;
+            var replacement = GetLatestActivation(parameter.ResourceType, parameter.Code);
+            valid &= replacement?.Status != SearchParameterStatus.Staged ||
+                replacement.SearchParamId == transition.SearchParamId &&
+                activationEventIds.Contains(replacement.ActivationEventId);
         }
 
-        if (!changed)
+        if (!valid || (staged.Count == 0 && outgoing.Count == 0))
         {
             _logger?.LogWarning(
                 "Ignoring stale {EventType} event {EventId} for SearchParamId {SearchParamId}",
                 nameof(SearchParameterTransitionCommitted),
                 eventId,
                 transition.SearchParamId);
+            return;
+        }
+
+        foreach (var parameter in outgoing)
+        {
+            parameter.Status = SearchParameterStatus.Disabled;
+            parameter.ReindexJobId = null;
+        }
+
+        foreach (var parameter in staged)
+        {
+            parameter.Status = SearchParameterStatus.Pending;
+            _searchParameters[(parameter.ResourceType, parameter.Code)] = parameter;
         }
     }
 
     private void ApplyDeactivated(SearchParameterDeactivated deactivated, long eventId)
     {
-        var parameter = _searchParameterActivations.LastOrDefault(
+        var parameters = _searchParameterActivations.Where(
             candidate => candidate.ResourceType == deactivated.ResourceType &&
                 candidate.Code == deactivated.Code &&
-                candidate.Canonical == deactivated.Canonical &&
-                candidate.Status is not SearchParameterStatus.Disabled);
+                candidate.Canonical == deactivated.Canonical)
+            .ToList();
+        foreach (var candidate in parameters)
+        {
+            candidate.IsAvailable = false;
+        }
+
+        var parameter = parameters.LastOrDefault(
+            candidate => candidate.Status is not SearchParameterStatus.Disabled);
         if (parameter is not null)
         {
             BeginDeactivation(parameter, eventId);
@@ -565,8 +648,16 @@ public sealed class ConformanceState : IDisposable
     {
         var packageKey = $"{packageId}@{version}";
 
-        var parameters = _searchParameterActivations
-            .Where(sp => sp.SourcePackage == packageKey && sp.Status is not SearchParameterStatus.Disabled)
+        var packageParameters = _searchParameterActivations
+            .Where(sp => sp.SourcePackage == packageKey)
+            .ToList();
+        foreach (var parameter in packageParameters)
+        {
+            parameter.IsAvailable = false;
+        }
+
+        var parameters = packageParameters
+            .Where(sp => sp.Status is not SearchParameterStatus.Disabled)
             .GroupBy(sp => (sp.ResourceType, sp.Code))
             .Select(group => group.Last())
             .ToList();
@@ -603,19 +694,36 @@ public sealed class ConformanceState : IDisposable
         outgoing.DeactivationEventId = eventId;
         outgoing.ReindexJobId = null;
 
-        if (parameter.PreviousActivationEventId is not { } previousActivationEventId)
-        {
-            return;
-        }
-
-        var previous = _searchParameterActivations.LastOrDefault(
-            candidate => candidate.ActivationEventId == previousActivationEventId);
+        var previous = FindAvailablePredecessor(parameter);
         if (previous is null)
         {
             return;
         }
 
         _searchParameterActivations.Add(CloneForRestoration(previous, eventId));
+    }
+
+    private ActiveSearchParameter? FindAvailablePredecessor(ActiveSearchParameter parameter)
+    {
+        var previousActivationEventId = parameter.PreviousActivationEventId;
+        while (previousActivationEventId is { } activationEventId)
+        {
+            var previous = _searchParameterActivations.LastOrDefault(
+                candidate => candidate.ActivationEventId == activationEventId);
+            if (previous is null)
+            {
+                return null;
+            }
+
+            if (previous.IsAvailable)
+            {
+                return previous;
+            }
+
+            previousActivationEventId = previous.PreviousActivationEventId;
+        }
+
+        return null;
     }
 
     private ActiveSearchParameter? GetLatestActivation(string resourceType, string code) =>
@@ -664,6 +772,7 @@ public sealed class ConformanceState : IDisposable
             Description = previous.Description,
             ActivationEventId = eventId,
             PreviousActivationEventId = previous.PreviousActivationEventId,
+            IsAvailable = true,
             Status = SearchParameterStatus.Staged,
         };
 

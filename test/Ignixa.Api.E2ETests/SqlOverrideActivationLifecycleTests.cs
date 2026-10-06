@@ -9,6 +9,7 @@ using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure.Caching;
+using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.DataLayer.SqlServer.Indexing;
@@ -57,6 +58,46 @@ public class SqlOverrideActivationLifecycleTests
         }
     }
 
+    [SqlFact]
+    public async Task GivenInProcessBaseParameter_WhenOverrideIsFirstEventSourcedActivation_ThenItUsesDistinctIdentity()
+    {
+        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
+            ?? throw new InvalidOperationException("A SQL test connection is required.");
+        var database = $"IgnixaInProcessOverride_{Guid.NewGuid():N}";
+        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
+        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
+        using var names = new SqlCommandBuilder();
+        var quotedDatabase = names.QuoteIdentifier(database);
+        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quotedDatabase}");
+        try
+        {
+            await using var template = new IgnixaApiFixture();
+            await using var host = CreateHost(template, connectionString);
+            using var client = host.CreateClient();
+            var cache = await host.Services.GetRequiredService<SqlServerSearchIndexCacheRegistry>()
+                .GetOrCreateAsync(1, CancellationToken.None);
+            var baseId = await cache.GetSearchParamIdAsync(BaseUrl, CancellationToken.None)
+                ?? throw new InvalidOperationException("Missing in-process base identifier ID.");
+
+            await ActivateAsync(host.Services, PackageId, "distinct", PackageUrl, BaseUrl);
+
+            var overrideId = await cache.GetSearchParamIdAsync(PackageUrl, CancellationToken.None)
+                ?? throw new InvalidOperationException("Missing package override identifier ID.");
+            overrideId.ShouldNotBe(baseId);
+            var owner = host.Services.GetRequiredService<ConformanceState>()
+                .GetSearchParameter("Patient", "identifier")!;
+            owner.Canonical.ShouldBe(PackageUrl);
+            owner.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending);
+            owner.OverridesCanonical.ShouldBeNull();
+        }
+        finally
+        {
+            using var pool = new SqlConnection(connectionString);
+            SqlConnection.ClearPool(pool);
+            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedDatabase}");
+        }
+    }
+
     private static async Task AssertLifecycleAsync(string connectionString, bool legacyEvents)
     {
         await using var template = new IgnixaApiFixture();
@@ -75,10 +116,13 @@ public class SqlOverrideActivationLifecycleTests
             await ActivateAsync(host.Services, "hl7.fhir.r4.core", "1", BaseUrl, null);
             await ActivateAsync(host.Services, "hl7.fhir.r4.core", "2", BaseUrl, null);
             await ActivateAsync(host.Services, PackageId, "1", PackageUrl, BaseUrl);
+            await CommitTransitionAsync(host.Services, PackageUrl);
             await WriteAndAssertAsync(client, marker, ids);
             await ActivateAsync(host.Services, PackageId, "2", PackageUrl, BaseUrl);
+            await CommitTransitionAsync(host.Services, PackageUrl);
             await WriteAndAssertAsync(client, marker, ids);
             await ActivateAsync(host.Services, "test.override.chain", "1", ChainedUrl, PackageUrl);
+            await CommitTransitionAsync(host.Services, ChainedUrl);
             await WriteAndAssertAsync(client, marker, ids);
             await AssertAliasesAsync(cache, rootId);
 
@@ -163,6 +207,32 @@ public class SqlOverrideActivationLifecycleTests
         await handler.HandleAsync(new PackageLoadedEvent(packageId, version, 1, DateTimeOffset.UtcNow), CancellationToken.None);
     }
 
+    private static async Task CommitTransitionAsync(IServiceProvider services, string stagedCanonical)
+    {
+        var state = services.GetRequiredService<ConformanceState>();
+        var staged = state.FindByCanonical(stagedCanonical)
+            ?? throw new InvalidOperationException($"Missing staged definition {stagedCanonical}.");
+        var outgoing = state.GetSearchParameter(staged.ResourceType, staged.Code)
+            ?? throw new InvalidOperationException($"Missing outgoing definition for {staged.ResourceType}.{staged.Code}.");
+        var persisted = await services.GetRequiredService<ISourceEventStore>().AppendAsync(
+            [
+                new NewSourceEvent(
+                    "transition:test",
+                    nameof(SearchParameterTransitionCommitted),
+                    new SearchParameterTransitionCommitted(
+                        staged.SearchParamId,
+                        [staged.ActivationEventId],
+                        [outgoing.DeactivationEventId!.Value]))
+            ],
+            state.LastProcessedEventId,
+            CancellationToken.None);
+        foreach (var evt in persisted)
+        {
+            state.ApplyAndTrack(evt);
+        }
+        services.GetRequiredService<IFhirVersionContext>().InvalidateSearchParameterCaches();
+    }
+
     private static async Task AssertAliasesAsync(SqlServerSearchIndexReferenceDataCache cache, short rootId)
     {
         foreach (var canonical in new[] { BaseUrl, PackageUrl, ChainedUrl })
@@ -233,6 +303,17 @@ public class SqlOverrideActivationLifecycleTests
     private sealed class SqlTheoryAttribute : TheoryAttribute
     {
         public SqlTheoryAttribute()
+        {
+            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                Skip = "Requires SQL-backed package activation and persisted storage identities.";
+            }
+        }
+    }
+
+    private sealed class SqlFactAttribute : FactAttribute
+    {
+        public SqlFactAttribute()
         {
             if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
             {

@@ -139,7 +139,7 @@ public class SqlActivationConcurrencyTests
         replayed.FindByCanonical(ContendedCanonical)!.OverridesCanonical.ShouldBe(FirstRoot);
         var definitions = restarted.Services.GetRequiredService<IFhirVersionContext>()
             .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
-        definitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(ContendedCanonical));
+        definitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(FirstRoot));
         using var request = new HttpRequestMessage(HttpMethod.Get, "/tenant/1/Patient?identifier=none");
         request.Headers.Add("Prefer", "handling=strict");
         using var response = await client.SendAsync(request);
