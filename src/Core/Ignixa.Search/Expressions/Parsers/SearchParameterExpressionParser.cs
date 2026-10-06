@@ -97,10 +97,17 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
         }
 
         // No modifier is defined for semantic search (:text, :missing, :exact, etc. all presuppose a
-        // typed, filterable value this parameter does not have).
+        // typed, filterable value this parameter does not have). This must be the
+        // SearchModifierNotSupportedException subclass, not the InvalidSearchOperationException base:
+        // SearchOptionsBuilder's catch order routes the subclass into
+        // SearchOptions.UnsupportedModifierParams, which FhirEndpoints.CheckStrictHandling rejects with a
+        // 400 by default (no Prefer header needed) per R4's modifier SHALL. The base type is only routed
+        // into UnsupportedParams, which is silently dropped unless the client opts in with
+        // Prefer: handling=strict -- so a plain InvalidSearchOperationException here would let
+        // GET /Observation?semantic-text:exact=... return 200 with the embedding filter silently dropped.
         if (modifier is not null)
         {
-            throw new InvalidSearchOperationException(string.Format(
+            throw new SearchModifierNotSupportedException(string.Format(
                 CultureInfo.InvariantCulture,
                 Resources.SemanticSearchModifierNotSupported,
                 modifier,
