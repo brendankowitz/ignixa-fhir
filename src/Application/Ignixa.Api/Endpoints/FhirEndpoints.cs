@@ -1807,7 +1807,7 @@ public static class FhirEndpoints
         foreach (var param in unsupportedParams)
         {
             var diagnostics = isModifierRejection && reasons is not null && reasons.TryGetValue(param, out string? reason)
-                ? reason
+                ? $"Search parameter '{param}': {reason}"
                 : isModifierRejection
                     ? (resourceType is not null
                         ? $"Search parameter '{param}' uses a modifier that is not supported for resource type '{resourceType}'"
