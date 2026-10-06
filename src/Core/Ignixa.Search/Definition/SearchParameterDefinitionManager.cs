@@ -25,6 +25,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
 {
     private readonly IFhirSchemaProvider _modelInfoProvider;
     private readonly ConcurrentDictionary<string, string> _resourceTypeSearchParameterHashMap;
+    private readonly ILogger<SearchParameterDefinitionManager> _logger;
     private readonly object _syncRoot = new();
     private volatile RegistrySnapshot _snapshot = null!;
 
@@ -36,6 +37,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         EnsureArg.IsNotNull(logger, nameof(logger));
 
         _modelInfoProvider = modelInfoProvider;
+        _logger = logger;
         _resourceTypeSearchParameterHashMap = new ConcurrentDictionary<string, string>();
         TypeLookup = new ConcurrentDictionary<string, ConcurrentDictionary<string, SearchParameterInfo>>();
         UrlLookup = new ConcurrentDictionary<Uri, SearchParameterInfo>(SearchParameterUriComparer.Instance);
@@ -297,7 +299,8 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
                 searchParameters,
                 UrlLookup,
                 TypeLookup,
-                _modelInfoProvider);
+                _modelInfoProvider,
+                _logger);
 
             ReferenceIdentifierSearchParameterRegistrar.Register(UrlLookup, TypeLookup);
             if (calculateHash) CalculateSearchParameterHash();

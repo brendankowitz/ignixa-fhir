@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\Core\Ignixa.Search\Ignixa.Search.csproj" />
   </ItemGroup>
 
 </Project>

@@ -12,6 +12,7 @@ using Ignixa.Serialization;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.FhirPath.Evaluation;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Search.Models;
 
@@ -27,7 +28,8 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
         string expression = null,
         IReadOnlyList<string> targetResourceTypes = null,
         IReadOnlyList<string> baseResourceTypes = null,
-        string description = null)
+        string description = null,
+        VectorSearchConfig vectorConfig = null)
         : this(name, code)
     {
         Url = url;
@@ -37,6 +39,7 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
         TargetResourceTypes = targetResourceTypes ?? Array.Empty<string>();
         BaseResourceTypes = baseResourceTypes ?? Array.Empty<string>();
         Description = description ?? string.Empty;
+        VectorConfig = vectorConfig;
 
         // Enable sorting for sortable parameter types by default
         SortStatus = IsSortableType(searchParamType) ? SortParameterStatus.Enabled : SortParameterStatus.Disabled;
@@ -55,7 +58,7 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
         Component = Array.Empty<SearchParameterComponentInfo>();
     }
 
-    public SearchParameterInfo(SearchParameterNavigator wrapper)
+    public SearchParameterInfo(SearchParameterNavigator wrapper, ILogger logger = null)
     {
         SearchParameterComponentInfo[] components = wrapper.Component
             .Select(x => new SearchParameterComponentInfo(
@@ -78,6 +81,27 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
 
         // Enable sorting for sortable parameter types by default
         SortStatus = IsSortableType(searchParamType) ? SortParameterStatus.Enabled : SortParameterStatus.Disabled;
+
+        IElement vectorConfigExtension = wrapper.VectorConfigExtension;
+        if (vectorConfigExtension is not null)
+        {
+            try
+            {
+                VectorConfig = VectorSearchConfig.Parse(vectorConfigExtension);
+            }
+            catch (FormatException ex)
+            {
+                // A malformed vector-search-config must not fail the whole definition load: the
+                // parameter is still registered, just unable to support semantic search, same as any
+                // other configuration a host cannot act on.
+                IsSupported = false;
+                logger?.LogWarning(
+                    ex,
+                    "SearchParameter '{Url}' has an invalid vector-search-config extension and will be registered as unsupported: {Reason}",
+                    Url,
+                    ex.Message);
+            }
+        }
 
         string GetComponentDefinition(IElement component)
         {
@@ -157,6 +181,19 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     /// Example: US Core "us-core-encounter-patient" overrides base "clinical-patient".
     /// </summary>
     public Uri OverridesUrl { get; set; }
+
+    /// <summary>
+    /// Semantic/vector search configuration parsed from the <c>vector-search-config</c> extension, or
+    /// null when the extension is absent or failed to parse (see <see cref="IsSupported"/>).
+    /// </summary>
+    public VectorSearchConfig VectorConfig { get; set; }
+
+    /// <summary>
+    /// True when this is a <see cref="SearchParamType.Special"/> parameter carrying a successfully
+    /// parsed <see cref="VectorConfig"/>. Query and indexing behavior that act on this are implemented
+    /// separately from this parse step.
+    /// </summary>
+    public bool IsSemantic => Type == SearchParamType.Special && VectorConfig is not null;
 
     /// <summary>Equality is decided on <see cref="Url"/> alone when one is present: a canonical URL identifies a
     /// search parameter, and two definitions carrying it are the same parameter however their other fields drift.

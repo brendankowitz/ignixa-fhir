@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Conformance;
@@ -21,7 +22,8 @@ public record SearchParameterInfo(
     IReadOnlyList<CompositeComponent>? Components,
     IReadOnlyList<string>? TargetResourceTypes,
     string? Name,
-    string? Description);
+    string? Description,
+    VectorSearchConfig? VectorConfig = null);
 
 /// <summary>
 /// Component of a composite SearchParameter.
