@@ -52,7 +52,7 @@ public class DdlSchemaVersionBumpGuardTests
     [
         (2, "960c429bd4b96ab2378a72f89407bcab215a7b149ddbd51959194b67a05c8b81"),
         (3, "31811adc88090dfa6369730c21e4c62ec3ef0b57921c2b0020f899a1fbc36ee9"),
-        (4, "f273000344b85841ac1a8dbef20c86870db8e54e0d9b181e2534729076081735"),
+        (4, "5b39ad3fea9c65407f39cbcf2d40b4ef3a9ae1b8ebf08be5b26a58d0fae69bac"),
     ];
 
     private const string DatabaseProjectRelativePath = "src/DataLayer/Ignixa.DataLayer.SqlServer.Database";

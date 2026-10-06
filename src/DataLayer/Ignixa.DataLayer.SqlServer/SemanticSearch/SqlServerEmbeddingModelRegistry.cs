@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Data;
+using Ignixa.DataLayer.SqlServer.Indexing;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
@@ -12,23 +12,26 @@ namespace Ignixa.DataLayer.SqlServer.SemanticSearch;
 
 /// <summary>
 /// Resolves a semantic embedding model's <c>EmbeddingModelId</c> via <c>dbo.GetOrCreateEmbeddingModel</c>,
-/// caching the result in a process-wide, tenant-qualified <see cref="ConcurrentDictionary{TKey,TValue}"/>.
+/// caching the result on the tenant-scoped <paramref name="referenceDataCache"/> this type is constructed
+/// with (<see cref="SqlServerSearchIndexReferenceDataCache.TryGetEmbeddingModelIdFromCache"/> /
+/// <see cref="SqlServerSearchIndexReferenceDataCache.CacheEmbeddingModelId"/>).
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why a static, process-wide cache rather than an instance field.</b> This type is constructed per
-/// request, the same way <c>SqlServerPostMergeExtensionUpdater</c> is (see
-/// <c>SqlServerRepositoryFactory.CreateRepository</c>) -- not once per tenant for the process lifetime,
-/// the way <c>SqlServerSearchIndexReferenceDataCache</c> is (see <c>SqlServerSearchIndexCacheRegistry</c>).
-/// An instance-scoped cache would therefore be thrown away and rebuilt on every request, defeating the
-/// point of caching a value -- <c>(TenantId, ModelKey) -&gt; EmbeddingModelId</c> -- that never changes once
-/// created. A static dictionary keyed by <c>(TenantId, ModelKey)</c> gives every per-request instance,
-/// across every tenant this process serves, the same long-lived cache that
-/// <c>SqlServerSearchIndexReferenceDataCache</c> gets through its own tenant-scoped-singleton mechanism,
-/// without this type needing a registry of its own. Unlike that cache, nothing ever invalidates an entry
-/// here: a (TenantId, ModelKey) mapping is permanent once <c>dbo.GetOrCreateEmbeddingModel</c> creates it
-/// (rows are never deleted, and a later call for the same key with different dimensions is a caller bug
-/// the stored procedure rejects outright, not a legitimate remapping).
+/// <b>Why the cache lives on that instance and not here.</b> This type is constructed per request, like
+/// <c>SqlServerPostMergeExtensionUpdater</c> (see <c>SqlServerRepositoryFactory.CreateRepository</c>) --
+/// not once per tenant for the process lifetime. An instance field on this type would therefore be rebuilt
+/// and discarded on every request, caching nothing across requests. <paramref name="referenceDataCache"/>,
+/// by contrast, is the one object <c>SqlServerSearchIndexCacheRegistry</c> owns per tenant for the process
+/// lifetime (<c>GetOrCreateAsync</c>) and hands to every per-request caller -- the same object every other
+/// tenant-scoped reference cache in this codebase is built on (docs/adr/adr-2510-caching-architecture.md's
+/// Tenant scope). Caching there, rather than in a static field here, means
+/// <c>SqlServerSearchIndexCacheRegistry.Invalidate(tenantId)</c> clears this mapping along with everything
+/// else that cache holds -- which matters because, unlike system/quantity-code ids, a stale EmbeddingModelId
+/// is not merely a missed optimization: <c>dbo.VectorSearchParam.EmbeddingModelId</c> is foreign-keyed to
+/// <c>dbo.EmbeddingModel.EmbeddingModelId</c> (schema v4), so a cached id surviving a tenant database that
+/// was dropped and re-provisioned under the same TenantId would fail every subsequent vector write with a
+/// foreign-key violation instead of transparently recreating the row.
 /// </para>
 /// <para>
 /// Concurrent misses for the same key are not de-duplicated: two requests racing on a brand-new ModelKey
@@ -40,12 +43,13 @@ namespace Ignixa.DataLayer.SqlServer.SemanticSearch;
 public class SqlServerEmbeddingModelRegistry(
     ISqlExecutionService sqlExecutionService,
     int tenantId,
+    SqlServerSearchIndexReferenceDataCache referenceDataCache,
     ILogger<SqlServerEmbeddingModelRegistry> logger)
 {
-    private static readonly ConcurrentDictionary<(int TenantId, string ModelKey), short> Cache = new();
-
     private readonly ISqlExecutionService _sqlExecutionService =
         sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
+    private readonly SqlServerSearchIndexReferenceDataCache _referenceDataCache =
+        referenceDataCache ?? throw new ArgumentNullException(nameof(referenceDataCache));
     private readonly ILogger<SqlServerEmbeddingModelRegistry> _logger =
         logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -62,10 +66,10 @@ public class SqlServerEmbeddingModelRegistry(
     {
         ArgumentException.ThrowIfNullOrEmpty(modelKey);
 
-        var cacheKey = (tenantId, modelKey);
-        if (Cache.TryGetValue(cacheKey, out var cachedId))
+        var cachedId = _referenceDataCache.TryGetEmbeddingModelIdFromCache(modelKey);
+        if (cachedId is { } id)
         {
-            return cachedId;
+            return id;
         }
 
         using var command = new SqlCommand(
@@ -84,7 +88,7 @@ public class SqlServerEmbeddingModelRegistry(
         await _sqlExecutionService.ExecuteNonQueryAsync(tenantId, command, cancellationToken);
 
         var embeddingModelId = (short)embeddingModelIdParameter.Value!;
-        Cache[cacheKey] = embeddingModelId;
+        _referenceDataCache.CacheEmbeddingModelId(modelKey, embeddingModelId);
 
         _logger.LogDebug(
             "Resolved EmbeddingModelId {EmbeddingModelId} for ModelKey {ModelKey} (TenantId={TenantId})",

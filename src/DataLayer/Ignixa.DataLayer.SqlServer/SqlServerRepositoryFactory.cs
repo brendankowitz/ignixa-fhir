@@ -66,7 +66,7 @@ public static class SqlServerRepositoryFactory
             sqlExecutionService, tenantId, loggerFactory.CreateLogger<SqlServerPostMergeExtensionUpdater>());
 
         var embeddingModelRegistry = new SqlServerEmbeddingModelRegistry(
-            sqlExecutionService, tenantId, loggerFactory.CreateLogger<SqlServerEmbeddingModelRegistry>());
+            sqlExecutionService, tenantId, cache, loggerFactory.CreateLogger<SqlServerEmbeddingModelRegistry>());
         var vectorIndexWriter = new SqlServerVectorIndexWriter(
             sqlExecutionService, tenantId, compressor, cache, embeddingModelRegistry,
             loggerFactory.CreateLogger<SqlServerVectorIndexWriter>());

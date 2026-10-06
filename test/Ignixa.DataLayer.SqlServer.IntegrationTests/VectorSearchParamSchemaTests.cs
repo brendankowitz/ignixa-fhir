@@ -371,6 +371,35 @@ public class VectorSearchParamSchemaTests : IAsyncLifetime
         await Should.ThrowAsync<SqlException>(() => GetOrCreateEmbeddingModelAsync("conflicting-model-key", 768));
     }
 
+    /// <summary>
+    /// Pins FK_VectorSearchParam_EmbeddingModel (schema v4): a bare INSERT naming an EmbeddingModelId with
+    /// no corresponding dbo.EmbeddingModel row must fail loudly rather than orphan the row. This is exactly
+    /// the failure mode a stale, process-lifetime id cache would otherwise hide -- see
+    /// SqlServerEmbeddingModelRegistry's remarks on why its cache lives on the tenant-scoped reference data
+    /// cache instead.
+    /// </summary>
+    [Fact]
+    public async Task GivenANonexistentEmbeddingModelId_WhenAVectorRowIsInserted_ThenTheForeignKeyRejectsIt()
+    {
+        var (resourceTypeId, surrogateId) = await CreatePatientAsync("vector-fk-violation-1");
+
+        (await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.EmbeddingModel")).ShouldBe(
+            0, "the nonexistent id below must not accidentally collide with a row this test itself created");
+
+        const short NonexistentEmbeddingModelId = 999;
+        var ex = await Should.ThrowAsync<SqlException>(() => _database.ExecuteNonQueryAsync(
+            $"""
+            INSERT INTO dbo.VectorSearchParam
+                (ResourceTypeId, ResourceSurrogateId, SearchParamId, EmbeddingModelId, ChunkOrdinal, SourceTextCompressed, SourceTextHash, Embedding)
+            VALUES
+                ({resourceTypeId}, {surrogateId}, 1, {NonexistentEmbeddingModelId}, 0, 0x010203, 0x{Convert.ToHexString(FixedHash(1))}, '{BuildEmbeddingJson(0.01f)}')
+            """));
+
+        ex.Number.ShouldBe(547, "SQL Server's foreign-key-violation error number");
+        (await _database.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.VectorSearchParam WHERE ResourceSurrogateId = {surrogateId}")).ShouldBe(0);
+    }
+
     private async Task<(short ResourceTypeId, long SurrogateId)> CreatePatientAsync(string resourceId)
     {
         await _database.Repository.CreateOrUpdateAsync(BuildPatientWrapper(resourceId), CancellationToken.None);
@@ -386,14 +415,17 @@ public class VectorSearchParamSchemaTests : IAsyncLifetime
             ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{resourceId}}"}"""),
             new ResourceRequest("PUT", $"Patient/{resourceId}"));
 
-    private Task InsertVectorRowDirectAsync(short resourceTypeId, long surrogateId) =>
-        MergeVectorSearchParamsAsync(
+    private async Task InsertVectorRowDirectAsync(short resourceTypeId, long surrogateId)
+    {
+        var modelId = await GetOrCreateEmbeddingModelAsync("test-model", 1536);
+        await MergeVectorSearchParamsAsync(
             evaluated: [(resourceTypeId, surrogateId)],
             vectors:
             [
-                new VectorRow(resourceTypeId, surrogateId, SearchParamId: 1, EmbeddingModelId: 1, ChunkOrdinal: 0,
+                new VectorRow(resourceTypeId, surrogateId, SearchParamId: 1, modelId, ChunkOrdinal: 0,
                     SourceTextCompressed: [1, 2, 3], SourceTextHash: FixedHash(1), EmbeddingJson: BuildEmbeddingJson(0.01f)),
             ]);
+    }
 
     /// <summary>
     /// Inserts a dbo.VectorSearchParam row by plain INSERT, bypassing MergeVectorSearchParams entirely.
@@ -401,15 +433,20 @@ public class VectorSearchParamSchemaTests : IAsyncLifetime
     /// is) history: running that insert through the real procedure would have deleted the row being set up
     /// as much as DeleteHistory's sweep is supposed to -- see
     /// GivenVectorsOnHistoryVersions_WhenDeleteHistory_ThenRowsRemoved for the scenario this avoids.
+    /// EmbeddingModelId must still reference a real dbo.EmbeddingModel row -- FK_VectorSearchParam_EmbeddingModel
+    /// (schema v4) rejects a bare literal the same as production code would.
     /// </summary>
-    private Task InsertVectorRowRawAsync(short resourceTypeId, long surrogateId) =>
-        _database.ExecuteNonQueryAsync(
+    private async Task InsertVectorRowRawAsync(short resourceTypeId, long surrogateId)
+    {
+        var modelId = await GetOrCreateEmbeddingModelAsync("test-model", 1536);
+        await _database.ExecuteNonQueryAsync(
             $"""
             INSERT INTO dbo.VectorSearchParam
                 (ResourceTypeId, ResourceSurrogateId, SearchParamId, EmbeddingModelId, ChunkOrdinal, SourceTextCompressed, SourceTextHash, Embedding)
             VALUES
-                ({resourceTypeId}, {surrogateId}, 1, 1, 0, 0x010203, 0x{Convert.ToHexString(FixedHash(1))}, '{BuildEmbeddingJson(0.01f)}')
+                ({resourceTypeId}, {surrogateId}, 1, {modelId}, 0, 0x010203, 0x{Convert.ToHexString(FixedHash(1))}, '{BuildEmbeddingJson(0.01f)}')
             """);
+    }
 
     private static byte[] FixedHash(byte seed)
     {

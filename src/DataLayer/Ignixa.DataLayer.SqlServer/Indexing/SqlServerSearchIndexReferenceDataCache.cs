@@ -33,6 +33,14 @@ namespace Ignixa.DataLayer.SqlServer.Indexing;
 /// Override relationships belong to the search-parameter definitions, not <c>dbo.SearchParam</c>. Supply
 /// those definitions when constructing a cold cache, or synchronize them before using its mappings.
 /// </para>
+/// <para>
+/// Also owns the <c>ModelKey -&gt; EmbeddingModelId</c> cache for <see cref="SqlServerEmbeddingModelRegistry"/>
+/// (<see cref="TryGetEmbeddingModelIdFromCache"/> / <see cref="CacheEmbeddingModelId"/>), even though
+/// embedding models are semantic-search-specific and otherwise unrelated to this type's search-parameter and
+/// resource-type concerns: it is the tenant-scoped instance <see cref="SqlServerSearchIndexCacheRegistry"/>
+/// already owns and invalidates together, and that shared invalidation -- not a topical relationship -- is
+/// the entire reason the cache lives here instead of on the registry itself.
+/// </para>
 /// </summary>
 public sealed class SqlServerSearchIndexReferenceDataCache(
     ISqlExecutionService sqlExecutionService,
@@ -76,6 +84,20 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     private readonly ConcurrentDictionary<string, short> _searchParamCache = new();
     private readonly ConcurrentDictionary<string, int> _systemCache = new();
     private readonly ConcurrentDictionary<string, int> _quantityCodeCache = new();
+
+    // ModelKey -> EmbeddingModelId (dbo.EmbeddingModel), owned here rather than by
+    // SqlServerEmbeddingModelRegistry itself precisely so it shares this cache's tenant-scoped lifetime:
+    // SqlServerSearchIndexCacheRegistry.Invalidate(tenantId) drops this whole object, taking the embedding
+    // model cache down with it. That matters because a (TenantId, ModelKey) -> EmbeddingModelId mapping is
+    // NOT permanent the way row creation makes it look -- a tenant's database can be dropped and
+    // re-provisioned under the same TenantId (restore, environment reset), which starts dbo.EmbeddingModel
+    // empty again while a process-lifetime cache would keep answering with ids from the previous database.
+    // Routing invalidation through the same registry every other tenant-scoped reference cache uses
+    // (docs/adr/adr-2510-caching-architecture.md's Tenant scope) means whatever already triggers
+    // Invalidate(tenantId) for resource types and search params -- tenant re-registration -- clears this
+    // too, instead of requiring a second, separately-triggered invalidation path just for this cache.
+    private readonly ConcurrentDictionary<string, short> _embeddingModelCache = new();
+
     private ISearchParameterDefinitionManager? _searchParameterDefinitionManager = searchParameterDefinitionManager;
     private readonly Dictionary<string, string> _knownOverrideUrls = new(StringComparer.Ordinal);
 
@@ -1129,6 +1151,29 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     {
         ArgumentException.ThrowIfNullOrEmpty(resourceTypeName);
         _resourceTypeCache[resourceTypeName] = resourceTypeId;
+    }
+
+    /// <summary>
+    /// Returns <paramref name="modelKey"/>'s cached <c>EmbeddingModelId</c>, or <see langword="null"/> on a
+    /// cache miss. <see cref="SqlServerEmbeddingModelRegistry"/> is the only intended caller -- see that
+    /// type's remarks for why resolving a genuine miss belongs to it (calling
+    /// <c>dbo.GetOrCreateEmbeddingModel</c>) rather than to this cache.
+    /// </summary>
+    public short? TryGetEmbeddingModelIdFromCache(string modelKey)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(modelKey);
+        return _embeddingModelCache.TryGetValue(modelKey, out var cachedId) ? cachedId : null;
+    }
+
+    /// <summary>
+    /// Records <paramref name="modelKey"/>'s <c>EmbeddingModelId</c> after
+    /// <c>dbo.GetOrCreateEmbeddingModel</c> resolves it, so later lookups in this tenant -- until this
+    /// whole cache is invalidated -- avoid the round trip.
+    /// </summary>
+    public void CacheEmbeddingModelId(string modelKey, short embeddingModelId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(modelKey);
+        _embeddingModelCache[modelKey] = embeddingModelId;
     }
 
     public void Dispose()
