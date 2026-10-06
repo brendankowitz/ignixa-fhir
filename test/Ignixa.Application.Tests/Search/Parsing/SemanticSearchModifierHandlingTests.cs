@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using Ignixa.Search;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Shouldly;
@@ -57,5 +58,38 @@ public class SemanticSearchModifierHandlingTests
         var options = harness.Build([("subject:Patient.semantic-text", "chest pain")]);
 
         options.UnsupportedModifierParams.ShouldContain("subject:Patient.semantic-text");
+    }
+
+    [Fact]
+    public void GivenSemanticParam_WhenChained_ThenUnsupportedModifierReasonsNamesTheChainNotTheModifier()
+    {
+        // Review finding (Task 2, round 2): FhirEndpoints.BuildUnsupportedParametersResult's generic
+        // modifier diagnostics template -- "uses a modifier that is not supported" -- misreports this
+        // case. ":Patient" in "subject:Patient.semantic-text" is a valid reference type qualifier, not an
+        // unsupported modifier; the real reason is that the chain terminates in a semantic parameter,
+        // which cannot be chained through. SearchOptions.UnsupportedModifierReasons carries that accurate
+        // reason so the HTTP boundary can use it instead of the generic template. The HTTP-level 400
+        // diagnostics assertion is covered by Task 9's E2E tests; FhirEndpoints has no public/internal
+        // seam for BuildUnsupportedParametersResult to test it directly at the Api unit level.
+        var harness = SearchOptionsBuilderHarness.ForObservationChainedToSemantic(
+            "subject", "Patient", "semantic-text", ValidVectorConfig);
+
+        var options = harness.Build([("subject:Patient.semantic-text", "chest pain")]);
+
+        options.UnsupportedModifierReasons.ShouldContainKeyAndValue(
+            "subject:Patient.semantic-text", Resources.SemanticSearchChainNotSupported);
+    }
+
+    [Fact]
+    public void GivenSemanticParam_WhenModifierSupplied_ThenUnsupportedModifierReasonsDoesNotContainIt()
+    {
+        // Control: a genuine unsupported-modifier rejection (semantic-text:exact) must NOT get a recorded
+        // reason, so FhirEndpoints.BuildUnsupportedParametersResult keeps using its existing, byte-stable
+        // generic diagnostics template for it -- only the chain misreport above is overridden.
+        var harness = SearchOptionsBuilderHarness.ForPatientWithSemantic("semantic-text", ValidVectorConfig);
+
+        var options = harness.Build([("semantic-text:exact", "chest pain")]);
+
+        options.UnsupportedModifierReasons.ShouldNotContainKey("semantic-text:exact");
     }
 }

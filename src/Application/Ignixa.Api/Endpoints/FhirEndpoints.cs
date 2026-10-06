@@ -1759,7 +1759,11 @@ public static class FhirEndpoints
                 "Unsupported search modifier(s) found: {UnsupportedModifierParams}",
                 string.Join(", ", searchOptions.UnsupportedModifierParams.Select(p => p.SanitizeForLog())));
 
-            return BuildUnsupportedParametersResult(searchOptions.UnsupportedModifierParams, resourceType, isModifierRejection: true);
+            return BuildUnsupportedParametersResult(
+                searchOptions.UnsupportedModifierParams,
+                resourceType,
+                isModifierRejection: true,
+                reasons: searchOptions.UnsupportedModifierReasons);
         }
 
         if (!PreferHeaderParser.IsStrictHandling(context.Request.Headers) ||
@@ -1785,21 +1789,32 @@ public static class FhirEndpoints
     /// false for the opt-in, strict-handling unsupported-parameter case. Only affects the diagnostics
     /// text, so the two are distinguishable to a client instead of reading as the same generic message.
     /// </param>
+    /// <param name="reasons">
+    /// Optional, specific rejection reason per entry of <paramref name="unsupportedParams"/> (see
+    /// <see cref="SearchOptions.UnsupportedModifierReasons"/>). When an entry has one, it replaces the
+    /// generic modifier template below, which would otherwise misreport cases like a chain terminating in
+    /// a semantic parameter as "uses a modifier that is not supported" even though the modifier used
+    /// (e.g. a reference type qualifier) was perfectly valid. Ignored unless <paramref name="isModifierRejection"/>
+    /// is true -- the unsupported-parameter case never has a more specific reason to prefer.
+    /// </param>
     private static IResult BuildUnsupportedParametersResult(
         IReadOnlyList<string> unsupportedParams,
         string? resourceType,
-        bool isModifierRejection)
+        bool isModifierRejection,
+        IReadOnlyDictionary<string, string>? reasons = null)
     {
         var operationOutcome = new OperationOutcome();
         foreach (var param in unsupportedParams)
         {
-            var diagnostics = isModifierRejection
-                ? (resourceType is not null
-                    ? $"Search parameter '{param}' uses a modifier that is not supported for resource type '{resourceType}'"
-                    : $"Search parameter '{param}' uses a modifier that is not supported")
-                : (resourceType is not null
-                    ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
-                    : $"Search parameter '{param}' is not supported");
+            var diagnostics = isModifierRejection && reasons is not null && reasons.TryGetValue(param, out string? reason)
+                ? reason
+                : isModifierRejection
+                    ? (resourceType is not null
+                        ? $"Search parameter '{param}' uses a modifier that is not supported for resource type '{resourceType}'"
+                        : $"Search parameter '{param}' uses a modifier that is not supported")
+                    : (resourceType is not null
+                        ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
+                        : $"Search parameter '{param}' is not supported");
 
             operationOutcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
             {
