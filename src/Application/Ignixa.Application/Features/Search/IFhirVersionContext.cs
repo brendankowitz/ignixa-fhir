@@ -68,6 +68,16 @@ public interface IFhirVersionContext
     ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirVersion fhirVersion, Nullable<int> tenantId);
 
     /// <summary>
+    /// Gets the search parameter definitions that are safe for query resolution.
+    /// This is intentionally separate from <see cref="GetSearchParameterDefinitionManager(FhirVersion, Nullable{int})"/>,
+    /// which serves extraction and therefore retains parameters while they are pending reindexing.
+    /// </summary>
+    ISearchParameterDefinitionManager GetSearchableSearchParameterDefinitionManager(
+        FhirVersion fhirVersion,
+        Nullable<int> tenantId,
+        Func<bool>? includePartiallyIndexedSearchParameters = null);
+
+    /// <summary>
     /// Gets the compartment definition manager for the specified FHIR version.
     /// Initializes synchronously using pre-generated compartment definitions.
     /// </summary>

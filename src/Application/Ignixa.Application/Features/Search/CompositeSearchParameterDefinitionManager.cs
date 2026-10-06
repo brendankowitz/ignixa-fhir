@@ -29,6 +29,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     private readonly string? _fhirVersion;
     private readonly ILogger<CompositeSearchParameterDefinitionManager> _logger;
     private readonly SearchParameterResolutionOptions _options;
+    private readonly bool _useSearchVisibility;
 
     private readonly ConcurrentDictionary<Uri, SearchParamInfo> _packageSearchParameterCache = new();
     private readonly ConcurrentDictionary<string, IEnumerable<SearchParamInfo>> _packageSearchParametersByResourceType = new();
@@ -44,7 +45,8 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         string? fhirVersion,
         ILogger<CompositeSearchParameterDefinitionManager> logger,
         SearchParameterResolutionOptions options,
-        IFhirSchemaProvider? schemaProvider = null)
+        IFhirSchemaProvider? schemaProvider = null,
+        bool useSearchVisibility = false)
     {
         _baseManager = baseManager ?? throw new ArgumentNullException(nameof(baseManager));
         _conformanceState = conformanceState ?? throw new ArgumentNullException(nameof(conformanceState));
@@ -52,6 +54,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _schemaProvider = schemaProvider;
+        _useSearchVisibility = useSearchVisibility;
 
         _searchParameterHashMapCache = new Lazy<IReadOnlyDictionary<string, string>>(
             () => _baseManager.SearchParameterHashMap,
@@ -158,7 +161,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         {
             var asp = kvp.Value;
 
-            if (!IsExtracted(asp.Status))
+            if (!IsIncludedInThisView(asp))
             {
                 continue;
             }
@@ -199,7 +202,11 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             {
                 foreach (var packageParam in packageParams)
                 {
-                    merged[packageParam.Code] = packageParam;
+                    var active = allParams[(packageParam.BaseResourceTypes[0], packageParam.Code)];
+                    if (ShouldOverrideBase(active, merged.ContainsKey(packageParam.Code)))
+                    {
+                        merged[packageParam.Code] = packageParam;
+                    }
                 }
             }
 
@@ -236,6 +243,19 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             searchParamInfo.OverridesUrl = new Uri(asp.OverridesCanonical);
         }
 
+        switch (asp.Status)
+        {
+            case SearchParameterStatus.Pending:
+            case SearchParameterStatus.Reindexing:
+                searchParamInfo.IsSearchable = false;
+                break;
+            case SearchParameterStatus.Staged:
+            case SearchParameterStatus.Disabling:
+                searchParamInfo.IsSearchable = false;
+                searchParamInfo.IsSupported = false;
+                break;
+        }
+
         return searchParamInfo;
     }
 
@@ -249,10 +269,16 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 return _baseManager.AllSearchParameters;
             }
 
+            var baseParameters = _baseManager.AllSearchParameters.ToList();
             return _conformanceState.AllSearchParameters.Values
-                .Where(asp => IsExtracted(asp.Status))
+                .Where(IsIncludedInThisView)
+                .Where(asp => ShouldOverrideBase(
+                    asp,
+                    baseParameters.Any(baseParameter =>
+                        string.Equals(baseParameter.Code, asp.Code, StringComparison.OrdinalIgnoreCase) &&
+                        baseParameter.BaseResourceTypes.Contains(asp.ResourceType, StringComparer.OrdinalIgnoreCase))))
                 .Select(ConvertToSearchParameterInfo)
-                .Concat(_baseManager.AllSearchParameters)
+                .Concat(baseParameters)
                 .GroupBy(p => p.OverridesUrl ?? p.Url)
                 .Select(g => g.First())
                 .ToList();
@@ -277,7 +303,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         var packageParameters = _conformanceState.AllSearchParameters.Values
             .Where(asp => string.Equals(asp.ResourceType, resourceType, StringComparison.OrdinalIgnoreCase) &&
-                IsExtracted(asp.Status))
+                IsIncludedInThisView(asp))
             .ToList();
         var baseParameters = GetBaseParameters(resourceType, packageParameters.Count > 0);
         var merged = new Dictionary<string, SearchParamInfo>(StringComparer.OrdinalIgnoreCase);
@@ -289,6 +315,11 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         foreach (var asp in packageParameters)
         {
+            if (!ShouldOverrideBase(asp, merged.ContainsKey(asp.Code)))
+            {
+                continue;
+            }
+
             var searchParamInfo = ConvertToSearchParameterInfo(asp);
             merged[searchParamInfo.Code] = searchParamInfo;
 
@@ -410,6 +441,22 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             or SearchParameterStatus.Pending
             or SearchParameterStatus.Reindexing
             or SearchParameterStatus.Disabling;
+
+    private bool IsIncludedInThisView(ActiveSearchParameter parameter) =>
+        _useSearchVisibility
+            ? parameter.Status is not SearchParameterStatus.Disabled
+            : IsExtracted(parameter.Status);
+
+    private bool ShouldOverrideBase(ActiveSearchParameter parameter, bool baseParameterExists)
+    {
+        if (!_useSearchVisibility || !baseParameterExists || parameter.Status == SearchParameterStatus.Enabled)
+        {
+            return true;
+        }
+
+        return parameter.OverridesCanonical is not null ||
+            _conformanceState.HasStagedSearchParameterReplacement(parameter);
+    }
 
     /// <inheritdoc/>
     public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap)

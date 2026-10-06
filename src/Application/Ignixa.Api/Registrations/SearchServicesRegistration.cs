@@ -14,6 +14,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Parsing;
 using Ignixa.Specification;
+using Microsoft.AspNetCore.Http;
 
 namespace Ignixa.Api.Registrations;
 
@@ -210,8 +211,15 @@ public static class SearchServicesRegistration
         // Searchable resolver
         builder.Register<ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver>(c =>
         {
-            var manager = c.Resolve<ISearchParameterDefinitionManager>();
-            return () => manager;
+            var versionContext = c.Resolve<IFhirVersionContext>();
+            var httpContextAccessor = c.Resolve<IHttpContextAccessor>();
+            return () => versionContext.GetSearchableSearchParameterDefinitionManager(
+                FhirVersion.R4,
+                tenantId: null,
+                () => string.Equals(
+                    httpContextAccessor.HttpContext?.Request.Headers["x-ms-use-partial-indices"].ToString(),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase));
         }).SingleInstance();
 
         // Default compartment definition manager (R4)

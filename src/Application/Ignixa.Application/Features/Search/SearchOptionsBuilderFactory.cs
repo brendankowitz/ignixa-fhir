@@ -11,6 +11,7 @@ using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Parsing;
+using Microsoft.AspNetCore.Http;
 
 namespace Ignixa.Application.Features.Search;
 
@@ -29,6 +30,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     private bool _disposed;
 
     private readonly IFhirBaseUriProvider _baseUriProvider;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     /// <param name="baseUriProvider">
     /// Supplies this server's base URIs so an absolute self-reference in a search value is recognized as
@@ -37,13 +39,17 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     /// stop reconciling. Required for that reason — pass
     /// <see cref="NullFhirBaseUriProvider.Instance"/> to opt out deliberately.
     /// </param>
-    public SearchOptionsBuilderFactory(IFhirVersionContext versionContext, IFhirBaseUriProvider baseUriProvider)
+    public SearchOptionsBuilderFactory(
+        IFhirVersionContext versionContext,
+        IFhirBaseUriProvider baseUriProvider,
+        IHttpContextAccessor httpContextAccessor)
     {
         EnsureArg.IsNotNull(versionContext, nameof(versionContext));
         ArgumentNullException.ThrowIfNull(baseUriProvider);
 
         _versionContext = versionContext;
         _baseUriProvider = baseUriProvider;
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
     }
 
     /// <inheritdoc/>
@@ -107,9 +113,10 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
 
             // CRITICAL: Use tenant-specific search parameter manager when tenantId is provided
             // This ensures query parsing uses the same search parameters as indexing (including US Core)
-            var searchParamDefinitionManager = tenantId.HasValue
-                ? _versionContext.GetSearchParameterDefinitionManager(fhirVersion, tenantId)
-                : _versionContext.GetSearchParameterDefinitionManager(fhirVersion);
+            var searchParamDefinitionManager = _versionContext.GetSearchableSearchParameterDefinitionManager(
+                fhirVersion,
+                tenantId,
+                UsePartialIndices);
 
             // Create resolver delegate for SearchParameterDefinitionManager
             ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver resolver =
@@ -166,5 +173,11 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         _creationLock?.Dispose();
         _disposed = true;
         GC.SuppressFinalize(this);
+    }
+
+    private bool UsePartialIndices()
+    {
+        var header = _httpContextAccessor.HttpContext?.Request.Headers["x-ms-use-partial-indices"].ToString();
+        return string.Equals(header, "true", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -9,6 +9,7 @@ using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Specification.Generated;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
@@ -46,7 +47,8 @@ public class FhirBaseUriProviderWiringTests
     {
         Should.Throw<ArgumentNullException>(() => new SearchOptionsBuilderFactory(
             Substitute.For<IFhirVersionContext>(),
-            baseUriProvider: null!));
+            baseUriProvider: null!,
+            Substitute.For<IHttpContextAccessor>()));
     }
 
     [Fact]

@@ -16,7 +16,7 @@ namespace Ignixa.Search.Definition;
 /// </summary>
 public class SearchableSearchParameterDefinitionManager : ISearchParameterDefinitionManager
 {
-    private readonly SearchParameterDefinitionManager _inner;
+    private readonly ISearchParameterDefinitionManager _inner;
     private readonly Func<bool> _includePartiallyIndexedSearchParameters;
 
     /// <param name="inner">The definition manager holding every known parameter, searchable or not.</param>
@@ -35,7 +35,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     /// </para>
     /// </param>
     public SearchableSearchParameterDefinitionManager(
-        SearchParameterDefinitionManager inner,
+        ISearchParameterDefinitionManager inner,
         Func<bool> includePartiallyIndexedSearchParameters = null)
     {
         EnsureArg.IsNotNull(inner, nameof(inner));
@@ -78,6 +78,24 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
         {
             searchParameter = parameter;
 
+            return true;
+        }
+
+        return false;
+    }
+
+    public bool TryGetPartiallyIndexedSearchParameter(
+        string resourceType,
+        string code,
+        out SearchParameterInfo searchParameter)
+    {
+        searchParameter = null;
+
+        if (_inner.TryGetSearchParameter(resourceType, code, out SearchParameterInfo parameter)
+            && !parameter.IsSearchable
+            && parameter.IsSupported)
+        {
+            searchParameter = parameter;
             return true;
         }
 

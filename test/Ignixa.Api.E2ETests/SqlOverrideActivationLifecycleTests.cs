@@ -78,6 +78,14 @@ public class SqlOverrideActivationLifecycleTests
                 .GetOrCreateAsync(1, CancellationToken.None);
             var baseId = await cache.GetSearchParamIdAsync(BaseUrl, CancellationToken.None)
                 ?? throw new InvalidOperationException("Missing in-process base identifier ID.");
+            var patientId = $"pending-override-{Guid.NewGuid():N}";
+            using (var body = new StringContent($$"""
+                {"resourceType":"Patient","id":"{{patientId}}","identifier":[{"system":"{{System}}","value":"pending-override"}]}
+                """, Encoding.UTF8, "application/fhir+json"))
+            {
+                using var writeResponse = await client.PutAsync($"/tenant/1/Patient/{patientId}", body);
+                writeResponse.StatusCode.ShouldBe(HttpStatusCode.Created, await writeResponse.Content.ReadAsStringAsync());
+            }
 
             await ActivateAsync(host.Services, PackageId, "distinct", PackageUrl, BaseUrl);
 
@@ -89,6 +97,18 @@ public class SqlOverrideActivationLifecycleTests
             owner.Canonical.ShouldBe(PackageUrl);
             owner.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending);
             owner.OverridesCanonical.ShouldBeNull();
+
+            using var searchRequest = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|pending-override")}");
+            searchRequest.Headers.Add("Prefer", "handling=strict");
+            using var searchResponse = await client.SendAsync(searchRequest);
+            var searchBody = await searchResponse.Content.ReadAsStringAsync();
+            searchResponse.StatusCode.ShouldBe(HttpStatusCode.OK, searchBody);
+            JsonNode.Parse(searchBody)!["entry"]!
+                .AsArray()
+                .Select(entry => entry!["resource"]!["id"]!.GetValue<string>())
+                .ShouldContain(patientId);
         }
         finally
         {

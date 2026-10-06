@@ -63,6 +63,12 @@ internal sealed class SearchParserTestContext
 
         DefinitionManager.GetSearchParameters(resourceType).Returns(_ => GetSearchParameters(resourceType));
         DefinitionManager.GetSearchParameter(resourceType, code).Returns(parameter);
+        DefinitionManager.TryGetSearchParameter(resourceType, code, out Arg.Any<SearchParameterInfo>())
+            .Returns(callInfo =>
+            {
+                callInfo[2] = parameter;
+                return true;
+            });
 
         return parameter;
     }

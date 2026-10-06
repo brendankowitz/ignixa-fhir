@@ -29,6 +29,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ConcurrentDictionary<(FhirVersion, int), ISearchIndexer> _tenantSearchIndexers = new();
     private readonly ConcurrentDictionary<FhirVersion, ISearchParameterDefinitionManager> _searchParamManagers = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), CompositeSearchParameterDefinitionManager> _compositeSearchParamManagers = new();
+    private readonly ConcurrentDictionary<(FhirVersion, int), CompositeSearchParameterDefinitionManager> _searchableCompositeSearchParamManagers = new();
     private readonly ConcurrentDictionary<FhirVersion, ICompartmentDefinitionManager> _compartmentManagers = new();
     private readonly SemaphoreSlim _indexerLock = new(1, 1);
     private readonly SemaphoreSlim _searchParamLock = new(1, 1);
@@ -306,52 +307,56 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetSearchParameterDefinitionManager(fhirVersion);
         }
 
-        // Check if already cached (fast path)
-        var cacheKey = (fhirVersion, tenantId.Value);
-        if (_compositeSearchParamManagers.TryGetValue(cacheKey, out var cachedManager))
-        {
-            _logger.LogTrace(
-                "Returning cached composite search parameter manager for {FhirVersion}, tenant {TenantId}",
-                fhirVersion,
-                tenantId.Value);
-            return cachedManager;
-        }
+        return GetCompositeSearchParameterDefinitionManager(fhirVersion, tenantId.Value, useSearchVisibility: false);
+    }
 
-        // Return cached composite manager or create new one
-        var compositeManager = _compositeSearchParamManagers.GetOrAdd(cacheKey, key =>
+    /// <inheritdoc/>
+    public ISearchParameterDefinitionManager GetSearchableSearchParameterDefinitionManager(
+        FhirVersion fhirVersion,
+        Nullable<int> tenantId,
+        Func<bool>? includePartiallyIndexedSearchParameters = null)
+    {
+        ISearchParameterDefinitionManager manager = !tenantId.HasValue || _conformanceState is null
+            ? GetSearchParameterDefinitionManager(fhirVersion)
+            : GetCompositeSearchParameterDefinitionManager(fhirVersion, tenantId.Value, useSearchVisibility: true);
+
+        return new SearchableSearchParameterDefinitionManager(manager, includePartiallyIndexedSearchParameters);
+    }
+
+    private CompositeSearchParameterDefinitionManager GetCompositeSearchParameterDefinitionManager(
+        FhirVersion fhirVersion,
+        int tenantId,
+        bool useSearchVisibility)
+    {
+        var managers = useSearchVisibility
+            ? _searchableCompositeSearchParamManagers
+            : _compositeSearchParamManagers;
+        var cacheKey = (fhirVersion, tenantId);
+
+        return managers.GetOrAdd(cacheKey, key =>
         {
             var (version, tenant) = key;
-
-            _logger.LogDebug(
-                "Creating composite search parameter manager for {FhirVersion}, tenant {TenantId}",
-                version,
-                tenant);
-
-            // Get base manager for this FHIR version
-            var baseManager = GetSearchParameterDefinitionManager(version);
-
-            // Create composite manager using ConformanceState as source of truth
-            var fhirVersionString = version.ToVersionString();
             var manager = new CompositeSearchParameterDefinitionManager(
-                baseManager,
-                _conformanceState,
-                fhirVersionString,
+                GetSearchParameterDefinitionManager(version),
+                _conformanceState!,
+                version.ToVersionString(),
                 _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
                 _searchParameterResolutionOptions,
-                GetSchemaProvider(version, tenant));
+                GetSchemaProvider(version, tenant),
+                useSearchVisibility);
 
-            // Initialize eagerly if configured
             if (_searchParameterResolutionOptions.EagerLoadPackageSearchParameters)
             {
                 try
                 {
-                    // Use Task.Run to safely execute async initialization in sync context
                     Task.Run(async () => await manager.InitializeAsync(CancellationToken.None)).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex,
-                        "Failed to eagerly load package search parameters for {FhirVersion}, tenant {TenantId}",
+                    _logger.LogError(
+                        ex,
+                        "Failed to eagerly load {DefinitionKind} definitions for {FhirVersion}, tenant {TenantId}",
+                        useSearchVisibility ? "searchable" : "extraction",
                         version,
                         tenant);
 
@@ -362,15 +367,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
                 }
             }
 
-            _logger.LogDebug(
-                "Composite search parameter manager created and cached for {FhirVersion}, tenant {TenantId}",
-                version,
-                tenant);
-
             return manager;
         });
-
-        return compositeManager;
     }
 
     /// <inheritdoc/>
@@ -413,6 +411,11 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
 
         // Clear and reload each composite search parameter manager
         foreach (var manager in _compositeSearchParamManagers.Values)
+        {
+            manager.ReloadFromConformanceState();
+        }
+
+        foreach (var manager in _searchableCompositeSearchParamManagers.Values)
         {
             manager.ReloadFromConformanceState();
         }

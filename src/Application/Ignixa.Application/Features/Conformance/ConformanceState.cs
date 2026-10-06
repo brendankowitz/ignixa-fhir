@@ -102,6 +102,13 @@ public sealed class ConformanceState : IDisposable
     public ActiveSearchParameter? FindExtractedByCanonical(string canonical) =>
         _searchParameters.Values.LastOrDefault(sp => sp.Canonical == canonical);
 
+    public bool HasStagedSearchParameterReplacement(ActiveSearchParameter parameter) =>
+        _searchParameterActivations.Any(candidate =>
+            candidate.ResourceType == parameter.ResourceType &&
+            candidate.Code == parameter.Code &&
+            candidate.SearchParamId == parameter.SearchParamId &&
+            candidate.Status == SearchParameterStatus.Staged);
+
     public bool TryGetSearchParameterStorageCanonical(string canonical, out string storageCanonical) =>
         _storageCanonicals.TryGetValue(canonical, out storageCanonical!);
 
