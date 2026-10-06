@@ -89,30 +89,39 @@ public class VectorSearchExpressionParserTests
     [InlineData(SearchModifierCode.Missing)]
     [InlineData(SearchModifierCode.Text)]
     [InlineData(SearchModifierCode.Exact)]
-    public void GivenSemanticParam_WhenModifierSupplied_ThenInvalidSearchOperationException(SearchModifierCode modifierCode)
+    public void GivenSemanticParam_WhenModifierSupplied_ThenSearchModifierNotSupportedException(SearchModifierCode modifierCode)
     {
         var context = new SearchParserTestContext();
         var parameter = AddSemantic(context, "Patient");
         var modifier = new SearchModifier(modifierCode);
 
-        Should.Throw<InvalidSearchOperationException>(() => context.ValueParser.Parse(parameter, modifier, "chest pain"));
+        // Must be the SearchModifierNotSupportedException subclass, not merely the
+        // InvalidSearchOperationException base: SearchOptionsBuilder's catch order routes only the
+        // subclass into SearchOptions.UnsupportedModifierParams, which FhirEndpoints.CheckStrictHandling
+        // rejects with a 400 by default (no Prefer header needed) per R4's modifier SHALL. See the
+        // SearchOptionsBuilder-level regression in SemanticSearchModifierHandlingTests for the
+        // end-to-end assertion of that routing.
+        Should.Throw<SearchModifierNotSupportedException>(() => context.ValueParser.Parse(parameter, modifier, "chest pain"));
     }
 
     [Fact]
-    public void GivenSemanticParam_WhenChained_ThenInvalidSearchOperationException()
+    public void GivenSemanticParam_WhenChained_ThenSearchModifierNotSupportedException()
     {
         var context = new SearchParserTestContext();
         context.Add("Observation", "subject", SearchParamType.Reference, targets: ["Patient"]);
         AddSemantic(context, "Patient");
 
-        var exception = Should.Throw<InvalidSearchOperationException>(
+        // Same derived-exception requirement as the modifier case above: a chain into a semantic
+        // parameter must default-reject with a 400, not fall into the silently-ignored
+        // UnsupportedParams list.
+        var exception = Should.Throw<SearchModifierNotSupportedException>(
             () => context.Parser.Parse(["Observation"], "subject:Patient.semantic-text", "chest pain"));
 
         exception.Message.ShouldBe(Resources.SemanticSearchChainNotSupported);
     }
 
     [Fact]
-    public void GivenSemanticParam_WhenReverseChained_ThenInvalidSearchOperationException()
+    public void GivenSemanticParam_WhenReverseChained_ThenSearchModifierNotSupportedException()
     {
         var context = new SearchParserTestContext();
         context.Add("Observation", "subject", SearchParamType.Reference, targets: ["Patient"]);
@@ -120,7 +129,7 @@ public class VectorSearchExpressionParserTests
         // resource that HAS the reference), not Patient.
         AddSemantic(context, "Observation");
 
-        var exception = Should.Throw<InvalidSearchOperationException>(
+        var exception = Should.Throw<SearchModifierNotSupportedException>(
             () => context.Parser.Parse(["Patient"], "_has:Observation:subject:semantic-text", "chest pain"));
 
         exception.Message.ShouldBe(Resources.SemanticSearchChainNotSupported);
