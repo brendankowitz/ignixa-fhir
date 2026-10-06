@@ -59,7 +59,7 @@ public class SqlServerVectorIndexWriterTests : IAsyncLifetime
         var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
             _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
         var embeddingModelRegistry = new SqlServerEmbeddingModelRegistry(
-            _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerEmbeddingModelRegistry>.Instance);
+            _database.SqlExecutionService, _database.TenantId, _cache, NullLogger<SqlServerEmbeddingModelRegistry>.Instance);
         var vectorIndexWriter = new SqlServerVectorIndexWriter(
             _database.SqlExecutionService, _database.TenantId, _compressor, _cache, embeddingModelRegistry,
             NullLogger<SqlServerVectorIndexWriter>.Instance);
@@ -296,7 +296,7 @@ public class SqlServerVectorIndexWriterTests : IAsyncLifetime
 
         var writerLogger = new RecordingLogger<SqlServerVectorIndexWriter>();
         var embeddingModelRegistry = new SqlServerEmbeddingModelRegistry(
-            _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerEmbeddingModelRegistry>.Instance);
+            _database.SqlExecutionService, _database.TenantId, _cache, NullLogger<SqlServerEmbeddingModelRegistry>.Instance);
         var writer = new SqlServerVectorIndexWriter(
             _database.SqlExecutionService, _database.TenantId, _compressor, _cache, embeddingModelRegistry, writerLogger);
 
