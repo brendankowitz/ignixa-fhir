@@ -229,7 +229,8 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             expression: asp.Expression,
             targetResourceTypes: asp.TargetResourceTypes,
             baseResourceTypes: [asp.ResourceType],
-            description: asp.Description);
+            description: asp.Description,
+            vectorConfig: asp.VectorConfig);
 
         if (!string.IsNullOrEmpty(asp.OverridesCanonical))
         {

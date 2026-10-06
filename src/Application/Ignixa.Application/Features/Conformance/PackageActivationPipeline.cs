@@ -242,7 +242,8 @@ public class PackageActivationPipeline(
                         sp.TargetResourceTypes,
                         componentData,
                         sp.Name,
-                        sp.Description));
+                        sp.Description,
+                        sp.VectorConfig));
                 if (staged.ApplyProposedEvent(proposed) is { } issue)
                 {
                     return (events, issue);

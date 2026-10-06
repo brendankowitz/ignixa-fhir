@@ -1,5 +1,6 @@
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
+using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Conformance;
@@ -18,6 +19,7 @@ public class ActiveSearchParameter
     public IReadOnlyList<SearchParameterComponentData>? Components { get; init; }
     public string? Name { get; init; }
     public string? Description { get; init; }
+    public VectorSearchConfig? VectorConfig { get; init; }
 
     public SearchParameterStatus Status { get; set; }
     public string? ReindexJobId { get; set; }

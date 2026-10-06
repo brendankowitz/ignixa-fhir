@@ -6,6 +6,7 @@
 using EnsureThat;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Indexing.Converters;
+using Ignixa.Search.Models;
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
 
@@ -22,6 +23,7 @@ public class SearchParameterNavigator
     private readonly Lazy<IReadOnlyList<string>> _target;
     private readonly Lazy<string> _url;
     private readonly Lazy<string> _type;
+    private readonly Lazy<IElement> _vectorConfigExtension;
 
     public SearchParameterNavigator(IElement searchParameter)
     {
@@ -38,6 +40,7 @@ public class SearchParameterNavigator
         _base = new Lazy<IReadOnlyList<string>>(() => searchParameter.Select("base")?.AsStringValues().ToArray() ?? Array.Empty<string>());
         _component = new Lazy<IReadOnlyList<IElement>>(() => searchParameter.Select("component")?.ToArray() ?? Array.Empty<IElement>());
         _target = new Lazy<IReadOnlyList<string>>(() => searchParameter.Select("target")?.AsStringValues().ToArray() ?? Array.Empty<string>());
+        _vectorConfigExtension = new Lazy<IElement>(() => searchParameter.Select($"extension('{VectorSearchConfig.ExtensionUrl}')").FirstOrDefault());
     }
 
     public string Name => _name.Value;
@@ -57,4 +60,10 @@ public class SearchParameterNavigator
     public IReadOnlyList<string> Target => _target.Value;
 
     public IReadOnlyList<IElement> Component => _component.Value;
+
+    /// <summary>
+    /// The <c>vector-search-config</c> extension element (see <see cref="VectorSearchConfig.ExtensionUrl"/>),
+    /// or null when this SearchParameter does not carry one.
+    /// </summary>
+    public IElement VectorConfigExtension => _vectorConfigExtension.Value;
 }

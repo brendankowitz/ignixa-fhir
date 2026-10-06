@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Conformance;
@@ -125,6 +126,8 @@ public static class PackageResourceMapper
                 description = descProp.GetString();
             }
 
+            VectorSearchConfig? vectorConfig = TryGetVectorSearchConfig(root);
+
             return new SearchParameterInfo(
                 resource.Canonical,
                 code,
@@ -136,12 +139,42 @@ public static class PackageResourceMapper
                 components,
                 targetResourceTypes,
                 name,
-                description);
+                description,
+                vectorConfig);
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Finds the <c>vector-search-config</c> extension in the SearchParameter's root-level
+    /// <c>extension</c> array and parses it. A malformed sub-extension propagates as the
+    /// <see cref="FormatException"/> <see cref="VectorSearchConfig.Parse(JsonElement)"/> raises, which the
+    /// caller's blanket catch turns into dropping the whole SearchParameter from activation - the same
+    /// fate as any other malformed field on this path, rather than a parameter silently missing vector
+    /// support (that lenient handling exists only for the <c>IElement</c>/runtime-registration path; see
+    /// <see cref="SearchParameterInfo.IsSupported"/> there).
+    /// </summary>
+    private static VectorSearchConfig? TryGetVectorSearchConfig(JsonElement root)
+    {
+        if (!root.TryGetProperty("extension", out var extensions) || extensions.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var extension in extensions.EnumerateArray())
+        {
+            if (extension.TryGetProperty("url", out var urlProperty) &&
+                urlProperty.ValueKind == JsonValueKind.String &&
+                string.Equals(urlProperty.GetString(), VectorSearchConfig.ExtensionUrl, StringComparison.Ordinal))
+            {
+                return VectorSearchConfig.Parse(extension);
+            }
+        }
+
+        return null;
     }
 
     private static StructureDefinitionInfo? MapStructureDefinition(PackageResource resource)

@@ -127,6 +127,7 @@ public sealed class ConformanceState : IDisposable
                 Components = parameter.Components?.ToArray(),
                 Name = parameter.Name,
                 Description = parameter.Description,
+                VectorConfig = parameter.VectorConfig,
                 Status = parameter.Status,
                 ReindexJobId = parameter.ReindexJobId
             });
@@ -303,6 +304,7 @@ public sealed class ConformanceState : IDisposable
             Components = sp.Components,
             Name = sp.Name,
             Description = sp.Description,
+            VectorConfig = sp.VectorConfig,
             Status = isBaseFhir ? SearchParameterStatus.Enabled : SearchParameterStatus.Pending
         };
 
