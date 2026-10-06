@@ -51,11 +51,14 @@ public sealed class SemanticIndexer
     /// staged writes, or a batch bundle's micro-batch -- make one provider round trip for the whole group
     /// rather than one per resource.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">
+    /// <exception cref="SemanticSearchDefinitionException">
     /// A semantic search parameter's extracted value is not a string, its effective chunk/overlap
-    /// configuration is invalid, it produced more chunks than fit in <see cref="short"/>, or the provider's
-    /// response did not match the request (wrong count or wrong vector dimensionality). All of these
-    /// indicate a configuration or provider contract violation, not recoverable input data.
+    /// configuration is invalid, or it produced more chunks than fit in <see cref="short"/>. All of these
+    /// indicate a SearchParameter/configuration definition fault, not recoverable input data.
+    /// </exception>
+    /// <exception cref="EmbeddingProviderContractException">
+    /// The embedding provider's response did not match the request (wrong count or wrong vector
+    /// dimensionality).
     /// </exception>
     /// <exception cref="EmbeddingUnavailableException">
     /// The embedding provider could not be reached, or failed with a transport/SDK-level or
@@ -99,6 +102,107 @@ public sealed class SemanticIndexer
     }
 
     /// <summary>
+    /// Computes <see cref="ResourceWrapper.VectorIndices"/> for every resource in <paramref name="resources"/>,
+    /// isolating each resource's outcome from every other's -- unlike <see cref="IndexAsync"/>'s
+    /// all-or-nothing contract, which is correct for a single atomic write but wrong for a batch bundle's
+    /// independently-committing entries (see <c>DeferredWriteCoordinator.ProcessBatchAsync</c>). A
+    /// resource with no semantic text always succeeds with <c>VectorIndices = []</c>, regardless of what
+    /// happens to any other resource in the call. A resource whose own planning fails (a non-string
+    /// extracted value, an invalid effective chunk/overlap configuration, or too many chunks) fails only
+    /// that resource -- its passages are withdrawn before the shared embedding call, so a planning
+    /// failure never taints the batch. Resources that did contribute passages still share exactly one
+    /// <see cref="IEmbeddingGenerator{TInput, TEmbedding}.GenerateAsync"/> call; if that call fails, every
+    /// contributing resource's result carries that same exception, while non-contributing resources are
+    /// unaffected.
+    /// </summary>
+    /// <remarks>
+    /// Never throws for a per-resource planning or embedding failure -- those are reported through each
+    /// <see cref="SemanticIndexResult.Error"/> instead, so the caller can complete each queued write
+    /// independently. Only the caller's own <paramref name="cancellationToken"/> being cancelled
+    /// propagates as a thrown <see cref="OperationCanceledException"/>.
+    /// </remarks>
+    public async Task<IReadOnlyList<SemanticIndexResult>> IndexIndependentlyAsync(
+        IReadOnlyList<ResourceWrapper> resources,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(resources);
+
+        if (resources.Count == 0)
+        {
+            return [];
+        }
+
+        var passages = new List<string>();
+        var plans = new List<PendingEntry>?[resources.Count];
+        var planErrors = new Exception?[resources.Count];
+
+        for (var i = 0; i < resources.Count; i++)
+        {
+            if (resources[i].IsDeleted)
+            {
+                plans[i] = [];
+                continue;
+            }
+
+            var passageCountBeforePlan = passages.Count;
+            try
+            {
+                plans[i] = BuildPlans(resources[i], passages);
+            }
+            catch (Exception ex)
+            {
+                // Withdraw every passage this resource contributed before failing, including partial
+                // progress from a group that built successfully before a later group threw -- none of
+                // this resource's text should reach the shared embedding call below.
+                passages.RemoveRange(passageCountBeforePlan, passages.Count - passageCountBeforePlan);
+                planErrors[i] = ex;
+            }
+        }
+
+        IReadOnlyList<Embedding<float>>? embeddings = null;
+        Exception? embeddingError = null;
+        if (passages.Count > 0)
+        {
+            try
+            {
+                embeddings = await GenerateAsync(passages, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                embeddingError = ex;
+            }
+        }
+
+        var results = new SemanticIndexResult[resources.Count];
+        for (var i = 0; i < resources.Count; i++)
+        {
+            if (planErrors[i] is { } planError)
+            {
+                results[i] = SemanticIndexResult.Failed(planError);
+                continue;
+            }
+
+            var plan = plans[i]!;
+            if (plan.Count > 0 && embeddingError is { } sharedError)
+            {
+                results[i] = SemanticIndexResult.Failed(sharedError);
+                continue;
+            }
+
+            var entries = plan.Count == 0
+                ? (IReadOnlyList<VectorIndexEntry>)[]
+                : plan.Select(p => p.ToVectorIndexEntry(passages, embeddings!)).ToArray();
+            results[i] = SemanticIndexResult.Succeeded(resources[i] with { VectorIndices = entries });
+        }
+
+        return results;
+    }
+
+    /// <summary>
     /// Groups <paramref name="resource"/>'s semantic search index entries by search parameter (preserving
     /// extraction order), extracts and chunks each group's text per its <see cref="VectorSearchConfig"/>,
     /// and appends every chunk's text to the shared <paramref name="passages"/> list -- recording where
@@ -120,7 +224,7 @@ public sealed class SemanticIndexer
 
                 if (entry.Value is not StringSearchValue stringValue)
                 {
-                    throw new InvalidOperationException(
+                    throw new SemanticSearchDefinitionException(
                         $"Semantic search parameter '{entry.SearchParameter.Url}' extracted a non-string value from " +
                         $"{resource.ResourceType}/{resource.ResourceId}; semantic text must be a FHIR string.");
                 }
@@ -153,7 +257,7 @@ public sealed class SemanticIndexer
             VectorTextExtractionPolicy.FirstValue => [values[0]],
             VectorTextExtractionPolicy.Concatenate => [string.Join("\n", values)],
             VectorTextExtractionPolicy.PerValueRow => values,
-            _ => throw new InvalidOperationException(
+            _ => throw new SemanticSearchDefinitionException(
                 $"Semantic search parameter '{parameter.Url}' has an unrecognized extraction policy '{config.ExtractionPolicy}'.")
         };
 
@@ -169,7 +273,7 @@ public sealed class SemanticIndexer
             {
                 if (ordinal > short.MaxValue)
                 {
-                    throw new InvalidOperationException(
+                    throw new SemanticSearchDefinitionException(
                         $"Semantic search parameter '{parameter.Url}' on {resource.ResourceType}/{resource.ResourceId} " +
                         $"produced more than {short.MaxValue} chunks.");
                 }
@@ -187,14 +291,14 @@ public sealed class SemanticIndexer
     {
         if (chunkSizeTokens < VectorSearchOptions.MinimumChunkSizeTokens || chunkSizeTokens > VectorSearchOptions.MaxEmbeddingInputTokens)
         {
-            throw new InvalidOperationException(
+            throw new SemanticSearchDefinitionException(
                 $"Semantic search parameter '{parameterUrl}' has an effective chunk size of {chunkSizeTokens} tokens; " +
                 $"must be between {VectorSearchOptions.MinimumChunkSizeTokens} and {VectorSearchOptions.MaxEmbeddingInputTokens}.");
         }
 
         if (chunkOverlapTokens < 0 || chunkOverlapTokens >= chunkSizeTokens)
         {
-            throw new InvalidOperationException(
+            throw new SemanticSearchDefinitionException(
                 $"Semantic search parameter '{parameterUrl}' has an effective chunk overlap of {chunkOverlapTokens} tokens; " +
                 $"must be 0 or greater and less than the effective chunk size ({chunkSizeTokens}).");
         }
@@ -214,7 +318,7 @@ public sealed class SemanticIndexer
 
         if (embeddings.Count != passages.Count)
         {
-            throw new InvalidOperationException(
+            throw new EmbeddingProviderContractException(
                 $"The embedding provider returned {embeddings.Count} embeddings for {passages.Count} passages.");
         }
 
@@ -222,7 +326,7 @@ public sealed class SemanticIndexer
         {
             if (embedding.Vector.Length != VectorSearchOptions.SupportedDimensions)
             {
-                throw new InvalidOperationException(
+                throw new EmbeddingProviderContractException(
                     $"The embedding provider returned a vector with {embedding.Vector.Length} dimensions; " +
                     $"expected {VectorSearchOptions.SupportedDimensions}.");
             }

@@ -150,42 +150,59 @@ public class SemanticIndexerTests
     }
 
     [Fact]
-    public async Task GivenNonStringSemanticValue_WhenIndexed_ThenInvalidOperationExceptionNamesParameter()
+    public async Task GivenNonStringSemanticValue_WhenIndexed_ThenSemanticSearchDefinitionExceptionNamesParameter()
     {
         var parameter = SemanticParameter(VectorTextExtractionPolicy.Concatenate);
         var generator = new SpyEmbeddingGenerator();
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", new SearchIndexEntry(parameter, new NumberSearchValue(1)));
 
-        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
+        var exception = await Should.ThrowAsync<SemanticSearchDefinitionException>(() =>
             indexer.IndexAsync([wrapper], CancellationToken.None));
 
         exception.Message.ShouldContain(SemanticParamUrl.ToString());
+        exception.StatusCode.ShouldBe(500);
     }
 
     [Fact]
-    public async Task GivenInvalidEffectiveChunkOverlap_WhenIndexed_ThenInvalidOperationExceptionNamesParameter()
+    public async Task GivenInvalidEffectiveChunkOverlap_WhenIndexed_ThenSemanticSearchDefinitionExceptionNamesParameter()
     {
         var parameter = SemanticParameter(VectorTextExtractionPolicy.Concatenate, chunkSizeTokens: 20, chunkOverlapTokens: 20);
         var generator = new SpyEmbeddingGenerator();
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"));
 
-        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
+        var exception = await Should.ThrowAsync<SemanticSearchDefinitionException>(() =>
             indexer.IndexAsync([wrapper], CancellationToken.None));
 
         exception.Message.ShouldContain(SemanticParamUrl.ToString());
+        exception.StatusCode.ShouldBe(500);
     }
 
     [Fact]
-    public async Task GivenProviderReturnsWrongDimensions_WhenIndexed_ThenInvalidOperationException()
+    public async Task GivenProviderReturnsWrongDimensions_WhenIndexed_ThenEmbeddingProviderContractException()
     {
         var parameter = SemanticParameter(VectorTextExtractionPolicy.Concatenate);
         var generator = new WrongDimensionEmbeddingGenerator();
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"));
 
-        await Should.ThrowAsync<InvalidOperationException>(() => indexer.IndexAsync([wrapper], CancellationToken.None));
+        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => indexer.IndexAsync([wrapper], CancellationToken.None));
+
+        exception.StatusCode.ShouldBe(500);
+    }
+
+    [Fact]
+    public async Task GivenProviderReturnsWrongCount_WhenIndexed_ThenEmbeddingProviderContractException()
+    {
+        var parameter = SemanticParameter(VectorTextExtractionPolicy.PerValueRow);
+        var generator = new WrongCountEmbeddingGenerator();
+        var indexer = CreateIndexer(generator);
+        var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"), SemanticEntry(parameter, "beta"));
+
+        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => indexer.IndexAsync([wrapper], CancellationToken.None));
+
+        exception.StatusCode.ShouldBe(500);
     }
 
     private static SemanticIndexer CreateIndexer(IEmbeddingGenerator<string, Embedding<float>> generator) =>
@@ -300,6 +317,31 @@ public class SemanticIndexerTests
             foreach (var _ in values)
             {
                 results.Add(new Embedding<float>(new float[16]));
+            }
+
+            return Task.FromResult(results);
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>Returns fewer embeddings than requested passages, to pin the provider count-mismatch guard.</summary>
+    private sealed class WrongCountEmbeddingGenerator : IEmbeddingGenerator<string, Embedding<float>>
+    {
+        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+            IEnumerable<string> values,
+            EmbeddingGenerationOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            var results = new GeneratedEmbeddings<Embedding<float>>();
+            var first = values.FirstOrDefault();
+            if (first is not null)
+            {
+                results.Add(new Embedding<float>(DeterministicEmbeddingGenerator.Generate(first)));
             }
 
             return Task.FromResult(results);
