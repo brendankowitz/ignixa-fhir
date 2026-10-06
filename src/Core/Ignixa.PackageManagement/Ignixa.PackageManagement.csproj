@@ -23,7 +23,7 @@
     <PackageReference Include="SharpZipLib" />
     <PackageReference Include="Polly" />
     <PackageReference Include="Polly.Extensions.Http" />
+    <PackageReference Include="Semver" />
   </ItemGroup>
 
 </Project>
-
