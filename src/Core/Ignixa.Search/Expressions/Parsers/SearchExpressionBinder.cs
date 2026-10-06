@@ -43,22 +43,26 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
     /// <see cref="VectorSearchExpression"/> no <see cref="ChainedExpression"/> consumer expects.
     /// </summary>
     /// <remarks>
-    /// Throws <see cref="SearchModifierNotSupportedException"/>, not the <see cref="InvalidSearchOperationException"/>
-    /// base, even though no modifier is literally involved. <see cref="Parsing.SearchOptionsBuilder"/>'s
-    /// catch order only routes the subclass into <see cref="SearchOptions.UnsupportedModifierParams"/>,
-    /// which <c>FhirEndpoints.CheckStrictHandling</c> rejects with a 400 by default (no <c>Prefer</c>
-    /// header needed); the base type lands in the weaker <see cref="SearchOptions.UnsupportedParams"/>,
-    /// silently dropped unless the client opts in with <c>Prefer: handling=strict</c>. A chain into a
-    /// semantic parameter has exactly the same "silently widens instead of narrows" failure mode as an
-    /// unsupported modifier -- dropping it does not shrink the result set, it removes the filter
-    /// entirely -- so it gets the same reject-by-default treatment via the same existing mechanism,
-    /// still with the client able to downgrade it with <c>handling=lenient</c>.
+    /// Throws <see cref="SemanticSearchChainNotSupportedException"/>, a <see cref="SearchModifierNotSupportedException"/>
+    /// subclass, not the <see cref="InvalidSearchOperationException"/> base, even though no modifier is
+    /// literally involved. <see cref="Parsing.SearchOptionsBuilder"/>'s catch order only routes the
+    /// subclass into <see cref="SearchOptions.UnsupportedModifierParams"/>, which
+    /// <c>FhirEndpoints.CheckStrictHandling</c> rejects with a 400 by default (no <c>Prefer</c> header
+    /// needed); the base type lands in the weaker <see cref="SearchOptions.UnsupportedParams"/>, silently
+    /// dropped unless the client opts in with <c>Prefer: handling=strict</c>. A chain into a semantic
+    /// parameter has exactly the same "silently widens instead of narrows" failure mode as an unsupported
+    /// modifier -- dropping it does not shrink the result set, it removes the filter entirely -- so it
+    /// gets the same reject-by-default treatment via the same existing mechanism, still with the client
+    /// able to downgrade it with <c>handling=lenient</c>. Being its own subclass also lets
+    /// <see cref="Parsing.SearchOptionsBuilder"/> record this exception's message as the specific
+    /// rejection reason (see <see cref="Models.SearchOptions.UnsupportedModifierReasons"/>), separate from
+    /// the generic text used for a genuine unsupported modifier.
     /// </remarks>
     private static Expression BindChain(BoundChainKey chain, Func<BoundParameterKey, Expression> bindParameter)
     {
         if (IsTerminalSemantic(chain.Next))
         {
-            throw new SearchModifierNotSupportedException(Resources.SemanticSearchChainNotSupported);
+            throw new SemanticSearchChainNotSupportedException(Resources.SemanticSearchChainNotSupported);
         }
 
         return Expression.Chained(
