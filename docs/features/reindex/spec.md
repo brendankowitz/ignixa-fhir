@@ -3,6 +3,9 @@
 **Feature**: reindex
 **Status**: Draft for review
 **Created**: 2026-10-06
+**Revised**: 2026-10-06. The reindex scope is now an exact per-tenant transaction cutoff, made safe by a
+database-enforced conformance barrier. The per-row hash, per-transaction stamps, tail passes, and convergence
+polling are gone. See §5.6 for why.
 **Prior art**: [microsoft-fhir-server-prior-art](investigations/microsoft-fhir-server-prior-art.md)
 
 ---
@@ -13,24 +16,23 @@
 
 1. **Correct results.** A SearchParameter is searchable by default only after every current, non-deleted
    resource it applies to has been indexed under its definition, in every tenant.
-2. **Self-driving.** Activating or deactivating a SearchParameter (via a package or a custom definition)
-   triggers the reindex work automatically. Operators can also start, observe, and cancel it.
-3. **Low impact on normal traffic.** Index-only writes create no new versions. Concurrent writers win without
-   being locked out, and throughput is bounded and tunable.
-4. **Resumable and idempotent.** Runs survive restarts, can be cancelled, and pick up only the work that is
-   still stale.
-5. **Wire-compatible with microsoft/fhir-server** where that compatibility is honest: the same routes,
-   `Parameters` shapes, and tuning parameter names. Ignixa does not accept parameters it would ignore.
+2. **Exact scope from what already exists.** Activation events say *which* parameters and resource types changed.
+   The transaction log says *which* rows were written before the change. There is no per-row bookkeeping.
+3. **Self-driving.** Activations trigger reindexing automatically. Operators can also start, observe, and cancel
+   it.
+4. **Low impact on normal traffic.** Index-only writes create no new versions. Concurrent writers are not locked
+   out. Throughput is bounded and tunable.
+5. **Wire-compatible with microsoft/fhir-server** where that is honest: same routes, `Parameters` shapes, and
+   tuning parameter names. Ignixa does not accept parameters it would ignore.
 
 ### Non-goals (v1)
 
-- Extracting and writing only the changed parameters. v1 re-extracts every index row for each stale resource,
-  which is what `UpdateResourceSearchParams` already does. Partial extraction can come later as an
-  optimization.
-- Pause and resume. DurableTask supports `Suspend`/`Resume`, but v1 ships only cancel.
-- Reindexing history versions. Only current rows (`IsHistory = 0`) carry search indexes.
-- Throttling based on data-store utilization (`targetDataStoreUsagePercentage`).
-- Cosmos and other non-SQL providers. They must report reindex as unsupported (§6.6).
+- Extracting and writing only the changed parameters. v1 re-extracts every index row for each resource in
+  scope, which is what `UpdateResourceSearchParams` already does.
+- Resuming a cancelled job without redoing work. There is no per-row marker, so the replacement job rescans
+  the scope.
+- Pause and resume, reindexing history versions, and throttling based on data-store utilization.
+- Cosmos and other non-SQL providers. They report reindex as unsupported (§6.6).
 
 ---
 
@@ -38,17 +40,20 @@
 
 | Asset | State | Spec disposition |
 |---|---|---|
-| `Resource.SearchParamHash` column | Exists, never written (`ResourceRowGenerator.cs:119`, `TODO Phase 2`) | **Write it on every create/update** (§5) |
-| `GetSearchParameterHashForResourceType` | Covers base params only. Composite manager delegates to the base manager (`CompositeSearchParameterDefinitionManager.cs:415-417`) | **Include package params** (§5) |
-| Compiler hash filter `SearchParamHash IS NULL OR <> @hash` | Exists (`MatchPageEmitter.cs:125-138`, `SearchPlanOptions.SearchParameterHash`) | **Reuse** for worker paging and verification |
-| `UpdateResourceSearchParams.sql` | Exists (MS port), no caller | **Reuse** as the index-only write |
+| Transaction ids | `TransactionId = ms × 80000 + sequence`, the first value of the transaction's `ResourceSurrogateId` range (`MergeResourcesBeginTransaction.sql`). Visibility advances only across contiguous completed transactions (`MergeResourcesAdvanceTransactionVisibility.sql`). | **Basis of the cutoff** (§5) |
+| Allocation choke point | Every SQL write (single, atomic bundle, batch/import) allocates through `SqlServerMergeRepository.BeginTransactionAsync` (`SqlServerFhirRepository.cs:293,508`) | **Barrier check goes here** (§5.3) |
+| Write-path ordering | Search indexes are extracted *before* allocation (`SqlServerFhirRepository.cs:521-628`) | This is why a barrier is needed (§5.3) |
+| `dbo.Parameters` | Key/value table already read by `MergeResourcesBeginTransaction` | **Holds the barrier value** |
+| `SourceEvents.TransactionId` | Tenant 1's visible watermark at append time | Not used. Each tenant reads its own cutoff (§5.2). |
+| `Resource.SearchParamHash`, compiler hash filter | Never written or used | **Not used.** Retire in cleanup (§8.7). |
+| `UpdateResourceSearchParams.sql` | Exists (MS port), no caller | **Reuse** as the index-only write. Pass `NULL` hash. |
 | `SqlServerPostMergeExtensionUpdater` | Runs after `MergeResources` | **Also run after reindex writes** |
-| `ReindexJob` table plus 5 sprocs | Dead MS port, no caller | **Retire** (§8.7) |
-| `SearchParameterStatus { Pending, Reindexing, Enabled, Disabled }` and reindex events | Exist (`ConformanceState.cs:365-389`) | **Reuse** (§4) |
-| Search visibility | `Pending` params are searchable; `Reindexing` params are dropped from the extraction set (`CompositeSearchParameterDefinitionManager.cs:161,253,280,374`) | **Fix** (§4.2) |
-| `SearchableSearchParameterDefinitionManager` | Implemented, never wired (`SearchServicesRegistration.cs:211` returns the full manager) | **Wire up** (§4.2) |
-| Background jobs | DurableTask. `$export` is the reference pattern | **Follow it** (§8) |
-| `ms-reindex.json` | MS-compatible TestScript; all asserts are `warningOnly` | **Make it pass** (§11) |
+| `ReindexJob` table plus 5 sprocs | Dead MS port | **Retire** (§8.7) |
+| `SearchParameterStatus { Pending, Reindexing, Enabled, Disabled }` and reindex events | Exist (`ConformanceState.cs:365-389`); apply unconditionally | **Reuse, with guards** (§4.3) |
+| Search visibility | `Pending` params are searchable; `Reindexing` params are dropped from extraction (`CompositeSearchParameterDefinitionManager.cs:161,253,280,374`) | **Fix** (§4.2) |
+| Overrides | An override reuses the overridden param's `SearchParamId` (`ConformanceState.cs:42-56`) | Removing an override makes the restored definition `Pending` (§4.4) |
+| Background jobs | DurableTask; `$export` is the reference | **Follow it** (§8) |
+| `ms-reindex.json` | MS-compatible TestScript, all asserts `warningOnly` | **Make it pass** (§11) |
 
 ---
 
@@ -58,192 +63,284 @@
 
 | ID | Requirement |
 |---|---|
-| F1 | A SearchParameter with status `Pending` or `Reindexing` is **not searchable** by default (§4.2). |
-| F2 | A parameter moves to `Enabled` only after verification (§8.5) finds **zero** stale resources for every resource type it applies to, in **every** tenant. |
-| F3 | Every create, update, and conditional write stamps `Resource.SearchParamHash` with the hash for that resource type at the writing instance's conformance position. |
-| F4 | Activating or deactivating a SearchParameter starts a reindex job automatically when `Reindex:AutoStart` is true. A job that is already running is superseded (§9.3). |
-| F5 | `POST [base]/$reindex` starts a job. `GET` returns its status or lists jobs. `DELETE` cancels it (§6). |
-| F6 | `GET [base]/{type}/{id}/$reindex` returns the index values that would be extracted (dry run). `POST` persists them for that one resource. |
-| F7 | At most **one** reindex job is active across the whole server at any time. |
-| F8 | Index-only writes never change `Version`, `LastUpdated`, `RawResource`, `meta`, or history, and never emit write-side effects (subscriptions, audit of resource change). |
-| F9 | When a concurrent update makes a reindex write lose (`@FailedResources`), the resource is counted as a *conflict*, not a failure. Verification re-examines it. |
-| F10 | Per-resource extraction failures are recorded (type, id, surrogate id, reason) and shown in job status. While any remain, the affected parameters stay out of `Enabled`. |
-| F11 | Request parameters that are not implemented are rejected with 400. None are silently ignored. |
-| F12 | The CapabilityStatement advertises only `Enabled` parameters. |
+| F1 | A SearchParameter in `Pending` or `Reindexing` is **not searchable** by default (§4.2). |
+| F2 | A parameter moves to `Enabled` only after its job has reindexed the cutoff set (§5.2) for every resource type it applies to, in **every** tenant, with zero failed resources, **and** its activation is unchanged since the job started (§4.3). |
+| F3 | Search indexes are extracted through an immutable **definitions handle** `(indexer, DefinitionsEventId)` that is acquired once per extraction (§5.4). |
+| F4 | Every SQL transaction allocation checks the writer's `DefinitionsEventId` against the tenant's **conformance barrier**. A stale writer is rejected, refreshes its definitions, re-extracts, and retries (§5.3). |
+| F5 | Activation automatically starts a job when `Reindex:AutoStart` is true. If a job is already running, a follow-up is **durably queued** (§7). |
+| F6 | `POST [base]/$reindex` starts a job. `GET` returns its status or lists jobs. `DELETE` cancels it (§6). |
+| F7 | `GET [base]/{type}/{id}/$reindex` is a dry run. `POST` persists the indexes for one resource. |
+| F8 | At most **one** reindex job is active across the whole server. |
+| F9 | Index-only writes never change `Version`, `LastUpdated`, `RawResource`, `meta`, the transaction, or history, and they never emit write side effects. |
+| F10 | When a concurrent update makes a reindex write lose (`@FailedResources`), the resource is counted as a *conflict*, not a failure. |
+| F11 | Per-resource extraction failures are recorded (type, id, surrogate id, reason) and shown in job status. While any remain, the affected parameters stay out of `Enabled`. |
+| F12 | Request parameters that are not implemented are rejected with 400. |
+| F13 | The CapabilityStatement advertises only `Enabled` parameters. |
 
 ### Non-functional
 
 | ID | Requirement |
 |---|---|
-| N1 | Throughput target: ≥ 5,000 resources/s per tenant database at default settings on the reference SQL tier. Measure it the same way as `$export`. |
+| N1 | Throughput ≥ 5,000 resources/s per tenant database at default settings on the reference SQL tier, measured like `$export`. |
 | N2 | Normal API p95 latency degrades ≤ 20% while a job runs at default settings. |
-| N3 | Survives process restarts, failover, and deployments. Resumes without redoing up-to-date rows (the hash filter guarantees this). |
-| N4 | Every terminal or degraded state (Failed, Cancelled, Superseded, conflicts, failed resources, partial-index searches) is visible through status, logs, and metrics. |
-| N5 | A fresh database finishes with zero work in under 5 s after activation. This keeps F5 fast. |
+| N3 | Survives restarts, failover, and deployments. DurableTask replays completed ranges, and a range that is retried is idempotent. |
+| N4 | Every terminal or degraded state is visible through status, logs, and metrics. That includes Failed, Cancelled, conflicts, failed resources, barrier rejections, and partial-index searches. |
+| N5 | A fresh database finishes in under `BarrierDelay` + 5 s after activation (F5 developer experience). An **upgrade alone triggers no reindex**. |
+| N6 | The barrier check adds no database round trip: it runs in the existing allocation command batch. Rejections are rare: they happen only to writers that are still behind after `BarrierDelay`. |
 
 ---
 
 ## 4. SearchParameter Lifecycle and Query Semantics
 
-### 4.1 States (existing enum, refined semantics)
+### 4.1 States
 
 ```mermaid
 stateDiagram-v2
     [*] --> Enabled: base FHIR param (pre-indexed)
     [*] --> Pending: package/custom param activated
-    Pending --> Reindexing: SearchParameterReindexStarted
-    Reindexing --> Enabled: SearchParameterReindexCompleted (verification = 0 in all tenants)
-    Reindexing --> Pending: SearchParameterReindexFailed (failure / cancel / superseded)
+    Pending --> Reindexing: SearchParameterReindexStarted (guarded)
+    Reindexing --> Enabled: SearchParameterReindexCompleted (guarded)
+    Reindexing --> Pending: SearchParameterReindexFailed (guarded: failure / cancel)
     Pending --> Disabled: SearchParameterDeactivated
     Reindexing --> Disabled: SearchParameterDeactivated
     Enabled --> Disabled: SearchParameterDeactivated
+    Enabled --> Pending: override removed (definition restored, §4.4)
     Disabled --> [*]: SearchParameterDeleted
 ```
 
-| Status | Extracted on write? | In hash? | Searchable (default)? | Searchable with partial-index header? | In CapabilityStatement? |
-|---|---|---|---|---|---|
-| `Enabled` | Yes | Yes | Yes | Yes | Yes |
-| `Pending` | **Yes** | **Yes** | No | Yes, with a warning | No |
-| `Reindexing` | **Yes** (fixes the current gap) | **Yes** | No | Yes, with a warning | No |
-| `Disabled` | No | No | No | No | No |
-
-**Invariant H-STATUS:** the hash must **not** depend on status. Moving `Reindexing` to `Enabled` must not
-make every resource stale. `CalculateSearchParameterHash` already ignores status, and this invariant pins that.
-
-Disabling a parameter takes effect immediately, because removing a parameter from search is always safe. It
-also changes the hash for its types, so the next reindex deletes its leftover rows. There are no
-`PendingDisable` or `PendingDelete` states (see prior art §Tradeoffs).
+| Status | Extracted on write? | Searchable (default)? | With partial-index header? | In CapabilityStatement? |
+|---|---|---|---|---|
+| `Enabled` | Yes | Yes | Yes | Yes |
+| `Pending` | **Yes** | No | Yes, with a warning | No |
+| `Reindexing` | **Yes** (fixes the current gap) | No | Yes, with a warning | No |
+| `Disabled` | No | No | No | No |
 
 ### 4.2 Query-time behavior
 
-- Wire up `SearchableSearchParameterDefinitionManager` as the searchable resolver. Set `IsSearchable = false`
-  and `IsSupported = true` for `Pending` and `Reindexing` params when converting `ActiveSearchParameter`.
-- **Default:** a non-searchable parameter is treated like an unknown parameter. Under `Prefer: handling=lenient`
-  it is ignored, and the bundle includes an `OperationOutcome` warning:
-  *"Search parameter '{code}' is pending reindex and was ignored."* Under `handling=strict` the request fails
-  with 400.
-- **Opt-in:** with request header `x-ms-use-partial-indices: true` (MS-compatible name), `Pending` and
-  `Reindexing` params are admitted. The bundle **must** include an `OperationOutcome` warning:
-  *"Results for '{code}' may be incomplete: reindex in progress."* This differs from MS, which stays silent.
-- `_sort` on a parameter whose sort index is not yet complete follows the same rules.
+- Wire up `SearchableSearchParameterDefinitionManager` as the searchable resolver. Map `Pending` and
+  `Reindexing` to `IsSearchable = false` and `IsSupported = true`.
+- **Default:** a non-searchable parameter is treated like an unknown parameter. Under
+  `Prefer: handling=lenient` it is ignored, and the bundle includes an `OperationOutcome` warning
+  (*"Search parameter '{code}' is pending reindex and was ignored."*). Under `handling=strict` the request
+  returns 400.
+- **Opt-in:** with request header `x-ms-use-partial-indices: true`, `Pending` and `Reindexing` params are
+  admitted, and the bundle **must** carry an `OperationOutcome` warning that results may be incomplete. MS
+  stays silent here; Ignixa warns.
+- When an override is `Pending`, the overridden code is not searchable either, because both definitions share
+  one `SearchParamId`.
+- `_sort` follows the same rules.
+
+### 4.3 Lifecycle guards
+
+The `SearchParameterReindex{Started,Completed,Failed}` events gain `ActivationEventId`, the `SourceEvents.EventId`
+of the activation the job targeted. The field is nullable so older events still replay. `ConformanceState`
+applies each event **only if** both conditions hold:
+
+- the parameter's current activation has that `ActivationEventId`, and
+- for `Completed` and `Failed`, its `ReindexJobId` equals the event's `JobId`.
+
+A non-matching event is ignored and logged. A job therefore never moves a newer activation of the same canonical:
+it does not start it, enable it, or reset it. The newer activation stays `Pending` and is handled by the queued
+follow-up (§7).
+
+### 4.4 Deactivation and override removal
+
+- **Plain deactivation** (no other definition shares the `SearchParamId`) takes effect immediately and triggers
+  **no reindex**. Orphaned index rows are never queried, because ids are never reassigned across canonicals
+  (`GetOrAllocateSearchParamId`). They are removed when the type is next reindexed or the resource is next
+  written. Operators can reclaim storage early with a manual `targetResourceTypes` job.
+- **Override removal** restores another definition under the **same** `SearchParamId`, while the existing rows
+  hold the override's values. The restored definition must be re-activated as `Pending`. This changes today's
+  behavior, where base parameters are always `Enabled`.
 
 ---
 
-## 5. Search Parameter Hash
+## 5. Reindex Scope: Barrier-Fenced Transaction Cutoff
 
-| ID | Rule |
+### 5.1 Terms
+
+| Term | Meaning |
 |---|---|
-| H1 | `hash(version, tenant, resourceType) = CalculateSearchParameterHash(effective extraction set)`. The set contains base params plus package params in `Enabled`, `Pending`, or `Reindexing`, after overrides are applied. |
-| H2 | `CompositeSearchParameterDefinitionManager` computes and caches H1 itself, and invalidates the cache on `ConformanceCacheRefresher.RefreshAsync`. |
-| H3 | `ResourceRowGenerator` writes H1 into `SearchParamHash` (closes `TODO Phase 2`). The value is taken from the **same** manager instance that produced the extracted index rows, so a row's hash always describes its own index rows. |
-| H4 | Ordinal-stable across hosts. This already holds and is guarded by `SearchParameterHashCultureInvarianceTests`. |
-| H5 | Status-independent (H-STATUS, §4.1). |
+| **E** | Target position: the global `SourceEvents.EventId` when the job starts. The job targets every param `Pending` at E. |
+| **Affected types** | The base resource types of the targeted params, expanded to concrete types, plus the restored types for override removals. `targetResourceTypes` narrows the set. |
+| **D(w)** | The `DefinitionsEventId` of the handle that extracted write *w*'s indexes (§5.4). |
+| **Barrier_t** | `dbo.Parameters['Conformance.MinAcceptedDefinitionsEventId']` in tenant *t*'s database. It only increases. |
+| **B_t** | `MAX(SurrogateIdRangeFirstValue)` in tenant *t*'s `dbo.Transactions`, read **after** raising Barrier_t to E. |
+| **S_t** | `MAX(SurrogateIdRangeLastValue)` in tenant *t*'s `dbo.Transactions`, read with B_t. Using the maximum *last* value avoids depending on ranges being ordered or disjoint (§5.5). |
 
-**Stale resource:** a current, non-deleted row (`IsHistory = 0 AND IsDeleted = 0`) whose
-`SearchParamHash IS NULL OR SearchParamHash <> @hash`. Rows written before this feature have `NULL` and are
-therefore stale. The first job after upgrade reindexes everything once, by design.
+### 5.2 Algorithm (per tenant, in parallel)
+
+1. **Delay.** Wait `Reindex:BarrierDelay` (default `2 × Conformance:SyncIntervalSeconds`) after E is appended.
+   This lets instances catch up by polling, so the barrier rejects almost nothing. It is advisory only; the
+   barrier alone guarantees correctness.
+2. **Raise the barrier.** Set `Barrier_t = max(Barrier_t, E)`, **then** read B_t and S_t.
+3. **Drain.** Wait until tenant *t*'s visible watermark is ≥ B_t, so every transaction allocated at or before B_t
+   has completed or failed. Both values come from the database; there is no wall-clock comparison.
+4. **Cutoff set.** Reindex the current, non-deleted rows of affected types with `ResourceSurrogateId ≤ S_t`.
+   This is a range scan on the clustered key, and its totals are exact once planning finishes. Rows written
+   before this feature are included automatically.
+
+That set is the whole job. There is no tail, and nothing to verify afterwards.
+
+### 5.3 Barrier check on allocation
+
+`SqlServerMergeRepository.BeginTransactionAsync(count, definitionsEventId, …)` runs one command batch:
+
+1. `EXEC dbo.MergeResourcesBeginTransaction …` (unchanged).
+2. `SELECT Bigint FROM dbo.Parameters WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId'`.
+
+If `definitionsEventId < barrier`, the repository marks the transaction failed (through the existing
+commit-with-failure path, so visibility can advance) and throws `StaleConformanceDefinitionsException`. The write
+pipeline catches it **at the boundary**, forces `ConformanceState.CatchUpAsync` and a refresh, re-acquires a
+handle, re-extracts, and retries **once**. If it is still stale, the request returns `503` with `Retry-After`.
+Every rejection is logged and counted (`conformance.barrier.rejections`).
+
+**Ordering proof.** The writer reads the barrier *after* its own allocation has committed. The raiser reads B_t
+*after* the barrier is set. So for any stale writer with allocation *X*, exactly one of these holds:
+
+- *X* was visible to the raiser's read, so *X* ≤ B_t. Its rows are drained (step 3) and fall inside the cutoff
+  set (step 4).
+- *X* was not visible to that read. Then *X* committed after the barrier was set, so the writer's barrier read
+  sees E and the write is rejected.
+
+No locks are needed. This also holds under RCSI, because the writer's barrier read always happens after its own
+commit.
+
+### 5.4 Definitions handle
+
+`CompositeSearchParameterDefinitionManager`/`ConformanceCacheRefresher` publish an immutable
+`DefinitionsHandle(ISearchIndexer Indexer, long DefinitionsEventId)`. The event id is the position the indexer's
+definitions were built from, which is the *refreshed* position, not `ConformanceState.LastProcessedEventId`.
+
+- The write pipeline acquires one handle per extraction.
+- Bundles use the **minimum** `DefinitionsEventId` across the handles that produced their final index sets. If an
+  entry is re-resolved, its handle is replaced too.
+- Long-running imports re-acquire a handle per batch. A rejected batch re-extracts with a fresh handle.
+
+### 5.5 Edge cases
+
+| Case | Why it is covered |
+|---|---|
+| A transaction with first value ≤ B_t but last value > B_t (import reserves 1000 ids) | S_t is the maximum *last* value, so its rows are included. |
+| Clock rollback, or sequence reuse, produces a *post*-barrier transaction with an id < B_t | It passed the barrier check, so D ≥ E. If it lands in the cutoff set, the cost is extra work; nothing is wrong. The drain waits for it like any other transaction. |
+| Delete tombstones | They have `IsDeleted = 1` and no indexes, so they are excluded. |
+| Invisible history and history moves | Only `IsHistory = 0` rows are reindexed. A version superseded during the job becomes a conflict (F10), and its replacement was either inside the cutoff (and processed) or passed the barrier. |
+| Newly started instance | It initializes `ConformanceState` and builds handles before serving, so D is current. If not, the barrier rejects the write. |
+| Instance paused (GC) and resumed after the barrier | Its stale handle is rejected at allocation. |
+| Pre-feature rows with no `Transactions` entry | `ResourceSurrogateId ≤ S_t` still holds, because surrogate ids are time-based and S_t is the current maximum. Invariant test: every SQL resource write allocates through `BeginTransactionAsync`. |
+
+### 5.6 Why not a hash, stamps, or convergence polling?
+
+| Approach | Problem |
+|---|---|
+| Per-row hash (first draft) | Must be maintained on every row; an upgrade marks every pre-feature row stale; scope is "all rows, filtered". |
+| Cutoff only at activation time | Instances that lag (they poll every 30 s) and the extract-before-allocate order let stale writes land after the cutoff. |
+| Cutoff + per-transaction stamp + convergence polling (second draft) | Convergence is not a closed barrier: new instances, idle imports holding old handles, and paused processes can write after it. Tail cursors can skip incomplete transactions. A wall-clock τ is not in the database's id space. |
+| **Barrier-fenced cutoff (this spec)** | The database fences off stale writers. Scope is one clustered range. There is no stamp column, tail, registry, or checkpoint table. The trade-off is that a write from an instance still behind after `BarrierDelay` is rejected once and retried. |
 
 ---
 
 ## 6. API
 
-`[base]` is `/` in single-tenant mode, or `/tenant/{tenantId}` (where `tenantId ≠ 0`). The job is **server-wide**
-because SearchParameter status is global (§10.1). The tenant segment in the route is used for routing and
-authorization only. Routes are registered before the `/{resourceType}` catch-all, the same way as `$export`
-(`EndpointRouteBuilderExtensions.cs:34`).
+`[base]` is `/` in single-tenant mode, or `/tenant/{tenantId}` with `tenantId ≠ 0`. A job is **server-wide**
+because SearchParameter status is global (§10.1). Routes are registered before the `/{resourceType}` catch-all,
+as for `$export` (`EndpointRouteBuilderExtensions.cs:34`).
 
 ### 6.1 Kickoff: `POST [base]/$reindex`
 
-- **Body:** an optional `Parameters` resource.
+- **Body:** optional `Parameters`.
 - **Headers:** `Prefer: respond-async` is optional. Any other `Prefer` value returns 400.
 - **Response:** `201 Created` with a `Parameters` job body (§6.3) and `Content-Location: [base]/$reindex/{jobId}`.
   This matches MS and `ms-reindex.json`.
-- **Active job exists:** `409 Conflict` with an `OperationOutcome` that references the active job, plus a
-  `Content-Location` header that points to it. MS returns the existing job with 201; Ignixa returns an explicit
-  conflict (open question Q3).
+- **Active job exists:** `409 Conflict` with an `OperationOutcome` and a `Content-Location` header pointing to the
+  active job (Q3).
+- **Nothing to do** (no `Pending` params and no `targetResourceTypes`): `400` with the existing "no resources
+  need reindexing" message.
 
 | Parameter | Type | Range | Default | Effect |
 |---|---|---|---|---|
-| `maximumNumberOfResourcesPerQuery` | integer | 1..10000 | 10000 | Target range size used by range planning (§8.3) |
+| `maximumNumberOfResourcesPerQuery` | integer | 1..10000 | 10000 | Target range size (§8.3) |
 | `maximumNumberOfResourcesPerWrite` | integer | 1..10000 | 1000 | Worker page and TVP batch size (§8.4) |
 | `maximumConcurrency` | integer | 1..16 | 4 | Concurrent range workers **per tenant** |
 | `queryDelayIntervalInMilliseconds` | integer | 0..60000 | 0 | Delay between worker pages |
-| `targetResourceTypes` | string (comma list) | Known, concrete types | All affected (§8.2) | Narrows scope. Params enable only if fully covered (F2). |
-| `targetSearchParameterTypes` | n/a | n/a | n/a | **400 Not supported** (F11) |
-| `targetDataStoreUsagePercentage` | n/a | n/a | n/a | **400 Not supported** (F11) |
+| `targetResourceTypes` | string (comma list) | Known, concrete types | Affected types (§5.1) | Narrows the scope. With nothing `Pending`, it runs a maintenance reindex that enables nothing. |
+| `targetSearchParameterTypes`, `targetDataStoreUsagePercentage` | n/a | n/a | n/a | **400 Not supported** (F12) |
 | Any other name, or a non-numeric value for an integer | n/a | n/a | n/a | **400** |
 
-Defaults come from configuration (§10.2). The published `OperationDefinition/reindex` lists exactly these
-accepted parameters.
+The published `OperationDefinition/reindex` lists exactly these accepted parameters.
 
 ### 6.2 Status and list
 
-- `GET [base]/$reindex/{jobId}` returns `200` with a `Parameters` job body, or `404` if the job does not exist.
-- `GET [base]/$reindex` returns `200` with a `Parameters` resource containing one `job` part per job. It lists
-  active jobs plus the most recent N terminal ones (default N = 10).
+- `GET [base]/$reindex/{jobId}` returns `200` with a `Parameters` body, or `404`.
+- `GET [base]/$reindex` returns `200` with a `Parameters` resource containing one `job` part per job: active,
+  queued, and the most recent N terminal ones.
 
 ### 6.3 Job `Parameters` body
 
 The MS-compatible top-level parameters are `id`, `status`, `queuedTime`, `startTime`, `endTime`, `lastModified`,
-`totalResourcesToReindex`, `resourcesSuccessfullyReindexed`, `progress` (0–100, capped at 99.9 until
-`Completed`), `resources` (comma list of types), `searchParams` (comma list of canonicals),
-`maximumNumberOfResourcesPerQuery`, `maximumNumberOfResourcesPerWrite`, and `failureDetails`.
+`totalResourcesToReindex`, `resourcesSuccessfullyReindexed`, `progress` (capped at 99.9 until `Completed`),
+`resources`, `searchParams`, `maximumNumberOfResourcesPerQuery`, `maximumNumberOfResourcesPerWrite`, and
+`failureDetails`.
 
 Ignixa additions:
 
-- `maximumConcurrency`
-- `queryDelayIntervalInMilliseconds`
-- `trigger`: `Manual` or `Activation`
-- `conformanceEventId`: the target event position
-- `cancellationReason`: `UserRequested` or `Superseded`, plus `supersededBy` (jobId)
-- `verificationPasses`
-- `conflicts`: the count from F9
-- `tenant` (repeating), with parts `tenantId`, `status`, `resourcesToReindex`, `resourcesReindexed`,
-  `conflicts`, and `failedResources`
-- `failedResource` (repeating, capped at 100), with parts `resourceType`, `id`, and `reason`
+- `maximumConcurrency`, `queryDelayIntervalInMilliseconds`
+- `trigger`: `Manual`, `Activation`, `FollowUp`, or `Reconciliation`
+- `targetEventId` (E)
+- `phase`: `BarrierDelay`, `Draining`, `Reindexing`, or `Completing`
+- `cancellationReason`
+- `conflicts`
+- `tenant` (repeating), with parts `tenantId`, `cutoffTransactionId` (B_t), `cutoffSurrogateId` (S_t), `status`,
+  `resourcesToReindex`, `resourcesReindexed`, `conflicts`, and `failedResources`
+- `failedResource` (repeating, ≤ 100), with parts `resourceType`, `id`, and `reason`
+- `ignoredLifecycleEvents`: canonicals whose activation changed after E (§4.3)
 
-`status` is one of `Queued`, `Running`, `Completed`, `Failed`, or `Cancelled`. These are the MS values. A
-superseded job is reported as `Cancelled` with `cancellationReason = Superseded`.
+`status` is one of `Queued`, `Running`, `Completed`, `Failed`, or `Cancelled`.
 
 ### 6.4 Cancel: `DELETE [base]/$reindex/{jobId}`
 
-Returns `202 Accepted`. Returns `404` if the job does not exist, and `409` if it is already terminal (uses the
-existing resx message). Cancelling terminates the orchestration. Its `Reindexing` params go back to `Pending`
-(§8.6). Rows already written stay in place because they are correct for their hash.
+Returns `202 Accepted`, `404` for an unknown job, or `409` if the job is already terminal. The orchestration is
+terminated. A guarded `Failed("Cancelled")` event returns this job's `Reindexing` params to `Pending`. The barrier
+stays raised (it only increases). A queued follow-up is not cancelled.
 
 ### 6.5 Single resource: `GET|POST [base]/{type}/{id}/$reindex`
 
-- **GET** (dry run) returns `200` with a `Parameters` resource listing every index value that would be extracted.
-  Each value is a part with `code`, `type`, and `value`. Nothing is persisted.
-- **POST** extracts and persists the indexes for the current version through the same write path as §8.4, then
-  returns the same body. If a concurrent update wins, it returns `409`.
-- Both return `404` (unknown id) or `410` (deleted).
-- This operation does not change parameter status. It is a diagnostic and repair tool.
+- **GET** (dry run) returns `200` with a `Parameters` resource listing every index value that would be extracted
+  (parts `code`, `type`, `value`). Nothing is persisted.
+- **POST** persists the indexes through the §8.4 write path. If a concurrent update wins, it returns `409`.
+- Unknown id returns `404`. A deleted resource returns `410`. Status changes are never made.
 
 ### 6.6 Provider capability
 
-`$reindex` endpoints return `501 Not Implemented` with an `OperationOutcome` when the tenant's data provider
-does not implement `IReindexStore` (§8.7). On such providers, package params stay `Pending`, and they can be
-searched only with the partial-index header.
+When the tenant's provider does not implement `IReindexStore`, the endpoints return `501` with an
+`OperationOutcome`. Package params stay `Pending` and can be searched only with the partial-index header.
 
 ### 6.7 Authorization
 
-Callers need the same administrative authorization as `/admin/packages`. The single-resource GET also needs
-read access to the resource.
+Callers need the same administrative authorization as `/admin/packages`. The single-resource GET also needs read
+access to the resource.
 
 ---
 
-## 7. Triggering
+## 7. Triggering and Durable Hand-off
 
 | Trigger | Behavior |
 |---|---|
-| **Activation** (`Reindex:AutoStart = true`, default) | After `PackageActivationPipeline` or custom-SearchParameter activation commits events that change any H1 hash, a Medino notification handler calls `StartOrSupersedeReindex(trigger: Activation)`. |
-| **Deactivation** | The same handler, because deactivation changes H1 so that orphan rows get removed. |
+| **Activation** (`Reindex:AutoStart = true`, default) | After activation events that create `Pending` params commit (including override removals, §4.4), a Medino notification handler calls `StartOrQueueReindex(Activation)`, debounced by `Reindex:StartDebounce`. |
 | **Manual** | `POST $reindex` (§6.1). |
-| **Startup reconciliation** | `EternalOrchestrationStarter` (replacing the commented-out line 55) checks once at startup. If any `Pending` params exist (or a hash changed) and no job is active, it starts a job. This recovers from a trigger that was lost in a crash. |
+| **Follow-up** | Hand-off at job end (below). |
+| **Startup reconciliation** | `EternalOrchestrationStarter` (replacing the commented-out line 55): if `Pending` params exist, no job is active, and nothing is queued, it starts a job. |
 
-`LoadPackageHandler` and `InstallPackageTool` keep reporting `PendingReindex`, and now also return the
-`jobId` and status URL.
+**Durable hand-off** (prevents the lost-follow-up race between job end and a concurrent activation):
+
+- `StartOrQueueReindex` takes the singleton lock (`sp_getapplock` on the tenant 1 database). If a job is active,
+  it **persists** an incremented `ReindexRequestedGeneration` instead of returning silently.
+- At job end, `CompleteReindexActivity`, under the same lock, marks the job terminal. If the generation is
+  greater than the one the job consumed, or if `Pending` params still exist, it starts the follow-up job before
+  releasing the lock.
+
+`LoadPackageHandler` and `InstallPackageTool` keep reporting `PendingReindex`, and now also return the job id
+(active or queued) and its status URL.
 
 ---
 
@@ -251,19 +348,18 @@ read access to the resource.
 
 ### 8.1 Components
 
-All components live in `src/Application/Ignixa.Application.BackgroundOperations/Reindex/` and mirror the
-`$export` layout.
+All components live in `src/Application/Ignixa.Application.BackgroundOperations/Reindex/` and mirror `$export`.
 
 | Component | Role |
 |---|---|
-| `CreateReindexJobCommand` / `Handler` | Validates input, acquires the reindex singleton lock (SQL `sp_getapplock` on the tenant 1 database, then checks for an active job; no lock abstraction exists in code yet), writes `BackgroundJob<ReindexJobDefinition>` (`BackgroundJobType.Reindex = 4`) to the global (tenant 1) job store, and starts the orchestration with `instanceId = jobId`. |
-| `ReindexOrchestration` | The coordinator (§8.2–§8.6). |
-| `AwaitConformanceConvergenceActivity` | Waits until every live instance has applied `conformanceEventId` (§9.2). |
-| `PlanReindexActivity` | For each tenant and affected type: captures the expected hash and computes surrogate-id ranges. |
-| `ReindexRangeActivity` | Processes one tenant/type/range (§8.4). Returns counts plus failures. |
-| `VerifyReindexActivity` | Counts stale resources for each tenant and type. |
-| `CompleteReindexActivity` | Appends the `SearchParameterReindex{Completed,Failed}` events and finalizes the `BackgroundJob`. |
-| `GetReindexStatusQuery` / `CancelReindexCommand` / `ReindexSingleResourceCommand` | API handlers. |
+| `CreateReindexJobCommand` / `Handler` | Validates input. Runs `StartOrQueueReindex` (§7). Writes `BackgroundJob<ReindexJobDefinition>` (`BackgroundJobType.Reindex = 4`) to the tenant 1 job store. Starts the orchestration with `instanceId = jobId`. |
+| `ReindexOrchestration` | The coordinator (§8.2). |
+| `RaiseBarrierActivity` | For each tenant: raises Barrier_t to E, then returns B_t and S_t (§5.2 step 2). |
+| `AwaitDrainActivity` | For each tenant: waits for the visible watermark to reach B_t (step 3). |
+| `PlanReindexActivity` | For each tenant and affected type: surrogate ranges up to S_t (§8.3). |
+| `ReindexRangeActivity` | Processes one (tenant, type, range) (§8.4). |
+| `CompleteReindexActivity` | Appends guarded lifecycle events, finalizes the job, and performs the hand-off (§7). |
+| `GetReindexStatusQuery`, `CancelReindexCommand`, `ReindexSingleResourceCommand` | API handlers. |
 
 ### 8.2 Orchestration flow
 
@@ -271,153 +367,115 @@ All components live in `src/Application/Ignixa.Application.BackgroundOperations/
 sequenceDiagram
     participant API as $reindex / Activation handler
     participant O as ReindexOrchestration
-    participant C as AwaitConvergence
-    participant P as PlanReindex
-    participant W as ReindexRange (xN per tenant)
-    participant V as VerifyReindex
+    participant T as Tenant DB (per tenant, parallel)
+    participant W as ReindexRange
     participant E as Event store (tenant 1)
-    API->>O: start(jobId, conformanceEventId, params)
-    O->>E: SearchParameterReindexStarted (per Pending param)
-    O->>C: wait all instances >= conformanceEventId
-    loop per tenant (parallel, bounded)
-        O->>P: affected types, expected hash, ranges
-        loop waves of maximumConcurrency
-            O->>W: (tenant, type, range, expectedHash)
-        end
+    API->>O: start(jobId, E, targets, params)
+    O->>E: SearchParameterReindexStarted (guarded, per target)
+    O->>O: timer: BarrierDelay
+    O->>T: RaiseBarrier(E) -> B_t, S_t
+    O->>T: AwaitDrain(visible >= B_t)
+    O->>T: PlanReindex(ranges <= S_t per affected type)
+    loop waves of maximumConcurrency per tenant
+        O->>W: ReindexRange(tenant, type, range)
     end
-    O->>V: stale counts per tenant/type
-    alt stale > 0 and pass < MaxVerificationPasses
-        O->>P: re-plan only stale types
-    else stale == 0 everywhere for a param's types
-        O->>E: SearchParameterReindexCompleted
+    alt no failed resources
+        O->>E: SearchParameterReindexCompleted (guarded)
     else
-        O->>E: SearchParameterReindexFailed (details)
+        O->>E: SearchParameterReindexFailed (guarded, details)
     end
+    O->>O: hand-off to queued follow-up (section 7)
 ```
 
-- **Target position:** `conformanceEventId` is the value of `ConformanceState.LastProcessedEventId` when the
-  job is created. The orchestration input records it, together with the set of targeted `Pending` canonicals.
-- **Affected types for a tenant** are computed in this order:
-  1. `targetResourceTypes`, if supplied.
-  2. Otherwise, types whose current H1 differs from the hash map recorded by that tenant's last `Completed`
-     job.
-  3. Otherwise (first run, or no record), every concrete type that has rows in the tenant.
-- Tenants run in parallel. Each tenant is limited by `maximumConcurrency`, so one large tenant cannot starve
-  the others. This mirrors `TtlCleanupOrchestration`'s per-tenant fan-out.
-- **Orchestration history size:** ranges are scheduled in waves. When the scheduled-activity count exceeds
-  `Reindex:ContinueAsNewThreshold` (default 2000), the orchestration calls `ContinueAsNew` and carries its
-  progress forward in the input.
+- `BarrierDelay` is a DurableTask timer, so it costs nothing and survives restarts.
+- Tenants run in parallel, each limited by `maximumConcurrency`, as in `TtlCleanupOrchestration`.
+- Ranges are scheduled in waves. Above `Reindex:ContinueAsNewThreshold` scheduled activities, the orchestration
+  calls `ContinueAsNew` and carries B_t, S_t, and the counts forward.
 
 ### 8.3 Range planning
 
-The planner reuses the `ISearchService.GetExportRangesAsync` surrogate-id partitioning, generalized to
-`GetSurrogateIdRangesAsync(type, targetRangeSize)`, and sizes each range at about
-`maximumNumberOfResourcesPerQuery` rows. Ranges cover **all** rows of the type. Workers skip rows that are
-already current (§8.4), so planning does not have to scan the hash.
+The planner generalizes `ISearchService.GetExportRangesAsync` to
+`IReindexStore.GetSurrogateIdRangesAsync(type, upperBound: S_t, targetRangeSize)`, sizing ranges at about
+`maximumNumberOfResourcesPerQuery` current rows.
 
 ### 8.4 Range worker
 
-For each range `(tenant, type, [start, end], expectedHash)`:
+1. **Definitions guard.** Acquire a handle. If its `DefinitionsEventId` is < E, throw a retryable error;
+   DurableTask retries after backoff.
+2. **Read.** Read current, non-deleted rows in the range through `IReindexStore.ReadRangeAsync`, in pages of
+   `maximumNumberOfResourcesPerWrite`, ordered by `ResourceSurrogateId`.
+3. **Extract** with the handle. An exception is recorded as a failed resource (F11), and the resource is skipped.
+4. **Write** with `UpdateResourceSearchParams`. It matches on `IsHistory = 0`, allocates no transaction, and
+   changes no version, so the barrier does not apply. Then run `SqlServerPostMergeExtensionUpdater` for inserted
+   token rows. Add `@FailedResources` to `conflicts` (F10).
+5. If `queryDelayIntervalInMilliseconds > 0`, wait that long. Repeat until the range is done.
+6. Return counts and failures (≤ 100).
 
-1. **Hash guard.** Compute the local H1 for `(tenant, type)`.
-   - If it equals `expectedHash`, continue.
-   - If the local state is **behind** `conformanceEventId`, throw a retryable error. DurableTask retries after
-     backoff.
-   - If the local state is **ahead** (a newer activation happened), return `Superseded`. The orchestration stops
-     scheduling work (§9.3).
-2. **Page.** Run a compiled search with `SurrogateRange = [cursor, end]` and `SearchParameterHash = expectedHash`
-   for current, non-deleted rows ordered by `ResourceSurrogateId`, limited to `maximumNumberOfResourcesPerWrite`.
-3. **Extract.** For each resource, use the same extractor and row generators as the normal write path, with H1
-   stamped (H3). An extraction exception is recorded as a failed resource (F10), and the resource is skipped.
-4. **Write.** Call `UpdateResourceSearchParams` (matches on `IsHistory = 0`, does not bump the version). Then
-   call `SqlServerPostMergeExtensionUpdater` for the inserted token rows. Add `@FailedResources` to the
-   `conflicts` count (F9).
-5. Advance the cursor past the page. If `queryDelayIntervalInMilliseconds > 0`, wait that long. Repeat until
-   the range is exhausted.
-6. Return `{processed, reindexed, conflicts, failedResources[≤100], superseded}`.
+Retries use the established SQL transient policy. When a write times out, the worker halves its batch size and
+retries, down to a minimum of 10.
 
-Retries: SQL transient errors and timeouts use the established SQL retry policy. When a write times out, the
-worker halves its batch size and retries, down to a minimum of 10. This adapts the MS OOM back-off.
+### 8.5 Completion
 
-### 8.5 Verification and completion
+A targeted parameter **completes** when its affected types are reindexed in every tenant with zero failed
+resources. `CompleteReindexActivity` then appends
+`SearchParameterReindexCompleted(…, ActivationEventId, JobId, ResourcesIndexed, Duration)`, which §4.3 applies or
+ignores. Otherwise the job ends `Failed` with a guarded `SearchParameterReindexFailed`. Either way, the hand-off
+in §7 runs.
 
-- `VerifyReindexActivity` counts stale rows for each `(tenant, type)` using the compiler's count path with
-  `SearchParameterHash = expectedHash`.
-- Stale rows come from conflicts, workers that lost a race, or late writes from lagging instances. If any are
-  found and the pass count is below `Reindex:MaxVerificationPasses` (default 3), the orchestration re-plans only
-  the stale types.
-- A targeted parameter **completes** when every one of its resource types has a stale count of 0 in every
-  tenant, and no failed resources remain for those types. `CompleteReindexActivity` then appends
-  `SearchParameterReindexCompleted(…, ResourcesIndexed, Duration)` for it.
-- Otherwise the job ends `Failed` and appends `SearchParameterReindexFailed(…, ErrorMessage)` with a summary.
-  `failureDetails` and the `failedResource` parts list the specifics.
-- The job also records the per-tenant H1 hash map it verified, which is used as input to §8.2 on the next run.
+### 8.6 Failure and liveness
 
-### 8.6 Cancellation and failure
-
-- **Cancel (user or supersede):** `TaskHubClient.TerminateInstanceAsync`, then a compensating
-  `CompleteReindexActivity` that runs from the handler. It appends `SearchParameterReindexFailed("Cancelled:
-  {reason}")` for each param still in `Reindexing`, then marks the job `Cancelled`.
-- **Activity failure after retries:** the orchestration catches it. That tenant/type is marked failed, the
-  other tenants continue, and the job ends `Failed` (§8.5). One bad range does not abort healthy tenants, which
-  is a deliberate difference from MS.
-- **Liveness:** the `BackgroundJob` heartbeat is updated by every activity. A job that is `Running` with a
-  heartbeat older than `Reindex:StaleJobTimeout` (default 30 min) is reported as such in status and logged at
-  error level. Startup reconciliation (§7) can then supersede it. This addresses the MS "stuck in Queued" class
-  of bugs.
+- **Activity failure after retries:** that (tenant, type) is marked failed, the other tenants continue, and the
+  job ends `Failed`. Unlike MS, one bad range does not abort healthy tenants.
+- **Liveness:** every activity updates the `BackgroundJob` heartbeat. A job that is `Running` with a heartbeat
+  older than `Reindex:StaleJobTimeout` is flagged in status and logged at error level. A drain still waiting
+  beyond `Reindex:DrainWarningAfter` logs the oldest incomplete transaction. `TransactionWatcher` already
+  recovers stalled transactions, so the drain does not wait forever.
 
 ### 8.7 Data layer changes
 
 | Change | Notes |
 |---|---|
-| `IReindexStore` (Domain) with a SQL implementation | `GetSurrogateIdRangesAsync`, `UpdateSearchIndicesAsync(batch) → (updated, conflicts)`, `CountStaleAsync(type, hash)`. File system and other providers do not implement it (§6.6). |
-| `ResourceRowGenerator` writes `SearchParamHash` | H3 |
-| `UpdateResourceSearchParams.sql` | Reused as is. **Must** be verified against Ignixa's typed tables, including composites. |
-| Extension columns after reindex writes | Reuse `SqlServerPostMergeExtensionUpdater`. Follows the merge-transaction rule: core rows commit first, extension updates follow, and failures are logged. |
-| Retire `ReindexJob` table and its 5 sprocs | Dead code that is superseded by DurableTask plus `BackgroundJob`. Removed through the normal schema-version process. |
-| `ConformanceInstanceCheckpoint` table (tenant 1) | Needed for §9.2 (open question Q1). Columns: `InstanceId`, `LastProcessedEventId`, `HeartbeatUtc`. |
-| `MergeResources` | **Unchanged** (repository rule). |
+| `IReindexStore` (Domain) with a SQL implementation | `RaiseBarrierAsync(E) → (B, S)`, `GetVisibleWatermarkAsync`, `GetSurrogateIdRangesAsync`, `ReadRangeAsync`, `UpdateSearchIndicesAsync → (updated, conflicts)` |
+| `dbo.Parameters` row `Conformance.MinAcceptedDefinitionsEventId` | Stored in the existing `Bigint` column, so no schema change is needed (`Tables/Parameters.sql`). Raised monotonically with an `UPDATE … SET Bigint = @E WHERE Id = … AND (Bigint IS NULL OR Bigint < @E)`, plus an insert if the row is missing. |
+| `BeginTransactionAsync(count, definitionsEventId)` | One command batch: the existing `EXEC` plus the barrier `SELECT` (§5.3). `IFhirRepository.GetNextTransactionIdAsync` and the batch-write APIs take the handle's event id. |
+| `StaleConformanceDefinitionsException` | Handled at the write boundary (refresh, re-extract, one retry, then 503) |
+| Reindex lifecycle events gain `ActivationEventId` (nullable) | §4.3, and registration in `SqlServerSourceEventStore` |
+| `ReindexRequestedGeneration` (tenant 1, with the job store) | §7 hand-off |
+| `UpdateResourceSearchParams.sql` | Reused unchanged. Must be verified against Ignixa's typed tables, including composites. |
+| Extension columns | Reuse `SqlServerPostMergeExtensionUpdater`, following the merge-transaction rule |
+| Retire `ReindexJob` table plus 5 sprocs; `Resource.SearchParamHash` usage, `MatchPageEmitter` hash clause, `SearchPlanOptions.SearchParameterHash` | Unused. Separate cleanup PR. The `ResourceList` TVP column stays (repository rule), so pass `NULL`. |
+| `MergeResources*` procedures and TVPs | **Unchanged** |
 
 ---
 
 ## 9. Consistency and Concurrency
 
-### 9.1 Concurrent resource writes
+### 9.1 Correctness argument
 
-A normal write during a job re-extracts the resource with the writer's definitions and stamps H1 (H3). If the
-writer had already converged, the row is current and the worker's hash filter skips it. If the worker's
-`UpdateResourceSearchParams` targeted the version that just became history, the `IsHistory = 0` join drops it
-as a conflict. The new version was written by the normal path, so nothing is lost. Verification confirms it.
+Fix a tenant *t* and a current row *r* of an affected type at completion time. Its transaction was allocated
+either:
 
-### 9.2 Cross-instance convergence
+- **(a) at or before B_t.** Then *r*'s surrogate id is ≤ S_t, and *r* was reindexed under definitions ≥ E. If a
+  newer version replaced *r* during the job, the reindex write was a conflict, and the replacement falls under
+  (a) or (b).
+- **(b) after B_t was read.** Then the writer read the barrier after its allocation committed, saw ≥ E, and passed
+  only with D(w) ≥ E. Its indexes already include the target definitions.
 
-Instances apply conformance events by polling (`ConformanceStateSyncService`, `Conformance:SyncIntervalSeconds`
-default 30). An instance that has not caught up keeps writing the **old** hash and the old index set, behind the
-scanner.
+Rows that are both outside (a) and stale cannot exist. The guards in §4.3 make sure "the target definitions" are
+the ones that get enabled: a definition changed after E is not enabled by this job.
 
-- **Correctness backstop:** every such write leaves an old hash on the row, so verification (§8.5) finds it and
-  re-plans. A parameter cannot become `Enabled` over a stale row that was written **before** the final
-  verification.
-- **Closing the post-verification window:** `AwaitConformanceConvergenceActivity` runs before planning **and
-  again before the final verification**. It waits until every instance whose heartbeat is newer than
-  `2 × SyncIntervalSeconds` reports `LastProcessedEventId >= conformanceEventId`. Each instance updates its
-  checkpoint row after every successful sync.
-- **Residual risk:** an instance that stops sending heartbeats but keeps writing (for example, during a long GC
-  pause) could still write a stale row. It is logged and caught by the next job's verification. Documented and
-  accepted.
+### 9.2 Concurrent resource writes
 
-### 9.3 Concurrent SearchParameter changes (supersede)
+Normal writes are never blocked by the job. They can be rejected only by the barrier, and only when they carry a
+stale handle. When a reindex write targets a version that has just become history, the `IsHistory = 0` join drops
+it as a conflict.
 
-MS rejects SearchParameter changes with 409 while a reindex runs. Ignixa **does not block activation**:
+### 9.3 Concurrent SearchParameter changes (queue, don't supersede)
 
-1. New activation events land, and `StartOrSupersedeReindex` acquires the singleton lock.
-2. The handler cancels the active job with reason `Superseded`, records `supersededBy`, and starts a new job at
-   the new `conformanceEventId` that targets all `Pending` params.
-3. Progress is preserved automatically. Types whose H1 did not change are already current and are skipped by
-   the hash filter. Only the changed types are redone.
-
-A guard against repeated superseding: the activation handler debounces starts by `Reindex:SupersedeDebounce`
-(default 10 s), so bursts of activations (for example, a package with many parameters) produce one job.
+A new activation during a running job neither cancels it nor is rejected. Its params stay `Pending` and are
+covered by the durably queued follow-up (§7). The running job keeps going: its workers' handles are ≥ E, and §4.3
+keeps it from touching the newer activation. Superseding would throw away completed ranges, because there is no
+per-row marker. Rejecting with 409, as MS does, would block package installs.
 
 ---
 
@@ -425,12 +483,13 @@ A guard against repeated superseding: the activation handler debounces starts by
 
 ### 10.1 Multi-tenancy
 
-- SearchParameter status is global, and data lives in one database per tenant. A job therefore fans out over
-  **all** configured tenants, excluding tenant 0. A parameter completes only when every tenant verifies (F2).
-- Job metadata and the singleton lock live alongside the global conformance state (tenant 1).
-  `GET [base]/$reindex/{id}` resolves the same job from any tenant route.
-- Tenants are loaded once from appsettings. A newly configured tenant's database starts empty, or is caught by
-  startup reconciliation (§7).
+- E is global, from tenant 1's `SourceEvents`. Barrier_t, B_t, S_t, and the drain are **per tenant database**.
+  Transaction ids and visibility are local to each database, so tenant 1's `SourceEvents.TransactionId` is never
+  used for other tenants.
+- A job fans out over all configured tenants, excluding tenant 0. A parameter completes only when every tenant
+  completes.
+- Job metadata, the singleton lock, and `ReindexRequestedGeneration` live with the global conformance state in
+  tenant 1. Status resolves from any tenant route.
 
 ### 10.2 Configuration (`Reindex` section)
 
@@ -438,23 +497,23 @@ A guard against repeated superseding: the activation handler debounces starts by
 |---|---|---|
 | `Enabled` | `true` | Registers the endpoints and the orchestration |
 | `AutoStart` | `true` | Activation-triggered jobs (§7) |
+| `BarrierDelay` | `2 × Conformance:SyncIntervalSeconds` | Advisory catch-up time before the barrier (§5.2) |
 | `DefaultMaximumNumberOfResourcesPerQuery` | `10000` | §6.1 |
 | `DefaultMaximumNumberOfResourcesPerWrite` | `1000` | §6.1 |
 | `DefaultMaximumConcurrency` | `4` | §6.1 |
-| `MaxVerificationPasses` | `3` | §8.5 |
+| `StartDebounce` | `00:00:10` | §7 |
 | `StaleJobTimeout` | `00:30:00` | §8.6 |
+| `DrainWarningAfter` | `00:05:00` | §8.6 |
 | `ContinueAsNewThreshold` | `2000` | §8.2 |
-| `SupersedeDebounce` | `00:00:10` | §9.3 |
 | `RecentTerminalJobsListed` | `10` | §6.2 |
 
 ### 10.3 Observability
 
-- **Structured logs** with a consistent `Reindex:` prefix (lesson from microsoft/fhir-server#5789):
-  `jobId`, `tenantId`, `resourceType`, `range`, `expectedHash`, and counts.
-- **Metrics:** `reindex.resources.processed`, `reindex.resources.conflicts`, `reindex.resources.failed`,
-  `reindex.ranges.active`, `reindex.verification.stale`, `reindex.job.duration`, and
+- **Structured logs** with a `Reindex:` prefix, including `jobId`, `tenantId`, `resourceType`, `range`, `E`,
+  `B_t`, `S_t`, `phase`, and counts.
+- **Metrics:** `reindex.resources.processed`, `.conflicts`, and `.failed`; `reindex.ranges.active`;
+  `reindex.drain.wait`; `reindex.job.duration`; `conformance.barrier.rejections` (tagged by retry outcome);
   `search.partial_index.requests`.
-- **Events:** the existing reindex events in `SourceEvents` provide the audit trail.
 
 ---
 
@@ -466,25 +525,25 @@ All tests follow the `GivenContext_WhenAction_ThenResult` naming convention.
 
 | Layer | Scenarios |
 |---|---|
-| Unit (`Ignixa.Application.Tests`, next to `Search/Indexing/SearchParameterHashCultureInvarianceTests.cs`) | H1 includes package params; H-STATUS (a status change keeps the hash); H4 culture invariance (existing); deactivation changes the hash. |
-| Unit (`Ignixa.Application.Tests`) | Pending/Reindexing are hidden by default; the partial-index header admits them and adds a warning; strict vs lenient handling; CapabilityStatement shows `Enabled` only; parameter validation (F11, every 400 case); singleton/409; supersede; debounce. |
-| Orchestration (DurableTask test host) | Plan → ranges → verify → complete; verification re-pass; a range failure isolated to one tenant; cancel compensation; `ContinueAsNew` carries progress; hash guard behind/ahead. |
-| SQL integration (`Ignixa.DataLayer.SqlServer.IntegrationTests`, `TestTenantDatabase`) | `UpdateResourceSearchParams` rewrites every typed table including composites; no version, `LastUpdated`, or history change (F8); `IsHistory` conflict counting (F9); extension columns populated; stale count excludes deleted and history rows; `NULL` hash counts as stale. |
-| E2E (`Ignixa.Api.E2ETests`, SQL) | Install a package, then a search on the new param warns and is ignored, then the job completes, then the search returns the pre-existing resources. Also: concurrent updates during a job still converge; custom SearchParameter activate/deactivate round trip removes orphan rows; multi-tenant (two tenants, completion waits for both); single-resource GET dry run and POST persist. |
-| TestScript | `ms-reindex.json` passes. Its asserts move from `warningOnly` to required once the feature ships. |
-| Scale (manual / perf) | 10M Patient: throughput N1 and API latency N2 at default settings. |
+| Unit (`Ignixa.Application.Tests`) | Pending and Reindexing are hidden by default; the partial-index header admits them with a warning; strict vs lenient handling; CapabilityStatement shows `Enabled` only; the §4.3 guards (a `Started`/`Completed`/`Failed` event for an older activation or another job is ignored); override removal makes the restored definition `Pending`; F12 validation; singleton, 409, durable generation hand-off, and debounce; the handle's `DefinitionsEventId` is atomic with its indexer; bundles use the minimum. |
+| Orchestration (DurableTask test host) | delay → barrier → drain → plan → ranges → complete; definitions guard retries; `ContinueAsNew` carries B_t and S_t; one tenant's failure is isolated; cancel compensation; follow-up starts when an activation races job end. |
+| SQL integration (`TestTenantDatabase`) | Barrier raised monotonically; B_t and S_t are read after it. **Barrier race:** a stale writer that allocates concurrently with the raise is either ≤ B_t or rejected, in a loop of interleavings including under RCSI. The rejected transaction is marked failed and visibility advances. The cutoff set is exactly current, non-deleted rows with surrogate id ≤ S_t, including an import reservation that straddles B_t. `UpdateResourceSearchParams` rewrites every typed table and changes no version, transaction, or history (F9). `IsHistory` conflicts (F10). Extension columns are populated. Every write path allocates through `BeginTransactionAsync` (invariant). |
+| E2E (`Ignixa.Api.E2ETests`, SQL) | Install a package: the search warns and ignores the new param, the job completes, and the search returns the pre-existing resources. A write extracted with a stale handle after the barrier is rejected, refreshed, retried, and indexed correctly. Multi-tenant: completion waits for both tenants. A second package installed mid-job gets a follow-up job. Override add then remove. Single-resource GET dry run and POST persist. |
+| TestScript | `ms-reindex.json` passes, and its asserts become required. |
+| Scale | 10M Patient: N1/N2 at defaults; the barrier `SELECT` adds no measurable write latency (N6). |
 
-Regression vs guard: the "Pending param is searchable" test is a **regression** test (it fails at the base
-commit). The hash-stability tests are **guards**, and their failure must be confirmed with a mutation test.
+"Pending is searchable" is a **regression** test (it fails at base). The barrier-race and lifecycle-guard tests are
+**guards**, and each needs a mutation check: remove the barrier read, and remove the guard, and confirm the test
+fails.
 
 ### 11.2 Delivery phases
 
 | Phase | Scope | Independently valuable because |
 |---|---|---|
-| **0: Correctness** | §4.2 visibility fix and partial-index header; `Reindexing` added to the extraction set; H1/H3 hash writes; CapabilityStatement filter | It stops the silent wrong results today, even before any job exists. |
-| **1: Job** | `IReindexStore`, orchestration, `POST`/`GET`/`DELETE $reindex`, verification, events, retiring `ReindexJob` | Parameters actually reach `Enabled`. |
-| **2: Automation** | Activation trigger, supersede and debounce, startup reconciliation, convergence checkpoint table | Hands-off package installs. |
-| **3: Tools and polish** | Single-resource `$reindex`, `targetResourceTypes`, query delay, metrics dashboards, user docs (`docs/site/docs/server/fhir/search-parameters.md`, `configuration.md`) | Operability. |
+| **0: Correctness and plumbing** | §4.2 visibility and partial-index header; `Reindexing` added to the extraction set; CapabilityStatement filter; override removal makes the restored definition `Pending`; `DefinitionsHandle`; the barrier check in `BeginTransactionAsync` (barrier stays at 0 until the first job); lifecycle guards | It stops today's silent wrong results. Once a job raises the barrier, the write path is already correct. |
+| **1: Job** | `IReindexStore`, the orchestration (delay, barrier, drain, ranges), `POST`/`GET`/`DELETE $reindex`, retiring `ReindexJob` | Parameters actually reach `Enabled`. |
+| **2: Automation** | Activation trigger and debounce, durable follow-up hand-off, startup reconciliation | Hands-off package installs. |
+| **3: Tools and polish** | Single-resource `$reindex`, `targetResourceTypes` and maintenance jobs, query delay, dashboards, user docs (`docs/site/docs/server/fhir/search-parameters.md`, `configuration.md`), the hash cleanup PR | Operability. |
 
 ---
 
@@ -492,9 +551,10 @@ commit). The hash-stability tests are **guards**, and their failure must be conf
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q1 | How to prove convergence: a checkpoint table (§9.2), or a fixed wait of `2 × SyncIntervalSeconds`? | Checkpoint table. A fixed wait gives no guarantee when an instance's sync is failing, and the table is small and also helps diagnose sync lag. |
-| Q2 | Should `AutoStart` default to `true` in production? A first run after upgrade reindexes every row (`NULL` hash). | `true` for F5 and new installs. Document `false` plus a manual run for large upgrades. Consider a separate `AutoStartOnUpgrade`. |
-| Q3 | Duplicate kickoff: return 409 (explicit), or return the existing job with 201 (MS-compatible)? | 409 with `Content-Location` to the active job. Revisit if MS clients break. |
-| Q4 | Should a few failed resources (F10) be allowed to block `Enabled` indefinitely? | Yes, block by default (correctness first). Possibly add an operator override, `POST $reindex` with `acceptFailedResources=true`, that enables the param anyway and records the excluded ids in the event. |
-| Q5 | Tenant-scoped jobs (`/tenant/{id}/$reindex` affecting only that database)? | Not in v1. Global status makes tenant-scoped completion meaningless. Revisit if per-tenant conformance arrives. |
-| Q6 | Should job metadata live in the tenant 1 `BackgroundJob` table or a dedicated system store? | Tenant 1, consistent with where global conformance state lives today. |
+| Q1 | Is a writer that is still behind after `BarrierDelay` getting a one-time reject-and-retry (or a 503) acceptable? | Yes. It only happens when an instance missed more than 2 sync intervals, which is already a fault. Add an advisory instance-lag checkpoint only if the rejection metrics show impact. |
+| Q2 | Is adding the barrier `SELECT` to the begin-transaction command batch within the spirit of "do not modify `MergeResources` procedures"? | Yes. No procedure or TVP changes. A dedicated procedure called in the same batch is an alternative if reviewers prefer. |
+| Q3 | Duplicate kickoff: 409 (explicit), or return the existing job with 201 (MS-compatible)? | 409 with `Content-Location`. Revisit if MS clients break. |
+| Q4 | Should failed resources (F11) block `Enabled` indefinitely? | Block by default. Possibly add an operator override `acceptFailedResources=true` that records the excluded ids. |
+| Q5 | Tenant-scoped jobs? | Not in v1, because status is global. |
+| Q6 | Job metadata store: tenant 1 `BackgroundJob`, or a dedicated system store? | Tenant 1, with the global conformance state. |
+| Q7 | Should plain deactivation schedule an optional cleanup job for orphan rows? | No for v1. Orphans are harmless and are cleaned opportunistically. |

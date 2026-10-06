@@ -10,18 +10,21 @@ When a SearchParameter is added, changed, or removed (for example by installing 
 Ignixa has no way to bring those rows up to date:
 
 - **There is no reindex runner.** `ReindexJob.sql`, its five stored procedures, `UpdateResourceSearchParams.sql`,
-  the `Resource.SearchParamHash` column, the compiler's hash-mismatch filter
-  (`MatchPageEmitter.EmitSearchParameterHashClause`), and the `SearchParameterReindex{Started,Completed,Failed}`
-  events all exist, but no C# code uses them. `EternalOrchestrationStarter.cs:55` contains a commented-out
-  `ReindexOrchestration`.
+  and the `SearchParameterReindex{Started,Completed,Failed}` events all exist, but no C# code uses them.
+  `EternalOrchestrationStarter.cs:55` contains a commented-out `ReindexOrchestration`.
 - **Partially indexed parameters give wrong results without warning.** `ConformanceState` sets package parameters
   to `Pending`, but `CompositeSearchParameterDefinitionManager` admits `Enabled` *and* `Pending`. Also, the
   "searchable" resolver in `SearchServicesRegistration.cs:211` returns the full manager, so
   `SearchableSearchParameterDefinitionManager` is never used. A search on a parameter that was never reindexed
   misses older resources. With `:not` or `:missing`, it also returns resources that should not match.
-- **The hash cannot detect stale rows.** `ResourceRowGenerator.cs:119` never writes `SearchParamHash`
-  (`TODO Phase 2`). `CompositeSearchParameterDefinitionManager.GetSearchParameterHashForResourceType` delegates
-  to the base manager, so package parameters never change the hash.
+- **The raw data for exact scoping already exists.** Transaction ids are time-ordered, and each one is the base
+  of a disjoint range of `ResourceSurrogateId`s. Visibility advances only past contiguous completed
+  transactions. `SourceEvents` records the visible watermark at each append, and activation events name the
+  exact parameters and resource types that changed. So the set of resources to reindex can be computed from the
+  transaction cutoff alone; no per-row hash is needed. (`Resource.SearchParamHash` was never written.)
+- **Indexes are extracted before the transaction id is allocated.** Instances also pick up conformance changes by
+  polling. A write that lands after the cutoff can therefore still carry old definitions. Each tenant database
+  needs a conformance barrier that rejects allocations from writers with stale definitions.
 - **Clients and conformance tests expect the operation.** `ms-reindex.json` exercises the Microsoft FHIR Server
   `$reindex` API surface. All of its assertions are `warningOnly` today.
 
@@ -37,8 +40,11 @@ Ignixa has no way to bring those rows up to date:
 - Tenant `0` is reserved and is never exposed through `/tenant/0`.
 - Do not change `MergeResources` or its TVPs. Index-only rewrites go through `UpdateResourceSearchParams`. They
   must not change `Version`, `LastUpdated`, `RawResource`, or history.
-- The web farm syncs conformance state by polling (`ConformanceStateSyncService`, default 30s). Range planning
-  cannot start until no instance can still write resources with an outdated hash.
+- The web farm syncs conformance state by polling (`ConformanceStateSyncService`, default 30s). Polling
+  convergence is not a closed barrier: new instances, idle imports, and paused processes can still write with old
+  definitions. Correctness must be enforced by the database, not by timing.
+- Transaction ids and visibility watermarks belong to each database. Every tenant needs its own cutoff; tenant
+  1's `SourceEvents.TransactionId` cannot stand in for the others.
 - Normal reads and writes must keep running at production throughput while a reindex job runs on databases with
   10^8+ resources.
 - Every degraded state must be visible to operators: partial indexes, failed resources, and superseded jobs. There
@@ -46,13 +52,15 @@ Ignixa has no way to bring those rows up to date:
 
 ## Specification
 
-[spec.md](spec.md): the requirements, API, lifecycle, job design, and test plan for Ignixa `$reindex`.
+[spec.md](spec.md): the requirements, API, lifecycle, job design, and test plan for Ignixa `$reindex`. The
+reindex scope is an exact per-tenant transaction cutoff, fenced by a database-enforced conformance barrier. No
+per-row hash is used.
 
 ## Investigations
 
 | Investigation | Status | Summary |
 |--------------|--------|---------|
-| [microsoft-fhir-server-prior-art](investigations/microsoft-fhir-server-prior-art.md) | Complete | How microsoft/fhir-server implements `$reindex` (orchestrator/processing jobs, per-row hash, `UpdateResourceSearchParams`, status lifecycle, cache convergence). Lists what Ignixa adopts, adapts, and avoids. |
+| [microsoft-fhir-server-prior-art](investigations/microsoft-fhir-server-prior-art.md) | Complete | How microsoft/fhir-server implements `$reindex` (orchestrator/processing jobs, per-row hash, `UpdateResourceSearchParams`, status lifecycle, cache convergence). Lists what Ignixa adopts, adapts, and avoids, including replacing the hash with the transaction cutoff. |
 
 ## Decision
 

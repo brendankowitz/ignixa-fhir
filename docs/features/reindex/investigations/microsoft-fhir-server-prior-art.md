@@ -113,24 +113,23 @@ The enum values are `Disabled`, `Supported`, `Enabled`, `Deleted`, `PendingDelet
 
 | Adopt | Rationale |
 |---|---|
-| Per-row `SearchParamHash` keyed by resource type | The schema and procedure already exist in Ignixa. It is cheap, order-independent, and comparable across hosts. |
 | Orchestrator plus surrogate-id range fan-out | Same shape as Ignixa `$export`. Proven at 10^8+ rows. |
-| Expected-hash check in each worker | Stops a second parameter change from being overwritten by stale definitions. |
+| Worker check that the definitions are not older than the target | Adapted from the MS expected-hash check. Ignixa compares definitions positions (conformance `EventId`) instead of hashes. |
 | Index-only write via `UpdateResourceSearchParams` with an `IsHistory = 0` guard | Does not create a version. Concurrent writers win without a lock. |
-| Cache-convergence wait before planning | Without it, another instance can write the old hash behind the scanner. |
+| Cache convergence before completing | Adapted: Ignixa uses polling only as an advisory delay. Correctness comes from a database-enforced barrier that rejects transaction allocations from writers with stale definitions. |
 | Wire-compatible API (`Parameters` body, 201 + `Content-Location`, `DELETE` to cancel, per-resource GET dry run / POST persist) | `ms-reindex.json` and existing MS-oriented clients keep working. |
 | Partial-index opt-in header | Operators can still query during long runs, and they have to ask for it explicitly. |
 
 | Adapt / Avoid | Rationale |
 |---|---|
+| **Replace** the per-row `SearchParamHash` with a **per-tenant transaction cutoff fenced by a conformance barrier** | Ignixa transaction ids are time-ordered and anchor surrogate ranges, and visibility is contiguous. Raising a per-database `MinAcceptedDefinitionsEventId` and then reading `MAX(Transactions)` gives an exact clustered-range scope with exact totals. Writers with stale definitions are rejected at allocation. An upgrade alone triggers no reindex. |
 | **Avoid** accepting parameters that are not enforced | Silent no-ops are success-shaped fallbacks. Ignixa either implements a parameter or rejects it with 400. |
-| **Adapt:** filter by hash (`SearchParamHash IS NULL OR <> @hash`) instead of reindexing every row in range | Ignixa's compiler already emits this filter. Resumed or repeated runs only touch stale rows, and a final count gives a cheap completion check. |
-| **Adapt:** add a verification sweep before `Enabled` | MS can report success while resources remain unindexed. Ignixa enables a parameter only after a zero-mismatch count in every tenant. |
-| **Adapt:** use DurableTask instead of a custom JobQueue | ADR-2510. Gives replay, retries, and `TerminateInstanceAsync` without a heartbeat thread. Avoids the polling-orchestrator liveness gap behind the "stuck Queued" bugs. |
-| **Adapt:** fan out per tenant database | MS uses one database. Ignixa stores status globally and data per tenant. |
-| **Adapt:** supersede on concurrent parameter changes instead of returning 409 | Package activation in Ignixa is event-sourced and can run at any time. Failing it because a reindex is active blocks installs. |
-| **Avoid** the `PendingDisable` and `PendingDelete` states | In Ignixa, deactivating a parameter makes it unsearchable immediately, which is safe, and changes the hash. A later run removes its rows. No intermediate searchable state is needed. |
-| **Avoid** letting one failed range fail everything with no diagnostics | Ignixa records per-resource failures (type, id, reason) and leaves affected parameters `Pending`, with the details available from the status endpoint. |
+| **Adapt:** completion is fenced by the barrier plus a drain to B_t | MS can report success while resources remain unindexed. Ignixa's barrier makes it impossible for a stale writer to land outside the cutoff set. |
+| **Adapt:** use DurableTask instead of a custom JobQueue | ADR-2510. Gives replay, retries, and `TerminateInstanceAsync` without a heartbeat thread. |
+| **Adapt:** fan out per tenant database, with a cutoff per tenant | MS uses one database. Ignixa stores status globally and data per tenant. |
+| **Adapt:** *queue* a follow-up job on concurrent parameter changes, instead of returning 409 or superseding | Package activation can run at any time. Without a per-row marker, superseding would throw away completed ranges. |
+| **Avoid** the `PendingDisable` and `PendingDelete` states | Deactivation makes a parameter unsearchable immediately, which is safe. Orphan rows are harmless because ids are never reused across canonicals. Only removing an override needs a reindex. |
+| **Avoid** letting one failed range fail everything with no diagnostics | Ignixa records per-resource failures and isolates the failure to that tenant. |
 
 ## Alignment
 
@@ -147,16 +146,21 @@ The enum values are `Disabled`, `Supported`, `Enabled`, `Deleted`, `PendingDelet
 - Source citations are inline above, against microsoft/fhir-server `main` @ `035d5460`.
 - Ignixa assets reused or affected:
   - `src/DataLayer/Ignixa.DataLayer.SqlServer.Database/StoredProcedures/UpdateResourceSearchParams.sql`
-  - `Tables/Resource.sql` (`SearchParamHash`)
-  - `src/Core/Ignixa.Search.Sql/Builders/MatchPageEmitter.cs:125-138`
-  - `src/Core/Ignixa.Search.Sql/SearchPlanOptions.cs:45-51`
+  - `StoredProcedures/MergeResourcesBeginTransaction.sql` (time-ordered transaction ids that anchor surrogate
+    ranges) and `MergeResourcesAdvanceTransactionVisibility.sql` (contiguous visibility)
+  - `Tables/SourceEvents.sql` (`TransactionId`) and `EventStore/SqlServerSourceEventStore.cs`
+    (`ReadVisibleTransactionCutoffAsync`)
+  - `src/DataLayer/Ignixa.DataLayer.SqlServer/SqlServerFhirRepository.cs:216` (the transaction id is allocated
+    after the indexes are extracted)
+  - `src/Application/Ignixa.Application/Features/Conformance/ConformanceState.cs:42-56` (overrides reuse the
+    `SearchParamId`) and `:365-389`
   - `src/Application/Ignixa.Conformance.Events/Events/SearchParameterEvents.cs`
-  - `src/Application/Ignixa.Application/Features/Conformance/ConformanceState.cs:365-389`
   - `src/Application/Ignixa.Application.BackgroundOperations/Export/**`
   - `src/Core/Ignixa.TestScript.Suites/testscripts/Microsoft/ms-reindex.json`
 
 ## Verdict
 
-**Viable.** This is the reference model for [spec.md](../spec.md). Ignixa adopts the hash, range fan-out,
-index-only write, convergence wait, and API shape. It changes the mechanics to fit its own architecture
-(DurableTask, per-tenant databases, hash-filtered scans, a verification sweep) and drops the MS gaps listed above.
+**Viable.** This is the reference model for [spec.md](../spec.md). Ignixa adopts the range fan-out, index-only
+write, and API shape. It replaces the MS per-row hash with a barrier-fenced, per-tenant transaction cutoff, and
+changes the mechanics to fit its own architecture (DurableTask, per-tenant databases, queued follow-up jobs). It
+also drops the MS gaps listed above.
