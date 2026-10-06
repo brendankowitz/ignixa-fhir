@@ -65,7 +65,7 @@ public class PackageActivationPipeline(
 
         // 1. Load package resources from repository
         var packageResources = await _packageRepo.GetResourcesForActivationAsync(packageId, version, cancellationToken);
-        var resources = PackageResourceMapper.MapToPackageResources(packageResources);
+        var resources = PackageResourceMapper.MapToPackageResources(packageResources, _logger);
 
         _logger.LogDebug(
             "Loaded {SearchParamCount} SearchParameters and {StructureDefCount} StructureDefinitions",
@@ -243,7 +243,8 @@ public class PackageActivationPipeline(
                         componentData,
                         sp.Name,
                         sp.Description,
-                        sp.VectorConfig));
+                        sp.VectorConfig,
+                        sp.HasInvalidVectorConfig));
                 if (staged.ApplyProposedEvent(proposed) is { } issue)
                 {
                     return (events, issue);

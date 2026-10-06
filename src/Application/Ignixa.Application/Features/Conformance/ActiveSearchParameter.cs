@@ -21,6 +21,15 @@ public class ActiveSearchParameter
     public string? Description { get; init; }
     public VectorSearchConfig? VectorConfig { get; init; }
 
+    /// <summary>
+    /// True when the package's <c>vector-search-config</c> extension failed to parse
+    /// (<see cref="VectorConfig"/> is then null even though the extension was present). Carried
+    /// through so <see cref="Ignixa.Application.Features.Search.CompositeSearchParameterDefinitionManager"/>
+    /// can mark the resulting Core <c>SearchParameterInfo.IsSupported</c> false, consistent with the
+    /// IElement/runtime-registration path's handling of the same failure.
+    /// </summary>
+    public bool HasInvalidVectorConfig { get; init; }
+
     public SearchParameterStatus Status { get; set; }
     public string? ReindexJobId { get; set; }
 }

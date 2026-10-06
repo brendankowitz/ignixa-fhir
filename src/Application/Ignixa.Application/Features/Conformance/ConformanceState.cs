@@ -128,6 +128,7 @@ public sealed class ConformanceState : IDisposable
                 Name = parameter.Name,
                 Description = parameter.Description,
                 VectorConfig = parameter.VectorConfig,
+                HasInvalidVectorConfig = parameter.HasInvalidVectorConfig,
                 Status = parameter.Status,
                 ReindexJobId = parameter.ReindexJobId
             });
@@ -305,6 +306,7 @@ public sealed class ConformanceState : IDisposable
             Name = sp.Name,
             Description = sp.Description,
             VectorConfig = sp.VectorConfig,
+            HasInvalidVectorConfig = sp.HasInvalidVectorConfig,
             Status = isBaseFhir ? SearchParameterStatus.Enabled : SearchParameterStatus.Pending
         };
 
