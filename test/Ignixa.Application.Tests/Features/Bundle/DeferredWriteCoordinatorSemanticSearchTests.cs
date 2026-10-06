@@ -229,6 +229,154 @@ public class DeferredWriteCoordinatorSemanticSearchTests
         writtenWrappers[1].VectorIndices.ShouldHaveSingleItem().Chunks.ShouldHaveSingleItem().Passage.ShouldBe("beta");
     }
 
+    /// <summary>
+    /// Task 4 fix round 1 (CRITICAL): a batch micro-batch's entries still share one embedding call, but an
+    /// embedding failure must only fail the entries that actually contributed semantic text -- an entry
+    /// with no semantic text must commit to the repository regardless of what happens to its neighbours.
+    /// </summary>
+    [Fact]
+    public async Task GivenBatchWithSemanticAndPlainEntries_WhenEmbeddingFails_ThenOnlySemanticEntriesFail()
+    {
+        var failure = new HttpRequestException("boom");
+        var indexer = CreateIndexer(new ThrowingEmbeddingGenerator(failure));
+
+        var writtenWrappers = new List<ResourceWrapper>();
+        var repository = Substitute.For<IFhirRepository>();
+        repository.CreateOrUpdateAsync(Arg.Do<ResourceWrapper>(w => writtenWrappers.Add(w)), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var w = call.Arg<ResourceWrapper>();
+                return new UpdateResult(new ResourceKey(w.ResourceType, w.ResourceId, "1"), ReadOnlyMemory<byte>.Empty, DateTimeOffset.UnixEpoch);
+            });
+
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
+
+        var partitionStrategy = Substitute.For<IPartitionStrategy>();
+        partitionStrategy.DetermineWritePartition(Arg.Any<PartitionResolutionContext>(), Arg.Any<ResourceJsonNode>())
+            .Returns(new RequestPartition { Mode = PartitionMode.Isolated, PartitionIds = [1] });
+
+        var context = Substitute.For<IFhirRequestContext>();
+        context.TenantId.Returns(1);
+        var contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
+        contextAccessor.RequestContext.Returns(context);
+
+        var coordinator = await DeferredWriteCoordinator.CreateAsync(
+            channelCapacity: 10,
+            repositoryFactory: repositoryFactory,
+            partitionStrategy: partitionStrategy,
+            contextAccessor: contextAccessor,
+            logger: NullLogger<DeferredWriteCoordinator>.Instance,
+            semanticIndexer: indexer,
+            cancellationToken: CancellationToken.None);
+
+        var parameter = SemanticParameter();
+        var plainWrapper = new ResourceWrapper(
+            "Patient", "plain", "1", DateTimeOffset.UnixEpoch,
+            JsonSourceNodeFactory.Parse("""{"resourceType":"Patient","id":"plain"}"""), new ResourceRequest("POST", "Patient"));
+        var semanticWrapper = new ResourceWrapper(
+            "Patient", "semantic", "1", DateTimeOffset.UnixEpoch,
+            JsonSourceNodeFactory.Parse("""{"resourceType":"Patient","id":"semantic"}"""), new ResourceRequest("POST", "Patient"))
+        {
+            SearchIndices = [new SearchIndexEntry(parameter, new StringSearchValue("alpha"))],
+        };
+
+        var writePlain = coordinator.QueueWriteAsync(plainWrapper, entryIndex: 0, CancellationToken.None);
+        while (coordinator.PendingOperationCount < 1)
+        {
+            await Task.Yield();
+        }
+        var writeSemantic = coordinator.QueueWriteAsync(semanticWrapper, entryIndex: 1, CancellationToken.None);
+        while (coordinator.PendingOperationCount < 2)
+        {
+            await Task.Yield();
+        }
+
+        var errors = await coordinator.ProcessBatchAsync(batchSize: 50, CancellationToken.None);
+
+        errors.ShouldHaveSingleItem().ShouldBeOfType<EmbeddingUnavailableException>();
+        (await writePlain).Id.ShouldBe("plain");
+        await Should.ThrowAsync<EmbeddingUnavailableException>(() => writeSemantic);
+
+        writtenWrappers.ShouldHaveSingleItem().ResourceId.ShouldBe("plain");
+    }
+
+    /// <summary>
+    /// Task 4 fix round 1 (CRITICAL): a per-resource planning failure (not a string semantic value) must
+    /// fail only that entry; it must never reach the shared embedding call, and it must never fail a
+    /// sibling entry that has no planning problem of its own.
+    /// </summary>
+    [Fact]
+    public async Task GivenBatchEntryWithNonStringSemanticValue_WhenProcessed_ThenOnlyThatEntryFails()
+    {
+        var generator = new SpyEmbeddingGenerator();
+        var indexer = CreateIndexer(generator);
+
+        var writtenWrappers = new List<ResourceWrapper>();
+        var repository = Substitute.For<IFhirRepository>();
+        repository.CreateOrUpdateAsync(Arg.Do<ResourceWrapper>(w => writtenWrappers.Add(w)), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var w = call.Arg<ResourceWrapper>();
+                return new UpdateResult(new ResourceKey(w.ResourceType, w.ResourceId, "1"), ReadOnlyMemory<byte>.Empty, DateTimeOffset.UnixEpoch);
+            });
+
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
+
+        var partitionStrategy = Substitute.For<IPartitionStrategy>();
+        partitionStrategy.DetermineWritePartition(Arg.Any<PartitionResolutionContext>(), Arg.Any<ResourceJsonNode>())
+            .Returns(new RequestPartition { Mode = PartitionMode.Isolated, PartitionIds = [1] });
+
+        var context = Substitute.For<IFhirRequestContext>();
+        context.TenantId.Returns(1);
+        var contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
+        contextAccessor.RequestContext.Returns(context);
+
+        var coordinator = await DeferredWriteCoordinator.CreateAsync(
+            channelCapacity: 10,
+            repositoryFactory: repositoryFactory,
+            partitionStrategy: partitionStrategy,
+            contextAccessor: contextAccessor,
+            logger: NullLogger<DeferredWriteCoordinator>.Instance,
+            semanticIndexer: indexer,
+            cancellationToken: CancellationToken.None);
+
+        var parameter = SemanticParameter();
+        var goodWrapper = new ResourceWrapper(
+            "Patient", "good", "1", DateTimeOffset.UnixEpoch,
+            JsonSourceNodeFactory.Parse("""{"resourceType":"Patient","id":"good"}"""), new ResourceRequest("POST", "Patient"))
+        {
+            SearchIndices = [new SearchIndexEntry(parameter, new StringSearchValue("alpha"))],
+        };
+        var badWrapper = new ResourceWrapper(
+            "Patient", "bad", "1", DateTimeOffset.UnixEpoch,
+            JsonSourceNodeFactory.Parse("""{"resourceType":"Patient","id":"bad"}"""), new ResourceRequest("POST", "Patient"))
+        {
+            SearchIndices = [new SearchIndexEntry(parameter, new NumberSearchValue(1))],
+        };
+
+        var writeGood = coordinator.QueueWriteAsync(goodWrapper, entryIndex: 0, CancellationToken.None);
+        while (coordinator.PendingOperationCount < 1)
+        {
+            await Task.Yield();
+        }
+        var writeBad = coordinator.QueueWriteAsync(badWrapper, entryIndex: 1, CancellationToken.None);
+        while (coordinator.PendingOperationCount < 2)
+        {
+            await Task.Yield();
+        }
+
+        var errors = await coordinator.ProcessBatchAsync(batchSize: 50, CancellationToken.None);
+
+        errors.ShouldHaveSingleItem().ShouldBeOfType<SemanticSearchDefinitionException>();
+        (await writeGood).Id.ShouldBe("good");
+        await Should.ThrowAsync<SemanticSearchDefinitionException>(() => writeBad);
+
+        writtenWrappers.ShouldHaveSingleItem().ResourceId.ShouldBe("good");
+        writtenWrappers[0].VectorIndices.ShouldHaveSingleItem().Chunks.ShouldHaveSingleItem().Passage.ShouldBe("alpha");
+    }
+
     private static SemanticIndexer CreateIndexer(IEmbeddingGenerator<string, Embedding<float>> generator) =>
         new(generator, new SemanticTextChunker(ModelName), new VectorSearchOptions
         {

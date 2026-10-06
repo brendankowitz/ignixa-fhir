@@ -95,10 +95,14 @@ public class DeferredWriteCoordinator
     /// <summary>
     /// Reads up to <paramref name="batchSize"/> queued writes and commits each independently (a batch
     /// bundle's entries do not share a transaction, so one entry's failure must not affect another's).
-    /// When semantic search is enabled, every wrapper read in this call is embedded together in one
-    /// <see cref="SemanticIndexer.IndexAsync"/> call before any of them reaches the repository -- an
-    /// embedding failure here fails this whole micro-batch the same way a repository failure fails one
-    /// entry, rather than silently committing resources with no vectors.
+    /// When semantic search is enabled, every wrapper read in this call is still embedded together in
+    /// one <see cref="SemanticIndexer.IndexIndependentlyAsync"/> call -- one provider round trip for the
+    /// whole micro-batch, not one per entry -- but that call isolates each resource's outcome: an entry
+    /// with no semantic text is unaffected by any other entry's embedding failure, an entry whose own
+    /// planning fails (see <see cref="SemanticIndexer.IndexIndependentlyAsync"/>) fails only that entry,
+    /// and only entries that actually contributed passages to a failed shared embedding call fail
+    /// together. A failed entry here never reaches the repository below, exactly like a repository
+    /// failure caught in that loop.
     /// </summary>
     public async Task<List<Exception>> ProcessBatchAsync(int batchSize, CancellationToken cancellationToken)
     {
@@ -116,10 +120,10 @@ public class DeferredWriteCoordinator
 
         if (_semanticIndexer is not null)
         {
-            IReadOnlyList<ResourceWrapper> indexed;
+            IReadOnlyList<SemanticIndexResult> indexed;
             try
             {
-                indexed = await _semanticIndexer.IndexAsync(
+                indexed = await _semanticIndexer.IndexIndependentlyAsync(
                     operations.ConvertAll(op => op.Wrapper), cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -130,26 +134,27 @@ public class DeferredWriteCoordinator
                 }
                 throw;
             }
-            catch (Exception ex)
-            {
-                foreach (var operation in operations)
-                {
-                    _logger.LogWarning(ex, "Batch entry {EntryIndex} failed independently during semantic indexing", operation.EntryIndex);
-                    operation.CompletionSource.TrySetException(ex);
-                    errors.Add(ex);
-                }
-                return errors;
-            }
 
+            var indexedOperations = new List<DeferredWriteOperation>(operations.Count);
             for (var i = 0; i < operations.Count; i++)
             {
-                operations[i] = new DeferredWriteOperation
+                var result = indexed[i];
+                if (result.Error is { } error)
                 {
-                    Wrapper = indexed[i],
+                    _logger.LogWarning(error, "Batch entry {EntryIndex} failed independently during semantic indexing", operations[i].EntryIndex);
+                    operations[i].CompletionSource.TrySetException(error);
+                    errors.Add(error);
+                    continue;
+                }
+
+                indexedOperations.Add(new DeferredWriteOperation
+                {
+                    Wrapper = result.Resource!,
                     EntryIndex = operations[i].EntryIndex,
                     CompletionSource = operations[i].CompletionSource
-                };
+                });
             }
+            operations = indexedOperations;
         }
 
         foreach (var operation in operations)
