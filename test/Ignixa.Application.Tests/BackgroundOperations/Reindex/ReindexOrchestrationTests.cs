@@ -3,7 +3,6 @@ using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
-using NSubstitute;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
@@ -30,30 +29,7 @@ public class ReindexOrchestrationTests
     [Fact]
     public async Task GivenJob_WhenOrchestrated_ThenLifecycleDelayTenantWorkAndCompletionAreOrdered()
     {
-        var context = Substitute.For<OrchestrationContext>();
-        var now = new DateTime(2026, 10, 7, 0, 0, 0, DateTimeKind.Utc);
-        context.CurrentUtcDateTime.Returns(now);
-        context.ScheduleTask<StartReindexOutput>(
-                typeof(StartReindexActivity),
-                Arg.Any<object[]>())
-            .Returns(new StartReindexOutput([]));
-        context.CreateTimer(now.AddSeconds(30), true).Returns(Task.FromResult(true));
-        context.ScheduleTask<RaiseBarrierOutput>(
-                typeof(RaiseBarrierActivity),
-                Arg.Any<object[]>())
-            .Returns(new RaiseBarrierOutput(1, 10, 20));
-        context.ScheduleTask<AwaitDrainOutput>(
-                typeof(AwaitDrainActivity),
-                Arg.Any<object[]>())
-            .Returns(new AwaitDrainOutput(1, true, 10));
-        context.ScheduleTask<PlanReindexOutput>(
-                typeof(PlanReindexActivity),
-                Arg.Any<object[]>())
-            .Returns(new PlanReindexOutput([], null));
-        context.ScheduleTask<CompleteReindexOutput>(
-                typeof(CompleteReindexActivity),
-                Arg.Any<object[]>())
-            .Returns(new CompleteReindexOutput(true, []));
+        var context = new ExecutingContext();
 
         var input = ReindexOrchestrationInput.CreateForTest(
             "job",
@@ -64,22 +40,46 @@ public class ReindexOrchestrationTests
         var result = await new ReindexOrchestration().RunTask(context, input);
 
         result.Success.ShouldBeTrue();
-        _ = context.Received(1).ScheduleTask<StartReindexOutput>(
-            typeof(StartReindexActivity),
-            Arg.Any<object[]>());
-        _ = context.Received(1).CreateTimer(now.AddSeconds(30), true);
-        _ = context.Received(1).ScheduleTask<RaiseBarrierOutput>(
-            typeof(RaiseBarrierActivity),
-            Arg.Any<object[]>());
-        _ = context.Received(1).ScheduleTask<AwaitDrainOutput>(
-            typeof(AwaitDrainActivity),
-            Arg.Any<object[]>());
-        _ = context.Received(1).ScheduleTask<PlanReindexOutput>(
-            typeof(PlanReindexActivity),
-            Arg.Any<object[]>());
-        _ = context.Received(1).ScheduleTask<CompleteReindexOutput>(
-            typeof(CompleteReindexActivity),
-            Arg.Any<object[]>());
+        context.StartCalls.ShouldBe(1);
+        context.BarrierCalls.ShouldBe(1);
+        context.TimerCalls.ShouldBe(1);
+        context.CompletionCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GivenFailureSampleIsFull_WhenLaterResourceTypeFails_ThenEveryFailedTypeReachesCompletion()
+    {
+        var context = new ExecutingContext(includeResourceFailures: true);
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job",
+            targetEventId: 42,
+            barrierDelay: TimeSpan.Zero,
+            tenantIds: [1]) with
+        {
+            ResourceTypes = ["Observation", "Patient"],
+            ContinueAsNewThreshold = 100
+        };
+
+        var output = await new ReindexOrchestration().RunTask(context, input);
+
+        output.Success.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenStartActivityFailsAfterRetries_WhenOrchestrated_ThenJobIsFinalizedFailed()
+    {
+        var context = new ExecutingContext(failStart: true);
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job",
+            targetEventId: 42,
+            barrierDelay: TimeSpan.Zero,
+            tenantIds: [1]);
+
+        var output = await new ReindexOrchestration().RunTask(context, input);
+
+        output.Success.ShouldBeFalse();
+        context.CompletionCalls.ShouldBe(1);
+        context.LastCompletionInput!.FailureMessage.ShouldContain("start failed");
     }
 
     private static async Task<(ReindexOrchestrationOutput Output, ExecutingContext Context)> RunToCompletionAsync(
@@ -114,11 +114,16 @@ public class ReindexOrchestrationTests
         public ReindexOrchestrationInput Input { get; } = input;
     }
 
-    private sealed class ExecutingContext : OrchestrationContext
+    private sealed class ExecutingContext(
+        bool includeResourceFailures = false,
+        bool failStart = false) : OrchestrationContext
     {
         public int StartCalls { get; private set; }
         public int BarrierCalls { get; private set; }
+        public int TimerCalls { get; private set; }
+        public int CompletionCalls { get; private set; }
         public int ContinuationCount { get; private set; }
+        public CompleteReindexInput? LastCompletionInput { get; private set; }
 
         public override Task<T> ScheduleTask<T>(string name, string version, params object[] parameters)
         {
@@ -140,12 +145,16 @@ public class ReindexOrchestrationTests
             return Task.FromResult((T)result);
         }
 
-        public override Task<T> CreateTimer<T>(DateTime fireAt, T state) => Task.FromResult(state);
+        public override Task<T> CreateTimer<T>(DateTime fireAt, T state)
+        {
+            TimerCalls++;
+            return Task.FromResult(state);
+        }
 
         public override Task<T> CreateTimer<T>(
             DateTime fireAt,
             T state,
-            CancellationToken cancellationToken) => Task.FromResult(state);
+            CancellationToken cancellationToken) => CreateTimer(fireAt, state);
 
         public override Task<T> CreateSubOrchestrationInstance<T>(
             string name,
@@ -181,6 +190,11 @@ public class ReindexOrchestrationTests
         private StartReindexOutput Start()
         {
             StartCalls++;
+            if (failStart)
+            {
+                throw new InvalidOperationException("start failed");
+            }
+
             return new StartReindexOutput([]);
         }
 
@@ -197,11 +211,44 @@ public class ReindexOrchestrationTests
                     20)
                 : new PlanReindexOutput([new ReindexRange(21, 30, 10)], null);
 
-        private static ReindexRangeOutput Range(ReindexRangeInput input) =>
-            new(10, 10, input.StartSurrogateId == 11 ? 1 : 0, []);
-
-        private static CompleteReindexOutput Complete(CompleteReindexInput input)
+        private ReindexRangeOutput Range(ReindexRangeInput input)
         {
+            if (!includeResourceFailures)
+            {
+                return new(10, 10, input.StartSurrogateId == 11 ? 1 : 0, []);
+            }
+
+            var count = input.ResourceType == "Observation" ? 101 : 1;
+            return new ReindexRangeOutput(
+                10,
+                10 - count,
+                0,
+                Enumerable.Range(0, count)
+                    .Select(index => new ReindexFailedResource(
+                        input.ResourceType,
+                        $"{input.ResourceType}-{index}",
+                        "extraction failed"))
+                    .ToArray());
+        }
+
+        private CompleteReindexOutput Complete(CompleteReindexInput input)
+        {
+            CompletionCalls++;
+            LastCompletionInput = input;
+            if (input.FailureMessage is not null)
+            {
+                return new CompleteReindexOutput(false, []);
+            }
+
+            if (includeResourceFailures)
+            {
+                input.Tenants.Single().FailedResourceTypes.ShouldBe(
+                    ["Observation", "Patient"],
+                    ignoreOrder: true);
+                input.Tenants.Single().FailedResources.Count.ShouldBe(100);
+                return new CompleteReindexOutput(false, []);
+            }
+
             input.Tenants.Single().ResourcesToReindex.ShouldBe(30);
             input.Tenants.Single().ResourcesReindexed.ShouldBe(30);
             input.Tenants.Single().Conflicts.ShouldBe(1);

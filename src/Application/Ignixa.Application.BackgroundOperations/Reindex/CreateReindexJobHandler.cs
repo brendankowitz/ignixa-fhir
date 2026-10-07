@@ -74,6 +74,7 @@ public sealed class CreateReindexJobHandler(
         }
 
         var concreteResourceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var domainResourceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var tenant in tenants)
         {
             var repository = await _repositoryFactory.GetRepositoryAsync(
@@ -91,6 +92,12 @@ public sealed class CreateReindexJobHandler(
                 if (schema.GetTypeDefinition(resourceType)?.Info.IsAbstract == false)
                 {
                     concreteResourceTypes.Add(resourceType);
+                    var definition = schema.GetTypeDefinition(resourceType);
+                    if (definition!.Children.Any(child =>
+                        child.Info.Name.Equals("text", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        domainResourceTypes.Add(resourceType);
+                    }
                 }
             }
         }
@@ -115,12 +122,33 @@ public sealed class CreateReindexJobHandler(
                 var jobs = await _jobRepository.ListAsync(
                     (int)BackgroundJobType.Reindex,
                     ct);
-                var active = jobs.FirstOrDefault(job =>
+                var activeJobs = jobs.Where(job =>
                     job.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) ||
-                    job.Status.Equals("Running", StringComparison.OrdinalIgnoreCase));
-                if (active is not null)
+                    job.Status.Equals("Running", StringComparison.OrdinalIgnoreCase) ||
+                    job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase));
+                foreach (var active in activeJobs)
                 {
-                    return new ActiveReindexJobResult(active.JobId);
+                    if (active.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new ActiveReindexJobResult(active.JobId);
+                    }
+
+                    var state = await _taskHubClient.GetOrchestrationStateAsync(
+                        active.OrchestrationInstanceId ?? active.JobId);
+                    if (state?.OrchestrationStatus is OrchestrationStatus.Pending
+                        or OrchestrationStatus.Running
+                        or OrchestrationStatus.ContinuedAsNew)
+                    {
+                        return new ActiveReindexJobResult(active.JobId);
+                    }
+
+                    active.Status = "Failed";
+                    active.EndDate = DateTimeOffset.UtcNow;
+                    active.HeartbeatDate = DateTimeOffset.UtcNow;
+                    active.ErrorMessage = state is null
+                        ? "Reindex orchestration instance is missing."
+                        : $"Reindex orchestration ended as {state.OrchestrationStatus} before the job was finalized.";
+                    await _jobRepository.UpdateAsync(active, 1, ct);
                 }
 
                 long targetEventId;
@@ -131,7 +159,12 @@ public sealed class CreateReindexJobHandler(
                     resolution = ReindexTargetResolver.Resolve(
                         _conformanceState.AllSearchParameters.Values.ToArray(),
                         concreteResourceTypes,
-                        request.TargetResourceTypes);
+                        request.TargetResourceTypes,
+                        new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["Resource"] = concreteResourceTypes,
+                            ["DomainResource"] = domainResourceTypes
+                        });
                 }
                 if (!resolution.HasWork)
                 {
@@ -150,7 +183,10 @@ public sealed class CreateReindexJobHandler(
                         target.ResourceType,
                         target.SearchParamId,
                         target.ActivationEventId,
-                        target.AffectedResourceTypes)).ToArray(),
+                        target.AffectedResourceTypes)
+                    {
+                        ScheduledResourceTypes = target.ScheduledResourceTypes
+                    }).ToArray(),
                     MaximumNumberOfResourcesPerQuery = parameters.MaximumNumberOfResourcesPerQuery,
                     MaximumNumberOfResourcesPerWrite = parameters.MaximumNumberOfResourcesPerWrite,
                     MaximumConcurrency = parameters.MaximumConcurrency,
@@ -168,7 +204,12 @@ public sealed class CreateReindexJobHandler(
                     Progress = new JsonObject
                     {
                         ["phase"] = "BarrierDelay",
-                        ["ignoredLifecycleEvents"] = new JsonArray()
+                        ["ignoredLifecycleEvents"] = new JsonArray(),
+                        ["notCovered"] = new JsonArray(
+                            resolution.Targets
+                                .Where(target => !target.IsFullyCovered)
+                                .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
+                                .ToArray())
                     },
                     CreateDate = now,
                     HeartbeatDate = now

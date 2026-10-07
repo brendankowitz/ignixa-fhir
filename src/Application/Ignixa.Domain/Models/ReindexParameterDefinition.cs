@@ -6,4 +6,7 @@ public sealed record ReindexParameterDefinition(
     string ResourceType,
     int SearchParamId,
     long ActivationEventId,
-    IReadOnlyList<string> AffectedResourceTypes);
+    IReadOnlyList<string> AffectedResourceTypes)
+{
+    public IReadOnlyList<string> ScheduledResourceTypes { get; init; } = AffectedResourceTypes;
+}

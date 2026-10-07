@@ -21,10 +21,15 @@ public sealed class CompleteReindexActivity(
         var completedAt = timeProvider.GetUtcNow();
         await progress.ReportCompletingAsync(input.JobId, CancellationToken.None);
         var completions = new List<ReindexTargetCompletion>();
-        foreach (var target in input.Targets)
+        foreach (var target in input.Targets.Where(target => target.IsFullyCovered))
         {
             var errors = new List<string>();
             long resourcesIndexed = 0;
+            if (input.FailureMessage is not null)
+            {
+                errors.Add(input.FailureMessage);
+            }
+
             foreach (var tenant in input.Tenants)
             {
                 resourcesIndexed += tenant.ResourcesReindexed;
@@ -43,10 +48,10 @@ public sealed class CompleteReindexActivity(
                     tenant.TenantId,
                     CancellationToken.None);
                 if (repository is not IReindexStore store ||
-                    !await store.HasSearchParameterAsync(target.Canonical, CancellationToken.None))
+                    !await store.HasSearchParameterAsync(target.SearchParamId, CancellationToken.None))
                 {
                     errors.Add(
-                        $"Tenant {tenant.TenantId}: no physical dbo.SearchParam catalog id exists for {target.Canonical}.");
+                        $"Tenant {tenant.TenantId}: no physical dbo.SearchParam catalog id {target.SearchParamId} exists for {target.Canonical}.");
                 }
             }
 
@@ -58,7 +63,8 @@ public sealed class CompleteReindexActivity(
                 errors.Count == 0 ? null : string.Join(" ", errors)));
         }
 
-        var success = input.Tenants.All(tenant => tenant.Success) &&
+        var success = input.FailureMessage is null &&
+            input.Tenants.All(tenant => tenant.Success) &&
             completions.All(completion => completion.Success);
         var failedResources = input.Tenants
             .SelectMany(tenant => tenant.FailedResources)
@@ -67,6 +73,7 @@ public sealed class CompleteReindexActivity(
         IReadOnlyList<string> ignored = [];
         var won = await jobs.TryCompleteAsync(
             input.JobId,
+            success ? "Completed" : "Failed",
             async (_, cancellationToken) =>
             {
                 ignored = await lifecycle.CompleteAsync(
@@ -96,6 +103,19 @@ public sealed class CompleteReindexActivity(
                     tenants = input.Tenants,
                     failedResources,
                     ignoredLifecycleEvents = input.IgnoredLifecycleEvents.Concat(ignored).Distinct()
+                        .ToArray(),
+                    notCovered = input.Targets
+                        .Where(target => !target.IsFullyCovered)
+                        .Select(target => target.Canonical)
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray(),
+                    terminalOutcomes = completions.Select(completion => new
+                    {
+                        completion.Target.Canonical,
+                        completion.Success,
+                        completion.ResourcesIndexed,
+                        completion.ErrorMessage
+                    }).ToArray()
                 });
                 job.Result = new JsonObject
                 {

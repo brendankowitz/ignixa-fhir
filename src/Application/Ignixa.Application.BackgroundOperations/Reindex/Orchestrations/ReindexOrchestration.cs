@@ -16,9 +16,20 @@ public sealed class ReindexOrchestration
 
         if (!state.Started)
         {
-            var started = await context.ScheduleTask<StartReindexOutput>(
-                typeof(StartReindexActivity),
-                new StartReindexInput(input.JobId, input.TargetEventId, input.Targets, input.TenantIds));
+            var retry = CreateRetryOptions();
+            StartReindexOutput started;
+            try
+            {
+                started = await context.ScheduleWithRetry<StartReindexOutput>(
+                    typeof(StartReindexActivity),
+                    retry,
+                    new StartReindexInput(input.JobId, input.TargetEventId, input.Targets, input.TenantIds));
+            }
+            catch (Exception ex)
+            {
+                return await CompleteFailureAsync(context, input, state, ex);
+            }
+
             scheduledActivities++;
             state = state with
             {
@@ -30,7 +41,15 @@ public sealed class ReindexOrchestration
 
         if (!state.BarrierDelayCompleted)
         {
-            await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
+            try
+            {
+                await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
+            }
+            catch (Exception ex)
+            {
+                return await CompleteFailureAsync(context, input, state, ex);
+            }
+
             state = state with { BarrierDelayCompleted = true };
         }
 
@@ -49,8 +68,9 @@ public sealed class ReindexOrchestration
 
         var tenants = state.Tenants.Select(tenant => tenant.ToOutput()).ToArray();
 
-        var completed = await context.ScheduleTask<CompleteReindexOutput>(
+        var completed = await context.ScheduleWithRetry<CompleteReindexOutput>(
             typeof(CompleteReindexActivity),
+            CreateRetryOptions(),
             new CompleteReindexInput(
                 input.JobId,
                 input.TargetEventId,
@@ -66,6 +86,41 @@ public sealed class ReindexOrchestration
                 .Distinct(StringComparer.Ordinal)
                 .ToArray());
     }
+
+    private static async Task<ReindexOrchestrationOutput> CompleteFailureAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexOrchestrationState state,
+        Exception error)
+    {
+        var tenants = state.Tenants.Select(tenant => tenant.ToOutput()).ToArray();
+        var completed = await context.ScheduleWithRetry<CompleteReindexOutput>(
+            typeof(CompleteReindexActivity),
+            CreateRetryOptions(),
+            new CompleteReindexInput(
+                input.JobId,
+                input.TargetEventId,
+                input.Targets,
+                tenants,
+                state.IgnoredLifecycleEvents)
+            {
+                FailureMessage = $"Reindex orchestration failed: {error.Message}"
+            });
+        return new ReindexOrchestrationOutput(
+            completed.Success,
+            tenants,
+            state.IgnoredLifecycleEvents
+                .Concat(completed.IgnoredLifecycleEvents)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray());
+    }
+
+    private static RetryOptions CreateRetryOptions() =>
+        new(TimeSpan.FromSeconds(1), 5)
+        {
+            BackoffCoefficient = 2,
+            MaxRetryInterval = TimeSpan.FromSeconds(30)
+        };
 
     private static async Task<TenantAdvance> AdvanceTenantAsync(
         OrchestrationContext context,
@@ -150,11 +205,7 @@ public sealed class ReindexOrchestration
             var wave = state.PendingRanges
                 .Take(input.Parameters.MaximumConcurrency)
                 .ToArray();
-            var retry = new RetryOptions(TimeSpan.FromSeconds(1), 5)
-            {
-                BackoffCoefficient = 2,
-                MaxRetryInterval = TimeSpan.FromSeconds(30)
-            };
+            var retry = CreateRetryOptions();
             var tasks = wave.Select(
                 async range =>
                 {
@@ -187,6 +238,13 @@ public sealed class ReindexOrchestration
                 if (attempt.Output is not null)
                 {
                     failures.AddRange(attempt.Output.FailedResources.Take(100 - failures.Count));
+                    foreach (var failedType in attempt.Output.FailedResourceTypes)
+                    {
+                        if (!failedTypes.Contains(failedType, StringComparer.OrdinalIgnoreCase))
+                        {
+                            failedTypes.Add(failedType);
+                        }
+                    }
                 }
                 else
                 {

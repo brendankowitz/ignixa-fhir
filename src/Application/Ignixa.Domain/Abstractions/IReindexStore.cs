@@ -41,6 +41,6 @@ public interface IReindexStore
         CancellationToken cancellationToken);
 
     Task<bool> HasSearchParameterAsync(
-        string canonical,
+        int searchParamId,
         CancellationToken cancellationToken);
 }

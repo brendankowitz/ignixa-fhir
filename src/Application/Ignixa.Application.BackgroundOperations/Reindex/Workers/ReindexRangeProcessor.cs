@@ -53,6 +53,7 @@ public sealed class ReindexRangeProcessor(
         long? afterSurrogateId = null;
         var writeBatchSize = input.MaximumNumberOfResourcesPerWrite;
         var failures = new List<ReindexFailedResource>();
+        long failedResourceCount = 0;
         while (true)
         {
             var page = await store.ReadRangeAsync(
@@ -88,6 +89,7 @@ public sealed class ReindexRangeProcessor(
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    failedResourceCount++;
                     if (failures.Count < 100)
                     {
                         failures.Add(new ReindexFailedResource(
@@ -132,6 +134,10 @@ public sealed class ReindexRangeProcessor(
             resourcesRead,
             resourcesReindexed,
             conflicts,
-            failures);
+            failures)
+        {
+            FailedResourceCount = failedResourceCount,
+            FailedResourceTypes = failedResourceCount == 0 ? [] : [input.ResourceType]
+        };
     }
 }

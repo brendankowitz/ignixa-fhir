@@ -24,7 +24,9 @@ public sealed class GetReindexStatusHandler(
             return null;
         }
 
-        var isStale = job.Status.Equals("Running", StringComparison.OrdinalIgnoreCase) &&
+        var isStale = (job.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) ||
+                job.Status.Equals("Running", StringComparison.OrdinalIgnoreCase) ||
+                job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase)) &&
             timeProvider.GetUtcNow() - job.HeartbeatDate > options.Value.StaleJobTimeout;
         if (isStale)
         {

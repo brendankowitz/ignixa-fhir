@@ -23,9 +23,12 @@ public sealed class CancelReindexHandler(
             return new ReindexJobNotFoundResult(request.JobId);
         }
 
-        if (job.Status is "Completed" or "Failed" or "Cancelled")
+        if (job.Status is "Completed" or "Failed" or "Cancelled" or "Completing")
         {
-            return new ReindexJobAlreadyTerminalResult(job.JobId, job.Status);
+            var currentDecision = job.Status == "Completing"
+                ? job.Progress?["terminalDecision"]?.GetValue<string>() ?? job.Status
+                : job.Status;
+            return new ReindexJobAlreadyTerminalResult(job.JobId, currentDecision);
         }
 
         await taskHubClient.TerminateInstanceAsync(
@@ -37,9 +40,13 @@ public sealed class CancelReindexHandler(
             target.ResourceType,
             target.SearchParamId,
             target.ActivationEventId,
-            target.AffectedResourceTypes)).ToArray();
+            target.AffectedResourceTypes)
+        {
+            ScheduledResourceTypes = target.ScheduledResourceTypes
+        }).ToArray();
         var won = await jobs.TryCompleteAsync(
             job.JobId,
+            "Cancelled",
             (_, ct) => lifecycle.CompleteAsync(
                 job.JobId,
                 targets.Select(target => new ReindexTargetCompletion(
@@ -57,6 +64,17 @@ public sealed class CancelReindexHandler(
                 current.ErrorMessage = $"Cancelled: {request.Reason}";
                 current.Progress ??= new JsonObject();
                 current.Progress["cancellationReason"] = request.Reason;
+                current.Progress["terminalOutcomes"] = new JsonArray(
+                    targets
+                        .Where(target => target.IsFullyCovered)
+                        .Select(target => (JsonNode?)new JsonObject
+                        {
+                            ["canonical"] = target.Canonical,
+                            ["success"] = false,
+                            ["resourcesIndexed"] = 0,
+                            ["errorMessage"] = $"Cancelled: {request.Reason}"
+                        })
+                        .ToArray());
             },
             cancellationToken);
 
@@ -67,6 +85,9 @@ public sealed class CancelReindexHandler(
 
         var terminal = await repository.GetAsync(request.JobId, 1, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {request.JobId} disappeared during cancellation.");
-        return new ReindexJobAlreadyTerminalResult(terminal.JobId, terminal.Status);
+        var decidedStatus = terminal.Status == "Completing"
+            ? terminal.Progress?["terminalDecision"]?.GetValue<string>() ?? terminal.Status
+            : terminal.Status;
+        return new ReindexJobAlreadyTerminalResult(terminal.JobId, decidedStatus);
     }
 }

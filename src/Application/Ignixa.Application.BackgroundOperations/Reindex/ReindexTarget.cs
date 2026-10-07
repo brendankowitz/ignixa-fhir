@@ -6,4 +6,12 @@ public sealed record ReindexTarget(
     string ResourceType,
     int SearchParamId,
     long ActivationEventId,
-    IReadOnlyList<string> AffectedResourceTypes);
+    IReadOnlyList<string> AffectedResourceTypes)
+{
+    public IReadOnlyList<string> ScheduledResourceTypes { get; init; } = AffectedResourceTypes;
+
+    public bool IsFullyCovered =>
+        AffectedResourceTypes.Count == ScheduledResourceTypes.Count &&
+        AffectedResourceTypes.All(type =>
+            ScheduledResourceTypes.Contains(type, StringComparer.OrdinalIgnoreCase));
+}

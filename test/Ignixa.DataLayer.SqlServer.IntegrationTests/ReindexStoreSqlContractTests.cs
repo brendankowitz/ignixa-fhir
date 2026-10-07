@@ -65,11 +65,13 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
              VALUES ('{provisionedCanonical}', 'Supported', SYSUTCDATETIME(), 0);
              """);
 
+        var searchParamId = await _database.ExecuteScalarAsync<short>(
+            $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{provisionedCanonical}'");
         (await _store.HasSearchParameterAsync(
-            provisionedCanonical,
+            searchParamId,
             CancellationToken.None)).ShouldBeTrue();
         (await _store.HasSearchParameterAsync(
-            "http://example.org/SearchParameter/not-provisioned",
+            searchParamId + 1,
             CancellationToken.None)).ShouldBeFalse();
     }
 

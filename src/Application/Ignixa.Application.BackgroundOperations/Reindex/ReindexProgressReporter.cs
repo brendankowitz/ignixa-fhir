@@ -99,7 +99,7 @@ public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
                     GetInt64(tenant, "resourcesReindexed") + output.ResourcesReindexed;
                 tenant["conflicts"] = GetInt64(tenant, "conflicts") + output.Conflicts;
                 tenant["failedResources"] =
-                    GetInt64(tenant, "failedResources") + output.FailedResources.Count;
+                    GetInt64(tenant, "failedResources") + output.FailedResourceCount;
             },
             cancellationToken);
 

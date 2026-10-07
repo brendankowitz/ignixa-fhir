@@ -436,12 +436,19 @@ public sealed class SqlServerReindexStore(
     }
 
     public async Task<bool> HasSearchParameterAsync(
-        string canonical,
+        int searchParamId,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrEmpty(canonical);
-        return await _referenceDataCache.GetSearchParamIdAsync(canonical, cancellationToken).ConfigureAwait(false)
-            is not null;
+        using var command = new SqlCommand(
+            "SELECT SearchParamId FROM dbo.SearchParam WHERE SearchParamId = @SearchParamId");
+        command.Parameters.Add("@SearchParamId", SqlDbType.SmallInt).Value =
+            checked((short)searchParamId);
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId,
+            command,
+            static reader => reader.GetInt16(0),
+            cancellationToken);
+        return rows.Count != 0;
     }
 
     private async Task<IList<SqlDataRecord>?> ReadResourceWriteClaimsAsync(

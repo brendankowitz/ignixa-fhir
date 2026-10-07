@@ -45,12 +45,47 @@ public class CreateReindexJobHandlerTests
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
+        fixture.Runtime.GetOrchestrationStateAsync("active", false)
+            .Returns([
+                new OrchestrationState
+                {
+                    OrchestrationInstance = new OrchestrationInstance { InstanceId = "active" },
+                    OrchestrationStatus = OrchestrationStatus.Running
+                }
+            ]);
 
         var result = await fixture.Handler.HandleAsync(
             new CreateReindexJobCommand(),
             CancellationToken.None);
 
         result.ShouldBeOfType<ActiveReindexJobResult>().ActiveJobId.ShouldBe("active");
+    }
+
+    [Fact]
+    public async Task GivenOrphanedQueuedJob_WhenJobIsCreated_ThenOrphanIsFailedAndNewJobStarts()
+    {
+        var fixture = CreateFixture();
+        await fixture.Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "orphan",
+            OrchestrationInstanceId = "orphan",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Queued",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        fixture.Runtime.GetOrchestrationStateAsync("orphan", false)
+            .Returns([]);
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand(),
+            CancellationToken.None);
+
+        result.ShouldBeOfType<ReindexJobCreatedResult>();
+        var jobs = await fixture.Repository.ListAsync();
+        jobs.Single(job => job.JobId == "orphan").Status.ShouldBe("Failed");
+        jobs.Count(job => job.Status == "Queued").ShouldBe(1);
     }
 
     [Fact]

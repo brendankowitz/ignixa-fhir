@@ -8,7 +8,8 @@ public static class ReindexTargetResolver
     public static ReindexTargetResolution Resolve(
         IEnumerable<ActiveSearchParameter> parameters,
         IReadOnlyCollection<string> concreteResourceTypes,
-        IReadOnlyCollection<string>? targetResourceTypes)
+        IReadOnlyCollection<string>? targetResourceTypes,
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>>? abstractResourceTypeExpansions = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(concreteResourceTypes);
@@ -22,35 +23,39 @@ public static class ReindexTargetResolver
             .Where(parameter => parameter.Status == SearchParameterStatus.Pending)
             .Select(parameter =>
             {
-                IEnumerable<string> affected = parameter.TargetResourceTypes is { Count: > 0 }
-                    ? parameter.TargetResourceTypes
-                    : concrete.Contains(parameter.ResourceType, StringComparer.OrdinalIgnoreCase)
-                        ? [parameter.ResourceType]
-                        : concrete;
-                if (requested is not null)
-                {
-                    affected = affected.Where(requested.Contains);
-                }
-
+                IEnumerable<string> affected = concrete.Contains(
+                    parameter.ResourceType,
+                    StringComparer.OrdinalIgnoreCase)
+                    ? [parameter.ResourceType]
+                    : abstractResourceTypeExpansions?.TryGetValue(
+                        parameter.ResourceType,
+                        out var expansion) == true
+                        ? expansion
+                        : parameter.ResourceType.Equals("Resource", StringComparison.OrdinalIgnoreCase)
+                            ? concrete
+                            : [];
                 var affectedTypes = affected
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Order(StringComparer.Ordinal)
                     .ToArray();
-                return affectedTypes.Length == 0
-                    ? null
-                    : new ReindexTarget(
+                var scheduledTypes = requested is null
+                    ? affectedTypes
+                    : affectedTypes.Where(requested.Contains).ToArray();
+                return new ReindexTarget(
                         parameter.Canonical,
                         parameter.Code,
                         parameter.ResourceType,
                         parameter.SearchParamId,
                         parameter.ActivationEventId,
-                        affectedTypes);
+                        affectedTypes)
+                    {
+                        ScheduledResourceTypes = scheduledTypes
+                    };
             })
-            .OfType<ReindexTarget>()
             .ToArray();
 
         var resourceTypes = requested is null
-            ? targets.SelectMany(target => target.AffectedResourceTypes)
+            ? targets.SelectMany(target => target.ScheduledResourceTypes)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Order(StringComparer.Ordinal)
                 .ToArray()

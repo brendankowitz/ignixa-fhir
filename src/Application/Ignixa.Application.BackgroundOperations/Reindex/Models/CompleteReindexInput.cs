@@ -5,4 +5,7 @@ public sealed record CompleteReindexInput(
     long TargetEventId,
     IReadOnlyList<ReindexTarget> Targets,
     IReadOnlyList<ReindexTenantOutput> Tenants,
-    IReadOnlyList<string> IgnoredLifecycleEvents);
+    IReadOnlyList<string> IgnoredLifecycleEvents)
+{
+    public string? FailureMessage { get; init; }
+}

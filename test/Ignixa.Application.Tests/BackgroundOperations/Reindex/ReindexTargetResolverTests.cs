@@ -34,6 +34,45 @@ public class ReindexTargetResolverTests
             ["Patient", "Observation", "Encounter"],
             ["Patient"]);
 
+        result.Targets.Single().AffectedResourceTypes.ShouldBe(["Encounter", "Observation", "Patient"]);
+        result.Targets.Single().ScheduledResourceTypes.ShouldBe(["Patient"]);
+        result.Targets.Single().IsFullyCovered.ShouldBeFalse();
+        result.ResourceTypes.ShouldBe(["Patient"]);
+    }
+
+    [Fact]
+    public void GivenDomainResourceParameter_WhenTargetsAreResolved_ThenOnlyConcreteDescendantsAreExpanded()
+    {
+        var pending = Parameter(
+            "http://example.org/SearchParameter/domain-custom",
+            "DomainResource");
+
+        var result = ReindexTargetResolver.Resolve(
+            [pending],
+            ["Binary", "Observation", "Patient"],
+            targetResourceTypes: null,
+            new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["DomainResource"] = ["Observation", "Patient"]
+            });
+
+        result.Targets.Single().AffectedResourceTypes.ShouldBe(["Observation", "Patient"]);
+        result.ResourceTypes.ShouldBe(["Observation", "Patient"]);
+    }
+
+    [Fact]
+    public void GivenReferenceParameter_WhenTargetsAreResolved_ThenReferenceTargetsDoNotChangeReindexScope()
+    {
+        var pending = Parameter(
+            "http://example.org/SearchParameter/patient-practitioner",
+            "Patient",
+            ["Practitioner"]);
+
+        var result = ReindexTargetResolver.Resolve(
+            [pending],
+            ["Patient", "Practitioner"],
+            targetResourceTypes: null);
+
         result.Targets.Single().AffectedResourceTypes.ShouldBe(["Patient"]);
         result.ResourceTypes.ShouldBe(["Patient"]);
     }
