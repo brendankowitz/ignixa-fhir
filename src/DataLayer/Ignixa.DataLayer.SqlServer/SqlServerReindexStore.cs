@@ -38,7 +38,6 @@ public sealed class SqlServerReindexStore(
     private readonly ILogger _logger =
         logger ?? throw new ArgumentNullException(nameof(logger));
 
-    private readonly ResourceWriteClaimRowGenerator _resourceWriteClaimRowGenerator = new();
     private readonly TokenSearchParameterRowGenerator _tokenRowGenerator = new(referenceDataCache.SystemMappings);
     private readonly ISearchParameterRowGenerator _referenceRowGenerator = new ReferenceSearchParameterRowGenerator();
     private readonly ISearchParameterRowGenerator _stringRowGenerator = new StringSearchParameterRowGenerator();
@@ -92,9 +91,14 @@ public sealed class SqlServerReindexStore(
             END CATCH;
 
             SELECT
-                ISNULL(MAX(SurrogateIdRangeFirstValue), -1),
-                ISNULL(MAX(SurrogateIdRangeLastValue), -1)
-            FROM dbo.Transactions;
+                ISNULL((SELECT MAX(SurrogateIdRangeFirstValue) FROM dbo.Transactions), -1),
+                ISNULL((
+                    SELECT MAX(CutoffValue)
+                    FROM (
+                        SELECT MAX(SurrogateIdRangeLastValue) AS CutoffValue FROM dbo.Transactions
+                        UNION ALL
+                        SELECT MAX(ResourceSurrogateId) AS CutoffValue FROM dbo.Resource
+                    ) AS CutoffCandidates), -1);
             """);
         command.Parameters.Add("@TargetEventId", SqlDbType.BigInt).Value = targetEventId;
         command.Parameters.Add("@BarrierId", SqlDbType.VarChar, 128).Value = BarrierParameterId;
@@ -140,31 +144,77 @@ public sealed class SqlServerReindexStore(
             return [];
         }
 
-        using var command = new SqlCommand(
+        using var firstIdCommand = new SqlCommand(
             """
-            WITH CurrentRows AS (
-                SELECT ResourceSurrogateId,
-                       (ROW_NUMBER() OVER (ORDER BY ResourceSurrogateId) - 1) / @TargetRangeSize AS RangeNumber
-                FROM dbo.Resource
-                WHERE ResourceTypeId = @ResourceTypeId
-                  AND IsHistory = 0
-                  AND IsDeleted = 0
-                  AND ResourceSurrogateId <= @UpperBoundSurrogateId
-            )
-            SELECT MIN(ResourceSurrogateId), MAX(ResourceSurrogateId)
-            FROM CurrentRows
-            GROUP BY RangeNumber
-            ORDER BY RangeNumber;
+            SELECT MIN(ResourceSurrogateId)
+            FROM dbo.Resource
+            WHERE ResourceTypeId = @ResourceTypeId
+              AND IsHistory = 0
+              AND IsDeleted = 0
+              AND ResourceSurrogateId <= @UpperBoundSurrogateId;
             """);
-        command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
-        command.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
-        command.Parameters.Add("@TargetRangeSize", SqlDbType.Int).Value = targetRangeSize;
-
-        return await _sqlExecutionService.ExecuteReaderAsync(
+        firstIdCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
+        firstIdCommand.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
+        var firstIds = await _sqlExecutionService.ExecuteReaderAsync(
             _tenantId,
-            command,
-            static reader => (Start: reader.GetInt64(0), End: reader.GetInt64(1)),
+            firstIdCommand,
+            static reader => reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0),
             cancellationToken);
+        if (firstIds.Single() is not { } firstId)
+        {
+            return [];
+        }
+
+        // Each seek reads at most targetRangeSize rows from the clustered resource key. The resulting
+        // ranges deliberately cover ID gaps, so they partition [firstId, upperBoundSurrogateId] without
+        // a ROW_NUMBER window over the whole cutoff set.
+        var ranges = new List<(long Start, long End)>();
+        var cursor = long.MinValue;
+        var rangeStart = firstId;
+        while (true)
+        {
+            using var nextRangeCommand = new SqlCommand(
+                """
+                SELECT MAX(ResourceSurrogateId), COUNT_BIG(*)
+                FROM (
+                    SELECT TOP (@TargetRangeSize) ResourceSurrogateId
+                    FROM dbo.Resource
+                    WHERE ResourceTypeId = @ResourceTypeId
+                      AND IsHistory = 0
+                      AND IsDeleted = 0
+                      AND ResourceSurrogateId > @Cursor
+                      AND ResourceSurrogateId <= @UpperBoundSurrogateId
+                    ORDER BY ResourceSurrogateId
+                ) AS CurrentRange;
+                """);
+            nextRangeCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
+            nextRangeCommand.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
+            nextRangeCommand.Parameters.Add("@TargetRangeSize", SqlDbType.Int).Value = targetRangeSize;
+            nextRangeCommand.Parameters.Add("@Cursor", SqlDbType.BigInt).Value = cursor;
+            var rangeEnds = await _sqlExecutionService.ExecuteReaderAsync(
+                _tenantId,
+                nextRangeCommand,
+                static reader => (
+                    End: reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0),
+                    Count: reader.GetInt64(1)),
+                cancellationToken);
+            var (end, count) = rangeEnds.Single();
+            if (!end.HasValue)
+            {
+                ranges[^1] = (ranges[^1].Start, upperBoundSurrogateId);
+                return ranges;
+            }
+
+            if (count < targetRangeSize || end.Value == upperBoundSurrogateId)
+            {
+                ranges.Add((rangeStart, upperBoundSurrogateId));
+                return ranges;
+            }
+
+            ranges.Add((rangeStart, end.Value));
+            rangeStart = end.Value + 1;
+            cursor = end.Value;
+        }
     }
 
     public async Task<IReadOnlyList<ReindexResource>> ReadRangeAsync(
@@ -255,8 +305,7 @@ public sealed class SqlServerReindexStore(
         var resourceSurrogateIdMap = resources.ToDictionary(resource => resource.Resource, resource => resource.ResourceSurrogateId);
 
         var resourceRecords = CreateResourceRecords(resources, resourceTypeIdMap);
-        var resourceWriteClaims = MaterializeIfNotEmpty(
-            _resourceWriteClaimRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceSurrogateIdMap));
+        var resourceWriteClaims = await ReadResourceWriteClaimsAsync(resources, cancellationToken);
         var referenceSearchParams = MaterializeIfNotEmpty(
             _referenceRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
         var tokenSearchParams = MaterializeIfNotEmpty(
@@ -336,9 +385,71 @@ public sealed class SqlServerReindexStore(
             resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToArray();
         var uriExtensions = _uriRowGenerator.ExtractExtensionData(
             resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToArray();
-        await _extensionUpdater.UpdateAllExtensionsAsync(tokenExtensions, uriExtensions, cancellationToken);
+        if (tokenExtensions.Length > 0 || uriExtensions.Length > 0)
+        {
+            try
+            {
+                await _extensionUpdater.UpdateAllExtensionsAsync(tokenExtensions, uriExtensions, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to update extension columns after reindex (TenantId={TenantId}, ResourceCount={ResourceCount}, TokenExtensionCount={TokenExtensionCount}, UriExtensionCount={UriExtensionCount}). Core search indices were successfully updated; extension columns remain NULL.",
+                    _tenantId,
+                    resources.Count,
+                    tokenExtensions.Length,
+                    uriExtensions.Length);
+            }
+        }
 
         return (resources.Count - conflicts, conflicts);
+    }
+
+    private async Task<IList<SqlDataRecord>?> ReadResourceWriteClaimsAsync(
+        IReadOnlyList<ReindexResource> resources,
+        CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand(
+            """
+            SELECT claims.ResourceSurrogateId, claims.ClaimTypeId, claims.ClaimValue
+            FROM dbo.ResourceWriteClaim AS claims
+            INNER JOIN OPENJSON(@ResourceSurrogateIds) AS resourceIds
+                ON claims.ResourceSurrogateId = CONVERT(BIGINT, resourceIds.[value]);
+            """);
+        command.Parameters.Add("@ResourceSurrogateIds", SqlDbType.NVarChar, -1).Value =
+            System.Text.Json.JsonSerializer.Serialize(resources.Select(resource => resource.ResourceSurrogateId));
+        var claims = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId,
+            command,
+            static reader => (
+                ResourceSurrogateId: reader.GetInt64(0),
+                ClaimTypeId: reader.GetByte(1),
+                ClaimValue: reader.GetString(2)),
+            cancellationToken);
+
+        if (claims.Count == 0)
+        {
+            return null;
+        }
+
+        SqlMetaData[] metadata =
+        [
+            new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
+            new SqlMetaData("ClaimTypeId", SqlDbType.TinyInt),
+            new SqlMetaData("ClaimValue", SqlDbType.NVarChar, 128),
+        ];
+        var records = new List<SqlDataRecord>(claims.Count);
+        foreach (var claim in claims)
+        {
+            var record = new SqlDataRecord(metadata);
+            record.SetInt64(0, claim.ResourceSurrogateId);
+            record.SetByte(1, claim.ClaimTypeId);
+            record.SetString(2, claim.ClaimValue);
+            records.Add(record);
+        }
+
+        return records;
     }
 
     private async Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
