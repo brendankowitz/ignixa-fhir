@@ -213,7 +213,9 @@ public class SqlServerFhirRepository(
         // The merge TVP carries this successor version into the stored procedure's locked conflict
         // check. Never re-read and replace it after validation: that would lose the client's condition.
         var newVersion = checked((current?.Version ?? 0) + 1);
-        var transactionId = await GetNextTransactionIdAsync(cancellationToken);
+        var transactionId = await GetNextTransactionIdAsync(
+            resource.DefinitionsEventId,
+            cancellationToken);
 
         // Must happen BEFORE handing resource.Resource to the merge repository -- the merge path
         // compresses resource.Resource into RawResource bytes, so the version/timestamp needs to be
@@ -290,7 +292,10 @@ public class SqlServerFhirRepository(
             resource.Resource.Meta.VersionId = checked((current?.Version ?? 0) + 1).ToString();
         }
 
-        var (transactionId, _) = await _mergeRepository.BeginTransactionAsync(resources.Count, cancellationToken);
+        var (transactionId, _) = await _mergeRepository.BeginTransactionAsync(
+            resources.Count,
+            DefinitionsEventIdSelector.GetMinimum(resources),
+            cancellationToken);
         foreach (var resource in resources)
         {
             resource.Resource.Meta.LastUpdatedOffset = transactionId.ToDate();
@@ -338,9 +343,17 @@ public class SqlServerFhirRepository(
     }
 
     /// <inheritdoc/>
+    public ValueTask<ResourceKey?> DeleteAsync(
+        ResourceKey key,
+        ResourceRequest request,
+        TransactionId? transactionId = null,
+        CancellationToken cancellationToken = default) =>
+        DeleteAsync(key, request, definitionsEventId: 0, transactionId, cancellationToken);
+
     public async ValueTask<ResourceKey?> DeleteAsync(
         ResourceKey key,
         ResourceRequest request,
+        long definitionsEventId,
         TransactionId? transactionId = null,
         CancellationToken cancellationToken = default)
     {
@@ -372,12 +385,12 @@ public class SqlServerFhirRepository(
         var newVersion = currentEntity.Value.Version + 1;
         var currentSurrogateId = currentEntity.Value.ResourceSurrogateId;
 
+        var ownsTransaction = !transactionId.HasValue;
+        var writeTransactionId = transactionId ?? new TransactionId(
+            (await _mergeRepository.BeginTransactionAsync(1, definitionsEventId, cancellationToken)).TransactionId);
+
         // Computed here, OUTSIDE the unit of work below, because that callback can be re-run from the top
-        // after a transient fault and must produce the same delete each time. Both values are safe to reuse
-        // across attempts precisely because the rollback undid the attempt that used them: the tombstone's
-        // meta.lastUpdated stays the instant the delete was asked for rather than drifting to whenever the
-        // last retry happened, and the surrogate ID stays one ID per delete instead of burning a fresh
-        // sequence value (and a fresh round trip) per attempt.
+        // after a transient fault and must produce the same delete each time.
         var tombstoneJsonNode = new ResourceJsonNode
         {
             ResourceType = key.ResourceType,
@@ -385,11 +398,11 @@ public class SqlServerFhirRepository(
             Meta = new Meta
             {
                 VersionId = newVersion.ToString(),
-                LastUpdatedOffset = DateTimeOffset.UtcNow
+                LastUpdatedOffset = writeTransactionId.Value.ToDate()
             }
         };
         var compressedTombstone = _compressor.SerializeAndCompress(tombstoneJsonNode);
-        var newSurrogateId = await GetNextSurrogateIdAsync(cancellationToken);
+        var newSurrogateId = writeTransactionId.Value;
 
         // All four effects -- history flip, tombstone insert, TTL removal, search-index wipe -- commit
         // together or not at all. What the EF port expressed as one SaveChangesAsync became four
@@ -403,35 +416,34 @@ public class SqlServerFhirRepository(
         // anomaly outlived the non-atomic shape: it comes from the read's plan, not from any committed
         // state, and it was still measured at 8 of 30 racing reads with this transaction already in place.
         // Closing it took the INDEX hint on GetAsync's current-resource read -- see the comment there.
-        await _sqlExecutionService.ExecuteInTransactionAsync(
-            _tenantId,
-            async (transaction, ct) =>
-            {
-                // ResourceTypeId and IsHistory both matter here. ResourceSurrogateId is only unique WITHIN a
-                // resource type (PKC_Resource is keyed on both), and the surrogate ID came from a read that
-                // committed before this transaction began -- so without "IsHistory = 0" a writer that
-                // versioned the row in between would leave this re-stamping an already-history row,
-                // reporting success, and inserting the tombstone at a version that is no longer current.
-                // Zero rows means exactly that happened.
-                //
-                // This guard is also what makes the FROZEN surrogate ID above safe, which is the less
-                // obvious half of why it is load-bearing. GetNextSurrogateIdAsync encodes the wall clock at
-                // the moment the delete was asked for, so a writer that versions the row afterwards gets a
-                // surrogate that sorts ABOVE the tombstone's. Weakening this predicate -- dropping
-                // "IsHistory = 0", or letting a zero-row flip carry on -- would let the tombstone land BELOW
-                // a newer live version and invert the surrogate ordering that
-                // GetCurrentVersionOrderedBySurrogateIdAsync (ORDER BY ResourceSurrogateId DESC),
-                // MergeResources.sql (which raises 50409 on "SurrogateId <= PreviousSurrogateId") and the
-                // filtered unique index IX_Resource_ResourceTypeId_ResourceId in Resource.sql (one current
-                // row per resource) all lean on.
-                using (var historyCommand = new SqlCommand(
+        try
+        {
+            await _sqlExecutionService.ExecuteInTransactionAsync(
+                _tenantId,
+                async (transaction, ct) =>
+                {
+                    // ResourceTypeId and IsHistory both matter here. ResourceSurrogateId is only unique WITHIN a
+                    // resource type (PKC_Resource is keyed on both), and the surrogate ID came from an allocation
+                    // that committed before this transaction began -- so without "IsHistory = 0" a writer that
+                    // versioned the row in between would leave this re-stamping an already-history row,
+                    // reporting success, and inserting the tombstone at a version that is no longer current.
+                    // Zero rows means exactly that happened.
+                    //
+                    // This guard is also what makes the frozen allocation ID above safe. A writer that versions
+                    // the row afterwards gets a later allocation, so weakening this predicate -- dropping
+                    // "IsHistory = 0", or letting a zero-row flip carry on -- would let the tombstone land below
+                    // a newer live version and invert the surrogate ordering that
+                    // GetCurrentVersionOrderedBySurrogateIdAsync (ORDER BY ResourceSurrogateId DESC),
+                    // MergeResources.sql (which raises 50409 on "SurrogateId <= PreviousSurrogateId") and the
+                    // filtered unique index IX_Resource_ResourceTypeId_ResourceId in Resource.sql (one current
+                    // row per resource) all lean on.
+                    using (var historyCommand = new SqlCommand(
                     """
                     UPDATE dbo.Resource SET IsHistory = 1, HistoryTransactionId = @HistoryTransactionId
                     WHERE ResourceTypeId = @ResourceTypeId AND ResourceSurrogateId = @ResourceSurrogateId AND IsHistory = 0;
                     """))
                 {
-                    historyCommand.Parameters.Add("@HistoryTransactionId", SqlDbType.BigInt).Value =
-                        (object?)transactionId?.Value ?? DBNull.Value;
+                    historyCommand.Parameters.Add("@HistoryTransactionId", SqlDbType.BigInt).Value = writeTransactionId.Value;
                     historyCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
                     historyCommand.Parameters.Add("@ResourceSurrogateId", SqlDbType.BigInt).Value = currentSurrogateId;
 
@@ -467,11 +479,6 @@ public class SqlServerFhirRepository(
                     }
                 }
 
-                // Deliberate divergence from the legacy EF port: this method never allocates a transactionId
-                // (no transaction-scoped delete), matching the documented semantics pinned directly by
-                // SqlServerFhirRepositoryCrudTests -- see that file for the exact behavioral contract this
-                // comment used to restate in full. This divergence is currently inert in production: the only
-                // real caller (DeleteResourceHandler) always passes transactionId: null.
                 using (var insertCommand = new SqlCommand(
                     """
                     INSERT INTO dbo.Resource
@@ -485,16 +492,29 @@ public class SqlServerFhirRepository(
                     insertCommand.Parameters.Add("@NewVersion", SqlDbType.Int).Value = newVersion;
                     insertCommand.Parameters.Add("@NewSurrogateId", SqlDbType.BigInt).Value = newSurrogateId;
                     insertCommand.Parameters.Add("@TombstoneBytes", SqlDbType.VarBinary).Value = compressedTombstone;
-                    insertCommand.Parameters.Add("@TransactionId", SqlDbType.BigInt).Value =
-                        (object?)transactionId?.Value ?? DBNull.Value;
+                    insertCommand.Parameters.Add("@TransactionId", SqlDbType.BigInt).Value = writeTransactionId.Value;
                     await transaction.ExecuteNonQueryAsync(insertCommand, ct);
                 }
 
-                await UpsertResourceTtlAsync(transaction, resourceTypeId, key.Id, expiresAt: null, transactionId?.Value, ct);
+                await UpsertResourceTtlAsync(transaction, resourceTypeId, key.Id, expiresAt: null, writeTransactionId.Value, ct);
 
                 await DeleteSearchIndexEntriesAsync(transaction, currentSurrogateId, ct);
-            },
-            cancellationToken);
+                },
+                cancellationToken);
+        }
+        catch (ResourceVersionConflictException exception) when (ownsTransaction)
+        {
+            await CompleteRejectedTransactionAsync(writeTransactionId.Value, exception);
+            throw;
+        }
+
+        if (ownsTransaction)
+        {
+            await _mergeRepository.CommitTransactionAsync(
+                writeTransactionId.Value,
+                failureReason: null,
+                CancellationToken.None);
+        }
 
         _logger.LogInformation(
             "Created tombstone for {ResourceType}/{ResourceId} version {Version}", key.ResourceType, key.Id, newVersion);
@@ -503,11 +523,16 @@ public class SqlServerFhirRepository(
     }
 
     /// <inheritdoc/>
-    public async ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<TransactionId> GetNextTransactionIdAsync(
+        long definitionsEventId,
+        CancellationToken cancellationToken = default)
     {
-        var (id, _) = await _mergeRepository.BeginTransactionAsync(1000, cancellationToken);
+        var (id, _) = await _mergeRepository.BeginTransactionAsync(1000, definitionsEventId, cancellationToken);
         return new TransactionId(id);
     }
+
+    public ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
+        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
 
     /// <inheritdoc/>
     public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken cancellationToken = default)

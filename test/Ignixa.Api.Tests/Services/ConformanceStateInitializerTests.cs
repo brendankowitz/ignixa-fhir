@@ -57,7 +57,7 @@ public class ConformanceStateInitializerTests
 
         Received.InOrder(() =>
         {
-            cacheRefresher.RefreshAsync(Arg.Any<CancellationToken>());
+            cacheRefresher.RefreshAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
             lease.Renew(leaseStart);
         });
     }

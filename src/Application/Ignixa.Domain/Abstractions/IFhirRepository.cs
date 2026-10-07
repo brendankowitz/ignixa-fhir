@@ -31,9 +31,15 @@ public interface IFhirRepository
     /// Allocates a new transaction ID for coordinated writes.
     /// Used by DeferredWriteCoordinator to get a transaction ID that will be used across multiple batches.
     /// </summary>
+    /// <param name="definitionsEventId">Conformance position used to extract this transaction's indexes.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A new transaction ID.</returns>
-    ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default);
+    ValueTask<TransactionId> GetNextTransactionIdAsync(
+        long definitionsEventId,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
+        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
 
     /// <summary>
     /// Batch write operation for bulk resource creation/updates.
@@ -179,8 +185,16 @@ public interface IFhirRepository
     ValueTask<ResourceKey?> DeleteAsync(
         ResourceKey key,
         ResourceRequest request,
+        long definitionsEventId,
         TransactionId? transactionId = null,
         CancellationToken cancellationToken = default);
+
+    ValueTask<ResourceKey?> DeleteAsync(
+        ResourceKey key,
+        ResourceRequest request,
+        TransactionId? transactionId = null,
+        CancellationToken cancellationToken = default) =>
+        DeleteAsync(key, request, definitionsEventId: 0, transactionId, cancellationToken);
 
     /// <summary>
     /// Gets expired resources from TTL table (ExpiresAt &lt; now).

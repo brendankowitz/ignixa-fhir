@@ -8,6 +8,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Import.Activities;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -127,7 +128,7 @@ public class ImportBatchActivityBaseUriWiringTests
             }));
 
         var repository = Substitute.For<IFhirRepository>();
-        repository.GetNextTransactionIdAsync(Arg.Any<CancellationToken>())
+        repository.GetNextTransactionIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<TransactionId>(new TransactionId(1)));
         repository
             .BatchWriteAsync(
@@ -145,6 +146,7 @@ public class ImportBatchActivityBaseUriWiringTests
             versionContext,
             tenantConfigurationStore,
             accessor,
+            TestConformanceBarrierRetryPolicy.Create(),
             NullLogger<ImportBatchActivity>.Instance);
 
         var input = new ImportBatchInput
@@ -179,8 +181,15 @@ public class ImportBatchActivityBaseUriWiringTests
         IFhirVersionContext fhirVersionContext,
         ITenantConfigurationStore tenantConfigurationStore,
         IFhirRequestContextAccessor fhirContextAccessor,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<ImportBatchActivity> logger)
-        : ImportBatchActivity(repositoryFactory, fhirVersionContext, tenantConfigurationStore, fhirContextAccessor, logger)
+        : ImportBatchActivity(
+            repositoryFactory,
+            fhirVersionContext,
+            tenantConfigurationStore,
+            fhirContextAccessor,
+            barrierRetryPolicy,
+            logger)
     {
         public Task<ImportBatchOutput> RunExecuteAsync(TaskContext context, ImportBatchInput input) =>
             ExecuteAsync(context, input);

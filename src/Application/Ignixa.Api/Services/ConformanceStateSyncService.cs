@@ -89,7 +89,7 @@ public class ConformanceStateSyncService(
         {
             try
             {
-                await cacheRefresher.RefreshAsync(cancellationToken);
+                await cacheRefresher.RefreshAsync(afterEventId, cancellationToken);
             }
             catch (ConformanceConsumerRefreshException)
             {

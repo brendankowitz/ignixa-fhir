@@ -31,7 +31,7 @@ public class ConformanceStateSyncServiceTests
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
         var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.RefreshAsync(Arg.Any<CancellationToken>())
+        cacheRefresher.RefreshAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(_ => throw new InvalidOperationException("refresh failed"));
         var lease = Substitute.For<IConformanceLease>();
         var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);

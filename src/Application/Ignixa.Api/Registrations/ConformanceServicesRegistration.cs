@@ -71,6 +71,10 @@ public static class ConformanceServicesRegistration
             .As<IConformanceCacheRefresher>()
             .SingleInstance();
 
+        builder.RegisterType<ConformanceDefinitionsSynchronizer>()
+            .As<IConformanceDefinitionsSynchronizer>()
+            .SingleInstance();
+
         builder.Register(c => new ConformanceLease(
                 c.Resolve<IOptions<ConformanceTransitionOptions>>(),
                 TimeProvider.System,

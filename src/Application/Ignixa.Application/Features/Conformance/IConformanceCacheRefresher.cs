@@ -5,5 +5,5 @@ namespace Ignixa.Application.Features.Conformance;
 /// </summary>
 public interface IConformanceCacheRefresher
 {
-    Task RefreshAsync(CancellationToken cancellationToken);
+    Task RefreshAsync(long definitionsEventId, CancellationToken cancellationToken);
 }

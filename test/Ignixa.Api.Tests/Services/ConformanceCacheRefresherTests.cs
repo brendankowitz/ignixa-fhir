@@ -19,7 +19,7 @@ public class ConformanceCacheRefresherTests
         var refresher = new ConformanceCacheRefresher(null!, null!, tenantStore, null!, null!);
 
         var exception = await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
-            refresher.RefreshAsync(CancellationToken.None));
+            refresher.RefreshAsync(0, CancellationToken.None));
 
         exception.InnerException.ShouldBeOfType<IOException>();
     }
@@ -34,6 +34,6 @@ public class ConformanceCacheRefresherTests
         var refresher = new ConformanceCacheRefresher(null!, null!, tenantStore, null!, null!);
 
         await Should.ThrowAsync<OperationCanceledException>(() =>
-            refresher.RefreshAsync(CancellationToken.None));
+            refresher.RefreshAsync(0, CancellationToken.None));
     }
 }

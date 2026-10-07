@@ -12,6 +12,7 @@ using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
@@ -96,7 +97,9 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
 
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddHttpContextAccessor();
         services.AddSingleton<IFhirVersionContext>(_versions);
+        services.AddSingleton<IConformanceLease>(new HeldConformanceLease());
         services.AddSingleton<ITenantConfigurationStore>(tenants);
         services.AddSingleton<IFhirBaseUriProvider>(baseUris);
         services.AddSingleton<IFhirRequestContextAccessor>(_contextAccessor);
@@ -521,6 +524,18 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
     private sealed class RepositoryFactory(IFhirRepository repository) : IFhirRepositoryFactory
     {
         public Task<IFhirRepository> GetRepositoryAsync(int tenantId, CancellationToken ct = default) => Task.FromResult(repository);
+    }
+
+    private sealed class HeldConformanceLease : IConformanceLease
+    {
+        public bool IsHeld => true;
+        public TimeSpan Age => TimeSpan.Zero;
+        public DateTimeOffset? LeaseStartUtc => DateTimeOffset.UtcNow;
+        public TimeSpan RetryAfter => TimeSpan.FromSeconds(30);
+        public ConformanceLeaseStart CaptureStart() => new(DateTimeOffset.UtcNow, 0);
+        public void Renew(ConformanceLeaseStart start)
+        {
+        }
     }
 
     private sealed class SearchFactory(ISearchService service) : ISearchServiceFactory

@@ -43,7 +43,7 @@ public class ConformanceStateInitializerService(
                 await conformanceState.InitializeFromEventsAsync(eventStore, stoppingToken);
 
                 using var activationLock = await conformanceState.AcquireActivationLockAsync(stoppingToken);
-                await cacheRefresher.RefreshAsync(stoppingToken);
+                await cacheRefresher.RefreshAsync(conformanceState.LastProcessedEventId, stoppingToken);
                 conformanceLease.Renew(leaseStart);
 
                 stopwatch.Stop();

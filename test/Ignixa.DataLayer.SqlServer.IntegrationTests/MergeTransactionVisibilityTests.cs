@@ -1,4 +1,6 @@
+using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
@@ -36,6 +38,52 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
             "SELECT COUNT(*) FROM dbo.Transactions WHERE IsCompleted = 1 AND IsVisible = 1 AND VisibleDate IS NOT NULL"))
             .ShouldBe(2);
     }
+
+    [Fact]
+    public async Task GivenAStandaloneDelete_WhenTheTombstoneIsWritten_ThenItUsesACompletedVisibleAllocation()
+    {
+        await _database.Repository.CreateOrUpdateAsync(Patient("delete-allocation"));
+        var before = await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions");
+
+        await _database.Repository.DeleteAsync(
+            new ResourceKey("Patient", "delete-allocation"),
+            new ResourceRequest("DELETE", "Patient/delete-allocation"));
+
+        var after = await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions");
+        after.ShouldBe(before + 1);
+        (await _database.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.Transactions WHERE IsCompleted = 1 AND IsVisible = 1"))
+            .ShouldBe(after);
+    }
+
+    [Fact]
+    public async Task GivenEachSqlWriteShape_WhenItStarts_ThenItAllocatesThroughTheVisibilityTransaction()
+    {
+        var transactionCount = await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions");
+
+        await _database.Repository.CreateOrUpdateAsync(Patient("allocation-create"));
+        await AssertTransactionCountAsync(++transactionCount);
+
+        await ((IAtomicFhirRepository)_database.Repository).WriteTransactionAsync(
+        [
+            Patient("allocation-atomic") with { ExpectedVersionId = "0" },
+        ],
+        CancellationToken.None);
+        await AssertTransactionCountAsync(++transactionCount);
+
+        var batchTransaction = await _database.Repository.GetNextTransactionIdAsync();
+        await AssertTransactionCountAsync(++transactionCount);
+        await _database.Repository.CommitTransactionAsync(batchTransaction);
+
+        await _database.Repository.DeleteAsync(
+            new ResourceKey("Patient", "allocation-create"),
+            new ResourceRequest("DELETE", "Patient/allocation-create"));
+        await AssertTransactionCountAsync(++transactionCount);
+    }
+
+    private async Task AssertTransactionCountAsync(int expected) =>
+        (await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions"))
+        .ShouldBe(expected);
 
     private static ResourceWrapper Patient(string id) => new(
         "Patient", id, "1", DateTimeOffset.UtcNow,

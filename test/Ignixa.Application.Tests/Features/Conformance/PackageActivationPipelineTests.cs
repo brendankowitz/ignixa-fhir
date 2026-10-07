@@ -53,7 +53,7 @@ public class PackageActivationPipelineTests
         state.ApplyAndTrack(CreateBaseActivation());
         var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
         var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.RefreshAsync(Arg.Any<CancellationToken>())
+        cacheRefresher.RefreshAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(_ => throw new InvalidOperationException("Injected refresh failure."));
         var lease = Substitute.For<IConformanceLease>();
         var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
@@ -83,7 +83,7 @@ public class PackageActivationPipelineTests
             persistedEvents[0].EventId,
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
-        await cacheRefresher.Received(1).RefreshAsync(CancellationToken.None);
+        await cacheRefresher.Received(1).RefreshAsync(Arg.Any<long>(), CancellationToken.None);
         lease.DidNotReceive().Renew(leaseStart);
     }
 
@@ -113,7 +113,7 @@ public class PackageActivationPipelineTests
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreateBaseActivation());
         var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.RefreshAsync(CancellationToken.None)
+        cacheRefresher.RefreshAsync(Arg.Any<long>(), CancellationToken.None)
             .Returns(_ => throw new OperationCanceledException("Independent cancellation."));
         var pipeline = CreatePipeline(packageRepository, eventStore, state, Substitute.For<ISearchParameterTransitionScheduler>(), cacheRefresher);
 
@@ -149,7 +149,7 @@ public class PackageActivationPipelineTests
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreateBaseActivation());
         var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.RefreshAsync(CancellationToken.None)
+        cacheRefresher.RefreshAsync(Arg.Any<long>(), CancellationToken.None)
             .Returns(_ => throw new ConformanceConsumerRefreshException(
                 "Expected refresh failure.",
                 new IOException("Database unavailable.")));

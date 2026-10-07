@@ -141,7 +141,7 @@ public class PackageActivationPipeline(
         var refreshed = true;
         try
         {
-            await _cacheRefresher.RefreshAsync(CancellationToken.None);
+            await _cacheRefresher.RefreshAsync(_state.LastProcessedEventId, CancellationToken.None);
         }
         catch (ConformanceConsumerRefreshException exception)
         {

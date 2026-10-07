@@ -27,6 +27,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ConcurrentDictionary<(FhirVersion, int), CompositeStructureDefinitionSummaryProvider> _compositeProviders = new();
     private readonly ConcurrentDictionary<FhirVersion, ISearchIndexer> _searchIndexers = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), ISearchIndexer> _tenantSearchIndexers = new();
+    private readonly ConcurrentDictionary<(FhirVersion, int?), DefinitionsHandleSlot> _definitionsHandles = new();
     private readonly ConcurrentDictionary<FhirVersion, ISearchParameterDefinitionManager> _searchParamManagers = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), CompositeSearchParameterDefinitionManager> _compositeSearchParamManagers = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), CompositeSearchParameterDefinitionManager> _searchableCompositeSearchParamManagers = new();
@@ -250,6 +251,51 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             _indexerLock.Release();
         }
     }
+
+    /// <inheritdoc/>
+    public DefinitionsHandle GetDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId)
+    {
+        var key = (fhirVersion, tenantId);
+        var slot = _definitionsHandles.GetOrAdd(
+            key,
+            _ => new DefinitionsHandleSlot(
+                new DefinitionsHandle(GetSearchIndexer(fhirVersion, tenantId), DefinitionsEventId: 0)));
+        return slot.Current;
+    }
+
+    /// <inheritdoc/>
+    public DefinitionsHandle CreateDefinitionsHandle(
+        FhirVersion fhirVersion,
+        Nullable<int> tenantId,
+        long definitionsEventId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(definitionsEventId);
+        return new DefinitionsHandle(GetSearchIndexer(fhirVersion, tenantId), definitionsEventId);
+    }
+
+    /// <inheritdoc/>
+    public void PublishDefinitionsHandle(
+        FhirVersion fhirVersion,
+        Nullable<int> tenantId,
+        DefinitionsHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        _definitionsHandles.AddOrUpdate(
+            (fhirVersion, tenantId),
+            _ => new DefinitionsHandleSlot(handle),
+            (_, slot) =>
+            {
+                slot.Publish(handle);
+                return slot;
+            });
+    }
+
+    /// <inheritdoc/>
+    public void PublishDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId, long definitionsEventId) =>
+        PublishDefinitionsHandle(
+            fhirVersion,
+            tenantId,
+            CreateDefinitionsHandle(fhirVersion, tenantId, definitionsEventId));
 
     /// <inheritdoc/>
     public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirVersion fhirVersion)

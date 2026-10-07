@@ -50,7 +50,7 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task GivenASingleResource_WhenMergedThroughBeginMergeCommit_ThenARowExistsInDboResource()
     {
-        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, definitionsEventId: 0, CancellationToken.None);
 
         var resourceJson = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"test-patient-1"}""");
         var wrapper = new ResourceWrapper(
@@ -67,6 +67,93 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
         rowCount.ShouldBe(1);
     }
 
+    [Fact]
+    public async Task GivenNoConformanceBarrier_WhenTransactionIsAllocated_ThenAllocationSucceeds()
+    {
+        var (transactionId, _) = await _repository.BeginTransactionAsync(
+            resourceCount: 1,
+            definitionsEventId: 0,
+            CancellationToken.None);
+
+        transactionId.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task GivenAWriterBehindTheConformanceBarrier_WhenTransactionIsAllocated_ThenItIsFailedAndVisible()
+    {
+        await SetConformanceBarrierAsync(29);
+
+        var exception = await Should.ThrowAsync<StaleConformanceDefinitionsException>(() =>
+            _repository.BeginTransactionAsync(
+                resourceCount: 1,
+                definitionsEventId: 11,
+                CancellationToken.None));
+
+        exception.DefinitionsEventId.ShouldBe(11);
+        exception.MinimumAcceptedDefinitionsEventId.ShouldBe(29);
+        var transactionState = await _database.ExecuteScalarAsync<string>(
+            $"""
+             SELECT CONCAT(IsCompleted, ':', IsVisible, ':', CASE WHEN FailureReason IS NULL THEN 0 ELSE 1 END)
+             FROM dbo.Transactions
+             WHERE SurrogateIdRangeFirstValue = {exception.TransactionId}
+             """);
+        transactionState.ShouldBe("1:1:1");
+    }
+
+    [Fact]
+    public async Task GivenConcurrentBarrierRaisesAndAllocations_WhenWriterIsStale_ThenItIsInsideTheBoundaryOrRejected()
+    {
+        const int Iterations = 30;
+
+        for (var iteration = 1; iteration <= Iterations; iteration++)
+        {
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var writerTask = Task.Run(async () =>
+            {
+                await start.Task;
+                if (iteration % 3 == 0)
+                {
+                    await Task.Delay(1);
+                }
+
+                try
+                {
+                    return await _repository.BeginTransactionAsync(
+                        resourceCount: 1,
+                        definitionsEventId: iteration - 1,
+                        CancellationToken.None);
+                }
+                catch (StaleConformanceDefinitionsException)
+                {
+                    return ((long TransactionId, int SequenceStart)?)null;
+                }
+            });
+            var raiseTask = Task.Run(async () =>
+            {
+                await start.Task;
+                if (iteration % 3 == 1)
+                {
+                    await Task.Delay(1);
+                }
+
+                return await RaiseConformanceBarrierAndReadBoundaryAsync(iteration);
+            });
+
+            start.SetResult();
+            var allocation = await writerTask;
+            var boundary = await raiseTask;
+
+            if (allocation.HasValue)
+            {
+                allocation.Value.TransactionId.ShouldBeLessThanOrEqualTo(boundary);
+                await _repository.CommitTransactionAsync(
+                    allocation.Value.TransactionId,
+                    failureReason: "Barrier race test cleanup.",
+                    CancellationToken.None);
+            }
+        }
+    }
+
     /// <summary>
     /// Pins the <c>catch (SqlException ex) when (ex.Number == 50409)</c> mapping in
     /// <c>MergeResourcesAsync</c>. Merging the SAME explicit version for the same
@@ -78,7 +165,7 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task GivenTheSameExplicitVersionMergedTwice_WhenMergeResourcesAsyncCalled_ThenThrowsPreconditionFailedException()
     {
-        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 2, CancellationToken.None);
+        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 2, definitionsEventId: 0, CancellationToken.None);
 
         var resource = new ResourceWrapper(
             "Patient", "merge-conflict-1", "1", DateTimeOffset.UtcNow,
@@ -96,7 +183,7 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task GivenAHeartbeatCall_WhenPutTransactionHeartbeatAsyncCalled_ThenTheTransactionsHeartbeatDateAdvances()
     {
-        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, definitionsEventId: 0, CancellationToken.None);
         // dbo.Transactions.HeartbeatDate is DATETIME (not DATETIMEOFFSET) -- see
         // Ignixa.DataLayer.SqlServer.Database/Tables/Transactions.sql.
         var before = await _database.ExecuteScalarAsync<DateTime>(
@@ -129,7 +216,7 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
         await _database.ExecuteNonQueryAsync(
             $"INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported) VALUES ('{SearchParamUrl}', 'active', SYSDATETIMEOFFSET(), 0)");
 
-        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, definitionsEventId: 0, CancellationToken.None);
         var resourceJson = ResourceJsonNode.Parse(
             """{"resourceType":"Patient","id":"test-patient-identifier","identifier":[{"system":"http://example.org/mrn","value":"12345","type":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/v2-0203","code":"MR"}]}}]}""");
 
@@ -167,7 +254,7 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
                 _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance),
             logger);
 
-        var (transactionId, _) = await repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+        var (transactionId, _) = await repository.BeginTransactionAsync(resourceCount: 1, definitionsEventId: 0, CancellationToken.None);
         var resourceJson = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"test-patient-unregistered-param"}""");
         var searchParameter = new SearchParameterInfo(
             "not-registered", "not-registered", SearchParamType.Token,
@@ -189,6 +276,38 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
             "SELECT COUNT(*) FROM dbo.TokenSearchParam WHERE ResourceSurrogateId >= " + transactionId);
         rowCount.ShouldBe(0);
     }
+
+    private Task SetConformanceBarrierAsync(long eventId) =>
+        _database.ExecuteNonQueryAsync(
+            $"""
+             UPDATE dbo.Parameters
+             SET Bigint = {eventId}
+             WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId';
+             IF @@ROWCOUNT = 0
+             BEGIN
+                 INSERT dbo.Parameters (Id, Bigint)
+                 VALUES ('Conformance.MinAcceptedDefinitionsEventId', {eventId});
+             END
+             """);
+
+    private Task<long> RaiseConformanceBarrierAndReadBoundaryAsync(long eventId) =>
+        _database.ExecuteScalarAsync<long>(
+            $"""
+             UPDATE dbo.Parameters
+             SET Bigint = {eventId}
+             WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId'
+               AND (Bigint IS NULL OR Bigint < {eventId});
+             IF NOT EXISTS (
+                 SELECT 1
+                 FROM dbo.Parameters
+                 WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId')
+             BEGIN
+                 INSERT dbo.Parameters (Id, Bigint)
+                 VALUES ('Conformance.MinAcceptedDefinitionsEventId', {eventId});
+             END
+             SELECT COALESCE(MAX(SurrogateIdRangeFirstValue), 0)
+             FROM dbo.Transactions;
+             """);
 }
 
 internal sealed class ListLogger<T> : ILogger<T>

@@ -40,6 +40,11 @@ public record ResourceWrapper(
     public IReadOnlyList<object>? SearchIndices { get; init; }
 
     /// <summary>
+    /// Conformance event position of the immutable definitions handle that produced <see cref="SearchIndices"/>.
+    /// </summary>
+    public long DefinitionsEventId { get; init; }
+
+    /// <summary>
     /// Optional: TTL expiration timestamp set via X-TTL header.
     /// Null means resource lives forever, non-null means resource expires at this timestamp.
     /// </summary>

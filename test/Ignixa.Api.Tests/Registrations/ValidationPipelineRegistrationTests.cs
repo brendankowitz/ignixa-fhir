@@ -390,6 +390,10 @@ public class ValidationPipelineRegistrationTests
                     .Returns(call => tenantSchemas[call.Arg<int?>()!.Value]);
                 versionContext.GetSearchIndexer(Arg.Any<FhirVersion>(), Arg.Any<int?>())
                     .Returns(call => _baseVersionContext.GetSearchIndexer(call.Arg<FhirVersion>()));
+                versionContext.GetDefinitionsHandle(Arg.Any<FhirVersion>(), Arg.Any<int?>())
+                    .Returns(call => new DefinitionsHandle(
+                        _baseVersionContext.GetSearchIndexer(call.Arg<FhirVersion>()),
+                        DefinitionsEventId: 0));
             }
             var tenant = new TenantConfiguration { TenantId = tenantId, DisplayName = "Validation", FhirVersion = version.ToVersionString() };
             if (depth != null)

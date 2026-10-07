@@ -27,6 +27,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IO;
 using Shouldly;
+using ConformanceBarrierRetryPolicy = Ignixa.Application.Features.Conformance.ConformanceBarrierRetryPolicy;
+using IConformanceDefinitionsSynchronizer = Ignixa.Application.Features.Conformance.IConformanceDefinitionsSynchronizer;
 using SearchComparator = Ignixa.Specification.ValueSets.Normative.SearchComparator;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
@@ -74,7 +76,13 @@ public class BulkImportSqlPersistenceTests
                 blobs, new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["Import:ConsumerCount"] = "1"
-                }).Build(), new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance);
+                }).Build(),
+                new FhirRequestContextAccessor(),
+                new ConformanceBarrierRetryPolicy(
+                    new NoOpConformanceDefinitionsSynchronizer(),
+                    TimeSpan.FromSeconds(30),
+                    NullLogger<ConformanceBarrierRetryPolicy>.Instance),
+                NullLogger<StreamingImportFileActivity>.Instance);
 
             var outputJson = await activity.RunAsync(context, JsonSerializer.Serialize(new[]
             {
@@ -172,6 +180,11 @@ public class BulkImportSqlPersistenceTests
     private sealed class RepositoryFactory(IFhirRepository repository) : IFhirRepositoryFactory
     {
         public Task<IFhirRepository> GetRepositoryAsync(int tenantId, CancellationToken ct = default) => Task.FromResult(repository);
+    }
+
+    private sealed class NoOpConformanceDefinitionsSynchronizer : IConformanceDefinitionsSynchronizer
+    {
+        public Task SynchronizeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class TenantStore : ITenantConfigurationStore

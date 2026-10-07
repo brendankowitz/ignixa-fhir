@@ -20,7 +20,7 @@ public sealed class ConformanceCacheRefresher(
     ICompositeSchemaProviderRegistry schemaProviderRegistry,
     ICapabilityCacheInvalidator capabilityCacheInvalidator) : IConformanceCacheRefresher
 {
-    public async Task RefreshAsync(CancellationToken cancellationToken)
+    public async Task RefreshAsync(long definitionsEventId, CancellationToken cancellationToken)
     {
         try
         {
@@ -55,12 +55,32 @@ public sealed class ConformanceCacheRefresher(
             cancellationToken.ThrowIfCancellationRequested();
             fhirVersionContext.InvalidateSearchParameterCaches();
 
+            var handles = tenants.Select(tenant =>
+            {
+                var version = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
+                return (
+                    Version: version,
+                    tenant.TenantId,
+                    Handle: fhirVersionContext.CreateDefinitionsHandle(
+                        version,
+                        tenant.TenantId,
+                        definitionsEventId));
+            }).ToList();
+
             foreach (var tenant in tenants)
             {
                 await capabilityCacheInvalidator.InvalidateForTenantAsync(tenant.TenantId, cancellationToken);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
+
+            foreach (var handle in handles)
+            {
+                fhirVersionContext.PublishDefinitionsHandle(
+                    handle.Version,
+                    handle.TenantId,
+                    handle.Handle);
+            }
         }
         catch (DbException exception)
         {

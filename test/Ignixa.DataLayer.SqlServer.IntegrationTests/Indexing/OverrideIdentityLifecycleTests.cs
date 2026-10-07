@@ -259,7 +259,7 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
         {
             SearchIndices = [new SearchIndexEntry(parameter, new TokenSearchValue(null, Identifier, null))]
         };
-        var (transactionId, _) = await repository.BeginTransactionAsync(1, CancellationToken.None);
+        var (transactionId, _) = await repository.BeginTransactionAsync(1, definitionsEventId: 0, CancellationToken.None);
         await repository.MergeResourcesAsync(transactionId, true, [resource], [0], CancellationToken.None);
         await repository.CommitTransactionAsync(transactionId, cancellationToken: CancellationToken.None);
     }

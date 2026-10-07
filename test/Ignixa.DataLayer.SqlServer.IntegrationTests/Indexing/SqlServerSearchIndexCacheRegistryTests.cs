@@ -136,7 +136,7 @@ public class SqlServerSearchIndexCacheRegistryTests : IAsyncLifetime
     private static async Task<long> WritePatientWithIdentifierAsync(
         SqlServerMergeRepository repository, string resourceId, string identifierValue)
     {
-        var (transactionId, _) = await repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+        var (transactionId, _) = await repository.BeginTransactionAsync(resourceCount: 1, definitionsEventId: 0, CancellationToken.None);
 
         var resourceJson = ResourceJsonNode.Parse(
             $$"""{"resourceType":"Patient","id":"{{resourceId}}","identifier":[{"value":"{{identifierValue}}"}]}""");

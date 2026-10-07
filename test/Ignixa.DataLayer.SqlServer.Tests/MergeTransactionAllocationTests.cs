@@ -35,7 +35,7 @@ public class MergeTransactionAllocationTests
             new SqlServerPostMergeExtensionUpdater(sql, 1, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance),
             NullLogger<SqlServerMergeRepository>.Instance);
 
-        await Should.ThrowAsync<ArgumentOutOfRangeException>(() => repository.BeginTransactionAsync(resourceCount));
+        await Should.ThrowAsync<ArgumentOutOfRangeException>(() => repository.BeginTransactionAsync(resourceCount, 0));
         allocations.ShouldBe(0);
     }
 
@@ -58,7 +58,7 @@ public class MergeTransactionAllocationTests
             new SqlServerPostMergeExtensionUpdater(sql, 1, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance),
             NullLogger<SqlServerMergeRepository>.Instance);
 
-        var exception = await Should.ThrowAsync<IOException>(() => repository.BeginTransactionAsync(5));
+        var exception = await Should.ThrowAsync<IOException>(() => repository.BeginTransactionAsync(5, 0));
 
         exception.ShouldBeSameAs(responseLost);
         observed.ShouldBe(SqlCommandIdempotency.NonIdempotent);

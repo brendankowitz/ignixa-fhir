@@ -51,6 +51,29 @@ public interface IFhirVersionContext
     ISearchIndexer GetSearchIndexer(FhirVersion fhirVersion, Nullable<int> tenantId);
 
     /// <summary>
+    /// Acquires one immutable indexer/position pair for a complete write extraction.
+    /// </summary>
+    DefinitionsHandle GetDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId);
+
+    /// <summary>
+    /// Builds a handle without making it visible to writers.
+    /// </summary>
+    DefinitionsHandle CreateDefinitionsHandle(
+        FhirVersion fhirVersion,
+        Nullable<int> tenantId,
+        long definitionsEventId);
+
+    /// <summary>
+    /// Publishes a newly refreshed write-extraction handle atomically.
+    /// </summary>
+    void PublishDefinitionsHandle(
+        FhirVersion fhirVersion,
+        Nullable<int> tenantId,
+        DefinitionsHandle handle);
+
+    void PublishDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId, long definitionsEventId);
+
+    /// <summary>
     /// Gets the search parameter definition manager for the specified FHIR version.
     /// Initializes synchronously using pre-generated search parameters.
     /// </summary>

@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
@@ -24,6 +25,8 @@ public class DeferredWriteCoordinator
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<DeferredWriteCoordinator> _logger;
+    private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
     private readonly List<(int EntryIndex, ResourceWrapper Resource)> _stagedWrites = [];
     private readonly ConcurrentDictionary<int, bool> _createdEntries = new();
 
@@ -32,6 +35,8 @@ public class DeferredWriteCoordinator
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext fhirVersionContext,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<DeferredWriteCoordinator> logger,
         bool atomic)
     {
@@ -39,6 +44,8 @@ public class DeferredWriteCoordinator
         _repositoryFactory = repositoryFactory;
         _partitionStrategy = partitionStrategy;
         _contextAccessor = contextAccessor;
+        _fhirVersionContext = fhirVersionContext;
+        _barrierRetryPolicy = barrierRetryPolicy;
         _logger = logger;
         IsAtomic = atomic;
         _writeChannel = Channel.CreateBounded<DeferredWriteOperation>(channelCapacity);
@@ -53,6 +60,8 @@ public class DeferredWriteCoordinator
         IFhirRepositoryFactory repositoryFactory,
         IPartitionStrategy partitionStrategy,
         IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext fhirVersionContext,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<DeferredWriteCoordinator> logger,
         bool atomic = false,
         CancellationToken cancellationToken = default)
@@ -65,7 +74,7 @@ public class DeferredWriteCoordinator
             throw new Domain.Exceptions.NotImplementedException("This storage provider does not support atomic transactions.");
         }
         return new DeferredWriteCoordinator(channelCapacity, repositoryFactory, partitionStrategy,
-            contextAccessor, logger, atomic);
+            contextAccessor, fhirVersionContext, barrierRetryPolicy, logger, atomic);
     }
 
     public async Task<ResourceKey> QueueWriteAsync(
@@ -170,8 +179,44 @@ public class DeferredWriteCoordinator
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
         var repository = await _repositoryFactory.GetRepositoryAsync(context.TenantId, cancellationToken);
-        await ((IAtomicFhirRepository)repository).WriteTransactionAsync(
-            _stagedWrites.Select(write => write.Resource).ToArray(), cancellationToken);
+        var attempt = 0;
+        await _barrierRetryPolicy.ExecuteAsync(
+            async ct =>
+            {
+                attempt++;
+                if (attempt > 1)
+                {
+                    ReextractStagedWrites(ct);
+                }
+
+                await ((IAtomicFhirRepository)repository).WriteTransactionAsync(
+                    _stagedWrites.Select(write => write.Resource).ToArray(),
+                    ct);
+                return true;
+            },
+            cancellationToken);
+    }
+
+    private void ReextractStagedWrites(CancellationToken cancellationToken)
+    {
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+        var schemaProvider = _fhirVersionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
+        var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
+
+        for (var index = 0; index < _stagedWrites.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (entryIndex, wrapper) = _stagedWrites[index];
+            _stagedWrites[index] = (entryIndex, wrapper with
+            {
+                SearchIndices = wrapper.IsDeleted
+                    ? []
+                    : definitionsHandle.Indexer.Extract(
+                        (IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray(),
+                DefinitionsEventId = definitionsHandle.DefinitionsEventId,
+            });
+        }
     }
 
     public void ResolveReferenceAliases(
@@ -186,7 +231,7 @@ public class DeferredWriteCoordinator
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
         var schemaProvider = versionContext.GetBaseSchemaProvider(context.FhirVersion);
-        var indexer = versionContext.GetSearchIndexer(context.FhirVersion, context.TenantId);
+        var definitionsHandle = versionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
         for (var index = 0; index < _stagedWrites.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -198,7 +243,8 @@ public class DeferredWriteCoordinator
                 wrapper.Resource.InvalidateCaches();
                 _stagedWrites[index] = (entryIndex, wrapper with
                 {
-                    SearchIndices = indexer.Extract((IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray()
+                    SearchIndices = definitionsHandle.Indexer.Extract((IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray(),
+                    DefinitionsEventId = definitionsHandle.DefinitionsEventId
                 });
             }
         }

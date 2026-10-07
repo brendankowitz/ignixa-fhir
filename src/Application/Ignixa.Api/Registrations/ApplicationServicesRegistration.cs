@@ -10,6 +10,7 @@ using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.Admin;
 using Ignixa.Application.Features.Bundle;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
@@ -63,7 +64,7 @@ public static class ApplicationServicesRegistration
         RegisterMedinoServices(builder);
 
         // Resource CRUD handlers
-        RegisterResourceHandlers(builder);
+        RegisterResourceHandlers(builder, configuration);
 
         // Conditional operations handlers
         RegisterConditionalOperationHandlers(builder);
@@ -131,7 +132,7 @@ public static class ApplicationServicesRegistration
             .InstancePerLifetimeScope();
     }
 
-    private static void RegisterResourceHandlers(ContainerBuilder builder)
+    private static void RegisterResourceHandlers(ContainerBuilder builder, IConfiguration configuration)
     {
         builder.RegisterType<GetResourceHandler>()
             .As<IRequestHandler<GetResourceQuery, SearchEntryResult?>>()
@@ -140,6 +141,18 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<CreateOrUpdateResourceHandler>()
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()
             .InstancePerDependency();
+
+        builder.RegisterType<NullConformanceDefinitionsSynchronizer>()
+            .As<IConformanceDefinitionsSynchronizer>()
+            .SingleInstance()
+            .PreserveExistingDefaults();
+
+        builder.Register(c => new ConformanceBarrierRetryPolicy(
+                c.Resolve<IConformanceDefinitionsSynchronizer>(),
+                TimeSpan.FromSeconds(configuration.GetValue("Conformance:SyncIntervalSeconds", 30)),
+                c.Resolve<ILogger<ConformanceBarrierRetryPolicy>>()))
+            .AsSelf()
+            .SingleInstance();
 
         builder.RegisterType<DeleteResourceHandler>()
             .As<IRequestHandler<DeleteResourceCommand, bool>>()

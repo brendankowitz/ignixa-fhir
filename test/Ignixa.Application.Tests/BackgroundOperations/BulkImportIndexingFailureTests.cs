@@ -32,9 +32,10 @@ public class BulkImportIndexingFailureTests
         indexer.Extract(Arg.Any<IElement>()).Returns(_ => throw new InvalidOperationException("Index extraction failed"));
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
-        versions.GetSearchIndexer(FhirVersion.R4, 1).Returns(indexer);
+        versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(new DefinitionsHandle(indexer, 0));
         var repository = Substitute.For<IFhirRepository>();
-        repository.GetNextTransactionIdAsync(Arg.Any<CancellationToken>()).Returns(new TransactionId(1));
+        repository.GetNextTransactionIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(new TransactionId(1));
         repository.BatchWriteAsync(Arg.Any<TransactionId>(),
             Arg.Any<IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>>(),
             Arg.Any<CancellationToken>()).Returns(new[] { new ResourceKey("Patient", "p1") });
@@ -46,8 +47,15 @@ public class BulkImportIndexingFailureTests
         TaskActivity activity = streaming
             ? new StreamingImportFileActivity(factory, versions, tenants, blobs,
                 new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
-                new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance)
-            : new ImportBatchActivity(factory, versions, tenants, new FhirRequestContextAccessor(), NullLogger<ImportBatchActivity>.Instance);
+                new FhirRequestContextAccessor(), TestConformanceBarrierRetryPolicy.Create(),
+                NullLogger<StreamingImportFileActivity>.Instance)
+            : new ImportBatchActivity(
+                factory,
+                versions,
+                tenants,
+                new FhirRequestContextAccessor(),
+                TestConformanceBarrierRetryPolicy.Create(),
+                NullLogger<ImportBatchActivity>.Instance);
         object input = streaming
             ? new StreamingImportFileInput
             {
