@@ -15,7 +15,8 @@ namespace Ignixa.Api.Services;
 public class ConformanceStateSyncService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
-    ConformanceCacheRefresher cacheRefresher,
+    IConformanceCacheRefresher cacheRefresher,
+    IConformanceLease conformanceLease,
     ILogger<ConformanceStateSyncService> logger,
     IConfiguration configuration) : BackgroundService
 {
@@ -61,8 +62,9 @@ public class ConformanceStateSyncService(
         logger.LogInformation("ConformanceStateSyncService stopped");
     }
 
-    private async Task SyncAsync(CancellationToken cancellationToken)
+    protected async Task SyncAsync(CancellationToken cancellationToken)
     {
+        var syncStart = conformanceLease.CaptureStart();
         var beforeEventId = conformanceState.LastProcessedEventId;
 
         await conformanceState.CatchUpAsync(eventStore, cancellationToken);
@@ -95,5 +97,7 @@ public class ConformanceStateSyncService(
         {
             logger.LogDebug("ConformanceStateSyncService: no new events (at EventId {EventId})", afterEventId);
         }
+
+        conformanceLease.Renew(syncStart);
     }
 }

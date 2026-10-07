@@ -9,6 +9,7 @@ using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Features.Search;
+using ConformanceStaleException = Ignixa.Application.Features.Conformance.ConformanceStaleException;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
 using Ignixa.Application.Infrastructure.Caching;
@@ -134,6 +135,25 @@ public class ValidationPipelineRegistrationTests
             issue["code"]!.GetValue<string>().ShouldBe("required");
         }
         harness.Writes.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GivenStaleConformance_WhenUsingExceptionMiddleware_ThenReturnsRetryAfterServiceUnavailable()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new ConformanceStaleException(TimeSpan.FromSeconds(30)),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status503ServiceUnavailable);
+        context.Response.Headers.RetryAfter.ToString().ShouldBe("30");
+        context.Response.Body.Position = 0;
+        var outcome = JsonNode.Parse(await new StreamReader(context.Response.Body).ReadToEndAsync())!;
+        outcome["issue"]![0]!["diagnostics"]!.GetValue<string>()
+            .ShouldBe("Conformance state is stale; search is temporarily unavailable.");
     }
 
     [Theory]

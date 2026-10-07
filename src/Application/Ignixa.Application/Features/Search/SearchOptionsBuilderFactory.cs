@@ -6,6 +6,8 @@
 using System.Collections.Concurrent;
 using EnsureThat;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
@@ -31,6 +33,8 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
 
     private readonly IFhirBaseUriProvider _baseUriProvider;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _fhirRequestContextAccessor;
+    private readonly IConformanceLease _conformanceLease;
 
     /// <param name="baseUriProvider">
     /// Supplies this server's base URIs so an absolute self-reference in a search value is recognized as
@@ -42,7 +46,9 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     public SearchOptionsBuilderFactory(
         IFhirVersionContext versionContext,
         IFhirBaseUriProvider baseUriProvider,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
+        IConformanceLease conformanceLease)
     {
         EnsureArg.IsNotNull(versionContext, nameof(versionContext));
         ArgumentNullException.ThrowIfNull(baseUriProvider);
@@ -50,6 +56,8 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         _versionContext = versionContext;
         _baseUriProvider = baseUriProvider;
         _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _fhirRequestContextAccessor = fhirRequestContextAccessor ?? throw new ArgumentNullException(nameof(fhirRequestContextAccessor));
+        _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
     }
 
     /// <inheritdoc/>
@@ -78,6 +86,8 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         FhirVersion fhirVersion,
         int? tenantId)
     {
+        EnsureConformanceLease();
+
         // Include tenantId in cache key to separate tenant-specific builders
         var cacheKey = (tenant, fhirVersion, tenantId);
 
@@ -179,5 +189,13 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     {
         var header = _httpContextAccessor.HttpContext?.Request.Headers["x-ms-use-partial-indices"].ToString();
         return string.Equals(header, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsureConformanceLease()
+    {
+        ConformanceSearchGuard.EnsureRequestCanSearch(
+            _conformanceLease,
+            requestOriginated: _httpContextAccessor.HttpContext is not null,
+            isBackgroundTask: _fhirRequestContextAccessor.RequestContext?.IsBackgroundTask == true);
     }
 }

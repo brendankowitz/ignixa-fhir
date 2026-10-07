@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Medino;
+using Ignixa.Application.Features.Conformance;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
@@ -54,6 +55,7 @@ public class PatientEverythingHandler(
     IPartitionStrategy partitionStrategy,
     IQueryExecutionStrategy executionStrategy,
     IFhirRequestContextAccessor contextAccessor,
+    IConformanceLease conformanceLease,
     ILogger<PatientEverythingHandler> logger) : IRequestHandler<PatientEverythingQuery, SearchResourcesResult>
 {
 
@@ -64,6 +66,10 @@ public class PatientEverythingHandler(
         // Get FHIR request context (populated by FhirRequestContextMiddleware)
         var context = contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
+        ConformanceSearchGuard.EnsureRequestCanSearch(
+            conformanceLease,
+            requestOriginated: true,
+            context.IsBackgroundTask);
 
         logger.LogInformation(
             "Executing Patient $everything for patient {PatientId}",

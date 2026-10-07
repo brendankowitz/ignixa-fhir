@@ -174,6 +174,13 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
     private static WebApplicationFactory<Program> CreateHost(
         IgnixaApiFixture template, string connectionString, int pollSeconds) =>
         template.WithWebHostBuilder(builder =>
+        {
+            // This test intentionally blocks a consumer refresh while it proves retry behavior.
+            // Keep that transient test window below the lease duration rather than making normal
+            // assertions nondeterministically depend on a one-second polling cadence.
+            builder.UseSetting("Conformance:SyncIntervalSeconds", pollSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            builder.UseSetting("Conformance:MaxStaleness", "00:00:30");
+            builder.UseSetting("Reindex:BarrierDelay", "00:00:30");
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -182,7 +189,8 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
                     ["Tenants:Configurations:0:Storage:Type"] = "SqlServer",
                     ["Tenants:Configurations:0:Storage:InheritConnectionStringFromTenant"] = "1",
                     ["Conformance:SyncIntervalSeconds"] = pollSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                })));
+                }));
+        });
 
     private static async Task AssertSignalAsync(Task signal, string reason)
     {

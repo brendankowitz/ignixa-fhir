@@ -16,7 +16,7 @@ public sealed class ConformanceCacheRefresher(
     SqlServerSearchIndexCacheRegistry cacheRegistry,
     ITenantConfigurationStore tenantConfigurationStore,
     ICompositeSchemaProviderRegistry schemaProviderRegistry,
-    ICapabilityCacheInvalidator capabilityCacheInvalidator)
+    ICapabilityCacheInvalidator capabilityCacheInvalidator) : IConformanceCacheRefresher
 {
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {

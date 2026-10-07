@@ -28,6 +28,7 @@ public class PackageActivationPipeline(
     IOptions<SearchParameterResolutionOptions> options,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
+    IConformanceLease conformanceLease,
     ILogger<PackageActivationPipeline> logger)
 {
     private readonly IPackageResourceRepository _packageRepo = packageRepo ?? throw new ArgumentNullException(nameof(packageRepo));
@@ -37,6 +38,7 @@ public class PackageActivationPipeline(
     private readonly SearchParameterResolutionOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly ISearchParameterTransitionScheduler _transitionScheduler = transitionScheduler ?? throw new ArgumentNullException(nameof(transitionScheduler));
     private readonly ConformanceTransitionOptions _transitionOptions = transitionOptions?.Value ?? throw new ArgumentNullException(nameof(transitionOptions));
+    private readonly IConformanceLease _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <summary>
@@ -50,6 +52,7 @@ public class PackageActivationPipeline(
     {
         ArgumentNullException.ThrowIfNull(packageId);
         ArgumentNullException.ThrowIfNull(version);
+        var leaseStart = _conformanceLease.CaptureStart();
 
         // Acquire lock for entire activation to ensure thread safety
         using var _ = await _state.AcquireActivationLockAsync(cancellationToken);
@@ -136,6 +139,7 @@ public class PackageActivationPipeline(
             version,
             reindexNeeded.Count);
 
+        _conformanceLease.Renew(leaseStart);
         return ActivationResult.Succeeded(reindexNeeded);
     }
 

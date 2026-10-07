@@ -10,6 +10,7 @@ using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.EventStore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Registrations;
 
@@ -66,6 +67,14 @@ public static class ConformanceServicesRegistration
 
         builder.RegisterType<ConformanceCacheRefresher>()
             .AsSelf()
+            .As<IConformanceCacheRefresher>()
+            .SingleInstance();
+
+        builder.Register(c => new ConformanceLease(
+                c.Resolve<IOptions<ConformanceTransitionOptions>>(),
+                TimeProvider.System,
+                c.Resolve<ILogger<ConformanceLease>>()))
+            .As<IConformanceLease>()
             .SingleInstance();
 
         builder.RegisterType<NullReindexTrigger>()
