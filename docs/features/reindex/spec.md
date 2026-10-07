@@ -588,6 +588,7 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
 | `DefaultMaximumNumberOfResourcesPerWrite` | `1000` | §6.1 |
 | `DefaultMaximumConcurrency` | `4` | §6.1 |
 | `StartDebounce` | `00:00:10` | §7 |
+| `OrphanGrace` | `00:02:00` | Minimum job age before two missing/terminal orchestration-state reads can classify it as orphaned (§8.6) |
 | `StaleJobTimeout` | `00:30:00` | §8.6 |
 | `DrainWarningAfter` | `00:05:00` | §8.6 |
 | `ContinueAsNewThreshold` | `2000` | §8.2 |

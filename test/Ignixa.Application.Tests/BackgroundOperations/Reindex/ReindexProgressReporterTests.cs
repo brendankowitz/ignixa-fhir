@@ -14,6 +14,10 @@ public class ReindexProgressReporterTests
     public async Task GivenJobStart_WhenBarrierDelayIsReported_ThenEveryTenantHasPhaseProgress()
     {
         var (reporter, job) = CreateReporter();
+        job.Progress = new JsonObject
+        {
+            ["notCovered"] = new JsonArray("http://example.org/not-covered")
+        };
 
         await reporter.ReportBarrierDelayAsync(
             "job",
@@ -29,6 +33,8 @@ public class ReindexProgressReporterTests
         tenants.Select(tenant => tenant!["tenantId"]!.GetValue<int>()).ShouldBe([1, 2]);
         tenants.ShouldAllBe(tenant =>
             tenant!["status"]!.GetValue<string>() == "BarrierDelay");
+        job.Progress["notCovered"]!.AsArray()
+            .Single()!.GetValue<string>().ShouldBe("http://example.org/not-covered");
     }
 
     [Fact]

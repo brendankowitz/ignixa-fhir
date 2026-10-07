@@ -275,6 +275,9 @@ public sealed class ReindexOrchestration
                 Conflicts = state.Conflicts +
                     attempts.Where(attempt => attempt.Output is not null)
                         .Sum(attempt => attempt.Output!.Conflicts),
+                FailedResourceCount = state.FailedResourceCount +
+                    attempts.Where(attempt => attempt.Output is not null)
+                        .Sum(attempt => attempt.Output!.FailedResourceCount),
                 FailedResources = failures,
                 FailedResourceTypes = failedTypes
             };

@@ -11,6 +11,7 @@ public sealed class ReindexOptions
     public int DefaultMaximumNumberOfResourcesPerWrite { get; set; } = 1_000;
     public int DefaultMaximumConcurrency { get; set; } = 4;
     public TimeSpan StartDebounce { get; set; } = TimeSpan.FromSeconds(10);
+    public TimeSpan OrphanGrace { get; set; } = TimeSpan.FromMinutes(2);
     public TimeSpan StaleJobTimeout { get; set; } = TimeSpan.FromMinutes(30);
     public TimeSpan DrainWarningAfter { get; set; } = TimeSpan.FromMinutes(5);
     public int ContinueAsNewThreshold { get; set; } = 2_000;

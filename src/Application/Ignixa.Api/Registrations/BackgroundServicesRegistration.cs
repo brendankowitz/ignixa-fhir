@@ -119,6 +119,7 @@ public static class BackgroundServicesRegistration
         builder.RegisterType<ReindexRangeProcessor>().AsSelf().InstancePerDependency();
         builder.RegisterType<ReindexLifecycleEventWriter>().AsSelf().SingleInstance();
         builder.RegisterType<ReindexJobUpdater>().AsSelf().SingleInstance();
+        builder.RegisterType<ReindexJobReconciler>().AsSelf().SingleInstance();
         builder.RegisterType<ReindexProgressReporter>().AsSelf().SingleInstance();
         builder.RegisterType<ReindexCompletionHook>()
             .As<IReindexCompletionHook>()

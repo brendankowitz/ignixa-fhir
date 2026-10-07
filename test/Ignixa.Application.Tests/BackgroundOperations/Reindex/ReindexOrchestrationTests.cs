@@ -246,6 +246,7 @@ public class ReindexOrchestrationTests
                     ["Observation", "Patient"],
                     ignoreOrder: true);
                 input.Tenants.Single().FailedResources.Count.ShouldBe(100);
+                input.Tenants.Single().FailedResourceCount.ShouldBe(306);
                 return new CompleteReindexOutput(false, []);
             }
 

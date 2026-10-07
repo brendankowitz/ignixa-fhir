@@ -14,6 +14,7 @@ public sealed record ReindexTenantState(
     long ResourcesRead,
     long ResourcesReindexed,
     long Conflicts,
+    long FailedResourceCount,
     IReadOnlyList<ReindexFailedResource> FailedResources,
     IReadOnlyList<string> FailedResourceTypes,
     string? ErrorMessage)
@@ -33,6 +34,7 @@ public sealed record ReindexTenantState(
             0,
             0,
             0,
+            0,
             [],
             [],
             null);
@@ -48,6 +50,7 @@ public sealed record ReindexTenantState(
             ResourcesToReindex,
             ResourcesReindexed,
             Conflicts,
+            FailedResourceCount,
             FailedResources,
             ErrorMessage)
         {

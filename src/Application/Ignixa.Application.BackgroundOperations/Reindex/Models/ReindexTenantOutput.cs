@@ -8,6 +8,7 @@ public sealed record ReindexTenantOutput(
     long ResourcesToReindex,
     long ResourcesReindexed,
     long Conflicts,
+    long FailedResourceCount,
     IReadOnlyList<ReindexFailedResource> FailedResources,
     string? ErrorMessage)
 {

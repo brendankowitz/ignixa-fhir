@@ -100,7 +100,18 @@ public sealed class CompleteReindexActivity(
                         ? 100
                         : CalculateProgress(input.Tenants),
                     conflicts = input.Tenants.Sum(tenant => tenant.Conflicts),
-                    tenants = input.Tenants,
+                    tenants = input.Tenants.Select(tenant => new
+                    {
+                        tenant.TenantId,
+                        tenant.CutoffTransactionId,
+                        tenant.CutoffSurrogateId,
+                        status = tenant.Success ? "Completed" : "Failed",
+                        tenant.ResourcesToReindex,
+                        tenant.ResourcesReindexed,
+                        tenant.Conflicts,
+                        failedResources = tenant.FailedResourceCount,
+                        tenant.ErrorMessage
+                    }).ToArray(),
                     failedResources,
                     ignoredLifecycleEvents = input.IgnoredLifecycleEvents.Concat(ignored).Distinct()
                         .ToArray(),

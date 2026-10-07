@@ -78,12 +78,13 @@ public class CompleteReindexActivityTests
                 "job",
                 1,
                 [target],
-                [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, [], null)],
+                [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 153, [], null)],
                 [])
             }));
 
         var job = await jobs.GetAsync("job", 1, CancellationToken.None);
         job!.Status.ShouldBe("Completed");
+        job.Progress!["tenants"]![0]!["failedResources"]!.GetValue<long>().ShouldBe(153);
         state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(
             Ignixa.Conformance.Events.Models.SearchParameterStatus.Enabled);
     }

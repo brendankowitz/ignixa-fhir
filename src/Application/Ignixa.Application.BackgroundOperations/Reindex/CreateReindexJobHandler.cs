@@ -21,6 +21,7 @@ public sealed class CreateReindexJobHandler(
     ConformanceState conformanceState,
     IFhirRepositoryFactory repositoryFactory,
     IReindexJobLock jobLock,
+    ReindexJobReconciler reconciler,
     IOptions<ReindexOptions> options)
     : IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>
 {
@@ -38,6 +39,8 @@ public sealed class CreateReindexJobHandler(
         repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
     private readonly IReindexJobLock _jobLock =
         jobLock ?? throw new ArgumentNullException(nameof(jobLock));
+    private readonly ReindexJobReconciler _reconciler =
+        reconciler ?? throw new ArgumentNullException(nameof(reconciler));
     private readonly ReindexOptions _options =
         options?.Value ?? throw new ArgumentNullException(nameof(options));
 
@@ -119,6 +122,7 @@ public sealed class CreateReindexJobHandler(
         return await _jobLock.ExecuteAsync<CreateReindexJobResult>(
             async ct =>
             {
+                await _reconciler.ReconcileUnderLockAsync(ct);
                 var jobs = await _jobRepository.ListAsync(
                     (int)BackgroundJobType.Reindex,
                     ct);
@@ -128,27 +132,7 @@ public sealed class CreateReindexJobHandler(
                     job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase));
                 foreach (var active in activeJobs)
                 {
-                    if (active.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return new ActiveReindexJobResult(active.JobId);
-                    }
-
-                    var state = await _taskHubClient.GetOrchestrationStateAsync(
-                        active.OrchestrationInstanceId ?? active.JobId);
-                    if (state?.OrchestrationStatus is OrchestrationStatus.Pending
-                        or OrchestrationStatus.Running
-                        or OrchestrationStatus.ContinuedAsNew)
-                    {
-                        return new ActiveReindexJobResult(active.JobId);
-                    }
-
-                    active.Status = "Failed";
-                    active.EndDate = DateTimeOffset.UtcNow;
-                    active.HeartbeatDate = DateTimeOffset.UtcNow;
-                    active.ErrorMessage = state is null
-                        ? "Reindex orchestration instance is missing."
-                        : $"Reindex orchestration ended as {state.OrchestrationStatus} before the job was finalized.";
-                    await _jobRepository.UpdateAsync(active, 1, ct);
+                    return new ActiveReindexJobResult(active.JobId);
                 }
 
                 long targetEventId;

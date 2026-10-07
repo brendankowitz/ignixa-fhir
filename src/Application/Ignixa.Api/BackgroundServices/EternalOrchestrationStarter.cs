@@ -9,6 +9,7 @@ using Ignixa.Application.BackgroundOperations.TtlCleanup.Models;
 using Ignixa.Application.BackgroundOperations.TtlCleanup.Orchestrations;
 using Ignixa.Application.BackgroundOperations.TransactionWatcher.Models;
 using Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrations;
+using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Microsoft.Extensions.Options;
 
@@ -25,6 +26,7 @@ public sealed class EternalOrchestrationStarter(
     IOptions<TransactionWatcherOptions> transactionWatcherOptions,
     ConformanceState conformanceState,
     SearchParameterTransitionReconciler transitionReconciler,
+    ReindexJobReconciler reindexJobReconciler,
     ILogger<EternalOrchestrationStarter> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -53,6 +55,7 @@ public sealed class EternalOrchestrationStarter(
             stoppingToken);
 
         await ReconcileTransitionsAsync(stoppingToken);
+        await reindexJobReconciler.ReconcileAsync(stoppingToken);
 
         logger.LogInformation("EternalOrchestrationStarter completed startup");
 
