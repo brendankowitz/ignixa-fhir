@@ -11,6 +11,7 @@ using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.DataLayer.SqlServer.Indexing;
+using Ignixa.DataLayer.SqlServer.Search;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
@@ -102,7 +103,11 @@ public class SqlOverrideRestartTests
         var restartedCache = await restartedHost.Services.GetRequiredService<SqlServerSearchIndexCacheRegistry>()
             .GetOrCreateAsync(1, CancellationToken.None);
         ReferenceEquals(restartedCache, initialCache).ShouldBeFalse();
-        (await restartedCache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldBe(originalId);
+        (await restartedCache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldNotBe(originalId);
+        var resolver = new SqlServerSymbolResolver(restartedCache);
+        (await resolver.GetSearchParamIdAsync(
+            definitions.GetSearchParameter("Patient", "identifier"),
+            CancellationToken.None)).ShouldBe(originalId);
 
         await PutPatientAsync(client, afterId, identifier);
         // T7 owns reindexing the resource written before the persisted definition transition.

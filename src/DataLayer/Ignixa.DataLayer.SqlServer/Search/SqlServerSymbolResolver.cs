@@ -15,7 +15,9 @@ public sealed class SqlServerSymbolResolver(SqlServerSearchIndexReferenceDataCac
     private readonly SqlServerSearchIndexReferenceDataCache _cache = cache ?? throw new ArgumentNullException(nameof(cache));
 
     public Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken)
-        => _cache.GetSearchParamIdAsync(parameter.Url?.ToString() ?? string.Empty, cancellationToken);
+        => _cache.GetSearchParamIdAsync(
+            (parameter.OverridesUrl ?? parameter.Url)?.ToString() ?? string.Empty,
+            cancellationToken);
 
     public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
         => _cache.GetResourceTypeIdAsync(resourceType, cancellationToken);

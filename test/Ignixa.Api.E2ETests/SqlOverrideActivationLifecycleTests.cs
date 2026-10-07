@@ -13,8 +13,10 @@ using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.DataLayer.SqlServer.Indexing;
+using Ignixa.DataLayer.SqlServer.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Definition;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
@@ -185,7 +187,11 @@ public class SqlOverrideActivationLifecycleTests
             await SearchParameterLifecycleTestHelper.CommitTransitionAsync(host.Services, ChainedUrl);
             await SearchParameterLifecycleTestHelper.CompleteReindexAsync(host.Services, ChainedUrl);
             await WriteAndAssertAsync(client, marker, ids);
-            await AssertAliasesAsync(cache, rootId);
+            await AssertCatalogAndResolutionAsync(
+                cache,
+                host.Services.GetRequiredService<IFhirVersionContext>()
+                    .GetSearchParameterDefinitionManager(FhirVersion.R4, 1),
+                rootId);
 
             var state = host.Services.GetRequiredService<ConformanceState>();
             state.GetSearchParameter("Patient", "identifier")!.OverridesCanonical.ShouldBe(BaseUrl);
@@ -214,7 +220,11 @@ public class SqlOverrideActivationLifecycleTests
         replayed.GetSearchParameter("Patient", "identifier")!.OverridesCanonical.ShouldBe(BaseUrl);
         var freshCache = await restarted.Services.GetRequiredService<SqlServerSearchIndexCacheRegistry>()
             .GetOrCreateAsync(1, CancellationToken.None);
-        await AssertAliasesAsync(freshCache, rootId);
+        await AssertCatalogAndResolutionAsync(
+            freshCache,
+            restarted.Services.GetRequiredService<IFhirVersionContext>()
+                .GetSearchParameterDefinitionManager(FhirVersion.R4, 1),
+            rootId);
         await WriteAndAssertAsync(restartedClient, marker, ids);
 
         await using var connection = new SqlConnection(connectionString);
@@ -268,12 +278,21 @@ public class SqlOverrideActivationLifecycleTests
         await handler.HandleAsync(new PackageLoadedEvent(packageId, version, 1, DateTimeOffset.UtcNow), CancellationToken.None);
     }
 
-    private static async Task AssertAliasesAsync(SqlServerSearchIndexReferenceDataCache cache, short rootId)
+    private static async Task AssertCatalogAndResolutionAsync(
+        SqlServerSearchIndexReferenceDataCache cache,
+        ISearchParameterDefinitionManager definitions,
+        short rootId)
     {
-        foreach (var canonical in new[] { BaseUrl, PackageUrl, ChainedUrl })
+        (await cache.GetSearchParamIdAsync(BaseUrl, CancellationToken.None)).ShouldBe(rootId);
+        foreach (var canonical in new[] { PackageUrl, ChainedUrl })
         {
-            (await cache.GetSearchParamIdAsync(canonical, CancellationToken.None)).ShouldBe(rootId, canonical);
+            (await cache.GetSearchParamIdAsync(canonical, CancellationToken.None)).ShouldNotBe(rootId, canonical);
         }
+
+        var resolver = new SqlServerSymbolResolver(cache);
+        (await resolver.GetSearchParamIdAsync(
+            definitions.GetSearchParameter("Patient", "identifier"),
+            CancellationToken.None)).ShouldBe(rootId);
     }
 
     private static async Task MakeLegacyOverrideEventAsync(string connectionString, string streamId, string target)

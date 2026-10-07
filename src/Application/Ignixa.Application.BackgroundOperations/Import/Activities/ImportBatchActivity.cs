@@ -126,7 +126,6 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
             var operations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>();
             var errors = new List<ImportErrorLogEntry>();
 
-            var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
             var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
 
             for (int entryIndex = 0; entryIndex < input.Resources.Count; entryIndex++)
@@ -160,7 +159,7 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
                         _logger.LogDebug("Generated ID for {ResourceType}: {Id}", input.ResourceType, resourceId);
                     }
 
-                    var typedElement = jsonNode.ToElement(schemaProvider);
+                    var typedElement = jsonNode.ToElement(definitionsHandle.SchemaProvider);
                     IReadOnlyList<object> searchIndices = definitionsHandle.Indexer.Extract((IElement)typedElement).ToArray();
 
                     // Add to batch operations with entry index for surrogate ID calculation
@@ -197,7 +196,7 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
                             : operations.Select(operation =>
                             {
                                 IReadOnlyList<object> indexes = attemptHandle.Indexer.Extract(
-                                    (IElement)operation.resource.ToElement(schemaProvider)).ToArray();
+                                    (IElement)operation.resource.ToElement(attemptHandle.SchemaProvider)).ToArray();
                                 return (
                                     operation.resourceType,
                                     operation.resourceId,

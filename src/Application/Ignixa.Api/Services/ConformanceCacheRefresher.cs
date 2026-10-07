@@ -17,7 +17,6 @@ public sealed class ConformanceCacheRefresher(
     IFhirVersionContext fhirVersionContext,
     SqlServerSearchIndexCacheRegistry cacheRegistry,
     ITenantConfigurationStore tenantConfigurationStore,
-    ICompositeSchemaProviderRegistry schemaProviderRegistry,
     ICapabilityCacheInvalidator capabilityCacheInvalidator) : IConformanceCacheRefresher
 {
     public async Task<IConformanceConsumerSnapshot> BuildSnapshotAsync(
@@ -30,11 +29,6 @@ public sealed class ConformanceCacheRefresher(
         try
         {
             var tenants = await tenantConfigurationStore.GetAllTenantsAsync(cancellationToken);
-
-            foreach (var tenant in tenants)
-            {
-                await schemaProviderRegistry.InvalidateCachesForTenantImmediatelyAsync(tenant.TenantId, cancellationToken);
-            }
 
             var definitions = tenants.Select(tenant =>
             {

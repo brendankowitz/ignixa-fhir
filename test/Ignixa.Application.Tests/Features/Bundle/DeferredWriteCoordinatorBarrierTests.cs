@@ -33,7 +33,9 @@ public class DeferredWriteCoordinatorBarrierTests
             });
         var indexer = Substitute.For<ISearchIndexer>();
         indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var coordinator = await CreateCoordinatorAsync(repository, new DefinitionsHandle(indexer, 29));
+        var coordinator = await CreateCoordinatorAsync(
+            repository,
+            new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 29));
         var wrapper = Patient("retry") with { DefinitionsEventId = 11 };
 
         var queued = coordinator.QueueWriteAsync(wrapper, entryIndex: 7);
@@ -55,7 +57,9 @@ public class DeferredWriteCoordinatorBarrierTests
                 new StaleConformanceDefinitionsException(101, 11, 29)));
         var indexer = Substitute.For<ISearchIndexer>();
         indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var coordinator = await CreateCoordinatorAsync(repository, new DefinitionsHandle(indexer, 29));
+        var coordinator = await CreateCoordinatorAsync(
+            repository,
+            new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 29));
 
         var queued = coordinator.QueueWriteAsync(Patient("stale") with { DefinitionsEventId = 11 });
         await coordinator.WaitToReadAsync();
@@ -76,7 +80,7 @@ public class DeferredWriteCoordinatorBarrierTests
         indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
         var coordinator = await CreateCoordinatorAsync(
             repository,
-            new DefinitionsHandle(indexer, 29),
+            new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 29),
             channelCapacity: 2);
 
         var first = coordinator.QueueWriteAsync(Patient("first") with { DefinitionsEventId = 11 });

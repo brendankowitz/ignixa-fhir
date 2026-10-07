@@ -52,7 +52,7 @@ public interface IFhirVersionContext
     ISearchIndexer GetSearchIndexer(FhirVersion fhirVersion, Nullable<int> tenantId);
 
     /// <summary>
-    /// Acquires one immutable indexer/position pair for a complete write extraction.
+    /// Acquires one immutable indexer/schema/position generation for a complete write extraction.
     /// </summary>
     DefinitionsHandle GetDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId);
 

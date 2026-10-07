@@ -393,6 +393,7 @@ public class ValidationPipelineRegistrationTests
                 versionContext.GetDefinitionsHandle(Arg.Any<FhirVersion>(), Arg.Any<int?>())
                     .Returns(call => new DefinitionsHandle(
                         _baseVersionContext.GetSearchIndexer(call.Arg<FhirVersion>()),
+                        tenantSchemas[call.Arg<int?>()!.Value],
                         DefinitionsEventId: 0));
             }
             var tenant = new TenantConfiguration { TenantId = tenantId, DisplayName = "Validation", FhirVersion = version.ToVersionString() };

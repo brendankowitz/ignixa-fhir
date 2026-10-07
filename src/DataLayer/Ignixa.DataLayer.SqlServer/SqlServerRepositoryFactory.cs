@@ -31,8 +31,7 @@ public static class SqlServerRepositoryFactory
         var cache = new SqlServerSearchIndexReferenceDataCache(
             sqlExecutionService,
             tenantId,
-            loggerFactory.CreateLogger<SqlServerSearchIndexReferenceDataCache>(),
-            searchParameterDefinitionManager: searchParameterDefinitionManager);
+            loggerFactory.CreateLogger<SqlServerSearchIndexReferenceDataCache>());
 
         try
         {

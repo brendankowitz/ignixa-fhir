@@ -35,7 +35,7 @@ public class ImportDefinitionsEventIdTests
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
         versions.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(indexer, DefinitionsEventId));
+            .Returns(new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), DefinitionsEventId));
         var repository = Substitute.For<IFhirRepository>();
         repository.GetNextTransactionIdAsync(DefinitionsEventId, Arg.Any<CancellationToken>())
             .Returns(new TransactionId(1));

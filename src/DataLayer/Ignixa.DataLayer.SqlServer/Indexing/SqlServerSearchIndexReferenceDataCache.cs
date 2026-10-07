@@ -30,16 +30,16 @@ namespace Ignixa.DataLayer.SqlServer.Indexing;
 /// hooks reach one cache instance only.
 /// </para>
 /// <para>
-/// Override relationships belong to the search-parameter definitions, not <c>dbo.SearchParam</c>. Supply
-/// those definitions when constructing a cold cache, or synchronize them before using its mappings.
+/// Override relationships belong to the immutable search-parameter generation that produced an index entry,
+/// not <c>dbo.SearchParam</c>. This cache stores physical catalog ids only; callers resolve generation-specific
+/// root identities before looking them up here.
 /// </para>
 /// </summary>
 public sealed class SqlServerSearchIndexReferenceDataCache(
     ISqlExecutionService sqlExecutionService,
     int tenantId,
     ILogger<SqlServerSearchIndexReferenceDataCache> logger,
-    TimeProvider? timeProvider = null,
-    ISearchParameterDefinitionManager? searchParameterDefinitionManager = null) : IDisposable
+    TimeProvider? timeProvider = null) : IDisposable
 {
     private const short MissingSentinel = -1;
 
@@ -76,9 +76,6 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     private readonly ConcurrentDictionary<string, short> _searchParamCache = new();
     private readonly ConcurrentDictionary<string, int> _systemCache = new();
     private readonly ConcurrentDictionary<string, int> _quantityCodeCache = new();
-    private ISearchParameterDefinitionManager? _searchParameterDefinitionManager = searchParameterDefinitionManager;
-    private readonly Dictionary<string, string> _knownOverrideUrls = new(StringComparer.Ordinal);
-
     // Negative caches for the read-only lookups, matching the key kinds the reference EF implementation
     // covers (_missingSystems and _missingQuantityCodes there too). Kept separate from the positive caches
     // above because those are shared with the get-or-create write path, which reads every cached integer as
@@ -264,13 +261,9 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
             reader => (Id: reader.GetInt16(0), Uri: reader.GetString(1)),
             cancellationToken);
 
-        var idsByUri = maxRows.HasValue && _searchParameterDefinitionManager is not null
-            ? await ReadSearchParamIdsByUriAsync(cancellationToken)
-            : rows.ToDictionary(row => row.Uri, row => row.Id, StringComparer.Ordinal);
-
         foreach (var row in rows)
         {
-            _searchParamCache[row.Uri] = ResolveOverrideId(row.Uri, idsByUri) ?? row.Id;
+            _searchParamCache[row.Uri] = row.Id;
             if (TestSearchParamRowInsertedHookAsync != null)
             {
                 await TestSearchParamRowInsertedHookAsync();
@@ -355,11 +348,10 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
                 return cachedId == MissingSentinel ? null : cachedId;
             }
 
-            var overrideUrl = GetOverrideUrl(uri);
             using var command = new SqlCommand("SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = @Uri");
             // dbo.SearchParam.Uri is VARCHAR (not NVARCHAR) -- unlike System/QuantityCode.Value, so
             // this binds VarChar to avoid an implicit-conversion scan against the clustered PK.
-            command.Parameters.Add("@Uri", SqlDbType.VarChar).Value = overrideUrl ?? uri;
+            command.Parameters.Add("@Uri", SqlDbType.VarChar).Value = uri;
 
             var rows = await _sqlExecutionService.ExecuteReaderAsync(
                 tenantId, command, reader => reader.GetInt16(0), cancellationToken);
@@ -382,10 +374,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     }
 
     /// <summary>
-    /// Seeds core definitions together with the cache's current authoritative definitions and their
-    /// storage roots. Unlike synchronization after activation, core seeding must not replace a
-    /// constructor-supplied or previously synchronized manager with a base-only manager.
-    /// Caches constructed without definitions adopt <paramref name="seedDefinitions"/>.
+    /// Seeds the supplied definitions and their storage roots without retaining the definition manager.
     /// </summary>
     public async Task<int> SeedSearchParametersToDatabaseAsync(
         ISearchParameterDefinitionManager seedDefinitions,
@@ -396,13 +385,14 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            _searchParameterDefinitionManager ??= seedDefinitions;
             var urls = seedDefinitions.AllSearchParameters
-                .Concat(_searchParameterDefinitionManager.AllSearchParameters)
                 .Where(parameter => parameter.Url is not null)
                 .Select(parameter => parameter.Url!.ToString());
 
-            return await SyncSearchParameterUrlsAsync(SelectSyncableUrls(urls), cancellationToken);
+            return await SyncSearchParameterUrlsAsync(
+                SelectSyncableUrls(urls),
+                seedDefinitions,
+                cancellationToken);
         }
         finally
         {
@@ -420,8 +410,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// </summary>
     /// <param name="searchParameterUrls">Canonical URLs to sync. Null or empty syncs nothing.</param>
     /// <param name="searchParameterDefinitionManager">
-    /// Authoritative definitions for <see cref="Ignixa.Search.Models.SearchParameterInfo.OverridesUrl"/>
-    /// aliasing, retained for later preloads and cold lookups. Null preserves the current definitions.
+    /// Detached definitions used only to provision storage roots for this catalog operation.
     /// </param>
     /// <returns>The number of search parameters newly synced (rows that did not already exist).</returns>
     public async Task<int> SyncSearchParametersToDatabaseAsync(
@@ -443,8 +432,10 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            _searchParameterDefinitionManager = searchParameterDefinitionManager ?? _searchParameterDefinitionManager;
-            return await SyncSearchParameterUrlsAsync(storableUrls, cancellationToken);
+            return await SyncSearchParameterUrlsAsync(
+                storableUrls,
+                searchParameterDefinitionManager,
+                cancellationToken);
         }
         finally
         {
@@ -452,9 +443,10 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         }
     }
 
-    // Both entry points hold _dbLock through manager selection, root resolution and publication.
+    // Both entry points hold _dbLock through detached root resolution and physical-id publication.
     private async Task<int> SyncSearchParameterUrlsAsync(
         IReadOnlyList<string> storableUrls,
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager,
         CancellationToken cancellationToken)
     {
         if (storableUrls.Count == 0)
@@ -466,7 +458,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         var requiredUrls = new HashSet<string>(storableUrls, StringComparer.Ordinal);
         foreach (var url in storableUrls)
         {
-            if (GetOverrideUrl(url) is { } root)
+            if (GetOverrideUrl(url, searchParameterDefinitionManager) is { } root)
             {
                 if (root.Length > MaxSearchParamUriLength)
                 {
@@ -623,12 +615,11 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         IReadOnlyList<string> missingUrls,
         Dictionary<string, short> idsByUri)
     {
-        // Resolve after the complete batch exists, including existing aliases and targets inserted by a
-        // different package. Never publish physical ids first: live row generators would index under them.
         foreach (var (url, ownId) in idsByUri)
         {
-            // Overwrite MissingSentinel as well as stale physical ids.
-            _searchParamCache[url] = ResolveOverrideId(url, idsByUri) ?? ownId;
+            // The cache is a physical catalog only. Generation-specific aliasing is resolved from the
+            // SearchParameterInfo captured in each extracted index entry.
+            _searchParamCache[url] = ownId;
         }
 
         var syncedCount = 0;
@@ -648,51 +639,28 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         return syncedCount;
     }
 
-    /// <summary>
-    /// Resolves the <c>SearchParamId</c> that <paramref name="url"/> should index under when its definition
-    /// declares <c>OverridesUrl</c> and that overridden URL has a row. Returns null when there is no manager,
-    /// no definition, no override, or no row for the override.
-    /// </summary>
-    private short? ResolveOverrideId(
+    private static string? GetOverrideUrl(
         string url,
-        Dictionary<string, short> idsByUri)
-    {
-        var overrideUrl = GetOverrideUrl(url);
-        if (overrideUrl is null)
-        {
-            return null;
-        }
-
-        return idsByUri.TryGetValue(overrideUrl, out var overrideId)
-            ? overrideId
-            : throw new InvalidOperationException($"Search parameter {url} has no synchronized root identity for {overrideUrl}.");
-    }
-
-    private string? GetOverrideUrl(string url)
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager)
     {
         // Uri.TryCreate rather than new Uri: a package carrying a non-absolute canonical would otherwise
         // throw UriFormatException and abandon the whole sync over one malformed definition.
-        if (_searchParameterDefinitionManager is null || !Uri.TryCreate(url, UriKind.Absolute, out var definitionUri))
+        if (searchParameterDefinitionManager is null || !Uri.TryCreate(url, UriKind.Absolute, out var definitionUri))
         {
             return null;
         }
 
-        if (_searchParameterDefinitionManager.TryGetSearchParameterRootUrl(definitionUri, out var rootUri))
+        if (searchParameterDefinitionManager.TryGetSearchParameterRootUrl(definitionUri, out var rootUri))
         {
             if (rootUri != definitionUri)
             {
-                var overrideUrl = rootUri.ToString();
-                _knownOverrideUrls[url] = overrideUrl;
-                return overrideUrl;
+                return rootUri.ToString();
             }
 
-            _knownOverrideUrls.Remove(url);
             return null;
         }
 
-        // A base-only or unrelated package manager cannot revoke a previously learned override merely
-        // because it does not know that canonical. All access to this metadata is under _dbLock.
-        return _knownOverrideUrls.GetValueOrDefault(url);
+        return null;
     }
 
     public async Task<int> GetOrCreateSystemIdAsync(string? systemUri, CancellationToken cancellationToken)

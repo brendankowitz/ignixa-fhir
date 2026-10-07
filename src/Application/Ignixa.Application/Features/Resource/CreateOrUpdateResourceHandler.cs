@@ -266,7 +266,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IReadOnlyCollection<SearchIndexEntry>? searchIndices = null;
         try
         {
-            var typedElement = command.JsonNode.ToElement(schemaProvider);
+            var typedElement = command.JsonNode.ToElement(definitionsHandle.SchemaProvider);
             searchIndices = definitionsHandle.Indexer.Extract((IElement)typedElement);
 
             _logger.LogDebug(
@@ -381,7 +381,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                 IReadOnlyCollection<SearchIndexEntry> searchIndices;
                 try
                 {
-                    var typedElement = provenanceTemplate.ToElement(schemaProvider);
+                    var typedElement = provenanceTemplate.ToElement(definitionsHandle.SchemaProvider);
                     searchIndices = definitionsHandle.Indexer.Extract((IElement)typedElement);
 
                     _logger.LogDebug(

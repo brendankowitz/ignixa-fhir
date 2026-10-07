@@ -170,7 +170,6 @@ public class DeferredWriteCoordinator
         cancellationToken.ThrowIfCancellationRequested();
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
-        var schemaProvider = _fhirVersionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
         var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
 
         return wrapper with
@@ -178,7 +177,7 @@ public class DeferredWriteCoordinator
             SearchIndices = wrapper.IsDeleted
                 ? []
                 : definitionsHandle.Indexer.Extract(
-                    (IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray(),
+                    (IElement)wrapper.Resource.ToElement(definitionsHandle.SchemaProvider)).ToArray(),
             DefinitionsEventId = definitionsHandle.DefinitionsEventId,
         };
     }
@@ -239,7 +238,6 @@ public class DeferredWriteCoordinator
     {
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
-        var schemaProvider = _fhirVersionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
         var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
 
         for (var index = 0; index < _stagedWrites.Count; index++)
@@ -251,7 +249,7 @@ public class DeferredWriteCoordinator
                 SearchIndices = wrapper.IsDeleted
                     ? []
                     : definitionsHandle.Indexer.Extract(
-                        (IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray(),
+                        (IElement)wrapper.Resource.ToElement(definitionsHandle.SchemaProvider)).ToArray(),
                 DefinitionsEventId = definitionsHandle.DefinitionsEventId,
             });
         }
@@ -268,7 +266,6 @@ public class DeferredWriteCoordinator
         }
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
-        var schemaProvider = versionContext.GetBaseSchemaProvider(context.FhirVersion);
         var definitionsHandle = versionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
         for (var index = 0; index < _stagedWrites.Count; index++)
         {
@@ -281,7 +278,8 @@ public class DeferredWriteCoordinator
                 wrapper.Resource.InvalidateCaches();
                 _stagedWrites[index] = (entryIndex, wrapper with
                 {
-                    SearchIndices = definitionsHandle.Indexer.Extract((IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray(),
+                    SearchIndices = definitionsHandle.Indexer.Extract(
+                        (IElement)wrapper.Resource.ToElement(definitionsHandle.SchemaProvider)).ToArray(),
                     DefinitionsEventId = definitionsHandle.DefinitionsEventId
                 });
             }

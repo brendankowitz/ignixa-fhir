@@ -1,5 +1,8 @@
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,15 +18,17 @@ public class DefinitionsHandleTests
     {
         var firstIndexer = Substitute.For<ISearchIndexer>();
         var secondIndexer = Substitute.For<ISearchIndexer>();
-        var slot = new DefinitionsHandleSlot(new DefinitionsHandle(firstIndexer, 11));
+        var firstSchema = Substitute.For<IFhirSchemaProvider>();
+        var secondSchema = Substitute.For<IFhirSchemaProvider>();
+        var slot = new DefinitionsHandleSlot(new DefinitionsHandle(firstIndexer, firstSchema, 11));
         var mismatches = 0;
 
         var publisher = Task.Run(() =>
         {
             for (var iteration = 0; iteration < 10_000; iteration++)
             {
-                slot.Publish(new DefinitionsHandle(firstIndexer, 11));
-                slot.Publish(new DefinitionsHandle(secondIndexer, 29));
+                slot.Publish(new DefinitionsHandle(firstIndexer, firstSchema, 11));
+                slot.Publish(new DefinitionsHandle(secondIndexer, secondSchema, 29));
             }
         });
         var reader = Task.Run(() =>
@@ -32,7 +37,9 @@ public class DefinitionsHandleTests
             {
                 var handle = slot.Current;
                 if ((ReferenceEquals(handle.Indexer, firstIndexer) && handle.DefinitionsEventId != 11) ||
-                    (ReferenceEquals(handle.Indexer, secondIndexer) && handle.DefinitionsEventId != 29))
+                    (ReferenceEquals(handle.Indexer, secondIndexer) && handle.DefinitionsEventId != 29) ||
+                    (ReferenceEquals(handle.Indexer, firstIndexer) && !ReferenceEquals(handle.SchemaProvider, firstSchema)) ||
+                    (ReferenceEquals(handle.Indexer, secondIndexer) && !ReferenceEquals(handle.SchemaProvider, secondSchema)))
                 {
                     Interlocked.Increment(ref mismatches);
                 }
@@ -64,13 +71,87 @@ public class DefinitionsHandleTests
     {
         var olderIndexer = Substitute.For<ISearchIndexer>();
         var newerIndexer = Substitute.For<ISearchIndexer>();
-        var slot = new DefinitionsHandleSlot(new DefinitionsHandle(olderIndexer, 11));
+        var olderSchema = Substitute.For<IFhirSchemaProvider>();
+        var newerSchema = Substitute.For<IFhirSchemaProvider>();
+        var slot = new DefinitionsHandleSlot(new DefinitionsHandle(olderIndexer, olderSchema, 11));
 
-        slot.Publish(new DefinitionsHandle(newerIndexer, 29));
-        slot.Publish(new DefinitionsHandle(olderIndexer, 17));
+        slot.Publish(new DefinitionsHandle(newerIndexer, newerSchema, 29));
+        slot.Publish(new DefinitionsHandle(olderIndexer, olderSchema, 17));
 
         slot.Current.DefinitionsEventId.ShouldBe(29);
         slot.Current.Indexer.ShouldBeSameAs(newerIndexer);
+    }
+
+    [Fact]
+    public async Task GivenFutureSchemaGenerationBuiltBeforePublication_WhenCurrentHandleIsUsed_ThenItsSchemaProviderRemainsStable()
+    {
+        var generationOneSchema = Substitute.For<IFhirSchemaProvider>();
+        var generationTwoSchema = Substitute.For<IFhirSchemaProvider>();
+        var generationOne = new DefinitionsHandle(
+            Substitute.For<ISearchIndexer>(),
+            generationOneSchema,
+            11);
+        var slot = new DefinitionsHandleSlot(generationOne);
+        var futureBuildCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowPublication = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var futureBuild = Task.Run(async () =>
+        {
+            var generationTwo = new DefinitionsHandle(
+                Substitute.For<ISearchIndexer>(),
+                generationTwoSchema,
+                29);
+            futureBuildCompleted.TrySetResult();
+            await allowPublication.Task;
+            slot.Publish(generationTwo);
+        });
+
+        await futureBuildCompleted.Task;
+
+        var inFlightGenerationOne = slot.Current;
+        inFlightGenerationOne.ShouldBeSameAs(generationOne);
+        inFlightGenerationOne.SchemaProvider.ShouldBeSameAs(generationOneSchema);
+
+        allowPublication.TrySetResult();
+        await futureBuild;
+
+        slot.Current.SchemaProvider.ShouldBeSameAs(generationTwoSchema);
+        inFlightGenerationOne.SchemaProvider.ShouldBeSameAs(generationOneSchema);
+    }
+
+    [Fact]
+    public void GivenPublishedTenantSnapshot_WhenFutureSnapshotBuilds_ThenItUsesADetachedSchemaProvider()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetAllStructureDefinitionsAsync(
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<PackageResource>>([]));
+        using var context = new FhirVersionContext(
+            NullLoggerFactory.Instance,
+            new SearchParameterResolutionOptions(),
+            NullFhirBaseUriProvider.Instance,
+            packageRepository,
+            Substitute.For<IPackageResourceProvider>());
+        using var state = new ConformanceState();
+        var stateSnapshot = state.CreateSnapshot();
+        var generationOne = context.CreateConformanceDefinitionsSnapshot(
+            FhirVersion.R4,
+            tenantId: 1,
+            stateSnapshot,
+            generation: 11);
+        context.PublishConformanceDefinitionsSnapshot(FhirVersion.R4, tenantId: 1, generationOne);
+
+        var generationTwo = context.CreateConformanceDefinitionsSnapshot(
+            FhirVersion.R4,
+            tenantId: 1,
+            stateSnapshot,
+            generation: 29);
+
+        generationTwo.Handle.SchemaProvider.ShouldNotBeSameAs(generationOne.Handle.SchemaProvider);
+        context.GetDefinitionsHandle(FhirVersion.R4, tenantId: 1)
+            .SchemaProvider.ShouldBeSameAs(generationOne.Handle.SchemaProvider);
+        context.GetSchemaProvider(FhirVersion.R4, tenantId: 1)
+            .ShouldBeSameAs(generationOne.Handle.SchemaProvider);
     }
 
     [Fact]
@@ -81,18 +162,27 @@ public class DefinitionsHandleTests
         var older = new ConformanceDefinitionsSnapshot(
             olderDefinitions,
             olderDefinitions,
-            new DefinitionsHandle(Substitute.For<ISearchIndexer>(), 11));
+            new DefinitionsHandle(
+                Substitute.For<ISearchIndexer>(),
+                Substitute.For<IFhirSchemaProvider>(),
+                11));
         var newer = new ConformanceDefinitionsSnapshot(
             newerDefinitions,
             newerDefinitions,
-            new DefinitionsHandle(Substitute.For<ISearchIndexer>(), 29));
+            new DefinitionsHandle(
+                Substitute.For<ISearchIndexer>(),
+                Substitute.For<IFhirSchemaProvider>(),
+                29));
         var slot = new ConformanceDefinitionsSnapshotSlot(older);
 
         slot.Publish(newer);
         slot.Publish(new ConformanceDefinitionsSnapshot(
             olderDefinitions,
             olderDefinitions,
-            new DefinitionsHandle(Substitute.For<ISearchIndexer>(), 17)));
+            new DefinitionsHandle(
+                Substitute.For<ISearchIndexer>(),
+                Substitute.For<IFhirSchemaProvider>(),
+                17)));
 
         slot.Current.Generation.ShouldBe(29);
         slot.Current.ExtractionDefinitions.ShouldBeSameAs(newerDefinitions);

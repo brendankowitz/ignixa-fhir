@@ -32,7 +32,8 @@ public class BulkImportIndexingFailureTests
         indexer.Extract(Arg.Any<IElement>()).Returns(_ => throw new InvalidOperationException("Index extraction failed"));
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(new DefinitionsHandle(indexer, 0));
+        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
+            .Returns(new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 0));
         var repository = Substitute.For<IFhirRepository>();
         repository.GetNextTransactionIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionId(1));

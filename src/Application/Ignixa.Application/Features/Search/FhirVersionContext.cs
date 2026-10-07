@@ -110,6 +110,11 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetBaseSchemaProvider(fhirVersion);
         }
 
+        if (_conformanceDefinitions.TryGetValue((fhirVersion, tenantId.Value), out var definitions))
+        {
+            return definitions.Current.Handle.SchemaProvider;
+        }
+
         // Return cached composite provider or create new one
         return _compositeProviders.GetOrAdd((fhirVersion, tenantId.Value), key =>
         {
@@ -120,17 +125,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
                 version,
                 tenant);
 
-            // Get base provider for this FHIR version
-            var baseProvider = GetBaseSchemaProvider(version);
-
-            // Create composite provider that includes base spec + tenant packages
-            var fhirVersionString = version.ToVersionString();
-            var compositeProvider = new CompositeStructureDefinitionSummaryProvider(
-                baseProvider,
-                _packageResourceRepository,
-                _packageResourceProvider,
-                fhirVersionString,
-                _loggerFactory.CreateLogger<CompositeStructureDefinitionSummaryProvider>());
+            var compositeProvider = CreateCompositeSchemaProvider(version);
 
             // Register provider for cache invalidation if registry available
             if (_compositeProviderRegistry != null)
@@ -271,7 +266,10 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         var slot = _definitionsHandles.GetOrAdd(
             key,
             _ => new DefinitionsHandleSlot(
-                new DefinitionsHandle(GetSearchIndexer(fhirVersion, tenantId), DefinitionsEventId: 0)));
+                new DefinitionsHandle(
+                    GetSearchIndexer(fhirVersion, tenantId),
+                    GetSchemaProvider(fhirVersion, tenantId),
+                    DefinitionsEventId: 0)));
         return slot.Current;
     }
 
@@ -282,7 +280,10 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         long definitionsEventId)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(definitionsEventId);
-        return new DefinitionsHandle(GetSearchIndexer(fhirVersion, tenantId), definitionsEventId);
+        return new DefinitionsHandle(
+            GetSearchIndexer(fhirVersion, tenantId),
+            GetSchemaProvider(fhirVersion, tenantId),
+            definitionsEventId);
     }
 
     /// <inheritdoc/>
@@ -319,7 +320,9 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         ArgumentNullException.ThrowIfNull(stateSnapshot);
         ArgumentOutOfRangeException.ThrowIfNegative(generation);
 
-        var schemaProvider = GetSchemaProvider(fhirVersion, tenantId);
+        var schemaProvider = _packageResourceRepository is not null && _packageResourceProvider is not null
+            ? CreateCompositeSchemaProvider(fhirVersion)
+            : GetBaseSchemaProvider(fhirVersion);
         var baseManager = GetSearchParameterDefinitionManager(fhirVersion);
         var extractionDefinitions = new CompositeSearchParameterDefinitionManager(
             baseManager,
@@ -350,7 +353,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         return new ConformanceDefinitionsSnapshot(
             extractionDefinitions,
             searchableDefinitions,
-            new DefinitionsHandle(indexer, generation));
+            new DefinitionsHandle(indexer, schemaProvider, generation));
     }
 
     /// <inheritdoc/>
@@ -504,6 +507,14 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return manager;
         });
     }
+
+    private CompositeStructureDefinitionSummaryProvider CreateCompositeSchemaProvider(FhirVersion fhirVersion) =>
+        new(
+            GetBaseSchemaProvider(fhirVersion),
+            _packageResourceRepository!,
+            _packageResourceProvider!,
+            fhirVersion.ToVersionString(),
+            _loggerFactory.CreateLogger<CompositeStructureDefinitionSummaryProvider>());
 
     /// <inheritdoc/>
     public ICompartmentDefinitionManager GetCompartmentDefinitionManager(FhirVersion fhirVersion)

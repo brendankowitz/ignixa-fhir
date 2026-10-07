@@ -40,20 +40,17 @@ public static class SearchParameterIdLookupHelper
             return false;
         }
 
-        // Try primary lookup using the parameter's URL
+        // The extracted parameter belongs to one immutable definitions generation. Resolve its storage
+        // identity before its own physical catalog row so a future generation cannot change an in-flight
+        // write's aliasing.
+        if (searchParameter.OverridesUrl is { } overridesUrl)
+        {
+            return searchParameterIdMap.TryGetValue(overridesUrl.ToString(), out searchParamId);
+        }
+
         if (searchParameterIdMap.TryGetValue(searchParamUrl, out searchParamId))
         {
             return true;
-        }
-
-        // Fallback: if this parameter overrides another parameter, try the overridden URL
-        if (searchParameter.OverridesUrl != null)
-        {
-            var overridesUrl = searchParameter.OverridesUrl.ToString();
-            if (searchParameterIdMap.TryGetValue(overridesUrl, out searchParamId))
-            {
-                return true;
-            }
         }
 
         searchParamId = 0;

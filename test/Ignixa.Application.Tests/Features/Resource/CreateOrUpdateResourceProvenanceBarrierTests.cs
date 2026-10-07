@@ -64,7 +64,8 @@ public class CreateOrUpdateResourceProvenanceBarrierTests
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
         versions.GetBaseSchemaProvider(FhirVersion.R4).Returns(new R4CoreSchemaProvider());
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(new DefinitionsHandle(indexer, 11));
+        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
+            .Returns(new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 11));
         var validationResolver = Substitute.For<IValidationSchemaResolver>();
         validationResolver.GetSchema("Provenance").Returns((ValidationSchema?)null);
         var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();

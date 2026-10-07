@@ -116,9 +116,9 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive");
             }
 
-            // Get FHIR schema and indexer using tenant's configured FHIR version
+            // Resolve the tenant's configured FHIR version. Each batch acquires one definitions handle
+            // containing the matching schema provider and indexer.
             var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-            var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
 
             // Read global configuration for consumer count
             var consumerCount = _configuration.GetValue<int>("Import:ConsumerCount", 8);
@@ -186,7 +186,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                             batchOperations.Add(PrepareResource(
                                 entry,
                                 input.ResourceType,
-                                schemaProvider,
+                                definitionsHandle.SchemaProvider,
                                 definitionsHandle.Indexer,
                                 localErrors));
 
@@ -197,7 +197,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                 batchOperations.Add(PrepareResource(
                                     nextEntry,
                                     input.ResourceType,
-                                    schemaProvider,
+                                    definitionsHandle.SchemaProvider,
                                     definitionsHandle.Indexer,
                                     localErrors));
                             }
@@ -228,7 +228,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                             : validOperations.Select(operation =>
                                             {
                                                 IReadOnlyList<object> indexes = attemptHandle.Indexer.Extract(
-                                                    (IElement)operation.resource.ToElement(schemaProvider)).ToArray();
+                                                    (IElement)operation.resource.ToElement(attemptHandle.SchemaProvider)).ToArray();
                                                 return (
                                                     operation.resourceType,
                                                     operation.resourceId,
