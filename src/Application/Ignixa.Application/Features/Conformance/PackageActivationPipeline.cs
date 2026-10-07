@@ -117,9 +117,8 @@ public class PackageActivationPipeline(
             _state.ApplyAndTrack(evt);
         }
 
-        // 6. Rebuild definitions, then synchronize every local consumer before this instance can renew its search lease.
+        // 6. Invalidate definitions before phase-two orchestration and local consumer refresh.
         _fhirVersionContext.InvalidateSearchParameterCaches();
-        await _cacheRefresher.RefreshAsync(cancellationToken);
 
         // 7. Schedule phase two only after the phase-one event is durable.
         foreach (var eventId in persistedEvents
@@ -130,7 +129,24 @@ public class PackageActivationPipeline(
             await _transitionScheduler.ScheduleAsync(
                 eventId,
                 _transitionOptions.TransitionGrace,
-                cancellationToken);
+                CancellationToken.None);
+        }
+
+        // Refresh failures do not undo durable activation or phase-two scheduling. The sync loop retries
+        // local consumers, and this instance does not renew its search lease until a refresh succeeds.
+        var refreshed = true;
+        try
+        {
+            await _cacheRefresher.RefreshAsync(CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            refreshed = false;
+            _logger.LogWarning(
+                exception,
+                "Package {PackageId}@{Version} activated durably, but local conformance consumer refresh failed; synchronization will retry",
+                packageId,
+                version);
         }
 
         // 8. Detect reindex requirements
@@ -142,7 +158,10 @@ public class PackageActivationPipeline(
             version,
             reindexNeeded.Count);
 
-        _conformanceLease.Renew(leaseStart);
+        if (refreshed)
+        {
+            _conformanceLease.Renew(leaseStart);
+        }
         return ActivationResult.Succeeded(reindexNeeded);
     }
 
