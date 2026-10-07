@@ -158,9 +158,11 @@ internal class BundleParserState
         // Parse resource JSON if present
         ISourceNavigator? resourceNode = null;
         string? resourceType = null;
-        if (_resourceJsonBuilder.Length > 0)
+        string? resourceJson = _resourceJsonBuilder.Length > 0
+            ? _resourceJsonBuilder.ToString()
+            : null;
+        if (resourceJson != null)
         {
-            var resourceJson = _resourceJsonBuilder.ToString();
             // Parse to ResourceJsonNode to enable caching
             // Using cached ToSourceNavigator() prevents repeated ReflectedSourceNode allocations
             var parsedResource = ResourceJsonNode.Parse(resourceJson);
@@ -181,7 +183,7 @@ internal class BundleParserState
             ResourceType = resourceType,
             ResourceId = resourceId,
             FullUrl = _fullUrl,
-            RawJson = _resourceJsonBuilder.Length > 0 ? _resourceJsonBuilder.ToString() : null,
+            RawJson = resourceJson,
             IfNoneExist = _ifNoneExist,
             IfMatch = _ifMatch
         };
