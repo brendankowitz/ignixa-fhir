@@ -66,4 +66,14 @@ public record InstallPackageResultDto
     /// Human-readable message summarizing the installation.
     /// </summary>
     public required string Message { get; init; }
+
+    /// <summary>
+    /// Whether local conformance consumer refresh was deferred after the durable activation.
+    /// </summary>
+    public required bool LocalRefreshDeferred { get; init; }
+
+    /// <summary>
+    /// Whether a phase-two transition schedule was deferred after the durable activation.
+    /// </summary>
+    public required bool TransitionSchedulingDeferred { get; init; }
 }

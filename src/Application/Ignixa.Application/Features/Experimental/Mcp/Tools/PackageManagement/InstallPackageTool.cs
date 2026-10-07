@@ -115,6 +115,22 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
                 string.Join(", ", activationResult.PendingReindex));
         }
 
+        if (activationResult.LocalRefreshDeferred)
+        {
+            _logger.LogWarning(
+                "Package {PackageId}@{Version} activated durably, but local conformance refresh is deferred",
+                packageId,
+                resolvedVersion);
+        }
+
+        if (activationResult.TransitionSchedulingDeferred)
+        {
+            _logger.LogError(
+                "Package {PackageId}@{Version} activated durably, but phase-two transition scheduling is deferred",
+                packageId,
+                resolvedVersion);
+        }
+
         // Map to DTO
         var resourcesByType = result.ResourcesByType
             .OrderByDescending(kvp => kvp.Value)
@@ -132,6 +148,8 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
             UpdatedResources = result.UpdatedResources,
             DurationSeconds = (int)duration.TotalSeconds,
             ResourcesByType = resourcesByType,
+            LocalRefreshDeferred = activationResult.LocalRefreshDeferred,
+            TransitionSchedulingDeferred = activationResult.TransitionSchedulingDeferred,
             Message = $"Successfully installed {result.PackageId}@{result.PackageVersion} " +
                       $"({result.ImportedResources} new, {result.UpdatedResources} updated)"
         };

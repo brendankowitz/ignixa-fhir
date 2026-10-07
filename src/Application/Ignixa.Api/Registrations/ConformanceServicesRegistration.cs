@@ -32,6 +32,7 @@ public static class ConformanceServicesRegistration
 
         // Register the ConformanceState sync service for multi-instance scenarios (polls periodically)
         services.AddHostedService<ConformanceStateSyncService>();
+        services.AddSingleton(TimeProvider.System);
 
         return services;
     }

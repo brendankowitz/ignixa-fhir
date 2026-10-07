@@ -32,6 +32,9 @@ public class PackageActivationPipeline(
     IConformanceLease conformanceLease,
     ILogger<PackageActivationPipeline> logger)
 {
+    private const int TransitionSchedulingAttempts = 3;
+    private static readonly TimeSpan TransitionSchedulingRetryDelay = TimeSpan.FromMilliseconds(100);
+
     private readonly IPackageResourceRepository _packageRepo = packageRepo ?? throw new ArgumentNullException(nameof(packageRepo));
     private readonly ISourceEventStore _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
     private readonly ConformanceState _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -121,15 +124,16 @@ public class PackageActivationPipeline(
         _fhirVersionContext.InvalidateSearchParameterCaches();
 
         // 7. Schedule phase two only after the phase-one event is durable.
+        var transitionSchedulingDeferred = false;
         foreach (var eventId in persistedEvents
             .Where(evt => evt.Data is SearchParameterActivated)
             .Select(evt => evt.EventId)
             .Where(eventId => _state.GetTransitionCandidates(eventId).Count > 0))
         {
-            await _transitionScheduler.ScheduleAsync(
-                eventId,
-                _transitionOptions.TransitionGrace,
-                CancellationToken.None);
+            if (!await TryScheduleTransitionAsync(eventId))
+            {
+                transitionSchedulingDeferred = true;
+            }
         }
 
         // Refresh failures do not undo durable activation or phase-two scheduling. The sync loop retries
@@ -139,9 +143,10 @@ public class PackageActivationPipeline(
         {
             await _cacheRefresher.RefreshAsync(CancellationToken.None);
         }
-        catch (Exception exception)
+        catch (ConformanceConsumerRefreshException exception)
         {
             refreshed = false;
+            ConformanceConsumerRefreshMetrics.RecordFailure("activation");
             _logger.LogWarning(
                 exception,
                 "Package {PackageId}@{Version} activated durably, but local conformance consumer refresh failed; synchronization will retry",
@@ -162,7 +167,49 @@ public class PackageActivationPipeline(
         {
             _conformanceLease.Renew(leaseStart);
         }
-        return ActivationResult.Succeeded(reindexNeeded);
+        return ActivationResult.Succeeded(
+            reindexNeeded,
+            localRefreshDeferred: !refreshed,
+            transitionSchedulingDeferred: transitionSchedulingDeferred);
+    }
+
+    private async Task<bool> TryScheduleTransitionAsync(long eventId)
+    {
+        Exception? lastException = null;
+        for (var attempt = 1; attempt <= TransitionSchedulingAttempts; attempt++)
+        {
+            try
+            {
+                await _transitionScheduler.ScheduleAsync(
+                    eventId,
+                    _transitionOptions.TransitionGrace,
+                    CancellationToken.None);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                lastException = exception;
+                if (attempt < TransitionSchedulingAttempts)
+                {
+                    _logger.LogWarning(
+                        exception,
+                        "Scheduling transition for hide EventId {EventId} failed on attempt {Attempt}; retrying",
+                        eventId,
+                        attempt);
+                    await Task.Delay(TransitionSchedulingRetryDelay, CancellationToken.None);
+                }
+            }
+        }
+
+        // The activation event is already durable. Do not report a false activation failure, but make
+        // the degraded condition explicit; the sync watchdog will make a fresh, full-grace attempt.
+        ConformanceTransitionMetrics.RecordScheduleFailure();
+        _logger.LogError(
+            lastException,
+            "Package activation persisted hide EventId {EventId}, but transition scheduling failed after {AttemptCount} attempts; the watchdog will retry",
+            eventId,
+            TransitionSchedulingAttempts);
+        return false;
     }
 
     private static ValidationResult ValidateCompositeComponents(PackageResources resources, ConformanceState state)

@@ -5,6 +5,7 @@
 
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Services;
 
@@ -17,10 +18,16 @@ public class ConformanceStateSyncService(
     ConformanceState conformanceState,
     IConformanceCacheRefresher cacheRefresher,
     IConformanceLease conformanceLease,
+    ISearchParameterTransitionScheduler transitionScheduler,
+    IOptions<ConformanceTransitionOptions> transitionOptions,
+    TimeProvider timeProvider,
     ILogger<ConformanceStateSyncService> logger,
     IConfiguration configuration) : BackgroundService
 {
     private long _lastRefreshedEventId;
+    private readonly Dictionary<long, long> _uncommittedTransitionFirstObserved = [];
+    private readonly TimeSpan _transitionGrace = transitionOptions.Value.TransitionGrace;
+    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(
         configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
@@ -76,9 +83,19 @@ public class ConformanceStateSyncService(
         using var activationLock = await conformanceState.AcquireActivationLockAsync(cancellationToken);
         var afterEventId = conformanceState.LastProcessedEventId;
 
+        await ObserveUncommittedTransitionsAsync(cancellationToken);
+
         if (afterEventId > _lastRefreshedEventId)
         {
-            await cacheRefresher.RefreshAsync(cancellationToken);
+            try
+            {
+                await cacheRefresher.RefreshAsync(cancellationToken);
+            }
+            catch (ConformanceConsumerRefreshException)
+            {
+                ConformanceConsumerRefreshMetrics.RecordFailure("sync");
+                throw;
+            }
 
             // Applying events and refreshing their consumers are separate checkpoints. In particular,
             // an empty subsequent poll must retry a failed refresh of an already-applied event.
@@ -101,5 +118,46 @@ public class ConformanceStateSyncService(
         }
 
         conformanceLease.Renew(syncStart);
+    }
+
+    private async Task ObserveUncommittedTransitionsAsync(CancellationToken cancellationToken)
+    {
+        var uncommittedTransitionIds = conformanceState.GetTransitionHideEventIds();
+        _uncommittedTransitionFirstObserved.Keys
+            .Except(uncommittedTransitionIds)
+            .ToList()
+            .ForEach(eventId => _uncommittedTransitionFirstObserved.Remove(eventId));
+
+        foreach (var eventId in uncommittedTransitionIds)
+        {
+            var now = _timeProvider.GetTimestamp();
+            if (!_uncommittedTransitionFirstObserved.TryGetValue(eventId, out var firstObserved))
+            {
+                _uncommittedTransitionFirstObserved[eventId] = now;
+                continue;
+            }
+
+            if (_timeProvider.GetElapsedTime(firstObserved) < _transitionGrace + _transitionGrace)
+            {
+                continue;
+            }
+
+            try
+            {
+                await transitionScheduler.ScheduleReconciliationAsync(
+                    eventId,
+                    _transitionGrace,
+                    cancellationToken);
+                _uncommittedTransitionFirstObserved[eventId] = _timeProvider.GetTimestamp();
+            }
+            catch (Exception exception)
+            {
+                ConformanceTransitionMetrics.RecordScheduleFailure();
+                logger.LogError(
+                    exception,
+                    "Transition watchdog could not schedule hide EventId {EventId}; it will retry on the next sync",
+                    eventId);
+            }
+        }
     }
 }

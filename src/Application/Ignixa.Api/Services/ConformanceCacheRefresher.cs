@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
@@ -21,42 +22,63 @@ public sealed class ConformanceCacheRefresher(
 {
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
-        var tenants = await tenantConfigurationStore.GetAllTenantsAsync(cancellationToken);
-
-        foreach (var tenant in tenants)
+        try
         {
-            if (string.Equals(tenant.Storage.Type, "FileSystem", StringComparison.OrdinalIgnoreCase))
+            var tenants = await tenantConfigurationStore.GetAllTenantsAsync(cancellationToken);
+
+            foreach (var tenant in tenants)
             {
-                continue;
+                if (string.Equals(tenant.Storage.Type, "FileSystem", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var version = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
+                var definitions = fhirVersionContext.GetSearchParameterDefinitionManager(version, tenant.TenantId);
+
+                // AllSearchParameters reads current conformance state even when resource/code lookups are
+                // warm. Populate the instances held by existing writers before publishing new indexers.
+                var canonicals = definitions.AllSearchParameters
+                    .Where(parameter => parameter.Url is not null)
+                    .Select(parameter => parameter.Url!.ToString())
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                var cache = await cacheRegistry.GetOrCreateAsync(tenant.TenantId, cancellationToken);
+                await cache.SyncSearchParametersToDatabaseAsync(canonicals, definitions, cancellationToken);
             }
 
-            var version = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
-            var definitions = fhirVersionContext.GetSearchParameterDefinitionManager(version, tenant.TenantId);
+            foreach (var tenant in tenants)
+            {
+                await schemaProviderRegistry.InvalidateCachesForTenantImmediatelyAsync(tenant.TenantId, cancellationToken);
+            }
 
-            // AllSearchParameters reads current conformance state even when resource/code lookups are
-            // warm. Populate the instances held by existing writers before publishing new indexers.
-            var canonicals = definitions.AllSearchParameters
-                .Where(parameter => parameter.Url is not null)
-                .Select(parameter => parameter.Url!.ToString())
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-            var cache = await cacheRegistry.GetOrCreateAsync(tenant.TenantId, cancellationToken);
-            await cache.SyncSearchParametersToDatabaseAsync(canonicals, definitions, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            fhirVersionContext.InvalidateSearchParameterCaches();
+
+            foreach (var tenant in tenants)
+            {
+                await capabilityCacheInvalidator.InvalidateForTenantAsync(tenant.TenantId, cancellationToken);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
         }
-
-        foreach (var tenant in tenants)
+        catch (DbException exception)
         {
-            await schemaProviderRegistry.InvalidateCachesForTenantImmediatelyAsync(tenant.TenantId, cancellationToken);
+            throw new ConformanceConsumerRefreshException(
+                "A database-backed conformance consumer could not be refreshed.",
+                exception);
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        fhirVersionContext.InvalidateSearchParameterCaches();
-
-        foreach (var tenant in tenants)
+        catch (IOException exception)
         {
-            await capabilityCacheInvalidator.InvalidateForTenantAsync(tenant.TenantId, cancellationToken);
+            throw new ConformanceConsumerRefreshException(
+                "A file-backed conformance consumer could not be refreshed.",
+                exception);
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
+        catch (TimeoutException exception)
+        {
+            throw new ConformanceConsumerRefreshException(
+                "A conformance consumer refresh timed out.",
+                exception);
+        }
     }
 }

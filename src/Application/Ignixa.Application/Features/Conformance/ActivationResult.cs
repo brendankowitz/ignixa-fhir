@@ -26,10 +26,29 @@ public record ActivationResult
     public IReadOnlyList<string> PendingReindex { get; init; } = [];
 
     /// <summary>
+    /// Whether activation is durable but local conformance consumers will refresh on a later synchronization.
+    /// </summary>
+    public bool LocalRefreshDeferred { get; init; }
+
+    /// <summary>
+    /// Whether activation is durable but at least one phase-two transition schedule will be retried by the watchdog.
+    /// </summary>
+    public bool TransitionSchedulingDeferred { get; init; }
+
+    /// <summary>
     /// Creates a successful activation result.
     /// </summary>
-    public static ActivationResult Succeeded(IReadOnlyList<string>? pendingReindex = null) =>
-        new() { Success = true, PendingReindex = pendingReindex ?? [] };
+    public static ActivationResult Succeeded(
+        IReadOnlyList<string>? pendingReindex = null,
+        bool localRefreshDeferred = false,
+        bool transitionSchedulingDeferred = false) =>
+        new()
+        {
+            Success = true,
+            PendingReindex = pendingReindex ?? [],
+            LocalRefreshDeferred = localRefreshDeferred,
+            TransitionSchedulingDeferred = transitionSchedulingDeferred
+        };
 
     /// <summary>
     /// Creates a failed activation result with validation issues.

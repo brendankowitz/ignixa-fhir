@@ -63,4 +63,14 @@ public record LoadPackageResult
     /// Non-null non-empty list indicates a partial load.
     /// </summary>
     public IReadOnlyList<string>? SkippedPackages { get; init; }
+
+    /// <summary>
+    /// Whether local conformance consumer refresh was deferred after the durable activation.
+    /// </summary>
+    public bool LocalRefreshDeferred { get; init; }
+
+    /// <summary>
+    /// Whether a phase-two transition schedule was deferred after the durable activation.
+    /// </summary>
+    public bool TransitionSchedulingDeferred { get; init; }
 }

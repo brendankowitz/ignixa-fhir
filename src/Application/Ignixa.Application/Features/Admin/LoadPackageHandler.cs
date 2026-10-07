@@ -94,6 +94,11 @@ public class LoadPackageHandler(
                 request.PackageId,
                 request.Version,
                 cancellationToken);
+            result = result with
+            {
+                LocalRefreshDeferred = activationResult.LocalRefreshDeferred,
+                TransitionSchedulingDeferred = activationResult.TransitionSchedulingDeferred
+            };
 
             if (!activationResult.Success)
             {
@@ -110,6 +115,22 @@ public class LoadPackageHandler(
                     request.PackageId,
                     request.Version,
                     string.Join(", ", activationResult.PendingReindex));
+            }
+
+            if (activationResult.LocalRefreshDeferred)
+            {
+                _logger.LogWarning(
+                    "Package {PackageId}@{Version} activated durably, but local conformance refresh is deferred",
+                    request.PackageId,
+                    request.Version);
+            }
+
+            if (activationResult.TransitionSchedulingDeferred)
+            {
+                _logger.LogError(
+                    "Package {PackageId}@{Version} activated durably, but phase-two transition scheduling is deferred",
+                    request.PackageId,
+                    request.Version);
             }
 
             // Publish PackageLoaded event for cache invalidation

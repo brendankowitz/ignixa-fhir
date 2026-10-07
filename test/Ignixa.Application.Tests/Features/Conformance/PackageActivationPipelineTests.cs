@@ -21,7 +21,7 @@ public class PackageActivationPipelineTests
     private const string OverrideCanonical = "http://example.org/SearchParameter/Patient-identifier";
 
     [Fact]
-    public async Task GivenRefreshFailsAfterDurableOverrideActivation_WhenActivated_ThenItReportsSuccessSchedulesTransitionAndDoesNotRenewLease()
+    public async Task GivenUnexpectedRefreshFailureAfterDurableOverrideActivation_WhenActivated_ThenItSurfacesTheFailure()
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();
         packageRepository.GetResourcesForActivationAsync(
@@ -71,12 +71,11 @@ public class PackageActivationPipelineTests
             lease,
             logger);
 
-        var result = await pipeline.ActivateAsync(
+        await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
             "test.override",
             "1.0.0",
-            cancellationSource.Token);
+            cancellationSource.Token));
 
-        result.Success.ShouldBeTrue();
         persistedEvents.Count.ShouldBe(2);
         state.LastProcessedEventId.ShouldBe(persistedEvents[^1].EventId);
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
@@ -86,9 +85,170 @@ public class PackageActivationPipelineTests
             CancellationToken.None);
         await cacheRefresher.Received(1).RefreshAsync(CancellationToken.None);
         lease.DidNotReceive().Renew(leaseStart);
-        logger.ReceivedCalls()
-            .Any(call => Equals(call.GetArguments()[0], LogLevel.Warning))
-            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenIndependentRefreshCancellationAfterDurableOverrideActivation_WhenActivated_ThenItSurfacesTheCancellation()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.override",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource()]);
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                1,
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult<IReadOnlyList<SourceEvent>>(callInfo
+                .ArgAt<IEnumerable<NewSourceEvent>>(0)
+                .Select((sourceEvent, index) => new SourceEvent(
+                    index + 2,
+                    sourceEvent.StreamId,
+                    sourceEvent.EventType,
+                    sourceEvent.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray()));
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(CreateBaseActivation());
+        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
+        cacheRefresher.RefreshAsync(CancellationToken.None)
+            .Returns(_ => throw new OperationCanceledException("Independent cancellation."));
+        var pipeline = CreatePipeline(packageRepository, eventStore, state, Substitute.For<ISearchParameterTransitionScheduler>(), cacheRefresher);
+
+        await Should.ThrowAsync<OperationCanceledException>(() => pipeline.ActivateAsync(
+            "test.override",
+            "1.0.0",
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenRecoverableRefreshFailureAfterDurableOverrideActivation_WhenActivated_ThenItReportsDeferredRefreshWithoutRenewingTheLease()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.override",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource()]);
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                1,
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult<IReadOnlyList<SourceEvent>>(callInfo
+                .ArgAt<IEnumerable<NewSourceEvent>>(0)
+                .Select((sourceEvent, index) => new SourceEvent(
+                    index + 2,
+                    sourceEvent.StreamId,
+                    sourceEvent.EventType,
+                    sourceEvent.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray()));
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(CreateBaseActivation());
+        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
+        cacheRefresher.RefreshAsync(CancellationToken.None)
+            .Returns(_ => throw new ConformanceConsumerRefreshException(
+                "Expected refresh failure.",
+                new IOException("Database unavailable.")));
+        var lease = Substitute.For<IConformanceLease>();
+        var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
+        lease.CaptureStart().Returns(leaseStart);
+        var pipeline = new PackageActivationPipeline(
+            packageRepository,
+            eventStore,
+            state,
+            Substitute.For<IFhirVersionContext>(),
+            Options.Create(new SearchParameterResolutionOptions()),
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
+            cacheRefresher,
+            lease,
+            Substitute.For<ILogger<PackageActivationPipeline>>());
+
+        var result = await pipeline.ActivateAsync(
+            "test.override",
+            "1.0.0",
+            CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        result.LocalRefreshDeferred.ShouldBeTrue();
+        lease.DidNotReceive().Renew(leaseStart);
+    }
+
+    [Fact]
+    public async Task GivenSchedulingFailsAfterDurableOverrideActivation_WhenActivated_ThenItRemainsDurablySuccessful()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.override",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource()]);
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                1,
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult<IReadOnlyList<SourceEvent>>(callInfo
+                .ArgAt<IEnumerable<NewSourceEvent>>(0)
+                .Select((sourceEvent, index) => new SourceEvent(
+                    index + 2,
+                    sourceEvent.StreamId,
+                    sourceEvent.EventType,
+                    sourceEvent.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray()));
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(CreateBaseActivation());
+        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
+        transitionScheduler.ScheduleAsync(
+                Arg.Any<long>(),
+                Arg.Any<TimeSpan>(),
+                CancellationToken.None)
+            .Returns(_ => throw new InvalidOperationException("Scheduling failed."));
+        var pipeline = CreatePipeline(
+            packageRepository,
+            eventStore,
+            state,
+            transitionScheduler,
+            Substitute.For<IConformanceCacheRefresher>());
+
+        var result = await pipeline.ActivateAsync(
+            "test.override",
+            "1.0.0",
+            CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        result.TransitionSchedulingDeferred.ShouldBeTrue();
+        await transitionScheduler.Received(3).ScheduleAsync(
+            2,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+    }
+
+    private static PackageActivationPipeline CreatePipeline(
+        IPackageResourceRepository packageRepository,
+        ISourceEventStore eventStore,
+        ConformanceState state,
+        ISearchParameterTransitionScheduler transitionScheduler,
+        IConformanceCacheRefresher cacheRefresher)
+    {
+        var lease = Substitute.For<IConformanceLease>();
+        lease.CaptureStart().Returns(new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1));
+        return new PackageActivationPipeline(
+            packageRepository,
+            eventStore,
+            state,
+            Substitute.For<IFhirVersionContext>(),
+            Options.Create(new SearchParameterResolutionOptions()),
+            transitionScheduler,
+            Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
+            cacheRefresher,
+            lease,
+            Substitute.For<ILogger<PackageActivationPipeline>>());
     }
 
     private static PackageResource CreateOverrideResource() =>
