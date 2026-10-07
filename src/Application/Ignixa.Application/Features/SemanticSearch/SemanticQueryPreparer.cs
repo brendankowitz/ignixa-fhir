@@ -20,15 +20,21 @@ namespace Ignixa.Application.Features.SemanticSearch;
 /// <see cref="Resource.SearchResourcesHandler"/>.
 /// </summary>
 /// <remarks>
-/// The query text's embedding is cached in the process-wide <see cref="IMemoryCache"/> (the "Application"
-/// scope in docs/adr/adr-2510-caching-architecture.md) keyed by model and verbatim text, not by tenant: an
-/// embedding is a pure function of the configured model and the text, so it is safe -- and valuable -- to
-/// share across every tenant in the process. The cache is this type's load-bearing answer to Review Focus
-/// #2 in the slice-1 plan: a non-deterministic provider that returned a slightly different vector on every
-/// call would rank page 2 of a paged search by a different query vector than page 1, silently skipping or
-/// repeating rows at the page seam. Caching for <see cref="VectorSearchQueryOptions.EmbeddingCacheMinutes"/>
-/// (0 disables caching) means every page of the same query, embedded within that window, reuses the exact
-/// same vector.
+/// The query text's embedding is cached in a dedicated <see cref="IMemoryCache"/> instance -- not the
+/// shared process-wide cache -- owned by and disposed with
+/// <see cref="SemanticSearchServiceRegistration.AddSemanticSearch"/>'s service registration. It is keyed
+/// by model and verbatim text, not by tenant: an embedding is a pure function of the configured model and
+/// the text, so it is safe -- and valuable -- to share across every tenant in the process. The cache is
+/// this type's load-bearing answer to Review Focus #2 in the slice-1 plan: a non-deterministic provider
+/// that returned a slightly different vector on every call would rank page 2 of a paged search by a
+/// different query vector than page 1, silently skipping or repeating rows at the page seam. Caching for
+/// <see cref="VectorSearchQueryOptions.EmbeddingCacheMinutes"/> (0 disables caching) means every page of
+/// the same query, embedded within that window, reuses the exact same vector. Every entry is written with
+/// <see cref="MemoryCacheEntryOptions.Size"/> = 1 so the cache's dedicated
+/// <see cref="MemoryCacheOptions.SizeLimit"/> (<see cref="VectorSearchQueryOptions.EmbeddingCacheMaxEntries"/>,
+/// 0 also disables caching) bounds it to that many distinct (model, text) embeddings regardless of how
+/// long <see cref="VectorSearchQueryOptions.EmbeddingCacheMinutes"/> keeps entries alive, evicting the
+/// least-recently-used entry rather than growing without bound or throwing once the limit is reached.
 /// </remarks>
 public sealed class SemanticQueryPreparer
 {
@@ -112,9 +118,21 @@ public sealed class SemanticQueryPreparer
 
         var embedding = await GenerateAsync(queryText, cancellationToken).ConfigureAwait(false);
 
-        if (_options.Query.EmbeddingCacheMinutes > 0)
+        // EmbeddingCacheMaxEntries = 0 disables caching, same as EmbeddingCacheMinutes = 0: skip the Set
+        // entirely rather than writing an entry with Size = 1 against a SizeLimit = 0 cache, which would
+        // never be retrievable anyway. Size = 1 on every entry is what lets the dedicated cache's
+        // SizeLimit (see this type's remarks) bound entry count without throwing: a cache entry written
+        // without a Size against a cache that has SizeLimit set throws InvalidOperationException.
+        if (_options.Query.EmbeddingCacheMinutes > 0 && _options.Query.EmbeddingCacheMaxEntries > 0)
         {
-            _cache.Set(cacheKey, embedding, TimeSpan.FromMinutes(_options.Query.EmbeddingCacheMinutes));
+            _cache.Set(
+                cacheKey,
+                embedding,
+                new MemoryCacheEntryOptions
+                {
+                    Size = 1,
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_options.Query.EmbeddingCacheMinutes),
+                });
         }
 
         return embedding;

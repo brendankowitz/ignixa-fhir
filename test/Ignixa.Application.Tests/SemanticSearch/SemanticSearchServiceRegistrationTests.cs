@@ -64,4 +64,40 @@ public class SemanticSearchServiceRegistrationTests
         provider.GetRequiredService<SemanticTextChunker>().ShouldNotBeNull();
         provider.GetRequiredService<IOptions<VectorSearchOptions>>().Value.Enabled.ShouldBeTrue();
     }
+
+    [Fact]
+    public void GivenEnabledWithValidConfiguration_WhenRegistered_ThenSemanticQueryPreparerResolvesWithADedicatedCache()
+    {
+        // SemanticQueryPreparer's cache must be its own instance (see the type's remarks on Review Focus
+        // #2), not the shared process-wide IMemoryCache a host also registers for unrelated consumers.
+        var configuration = Configuration(new()
+        {
+            ["VectorSearch:Enabled"] = "true",
+            ["VectorSearch:Embedding:Endpoint"] = "https://example.openai.azure.com/",
+            ["VectorSearch:Embedding:DeploymentName"] = "text-embedding-3-small-deployment",
+            ["VectorSearch:Embedding:ModelName"] = "text-embedding-3-small",
+        });
+        var services = new ServiceCollection();
+
+        services.AddSemanticSearch(configuration);
+
+        using var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<SemanticQueryPreparer>().ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void GivenNegativeEmbeddingCacheMaxEntries_WhenRegistered_ThenThrowsImmediately()
+    {
+        var configuration = Configuration(new()
+        {
+            ["VectorSearch:Enabled"] = "true",
+            ["VectorSearch:Embedding:Endpoint"] = "https://example.openai.azure.com/",
+            ["VectorSearch:Embedding:DeploymentName"] = "text-embedding-3-small-deployment",
+            ["VectorSearch:Embedding:ModelName"] = "text-embedding-3-small",
+            ["VectorSearch:Query:EmbeddingCacheMaxEntries"] = "-1",
+        });
+        var services = new ServiceCollection();
+
+        Should.Throw<OptionsValidationException>(() => services.AddSemanticSearch(configuration));
+    }
 }

@@ -154,7 +154,7 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
             Total: total,
             ContinuationToken: null, // Serializer will generate this based on count-as-render
             HasMore: false, // Serializer will determine this based on count-as-render
-            SearchOptions: request.SearchOptions); // Original pageSize, not +1
+            SearchOptions: searchOptions); // Prepared instance, original pageSize (not +1)
 
         return result;
     }

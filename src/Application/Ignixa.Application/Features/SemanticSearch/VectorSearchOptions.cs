@@ -135,6 +135,15 @@ public class VectorSearchQueryOptions
     /// text re-use one embedding instead of re-embedding (and risking a different vector) per page.
     /// </summary>
     public int EmbeddingCacheMinutes { get; set; } = 10;
+
+    /// <summary>
+    /// The maximum number of distinct (model, query text) embeddings held in the query embedding cache
+    /// at once. Bounds the cache's memory footprint, which <see cref="EmbeddingCacheMinutes"/> alone does
+    /// not: a TTL only reclaims an entry once it expires, so a process that sees enough distinct query
+    /// texts within that window grows the cache without limit until then. 0 disables caching, the same
+    /// as <see cref="EmbeddingCacheMinutes"/> = 0.
+    /// </summary>
+    public int EmbeddingCacheMaxEntries { get; set; } = 1000;
 }
 
 /// <summary>
