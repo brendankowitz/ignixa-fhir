@@ -755,6 +755,14 @@ shapes, and cancel semantics) closely enough that fhir-server/AHDS clients and t
   (`http://hl7.org/fhir/OperationDefinition/bulk-delete`, the same pattern `$includes` uses), since
   there is no published HL7 canonical for this non-spec operation.
 
+## Auditing
+
+`$export` and `$import` kick-off, status, and cancel requests are audited like other FHIR interactions,
+including [custom audit headers](/docs/server/security/authorization#custom-audit-headers) (`X-IGNIXA-AUDIT-*`, or the AHDS-compatible `X-MS-AZUREFHIR-AUDIT-*`).
+Each job also stores the kick-off request's user, correlation ID, and custom audit headers, whether it was started over HTTP or through MCP.
+When the job finishes as `Completed`, `Failed`, or `Cancelled`, one completion audit event is emitted with those values.
+If the runtime fails before the job records its own outcome, the event is emitted on the next status check.
+
 ## DurableTask Framework
 
 Bulk operations use the DurableTask framework for reliability:

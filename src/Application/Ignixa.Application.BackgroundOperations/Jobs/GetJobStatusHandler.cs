@@ -27,17 +27,20 @@ public class GetJobStatusHandler : IRequestHandler<GetJobStatusQuery, GetJobStat
     private readonly TaskHubClient _taskHubClient;
     private readonly IBackgroundJobRepository<ImportJobDefinition> _importRepository;
     private readonly IBackgroundJobRepository<ExportJobDefinition> _exportRepository;
+    private readonly BackgroundJobCompletionAuditor _completionAuditor;
     private readonly ILogger<GetJobStatusHandler> _logger;
 
     public GetJobStatusHandler(
         TaskHubClient taskHubClient,
         IBackgroundJobRepository<ImportJobDefinition> importRepository,
         IBackgroundJobRepository<ExportJobDefinition> exportRepository,
+        BackgroundJobCompletionAuditor completionAuditor,
         ILogger<GetJobStatusHandler>? logger = null)
     {
         _taskHubClient = taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
         _importRepository = importRepository ?? throw new ArgumentNullException(nameof(importRepository));
         _exportRepository = exportRepository ?? throw new ArgumentNullException(nameof(exportRepository));
+        _completionAuditor = completionAuditor ?? throw new ArgumentNullException(nameof(completionAuditor));
         _logger = logger ?? NullLogger<GetJobStatusHandler>.Instance;
     }
 
@@ -172,7 +175,7 @@ public class GetJobStatusHandler : IRequestHandler<GetJobStatusQuery, GetJobStat
         IBackgroundJobRepository<T> repository,
         GetJobStatusQuery request,
         CancellationToken cancellationToken)
-        where T : class, IJobDefinition
+        where T : class, IAuditedJobDefinition
     {
         var job = await repository.GetAsync(request.JobId, request.TenantId, cancellationToken)
             ?? throw new KeyNotFoundException($"{request.JobType} job '{request.JobId}' not found for tenant {request.TenantId}");
@@ -203,7 +206,7 @@ public class GetJobStatusHandler : IRequestHandler<GetJobStatusQuery, GetJobStat
         IBackgroundJobRepository<T> repository,
         int tenantId,
         CancellationToken cancellationToken)
-        where T : class, IJobDefinition
+        where T : class, IAuditedJobDefinition
     {
         var state = await _taskHubClient.GetOrchestrationStateAsync(job.OrchestrationInstanceId ?? job.JobId);
 
@@ -282,6 +285,11 @@ public class GetJobStatusHandler : IRequestHandler<GetJobStatusQuery, GetJobStat
             }
 
             await repository.UpdateAsync(job, tenantId, cancellationToken);
+
+            if (job.Status is "Completed" or "Failed" or "Cancelled")
+            {
+                _completionAuditor.LogTerminalStatus(job);
+            }
         }
     }
 }

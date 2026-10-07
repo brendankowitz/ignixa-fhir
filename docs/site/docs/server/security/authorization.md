@@ -191,6 +191,54 @@ All authorization decisions are logged:
 }
 ```
 
+### Custom Audit Headers
+
+Callers can attach their own fields to audit records with `X-IGNIXA-AUDIT-*` request headers:
+
+```http
+GET /tenant/1/Patient/123
+X-IGNIXA-AUDIT-OPERATIONID: 6f1c2d4e
+X-IGNIXA-AUDIT-BUNDLEID: ingest-42
+```
+
+For compatibility with existing Azure Health Data Services (AHDS) callers, the AHDS prefix
+`X-MS-AZUREFHIR-AUDIT-*` is accepted too and treated the same way. The limits and errors match AHDS.
+
+| Rule | Behavior |
+|------|----------|
+| Prefix | `X-IGNIXA-AUDIT-`, or `X-MS-AZUREFHIR-AUDIT-` for AHDS compatibility. Case-insensitive. Header names are recorded as received. |
+| Count | At most **10** headers per request, counted across both prefixes. |
+| Value length | At most **2048** characters per header. Repeated headers are comma-joined before the check. |
+| Limit exceeded | **431 Request Header Fields Too Large** with an `OperationOutcome` (`severity: error`, `code: invalid`). The handler does not run. The rejection is audited without the headers. |
+
+The headers are written to the audit channel and nowhere else in logs or error messages:
+
+- **Structured audit log** (default): `CustomHeaders=name=value;name=value`, ordered by name, with control characters replaced.
+- **Audit sidecar**: the `custom_headers` map on `AuditEventRequest` (`ignixa_audit.proto`), with values unchanged.
+
+For `$export` and `$import`, the values are also persisted with the job record for its lifetime (see below).
+
+Validation and capture run on every audited FHIR interaction, including `$export`/`$import` kick-off, status, and cancel requests.
+Unaudited endpoints such as `/metadata` ignore these headers, as AHDS does. The MCP `start_export_job` and `start_import_job`
+tools also validate the headers. A violation fails the tool call with the same message, but the rejection itself is not audited,
+because the MCP route is outside the audit filter.
+
+**Bundles.** The headers on a `batch` or `transaction` request are copied onto each entry's audit
+record as well as the bundle request's own record. AHDS records them only on the outer request.
+
+**Bulk jobs.** For `$export` and `$import`, whether started over HTTP or through the MCP job tools, the kick-off request's
+user, correlation ID, and custom audit headers are stored with the job. When the job reaches `Completed`, `Failed`,
+or `Cancelled`, one background-job audit event is emitted with those values. It is usually emitted when the job
+finishes or is cancelled. If the runtime fails before the job records its own outcome, it is emitted on the next status check.
+In the sidecar contract this is `custom_properties["event"] = "background-job-completed"`.
+This event is an Ignixa extension; AHDS does not carry custom headers into background jobs.
+Jobs created before this feature are audited as user `unknown`, without headers.
+
+:::caution Audit delivery is best-effort
+Audit events are emitted fire-and-forget. If the sidecar is unavailable, the event is logged as lost
+and the request still succeeds. There is no durable outbox or retry.
+:::
+
 ## Error Handling
 
 ### Insufficient Scope

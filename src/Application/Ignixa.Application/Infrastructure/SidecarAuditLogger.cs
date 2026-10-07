@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Ignixa.Domain.Abstractions;
@@ -48,6 +49,14 @@ public class SidecarAuditLogger(
     {
         // Fire-and-forget: Queue for async processing
         _ = LogTtlDeletionAsync(tenantId, resourceType, resourceId, expiresAt, success);
+    }
+
+    public void LogBackgroundJobCompleted(BackgroundJobAuditEvent auditEvent)
+    {
+        ArgumentNullException.ThrowIfNull(auditEvent);
+
+        // Fire-and-forget: Queue for async processing
+        _ = LogBackgroundJobCompletedAsync(auditEvent);
     }
 
     private async Task LogTenantAccessAsync(
@@ -107,6 +116,7 @@ public class SidecarAuditLogger(
             request.CustomProperties.Add("outcome", auditEvent.Outcome);
             request.CustomProperties.Add("path", auditEvent.Path);
             request.CustomProperties.Add("durationMs", auditEvent.DurationMs.ToString());
+            AddCustomHeaders(request, auditEvent.CustomHeaders);
 
             await client.LogAuditEventAsync(request);
         }
@@ -118,6 +128,46 @@ public class SidecarAuditLogger(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to log HTTP request audit event");
+        }
+    }
+
+    private async Task LogBackgroundJobCompletedAsync(BackgroundJobAuditEvent auditEvent)
+    {
+        try
+        {
+            var request = new AuditEventRequest
+            {
+                Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+                TenantId = auditEvent.TenantId.ToString(CultureInfo.InvariantCulture),
+                UserId = auditEvent.UserId,
+                Operation = AuditOperation.Unspecified,
+                Success = auditEvent.Outcome == "0",
+                CorrelationId = auditEvent.CorrelationId ?? string.Empty
+            };
+
+            request.CustomProperties.Add("event", "background-job-completed");
+            request.CustomProperties.Add("jobType", auditEvent.JobType);
+            request.CustomProperties.Add("jobId", auditEvent.JobId);
+            request.CustomProperties.Add("status", auditEvent.Status);
+            request.CustomProperties.Add("outcome", auditEvent.Outcome);
+            if (auditEvent.DurationMs is { } durationMs)
+            {
+                request.CustomProperties.Add("durationMs", durationMs.ToString(CultureInfo.InvariantCulture));
+            }
+
+            AddCustomHeaders(request, auditEvent.CustomHeaders);
+
+            await client.LogAuditEventAsync(request);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+        {
+            logger.LogError(ex, "Audit sidecar unavailable - audit event lost for {JobType} job {JobId} (tenant {TenantId}, correlation {CorrelationId})",
+                auditEvent.JobType, auditEvent.JobId, auditEvent.TenantId, auditEvent.CorrelationId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to log audit event for {JobType} job {JobId} (tenant {TenantId}, correlation {CorrelationId})",
+                auditEvent.JobType, auditEvent.JobId, auditEvent.TenantId, auditEvent.CorrelationId);
         }
     }
 
@@ -157,6 +207,14 @@ public class SidecarAuditLogger(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to log TTL deletion audit event");
+        }
+    }
+
+    private static void AddCustomHeaders(AuditEventRequest request, IReadOnlyDictionary<string, string> customHeaders)
+    {
+        foreach (var (name, value) in customHeaders)
+        {
+            request.CustomHeaders.Add(name, value);
         }
     }
 
