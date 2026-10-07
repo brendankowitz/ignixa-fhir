@@ -320,8 +320,11 @@ The leaf becomes two independent pieces:
   for the parameter and model with any chunk within the prepared maximum cosine distance. It is a leaf like
   any `ParamSource`, so filters, compartments, access constraints and the type allow-list intersect with it
   before anything is ranked, and a count (`ResultShape.Count`) reads the gate alone. It joins `dbo.Resource`
-  under the plan's visibility because, unlike every other index table, vector rows for a superseded or
-  soft-deleted version can outlive it (they are replaced only by the next successful vector write).
+  under the plan's visibility because, unlike every other index table, `dbo.VectorSearchParam` rows do not
+  always disappear with the version that produced them: a normal single-resource delete removes them in the
+  same transaction, but a failed or skipped post-merge vector write, a merge-path/bundle delete, or a write
+  made while the feature was off can all leave rows behind for a version that is no longer current. The
+  join hides exactly those.
 - **The ranking** — `MatchPageSpec.Ranking` (`VectorRankSpec`): a correlated `CROSS APPLY` computing each
   match row's minimum distance over its chunks, projected as a final `Distance` (float) column. The ORDER BY
   is `[_sort keys…], vr.Distance ASC, [m.T1 ASC], m.Sid1 ASC` — distance after any explicit sort, ahead of
@@ -335,9 +338,11 @@ entry per query shape. The type, parameter and model ids are inlined like every 
 Restrictions, each rejected rather than compiled into something that would silently rank wrongly:
 
 - At most one semantic expression per search, and only as the whole expression or a top-level AND term.
-  Under OR a match may have no distance; under `:not`, a union leg, a chain or an access constraint the
-  distance would rank rows by a condition they were selected for failing, or one belonging to another
-  resource.
+  Under OR a match may have no distance; under `:not`, a union leg, a chain, or inside an access
+  constraint's predicate, the distance would rank rows by a condition they were selected for failing, or
+  one belonging to another resource. (A constraint on the searched type is intersected with the gate like
+  any other filter before ranking runs; only a semantic term nested inside a constraint's own predicate is
+  rejected.)
 - No keyset paging (`SearchPaging.Keyset`): the seek predicate cannot express distance order, so a
   continuation would skip or repeat rows. Page with `SearchPaging.Offset`, which re-runs the ordering.
 - Ranking appears only on `ResultShape.Matches`; the validator rejects it on any other shape or alongside a

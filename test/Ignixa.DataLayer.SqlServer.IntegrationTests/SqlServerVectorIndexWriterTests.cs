@@ -152,6 +152,47 @@ public class SqlServerVectorIndexWriterTests : IAsyncLifetime
         (await VectorRowCountAsync(v1SurrogateId)).ShouldBe(1, "untouched means untouched, even though v1 is now history");
     }
 
+    /// <summary>
+    /// Final-review finding I-1, SQL-integration half: proves the entire write path's fix -- a resource
+    /// whose <see cref="ResourceWrapper.VectorIndices"/> is null (what <c>SemanticIndexer</c> now produces
+    /// for a resource type with no active semantic search parameter, instead of unconditionally
+    /// evaluating it as <c>[]</c>) never causes <c>dbo.MergeVectorSearchParams</c> to execute at all --
+    /// not merely that the rows it would have touched end up unchanged, but that the extra round trip
+    /// and <c>dbo.Resource</c> row lock this procedure takes never happen.
+    /// </summary>
+    [Fact]
+    public async Task GivenVectorIndicesNull_WhenMerged_ThenMergeVectorSearchParamsNeverInvoked()
+    {
+        var recordingSqlExecutionService = new RecordingSqlExecutionService(_database.SqlExecutionService);
+        var vectorIndexWriter = new SqlServerVectorIndexWriter(
+            recordingSqlExecutionService,
+            _database.TenantId,
+            _compressor,
+            _cache,
+            new SqlServerEmbeddingModelRegistry(recordingSqlExecutionService, _database.TenantId, _cache, NullLogger<SqlServerEmbeddingModelRegistry>.Instance),
+            NullLogger<SqlServerVectorIndexWriter>.Instance);
+        var repository = new SqlServerMergeRepository(
+            recordingSqlExecutionService,
+            _database.TenantId,
+            _compressor,
+            _cache,
+            new SqlServerPostMergeExtensionUpdater(recordingSqlExecutionService, _database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance),
+            NullLogger<SqlServerMergeRepository>.Instance,
+            vectorIndexWriter);
+
+        var wrapper = new ResourceWrapper(
+            "Patient", "vector-writer-never-invoked-1", "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"vector-writer-never-invoked-1"}"""),
+            new ResourceRequest("PUT", "Patient/vector-writer-never-invoked-1"));
+        wrapper.VectorIndices.ShouldBeNull("the default, unevaluated state this test depends on");
+
+        var (transactionId, _) = await repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+        await repository.MergeResourcesAsync(transactionId, singleTransaction: true, [wrapper], [0], CancellationToken.None);
+        await repository.CommitTransactionAsync(transactionId, cancellationToken: CancellationToken.None);
+
+        recordingSqlExecutionService.ExecutedCommandTexts.ShouldNotContain("dbo.MergeVectorSearchParams");
+    }
+
     [Fact]
     public async Task GivenSemanticEntry_WhenMerged_ThenNoStringSearchParamRow()
     {
@@ -409,4 +450,48 @@ public class SqlServerVectorIndexWriterTests : IAsyncLifetime
     /// </summary>
     private static float[] Embedding(float seed) =>
         Enumerable.Range(0, 1536).Select(i => seed + (i * 0.0001f)).ToArray();
+
+    /// <summary>
+    /// Delegates every call to <paramref name="inner"/> unchanged, recording each
+    /// <see cref="ExecuteNonQueryAsync"/> command's <see cref="SqlCommand.CommandText"/> -- the cheapest
+    /// seam to prove a stored procedure this process could call was never actually invoked, without
+    /// depending on <c>dbo.MergeVectorSearchParams</c>' internal behavior or final row state.
+    /// </summary>
+    private sealed class RecordingSqlExecutionService(ISqlExecutionService inner) : ISqlExecutionService
+    {
+        public List<string> ExecutedCommandTexts { get; } = [];
+
+        public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
+            int tenantId,
+            SqlCommand command,
+            Func<SqlDataReader, TResult> readRow,
+            CancellationToken cancellationToken,
+            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
+        {
+            ExecutedCommandTexts.Add(command.CommandText);
+            return inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken, idempotency);
+        }
+
+        public Task<int> ExecuteNonQueryAsync(
+            int tenantId,
+            SqlCommand command,
+            CancellationToken cancellationToken,
+            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
+        {
+            ExecutedCommandTexts.Add(command.CommandText);
+            return inner.ExecuteNonQueryAsync(tenantId, command, cancellationToken, idempotency);
+        }
+
+        public Task<TResult> ExecuteInTransactionAsync<TResult>(
+            int tenantId,
+            Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
+            CancellationToken cancellationToken) =>
+            inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
+
+        public Task ExecuteInTransactionAsync(
+            int tenantId,
+            Func<ISqlTransactionContext, CancellationToken, Task> work,
+            CancellationToken cancellationToken) =>
+            inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
+    }
 }

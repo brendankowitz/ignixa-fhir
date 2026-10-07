@@ -104,9 +104,18 @@ public class DeferredWriteCoordinator
     /// together. A failed entry here never reaches the repository below, exactly like a repository
     /// failure caught in that loop.
     /// </summary>
-    public async Task<List<Exception>> ProcessBatchAsync(int batchSize, CancellationToken cancellationToken)
+    /// <param name="batchSize">The maximum number of queued writes to read and commit in this call.</param>
+    /// <param name="versionContext">
+    /// Resolves the tenant/version-scoped <c>ISearchParameterDefinitionManager</c> this call uses to
+    /// decide, per resource type, whether <see cref="SemanticIndexer.IndexIndependentlyAsync"/> should
+    /// evaluate it at all (see <see cref="SemanticIndexer.IndexAsync"/>'s remarks on its own predicate
+    /// parameter). Unused when semantic search is disabled.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task<List<Exception>> ProcessBatchAsync(int batchSize, IFhirVersionContext versionContext, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+        ArgumentNullException.ThrowIfNull(versionContext);
         var errors = new List<Exception>();
         if (!await _writeChannel.Reader.WaitToReadAsync(cancellationToken))
         {
@@ -120,11 +129,15 @@ public class DeferredWriteCoordinator
 
         if (_semanticIndexer is not null)
         {
+            var context = _contextAccessor.RequestContext
+                ?? throw new InvalidOperationException("FHIR request context not available");
+            var hasSemanticSearchParameter = BuildSemanticParameterPredicate(versionContext, context.FhirVersion, context.TenantId);
+
             IReadOnlyList<SemanticIndexResult> indexed;
             try
             {
                 indexed = await _semanticIndexer.IndexIndependentlyAsync(
-                    operations.ConvertAll(op => op.Wrapper), cancellationToken);
+                    operations.ConvertAll(op => op.Wrapper), hasSemanticSearchParameter, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -234,8 +247,16 @@ public class DeferredWriteCoordinator
     /// <see cref="IAtomicFhirRepository.WriteTransactionAsync"/>, so an embedding failure propagates with
     /// nothing written, exactly like any other pre-commit validation failure in this transaction.
     /// </summary>
-    public async Task CommitAtomicAsync(CancellationToken cancellationToken)
+    /// <param name="versionContext">
+    /// Resolves the tenant/version-scoped <c>ISearchParameterDefinitionManager</c> this call uses to
+    /// decide, per resource type, whether <see cref="SemanticIndexer.IndexAsync"/> should evaluate it at
+    /// all (see that method's remarks on its own predicate parameter). Unused when semantic search is
+    /// disabled.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task CommitAtomicAsync(IFhirVersionContext versionContext, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(versionContext);
         cancellationToken.ThrowIfCancellationRequested();
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
@@ -243,8 +264,9 @@ public class DeferredWriteCoordinator
 
         if (_semanticIndexer is not null && _stagedWrites.Count > 0)
         {
+            var hasSemanticSearchParameter = BuildSemanticParameterPredicate(versionContext, context.FhirVersion, context.TenantId);
             var indexed = await _semanticIndexer.IndexAsync(
-                _stagedWrites.ConvertAll(write => write.Resource), cancellationToken);
+                _stagedWrites.ConvertAll(write => write.Resource), hasSemanticSearchParameter, cancellationToken);
             for (var i = 0; i < _stagedWrites.Count; i++)
             {
                 _stagedWrites[i] = (_stagedWrites[i].EntryIndex, indexed[i]);
@@ -253,6 +275,22 @@ public class DeferredWriteCoordinator
 
         await ((IAtomicFhirRepository)repository).WriteTransactionAsync(
             _stagedWrites.Select(write => write.Resource).ToArray(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Builds the per-resource-type predicate <see cref="SemanticIndexer.IndexAsync"/> and
+    /// <see cref="SemanticIndexer.IndexIndependentlyAsync"/> use to decide null vs. <c>[]</c> for a
+    /// resource with no extracted semantic text (see those methods' remarks): true when
+    /// <paramref name="resourceType"/> carries at least one active semantic search parameter in
+    /// <paramref name="versionContext"/>'s definition manager for <paramref name="fhirVersion"/> and
+    /// <paramref name="tenantId"/> -- the same manager <see cref="ResolveReferenceAliases"/> already
+    /// resolves its indexer from, so this call sees the same tenant's custom package parameters.
+    /// </summary>
+    private static Func<string, bool> BuildSemanticParameterPredicate(
+        IFhirVersionContext versionContext, FhirVersion fhirVersion, int? tenantId)
+    {
+        var definitionManager = versionContext.GetSearchParameterDefinitionManager(fhirVersion, tenantId);
+        return resourceType => definitionManager.GetSearchParameters(resourceType).Any(p => p.IsSemantic && p.IsSupported);
     }
 
     public void ResolveReferenceAliases(
@@ -316,6 +354,6 @@ public class DeferredWriteCoordinator
     public async Task<bool> WaitToReadAsync(CancellationToken cancellationToken = default) =>
         await _writeChannel.Reader.WaitToReadAsync(cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        IsAtomic ? CommitAtomicAsync(cancellationToken) : Task.CompletedTask;
+    public Task CommitAsync(IFhirVersionContext versionContext, CancellationToken cancellationToken = default) =>
+        IsAtomic ? CommitAtomicAsync(versionContext, cancellationToken) : Task.CompletedTask;
 }

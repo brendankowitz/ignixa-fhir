@@ -44,6 +44,15 @@ public class SqlServerSemanticSearchTests : IAsyncLifetime
     private const string ModelVersion = "1";
     private const string ModelKey = ModelName + "|" + ModelVersion;
 
+    /// <summary>
+    /// A real tokenizer model name for <see cref="SemanticTextChunker"/>'s constructor, distinct from
+    /// <see cref="ModelName"/> above: that constant identifies the (fake, test-only) embedding model
+    /// these tests store vectors under, but the chunker's constructor requires a name
+    /// <see cref="Microsoft.ML.Tokenizers.TiktokenTokenizer.CreateForModel"/> actually recognizes to pick
+    /// a BPE vocabulary -- it has no bearing on the stored <see cref="ModelKey"/>'s identity.
+    /// </summary>
+    private const string TokenizerModelName = "text-embedding-3-small";
+
     private static readonly SearchParameterInfo StatusParam = new(
         "test-status", "test-status", SearchParamType.Token, new Uri("http://example.org/fhir/SearchParameter/test-status"));
 
@@ -121,7 +130,7 @@ public class SqlServerSemanticSearchTests : IAsyncLifetime
 
         using var generator = new FixedEmbeddingGenerator(At(0));
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var preparer = new SemanticQueryPreparer(generator, cache, QueryOptions());
+        var preparer = new SemanticQueryPreparer(generator, Chunker(), cache, QueryOptions());
         var prepared = await preparer.PrepareAsync(SemanticSearch(minimumScore: 0m), CancellationToken.None);
 
         var results = await CollectAsync(prepared);
@@ -146,7 +155,7 @@ public class SqlServerSemanticSearchTests : IAsyncLifetime
 
         using var generator = new FixedEmbeddingGenerator(At(0));
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var preparer = new SemanticQueryPreparer(generator, cache, QueryOptions());
+        var preparer = new SemanticQueryPreparer(generator, Chunker(), cache, QueryOptions());
         var prepared = await preparer.PrepareAsync(SemanticSearch(minimumScore: 0.6m), CancellationToken.None);
 
         var results = await CollectAsync(prepared);
@@ -162,7 +171,7 @@ public class SqlServerSemanticSearchTests : IAsyncLifetime
 
         using var generator = new FixedEmbeddingGenerator(At(0));
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var preparer = new SemanticQueryPreparer(generator, cache, QueryOptions());
+        var preparer = new SemanticQueryPreparer(generator, Chunker(), cache, QueryOptions());
         var options = SemanticSearch(minimumScore: 0m, StatusEquals("final"));
         var prepared = await preparer.PrepareAsync(options, CancellationToken.None);
 
@@ -183,7 +192,7 @@ public class SqlServerSemanticSearchTests : IAsyncLifetime
 
         using var generator = new FixedEmbeddingGenerator(At(0));
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var preparer = new SemanticQueryPreparer(generator, cache, QueryOptions());
+        var preparer = new SemanticQueryPreparer(generator, Chunker(), cache, QueryOptions());
         var options = SemanticSearch(minimumScore: 0m);
         options.Include = [include];
         var prepared = await preparer.PrepareAsync(options, CancellationToken.None);
@@ -217,7 +226,7 @@ public class SqlServerSemanticSearchTests : IAsyncLifetime
 
         using var generator = new DriftingEmbeddingGenerator();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var preparer = new SemanticQueryPreparer(generator, cache, QueryOptions());
+        var preparer = new SemanticQueryPreparer(generator, Chunker(), cache, QueryOptions());
 
         var page1Options = SemanticSearch(minimumScore: 0m);
         page1Options.MaxItemCount = 2;
@@ -276,6 +285,8 @@ public class SqlServerSemanticSearchTests : IAsyncLifetime
         Embedding = new VectorSearchEmbeddingOptions { ModelName = ModelName, ModelVersion = ModelVersion },
         Query = new VectorSearchQueryOptions { EmbeddingCacheMinutes = 10 },
     };
+
+    private static SemanticTextChunker Chunker() => new(TokenizerModelName);
 
     private async Task<List<SearchEntryResult>> CollectAsync(SearchOptions options)
     {

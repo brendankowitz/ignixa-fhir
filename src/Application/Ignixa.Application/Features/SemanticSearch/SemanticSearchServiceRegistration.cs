@@ -122,6 +122,7 @@ public static class SemanticSearchServiceRegistration
         // its siblings) takes this as SemanticQueryPreparer?, resolved when enabled and null otherwise.
         services.AddSingleton(sp => new SemanticQueryPreparer(
             sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+            sp.GetRequiredService<SemanticTextChunker>(),
             sp.GetRequiredKeyedService<IMemoryCache>(QueryEmbeddingCacheKey),
             options));
 

@@ -13,6 +13,7 @@ using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
@@ -88,12 +89,13 @@ public class DeferredWriteCoordinatorSemanticSearchTests
 
         // Simulate a bundle reference alias: "Patient/temp-id" was a conditional-create placeholder,
         // resolved to the real "Patient/final-id" only after that create executed.
+        var versionContext = BuildVersionContextThatEmbedsResolvedReference();
         coordinator.ResolveReferenceAliases(
             new Dictionary<string, string> { ["Patient/temp-id"] = "Patient/final-id" },
-            BuildVersionContextThatEmbedsResolvedReference(),
+            versionContext,
             CancellationToken.None);
 
-        await coordinator.CommitAtomicAsync(CancellationToken.None);
+        await coordinator.CommitAtomicAsync(versionContext, CancellationToken.None);
 
         generator.Batches.ShouldHaveSingleItem();
         generator.Batches[0].ShouldBe(["resolved"]);
@@ -147,7 +149,7 @@ public class DeferredWriteCoordinatorSemanticSearchTests
         };
         await coordinator.QueueWriteAsync(wrapper, entryIndex: 0, CancellationToken.None);
 
-        await Should.ThrowAsync<EmbeddingUnavailableException>(() => coordinator.CommitAtomicAsync(CancellationToken.None));
+        await Should.ThrowAsync<EmbeddingUnavailableException>(() => coordinator.CommitAtomicAsync(BuildVersionContextWithSemanticParameter(), CancellationToken.None));
 
         await ((IAtomicFhirRepository)repository).DidNotReceive().WriteTransactionAsync(
             Arg.Any<IReadOnlyList<ResourceWrapper>>(), Arg.Any<CancellationToken>());
@@ -216,7 +218,7 @@ public class DeferredWriteCoordinatorSemanticSearchTests
             await Task.Yield();
         }
 
-        var errors = await coordinator.ProcessBatchAsync(batchSize: 50, CancellationToken.None);
+        var errors = await coordinator.ProcessBatchAsync(batchSize: 50, BuildVersionContextWithSemanticParameter(), CancellationToken.None);
 
         errors.ShouldBeEmpty();
         await writeA;
@@ -292,7 +294,7 @@ public class DeferredWriteCoordinatorSemanticSearchTests
             await Task.Yield();
         }
 
-        var errors = await coordinator.ProcessBatchAsync(batchSize: 50, CancellationToken.None);
+        var errors = await coordinator.ProcessBatchAsync(batchSize: 50, BuildVersionContextWithSemanticParameter(), CancellationToken.None);
 
         errors.ShouldHaveSingleItem().ShouldBeOfType<EmbeddingUnavailableException>();
         (await writePlain).Id.ShouldBe("plain");
@@ -367,7 +369,7 @@ public class DeferredWriteCoordinatorSemanticSearchTests
             await Task.Yield();
         }
 
-        var errors = await coordinator.ProcessBatchAsync(batchSize: 50, CancellationToken.None);
+        var errors = await coordinator.ProcessBatchAsync(batchSize: 50, BuildVersionContextWithSemanticParameter(), CancellationToken.None);
 
         errors.ShouldHaveSingleItem().ShouldBeOfType<SemanticSearchDefinitionException>();
         (await writeGood).Id.ShouldBe("good");
@@ -414,7 +416,29 @@ public class DeferredWriteCoordinatorSemanticSearchTests
         var versionContext = Substitute.For<IFhirVersionContext>();
         versionContext.GetBaseSchemaProvider(Arg.Any<FhirVersion>()).Returns(new R4CoreSchemaProvider());
         versionContext.GetSearchIndexer(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(searchIndexer);
+        ConfigureSemanticParameterDefinitionManager(versionContext);
         return versionContext;
+    }
+
+    /// <summary>
+    /// An <see cref="IFhirVersionContext"/> whose definition manager reports <see cref="SemanticParameter"/>
+    /// as an active semantic parameter for every resource type -- enough for the tests below, which only
+    /// exercise <see cref="DeferredWriteCoordinator.CommitAtomicAsync"/> / <see cref="DeferredWriteCoordinator.ProcessBatchAsync"/>
+    /// directly and never call <see cref="DeferredWriteCoordinator.ResolveReferenceAliases"/>, so no
+    /// search indexer or schema provider needs configuring.
+    /// </summary>
+    private static IFhirVersionContext BuildVersionContextWithSemanticParameter()
+    {
+        var versionContext = Substitute.For<IFhirVersionContext>();
+        ConfigureSemanticParameterDefinitionManager(versionContext);
+        return versionContext;
+    }
+
+    private static void ConfigureSemanticParameterDefinitionManager(IFhirVersionContext versionContext)
+    {
+        var definitionManager = Substitute.For<ISearchParameterDefinitionManager>();
+        definitionManager.GetSearchParameters(Arg.Any<string>()).Returns([SemanticParameter()]);
+        versionContext.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(definitionManager);
     }
 
     /// <summary>Records every batch it is asked to embed, delegating to <see cref="DeterministicEmbeddingGenerator"/>.</summary>

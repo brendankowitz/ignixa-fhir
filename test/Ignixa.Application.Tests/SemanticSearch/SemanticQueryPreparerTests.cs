@@ -134,6 +134,52 @@ public class SemanticQueryPreparerTests
         exception.StatusCode.ShouldBe(500);
     }
 
+    /// <summary>
+    /// Regression for the final-review finding I-2: <see cref="TokenBudgetBatchingEmbeddingGenerator"/> --
+    /// the generator this type actually receives in production, wrapping the real provider (see
+    /// <see cref="SemanticSearchServiceRegistration.AddSemanticSearch"/>) -- must itself raise
+    /// <see cref="EmbeddingProviderContractException"/> for a dimension mismatch, not the generic
+    /// <see cref="InvalidOperationException"/> <c>FhirExceptionMiddleware</c> maps to HTTP 400. Before
+    /// that fix, the wrapper's own <see cref="InvalidOperationException"/> propagated straight out of
+    /// <see cref="SemanticQueryPreparer.PrepareAsync"/> before this type's own, correctly-typed check
+    /// (pinned above) ever ran.
+    /// </summary>
+    [Fact]
+    public async Task GivenWrapperAndProviderReturnsWrongDimensions_WhenPrepared_ThenEmbeddingProviderContractException()
+    {
+        var wrapped = new TokenBudgetBatchingEmbeddingGenerator(
+            new WrongDimensionEmbeddingGenerator(), new SemanticTextChunker(ModelName), VectorSearchOptions.SupportedDimensions);
+        var preparer = new SemanticQueryPreparer(
+            wrapped, new SemanticTextChunker(ModelName), new MemoryCache(new MemoryCacheOptions()), Options());
+        var options = SemanticOptions("chest pain");
+
+        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() =>
+            preparer.PrepareAsync(options, CancellationToken.None));
+
+        exception.StatusCode.ShouldBe(500);
+    }
+
+    /// <summary>
+    /// Pins the oversized-query-text half of I-2: a query text over the provider's 8192-token per-input
+    /// limit is rejected as a client error before any provider call, not left to
+    /// <see cref="TokenBudgetBatchingEmbeddingGenerator"/>'s internal (and differently-typed) guard.
+    /// </summary>
+    [Fact]
+    public async Task GivenQueryTextExceedsPerInputTokenLimit_WhenPrepared_ThenInvalidSearchOperationException()
+    {
+        var generator = new SpyEmbeddingGenerator();
+        var preparer = CreatePreparer(generator);
+        var oversizedText = string.Join(' ', Enumerable.Range(0, 20_000).Select(i => $"w{i}"));
+        var options = SemanticOptions(oversizedText);
+
+        var exception = await Should.ThrowAsync<InvalidSearchOperationException>(() =>
+            preparer.PrepareAsync(options, CancellationToken.None));
+
+        exception.Message.ShouldBe("Semantic query text exceeds 8192 tokens.");
+        exception.StatusCode.ShouldBe(400);
+        generator.Batches.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task GivenCallerCancellationRequested_WhenPrepared_ThenOperationCanceledExceptionPropagatesUnwrapped()
     {
@@ -157,7 +203,7 @@ public class SemanticQueryPreparerTests
         var cache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 2 });
         var options = Options();
         options.Query.EmbeddingCacheMaxEntries = 2;
-        var preparer = new SemanticQueryPreparer(generator, cache, options);
+        var preparer = new SemanticQueryPreparer(generator, new SemanticTextChunker(ModelName), cache, options);
 
         var first = await preparer.PrepareAsync(SemanticOptions("chest pain"), CancellationToken.None);
         var second = await preparer.PrepareAsync(SemanticOptions("shortness of breath"), CancellationToken.None);
@@ -182,7 +228,7 @@ public class SemanticQueryPreparerTests
     }
 
     private static SemanticQueryPreparer CreatePreparer(IEmbeddingGenerator<string, Embedding<float>> generator) =>
-        new(generator, new MemoryCache(new MemoryCacheOptions()), Options());
+        new(generator, new SemanticTextChunker(ModelName), new MemoryCache(new MemoryCacheOptions()), Options());
 
     private static VectorSearchOptions Options() => new()
     {
