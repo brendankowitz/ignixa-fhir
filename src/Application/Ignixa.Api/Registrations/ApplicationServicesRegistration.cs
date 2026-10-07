@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using Autofac;
 using DurableTask.Core;
 using Ignixa.Abstractions;
@@ -57,7 +58,23 @@ public static class ApplicationServicesRegistration
         this ContainerBuilder builder,
         IConfiguration configuration)
     {
+        return RegisterApplicationServices(builder, configuration, GetMaxRequestBodySize(configuration));
+    }
+
+    internal static ContainerBuilder RegisterApplicationServices(
+        this ContainerBuilder builder,
+        IConfiguration configuration,
+        int maxRequestBodySize)
+    {
         ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        if (maxRequestBodySize <= 0)
+        {
+            throw new InvalidOperationException(
+                "Configuration setting 'Kestrel:Limits:MaxRequestBodySize' must be a positive integer.");
+        }
+        var maxTransactionEntries = GetMaxTransactionEntries(configuration);
 
         // Medino (MediatR-like) infrastructure
         RegisterMedinoServices(builder);
@@ -86,7 +103,7 @@ public static class ApplicationServicesRegistration
         RegisterCapabilityServices(builder);
 
         // Bundle processing services
-        RegisterBundleServices(builder);
+        RegisterBundleServices(builder, maxRequestBodySize, maxTransactionEntries);
 
         // Package management handlers
         RegisterPackageManagementHandlers(builder);
@@ -107,6 +124,36 @@ public static class ApplicationServicesRegistration
         RegisterAuthorizationServices(builder);
 
         return builder;
+    }
+
+    internal static int GetMaxRequestBodySize(IConfiguration configuration) =>
+        GetPositiveConfigurationValue(
+            configuration,
+            "Kestrel:Limits:MaxRequestBodySize",
+            defaultValue: 30_000_000);
+
+    private static int GetMaxTransactionEntries(IConfiguration configuration) =>
+        GetPositiveConfigurationValue(
+            configuration,
+            "Bundle:MaxTransactionEntries",
+            defaultValue: 500);
+
+    private static int GetPositiveConfigurationValue(
+        IConfiguration configuration,
+        string key,
+        int defaultValue)
+    {
+        var configuredValue = configuration[key];
+        if (configuredValue == null)
+        {
+            return defaultValue;
+        }
+        if (!int.TryParse(configuredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value <= 0)
+        {
+            throw new InvalidOperationException(
+                $"Configuration setting '{key}' must be a positive integer.");
+        }
+        return value;
     }
 
     private static void RegisterMedinoServices(ContainerBuilder builder)
@@ -365,8 +412,24 @@ public static class ApplicationServicesRegistration
             .SingleInstance();
     }
 
-    private static void RegisterBundleServices(ContainerBuilder builder)
+    private static void RegisterBundleServices(
+        ContainerBuilder builder,
+        int maxRequestBodySize,
+        int maxTransactionEntries)
     {
+        var maxTokenBytes = Math.Max(
+            8_192,
+            Math.Min(StreamingBundleParser.DefaultMaxTokenBytes, maxRequestBodySize));
+
+        builder.RegisterInstance(new BundleProcessingOptions
+            {
+                MaxParallelism = 10,
+                ChannelCapacity = 100,
+                MaxTransactionEntries = maxTransactionEntries
+            })
+            .AsSelf()
+            .SingleInstance();
+
         builder.RegisterType<BundleReferencePreProcessor>()
             .InstancePerDependency();
 
@@ -382,7 +445,9 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<BundleProcessor>()
             .InstancePerDependency();
 
-        builder.RegisterType<StreamingBundleParser>()
+        builder.Register(c => new StreamingBundleParser(
+                c.Resolve<ILogger<StreamingBundleParser>>(),
+                maxTokenBytes))
             .InstancePerDependency();
 
         // Pipeline executor for bundle entry routing

@@ -8,6 +8,30 @@ description: Configure Ignixa FHIR Server for different environments
 
 Ignixa uses standard ASP.NET Core configuration with `appsettings.json`. All settings can be overridden via environment variables using double-underscore notation (e.g., `Tenants__Mode`).
 
+## Request and Bundle Limits
+
+```json
+{
+  "Kestrel": {
+    "Limits": {
+      "MaxRequestBodySize": 30000000
+    }
+  },
+  "Bundle": {
+    "MaxTransactionEntries": 500
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Kestrel:Limits:MaxRequestBodySize` | `30000000` | Maximum request body size in bytes. It must be a positive integer; `null` and unlimited request bodies are not supported. |
+| `Bundle:MaxTransactionEntries` | `500` | Maximum entries in one atomic transaction bundle. Batch bundles are not capped. |
+
+These settings are request-size and transaction-cardinality guards, not a memory guarantee. The
+transaction cap changes behavior for clients that previously submitted transactions larger than
+500 entries.
+
 ## Tenant Configuration (Required)
 
 Ignixa requires at least two tenant configurations: Tenant 0 (system partition) and Tenant 1+ (your data).

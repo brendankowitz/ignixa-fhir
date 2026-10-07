@@ -1143,12 +1143,7 @@ public static class FhirEndpoints
 
         logger.LogDebug("Bundle type: {BundleType}", bundleType);
 
-        var options = new BundleProcessingOptions
-        {
-            MaxParallelism = 10,
-            ChannelCapacity = 100,
-            Type = bundleType
-        };
+        var options = context.RequestServices.GetRequiredService<BundleProcessingOptions>() with { Type = bundleType };
 
         // Phase 2: Dual-mode routing
         if (options.Type == BundleType.Transaction)

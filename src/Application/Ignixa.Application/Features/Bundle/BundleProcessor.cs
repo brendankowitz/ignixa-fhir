@@ -300,6 +300,11 @@ public class BundleProcessor
             .ResourceTypeNames.ToHashSet(StringComparer.Ordinal);
         await foreach (var entry in entryStream.WithCancellation(cancellationToken))
         {
+            if (entries.Count >= options.MaxTransactionEntries)
+            {
+                throw new Domain.Exceptions.RequestTooCostlyException(
+                    $"Transaction bundle has more than {options.MaxTransactionEntries} entries (Bundle:MaxTransactionEntries). No entries were executed.");
+            }
             entries.Add(TransactionRequestValidator.Validate(entry, resourceTypes));
         }
 
