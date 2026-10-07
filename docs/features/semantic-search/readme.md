@@ -19,8 +19,19 @@ Clinical free text such as note text, `valueString` and narrative is poorly serv
 ## Investigations
 | Investigation | Status | Summary |
 |--------------|--------|---------|
-| [wire-compatible-port](investigations/wire-compatible-port.md) | In Progress | Port fhir-server's contract with Ignixa-native internals: synchronous embed before merge, vectors in a side table written post-merge, compiler-native gating CTE plus distance ranking. |
+| [wire-compatible-port](investigations/wire-compatible-port.md) | Implemented (Slice 1) | Port fhir-server's contract with Ignixa-native internals: synchronous embed before merge, vectors in a side table written post-merge, compiler-native gating CTE plus distance ranking. |
 
 ## Decision
 
 Proposed: [ADR-2610: Semantic Vector Search Parameters](adr-2610-semantic-vector-search.md). It moves to `docs/adr/` via `/accept-adr` after implementation.
+
+## Status
+
+Slice 1 (contract + synchronous SQL Server search) is implemented: the `vector-search-config`
+SearchParameter extension, write-path chunking/embedding before `MergeResources`, schema version 4
+(`dbo.VectorSearchParam` / `dbo.EmbeddingModel`), the SQL compiler's gating CTE and distance ranking, and
+`Bundle.entry.search.score`. See `docs/site/docs/server/features/semantic-search.md` for user-facing
+configuration and behavior, and the [Not yet supported](../../site/docs/server/features/semantic-search.md#not-yet-supported)
+section for what remains: asynchronous indexing, backfill of pre-existing resources, and bulk `$import`.
+The ADR stays Proposed until `/accept-adr` runs.
+
