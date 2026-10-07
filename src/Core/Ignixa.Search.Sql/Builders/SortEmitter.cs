@@ -85,15 +85,22 @@ internal static class SortEmitter
     }
 
     /// <summary>
-    /// Renders the ORDER BY for the plain (no-includes) path: each active key's value and direction, then
-    /// the (T1, Sid1) tiebreak. A custom sort drops the m.T1 tiebreak so every page orders by (sort keys…,
-    /// Sid1) — see <see cref="SortSpec.HasCustomKey"/>.
+    /// Renders the ORDER BY for the plain (no-includes) path: each active key's value and direction, then the
+    /// semantic distance when <paramref name="ranked"/>, then the (T1, Sid1) tiebreak. A custom sort drops the
+    /// m.T1 tiebreak so every page orders by (sort keys…, Sid1) — see <see cref="SortSpec.HasCustomKey"/>.
     /// </summary>
-    internal static string EmitOrderBy(SortSpec? sort)
+    internal static string EmitOrderBy(SortSpec? sort, bool ranked)
     {
         var activeIndices = ActiveKeyIndices(sort);
         var terms = activeIndices.Select(i =>
             $"{SortValueExpr(sort!, i)} {(sort!.Keys[i].Direction == SortOrder.Ascending ? "ASC" : "DESC")}").ToList();
+
+        // Distance ranks within ties of an explicit _sort, and ahead of the identity tie-break that only
+        // exists to make the order total.
+        if (ranked)
+        {
+            terms.Add($"{VectorSearchEmitter.RankedDistance} ASC");
+        }
 
         // SortValueExpr renders LastUpdated as "m.Sid1" and ResourceType as "m.T1"; if either is an active
         // key, appending it again as the trailing tiebreak would reference it twice (SQL Server Msg 145).
@@ -121,24 +128,29 @@ internal static class SortEmitter
 
     /// <summary>
     /// Renders the final ORDER BY for the includes path: matches before includes (IsMatch DESC), then the
-    /// projected SortValueN columns, then the (T1, Sid1) tiebreak. A custom sort drops the T1 tiebreak as in
-    /// <see cref="EmitOrderBy"/>.
+    /// projected SortValueN columns, the distance when <paramref name="ranked"/>, then the (T1, Sid1)
+    /// tiebreak. A custom sort drops the T1 tiebreak as in <see cref="EmitOrderBy"/>.
     /// </summary>
-    internal static string EmitOuterOrderByForIncludes(SortSpec? sort)
-        => $"IsMatch DESC, {EmitSortValueOrderBy(sort)}";
+    internal static string EmitOuterOrderByForIncludes(SortSpec? sort, bool ranked)
+        => $"IsMatch DESC, {EmitSortValueOrderBy(sort, ranked)}";
 
     /// <summary>
-    /// Renders the match page's own ordering as read back through the SortValueN columns it projects, for
-    /// consumers that select from the CTE rather than build it — the includes assembly's ORDER BY (via
-    /// <see cref="EmitOuterOrderByForIncludes"/>) and the match-seed CTE's TOP (see
+    /// Renders the match page's own ordering as read back through the SortValueN and Distance columns it
+    /// projects, for consumers that select from the CTE rather than build it — the includes assembly's ORDER BY
+    /// (via <see cref="EmitOuterOrderByForIncludes"/>) and the match-seed CTE's TOP (see
     /// <see cref="MatchPageEmitter.EmitMatchSeed"/>). The single producer of that ordering, so "the first N rows of the
     /// match page" cannot come to mean something different in one caller than the other.
     /// </summary>
-    internal static string EmitSortValueOrderBy(SortSpec? sort)
+    internal static string EmitSortValueOrderBy(SortSpec? sort, bool ranked)
     {
         var activeIndices = ActiveKeyIndices(sort);
         var terms = activeIndices.Select((idx, ordinal) =>
             $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
+        if (ranked)
+        {
+            terms = terms.Append($"{VectorSearchEmitter.DistanceColumn} ASC");
+        }
+
         if (sort?.HasCustomKey is not true)
         {
             terms = terms.Append("T1 ASC");

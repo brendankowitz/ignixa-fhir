@@ -1155,14 +1155,49 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
     /// <summary>
     /// Returns <paramref name="modelKey"/>'s cached <c>EmbeddingModelId</c>, or <see langword="null"/> on a
-    /// cache miss. <see cref="SqlServerEmbeddingModelRegistry"/> is the only intended caller -- see that
+    /// cache miss. <see cref="SqlServerEmbeddingModelRegistry"/> is the write path's caller -- see that
     /// type's remarks for why resolving a genuine miss belongs to it (calling
-    /// <c>dbo.GetOrCreateEmbeddingModel</c>) rather than to this cache.
+    /// <c>dbo.GetOrCreateEmbeddingModel</c>) rather than to this cache. The search path uses
+    /// <see cref="TryGetEmbeddingModelIdAsync"/> instead, which never creates a row.
     /// </summary>
     public short? TryGetEmbeddingModelIdFromCache(string modelKey)
     {
         ArgumentException.ThrowIfNullOrEmpty(modelKey);
         return _embeddingModelCache.TryGetValue(modelKey, out var cachedId) ? cachedId : null;
+    }
+
+    /// <summary>
+    /// Read-only, miss-returns-null embedding-model lookup for the search path: the cache, then a plain
+    /// <c>SELECT</c> from <c>dbo.EmbeddingModel</c>. Never calls <c>dbo.GetOrCreateEmbeddingModel</c> --
+    /// a search must not create catalog rows -- and caches positive answers only. A miss is not cached
+    /// because it is transient by nature: the first vector write under the model creates the row, and a
+    /// cached miss would hide every vector written after it until the tenant cache was invalidated. Each
+    /// semantic search against a model with no vectors yet therefore costs one round trip, and returns
+    /// nothing either way.
+    /// </summary>
+    public async Task<short?> TryGetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentException.ThrowIfNullOrEmpty(modelKey);
+
+        if (_embeddingModelCache.TryGetValue(modelKey, out var cachedId))
+        {
+            return cachedId;
+        }
+
+        using var command = new SqlCommand("SELECT EmbeddingModelId FROM dbo.EmbeddingModel WHERE ModelKey = @ModelKey");
+        command.Parameters.Add("@ModelKey", SqlDbType.VarChar, 256).Value = modelKey;
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(
+            tenantId, command, reader => reader.GetInt16(0), cancellationToken);
+
+        if (rows.Count == 0)
+        {
+            return null;
+        }
+
+        var id = rows[0];
+        _embeddingModelCache[modelKey] = id;
+        return id;
     }
 
     /// <summary>

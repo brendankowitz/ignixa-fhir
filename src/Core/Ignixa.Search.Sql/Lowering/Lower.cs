@@ -48,9 +48,18 @@ internal static class Lower
 
         RejectUnsupportedOptions(top, keyset?.TopIncludesProbeRow ?? false, includeLimit, sortPhase, shape, sort);
 
+        var rankedVectorSearch = FindRankedVectorSearch(context.Expression);
+        if (rankedVectorSearch is not null && keyset is not null)
+        {
+            throw new NotSupportedException(
+                "Semantic search cannot be combined with keyset paging (SearchPaging.Keyset): results are ordered " +
+                "by distance, which the keyset seek predicate cannot express, so a continuation would skip or " +
+                "repeat rows at the page seam. Use SearchPaging.Offset.");
+        }
+
         var accessConstraintApplier = new AccessConstraintApplier(context.AccessConstraints);
         var allowedResourceTypeFilter = new AllowedResourceTypeFilter(context.AllowedResourceTypes, symbols);
-        var lowerContext = new StructuralContext(symbols, context.ApproximationReferenceTime, accessConstraintApplier);
+        var lowerContext = new StructuralContext(symbols, context.ApproximationReferenceTime, accessConstraintApplier, rankedVectorSearch);
 
         var (match, outerPredicate) = LowerMatchSet(context, lowerContext, accessConstraintApplier, allowedResourceTypeFilter);
 
@@ -88,6 +97,12 @@ internal static class Lower
 
         RejectUnsoundKeysetPage(page, sortSpec, sortPhase);
 
+        // Ranking orders match rows, so only a shape that returns them carries it: a count reads the gate alone,
+        // and an includes page never returns the match rows it seeds from.
+        var ranking = shape is ResultShape.Matches && lowerContext.RankingSource is { } gate
+            ? new VectorRankSpec(gate)
+            : null;
+
         var matchSpec = new MatchPageSpec(
             match,
             Top: top,
@@ -98,7 +113,8 @@ internal static class Lower
             SurrogateRange: context.SurrogateRange,
             SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null,
             OffsetPage: offsetPage,
-            TopIncludesProbeRow: keyset?.TopIncludesProbeRow ?? false);
+            TopIncludesProbeRow: keyset?.TopIncludesProbeRow ?? false,
+            Ranking: ranking);
         List<CteDefinition> ctes = [.. lowerContext.Ctes];
         CteRef? includeSeed = null;
 
@@ -415,6 +431,32 @@ internal static class Lower
     /// actual situation rather than always blaming a wildcard compartment search.</summary>
     private static string NoTargetTypeReason(bool systemLevelSearch)
         => systemLevelSearch ? "a system-level search" : "a wildcard compartment search";
+
+    /// <summary>
+    /// The semantic leaf the match page may rank by: a <see cref="VectorSearchExpression"/> that is the whole
+    /// expression or one of its top-level AND terms, so every match satisfies it and has a distance. Returns
+    /// null when there is none; a semantic node anywhere else is rejected when the dispatcher reaches it (see
+    /// <see cref="StructuralContext.LowerVectorSearch"/>).
+    /// </summary>
+    private static VectorSearchExpression? FindRankedVectorSearch(Expression? expression)
+    {
+        var candidates = TopLevelConjuncts(expression).OfType<VectorSearchExpression>().ToList();
+        return candidates.Count switch
+        {
+            0 => null,
+            1 => candidates[0],
+            _ => throw new NotSupportedException(
+                "Only one semantic search parameter may be specified per search: the results are ranked by one " +
+                "distance, and two semantic conditions have no single order to rank by."),
+        };
+
+        static IEnumerable<Expression> TopLevelConjuncts(Expression? node) => node switch
+        {
+            null => [],
+            MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => and.Expressions.SelectMany(TopLevelConjuncts),
+            _ => [node],
+        };
+    }
 
     /// <summary>
     /// The base match set when no expression narrows it: a single-type ResourceSource when a target type

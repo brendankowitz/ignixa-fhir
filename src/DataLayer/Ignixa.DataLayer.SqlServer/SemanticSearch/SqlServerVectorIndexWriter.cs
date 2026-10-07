@@ -4,12 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Data;
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Sql.Builders;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.Server;
 using Microsoft.Extensions.Logging;
@@ -207,32 +207,8 @@ public class SqlServerVectorIndexWriter(
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(chunk.Passage));
         record.SetBytes(6, 0, hash, 0, hash.Length);
 
-        record.SetString(7, FormatEmbeddingJson(chunk.Embedding));
+        record.SetString(7, SqlVectorText.Format(chunk.Embedding.Span));
 
         return record;
-    }
-
-    /// <summary>
-    /// Formats <paramref name="embedding"/> as the JSON array shape <c>dbo.MergeVectorSearchParams.sql</c>
-    /// casts to <c>vector(1536)</c>, using invariant round-trip ("R") formatting. Verified directly against
-    /// the local SQL Server 2025 engine (<c>SELECT CAST(N'[1E-05,...]' AS VECTOR(n))</c>): every exponent
-    /// form "R" can produce for a <see cref="float"/> -- including subnormal values like "1E-45" and "-0" --
-    /// parses correctly via <c>CAST(... AS vector(n))</c>, so no alternate format is needed.
-    /// </summary>
-    private static string FormatEmbeddingJson(ReadOnlyMemory<float> embedding)
-    {
-        var span = embedding.Span;
-        var builder = new StringBuilder(span.Length * 12 + 2);
-        builder.Append('[');
-        for (var i = 0; i < span.Length; i++)
-        {
-            if (i > 0)
-            {
-                builder.Append(',');
-            }
-            builder.Append(span[i].ToString("R", CultureInfo.InvariantCulture));
-        }
-        builder.Append(']');
-        return builder.ToString();
     }
 }

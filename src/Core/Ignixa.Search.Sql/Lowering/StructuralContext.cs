@@ -23,6 +23,8 @@ internal sealed class StructuralContext
     private readonly CteGraphBuilder _graph = new();
     private readonly LeafContext _leafContext;
     private readonly AccessConstraintApplier _accessConstraints;
+    private readonly VectorSearchExpression? _rankedVectorSearch;
+    private bool _rankedVectorSearchLowered;
     private int _chainDepth;
 
     public StructuralContext(SymbolTable symbols, DateTimeOffset? approximationReferenceTime = null)
@@ -30,10 +32,22 @@ internal sealed class StructuralContext
     {
     }
 
-    internal StructuralContext(SymbolTable symbols, DateTimeOffset? approximationReferenceTime, AccessConstraintApplier? accessConstraints)
+    /// <param name="symbols">The resolved symbols.</param>
+    /// <param name="approximationReferenceTime">The instant <c>ap</c> date comparisons approximate against.</param>
+    /// <param name="accessConstraints">The access constraints chain targets are narrowed by.</param>
+    /// <param name="rankedVectorSearch">
+    /// The one semantic leaf this plan may lower: a top-level AND term of the match expression, found by
+    /// <see cref="Ignixa.Search.Sql.Lowering.Lower"/>. Any other semantic node reaching <see cref="LowerVectorSearch"/> is rejected.
+    /// </param>
+    internal StructuralContext(
+        SymbolTable symbols,
+        DateTimeOffset? approximationReferenceTime,
+        AccessConstraintApplier? accessConstraints,
+        VectorSearchExpression? rankedVectorSearch = null)
     {
         _leafContext = new LeafContext(symbols, approximationReferenceTime);
         _accessConstraints = accessConstraints ?? new AccessConstraintApplier(null);
+        _rankedVectorSearch = rankedVectorSearch;
     }
 
     public IReadOnlyList<CteDefinition> Ctes => _graph.Ctes;
@@ -41,6 +55,12 @@ internal sealed class StructuralContext
     public IReadOnlyList<CteOrigin> Origins => _graph.Origins;
 
     public LeafContext LeafContext => _leafContext;
+
+    /// <summary>
+    /// The semantic gate the match page ranks by, or null when the plan has none — no semantic leaf, or one
+    /// whose embedding model has no vectors and lowered to an empty match instead.
+    /// </summary>
+    public CteDefinition.VectorMatchSource? RankingSource { get; private set; }
 
     /// <summary>The CTE accumulator, for the structural rules this facade delegates to. They append CTE kinds
     /// (ChainJoin, CompartmentSource, TableExistsPredicate, …) that no caller outside this namespace constructs,
@@ -109,6 +129,38 @@ internal sealed class StructuralContext
 
         var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
         return _graph.Add(TokenTextLoweringRule.Lower(parameter, expression, _leafContext, resourceTypeId), provenanceNode);
+    }
+
+    /// <summary>
+    /// Lowers the plan's semantic leaf to its gate and records it as the ranking source. Ranking is defined
+    /// only for a semantic term every match must satisfy, so the leaf must be the top-level AND term
+    /// <see cref="Ignixa.Search.Sql.Lowering.Lower"/> identified: under OR a match may not have a distance at all, and under <c>:not</c>,
+    /// a union leg, a chain or an access constraint the distance would rank rows by a condition they were
+    /// selected for failing, or that belongs to another resource. Every semantic node reaches this one choke
+    /// point, so rejecting the others here covers each of those positions.
+    /// </summary>
+    public CteRef LowerVectorSearch(VectorSearchExpression expression, string? resourceType)
+    {
+        try
+        {
+            if (!ReferenceEquals(expression, _rankedVectorSearch) || _rankedVectorSearchLowered)
+            {
+                throw new NotSupportedException(
+                    $"Semantic search ('{expression.Parameter.Code}') is supported only as a top-level search term " +
+                    "combined with other parameters by AND. Under OR, :not, a union, a chain or an access " +
+                    "constraint, relevance ranking has no defined meaning.");
+            }
+
+            var cte = VectorSearchLoweringRule.Lower(expression, _leafContext, ResolveTypeScope(resourceType));
+            _rankedVectorSearchLowered = true;
+            RankingSource = cte as CteDefinition.VectorMatchSource;
+            return _graph.Add(cte, expression);
+        }
+        catch (Exception ex) when (LeafLoweringDispatcher.IsUnattributedLoweringFailure(ex))
+        {
+            LeafLoweringDispatcher.Enrich(ex, expression.Parameter, span: null);
+            throw;
+        }
     }
 
     public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components, string? resourceType, Expression provenanceNode)
