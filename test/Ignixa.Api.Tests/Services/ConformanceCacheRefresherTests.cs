@@ -17,9 +17,10 @@ public class ConformanceCacheRefresherTests
             .Returns(ValueTask.FromException<IReadOnlyList<TenantConfiguration>>(
                 new IOException("Configuration store unavailable.")));
         var refresher = new ConformanceCacheRefresher(null!, null!, tenantStore, null!, null!);
+        using var state = new ConformanceState();
 
         var exception = await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
-            refresher.RefreshAsync(0, CancellationToken.None));
+            refresher.BuildSnapshotAsync(state.CreateSnapshot(), 0, CancellationToken.None));
 
         exception.InnerException.ShouldBeOfType<IOException>();
     }
@@ -32,8 +33,9 @@ public class ConformanceCacheRefresherTests
             .Returns(ValueTask.FromException<IReadOnlyList<TenantConfiguration>>(
                 new OperationCanceledException("Independent cancellation.")));
         var refresher = new ConformanceCacheRefresher(null!, null!, tenantStore, null!, null!);
+        using var state = new ConformanceState();
 
         await Should.ThrowAsync<OperationCanceledException>(() =>
-            refresher.RefreshAsync(0, CancellationToken.None));
+            refresher.BuildSnapshotAsync(state.CreateSnapshot(), 0, CancellationToken.None));
     }
 }

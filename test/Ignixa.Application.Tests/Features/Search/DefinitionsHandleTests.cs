@@ -58,4 +58,46 @@ public class DefinitionsHandleTests
         handle.DefinitionsEventId.ShouldBe(47);
         handle.Indexer.ShouldBeSameAs(context.GetDefinitionsHandle(FhirVersion.R4, tenantId: null).Indexer);
     }
+
+    [Fact]
+    public void GivenAnOlderHandleCompletesAfterANewerHandle_WhenPublished_ThenItCannotReplaceTheNewerHandle()
+    {
+        var olderIndexer = Substitute.For<ISearchIndexer>();
+        var newerIndexer = Substitute.For<ISearchIndexer>();
+        var slot = new DefinitionsHandleSlot(new DefinitionsHandle(olderIndexer, 11));
+
+        slot.Publish(new DefinitionsHandle(newerIndexer, 29));
+        slot.Publish(new DefinitionsHandle(olderIndexer, 17));
+
+        slot.Current.DefinitionsEventId.ShouldBe(29);
+        slot.Current.Indexer.ShouldBeSameAs(newerIndexer);
+    }
+
+    [Fact]
+    public void GivenAnOlderConsumerSnapshotCompletesAfterANewerSnapshot_WhenPublished_ThenAllConsumersRemainOnTheNewerGeneration()
+    {
+        var olderDefinitions = Substitute.For<ISearchParameterDefinitionManager>();
+        var newerDefinitions = Substitute.For<ISearchParameterDefinitionManager>();
+        var older = new ConformanceDefinitionsSnapshot(
+            olderDefinitions,
+            olderDefinitions,
+            new DefinitionsHandle(Substitute.For<ISearchIndexer>(), 11));
+        var newer = new ConformanceDefinitionsSnapshot(
+            newerDefinitions,
+            newerDefinitions,
+            new DefinitionsHandle(Substitute.For<ISearchIndexer>(), 29));
+        var slot = new ConformanceDefinitionsSnapshotSlot(older);
+
+        slot.Publish(newer);
+        slot.Publish(new ConformanceDefinitionsSnapshot(
+            olderDefinitions,
+            olderDefinitions,
+            new DefinitionsHandle(Substitute.For<ISearchIndexer>(), 17)));
+
+        slot.Current.Generation.ShouldBe(29);
+        slot.Current.ExtractionDefinitions.ShouldBeSameAs(newerDefinitions);
+        slot.Current.SearchableDefinitions.ShouldBeSameAs(newerDefinitions);
+        slot.ExtractionDefinitions.ShouldNotBeSameAs(olderDefinitions);
+        slot.SearchableDefinitions.ShouldNotBeSameAs(olderDefinitions);
+    }
 }

@@ -28,6 +28,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ConcurrentDictionary<FhirVersion, ISearchIndexer> _searchIndexers = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), ISearchIndexer> _tenantSearchIndexers = new();
     private readonly ConcurrentDictionary<(FhirVersion, int?), DefinitionsHandleSlot> _definitionsHandles = new();
+    private readonly ConcurrentDictionary<(FhirVersion, int), ConformanceDefinitionsSnapshotSlot> _conformanceDefinitions = new();
     private readonly ConcurrentDictionary<FhirVersion, ISearchParameterDefinitionManager> _searchParamManagers = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), CompositeSearchParameterDefinitionManager> _compositeSearchParamManagers = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), CompositeSearchParameterDefinitionManager> _searchableCompositeSearchParamManagers = new();
@@ -207,6 +208,11 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetSearchIndexer(fhirVersion);
         }
 
+        if (_conformanceDefinitions.TryGetValue((fhirVersion, tenantId.Value), out var definitions))
+        {
+            return definitions.Current.Handle.Indexer;
+        }
+
         // Fast path: check if already cached
         if (_tenantSearchIndexers.TryGetValue((fhirVersion, tenantId.Value), out var cachedIndexer))
         {
@@ -255,6 +261,12 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     /// <inheritdoc/>
     public DefinitionsHandle GetDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId)
     {
+        if (tenantId is { } tenant &&
+            _conformanceDefinitions.TryGetValue((fhirVersion, tenant), out var definitions))
+        {
+            return definitions.Current.Handle;
+        }
+
         var key = (fhirVersion, tenantId);
         var slot = _definitionsHandles.GetOrAdd(
             key,
@@ -296,6 +308,67 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             fhirVersion,
             tenantId,
             CreateDefinitionsHandle(fhirVersion, tenantId, definitionsEventId));
+
+    /// <inheritdoc/>
+    public ConformanceDefinitionsSnapshot CreateConformanceDefinitionsSnapshot(
+        FhirVersion fhirVersion,
+        int tenantId,
+        ConformanceStateSnapshot stateSnapshot,
+        long generation)
+    {
+        ArgumentNullException.ThrowIfNull(stateSnapshot);
+        ArgumentOutOfRangeException.ThrowIfNegative(generation);
+
+        var schemaProvider = GetSchemaProvider(fhirVersion, tenantId);
+        var baseManager = GetSearchParameterDefinitionManager(fhirVersion);
+        var extractionDefinitions = new CompositeSearchParameterDefinitionManager(
+            baseManager,
+            stateSnapshot,
+            fhirVersion.ToVersionString(),
+            _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
+            _searchParameterResolutionOptions,
+            schemaProvider,
+            useSearchVisibility: false);
+        extractionDefinitions.ReloadFromConformanceState();
+
+        var searchableDefinitions = new CompositeSearchParameterDefinitionManager(
+            baseManager,
+            stateSnapshot,
+            fhirVersion.ToVersionString(),
+            _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
+            _searchParameterResolutionOptions,
+            schemaProvider,
+            useSearchVisibility: true);
+        searchableDefinitions.ReloadFromConformanceState();
+
+        var indexer = SearchIndexerFactory.CreateInstance(
+            schemaProvider,
+            _loggerFactory,
+            extractionDefinitions,
+            _baseUriProvider);
+
+        return new ConformanceDefinitionsSnapshot(
+            extractionDefinitions,
+            searchableDefinitions,
+            new DefinitionsHandle(indexer, generation));
+    }
+
+    /// <inheritdoc/>
+    public void PublishConformanceDefinitionsSnapshot(
+        FhirVersion fhirVersion,
+        int tenantId,
+        ConformanceDefinitionsSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        _conformanceDefinitions.AddOrUpdate(
+            (fhirVersion, tenantId),
+            _ => new ConformanceDefinitionsSnapshotSlot(snapshot),
+            (_, slot) =>
+            {
+                slot.Publish(snapshot);
+                return slot;
+            });
+    }
 
     /// <inheritdoc/>
     public ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirVersion fhirVersion)
@@ -353,6 +426,11 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetSearchParameterDefinitionManager(fhirVersion);
         }
 
+        if (_conformanceDefinitions.TryGetValue((fhirVersion, tenantId.Value), out var definitions))
+        {
+            return definitions.ExtractionDefinitions;
+        }
+
         return GetCompositeSearchParameterDefinitionManager(fhirVersion, tenantId.Value, useSearchVisibility: false);
     }
 
@@ -362,9 +440,19 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         Nullable<int> tenantId,
         Func<bool>? includePartiallyIndexedSearchParameters = null)
     {
-        ISearchParameterDefinitionManager manager = !tenantId.HasValue || _conformanceState is null
-            ? GetSearchParameterDefinitionManager(fhirVersion)
-            : GetCompositeSearchParameterDefinitionManager(fhirVersion, tenantId.Value, useSearchVisibility: true);
+        ISearchParameterDefinitionManager manager;
+        if (!tenantId.HasValue || _conformanceState is null)
+        {
+            manager = GetSearchParameterDefinitionManager(fhirVersion);
+        }
+        else if (_conformanceDefinitions.TryGetValue((fhirVersion, tenantId.Value), out var definitions))
+        {
+            manager = definitions.SearchableDefinitions;
+        }
+        else
+        {
+            manager = GetCompositeSearchParameterDefinitionManager(fhirVersion, tenantId.Value, useSearchVisibility: true);
+        }
 
         return new SearchableSearchParameterDefinitionManager(manager, includePartiallyIndexedSearchParameters);
     }

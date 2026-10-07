@@ -1,4 +1,5 @@
 using System.Data.Common;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
@@ -10,8 +11,7 @@ using Ignixa.Serialization;
 namespace Ignixa.Api.Services;
 
 /// <summary>
-/// Refreshes local consumers of replayed conformance state without replaying package-load side effects.
-/// The caller must hold the conformance activation lock.
+/// Builds local consumers from a detached conformance projection, then publishes them without I/O.
 /// </summary>
 public sealed class ConformanceCacheRefresher(
     IFhirVersionContext fhirVersionContext,
@@ -20,52 +20,50 @@ public sealed class ConformanceCacheRefresher(
     ICompositeSchemaProviderRegistry schemaProviderRegistry,
     ICapabilityCacheInvalidator capabilityCacheInvalidator) : IConformanceCacheRefresher
 {
-    public async Task RefreshAsync(long definitionsEventId, CancellationToken cancellationToken)
+    public async Task<IConformanceConsumerSnapshot> BuildSnapshotAsync(
+        ConformanceStateSnapshot stateSnapshot,
+        long generation,
+        CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(stateSnapshot);
+
         try
         {
             var tenants = await tenantConfigurationStore.GetAllTenantsAsync(cancellationToken);
 
             foreach (var tenant in tenants)
             {
-                if (string.Equals(tenant.Storage.Type, "FileSystem", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var version = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
-                var definitions = fhirVersionContext.GetSearchParameterDefinitionManager(version, tenant.TenantId);
-
-                // AllSearchParameters reads current conformance state even when resource/code lookups are
-                // warm. Populate the instances held by existing writers before publishing new indexers.
-                var canonicals = definitions.AllSearchParameters
-                    .Where(parameter => parameter.Url is not null)
-                    .Select(parameter => parameter.Url!.ToString())
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
-                var cache = await cacheRegistry.GetOrCreateAsync(tenant.TenantId, cancellationToken);
-                await cache.SyncSearchParametersToDatabaseAsync(canonicals, definitions, cancellationToken);
-            }
-
-            foreach (var tenant in tenants)
-            {
                 await schemaProviderRegistry.InvalidateCachesForTenantImmediatelyAsync(tenant.TenantId, cancellationToken);
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
-            fhirVersionContext.InvalidateSearchParameterCaches();
-
-            var handles = tenants.Select(tenant =>
+            var definitions = tenants.Select(tenant =>
             {
                 var version = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
                 return (
                     Version: version,
                     tenant.TenantId,
-                    Handle: fhirVersionContext.CreateDefinitionsHandle(
+                    StorageType: tenant.Storage.Type,
+                    Snapshot: fhirVersionContext.CreateConformanceDefinitionsSnapshot(
                         version,
                         tenant.TenantId,
-                        definitionsEventId));
+                        stateSnapshot,
+                        generation));
             }).ToList();
+
+            foreach (var tenantDefinitions in definitions.Where(definition =>
+                !string.Equals(definition.StorageType, "FileSystem", StringComparison.OrdinalIgnoreCase)))
+            {
+                var canonicals = tenantDefinitions.Snapshot.ExtractionDefinitions.AllSearchParameters
+                    .Where(parameter => parameter.Url is not null)
+                    .Select(parameter => parameter.Url!.ToString())
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                var cache = await cacheRegistry.GetOrCreateAsync(tenantDefinitions.TenantId, cancellationToken);
+                await cache.SyncSearchParametersToDatabaseAsync(
+                    canonicals,
+                    tenantDefinitions.Snapshot.ExtractionDefinitions,
+                    cancellationToken);
+            }
 
             foreach (var tenant in tenants)
             {
@@ -73,14 +71,7 @@ public sealed class ConformanceCacheRefresher(
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-
-            foreach (var handle in handles)
-            {
-                fhirVersionContext.PublishDefinitionsHandle(
-                    handle.Version,
-                    handle.TenantId,
-                    handle.Handle);
-            }
+            return new ConsumerSnapshot(generation, definitions);
         }
         catch (DbException exception)
         {
@@ -101,4 +92,28 @@ public sealed class ConformanceCacheRefresher(
                 exception);
         }
     }
+
+    public void PublishSnapshot(IConformanceConsumerSnapshot snapshot)
+    {
+        var consumerSnapshot = snapshot as ConsumerSnapshot
+            ?? throw new ArgumentException(
+                $"Expected a {nameof(ConsumerSnapshot)}.",
+                nameof(snapshot));
+
+        foreach (var definitions in consumerSnapshot.Definitions)
+        {
+            fhirVersionContext.PublishConformanceDefinitionsSnapshot(
+                definitions.Version,
+                definitions.TenantId,
+                definitions.Snapshot);
+        }
+    }
+
+    private sealed record ConsumerSnapshot(
+        long Generation,
+        IReadOnlyList<(
+            FhirVersion Version,
+            int TenantId,
+            string StorageType,
+            ConformanceDefinitionsSnapshot Snapshot)> Definitions) : IConformanceConsumerSnapshot;
 }

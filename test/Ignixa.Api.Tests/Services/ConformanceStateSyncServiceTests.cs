@@ -31,8 +31,12 @@ public class ConformanceStateSyncServiceTests
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
         var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.RefreshAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw new InvalidOperationException("refresh failed"));
+        cacheRefresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
+                new InvalidOperationException("refresh failed")));
         var lease = Substitute.For<IConformanceLease>();
         var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
         lease.CaptureStart().Returns(leaseStart);
@@ -63,7 +67,7 @@ public class ConformanceStateSyncServiceTests
         using var service = new TestSyncService(
             store,
             state,
-            Substitute.For<IConformanceCacheRefresher>(),
+            CreateRefresher(),
             Substitute.For<IConformanceLease>(),
             scheduler,
             clock,
@@ -142,6 +146,18 @@ public class ConformanceStateSyncServiceTests
         return state;
     }
 
+    private static IConformanceCacheRefresher CreateRefresher()
+    {
+        var refresher = Substitute.For<IConformanceCacheRefresher>();
+        refresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult<IConformanceConsumerSnapshot>(
+                new TestSnapshot(callInfo.ArgAt<long>(1))));
+        return refresher;
+    }
+
     private sealed class TestSyncService(
         ISourceEventStore store,
         ConformanceState state,
@@ -153,7 +169,10 @@ public class ConformanceStateSyncServiceTests
         : ConformanceStateSyncService(
             store,
             state,
-            cacheRefresher,
+            new ConformanceRefreshPublisher(
+                state,
+                cacheRefresher,
+                NullLogger<ConformanceRefreshPublisher>.Instance),
             lease,
             transitionScheduler,
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = transitionGrace }),
@@ -174,4 +193,6 @@ public class ConformanceStateSyncServiceTests
 
         public void Advance(TimeSpan duration) => _timestamp += duration.Ticks;
     }
+
+    private sealed record TestSnapshot(long Generation) : IConformanceConsumerSnapshot;
 }

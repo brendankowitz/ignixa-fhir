@@ -12,6 +12,18 @@ internal sealed class DefinitionsHandleSlot(DefinitionsHandle initialHandle)
     public void Publish(DefinitionsHandle handle)
     {
         ArgumentNullException.ThrowIfNull(handle);
-        Interlocked.Exchange(ref _current, handle);
+        while (true)
+        {
+            var current = Volatile.Read(ref _current);
+            if (handle.DefinitionsEventId <= current.DefinitionsEventId)
+            {
+                return;
+            }
+
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _current, handle, current), current))
+            {
+                return;
+            }
+        }
     }
 }

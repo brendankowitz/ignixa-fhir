@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -7,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Conformance;
 
-public sealed class ConformanceState : IDisposable
+public sealed class ConformanceState : IConformanceStateView, IDisposable
 {
     private readonly Dictionary<(string ResourceType, string Code), ActiveSearchParameter> _searchParameters = [];
     private readonly List<ActiveSearchParameter> _searchParameterActivations = [];
@@ -34,10 +36,18 @@ public sealed class ConformanceState : IDisposable
     public long LastProcessedEventId => Interlocked.Read(ref _lastProcessedEventId);
     public bool IsInitialized => _isInitialized;
 
-    public async Task<IDisposable> AcquireActivationLockAsync(CancellationToken cancellationToken)
+    public async Task<IDisposable> AcquireActivationLockAsync(
+        CancellationToken cancellationToken,
+        [CallerMemberName] string operation = "")
     {
+        var waitStarted = Stopwatch.GetTimestamp();
         await _activationLock.WaitAsync(cancellationToken);
-        return new LockReleaser(_activationLock);
+        var acquired = Stopwatch.GetTimestamp();
+        _logger?.LogDebug(
+            "Conformance activation lock acquired by {Operation} after waiting {WaitDurationMs:N1} ms",
+            operation,
+            Stopwatch.GetElapsedTime(waitStarted, acquired).TotalMilliseconds);
+        return new LockReleaser(_activationLock, _logger, operation, acquired);
     }
 
     public int GetOrAllocateSearchParamId(string canonical, ActiveSearchParameter? existingOverride)
@@ -62,7 +72,11 @@ public sealed class ConformanceState : IDisposable
         existingOverride?.SearchParamId
         ?? (_canonicalToParamId.TryGetValue(canonical, out var id) ? id : _nextSearchParamId);
 
-    private sealed class LockReleaser(SemaphoreSlim semaphore) : IDisposable
+    private sealed class LockReleaser(
+        SemaphoreSlim semaphore,
+        ILogger<ConformanceState>? logger,
+        string operation,
+        long acquired) : IDisposable
     {
         private bool _disposed;
 
@@ -71,6 +85,10 @@ public sealed class ConformanceState : IDisposable
             if (!_disposed)
             {
                 semaphore.Release();
+                logger?.LogDebug(
+                    "Conformance activation lock released by {Operation} after holding {HoldDurationMs:N1} ms",
+                    operation,
+                    Stopwatch.GetElapsedTime(acquired).TotalMilliseconds);
                 _disposed = true;
             }
         }
@@ -200,6 +218,9 @@ public sealed class ConformanceState : IDisposable
         return staged;
     }
 
+    internal ConformanceStateSnapshot CreateSnapshot() =>
+        new(_searchParameters, _searchParameterActivations, _storageCanonicals, _isInitialized);
+
     internal ValidationIssue? ApplyProposedEvent(NewSourceEvent proposed)
     {
         if (proposed.Data is SearchParameterActivated parameter &&
@@ -216,8 +237,7 @@ public sealed class ConformanceState : IDisposable
         ISourceEventStore store,
         CancellationToken cancellationToken)
     {
-        await _activationLock.WaitAsync(cancellationToken);
-        try
+        using (await AcquireActivationLockAsync(cancellationToken))
         {
             await foreach (var evt in store.ReadAllAsync(cancellationToken))
             {
@@ -225,10 +245,6 @@ public sealed class ConformanceState : IDisposable
                 _lastProcessedEventId = evt.EventId;
             }
             _isInitialized = true;
-        }
-        finally
-        {
-            _activationLock.Release();
         }
     }
 
@@ -242,8 +258,7 @@ public sealed class ConformanceState : IDisposable
         IEnumerable<SourceEvent> events,
         CancellationToken cancellationToken)
     {
-        await _activationLock.WaitAsync(cancellationToken);
-        try
+        using (await AcquireActivationLockAsync(cancellationToken))
         {
             foreach (var evt in events)
             {
@@ -251,24 +266,15 @@ public sealed class ConformanceState : IDisposable
                 _lastProcessedEventId = evt.EventId;
             }
         }
-        finally
-        {
-            _activationLock.Release();
-        }
     }
 
     public async Task CatchUpAsync(
         ISourceEventStore store,
         CancellationToken cancellationToken)
     {
-        await _activationLock.WaitAsync(cancellationToken);
-        try
+        using (await AcquireActivationLockAsync(cancellationToken))
         {
             await CatchUpWhileActivationLockHeldAsync(store, cancellationToken);
-        }
-        finally
-        {
-            _activationLock.Release();
         }
     }
 

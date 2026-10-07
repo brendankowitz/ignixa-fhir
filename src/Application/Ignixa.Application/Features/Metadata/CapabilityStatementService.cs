@@ -55,7 +55,7 @@ public class CapabilityStatementService
         CapabilityContext context,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = context.ToCacheKey();
+        var cacheKey = GetCacheKey(context);
 
         _logger.LogDebug(
             "Getting capability statement for context: FhirVersion={FhirVersion}, TenantId={TenantId}, CacheKey={CacheKey}",
@@ -232,7 +232,7 @@ public class CapabilityStatementService
         CapabilityContext context,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = context.ToCacheKey();
+        var cacheKey = GetCacheKey(context);
 
         // Clear version hash cache for this context
         _versionHashCache.TryRemove(cacheKey, out _);
@@ -242,6 +242,14 @@ public class CapabilityStatementService
         await _cache.RemoveAsync(cacheKey, cancellationToken);
 
         _logger.LogInformation("Invalidated capability cache for {CacheKey}", cacheKey);
+    }
+
+    private string GetCacheKey(CapabilityContext context)
+    {
+        var definitionsEventId = _versionContext
+            .GetDefinitionsHandle(context.FhirVersion, context.TenantId)
+            ?.DefinitionsEventId ?? 0;
+        return $"{context.ToCacheKey()}:{definitionsEventId}";
     }
 
     /// <summary>

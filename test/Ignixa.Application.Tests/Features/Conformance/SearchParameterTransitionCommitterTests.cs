@@ -1,5 +1,4 @@
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -34,7 +33,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            Substitute.For<IFhirVersionContext>());
+            CreateRefreshPublisher(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -63,7 +62,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            Substitute.For<IFhirVersionContext>());
+            CreateRefreshPublisher(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -102,7 +101,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            Substitute.For<IFhirVersionContext>());
+            CreateRefreshPublisher(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -121,7 +120,6 @@ public class SearchParameterTransitionCommitterTests
         store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(
                 EmptyEvents(),
-                EmptyEvents(),
                 Events(new SourceEvent(
                     30,
                     "transition:20",
@@ -135,7 +133,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            Substitute.For<IFhirVersionContext>());
+            CreateRefreshPublisher(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -158,7 +156,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            Substitute.For<IFhirVersionContext>());
+            CreateRefreshPublisher(state));
 
         await Should.ThrowAsync<SourceEventConcurrencyException>(() => committer.CommitAsync(20, CancellationToken.None));
 
@@ -202,5 +200,26 @@ public class SearchParameterTransitionCommitterTests
         }
 
         await Task.CompletedTask;
+    }
+
+    private static ConformanceRefreshPublisher CreateRefreshPublisher(ConformanceState state) =>
+        new(
+            state,
+            new NoOpCacheRefresher(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ConformanceRefreshPublisher>.Instance);
+
+    private sealed class NoOpCacheRefresher : IConformanceCacheRefresher
+    {
+        public Task<IConformanceConsumerSnapshot> BuildSnapshotAsync(
+            ConformanceStateSnapshot stateSnapshot,
+            long generation,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IConformanceConsumerSnapshot>(new Snapshot(generation));
+
+        public void PublishSnapshot(IConformanceConsumerSnapshot snapshot)
+        {
+        }
+
+        private sealed record Snapshot(long Generation) : IConformanceConsumerSnapshot;
     }
 }

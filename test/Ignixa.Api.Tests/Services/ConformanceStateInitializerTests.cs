@@ -57,7 +57,10 @@ public class ConformanceStateInitializerTests
 
         Received.InOrder(() =>
         {
-            cacheRefresher.RefreshAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+            cacheRefresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>());
             lease.Renew(leaseStart);
         });
     }
@@ -74,8 +77,17 @@ public class ConformanceStateInitializerTests
             TimeProvider.System,
             NullLogger<ConformanceLease>.Instance);
 
-    private static IConformanceCacheRefresher CreateRefresher() =>
-        Substitute.For<IConformanceCacheRefresher>();
+    private static IConformanceCacheRefresher CreateRefresher()
+    {
+        var refresher = Substitute.For<IConformanceCacheRefresher>();
+        refresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult<IConformanceConsumerSnapshot>(
+                new TestSnapshot(callInfo.ArgAt<long>(1))));
+        return refresher;
+    }
 
     private sealed class TestInitializer(
         ISourceEventStore store,
@@ -85,10 +97,15 @@ public class ConformanceStateInitializerTests
         : ConformanceStateInitializerService(
             store,
             state,
-            cacheRefresher,
+            new ConformanceRefreshPublisher(
+                state,
+                cacheRefresher,
+                NullLogger<ConformanceRefreshPublisher>.Instance),
             lease,
             NullLogger<ConformanceStateInitializerService>.Instance)
     {
         public Task RunAsync() => ExecuteAsync(CancellationToken.None);
     }
+
+    private sealed record TestSnapshot(long Generation) : IConformanceConsumerSnapshot;
 }

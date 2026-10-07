@@ -25,7 +25,7 @@ namespace Ignixa.Application.Features.Search;
 public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinitionManager
 {
     private readonly ISearchParameterDefinitionManager _baseManager;
-    private readonly ConformanceState _conformanceState;
+    private readonly IConformanceStateView _conformanceState;
     private readonly string? _fhirVersion;
     private readonly ILogger<CompositeSearchParameterDefinitionManager> _logger;
     private readonly SearchParameterResolutionOptions _options;
@@ -41,7 +41,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
     public CompositeSearchParameterDefinitionManager(
         ISearchParameterDefinitionManager baseManager,
-        ConformanceState conformanceState,
+        IConformanceStateView conformanceState,
         string? fhirVersion,
         ILogger<CompositeSearchParameterDefinitionManager> logger,
         SearchParameterResolutionOptions options,

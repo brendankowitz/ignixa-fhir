@@ -71,6 +71,10 @@ public static class ConformanceServicesRegistration
             .As<IConformanceCacheRefresher>()
             .SingleInstance();
 
+        builder.RegisterType<ConformanceRefreshPublisher>()
+            .AsSelf()
+            .SingleInstance();
+
         builder.RegisterType<ConformanceDefinitionsSynchronizer>()
             .As<IConformanceDefinitionsSynchronizer>()
             .SingleInstance();

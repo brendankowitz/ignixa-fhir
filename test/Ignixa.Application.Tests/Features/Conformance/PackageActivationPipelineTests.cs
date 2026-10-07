@@ -53,8 +53,12 @@ public class PackageActivationPipelineTests
         state.ApplyAndTrack(CreateBaseActivation());
         var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
         var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.RefreshAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw new InvalidOperationException("Injected refresh failure."));
+        cacheRefresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
+                new InvalidOperationException("Injected refresh failure.")));
         var lease = Substitute.For<IConformanceLease>();
         var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
         lease.CaptureStart().Returns(leaseStart);
@@ -63,11 +67,10 @@ public class PackageActivationPipelineTests
             packageRepository,
             eventStore,
             state,
-            Substitute.For<IFhirVersionContext>(),
             Options.Create(new SearchParameterResolutionOptions()),
             transitionScheduler,
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            cacheRefresher,
+            CreateRefreshPublisher(state, cacheRefresher),
             lease,
             logger);
 
@@ -83,7 +86,10 @@ public class PackageActivationPipelineTests
             persistedEvents[0].EventId,
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
-        await cacheRefresher.Received(1).RefreshAsync(Arg.Any<long>(), CancellationToken.None);
+        await cacheRefresher.Received(1).BuildSnapshotAsync(
+            Arg.Any<ConformanceStateSnapshot>(),
+            Arg.Any<long>(),
+            CancellationToken.None);
         lease.DidNotReceive().Renew(leaseStart);
     }
 
@@ -113,9 +119,19 @@ public class PackageActivationPipelineTests
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreateBaseActivation());
         var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.RefreshAsync(Arg.Any<long>(), CancellationToken.None)
-            .Returns(_ => throw new OperationCanceledException("Independent cancellation."));
-        var pipeline = CreatePipeline(packageRepository, eventStore, state, Substitute.For<ISearchParameterTransitionScheduler>(), cacheRefresher);
+        cacheRefresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                CancellationToken.None)
+            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
+                new OperationCanceledException("Independent cancellation.")));
+        var pipeline = CreatePipeline(
+            packageRepository,
+            eventStore,
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            cacheRefresher,
+            configureSuccessfulRefresh: false);
 
         await Should.ThrowAsync<OperationCanceledException>(() => pipeline.ActivateAsync(
             "test.override",
@@ -149,10 +165,14 @@ public class PackageActivationPipelineTests
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreateBaseActivation());
         var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.RefreshAsync(Arg.Any<long>(), CancellationToken.None)
-            .Returns(_ => throw new ConformanceConsumerRefreshException(
+        cacheRefresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                CancellationToken.None)
+            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
+                new ConformanceConsumerRefreshException(
                 "Expected refresh failure.",
-                new IOException("Database unavailable.")));
+                new IOException("Database unavailable."))));
         var lease = Substitute.For<IConformanceLease>();
         var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
         lease.CaptureStart().Returns(leaseStart);
@@ -160,11 +180,10 @@ public class PackageActivationPipelineTests
             packageRepository,
             eventStore,
             state,
-            Substitute.For<IFhirVersionContext>(),
             Options.Create(new SearchParameterResolutionOptions()),
             Substitute.For<ISearchParameterTransitionScheduler>(),
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            cacheRefresher,
+            CreateRefreshPublisher(state, cacheRefresher),
             lease,
             Substitute.For<ILogger<PackageActivationPipeline>>());
 
@@ -234,22 +253,38 @@ public class PackageActivationPipelineTests
         ISourceEventStore eventStore,
         ConformanceState state,
         ISearchParameterTransitionScheduler transitionScheduler,
-        IConformanceCacheRefresher cacheRefresher)
+        IConformanceCacheRefresher cacheRefresher,
+        bool configureSuccessfulRefresh = true)
     {
         var lease = Substitute.For<IConformanceLease>();
         lease.CaptureStart().Returns(new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1));
+        if (configureSuccessfulRefresh)
+        {
+            cacheRefresher.BuildSnapshotAsync(
+                    Arg.Any<ConformanceStateSnapshot>(),
+                    Arg.Any<long>(),
+                    Arg.Any<CancellationToken>())
+                .Returns(callInfo => Task.FromResult<IConformanceConsumerSnapshot>(
+                    new TestConsumerSnapshot(callInfo.ArgAt<long>(1))));
+        }
         return new PackageActivationPipeline(
             packageRepository,
             eventStore,
             state,
-            Substitute.For<IFhirVersionContext>(),
             Options.Create(new SearchParameterResolutionOptions()),
             transitionScheduler,
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            cacheRefresher,
+            CreateRefreshPublisher(state, cacheRefresher),
             lease,
             Substitute.For<ILogger<PackageActivationPipeline>>());
     }
+
+    private static ConformanceRefreshPublisher CreateRefreshPublisher(
+        ConformanceState state,
+        IConformanceCacheRefresher cacheRefresher) =>
+        new(state, cacheRefresher, Microsoft.Extensions.Logging.Abstractions.NullLogger<ConformanceRefreshPublisher>.Instance);
+
+    private sealed record TestConsumerSnapshot(long Generation) : IConformanceConsumerSnapshot;
 
     private static PackageResource CreateOverrideResource() =>
         new()

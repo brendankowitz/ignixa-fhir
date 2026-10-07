@@ -13,6 +13,7 @@ using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Parsing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
@@ -150,13 +151,26 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
             warmDefinitions.GetSearchParameter("Patient", SearchCode).Url.ShouldBe(new Uri(Canonical));
             (await warmCache.GetSearchParamIdAsync(Canonical, CancellationToken.None)).ShouldNotBeNull();
             await AssertCapabilityAsync(clientB, expected: false, waitForRefresh: true);
+            var searchBuilderFactory = hostB.Services.GetRequiredService<ISearchOptionsBuilderFactory>();
+            var pendingSearchBuilder = searchBuilderFactory.Create(FhirVersion.R4, 1);
             await SearchParameterLifecycleTestHelper.CompleteReindexAsync(hostB.Services, Canonical);
+            versionsB.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1)
+                .GetSearchParameter("Patient", SearchCode)
+                .Url.ShouldBe(new Uri(Canonical));
+            var enabledSearchBuilder = searchBuilderFactory.Create(FhirVersion.R4, 1);
+            enabledSearchBuilder.ShouldNotBeSameAs(pendingSearchBuilder);
+            enabledSearchBuilder.Build(
+                    "Patient",
+                [new QueryParameter(SearchCode, $"{IdentifierSystem}|{identifier}")],
+                    versionsB.GetSchemaProvider(FhirVersion.R4, 1))
+            .UnsupportedParams.ShouldBeEmpty();
             await AssertEventuallySupportedAsync(clientB, identifier);
             await AssertCapabilityAsync(clientB, expected: true, waitForRefresh: true);
             await stateA.CatchUpAsync(
                 hostA.Services.GetRequiredService<ISourceEventStore>(),
                 CancellationToken.None);
-            versionsA.InvalidateSearchParameterCaches();
+            await hostA.Services.GetRequiredService<ConformanceRefreshPublisher>()
+                .RefreshUntilCurrentAsync(CancellationToken.None);
             await AssertEventuallySupportedAsync(clientA, identifier);
             await PutPatientAsync(clientB, afterId, identifier);
             await AssertPatientsAsync(clientB, identifier, afterId);

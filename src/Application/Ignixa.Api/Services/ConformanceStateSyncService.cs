@@ -16,7 +16,7 @@ namespace Ignixa.Api.Services;
 public class ConformanceStateSyncService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
-    IConformanceCacheRefresher cacheRefresher,
+    ConformanceRefreshPublisher refreshPublisher,
     IConformanceLease conformanceLease,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
@@ -75,21 +75,21 @@ public class ConformanceStateSyncService(
         _ = conformanceLease.IsHeld;
         var syncStart = conformanceLease.CaptureStart();
         var beforeEventId = conformanceState.LastProcessedEventId;
+        long afterEventId;
+        IReadOnlyList<long> overdueTransitionIds;
 
-        await conformanceState.CatchUpAsync(eventStore, cancellationToken);
-
-        // CatchUpAsync takes this same lock. Acquire it only after catch-up has returned, and
-        // hold it through refresh so local activation cannot change the definitions being synced.
-        using var activationLock = await conformanceState.AcquireActivationLockAsync(cancellationToken);
-        var afterEventId = conformanceState.LastProcessedEventId;
-
-        await ObserveUncommittedTransitionsAsync(cancellationToken);
+        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
+        {
+            await conformanceState.CatchUpWhileActivationLockHeldAsync(eventStore, cancellationToken);
+            afterEventId = conformanceState.LastProcessedEventId;
+            overdueTransitionIds = GetOverdueTransitionIds();
+        }
 
         if (afterEventId > _lastRefreshedEventId)
         {
             try
             {
-                await cacheRefresher.RefreshAsync(afterEventId, cancellationToken);
+                _lastRefreshedEventId = await refreshPublisher.RefreshUntilCurrentAsync(cancellationToken);
             }
             catch (ConformanceConsumerRefreshException)
             {
@@ -99,9 +99,12 @@ public class ConformanceStateSyncService(
 
             // Applying events and refreshing their consumers are separate checkpoints. In particular,
             // an empty subsequent poll must retry a failed refresh of an already-applied event.
-            _lastRefreshedEventId = afterEventId;
-            logger.LogInformation("Refreshed conformance consumers through EventId {EventId}", afterEventId);
+            logger.LogInformation(
+                "Refreshed conformance consumers through EventId {EventId}",
+                _lastRefreshedEventId);
         }
+
+        await ScheduleOverdueTransitionsAsync(overdueTransitionIds, cancellationToken);
 
         if (afterEventId > beforeEventId)
         {
@@ -120,7 +123,7 @@ public class ConformanceStateSyncService(
         conformanceLease.Renew(syncStart);
     }
 
-    private async Task ObserveUncommittedTransitionsAsync(CancellationToken cancellationToken)
+    private IReadOnlyList<long> GetOverdueTransitionIds()
     {
         var uncommittedTransitionIds = conformanceState.GetTransitionHideEventIds();
         _uncommittedTransitionFirstObserved.Keys
@@ -128,6 +131,7 @@ public class ConformanceStateSyncService(
             .ToList()
             .ForEach(eventId => _uncommittedTransitionFirstObserved.Remove(eventId));
 
+        var overdue = new List<long>();
         foreach (var eventId in uncommittedTransitionIds)
         {
             var now = _timeProvider.GetTimestamp();
@@ -142,16 +146,29 @@ public class ConformanceStateSyncService(
                 continue;
             }
 
+            overdue.Add(eventId);
+            _uncommittedTransitionFirstObserved[eventId] = _timeProvider.GetTimestamp();
+        }
+
+        return overdue;
+    }
+
+    private async Task ScheduleOverdueTransitionsAsync(
+        IReadOnlyList<long> overdueTransitionIds,
+        CancellationToken cancellationToken)
+    {
+        foreach (var eventId in overdueTransitionIds)
+        {
             try
             {
                 await transitionScheduler.ScheduleReconciliationAsync(
                     eventId,
                     _transitionGrace,
                     cancellationToken);
-                _uncommittedTransitionFirstObserved[eventId] = _timeProvider.GetTimestamp();
             }
             catch (Exception exception)
             {
+                _uncommittedTransitionFirstObserved[eventId] = _timeProvider.GetTimestamp();
                 ConformanceTransitionMetrics.RecordScheduleFailure();
                 logger.LogError(
                     exception,

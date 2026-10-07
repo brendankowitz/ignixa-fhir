@@ -27,7 +27,9 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
 {
     private readonly IFhirVersionContext _versionContext;
     private readonly ConcurrentDictionary<(TenantContext Tenant, FhirVersion Version), ISearchOptionsBuilder> _builderCache = new();
-    private readonly ConcurrentDictionary<(TenantContext Tenant, FhirVersion Version, int? TenantId), ISearchOptionsBuilder> _tenantBuilderCache = new();
+    private readonly ConcurrentDictionary<
+        (TenantContext Tenant, FhirVersion Version, int TenantId, long DefinitionsGeneration),
+        ISearchOptionsBuilder> _tenantBuilderCache = new();
     private readonly SemaphoreSlim _creationLock = new(1, 1);
     private bool _disposed;
 
@@ -88,8 +90,10 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     {
         EnsureConformanceLease();
 
-        // Include tenantId in cache key to separate tenant-specific builders
-        var cacheKey = (tenant, fhirVersion, tenantId);
+        var definitionsGeneration = tenantId.HasValue
+            ? _versionContext.GetDefinitionsHandle(fhirVersion, tenantId).DefinitionsEventId
+            : 0;
+        var cacheKey = (tenant, fhirVersion, tenantId.GetValueOrDefault(), definitionsGeneration);
 
         // Fast path: check cache (use TryGetValue on extension for tuple key)
         if (_builderCache.TryGetValue((tenant, fhirVersion), out var cachedBuilder) && !tenantId.HasValue)
@@ -128,7 +132,6 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
                 tenantId,
                 UsePartialIndices);
 
-            // Create resolver delegate for SearchParameterDefinitionManager
             ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver resolver =
                 () => searchParamDefinitionManager;
 
@@ -155,6 +158,15 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
             // Cache and return - use appropriate cache based on tenant ID
             if (tenantId.HasValue)
             {
+                foreach (var staleKey in _tenantBuilderCache.Keys.Where(key =>
+                    key.Tenant == tenant &&
+                    key.Version == fhirVersion &&
+                    key.TenantId == tenantId.Value &&
+                    key.DefinitionsGeneration != definitionsGeneration))
+                {
+                    _tenantBuilderCache.TryRemove(staleKey, out _);
+                }
+
                 _tenantBuilderCache.TryAdd(cacheKey, builder);
             }
             else

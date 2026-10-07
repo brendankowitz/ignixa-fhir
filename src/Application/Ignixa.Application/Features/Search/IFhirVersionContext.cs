@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Specification;
@@ -72,6 +73,23 @@ public interface IFhirVersionContext
         DefinitionsHandle handle);
 
     void PublishDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId, long definitionsEventId);
+
+    /// <summary>
+    /// Builds a complete tenant definition set from a detached conformance projection.
+    /// </summary>
+    ConformanceDefinitionsSnapshot CreateConformanceDefinitionsSnapshot(
+        FhirVersion fhirVersion,
+        int tenantId,
+        ConformanceStateSnapshot stateSnapshot,
+        long generation);
+
+    /// <summary>
+    /// Publishes a complete tenant definition set if it is newer than the currently visible generation.
+    /// </summary>
+    void PublishConformanceDefinitionsSnapshot(
+        FhirVersion fhirVersion,
+        int tenantId,
+        ConformanceDefinitionsSnapshot snapshot);
 
     /// <summary>
     /// Gets the search parameter definition manager for the specified FHIR version.

@@ -222,10 +222,8 @@ static async Task InitializeSqlConformanceAsync(
     var conformanceState = app.Services.GetRequiredService<ConformanceState>();
     await conformanceState.InitializeFromEventsAsync(
         app.Services.GetRequiredService<ISourceEventStore>(), cancellationToken);
-    using var activationLock = await conformanceState.AcquireActivationLockAsync(cancellationToken);
-    await app.Services.GetRequiredService<IConformanceCacheRefresher>().RefreshAsync(
-        conformanceState.LastProcessedEventId,
-        cancellationToken);
+    await app.Services.GetRequiredService<ConformanceRefreshPublisher>()
+        .RefreshUntilCurrentAsync(cancellationToken);
     conformanceLease.Renew(leaseStart);
 }
 

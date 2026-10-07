@@ -5,5 +5,10 @@ namespace Ignixa.Application.Features.Conformance;
 /// </summary>
 public interface IConformanceCacheRefresher
 {
-    Task RefreshAsync(long definitionsEventId, CancellationToken cancellationToken);
+    Task<IConformanceConsumerSnapshot> BuildSnapshotAsync(
+        ConformanceStateSnapshot stateSnapshot,
+        long generation,
+        CancellationToken cancellationToken);
+
+    void PublishSnapshot(IConformanceConsumerSnapshot snapshot);
 }

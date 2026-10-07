@@ -24,11 +24,10 @@ public class PackageActivationPipeline(
     IPackageResourceRepository packageRepo,
     ISourceEventStore eventStore,
     ConformanceState state,
-    IFhirVersionContext fhirVersionContext,
     IOptions<SearchParameterResolutionOptions> options,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
-    IConformanceCacheRefresher cacheRefresher,
+    ConformanceRefreshPublisher refreshPublisher,
     IConformanceLease conformanceLease,
     ILogger<PackageActivationPipeline> logger)
 {
@@ -38,11 +37,10 @@ public class PackageActivationPipeline(
     private readonly IPackageResourceRepository _packageRepo = packageRepo ?? throw new ArgumentNullException(nameof(packageRepo));
     private readonly ISourceEventStore _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
     private readonly ConformanceState _state = state ?? throw new ArgumentNullException(nameof(state));
-    private readonly IFhirVersionContext _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
     private readonly SearchParameterResolutionOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly ISearchParameterTransitionScheduler _transitionScheduler = transitionScheduler ?? throw new ArgumentNullException(nameof(transitionScheduler));
     private readonly ConformanceTransitionOptions _transitionOptions = transitionOptions?.Value ?? throw new ArgumentNullException(nameof(transitionOptions));
-    private readonly IConformanceCacheRefresher _cacheRefresher = cacheRefresher ?? throw new ArgumentNullException(nameof(cacheRefresher));
+    private readonly ConformanceRefreshPublisher _refreshPublisher = refreshPublisher ?? throw new ArgumentNullException(nameof(refreshPublisher));
     private readonly IConformanceLease _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -59,23 +57,6 @@ public class PackageActivationPipeline(
         ArgumentNullException.ThrowIfNull(version);
         var leaseStart = _conformanceLease.CaptureStart();
 
-        // Acquire lock for entire activation to ensure thread safety
-        using var _ = await _state.AcquireActivationLockAsync(cancellationToken);
-
-        // Check if package is already activated (idempotency)
-        var packageKey = $"{packageId}@{version}";
-        if (_state.Packages.ContainsKey(packageKey))
-        {
-            _logger.LogDebug(
-                "Package {PackageId}@{Version} already activated, skipping",
-                packageId,
-                version);
-            return ActivationResult.Succeeded([]);
-        }
-
-        _logger.LogInformation("Activating package {PackageId}@{Version}", packageId, version);
-
-        // 1. Load package resources from repository
         var packageResources = await _packageRepo.GetResourcesForActivationAsync(packageId, version, cancellationToken);
         var resources = PackageResourceMapper.MapToPackageResources(packageResources);
 
@@ -84,51 +65,70 @@ public class PackageActivationPipeline(
             resources.SearchParameters.Count,
             resources.StructureDefinitions.Count);
 
-        // 2. Validate against current state
-        var validation = ValidateCompositeComponents(resources, _state);
-        if (!validation.Success)
+        IReadOnlyList<long> transitionEventIds;
+        List<string> reindexNeeded;
+        using (await _state.AcquireActivationLockAsync(cancellationToken))
         {
-            return RejectActivation(validation.Issues);
-        }
+            // Check if package is already activated (idempotency)
+            var packageKey = $"{packageId}@{version}";
+            if (_state.Packages.ContainsKey(packageKey))
+            {
+                _logger.LogDebug(
+                    "Package {PackageId}@{Version} already activated, skipping",
+                    packageId,
+                    version);
+                return ActivationResult.Succeeded([]);
+            }
 
-        // Build and apply every proposed event to detached state before anything is durable.
-        var expectedLastEventId = _state.LastProcessedEventId;
-        using var staged = _state.CreateStagingCopy();
-        var (events, issue) = BuildAndValidateActivationEvents(packageId, version, resources, staged);
-        if (issue is not null)
-        {
-            return RejectActivation([issue]);
-        }
+            _logger.LogInformation("Activating package {PackageId}@{Version}", packageId, version);
 
-        _logger.LogDebug("Built {EventCount} activation events", events.Count);
+            // 2. Validate against current state
+            var validation = ValidateCompositeComponents(resources, _state);
+            if (!validation.Success)
+            {
+                return RejectActivation(validation.Issues);
+            }
 
-        // The process-local lock cannot protect this snapshot from another host's activation.
-        // Compare its durable event position under the store's existing append lock.
-        IReadOnlyList<SourceEvent> persistedEvents;
-        try
-        {
-            persistedEvents = await _eventStore.AppendAsync(events, expectedLastEventId, cancellationToken);
-        }
-        catch (SourceEventConcurrencyException exception)
-        {
-            return RejectActivation([new ValidationIssue("CONFORMANCE_CONFLICT", exception.Message)]);
-        }
+            // Build and apply every proposed event to detached state before anything is durable.
+            var expectedLastEventId = _state.LastProcessedEventId;
+            using var staged = _state.CreateStagingCopy();
+            var (events, issue) = BuildAndValidateActivationEvents(packageId, version, resources, staged);
+            if (issue is not null)
+            {
+                return RejectActivation([issue]);
+            }
 
-        // 5. Apply events with correct EventIds to in-memory state
-        foreach (var evt in persistedEvents)
-        {
-            _state.ApplyAndTrack(evt);
-        }
+            _logger.LogDebug("Built {EventCount} activation events", events.Count);
 
-        // 6. Invalidate definitions before phase-two orchestration and local consumer refresh.
-        _fhirVersionContext.InvalidateSearchParameterCaches();
+            // The process-local lock cannot protect this snapshot from another host's activation.
+            // Compare its durable event position under the store's existing append lock.
+            IReadOnlyList<SourceEvent> persistedEvents;
+            try
+            {
+                persistedEvents = await _eventStore.AppendAsync(events, expectedLastEventId, cancellationToken);
+            }
+            catch (SourceEventConcurrencyException exception)
+            {
+                return RejectActivation([new ValidationIssue("CONFORMANCE_CONFLICT", exception.Message)]);
+            }
+
+            // 5. Apply events with correct EventIds to in-memory state
+            foreach (var evt in persistedEvents)
+            {
+                _state.ApplyAndTrack(evt);
+            }
+
+            transitionEventIds = persistedEvents
+                .Where(evt => evt.Data is SearchParameterActivated)
+                .Select(evt => evt.EventId)
+                .Where(eventId => _state.GetTransitionCandidates(eventId).Count > 0)
+                .ToArray();
+            reindexNeeded = DetectReindexRequirements(packageKey);
+        }
 
         // 7. Schedule phase two only after the phase-one event is durable.
         var transitionSchedulingDeferred = false;
-        foreach (var eventId in persistedEvents
-            .Where(evt => evt.Data is SearchParameterActivated)
-            .Select(evt => evt.EventId)
-            .Where(eventId => _state.GetTransitionCandidates(eventId).Count > 0))
+        foreach (var eventId in transitionEventIds)
         {
             if (!await TryScheduleTransitionAsync(eventId))
             {
@@ -141,7 +141,7 @@ public class PackageActivationPipeline(
         var refreshed = true;
         try
         {
-            await _cacheRefresher.RefreshAsync(_state.LastProcessedEventId, CancellationToken.None);
+            await _refreshPublisher.RefreshUntilCurrentAsync(CancellationToken.None);
         }
         catch (ConformanceConsumerRefreshException exception)
         {
@@ -153,9 +153,6 @@ public class PackageActivationPipeline(
                 packageId,
                 version);
         }
-
-        // 8. Detect reindex requirements
-        var reindexNeeded = DetectReindexRequirements(packageKey);
 
         _logger.LogInformation(
             "Package {PackageId}@{Version} activated successfully. Pending reindex: {Count} resource types",
