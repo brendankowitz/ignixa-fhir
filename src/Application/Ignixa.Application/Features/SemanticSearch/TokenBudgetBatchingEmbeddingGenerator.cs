@@ -15,10 +15,25 @@ namespace Ignixa.Application.Features.SemanticSearch;
 /// <remarks>
 /// Also enforces the contract this slice depends on but that <see cref="IEmbeddingGenerator{TInput, TEmbedding}"/>
 /// itself does not: every input stays under the provider's per-input token limit, and the provider
-/// returns exactly one <see cref="Embedding{T}"/> per input with the configured dimensionality.
-/// A provider that violates either is a configuration or outage problem that must not produce
-/// silently-misaligned vectors, so both are reported as <see cref="InvalidOperationException"/> rather
-/// than tolerated.
+/// returns exactly one <see cref="Embedding{T}"/> per input with the configured dimensionality. A
+/// provider that returns the wrong count or the wrong dimensionality is a configuration or outage
+/// problem that must not produce silently-misaligned vectors, so both are reported as
+/// <see cref="EmbeddingProviderContractException"/> -- the same type <see cref="SemanticIndexer"/> and
+/// <see cref="SemanticQueryPreparer"/> raise for an identical mismatch when they call an unwrapped
+/// generator directly, and the same HTTP 500 mapping. This generator sits between those callers and the
+/// real provider in production (see <see cref="SemanticSearchServiceRegistration.AddSemanticSearch"/>),
+/// so throwing anything else here -- in particular the generic <see cref="InvalidOperationException"/>
+/// <c>FhirExceptionMiddleware</c> maps to HTTP 400 -- would misreport a provider-side fault as a bad
+/// client request before either caller's own, correctly-typed check ever runs.
+///
+/// The one guard that stays <see cref="InvalidOperationException"/> is the per-input token limit below:
+/// unlike a count/dimension mismatch, which can only come from the provider, an input that itself
+/// exceeds the provider's limit indicates this slice's own callers failed to keep inputs within it (the
+/// write path's chunker caps every chunk at the provider limit; the query path checks its one query text
+/// before ever calling this generator -- see <see cref="SemanticQueryPreparer.PrepareAsync"/>). Reaching
+/// this guard is therefore an internal invariant failure, not a provider contract violation, so it is
+/// deliberately not <see cref="EmbeddingProviderContractException"/> either; it is expected to be
+/// unreachable through every shipped caller.
 /// </remarks>
 public sealed class TokenBudgetBatchingEmbeddingGenerator : DelegatingEmbeddingGenerator<string, Embedding<float>>
 {
@@ -68,6 +83,12 @@ public sealed class TokenBudgetBatchingEmbeddingGenerator : DelegatingEmbeddingG
         var tokenCounts = new int[inputs.Count];
         for (var i = 0; i < inputs.Count; i++)
         {
+            // Deliberately InvalidOperationException, not EmbeddingProviderContractException -- see this
+            // type's remarks. Every shipped caller keeps inputs under the limit before reaching here (the
+            // write-path chunker caps each chunk at this same limit; the query path rejects an oversized
+            // query text itself, see SemanticQueryPreparer.PrepareAsync), so this is expected to be
+            // unreachable: a hit means one of those callers' own invariant broke, not that the provider
+            // misbehaved.
             var tokenCount = _tokenizer.CountTokens(inputs[i]);
             if (tokenCount > VectorSearchOptions.MaxEmbeddingInputTokens)
             {
@@ -89,7 +110,7 @@ public sealed class TokenBudgetBatchingEmbeddingGenerator : DelegatingEmbeddingG
 
             if (batchResults.Count != batch.Count)
             {
-                throw new InvalidOperationException(
+                throw new EmbeddingProviderContractException(
                     $"The embedding provider returned {batchResults.Count} embeddings for a batch of {batch.Count} inputs.");
             }
 
@@ -97,7 +118,7 @@ public sealed class TokenBudgetBatchingEmbeddingGenerator : DelegatingEmbeddingG
             {
                 if (embedding.Vector.Length != _dimensions)
                 {
-                    throw new InvalidOperationException(
+                    throw new EmbeddingProviderContractException(
                         $"The embedding provider returned a vector with {embedding.Vector.Length} dimensions; expected {_dimensions}.");
                 }
             }

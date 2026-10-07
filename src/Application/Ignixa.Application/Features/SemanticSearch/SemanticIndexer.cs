@@ -44,6 +44,19 @@ public sealed class SemanticIndexer
     /// Computes <see cref="ResourceWrapper.VectorIndices"/> for every resource in <paramref name="resources"/>
     /// and returns the equivalent wrappers (same order, same count) with that property populated.
     /// </summary>
+    /// <param name="resources">The resources to index, in the order callers will later write them.</param>
+    /// <param name="hasSemanticSearchParameter">
+    /// Tells this call whether a resource type carries at least one active (<c>IsSemantic &amp;&amp;
+    /// IsSupported</c>) semantic search parameter in the caller's tenant/version definition manager --
+    /// e.g. <c>rt =&gt; definitionManager.GetSearchParameters(rt).Any(p =&gt; p.IsSemantic &amp;&amp;
+    /// p.IsSupported)</c>. This, not merely whether this write's own extraction produced a semantic
+    /// value, decides null vs. <c>[]</c> below: see <see cref="ResourceWrapper.VectorIndices"/>. A
+    /// resource's own <see cref="ResourceWrapper.SearchIndices"/> cannot answer this alone -- it holds
+    /// only what this write's extraction actually produced, which is indistinguishable between "this type
+    /// has no semantic parameter" and "it has one, but this write's text evaluated to nothing" (Review
+    /// Focus #4 depends on telling those apart).
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <remarks>
     /// Every passage across every resource is embedded with exactly one
     /// <see cref="IEmbeddingGenerator{TInput, TEmbedding}.GenerateAsync"/> call (skipped entirely when no
@@ -66,9 +79,11 @@ public sealed class SemanticIndexer
     /// </exception>
     public async Task<IReadOnlyList<ResourceWrapper>> IndexAsync(
         IReadOnlyList<ResourceWrapper> resources,
+        Func<string, bool> hasSemanticSearchParameter,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(resources);
+        ArgumentNullException.ThrowIfNull(hasSemanticSearchParameter);
 
         if (resources.Count == 0)
         {
@@ -92,9 +107,7 @@ public sealed class SemanticIndexer
         var results = new ResourceWrapper[resources.Count];
         for (var i = 0; i < resources.Count; i++)
         {
-            var entries = plans[i].Count == 0
-                ? (IReadOnlyList<VectorIndexEntry>)[]
-                : plans[i].Select(plan => plan.ToVectorIndexEntry(passages, embeddings!)).ToArray();
+            var entries = ResolveEntries(resources[i].ResourceType, plans[i], passages, embeddings, hasSemanticSearchParameter);
             results[i] = resources[i] with { VectorIndices = entries };
         }
 
@@ -102,12 +115,36 @@ public sealed class SemanticIndexer
     }
 
     /// <summary>
+    /// Decides a resource's <see cref="ResourceWrapper.VectorIndices"/> value once embedding (if any) is
+    /// done: the computed entries when this write's extraction actually produced semantic text, otherwise
+    /// <c>[]</c> when the resource type is evaluated at all (<paramref name="hasSemanticSearchParameter"/>)
+    /// or <see langword="null"/> when it is not. See <see cref="ResourceWrapper.VectorIndices"/> for what
+    /// each of the three outcomes means downstream.
+    /// </summary>
+    private static IReadOnlyList<VectorIndexEntry>? ResolveEntries(
+        string resourceType,
+        List<PendingEntry> plan,
+        List<string> passages,
+        IReadOnlyList<Embedding<float>>? embeddings,
+        Func<string, bool> hasSemanticSearchParameter)
+    {
+        if (plan.Count > 0)
+        {
+            return plan.Select(p => p.ToVectorIndexEntry(passages, embeddings!)).ToArray();
+        }
+
+        return hasSemanticSearchParameter(resourceType) ? (IReadOnlyList<VectorIndexEntry>)[] : null;
+    }
+
+    /// <summary>
     /// Computes <see cref="ResourceWrapper.VectorIndices"/> for every resource in <paramref name="resources"/>,
     /// isolating each resource's outcome from every other's -- unlike <see cref="IndexAsync"/>'s
     /// all-or-nothing contract, which is correct for a single atomic write but wrong for a batch bundle's
     /// independently-committing entries (see <c>DeferredWriteCoordinator.ProcessBatchAsync</c>). A
-    /// resource with no semantic text always succeeds with <c>VectorIndices = []</c>, regardless of what
-    /// happens to any other resource in the call. A resource whose own planning fails (a non-string
+    /// resource with no semantic text always succeeds, with <c>VectorIndices</c> resolved the same way as
+    /// <see cref="IndexAsync"/> (<c>[]</c> if <paramref name="hasSemanticSearchParameter"/> says its type
+    /// is evaluated, otherwise <see langword="null"/>), regardless of what happens to any other resource
+    /// in the call. A resource whose own planning fails (a non-string
     /// extracted value, an invalid effective chunk/overlap configuration, or too many chunks) fails only
     /// that resource -- its passages are withdrawn before the shared embedding call, so a planning
     /// failure never taints the batch. Resources that did contribute passages still share exactly one
@@ -115,6 +152,12 @@ public sealed class SemanticIndexer
     /// contributing resource's result carries that same exception, while non-contributing resources are
     /// unaffected.
     /// </summary>
+    /// <param name="resources">The resources to index, in the order callers staged them.</param>
+    /// <param name="hasSemanticSearchParameter">
+    /// See <see cref="IndexAsync"/>'s parameter of the same name -- the same tenant/version-scoped
+    /// predicate, called once per resource here too.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <remarks>
     /// Never throws for a per-resource planning or embedding failure -- those are reported through each
     /// <see cref="SemanticIndexResult.Error"/> instead, so the caller can complete each queued write
@@ -123,9 +166,11 @@ public sealed class SemanticIndexer
     /// </remarks>
     public async Task<IReadOnlyList<SemanticIndexResult>> IndexIndependentlyAsync(
         IReadOnlyList<ResourceWrapper> resources,
+        Func<string, bool> hasSemanticSearchParameter,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(resources);
+        ArgumentNullException.ThrowIfNull(hasSemanticSearchParameter);
 
         if (resources.Count == 0)
         {
@@ -193,9 +238,7 @@ public sealed class SemanticIndexer
                 continue;
             }
 
-            var entries = plan.Count == 0
-                ? (IReadOnlyList<VectorIndexEntry>)[]
-                : plan.Select(p => p.ToVectorIndexEntry(passages, embeddings!)).ToArray();
+            var entries = ResolveEntries(resources[i].ResourceType, plan, passages, embeddings, hasSemanticSearchParameter);
             results[i] = SemanticIndexResult.Succeeded(resources[i] with { VectorIndices = entries });
         }
 

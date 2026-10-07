@@ -259,6 +259,7 @@ public class SearchOptionsForwardingTests
 
     private static SemanticQueryPreparer CreateSemanticQueryPreparer() => new(
         new DeterministicEmbeddingGenerator(),
+        new SemanticTextChunker("text-embedding-3-small"),
         new MemoryCache(new MemoryCacheOptions()),
         new VectorSearchOptions
         {

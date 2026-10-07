@@ -29,7 +29,7 @@ public class SemanticIndexerTests
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "first value"), SemanticEntry(parameter, "second value"));
 
-        var result = await indexer.IndexAsync([wrapper], CancellationToken.None);
+        var result = await indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None);
 
         generator.Batches.ShouldHaveSingleItem();
         generator.Batches[0].ShouldBe(["first value"]);
@@ -45,7 +45,7 @@ public class SemanticIndexerTests
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"), SemanticEntry(parameter, "beta"));
 
-        var result = await indexer.IndexAsync([wrapper], CancellationToken.None);
+        var result = await indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None);
 
         generator.Batches.ShouldHaveSingleItem();
         generator.Batches[0].ShouldBe(["alpha\nbeta"]);
@@ -61,7 +61,7 @@ public class SemanticIndexerTests
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "row one"), SemanticEntry(parameter, "row two"));
 
-        var result = await indexer.IndexAsync([wrapper], CancellationToken.None);
+        var result = await indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None);
 
         generator.Batches.ShouldHaveSingleItem();
         generator.Batches[0].ShouldBe(["row one", "row two"]);
@@ -80,7 +80,7 @@ public class SemanticIndexerTests
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1");
 
-        var result = await indexer.IndexAsync([wrapper], CancellationToken.None);
+        var result = await indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None);
 
         result[0].VectorIndices.ShouldNotBeNull();
         result[0].VectorIndices.ShouldBeEmpty();
@@ -95,7 +95,7 @@ public class SemanticIndexerTests
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "ignored because deleted")) with { IsDeleted = true };
 
-        var result = await indexer.IndexAsync([wrapper], CancellationToken.None);
+        var result = await indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None);
 
         result[0].VectorIndices.ShouldNotBeNull();
         result[0].VectorIndices.ShouldBeEmpty();
@@ -111,7 +111,7 @@ public class SemanticIndexerTests
         var wrapperA = Wrapper("p1", SemanticEntry(parameter, "alpha"));
         var wrapperB = Wrapper("p2", SemanticEntry(parameter, "beta"));
 
-        var result = await indexer.IndexAsync([wrapperA, wrapperB], CancellationToken.None);
+        var result = await indexer.IndexAsync([wrapperA, wrapperB], AlwaysSemantic, CancellationToken.None);
 
         generator.Batches.ShouldHaveSingleItem();
         generator.Batches[0].ShouldBe(["alpha", "beta"]);
@@ -129,7 +129,7 @@ public class SemanticIndexerTests
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"));
 
         var exception = await Should.ThrowAsync<EmbeddingUnavailableException>(() =>
-            indexer.IndexAsync([wrapper], CancellationToken.None));
+            indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None));
 
         exception.InnerException.ShouldBeSameAs(failure);
         exception.StatusCode.ShouldBe(503);
@@ -146,7 +146,7 @@ public class SemanticIndexerTests
         cancellation.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(() =>
-            indexer.IndexAsync([wrapper], cancellation.Token));
+            indexer.IndexAsync([wrapper], AlwaysSemantic, cancellation.Token));
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class SemanticIndexerTests
         var wrapper = Wrapper("p1", new SearchIndexEntry(parameter, new NumberSearchValue(1)));
 
         var exception = await Should.ThrowAsync<SemanticSearchDefinitionException>(() =>
-            indexer.IndexAsync([wrapper], CancellationToken.None));
+            indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None));
 
         exception.Message.ShouldContain(SemanticParamUrl.ToString());
         exception.StatusCode.ShouldBe(500);
@@ -173,7 +173,7 @@ public class SemanticIndexerTests
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"));
 
         var exception = await Should.ThrowAsync<SemanticSearchDefinitionException>(() =>
-            indexer.IndexAsync([wrapper], CancellationToken.None));
+            indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None));
 
         exception.Message.ShouldContain(SemanticParamUrl.ToString());
         exception.StatusCode.ShouldBe(500);
@@ -187,7 +187,31 @@ public class SemanticIndexerTests
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"));
 
-        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => indexer.IndexAsync([wrapper], CancellationToken.None));
+        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None));
+
+        exception.StatusCode.ShouldBe(500);
+    }
+
+    /// <summary>
+    /// Regression for the final-review finding I-2: <see cref="TokenBudgetBatchingEmbeddingGenerator"/> --
+    /// the generator <see cref="SemanticIndexer"/> actually receives in production, wrapping the real
+    /// provider (see <see cref="SemanticSearchServiceRegistration.AddSemanticSearch"/>) -- must itself
+    /// raise <see cref="EmbeddingProviderContractException"/> for a dimension mismatch, not the generic
+    /// <see cref="InvalidOperationException"/> <c>FhirExceptionMiddleware</c> maps to HTTP 400. Before
+    /// that fix, the wrapper's own <see cref="InvalidOperationException"/> propagated straight out of
+    /// <see cref="SemanticIndexer.IndexAsync"/> before this type's own, correctly-typed check (pinned
+    /// above) ever ran.
+    /// </summary>
+    [Fact]
+    public async Task GivenWrapperAndProviderReturnsWrongDimensions_WhenIndexed_ThenEmbeddingProviderContractException()
+    {
+        var parameter = SemanticParameter(VectorTextExtractionPolicy.Concatenate);
+        var wrapped = new TokenBudgetBatchingEmbeddingGenerator(
+            new WrongDimensionEmbeddingGenerator(), new SemanticTextChunker(ModelName), DeterministicEmbeddingGenerator.Dimensions);
+        var indexer = CreateIndexer(wrapped);
+        var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"));
+
+        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None));
 
         exception.StatusCode.ShouldBe(500);
     }
@@ -200,10 +224,71 @@ public class SemanticIndexerTests
         var indexer = CreateIndexer(generator);
         var wrapper = Wrapper("p1", SemanticEntry(parameter, "alpha"), SemanticEntry(parameter, "beta"));
 
-        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => indexer.IndexAsync([wrapper], CancellationToken.None));
+        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None));
 
         exception.StatusCode.ShouldBe(500);
     }
+
+    [Fact]
+    public async Task GivenTypeWithoutSemanticParam_WhenIndexed_ThenVectorIndicesNull()
+    {
+        var generator = new SpyEmbeddingGenerator();
+        var indexer = CreateIndexer(generator);
+        var wrapper = Wrapper("p1");
+
+        var result = await indexer.IndexAsync([wrapper], NeverSemantic, CancellationToken.None);
+
+        result[0].VectorIndices.ShouldBeNull();
+        generator.Batches.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenTypeWithoutSemanticParam_WhenDeletedResourceIndexed_ThenVectorIndicesNull()
+    {
+        var parameter = SemanticParameter(VectorTextExtractionPolicy.Concatenate);
+        var generator = new SpyEmbeddingGenerator();
+        var indexer = CreateIndexer(generator);
+        var wrapper = Wrapper("p1", SemanticEntry(parameter, "ignored because deleted")) with { IsDeleted = true };
+
+        var result = await indexer.IndexAsync([wrapper], NeverSemantic, CancellationToken.None);
+
+        result[0].VectorIndices.ShouldBeNull();
+        generator.Batches.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenTypeWithSemanticParamButTextRemoved_WhenIndexed_ThenVectorIndicesEmptyNotNull()
+    {
+        // Review Focus #4 preserved by the predicate-based gate: a type that HAS a semantic search
+        // parameter must still get an evaluated-empty [] (not null) when this write's extracted text is
+        // absent, so the merge repository still deletes any vectors a prior version left behind.
+        var generator = new SpyEmbeddingGenerator();
+        var indexer = CreateIndexer(generator);
+        var wrapper = Wrapper("p1");
+
+        var result = await indexer.IndexAsync([wrapper], AlwaysSemantic, CancellationToken.None);
+
+        result[0].VectorIndices.ShouldNotBeNull();
+        result[0].VectorIndices.ShouldBeEmpty();
+        generator.Batches.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenTypeWithoutSemanticParam_WhenIndexedIndependently_ThenVectorIndicesNull()
+    {
+        var generator = new SpyEmbeddingGenerator();
+        var indexer = CreateIndexer(generator);
+        var wrapper = Wrapper("p1");
+
+        var result = await indexer.IndexIndependentlyAsync([wrapper], NeverSemantic, CancellationToken.None);
+
+        result[0].Error.ShouldBeNull();
+        result[0].Resource!.VectorIndices.ShouldBeNull();
+    }
+
+    private static bool AlwaysSemantic(string resourceType) => true;
+
+    private static bool NeverSemantic(string resourceType) => false;
 
     private static SemanticIndexer CreateIndexer(IEmbeddingGenerator<string, Embedding<float>> generator) =>
         new(generator, new SemanticTextChunker(ModelName), Options());

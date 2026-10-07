@@ -46,13 +46,19 @@ public record ResourceWrapper(
     public DateTimeOffset? ExpiresAt { get; init; }
 
     /// <summary>
-    /// Per-semantic-search-parameter vector indices computed on the write path. <c>null</c> means
-    /// semantic indexing was not evaluated for this write -- semantic search is disabled, or this write
-    /// path does not run it (e.g. import) -- and any vectors already persisted for this resource must be
-    /// left untouched. An empty list means semantic indexing ran and found no semantic text to embed,
-    /// either because no semantic search parameter matched or because a prior version's semantic text was
-    /// removed -- any vectors already persisted for this resource must be deleted. Always empty for a
-    /// deleted wrapper (<see cref="IsDeleted"/>), since a tombstone has no indexable text.
+    /// Per-semantic-search-parameter vector indices computed on the write path. <c>null</c> means this
+    /// resource's write is not evaluated at all: semantic search is disabled, this write path does not
+    /// run it (e.g. import), or -- the common case for most resource types -- this resource type carries
+    /// no active semantic search parameter in the tenant's definition manager, so there is nothing to
+    /// embed and no point asking the merge repository to even check. Any vectors already persisted for
+    /// this resource must be left untouched when <c>null</c>. An empty list means this resource type IS
+    /// evaluated (it has at least one active semantic search parameter) and this write's extraction found
+    /// no semantic text to embed, either because no value matched or because a prior version's semantic
+    /// text was removed -- any vectors already persisted for this resource must be deleted in that case.
+    /// Always <c>[]</c> rather than <c>null</c> for a deleted wrapper (<see cref="IsDeleted"/>) of an
+    /// evaluated type, since a tombstone has no indexable text but still needs its prior vectors deleted;
+    /// <c>null</c> for a deleted wrapper of a type with no semantic search parameter at all, since there
+    /// is nothing for the type to ever have had.
     /// </summary>
     public IReadOnlyList<VectorIndexEntry>? VectorIndices { get; init; }
 }

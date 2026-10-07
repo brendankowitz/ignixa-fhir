@@ -104,16 +104,24 @@ passage, and `perValueRow` embeds each match as its own chunk group. A malformed
 type, out-of-range value, unrecognized code) keeps the SearchParameter registered but **unsupported** --
 the same state as the feature being disabled for that one parameter -- rather than failing activation.
 
+Extracted text is **unescaped** before chunking and embedding, the same as every other `string`-typed
+search value: an escaped FHIR search special character (`\,`, `\|`, `\$`) in the FHIRPath-extracted value
+is embedded with the backslash removed, matching fhir-server's behavior.
+
 This extension and its semantics are shared with
 [microsoft/fhir-server#5802](https://github.com/microsoft/fhir-server/pull/5802) /
 [#5803](https://github.com/microsoft/fhir-server/pull/5803) (see [Wire compatibility](#wire-compatibility)).
 
 ## Query behavior
 
-- **One embedding per query.** A search's semantic query text is embedded exactly once -- even across
-  paged requests -- by a dedicated, bounded cache keyed on `(embedding model, verbatim query text)`.
-  Without this, a provider that returns a slightly different vector on every call could rank page 2 by a
-  different query vector than page 1, silently skipping or repeating rows at the page seam.
+- **One embedding per query.** A search's semantic query text is embedded once and then reused -- even
+  across paged requests -- from a dedicated, process-local cache keyed on `(embedding model, verbatim
+  query text)`, bounded by `Query.EmbeddingCacheMinutes` / `EmbeddingCacheMaxEntries`. Within that window,
+  on the instance that served the first page, every later page of the same query reuses the cached
+  vector. Without this, a provider that returns a slightly different vector on every call could rank
+  page 2 by a different query vector than page 1, silently skipping or repeating rows at the page seam --
+  across instances, or once the cache entry has expired or been evicted, that reasoning no longer holds
+  and the page seam can shift.
 - **Filters and authorization apply before ranking.** The semantic gate is a CTE like any other: ordinary
   filters, compartment membership, access constraints and the resource-type allow-list all intersect with
   it before anything is ranked, so a semantic term narrows a filtered search rather than searching

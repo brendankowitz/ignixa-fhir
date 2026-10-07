@@ -41,19 +41,23 @@ public sealed class SemanticQueryPreparer
     private const string CacheKeyPrefix = "semantic-query";
 
     private readonly IEmbeddingGenerator<string, Embedding<float>> _generator;
+    private readonly SemanticTextChunker _chunker;
     private readonly IMemoryCache _cache;
     private readonly VectorSearchOptions _options;
 
     public SemanticQueryPreparer(
         IEmbeddingGenerator<string, Embedding<float>> generator,
+        SemanticTextChunker chunker,
         IMemoryCache cache,
         VectorSearchOptions options)
     {
         ArgumentNullException.ThrowIfNull(generator);
+        ArgumentNullException.ThrowIfNull(chunker);
         ArgumentNullException.ThrowIfNull(cache);
         ArgumentNullException.ThrowIfNull(options);
 
         _generator = generator;
+        _chunker = chunker;
         _cache = cache;
         _options = options;
     }
@@ -66,7 +70,11 @@ public sealed class SemanticQueryPreparer
     /// </summary>
     /// <exception cref="InvalidSearchOperationException">
     /// More than one <see cref="VectorSearchExpression"/> is present: the result is ranked by one distance,
-    /// so two semantic conditions have no single order to rank by.
+    /// so two semantic conditions have no single order to rank by. Also thrown when the one semantic
+    /// query's text exceeds the embedding provider's 8192-token per-input limit: unlike the write path,
+    /// which chunks text before embedding, a query is embedded verbatim and cannot be chunked without
+    /// changing what it ranks by, so an oversized query is rejected as a client error rather than
+    /// truncated or sent to the provider to fail there.
     /// </exception>
     /// <exception cref="EmbeddingProviderContractException">
     /// The embedding provider's response did not match the request (wrong count or wrong vector
@@ -93,6 +101,20 @@ public sealed class SemanticQueryPreparer
         }
 
         var target = found[0];
+
+        // Checked here, before the one provider call below, rather than left to
+        // TokenBudgetBatchingEmbeddingGenerator's own per-input guard: that guard reports
+        // InvalidOperationException (an internal invariant failure -- see its remarks), which is the
+        // wrong shape for a query text the caller supplied. A query cannot be chunked like write-path
+        // text (chunking would rank by a fragment of what the caller asked for), so "too long" is this
+        // request's fault, not the provider's or this server's.
+        var tokenCount = _chunker.CountTokens(target.QueryText);
+        if (tokenCount > VectorSearchOptions.MaxEmbeddingInputTokens)
+        {
+            throw new InvalidSearchOperationException(
+                $"Semantic query text exceeds {VectorSearchOptions.MaxEmbeddingInputTokens} tokens.");
+        }
+
         var embedding = await GetEmbeddingAsync(target.QueryText, cancellationToken).ConfigureAwait(false);
 
         // VectorConfig is non-null by construction: VectorSearchExpression is only ever created (by

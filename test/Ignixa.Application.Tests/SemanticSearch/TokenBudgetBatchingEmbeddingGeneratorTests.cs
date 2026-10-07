@@ -46,6 +46,43 @@ public class TokenBudgetBatchingEmbeddingGeneratorTests
         }
     }
 
+    /// <summary>
+    /// M-4: pins the token-budget half of batching independently of the 2048-input-count limit above --
+    /// a small <c>maxBatchTokens</c> forces a split well before 2048 inputs are reached, and the split
+    /// must still preserve order across the resulting inner calls. Derives the expected grouping from the
+    /// tokenizer's own count rather than assuming a fixed tokens-per-input, so the test does not depend on
+    /// tokenizer-specific tokenization of these particular strings.
+    /// </summary>
+    [Fact]
+    public async Task GivenSmallMaxBatchTokens_WhenGenerated_ThenSplitsOnTokenBudgetAndOrderPreserved()
+    {
+        var inner = new SpyEmbeddingGenerator();
+        var chunker = new SemanticTextChunker(ModelName);
+        var inputs = Enumerable.Range(0, 7).Select(i => $"w{i}").ToList();
+        var tokensPerInput = chunker.CountTokens(inputs[0]);
+        foreach (var input in inputs)
+        {
+            chunker.CountTokens(input).ShouldBe(tokensPerInput, "uniform per-input token cost is what makes the batch grouping below predictable");
+        }
+
+        // Budget for exactly 3 inputs per inner call, well under the 2048-input-count limit.
+        var generator = new TokenBudgetBatchingEmbeddingGenerator(
+            inner, chunker, DeterministicEmbeddingGenerator.Dimensions, maxBatchInputs: 2048, maxBatchTokens: tokensPerInput * 3);
+
+        var results = await generator.GenerateAsync(inputs);
+
+        inner.Batches.Count.ShouldBe(3);
+        inner.Batches[0].ShouldBe(inputs.Take(3));
+        inner.Batches[1].ShouldBe(inputs.Skip(3).Take(3));
+        inner.Batches[2].ShouldBe(inputs.Skip(6));
+        results.Count.ShouldBe(inputs.Count);
+
+        for (var i = 0; i < inputs.Count; i++)
+        {
+            results[i].Vector.ToArray().ShouldBe(DeterministicEmbeddingGenerator.Generate(inputs[i]).ToArray());
+        }
+    }
+
     [Fact]
     public async Task GivenInputExceedsPerInputTokenLimit_WhenGenerated_ThenInvalidOperationException()
     {
@@ -58,21 +95,25 @@ public class TokenBudgetBatchingEmbeddingGeneratorTests
     }
 
     [Fact]
-    public async Task GivenInnerReturnsFewerVectors_WhenGenerated_ThenInvalidOperationException()
+    public async Task GivenInnerReturnsFewerVectors_WhenGenerated_ThenEmbeddingProviderContractException()
     {
         var inner = new ShortChangingEmbeddingGenerator();
         var generator = CreateGenerator(inner);
 
-        await Should.ThrowAsync<InvalidOperationException>(() => generator.GenerateAsync(["a", "b", "c"]));
+        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => generator.GenerateAsync(["a", "b", "c"]));
+
+        exception.StatusCode.ShouldBe(500);
     }
 
     [Fact]
-    public async Task GivenInnerReturnsWrongDimensions_WhenGenerated_ThenInvalidOperationException()
+    public async Task GivenInnerReturnsWrongDimensions_WhenGenerated_ThenEmbeddingProviderContractException()
     {
         var inner = new WrongDimensionEmbeddingGenerator();
         var generator = CreateGenerator(inner);
 
-        await Should.ThrowAsync<InvalidOperationException>(() => generator.GenerateAsync(["a"]));
+        var exception = await Should.ThrowAsync<EmbeddingProviderContractException>(() => generator.GenerateAsync(["a"]));
+
+        exception.StatusCode.ShouldBe(500);
     }
 
     [Fact]

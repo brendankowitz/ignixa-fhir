@@ -36,9 +36,11 @@ internal static class VectorSearchEmitter
     /// <summary>
     /// Renders the gate: distinct (type, surrogate id) rows with a chunk within the threshold. Joins
     /// <c>dbo.Resource</c> under the plan's visibility because, unlike every other search-index table,
-    /// <c>dbo.VectorSearchParam</c> can still hold rows for a superseded or soft-deleted version: they are
-    /// replaced only by the next successful post-merge vector write, and that write is allowed to fail.
-    /// Binds the embedding, then the threshold.
+    /// <c>dbo.VectorSearchParam</c> rows do not always disappear with the version that produced them: a
+    /// normal single-resource delete (<c>DeleteAsync</c>) removes them in the same transaction, but a
+    /// failed or skipped post-merge vector write, a merge-path/bundle delete, or a write made while the
+    /// feature was off can all leave rows behind for a version that is no longer current. The join hides
+    /// exactly those. Binds the embedding, then the threshold.
     /// </summary>
     internal static string EmitGate(CteDefinition.VectorMatchSource gate, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {

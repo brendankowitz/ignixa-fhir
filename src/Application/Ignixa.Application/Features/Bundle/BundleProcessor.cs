@@ -176,7 +176,7 @@ public class BundleProcessor
                 await phase1BatchProcessor!;
 
                 // Commit Phase 1 transaction
-                await phase1Coordinator.CommitAsync(cancellationToken);
+                await phase1Coordinator.CommitAsync(_fhirVersionContext, cancellationToken);
             }
         }
         catch (Exception ex)
@@ -246,7 +246,7 @@ public class BundleProcessor
                 await phase2BatchProcessor;
 
                 // Commit Phase 2 transaction
-                await phase2Coordinator.CommitAsync(cancellationToken);
+                await phase2Coordinator.CommitAsync(_fhirVersionContext, cancellationToken);
 
                 _logger.LogInformation("Phase 2 complete: {Count} buffered entries processed", bufferedEntries.Count);
             }
@@ -359,7 +359,7 @@ public class BundleProcessor
         cancellationToken.ThrowIfCancellationRequested();
         if (coordinator != null)
         {
-            await coordinator.CommitAtomicAsync(cancellationToken);
+            await coordinator.CommitAtomicAsync(_fhirVersionContext, cancellationToken);
         }
         return _responseBuilder.BuildResponse(responses.OrderBy(r => r.Key)
             .Select(r => coordinator?.CompleteResponse(r.Key, r.Value, referenceAliases) ?? r.Value).ToList(), BundleType.Transaction);
@@ -436,7 +436,7 @@ public class BundleProcessor
             await batchProcessorTask;
 
             // Commit transaction (rename lock file → committed file)
-            await coordinator.CommitAsync(cancellationToken);
+            await coordinator.CommitAsync(_fhirVersionContext, cancellationToken);
 
             _logger.LogInformation("All deferred writes committed successfully");
         }
@@ -521,7 +521,7 @@ public class BundleProcessor
             await batchProcessorTask;
 
             // Commit transaction (rename lock file → committed file)
-            await coordinator.CommitAsync(cancellationToken);
+            await coordinator.CommitAsync(_fhirVersionContext, cancellationToken);
 
             _logger.LogInformation("All deferred writes committed successfully");
         }
@@ -583,7 +583,7 @@ public class BundleProcessor
                     // Only process batch if there are actually operations queued
                     if (coordinator.PendingOperationCount > 0)
                     {
-                        var errors = await coordinator.ProcessBatchAsync(batchSize, cancellationToken);
+                        var errors = await coordinator.ProcessBatchAsync(batchSize, _fhirVersionContext, cancellationToken);
                         allErrors.AddRange(errors);
 
                         if (errors.Count > 0)
@@ -713,7 +713,7 @@ public class BundleProcessor
                     // Only process batch if there are actually operations queued
                     if (coordinator.PendingOperationCount > 0)
                     {
-                        var errors = await coordinator.ProcessBatchAsync(batchSize, cancellationToken);
+                        var errors = await coordinator.ProcessBatchAsync(batchSize, _fhirVersionContext, cancellationToken);
                         allErrors.AddRange(errors);
 
                         if (errors.Count > 0)

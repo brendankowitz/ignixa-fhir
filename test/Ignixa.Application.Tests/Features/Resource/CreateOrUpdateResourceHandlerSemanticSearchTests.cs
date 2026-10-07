@@ -12,6 +12,7 @@ using Ignixa.Application.Tests.SemanticSearch;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
@@ -78,6 +79,27 @@ public class CreateOrUpdateResourceHandlerSemanticSearchTests
         harness.LastWrite.ShouldBeNull();
     }
 
+    /// <summary>
+    /// Final-review finding I-1: enabling semantic search must not force every resource type's write
+    /// through the embedding/vector pipeline -- only a resource type that actually carries an active
+    /// semantic search parameter is evaluated at all. A type without one (Patient, in this harness, once
+    /// its definition manager reports no semantic parameter) must get a null
+    /// <see cref="ResourceWrapper.VectorIndices"/>, exactly like the feature being disabled, and must
+    /// never call the embedding generator.
+    /// </summary>
+    [Fact]
+    public async Task GivenEnabledButResourceTypeHasNoSemanticParameter_WhenCreating_ThenVectorIndicesNullAndGeneratorNotCalled()
+    {
+        var generator = new SpyEmbeddingGenerator();
+        using var harness = new Harness(CreateIndexer(generator), resourceTypeHasSemanticParameter: false);
+
+        await harness.SendAsync("""{"resourceType":"Patient"}""");
+
+        generator.Batches.ShouldBeEmpty();
+        harness.LastWrite.ShouldNotBeNull();
+        harness.LastWrite!.VectorIndices.ShouldBeNull();
+    }
+
     private static SemanticIndexer CreateIndexer(IEmbeddingGenerator<string, Embedding<float>> generator) =>
         new(generator, new SemanticTextChunker(ModelName), new VectorSearchOptions
         {
@@ -138,7 +160,7 @@ public class CreateOrUpdateResourceHandlerSemanticSearchTests
 
         public ResourceWrapper? LastWrite { get; private set; }
 
-        public Harness(SemanticIndexer? semanticIndexer)
+        public Harness(SemanticIndexer? semanticIndexer, bool resourceTypeHasSemanticParameter = true)
         {
             var partitionStrategy = Substitute.For<IPartitionStrategy>();
             partitionStrategy.DetermineWritePartition(Arg.Any<PartitionResolutionContext>(), Arg.Any<ResourceJsonNode>())
@@ -171,11 +193,22 @@ public class CreateOrUpdateResourceHandlerSemanticSearchTests
                 vectorConfig: new VectorSearchConfig(VectorTextExtractionPolicy.Concatenate, MaxInputTokens: 8000, MinimumScore: 0m, null, null));
             var searchIndexer = Substitute.For<ISearchIndexer>();
             searchIndexer.Extract(Arg.Any<IElement>())
-                .Returns(new[] { new SearchIndexEntry(parameter, new StringSearchValue("semantic text")) });
+                .Returns(resourceTypeHasSemanticParameter
+                    ? new[] { new SearchIndexEntry(parameter, new StringSearchValue("semantic text")) }
+                    : []);
 
             var versionContext = Substitute.For<IFhirVersionContext>();
             versionContext.GetSchemaProvider(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(new R4CoreSchemaProvider());
             versionContext.GetSearchIndexer(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(searchIndexer);
+
+            // "Patient" (the only resource type these tests write) has this semantic parameter active
+            // only when resourceTypeHasSemanticParameter is true, matching what the real definition
+            // manager would report and what ISearchIndexer would actually extract: see
+            // CreateOrUpdateResourceHandler.BuildSemanticParameterPredicate.
+            var definitionManager = Substitute.For<ISearchParameterDefinitionManager>();
+            definitionManager.GetSearchParameters(Arg.Any<string>())
+                .Returns(resourceTypeHasSemanticParameter ? [parameter] : []);
+            versionContext.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(definitionManager);
 
             var schemaResolverFactory = Substitute.For<Func<FhirVersion, IValidationSchemaResolver>>();
 
