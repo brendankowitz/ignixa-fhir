@@ -14,6 +14,7 @@ using Microsoft.Extensions.Primitives;
 using Microsoft.IO;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Infrastructure.Audit;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
@@ -162,6 +163,10 @@ public class BundleEntryExecutor
                     entry.Index,
                     ttlHeader);
             }
+
+            // Every entry (any verb) is audited with the outer request's custom audit headers. The outer
+            // request already passed validation in FhirAuditFilter. Values are never logged here.
+            CustomAuditHeaders.CopyTo(parentHttpContext.Request.Headers, httpContext.Request.Headers);
 
             // Serialize resource to request body (if present)
             if (entry.Resource != null)

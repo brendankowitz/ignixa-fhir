@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DurableTask.Core;
+using Ignixa.Application.BackgroundOperations.Jobs;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
@@ -14,13 +15,16 @@ namespace Ignixa.Application.BackgroundOperations.Export.Activities;
 public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
 {
     private readonly IBackgroundJobRepository<ExportJobDefinition> _jobRepository;
+    private readonly BackgroundJobCompletionAuditor _completionAuditor;
     private readonly ILogger<CompleteJobActivity> _logger;
 
     public CompleteJobActivity(
         IBackgroundJobRepository<ExportJobDefinition> jobRepository,
+        BackgroundJobCompletionAuditor completionAuditor,
         ILogger<CompleteJobActivity> logger)
     {
         _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
+        _completionAuditor = completionAuditor ?? throw new ArgumentNullException(nameof(completionAuditor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -74,6 +78,8 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, bool>
                 input.JobId, authoritative.Status);
             return authoritative.Status == "Completed";
         }
+
+        _completionAuditor.LogTerminalStatus(job);
 
         if (input.Success)
         {

@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Import.Models;
+using Ignixa.Application.BackgroundOperations.Jobs;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
@@ -22,14 +23,17 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, CompleteJ
     private readonly ILogger<CompleteJobActivity> _logger;
     private readonly IBackgroundJobRepository<ImportJobDefinition> _jobRepository;
     private readonly IBlobStorageClient _blobStorage;
+    private readonly BackgroundJobCompletionAuditor _completionAuditor;
 
     public CompleteJobActivity(
         IBackgroundJobRepository<ImportJobDefinition> jobRepository,
         IBlobStorageClient blobStorage,
+        BackgroundJobCompletionAuditor completionAuditor,
         ILogger<CompleteJobActivity> logger)
     {
         _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
         _blobStorage = blobStorage ?? throw new ArgumentNullException(nameof(blobStorage));
+        _completionAuditor = completionAuditor ?? throw new ArgumentNullException(nameof(completionAuditor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -107,6 +111,8 @@ public class CompleteJobActivity : AsyncTaskActivity<CompleteJobInput, CompleteJ
                 input.JobId, authoritative.Status);
             return output;
         }
+
+        _completionAuditor.LogTerminalStatus(job);
 
         _logger.LogInformation(
             "Import job {JobId} finalized as {Status}: {TotalResources} resources, {TotalErrors} errors",

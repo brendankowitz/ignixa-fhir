@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Infrastructure.Audit;
 using Ignixa.Domain.Abstractions;
 
 namespace Ignixa.Application.Infrastructure;
@@ -15,6 +16,9 @@ namespace Ignixa.Application.Infrastructure;
 /// </summary>
 public partial class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
 {
+    private const string HttpRequestTemplate =
+        "AUDIT: Action={Action}, Outcome={Outcome}, User={UserId}, Client={ClientIp}, Method={Method}, Path={Path}, Status={StatusCode}, Duration={DurationMs}ms, CustomHeaders={CustomHeaders}";
+
     public void LogTenantAccess(
         string userId,
         int tenantId,
@@ -37,6 +41,8 @@ public partial class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
 
+        var customHeaders = CustomAuditHeaders.Format(auditEvent.CustomHeaders);
+
         if (auditEvent.Outcome == "0")
         {
             LogHttpRequestSuccess(
@@ -48,7 +54,8 @@ public partial class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
                 auditEvent.Method,
                 auditEvent.Path,
                 auditEvent.StatusCode,
-                auditEvent.DurationMs);
+                auditEvent.DurationMs,
+                customHeaders);
         }
         else
         {
@@ -61,8 +68,26 @@ public partial class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
                 auditEvent.Method,
                 auditEvent.Path,
                 auditEvent.StatusCode,
-                auditEvent.DurationMs);
+                auditEvent.DurationMs,
+                customHeaders);
         }
+    }
+
+    public void LogBackgroundJobCompleted(BackgroundJobAuditEvent auditEvent)
+    {
+        ArgumentNullException.ThrowIfNull(auditEvent);
+
+        LogBackgroundJob(
+            logger,
+            auditEvent.Outcome == "0" ? LogLevel.Information : LogLevel.Warning,
+            auditEvent.JobType,
+            auditEvent.JobId,
+            auditEvent.TenantId,
+            auditEvent.Status,
+            auditEvent.Outcome,
+            auditEvent.UserId,
+            auditEvent.CorrelationId ?? string.Empty,
+            CustomAuditHeaders.Format(auditEvent.CustomHeaders));
     }
 
     public void LogTtlDeletion(
@@ -96,15 +121,20 @@ public partial class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
 
     [LoggerMessage(
         Level = LogLevel.Information,
-        Message = "AUDIT: Action={Action}, Outcome={Outcome}, User={UserId}, Client={ClientIp}, Method={Method}, Path={Path}, Status={StatusCode}, Duration={DurationMs}ms")]
+        Message = HttpRequestTemplate)]
     private static partial void LogHttpRequestSuccess(
-        ILogger logger, string action, string outcome, string userId, string clientIp, string method, string path, int statusCode, double durationMs);
+        ILogger logger, string action, string outcome, string userId, string clientIp, string method, string path, int statusCode, double durationMs, string customHeaders);
 
     [LoggerMessage(
         Level = LogLevel.Warning,
-        Message = "AUDIT: Action={Action}, Outcome={Outcome}, User={UserId}, Client={ClientIp}, Method={Method}, Path={Path}, Status={StatusCode}, Duration={DurationMs}ms")]
+        Message = HttpRequestTemplate)]
     private static partial void LogHttpRequestFailure(
-        ILogger logger, string action, string outcome, string userId, string clientIp, string method, string path, int statusCode, double durationMs);
+        ILogger logger, string action, string outcome, string userId, string clientIp, string method, string path, int statusCode, double durationMs, string customHeaders);
+
+    [LoggerMessage(
+        Message = "AUDIT: Background job {JobType} {JobId} finished - Tenant={TenantId}, Status={Status}, Outcome={Outcome}, User={UserId}, CorrelationId={CorrelationId}, CustomHeaders={CustomHeaders}")]
+    private static partial void LogBackgroundJob(
+        ILogger logger, LogLevel level, string jobType, string jobId, int tenantId, string status, string outcome, string userId, string correlationId, string customHeaders);
 
     [LoggerMessage(
         Level = LogLevel.Warning,

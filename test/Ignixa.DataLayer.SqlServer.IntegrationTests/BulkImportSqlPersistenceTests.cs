@@ -125,6 +125,7 @@ public class BulkImportSqlPersistenceTests
                 .AddSingleton<IBackgroundJobRepository<ImportJobDefinition>>(repository)
                 .AddSingleton<IBlobStorageClient>(blobs)
                 .AddSingleton<Microsoft.Extensions.Logging.ILogger<CompleteJobActivity>>(NullLogger<CompleteJobActivity>.Instance)
+                .AddSingleton(new BackgroundJobCompletionAuditor(new AuditLogger(NullLogger<AuditLogger>.Instance), NullLogger<BackgroundJobCompletionAuditor>.Instance))
                 .BuildServiceProvider();
             var complete = ActivatorUtilities.CreateInstance<CompleteJobActivity>(services);
             await complete.RunAsync(context, JsonSerializer.Serialize(new[]
@@ -139,7 +140,8 @@ public class BulkImportSqlPersistenceTests
             var restarted = CreateJobRepository<ImportJobDefinition>(database, tenants);
             var handler = new GetJobStatusHandler(
                 new TaskHubClient(new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance)),
-                restarted, CreateJobRepository<ExportJobDefinition>(database, tenants));
+                restarted, CreateJobRepository<ExportJobDefinition>(database, tenants),
+                new BackgroundJobCompletionAuditor(new AuditLogger(NullLogger<AuditLogger>.Instance), NullLogger<BackgroundJobCompletionAuditor>.Instance));
             var status = await handler.HandleAsync(
                 new GetJobStatusQuery { JobId = "bulk-import-job", JobType = "Import", TenantId = 1 }, CancellationToken.None);
             status.Status.ShouldBe("Completed");

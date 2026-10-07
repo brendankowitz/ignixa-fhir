@@ -331,6 +331,14 @@ Missing jobs return 404, including removal before the authoritative conflict rel
 | `input` | Individual file specifications |
 | `mode` | `IncrementalLoad` (default) or `InitialLoad`; both use the current batch-upsert path |
 
+## Auditing
+
+`$export` and `$import` kick-off, status, and cancel requests are audited like other FHIR interactions,
+including [custom audit headers](/docs/server/security/authorization#custom-audit-headers) (`X-IGNIXA-AUDIT-*`, or the AHDS-compatible `X-MS-AZUREFHIR-AUDIT-*`).
+Each job also stores the kick-off request's user, correlation ID, and custom audit headers, whether it was started over HTTP or through MCP.
+When the job finishes as `Completed`, `Failed`, or `Cancelled`, one completion audit event is emitted with those values.
+If the runtime fails before the job records its own outcome, the event is emitted on the next status check.
+
 ## DurableTask Framework
 
 Bulk operations use the DurableTask framework for reliability:

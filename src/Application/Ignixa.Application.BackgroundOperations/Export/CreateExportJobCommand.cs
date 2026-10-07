@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Constants;
+using Ignixa.Domain.Models;
 using Medino;
 
 namespace Ignixa.Application.BackgroundOperations.Export;
@@ -53,4 +54,9 @@ public record CreateExportJobCommand : IRequest<CreateExportJobResult>
     public string? GroupId { get; init; }
 
     public string? RequestUrl { get; init; }
+
+    /// <summary>
+    /// Audit attribution of the kick-off request, persisted for the job's completion audit event.
+    /// </summary>
+    public BackgroundJobAuditContext? AuditContext { get; init; }
 }
