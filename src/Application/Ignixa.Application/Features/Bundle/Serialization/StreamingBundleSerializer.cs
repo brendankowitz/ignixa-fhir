@@ -4,12 +4,14 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Buffers;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using EnsureThat;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
+using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Specification;
@@ -435,7 +437,11 @@ public static class StreamingBundleSerializer
         }
 
         int nextIncludesOffset = includesOffset + includesCount;
-        string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesMaxCount.Value);
+
+        // _includesCount=0 renders no includes inline, but $includes must page with a positive size: a zero
+        // page would re-serve the same empty page and the same link forever.
+        int includesPageSize = includesMaxCount.Value > 0 ? includesMaxCount.Value : SearchOptionsBuilder.MaxAllowedItemCount;
+        string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesPageSize);
 
         string includesBaseUrl;
         if (baseUrl.Contains("/$includes", StringComparison.Ordinal))
@@ -451,6 +457,7 @@ public static class StreamingBundleSerializer
 
         var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
         parsedQuery["_includesContinuationToken"] = includesContinuationToken;
+        parsedQuery["_includesCount"] = includesPageSize.ToString(CultureInfo.InvariantCulture);
         return $"{includesBaseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
     }
 

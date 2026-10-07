@@ -55,16 +55,47 @@ public class StreamingBundleSerializerIncludesDefaultCapTests
         relatedLink.ShouldBeNull();
     }
 
-    private static async Task<(int IncludeCount, string? RelatedLink)> SerializeAsync(int includeCount)
+    [Fact]
+    public async Task GivenIncludesCountZero_WhenSerializing_ThenTheRelatedLinkCarriesAPageSizeThatMakesProgress()
     {
+        // Arrange: _includesCount=0 renders no includes inline. Its related link must page with a
+        // positive size, or following it re-serves the same empty page and the same link forever.
         SearchOptions options = SearchOptionsBuilderHarness
             .ForPatientChainedThrough("general-practitioner", "Practitioner", "name", SearchParamType.String)
-            .Build([("_include", "Patient:general-practitioner")]);
+            .Build([("_include", "Patient:general-practitioner"), ("_includesCount", "0")]);
+
+        // Act
+        var (includeCount, relatedLink) = await SerializeAsync(options, includeCount: 3, QueryString + "&_includesCount=0");
+
+        // Assert
+        includeCount.ShouldBe(0);
+        relatedLink.ShouldNotBeNull();
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(relatedLink).Query);
+        query["_includesCount"].ToString().ShouldBe(SearchOptionsBuilder.MaxAllowedItemCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        IncludesContinuationToken.TryDecode(query["_includesContinuationToken"].ToString(), out int offset, out int pageSize)
+            .ShouldBeTrue();
+        offset.ShouldBe(0);
+        pageSize.ShouldBe(SearchOptionsBuilder.MaxAllowedItemCount);
+    }
+
+    private static Task<(int IncludeCount, string? RelatedLink)> SerializeAsync(int includeCount)
+        => SerializeAsync(
+            SearchOptionsBuilderHarness
+                .ForPatientChainedThrough("general-practitioner", "Practitioner", "name", SearchParamType.String)
+                .Build([("_include", "Patient:general-practitioner")]),
+            includeCount,
+            QueryString);
+
+    private static async Task<(int IncludeCount, string? RelatedLink)> SerializeAsync(
+        SearchOptions options,
+        int includeCount,
+        string queryString)
+    {
         options.ResourceType.ShouldBe("Patient");
 
         using var stream = new MemoryStream();
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
-            stream, "searchset", null, Entries(includeCount), options, BaseUrl, QueryString);
+            stream, "searchset", null, Entries(includeCount), options, BaseUrl, queryString);
 
         stream.Position = 0;
         using JsonDocument document = JsonDocument.Parse(stream);

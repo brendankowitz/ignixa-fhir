@@ -679,6 +679,14 @@ public static class OperationEndpoints
                 "The _includesContinuationToken parameter is required for the $includes operation"));
         }
 
+        if (!IncludesContinuationToken.TryDecode(includesContinuationToken, out _, out _))
+        {
+            return FhirResults.BadRequest(CreateOperationOutcome(
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Invalid,
+                IncludesContinuationToken.InvalidTokenMessage));
+        }
+
         var fhirContext = fhirContextAccessor.RequestContext;
         if (fhirContext?.TenantConfiguration == null)
         {

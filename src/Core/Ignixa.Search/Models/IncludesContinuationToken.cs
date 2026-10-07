@@ -22,6 +22,10 @@ public static class IncludesContinuationToken
     /// </summary>
     public const int MaxAllowedOffset = 100_000;
 
+    /// <summary>The error reported when an <c>_includesContinuationToken</c> cannot be decoded.</summary>
+    public static readonly string InvalidTokenMessage =
+        $"The _includesContinuationToken is invalid or its include offset exceeds the supported maximum of {MaxAllowedOffset}. Narrow the search to page through fewer included resources.";
+
     private const int MaxAllowedPageSize = 1000;
     private const int MinAllowedPageSize = 1;
 

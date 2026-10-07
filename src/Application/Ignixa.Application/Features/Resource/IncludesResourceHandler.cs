@@ -8,6 +8,7 @@ using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 
@@ -61,10 +62,14 @@ public class IncludesResourceHandler(
 
         if (!string.IsNullOrWhiteSpace(request.SearchOptions.IncludesContinuationToken))
         {
-            if (IncludesContinuationToken.TryDecode(request.SearchOptions.IncludesContinuationToken, out int tokenOffset, out _))
+            // Restarting at offset 0 on a bad token would silently re-serve the first include page as if it
+            // were the requested one.
+            if (!IncludesContinuationToken.TryDecode(request.SearchOptions.IncludesContinuationToken, out int tokenOffset, out _))
             {
-                currentOffset = tokenOffset;
+                throw new RequestNotValidException(IncludesContinuationToken.InvalidTokenMessage);
             }
+
+            currentOffset = tokenOffset;
         }
 
         // Only include pagination is consumed here. Changing the match count or cursor would resolve

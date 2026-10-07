@@ -5,6 +5,7 @@ using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -81,6 +82,25 @@ public class IncludesResourceHandlerOutcomeTests
         bundle.RootElement.GetProperty("link").EnumerateArray()
             .ShouldNotContain(l => l.GetProperty("relation").GetString() == "next" ||
                 l.GetProperty("relation").GetString() == "related");
+    }
+
+    [Theory]
+    [InlineData("not-a-token")]
+    [InlineData("eyJJbmNsdWRlc09mZnNldCI6MTAwMDAxLCJQYWdlU2l6ZSI6MTB9")] // {"IncludesOffset":100001,"PageSize":10}
+    public async Task GivenAnUndecodableIncludesToken_WhenHandling_ThenTheRequestIsRejectedRatherThanRestartedAtOffsetZero(string token)
+    {
+        // Arrange
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            IncludesMaxItemCount = 10,
+            IncludesContinuationToken = token,
+        };
+        var handler = CreateHandler(StreamEntries([Entry("Organization", "first")]));
+
+        // Act / Assert
+        await Should.ThrowAsync<RequestNotValidException>(
+            () => handler.HandleAsync(new IncludesResourceQuery("Patient", options), CancellationToken.None));
     }
 
     private static IncludesResourceHandler CreateHandler(IAsyncEnumerable<SearchEntryResult> entries)
