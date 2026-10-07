@@ -23,15 +23,6 @@ public class InMemoryOrchestrationServiceTests
         }
     }
 
-    private sealed class TimerThenActivityOrchestration : TaskOrchestration<int, TimeSpan>
-    {
-        public override async Task<int> RunTask(OrchestrationContext context, TimeSpan input)
-        {
-            await context.CreateTimer(context.CurrentUtcDateTime.Add(input), true);
-            return await context.ScheduleTask<int>(typeof(CountingActivity), 1);
-        }
-    }
-
     private sealed class EternalTimerOrchestration : TaskOrchestration<int, int>
     {
         public override async Task<int> RunTask(OrchestrationContext context, int input)
@@ -71,26 +62,6 @@ public class InMemoryOrchestrationServiceTests
                 instanceId,
                 null,
                 [OrchestrationStatus.Pending]));
-    }
-
-    [Fact]
-    public async Task GivenTerminatedInstance_WhenCreatedWithActiveDedupeStatuses_ThenItCreatesAReplacement()
-    {
-        var service = new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance);
-        var client = new TaskHubClient(service);
-        const string instanceId = "transition";
-
-        await client.CreateOrchestrationInstanceAsync(typeof(object), instanceId, null);
-        await service.ForceTerminateTaskOrchestrationAsync(instanceId, "test");
-
-        await client.CreateOrchestrationInstanceAsync(
-            typeof(object),
-            instanceId,
-            null,
-            [OrchestrationStatus.Pending, OrchestrationStatus.Running, OrchestrationStatus.ContinuedAsNew]);
-
-        var state = await service.GetOrchestrationStateAsync(instanceId, null);
-        state!.OrchestrationStatus.ShouldBe(OrchestrationStatus.Pending);
     }
 
     [Fact]
@@ -160,52 +131,6 @@ public class InMemoryOrchestrationServiceTests
         }
     }
 
-    [Fact]
-    public async Task GivenTerminatedInstanceWithPendingTimer_WhenReplaced_ThenOnlyTheReplacementTimerRunsItsActivity()
-    {
-        CountingActivity.Reset();
-        var service = new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance);
-        using var worker = new TaskHubWorker(service);
-        worker.AddTaskOrchestrations(typeof(TimerThenActivityOrchestration));
-        worker.AddTaskActivities(typeof(CountingActivity));
-        await worker.StartAsync();
-        try
-        {
-            var client = new TaskHubClient(service);
-            const string instanceId = "replaced-timer";
-            _ = await client.CreateOrchestrationInstanceAsync(
-                typeof(TimerThenActivityOrchestration),
-                instanceId,
-                TimeSpan.FromMilliseconds(100));
-
-            await WaitForStatusAsync(service, instanceId, OrchestrationStatus.Running);
-            await service.ForceTerminateTaskOrchestrationAsync(instanceId, "replace");
-
-            var replacement = await client.CreateOrchestrationInstanceAsync(
-                typeof(TimerThenActivityOrchestration),
-                instanceId,
-                TimeSpan.FromMilliseconds(500),
-                [OrchestrationStatus.Pending, OrchestrationStatus.Running, OrchestrationStatus.ContinuedAsNew]);
-
-            await Task.Delay(250);
-            var stateBeforeReplacementTimer = await service.GetOrchestrationStateAsync(instanceId, null);
-            stateBeforeReplacementTimer!.OrchestrationStatus.ShouldBe(OrchestrationStatus.Running);
-            CountingActivity.ExecutionCount.ShouldBe(0);
-
-            var state = await client.WaitForOrchestrationAsync(
-                replacement,
-                TimeSpan.FromSeconds(2),
-                CancellationToken.None);
-
-            state.OrchestrationStatus.ShouldBe(OrchestrationStatus.Completed);
-            CountingActivity.ExecutionCount.ShouldBe(1);
-        }
-        finally
-        {
-            await worker.StopAsync(true);
-        }
-    }
-
     [Theory]
     [InlineData("ttl-cleanup-eternal")]
     [InlineData("transaction-watcher-eternal")]
@@ -237,25 +162,5 @@ public class InMemoryOrchestrationServiceTests
         {
             await worker.StopAsync(true);
         }
-    }
-
-    private static async Task WaitForStatusAsync(
-        InMemoryOrchestrationService service,
-        string instanceId,
-        OrchestrationStatus expectedStatus)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(1);
-        while (DateTime.UtcNow < deadline)
-        {
-            var state = await service.GetOrchestrationStateAsync(instanceId, null);
-            if (state?.OrchestrationStatus == expectedStatus)
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        throw new TimeoutException($"Orchestration '{instanceId}' did not reach '{expectedStatus}'.");
     }
 }

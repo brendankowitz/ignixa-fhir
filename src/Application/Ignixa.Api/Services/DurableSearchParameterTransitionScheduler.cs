@@ -22,17 +22,42 @@ public sealed class DurableSearchParameterTransitionScheduler(TaskHubClient task
         TimeSpan transitionGrace,
         CancellationToken cancellationToken)
     {
+        await ScheduleAsync(
+            hideEventId,
+            transitionGrace,
+            GetInstanceId(hideEventId),
+            cancellationToken);
+    }
+
+    public async Task ScheduleReconciliationAsync(
+        long hideEventId,
+        TimeSpan transitionGrace,
+        CancellationToken cancellationToken)
+    {
+        await ScheduleAsync(
+            hideEventId,
+            transitionGrace,
+            $"{GetInstanceId(hideEventId)}-r-{Guid.NewGuid():N}",
+            cancellationToken);
+    }
+
+    private async Task ScheduleAsync(
+        long hideEventId,
+        TimeSpan transitionGrace,
+        string instanceId,
+        CancellationToken cancellationToken)
+    {
         try
         {
             await taskHubClient.CreateOrchestrationInstanceAsync(
                 typeof(SearchParameterTransitionOrchestration),
-                GetInstanceId(hideEventId),
+                instanceId,
                 new SearchParameterTransitionOrchestrationInput(hideEventId, transitionGrace),
                 dedupeStatuses: ActiveStatuses);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
         {
-            // The deterministic instance id makes activation retries and reconciliation idempotent.
+            // The deterministic activation instance id makes activation retries idempotent.
         }
     }
 

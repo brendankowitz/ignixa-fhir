@@ -23,7 +23,6 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
     private readonly ConcurrentQueue<TaskMessage> _orchestrationQueue = new();
     private readonly ConcurrentQueue<TaskMessage> _activityQueue = new();
     private readonly ConcurrentDictionary<string, List<HistoryEvent>> _history = new();
-    private readonly ConcurrentDictionary<string, string?> _replacementExecutionIds = new();
     private bool _isStarted;
 
     public InMemoryOrchestrationService(ILogger<InMemoryOrchestrationService> logger)
@@ -84,11 +83,6 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
         {
             if (_orchestrationQueue.TryDequeue(out var message))
             {
-                if (IsMessageForPreviousReplacement(message.OrchestrationInstance))
-                {
-                    continue;
-                }
-
                 var instanceId = message.OrchestrationInstance.InstanceId;
                 var runtimeState = _history.TryGetValue(instanceId, out var history)
                     ? new OrchestrationRuntimeState(history)
@@ -116,13 +110,6 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
         TaskMessage continuedAsNewMessage,
         OrchestrationState orchestrationState)
     {
-        var orchestrationInstance = orchestrationState?.OrchestrationInstance
-            ?? newOrchestrationRuntimeState.OrchestrationInstance;
-        if (orchestrationInstance != null && IsMessageForPreviousReplacement(orchestrationInstance))
-        {
-            return Task.CompletedTask;
-        }
-
         using var instancesLockScope = _instancesLock.EnterScope();
 
         // Update state
@@ -205,11 +192,6 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
         {
             if (_activityQueue.TryDequeue(out var message))
             {
-                if (IsMessageForPreviousReplacement(message.OrchestrationInstance))
-                {
-                    continue;
-                }
-
                 return new TaskActivityWorkItem
                 {
                     Id = Guid.NewGuid().ToString(),
@@ -266,13 +248,6 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
         _orchestrationQueue.Enqueue(timerMessage);
     }
 
-    private bool IsMessageForPreviousReplacement(OrchestrationInstance orchestrationInstance) =>
-        _replacementExecutionIds.TryGetValue(orchestrationInstance.InstanceId, out var replacementExecutionId) &&
-        !string.Equals(
-            replacementExecutionId,
-            orchestrationInstance.ExecutionId,
-            StringComparison.Ordinal);
-
     #region IOrchestrationServiceClient Implementation
 
     public Task CreateTaskOrchestrationAsync(TaskMessage creationMessage) =>
@@ -289,12 +264,6 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
         {
             throw new OrchestrationAlreadyExistsException(
                 $"An orchestration with instance ID '{instanceId}' and status '{existing.OrchestrationStatus}' already exists.");
-        }
-
-        if (existing is { OrchestrationStatus: OrchestrationStatus.Completed or OrchestrationStatus.Failed or OrchestrationStatus.Terminated })
-        {
-            _history.TryRemove(instanceId, out _);
-            _replacementExecutionIds[instanceId] = creationMessage.OrchestrationInstance.ExecutionId;
         }
 
         // Create initial state
@@ -408,7 +377,6 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
         {
             _instances.TryRemove(key, out _);
             _history.TryRemove(key, out _);
-            _replacementExecutionIds.TryRemove(key, out _);
         }
 
         return Task.CompletedTask;

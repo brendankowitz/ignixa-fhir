@@ -23,7 +23,7 @@ public class SearchParameterTransitionReconcilerTests
 
         await reconciler.ReconcileAsync(CancellationToken.None);
 
-        await scheduler.Received(1).ScheduleAsync(20, grace, CancellationToken.None);
+        await scheduler.Received(1).ScheduleReconciliationAsync(20, grace, CancellationToken.None);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class SearchParameterTransitionReconcilerTests
 
         await reconciler.ReconcileAsync(CancellationToken.None);
 
-        await scheduler.Received(1).ScheduleAsync(20, grace, CancellationToken.None);
+        await scheduler.Received(1).ScheduleReconciliationAsync(20, grace, CancellationToken.None);
     }
 
     private static ConformanceState CreateState(DateTimeOffset hideTimestamp)

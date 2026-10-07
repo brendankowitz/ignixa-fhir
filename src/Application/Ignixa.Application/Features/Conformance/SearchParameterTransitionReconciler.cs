@@ -15,8 +15,8 @@ public sealed class SearchParameterTransitionReconciler(
         foreach (var hideEventId in conformanceState.GetTransitionHideEventIds())
         {
             // Do not derive elapsed grace from the source-event timestamp: it is not the
-            // database commit time. A replacement durable instance always waits full grace.
-            await transitionScheduler.ScheduleAsync(
+            // database commit time. A reconciliation instance always waits full grace.
+            await transitionScheduler.ScheduleReconciliationAsync(
                 hideEventId,
                 transitionOptions.Value.TransitionGrace,
                 cancellationToken);
