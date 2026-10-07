@@ -38,6 +38,13 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
     private readonly IMediator _mediator = Substitute.For<IMediator>();
     private readonly IFhirRequestContextAccessor _accessor = Substitute.For<IFhirRequestContextAccessor>();
     private IFhirRequestContext? _currentContext;
+
+    /// <summary>
+    /// The service base the activity's reference parser recognizes as "this server". Only
+    /// <c>_remove-references</c> reads it, so it stays separate from the <see cref="NullFhirBaseUriProvider"/>
+    /// the search-option builders use.
+    /// </summary>
+    private IFhirBaseUriProvider _baseUris = NullFhirBaseUriProvider.Instance;
     private readonly List<SearchOptions> _searches = [];
     private readonly List<string> _operations = [];
     private Func<SearchOptions, IEnumerable<SearchEntryResult>> _results = _ => [];
@@ -347,6 +354,77 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
             search.RevInclude.Count == 1 && search.RevInclude[0].WildCard);
     }
 
+    /// <summary>
+    /// The referrers handed to removal come from the reference search index, which stores a normalized
+    /// (type, id) pair: a <c>/_history/{version}</c> suffix is dropped and an absolute URL under one of this
+    /// server's bases collapses onto the relative form. So the cascade reports a referrer written in any of
+    /// those forms, and removal has to rewrite all of them -- otherwise the referrer survives, still
+    /// pointing at a resource this batch then hard deletes.
+    /// </summary>
+    [Theory]
+    [InlineData("Patient/p1")]
+    [InlineData("Patient/p1/_history/2")]
+    [InlineData("https://fhir.example.org/Patient/p1")]
+    [InlineData("https://fhir.example.org/Patient/p1/_history/2")]
+    public async Task GivenARemovableReferenceForm_WhenHardDeletingWithRemoveReferences_ThenTheReferrerIsRewritten(
+        string reference)
+    {
+        _baseUris = new StubBaseUriProvider("https://fhir.example.org/");
+        var encounter = Include("Encounter", "e1", Referrer(reference)) with { VersionId = "3" };
+        _results = options => options switch
+        {
+            { ProbeExtraRow: true } => [Match("Patient", "p1")],
+            _ => [Match("Patient", "p1"), encounter],
+        };
+        var updates = new List<CreateOrUpdateResourceCommand>();
+        _mediator.SendAsync(Arg.Any<CreateOrUpdateResourceCommand>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            var command = call.Arg<CreateOrUpdateResourceCommand>();
+            updates.Add(command);
+            _operations.Add($"update {command.ResourceType}/{command.Id}");
+            return new UpdateResult(new ResourceKey(command.ResourceType, command.Id, "4"), ReadOnlyMemory<byte>.Empty, DateTimeOffset.UnixEpoch);
+        });
+
+        await RunAsync(Input(BulkDeleteMode.HardDelete, removeReferences: true));
+
+        _operations.ShouldBe(["update Encounter/e1", "hard Patient/p1"]);
+        var body = updates.ShouldHaveSingleItem().JsonNode.SerializeToString();
+        body.ShouldNotContain(reference);
+        body.ShouldContain("Referenced resource deleted");
+    }
+
+    /// <summary>
+    /// A base URI that is not this server's names a different resource; the index keeps the base attached
+    /// and the cascade does not report it. Removal must not rewrite it even though the type and id match.
+    /// </summary>
+    [Fact]
+    public async Task GivenAReferenceToAnotherServer_WhenHardDeletingWithRemoveReferences_ThenTheReferrerIsNotRewritten()
+    {
+        _baseUris = new StubBaseUriProvider("https://fhir.example.org/");
+        var encounter = Include("Encounter", "e1", Referrer("https://other.example.org/fhir/Patient/p1"))
+            with { VersionId = "3" };
+        _results = options => options switch
+        {
+            { ProbeExtraRow: true } => [Match("Patient", "p1")],
+            _ => [Match("Patient", "p1"), encounter],
+        };
+
+        await RunAsync(Input(BulkDeleteMode.HardDelete, removeReferences: true));
+
+        _operations.ShouldBe(["hard Patient/p1"]);
+        await _mediator.DidNotReceive().SendAsync(Arg.Any<CreateOrUpdateResourceCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>An Encounter whose only link is <paramref name="reference"/>, written verbatim.</summary>
+    private static string Referrer(string reference) =>
+        """{"resourceType":"Encounter","id":"e1","status":"finished","subject":{"reference":"""
+        + JsonSerializer.Serialize(reference) + "}}";
+
+    private sealed class StubBaseUriProvider(string baseUri) : IFhirBaseUriProvider
+    {
+        public Uri? GetBaseUri() => new(baseUri);
+    }
+
     private async Task<BulkDeleteBatchOutput> RunAsync(BulkDeleteBatchInput input)
     {
         var repositories = Substitute.For<IFhirRepositoryFactory>();
@@ -356,7 +434,7 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
         var lifetime = Substitute.For<IHostApplicationLifetime>();
         lifetime.ApplicationStopping.Returns(CancellationToken.None);
         var activity = new BulkDeleteBatchActivity(_jobs, _tenants, searches, repositories, new QueryParameterParser(), _builders,
-            _mediator, _accessor, lifetime, NullLogger<BulkDeleteBatchActivity>.Instance);
+            _versions, _baseUris, _mediator, _accessor, lifetime, NullLogger<BulkDeleteBatchActivity>.Instance);
         var json = await activity.RunAsync(new TaskContext(new OrchestrationInstance { InstanceId = JobId }),
             JsonSerializer.Serialize(new[] { input }));
         return JsonDataConverter.Default.Deserialize<BulkDeleteBatchOutput>(json);

@@ -9,11 +9,13 @@ using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.BulkDelete.Models;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
@@ -45,6 +47,8 @@ public class BulkDeleteBatchActivity(
     IFhirRepositoryFactory repositoryFactory,
     IQueryParameterParser parameterParser,
     ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+    IFhirVersionContext fhirVersionContext,
+    IFhirBaseUriProvider baseUriProvider,
     IMediator mediator,
     IFhirRequestContextAccessor fhirContextAccessor,
     IHostApplicationLifetime applicationLifetime,
@@ -97,7 +101,13 @@ public class BulkDeleteBatchActivity(
             page = await ReadPageAsync(searchService, builder, input, cancellationToken);
             if (input.RemoveReferences)
             {
-                await RemoveReferencesAsync(searchService, builder, page.Targets, cancellationToken);
+                // Built here, inside the background request context, so the provider answers over the
+                // service base URIs of this job's tenant -- and from the same (schema, base URI provider)
+                // pair the indexer is built from, which is what makes removal recognize every reference
+                // form the index collapsed onto the target.
+                var referenceParser = new ReferenceSearchValueParser(
+                    fhirVersionContext.GetSchemaProvider(version, input.TenantId), baseUriProvider);
+                await RemoveReferencesAsync(searchService, builder, page.Targets, referenceParser, cancellationToken);
             }
 
             deleted = await DeleteAsync(input, page.Targets, cancellationToken);
@@ -296,6 +306,7 @@ public class BulkDeleteBatchActivity(
         ISearchService searchService,
         ISearchOptionsBuilder builder,
         IReadOnlyList<SearchEntryResult> targets,
+        IReferenceSearchValueParser referenceParser,
         CancellationToken cancellationToken)
     {
         var targetKeys = targets.Select(Key).ToHashSet(StringComparer.Ordinal);
@@ -329,11 +340,21 @@ public class BulkDeleteBatchActivity(
             var changed = false;
             foreach (var target in referencedTargets)
             {
-                changed |= BulkDeleteReferenceRemover.RemoveReferences(node, target);
+                changed |= BulkDeleteReferenceRemover.RemoveReferences(node, target, referenceParser);
             }
 
             if (!changed)
             {
+                // The search found this referrer through the reference index but nothing in its body
+                // resolved to the target. Benign when the only link is one the index records and the body
+                // does not carry as a "reference" (an identifier-only or contained link); otherwise it is a
+                // reference the index normalized and removal failed to recognize, and the target is about
+                // to be hard deleted. Either way it leaves the referrer pointing at a deleted resource, so
+                // it must not pass silently.
+                logger.LogWarning(
+                    "Bulk delete found {Referrer} referring to {Targets} but removed no reference from it; " +
+                    "the referrer is left pointing at a resource this job deletes",
+                    Key(entry), referencedTargets);
                 continue;
             }
 

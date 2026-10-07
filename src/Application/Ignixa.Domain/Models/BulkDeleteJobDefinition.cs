@@ -43,8 +43,9 @@ public class BulkDeleteJobDefinition : IJobDefinition
     public required IReadOnlyList<string> ExcludedResourceTypes { get; init; }
 
     /// <summary>
-    /// When true, referrers of a hard-deleted resource have their reference rewritten (<c>reference=null</c>,
-    /// <c>display="Referenced resource deleted"</c>) and a new version saved. Valid only with <see cref="BulkDeleteMode.HardDelete"/>.
+    /// When true, referrers of a hard-deleted resource have their reference rewritten (the <c>reference</c>
+    /// element is removed and <c>display</c> set to "Referenced resource deleted") and a new version saved.
+    /// Valid only with <see cref="BulkDeleteMode.HardDelete"/>.
     /// </summary>
     public bool RemoveReferences { get; init; }
 
