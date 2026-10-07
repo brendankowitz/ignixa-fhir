@@ -81,7 +81,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var unsupportedModifierParameters = new List<string>();
         var typeFilterParameters = new List<string>();
         var bundleIssues = new List<IssueComponent>();
-        var pendingReindexParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pendingReindexParameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var resolvedSearchParameters = new List<SearchParameterInfo>();
 
         // For system-wide search (resourceType is null), we need to first extract _type parameters
         // to know what resource types we're searching. This is essential for parsing reverse chain
@@ -178,8 +179,6 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
 
                     case ParameterCategory.Search:
-                        bool partiallyIndexed = IsPartiallyIndexedSearchParameter(resourceTypes, param.Name);
-
                         // Use ExpressionParser to parse the search parameter. ParseWithSyntax additionally
                         // projects a syntax tree for provenance tracing, so it is only called when a
                         // collector is present - production searches take the cheaper Parse path.
@@ -187,6 +186,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         {
                             ParseResult parseResult = _expressionParser.ParseWithSyntax(resourceTypes, param.Name, param.Value);
                             searchExpressions.Add(parseResult.Expression);
+                            AddResolvedSearchParameters(parseResult.Expression, resolvedSearchParameters);
                             outcomes.Add(new ParameterTrace(
                                 ordinal: searchOrdinal++,
                                 key: param.Name,
@@ -201,11 +201,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         {
                             Expression expr = _expressionParser.Parse(resourceTypes, param.Name, param.Value);
                             searchExpressions.Add(expr);
-                        }
-
-                        if (partiallyIndexed)
-                        {
-                            AddIncompleteIndexWarning(bundleIssues, param.Name);
+                            AddResolvedSearchParameters(expr, resolvedSearchParameters);
                         }
 
                         break;
@@ -246,13 +242,27 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
                 }
             }
+            catch (PartiallyIndexedSearchParameterException ex)
+            {
+                unsupportedParameters.Add(param.Name);
+                pendingReindexParameters[param.Name] = ex.SearchParameter.Code;
+
+                if (outcomes is not null && param.Category == ParameterCategory.Search)
+                {
+                    outcomes.Add(new ParameterTrace(
+                        ordinal: searchOrdinal++,
+                        key: param.Name,
+                        keySyntax: null,
+                        value: param.Value,
+                        valueSyntax: null,
+                        ir: null,
+                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
+                        dataType: null));
+                }
+            }
             catch (SearchParameterNotSupportedException ex)
             {
                 unsupportedParameters.Add(param.Name);
-                if (IsPartiallyIndexedSearchParameter(resourceTypes, param.Name))
-                {
-                    pendingReindexParameters.Add(param.Name);
-                }
 
                 if (outcomes is not null && param.Category == ParameterCategory.Search)
                 {
@@ -322,19 +332,36 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         // STEP 3: Parse sorting
         if (sortParameters.Count > 0)
         {
-            options.Sort = ParseSortParameters(resourceTypes, sortParameters, unsupportedParameters, bundleIssues);
+            options.Sort = ParseSortParameters(
+                resourceTypes,
+                sortParameters,
+                unsupportedParameters,
+                pendingReindexParameters,
+                resolvedSearchParameters);
         }
 
         // STEP 4: Parse includes
         if (includeParameters.Count > 0)
         {
-            options.Include = ParseIncludeParameters(resourceTypes, includeParameters, isReversed: false);
+            options.Include = ParseIncludeParameters(
+                resourceTypes,
+                includeParameters,
+                isReversed: false,
+                unsupportedParameters,
+                pendingReindexParameters,
+                resolvedSearchParameters);
         }
 
         // STEP 5: Parse reverse includes
         if (revIncludeParameters.Count > 0)
         {
-            options.RevInclude = ParseIncludeParameters(resourceTypes, revIncludeParameters, isReversed: true);
+            options.RevInclude = ParseIncludeParameters(
+                resourceTypes,
+                revIncludeParameters,
+                isReversed: true,
+                unsupportedParameters,
+                pendingReindexParameters,
+                resolvedSearchParameters);
         }
 
         // STEP 6: Parse and validate elements
@@ -400,10 +427,19 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         // STEP 8: Record unsupported parameters and create Bundle issues
         options.UnsupportedParams = unsupportedParameters;
         options.UnsupportedModifierParams = unsupportedModifierParameters;
+        options.ResolvedSearchParameters = resolvedSearchParameters;
+        foreach (SearchParameterInfo parameter in resolvedSearchParameters)
+        {
+            if (!parameter.IsSearchable && parameter.IsSupported)
+            {
+                AddIncompleteIndexWarning(bundleIssues, parameter.Code);
+            }
+        }
+
         foreach (var param in unsupportedParameters)
         {
-            var diagnostics = pendingReindexParameters.Contains(param)
-                ? $"Search parameter '{param}' is pending reindex and was ignored."
+            var diagnostics = pendingReindexParameters.TryGetValue(param, out string? code)
+                ? $"Search parameter '{code}' is pending reindex and was ignored."
                 : $"Search parameter '{param}' is not supported";
 
             bundleIssues.Add(new IssueComponent(
@@ -447,7 +483,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         string[] resourceTypes,
         List<string> sortParameters,
         List<string> unsupportedParameters,
-        List<IssueComponent> bundleIssues)
+        Dictionary<string, string> pendingReindexParameters,
+        List<SearchParameterInfo> resolvedSearchParameters)
     {
         var sortExpressions = new List<SortExpression>();
 
@@ -474,13 +511,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 {
                     // Look up the search parameter directly (no need to parse a value for sorting)
                     // For sorting, we only need the SearchParameterInfo metadata, not a parsed value expression
-                    if (!_searchParameterDefinitionManager.TryGetSearchParameter(resourceTypes[0], fieldName, out SearchParameterInfo searchParameter))
-                    {
-                        // Field is not a valid search parameter - record the unsupported field
-                        System.Diagnostics.Debug.WriteLine($"Sort field '{fieldName}' is not supported for resource type: {resourceTypes[0]}");
-                        unsupportedParameters.Add($"_sort={fieldName}");
-                        continue;
-                    }
+                    SearchParameterInfo searchParameter = _searchParameterDefinitionManager.GetSearchParameter(resourceTypes[0], fieldName);
 
                     // Check if the parameter is sortable
                     if (searchParameter.SortStatus != SortParameterStatus.Enabled)
@@ -492,12 +523,15 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                     }
 
                     sortExpressions.Add(new SortExpression(searchParameter, sortOrder));
-                    if (!searchParameter.IsSearchable && searchParameter.IsSupported)
-                    {
-                        AddIncompleteIndexWarning(bundleIssues, fieldName);
-                    }
+                    resolvedSearchParameters.Add(searchParameter);
 
                     System.Diagnostics.Debug.WriteLine($"✅ Added sort expression: {searchParameter.Code} ({searchParameter.Type}) {sortOrder}");
+                }
+                catch (PartiallyIndexedSearchParameterException ex)
+                {
+                    string parameterName = $"_sort={fieldName}";
+                    unsupportedParameters.Add(parameterName);
+                    pendingReindexParameters[parameterName] = ex.SearchParameter.Code;
                 }
                 catch (Exception ex)
                 {
@@ -511,12 +545,6 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
         System.Diagnostics.Debug.WriteLine($"ParseSortParameters returning {sortExpressions.Count} sort expression(s)");
         return sortExpressions;
-    }
-
-    private bool IsPartiallyIndexedSearchParameter(string[] resourceTypes, string code)
-    {
-        return _searchParameterDefinitionManager is SearchableSearchParameterDefinitionManager searchable &&
-            searchable.TryGetPartiallyIndexedSearchParameter(resourceTypes[0], code, out _);
     }
 
     private static void AddIncompleteIndexWarning(List<IssueComponent> bundleIssues, string code)
@@ -534,7 +562,10 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
     private IReadOnlyList<IncludeExpression> ParseIncludeParameters(
         string[] resourceTypes,
         List<(string ParameterName, string Value)> includeParameters,
-        bool isReversed)
+        bool isReversed,
+        List<string> unsupportedParameters,
+        Dictionary<string, string> pendingReindexParameters,
+        List<SearchParameterInfo> resolvedSearchParameters)
     {
         var includeExpressions = new List<IncludeExpression>();
 
@@ -549,11 +580,42 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
             // Use ExpressionParser to parse include expressions
             // Note: InvalidSearchOperationException will propagate to caller and result in 400 Bad Request
-            IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeValue, isReversed, iterate);
-            includeExpressions.Add(includeExpr);
+            try
+            {
+                IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeValue, isReversed, iterate);
+                includeExpressions.Add(includeExpr);
+                if (includeExpr.ReferenceSearchParameter is not null)
+                {
+                    resolvedSearchParameters.Add(includeExpr.ReferenceSearchParameter);
+                }
+            }
+            catch (PartiallyIndexedSearchParameterException ex)
+            {
+                unsupportedParameters.Add(parameterName);
+                pendingReindexParameters[parameterName] = ex.SearchParameter.Code;
+            }
+            catch (SearchParameterNotSupportedException)
+            {
+                unsupportedParameters.Add(parameterName);
+            }
         }
 
         return includeExpressions;
+    }
+
+    private static void AddResolvedSearchParameters(Expression expression, List<SearchParameterInfo> resolvedSearchParameters)
+    {
+        switch (expression)
+        {
+            case SearchParameterExpressionBase searchParameterExpression:
+                resolvedSearchParameters.Add(searchParameterExpression.Parameter);
+                break;
+
+            case ChainedExpression chained:
+                resolvedSearchParameters.Add(chained.ReferenceSearchParameter);
+                AddResolvedSearchParameters(chained.Expression, resolvedSearchParameters);
+                break;
+        }
     }
 
     private static IReadOnlySet<string> ParseElementsParameters(List<string> elementsParameters)

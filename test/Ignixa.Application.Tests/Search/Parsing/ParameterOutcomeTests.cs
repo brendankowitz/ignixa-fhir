@@ -8,6 +8,7 @@
 using Ignixa.Application.Tests.Search.Expressions.Parsers;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
+using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
@@ -70,6 +71,42 @@ public class ParameterOutcomeTests
             .ShouldBe("Search results may be incomplete because search parameter 'pending' is pending reindex.");
     }
 
+    [Theory]
+    [InlineData("direct", false)]
+    [InlineData("forward-chain", false)]
+    [InlineData("reverse-chain", false)]
+    [InlineData("include", false)]
+    [InlineData("revinclude", false)]
+    [InlineData("sort", false)]
+    [InlineData("system", false)]
+    [InlineData("direct", true)]
+    [InlineData("forward-chain", true)]
+    [InlineData("reverse-chain", true)]
+    [InlineData("include", true)]
+    [InlineData("revinclude", true)]
+    [InlineData("sort", true)]
+    [InlineData("system", true)]
+    public void GivenAPendingParameterInAnyResolvedPosition_WhenBuilt_ThenItReportsTheAppropriatePendingReindexWarning(
+        string form,
+        bool usePartialIndices)
+    {
+        var context = new SearchParserTestContext();
+        var (resourceType, parameters) = AddPendingParameter(context, form);
+        var definitions = new SearchableSearchParameterDefinitionManager(
+            context.DefinitionManager,
+            () => usePartialIndices);
+        var builder = new SearchOptionsBuilder(
+            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
+            definitions);
+
+        var options = builder.Build(resourceType, parameters);
+
+        options.BundleIssues.ShouldContain(issue => issue.Diagnostics == (
+            usePartialIndices
+                ? "Search results may be incomplete because search parameter 'pending' is pending reindex."
+                : "Search parameter 'pending' is pending reindex and was ignored."));
+    }
+
     [Fact]
     public void GivenAnUnsupportedModifier_WhenBuilt_ThenTheParameterIsReportedAsIgnored()
     {
@@ -108,5 +145,82 @@ public class ParameterOutcomeTests
         trace.KeySyntax.ShouldNotBeNull();
         trace.KeySyntax!.Kind.ShouldBe("ForwardChain");
         trace.KeySyntax.Children.ShouldHaveSingleItem();
+    }
+
+    private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddPendingParameter(
+        SearchParserTestContext context,
+        string form)
+    {
+        SearchParameterInfo AddPending(string resourceType, SearchParamType type, string[]? targets = null)
+        {
+            var pending = context.Add(resourceType, "pending", type, targets);
+            pending.IsSearchable = false;
+            return pending;
+        }
+
+        return form switch
+        {
+            "direct" => Direct(),
+            "forward-chain" => ForwardChain(),
+            "reverse-chain" => ReverseChain(),
+            "include" => Include(),
+            "revinclude" => RevInclude(),
+            "sort" => Sort(),
+
+            "system" => AddSystemPendingParameter(context),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(form), form, "Unknown search form."),
+        };
+
+        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Direct()
+        {
+            AddPending("Patient", SearchParamType.String);
+            return ("Patient", [new QueryParameter("pending", "Smith")]);
+        }
+
+        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) ForwardChain()
+        {
+            context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
+            AddPending("Patient", SearchParamType.String);
+            return ("Observation", [new QueryParameter("subject:Patient.pending", "Smith")]);
+        }
+
+        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) ReverseChain()
+        {
+            context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
+            AddPending("Observation", SearchParamType.String);
+            return ("Patient", [new QueryParameter("_has:Observation:subject:pending", "Smith")]);
+        }
+
+        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Include()
+        {
+            AddPending("Observation", SearchParamType.Reference, ["Patient"]);
+            return ("Observation", [new QueryParameter("_include", "Observation:pending:Patient")]);
+        }
+
+        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) RevInclude()
+        {
+            AddPending("Observation", SearchParamType.Reference, ["Patient"]);
+            return ("Patient", [new QueryParameter("_revinclude", "Observation:pending:Patient")]);
+        }
+
+        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Sort()
+        {
+            AddPending("Patient", SearchParamType.String);
+            return ("Patient", [new QueryParameter("_sort", "pending")]);
+        }
+    }
+
+    private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddSystemPendingParameter(
+        SearchParserTestContext context)
+    {
+        var pending = context.Add("Patient", "pending", SearchParamType.String);
+        pending.IsSearchable = false;
+        context.AddCommon(pending, "Patient", "Observation");
+
+        return (null, [
+            new QueryParameter("_type", "Patient,Observation"),
+            new QueryParameter("pending", "Smith"),
+        ]);
     }
 }

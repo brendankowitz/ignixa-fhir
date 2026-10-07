@@ -111,6 +111,11 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
             return parameter;
         }
 
+        if (parameter.IsSupported)
+        {
+            throw new PartiallyIndexedSearchParameterException(parameter);
+        }
+
         throw new SearchParameterNotSupportedException(resourceType, code);
     }
 
@@ -119,6 +124,11 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
         SearchParameterInfo parameter = _inner.GetSearchParameter(definitionUri);
 
         if (IsVisible(parameter, _includePartiallyIndexedSearchParameters())) return parameter;
+
+        if (parameter.IsSupported)
+        {
+            throw new PartiallyIndexedSearchParameterException(parameter);
+        }
 
         throw new SearchParameterNotSupportedException(definitionUri);
     }

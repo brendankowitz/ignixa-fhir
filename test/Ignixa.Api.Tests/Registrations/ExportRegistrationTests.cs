@@ -20,6 +20,7 @@ using Ignixa.Search.Parsing;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.Http;
 using NSubstitute;
 using Shouldly;
 
@@ -61,6 +62,7 @@ public class ExportRegistrationTests
         builder.RegisterInstance(versions).As<IFhirVersionContext>().ExternallyOwned();
         builder.RegisterType<FhirRequestContextAccessor>().As<IFhirRequestContextAccessor>().SingleInstance();
         builder.RegisterInstance(NullFhirBaseUriProvider.Instance).As<IFhirBaseUriProvider>();
+        builder.RegisterInstance(new HttpContextAccessor()).As<IHttpContextAccessor>();
         builder.RegisterInstance(tenants).As<ITenantConfigurationStore>();
         builder.RegisterInstance(repositories).As<IFhirRepositoryFactory>();
         builder.RegisterInstance(searches).As<ISearchServiceFactory>();

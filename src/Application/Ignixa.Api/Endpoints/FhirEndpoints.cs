@@ -614,7 +614,7 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
-        var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, resourceType, logger);
         if (strictResult is not null)
         {
             return strictResult;
@@ -705,7 +705,7 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
-        var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, resourceType, logger);
         if (strictResult is not null)
         {
             return strictResult;
@@ -1519,7 +1519,7 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
-        var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, null, logger);
         if (strictResult is not null)
         {
             return strictResult;
@@ -1608,7 +1608,7 @@ public static class FhirEndpoints
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
-        var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, null, logger);
         if (strictResult is not null)
         {
             return strictResult;
@@ -1706,110 +1706,6 @@ public static class FhirEndpoints
             Diagnostics = message
         });
         return outcome;
-    }
-
-    /// <summary>
-    /// Checks for unsupported search parameters and modifiers.
-    /// Returns a BadRequest result if an unsupported modifier was used, or if strict handling is
-    /// requested and unsupported parameters exist.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// An unknown or unsupported <i>parameter</i> SHOULD be ignored — proxies and HTTP stacks inject
-    /// parameters the client never sent, and the self link reports what was actually used — so it only
-    /// fails the request when the client asked for <c>Prefer: handling=strict</c>.
-    /// </para>
-    /// <para>
-    /// An unsupported <i>modifier</i> is a SHALL: "Server SHALL reject any search request that ... is
-    /// suffixed by a modifier that the server does not support for that parameter ... using an HTTP 400
-    /// error". Ignoring one does not narrow the query, it widens it — <c>_id:above=abc</c> would return
-    /// every resource — and the client cannot tell that from a filter that matched everything. So it fails
-    /// by default and only an explicit <c>handling=lenient</c> downgrades it to the bundle warning the
-    /// search options already carry.
-    /// </para>
-    /// </remarks>
-    /// <param name="context">The HTTP context.</param>
-    /// <param name="searchOptions">The search options carrying the unsupported parameter lists.</param>
-    /// <param name="resourceType">Optional resource type for error message context.</param>
-    /// <param name="logger">Logger for warnings.</param>
-    /// <returns>BadRequest result if the request must be rejected, null otherwise.</returns>
-    private static IResult? CheckStrictHandling(
-        HttpContext context,
-        SearchOptions searchOptions,
-        string? resourceType,
-        ILogger logger)
-    {
-        // FHIR R4 SHALL rejects a search suffixed by a modifier the server does not support for that
-        // parameter (https://hl7.org/fhir/R4/search.html#modifiers), unlike an unsupported *parameter*,
-        // which only SHOULD be rejected and is opt-in via Prefer: handling=strict below. Silently
-        // dropping the modifier would widen the result set instead of narrowing it, so rejecting is the
-        // default whenever the client has not said otherwise.
-        //
-        // handling=lenient is the client saying otherwise, and it is not an error case: R4's
-        // http.html#2.21.0.2 has the server ignore what it could not honour and report it, which is what
-        // the reference implementation does -- 200, a warning issue in the bundle, and the offending
-        // parameter dropped from the self link. All three already happen for free here, because the
-        // builder records an unsupported modifier in BOTH UnsupportedParams (which drives the bundle
-        // warning and the self-link filter) and UnsupportedModifierParams (which drives this rejection).
-        // So the only thing lenient has to do is decline to reject.
-        if (searchOptions.UnsupportedModifierParams.Count > 0 &&
-            !PreferHeaderParser.IsLenientHandling(context.Request.Headers))
-        {
-            logger.LogWarning(
-                "Unsupported search modifier(s) found: {UnsupportedModifierParams}",
-                string.Join(", ", searchOptions.UnsupportedModifierParams.Select(p => p.SanitizeForLog())));
-
-            return BuildUnsupportedParametersResult(searchOptions.UnsupportedModifierParams, resourceType, isModifierRejection: true);
-        }
-
-        if (!PreferHeaderParser.IsStrictHandling(context.Request.Headers) ||
-            searchOptions.UnsupportedParams.Count == 0)
-        {
-            return null;
-        }
-
-        logger.LogWarning(
-            "Rejecting search: unsupported parameters {UnsupportedParams}",
-            string.Join(", ", searchOptions.UnsupportedParams.Select(p => p.SanitizeForLog())));
-
-        return BuildUnsupportedParametersResult(searchOptions.UnsupportedParams, resourceType, isModifierRejection: false);
-    }
-
-    /// <summary>
-    /// Builds the BadRequest <see cref="OperationOutcome"/> for a set of unsupported search parameters.
-    /// </summary>
-    /// <param name="unsupportedParams">The parameter (and, for modifiers, key) names to report.</param>
-    /// <param name="resourceType">Optional resource type for error message context.</param>
-    /// <param name="isModifierRejection">
-    /// True when rejecting a SHALL-mandated unsupported modifier (see <see cref="CheckStrictHandling"/>);
-    /// false for the opt-in, strict-handling unsupported-parameter case. Only affects the diagnostics
-    /// text, so the two are distinguishable to a client instead of reading as the same generic message.
-    /// </param>
-    private static IResult BuildUnsupportedParametersResult(
-        IReadOnlyList<string> unsupportedParams,
-        string? resourceType,
-        bool isModifierRejection)
-    {
-        var operationOutcome = new OperationOutcome();
-        foreach (var param in unsupportedParams)
-        {
-            var diagnostics = isModifierRejection
-                ? (resourceType is not null
-                    ? $"Search parameter '{param}' uses a modifier that is not supported for resource type '{resourceType}'"
-                    : $"Search parameter '{param}' uses a modifier that is not supported")
-                : (resourceType is not null
-                    ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
-                    : $"Search parameter '{param}' is not supported");
-
-            operationOutcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
-            {
-                SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Error,
-                IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.NotSupported,
-                Diagnostics = diagnostics
-            });
-        }
-
-        return Results.BadRequest(operationOutcome.MutableNode);
     }
 
     /// <summary>

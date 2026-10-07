@@ -59,6 +59,7 @@ public sealed class SearchOptions
         UnsupportedParams = other.UnsupportedParams;
         UnsupportedModifierParams = other.UnsupportedModifierParams;
         BundleIssues = other.BundleIssues;
+        ResolvedSearchParameters = other.ResolvedSearchParameters;
         ResourceType = other.ResourceType;
         ResourceTypes = other.ResourceTypes;
         StartSurrogateId = other.StartSurrogateId;
@@ -163,6 +164,15 @@ public sealed class SearchOptions
     /// Each issue is an OperationOutcome.issue structure (severity, code, diagnostics, etc.).
     /// </summary>
     public IReadOnlyList<IssueComponent> BundleIssues { get; set; } = Array.Empty<IssueComponent>();
+
+    /// <summary>
+    /// Gets or sets the parameters resolved while binding this request's predicates, includes, and sort keys.
+    /// </summary>
+    /// <remarks>
+    /// This preserves the binding result rather than asking a later layer to infer a parameter from raw query
+    /// text, which is ambiguous for chains, reverse chains, includes, and system searches.
+    /// </remarks>
+    public IReadOnlyList<SearchParameterInfo> ResolvedSearchParameters { get; set; } = Array.Empty<SearchParameterInfo>();
 
     /// <summary>
     /// Gets or sets the resource type being searched.
