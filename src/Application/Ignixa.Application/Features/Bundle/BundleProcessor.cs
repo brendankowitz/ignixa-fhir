@@ -690,7 +690,6 @@ public class BundleProcessor
         var batchProcessorTask = System.Threading.Tasks.Task.Run(async () =>
         {
             const int batchSize = 50;
-            var allErrors = new List<Exception>();
 
             _logger.LogDebug("Background batch processor started");
 
@@ -703,7 +702,6 @@ public class BundleProcessor
                     if (coordinator.PendingOperationCount > 0)
                     {
                         var errors = await coordinator.ProcessBatchAsync(batchSize, cancellationToken);
-                        allErrors.AddRange(errors);
 
                         if (errors.Count > 0)
                         {
