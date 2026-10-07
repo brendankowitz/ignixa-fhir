@@ -10,8 +10,9 @@ public sealed class SearchParameterTransitionOrchestration
         SearchParameterTransitionOrchestrationInput input)
     {
         await context.CreateTimer(context.CurrentUtcDateTime.Add(input.TransitionGrace), true);
-        return await context.ScheduleTask<TransitionCommitResult>(
+        return await context.ScheduleWithRetry<TransitionCommitResult>(
             typeof(SearchParameterTransitionCommitActivity),
+            new RetryOptions(TimeSpan.FromSeconds(1), 2),
             new SearchParameterTransitionCommitActivityInput(input.HideEventId));
     }
 }

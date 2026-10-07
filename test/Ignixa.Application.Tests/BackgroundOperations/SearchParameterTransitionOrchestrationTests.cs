@@ -8,12 +8,17 @@ namespace Ignixa.Application.Tests.BackgroundOperations;
 public class SearchParameterTransitionOrchestrationTests
 {
     [Fact]
-    public async Task GivenTransitionInput_WhenOrchestrated_ThenItWaitsForGraceAndSchedulesCommit()
+    public async Task GivenTransitionInput_WhenOrchestrated_ThenItWaitsForGraceAndRetriesCommit()
     {
         var context = Substitute.For<OrchestrationContext>();
         var now = new DateTime(2026, 10, 6, 0, 0, 0, DateTimeKind.Utc);
         context.CurrentUtcDateTime.Returns(now);
         context.CreateTimer(now.AddSeconds(3), true).Returns(Task.FromResult(true));
+        context.ScheduleWithRetry<TransitionCommitResult>(
+                typeof(SearchParameterTransitionCommitActivity),
+                Arg.Any<RetryOptions>(),
+                Arg.Any<object[]>())
+            .Returns(new TransitionCommitResult(true));
         context.ScheduleTask<TransitionCommitResult>(
                 typeof(SearchParameterTransitionCommitActivity),
                 Arg.Any<object[]>())
@@ -26,8 +31,11 @@ public class SearchParameterTransitionOrchestrationTests
 
         result.Committed.ShouldBeTrue();
         _ = context.Received(1).CreateTimer(now.AddSeconds(3), true);
-        _ = context.Received(1).ScheduleTask<TransitionCommitResult>(
+        _ = context.Received(1).ScheduleWithRetry<TransitionCommitResult>(
             typeof(SearchParameterTransitionCommitActivity),
+            Arg.Is<RetryOptions>(options =>
+                options.FirstRetryInterval == TimeSpan.FromSeconds(1) &&
+                options.MaxNumberOfAttempts == 2),
             Arg.Is<object[]>(items => ((SearchParameterTransitionCommitActivityInput)items.Single()).HideEventId == 20));
     }
 }
