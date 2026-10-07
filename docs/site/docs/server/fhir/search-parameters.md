@@ -352,6 +352,17 @@ the response includes a warning OperationOutcome and omits that resource. A page
 therefore contain fewer than `_count` matches while still having a `next` link;
 the link follows the selected database page, not the number of readable resources.
 
+## Streaming Response Failures
+
+Search responses stream after approximately 256 KB of buffered output. Before the first flush, a
+serialization failure returns the applicable HTTP error status. After the response has started, HTTP
+status and headers cannot change: the response remains HTTP 200 and closes with a fatal
+`OperationOutcome` bundle entry (`search.mode` is `outcome`). Clients consuming streamed search
+responses must inspect entries for that fatal outcome even when the HTTP status is 200.
+
+History and batch responses flush after each entry, so they can likewise report a failure after
+streaming begins only as a fatal `OperationOutcome` entry in an otherwise HTTP 200 bundle response.
+
 ### Total Count
 
 ```bash

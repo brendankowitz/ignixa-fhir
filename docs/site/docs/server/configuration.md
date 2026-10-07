@@ -25,7 +25,7 @@ Ignixa uses standard ASP.NET Core configuration with `appsettings.json`. All set
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `Kestrel:Limits:MaxRequestBodySize` | `30000000` | Maximum request body size in bytes. An over-limit body returns a FHIR `OperationOutcome` with HTTP 413 and issue code `too-costly`. It must be a positive integer; `null` and unlimited request bodies are not supported. |
+| `Kestrel:Limits:MaxRequestBodySize` | `30000000` | Maximum request body size in bytes. A body with an over-limit `Content-Length` returns a FHIR `OperationOutcome` with HTTP 413 and issue code `too-costly` before bundle entries execute. A chunked body is checked while read: transactions return HTTP 413 without committing, while batches can retain earlier entries and finish their HTTP 200 response with a fatal `too-costly` entry with status 413. It must be a positive integer; `null` and unlimited request bodies are not supported. |
 | `Bundle:MaxTransactionEntries` | `500` | Maximum entries in one atomic transaction bundle. Batch bundles are not capped. |
 
 These settings are request-size and transaction-cardinality guards, not a memory guarantee. The
