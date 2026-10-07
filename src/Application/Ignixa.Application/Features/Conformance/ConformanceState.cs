@@ -264,15 +264,25 @@ public sealed class ConformanceState : IDisposable
         await _activationLock.WaitAsync(cancellationToken);
         try
         {
-            await foreach (var evt in store.ReadFromAsync(_lastProcessedEventId, cancellationToken))
-            {
-                Apply(evt);
-                _lastProcessedEventId = evt.EventId;
-            }
+            await CatchUpWhileActivationLockHeldAsync(store, cancellationToken);
         }
         finally
         {
             _activationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Applies events after the current projection position while the caller holds the activation lock.
+    /// </summary>
+    internal async Task CatchUpWhileActivationLockHeldAsync(
+        ISourceEventStore store,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var evt in store.ReadFromAsync(_lastProcessedEventId, cancellationToken))
+        {
+            Apply(evt);
+            _lastProcessedEventId = evt.EventId;
         }
     }
 

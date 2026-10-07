@@ -13,6 +13,26 @@ public sealed class ConformanceTransitionOptionsValidator(IOptions<ReindexOption
         ReindexOptions reindexOptions)
     {
         var failures = new List<string>();
+        if (options.SyncIntervalSeconds <= 0)
+        {
+            failures.Add($"{ConformanceTransitionOptions.SectionName}:SyncIntervalSeconds must be greater than zero.");
+        }
+
+        if (options.MaxStaleness <= TimeSpan.Zero)
+        {
+            failures.Add($"{ConformanceTransitionOptions.SectionName}:MaxStaleness must be greater than zero.");
+        }
+
+        if (options.TransitionGrace <= TimeSpan.Zero)
+        {
+            failures.Add($"{ConformanceTransitionOptions.SectionName}:TransitionGrace must be greater than zero.");
+        }
+
+        if (reindexOptions.BarrierDelay < TimeSpan.Zero)
+        {
+            failures.Add($"{ReindexOptions.SectionName}:BarrierDelay must be greater than or equal to zero.");
+        }
+
         if (options.TransitionGrace <= options.MaxStaleness)
         {
             failures.Add(

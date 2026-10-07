@@ -76,6 +76,10 @@ public static class ConformanceServicesRegistration
             .AsSelf()
             .SingleInstance();
 
+        builder.RegisterType<SearchParameterTransitionReconciler>()
+            .AsSelf()
+            .SingleInstance();
+
         builder.RegisterType<DurableSearchParameterTransitionScheduler>()
             .As<ISearchParameterTransitionScheduler>()
             .SingleInstance();

@@ -169,6 +169,7 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
                 // Disable external dependencies
                 ["DurableTask:Provider"] = "FileSystem",
+                ["FhirRepository:BaseDirectory"] = Path.Combine(_testDataPath, "durable-task"),
                 ["BlobStorage:Provider"] = "Local",
                 ["BlobStorage:RootDirectory"] = Path.Combine(_testDataPath, "blobs"),
 

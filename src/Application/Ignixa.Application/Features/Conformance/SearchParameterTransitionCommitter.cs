@@ -15,52 +15,60 @@ public sealed class SearchParameterTransitionCommitter(
     IReindexTrigger reindexTrigger,
     IFhirVersionContext fhirVersionContext)
 {
+    private const int MaxConcurrencyAttempts = 3;
+
     public async Task<bool> CommitAsync(long hideEventId, CancellationToken cancellationToken)
     {
         await conformanceState.CatchUpAsync(eventStore, cancellationToken);
         using var activationLock = await conformanceState.AcquireActivationLockAsync(cancellationToken);
-        var candidates = conformanceState.GetTransitionCandidates(hideEventId);
-        if (candidates.Count == 0)
+        for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
         {
-            return false;
+            await conformanceState.CatchUpWhileActivationLockHeldAsync(eventStore, cancellationToken);
+            var candidates = conformanceState.GetTransitionCandidates(hideEventId);
+            if (candidates.Count == 0)
+            {
+                return false;
+            }
+
+            var expectedLastEventId = conformanceState.LastProcessedEventId;
+            IReadOnlyList<SourceEvent> committed;
+            try
+            {
+                committed = await eventStore.AppendAsync(
+                    candidates.Select(candidate => new NewSourceEvent(
+                        $"transition:{hideEventId}",
+                        nameof(SearchParameterTransitionCommitted),
+                        new SearchParameterTransitionCommitted(
+                            candidate.SearchParamId,
+                            candidate.ActivationEventIds,
+                            candidate.DeactivationEventIds))),
+                    expectedLastEventId,
+                    cancellationToken);
+            }
+            catch (SourceEventConcurrencyException) when (attempt < MaxConcurrencyAttempts - 1)
+            {
+                // A different writer advanced the event stream. Catch up while holding the
+                // activation lock, then commit the still-current candidates on the next attempt.
+                continue;
+            }
+
+            foreach (var evt in committed)
+            {
+                conformanceState.ApplyAndTrack(evt);
+            }
+
+            fhirVersionContext.InvalidateSearchParameterCaches();
+
+            if (candidates.Any(candidate => candidate.ActivationEventIds.Count > 0))
+            {
+                await reindexTrigger.RequestReindexAsync(
+                    $"Search parameter transition {hideEventId} committed",
+                    cancellationToken);
+            }
+
+            return true;
         }
 
-        var expectedLastEventId = conformanceState.LastProcessedEventId;
-        IReadOnlyList<SourceEvent> committed;
-        try
-        {
-            committed = await eventStore.AppendAsync(
-                candidates.Select(candidate => new NewSourceEvent(
-                    $"transition:{hideEventId}",
-                    nameof(SearchParameterTransitionCommitted),
-                    new SearchParameterTransitionCommitted(
-                        candidate.SearchParamId,
-                        candidate.ActivationEventIds,
-                        candidate.DeactivationEventIds))),
-                expectedLastEventId,
-                cancellationToken);
-        }
-        catch (SourceEventConcurrencyException)
-        {
-            // A concurrent committer or activation owns the newer projection. Its transition will
-            // be scheduled from that durable event, so this invocation is safely obsolete.
-            return false;
-        }
-
-        foreach (var evt in committed)
-        {
-            conformanceState.ApplyAndTrack(evt);
-        }
-
-        fhirVersionContext.InvalidateSearchParameterCaches();
-
-        if (candidates.Any(candidate => candidate.ActivationEventIds.Count > 0))
-        {
-            await reindexTrigger.RequestReindexAsync(
-                $"Search parameter transition {hideEventId} committed",
-                cancellationToken);
-        }
-
-        return true;
+        throw new InvalidOperationException("Search parameter transition commit did not complete.");
     }
 }
