@@ -481,6 +481,11 @@ resources. `CompleteReindexActivity` then appends
 ignores. Otherwise the job ends `Failed` with a guarded `SearchParameterReindexFailed`. Either way, the hand-off
 in §7 runs.
 
+Lifecycle start and its initial progress write share the singleton reindex job lock with terminal completion.
+After acquiring the lock, the updater reloads the job and skips lifecycle start, progress writes, and
+heartbeat changes if it is `Completing`, `Completed`, `Failed`, or `Cancelled`. Only terminal completion may
+resume a persisted `Completing` decision. A delayed activity cannot reopen a finalized job or its parameters.
+
 ### 8.6 Failure and liveness
 
 - **Activity failure after retries:** that (tenant, type) is marked failed, the other tenants continue, and the

@@ -5,21 +5,24 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class StartReindexActivity(
     ReindexLifecycleEventWriter lifecycle,
-    ReindexProgressReporter progress)
+    ReindexJobUpdater jobs)
     : AsyncTaskActivity<StartReindexInput, StartReindexOutput>
 {
     protected override async Task<StartReindexOutput> ExecuteAsync(
         TaskContext context,
         StartReindexInput input)
     {
-        var ignored = await lifecycle.StartAsync(
+        IReadOnlyList<string> ignored = [];
+        await jobs.UpdateAsync(
             input.JobId,
-            input.Targets.Where(target => target.IsFullyCovered).ToArray(),
-            CancellationToken.None);
-        await progress.ReportBarrierDelayAsync(
-            input.JobId,
-            input.TenantIds,
-            ignored,
+            async (job, cancellationToken) =>
+            {
+                ignored = await lifecycle.StartAsync(
+                    input.JobId,
+                    input.Targets.Where(target => target.IsFullyCovered).ToArray(),
+                    cancellationToken);
+                ReindexProgressReporter.InitializeBarrierDelay(job, input.TenantIds, ignored);
+            },
             CancellationToken.None);
         return new StartReindexOutput(ignored);
     }

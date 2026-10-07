@@ -16,12 +16,31 @@ public sealed class ReindexJobUpdater(
         string jobId,
         Action<BackgroundJob<ReindexJobDefinition>> update,
         CancellationToken cancellationToken) =>
+        UpdateAsync(
+            jobId,
+            (job, _) =>
+            {
+                update(job);
+                return Task.CompletedTask;
+            },
+            cancellationToken);
+
+    public Task UpdateAsync(
+        string jobId,
+        Func<BackgroundJob<ReindexJobDefinition>, CancellationToken, Task> update,
+        CancellationToken cancellationToken) =>
         jobLock.ExecuteAsync(
             async ct =>
             {
                 var job = await repository.GetAsync(jobId, GlobalTenantId, ct)
                     ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
-                update(job);
+                // Completing owns a durable decision; only terminal completion may write it again.
+                if (job.Status == "Completing" || IsTerminal(job.Status))
+                {
+                    return false;
+                }
+
+                await update(job, ct);
                 job.HeartbeatDate = DateTimeOffset.UtcNow;
                 await repository.UpdateAsync(job, GlobalTenantId, ct);
                 return true;

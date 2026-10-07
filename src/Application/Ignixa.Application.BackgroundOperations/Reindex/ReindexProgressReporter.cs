@@ -13,33 +13,38 @@ public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
         CancellationToken cancellationToken) =>
         jobs.UpdateAsync(
             jobId,
-            job =>
-            {
-                job.Status = "Running";
-                job.StartDate ??= DateTimeOffset.UtcNow;
-                var progress = new JsonObject
-                {
-                    ["phase"] = "BarrierDelay",
-                    ["ignoredLifecycleEvents"] = new JsonArray(
-                        ignoredLifecycleEvents
-                            .Select(value => (JsonNode?)JsonValue.Create(value))
-                            .ToArray()),
-                    ["notCovered"] = job.Progress?["notCovered"]?.DeepClone() ??
-                        new JsonArray(
-                            job.Definition.SearchParameters
-                                .Where(target => !IsFullyCovered(target))
-                                .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
-                                .ToArray())
-                };
-                foreach (var tenantId in tenantIds)
-                {
-                    _ = GetOrAddTenant(progress, tenantId);
-                }
-
-                Recalculate(progress, job.Status);
-                job.Progress = progress;
-            },
+            job => InitializeBarrierDelay(job, tenantIds, ignoredLifecycleEvents),
             cancellationToken);
+
+    internal static void InitializeBarrierDelay(
+        BackgroundJob<ReindexJobDefinition> job,
+        IReadOnlyList<int> tenantIds,
+        IReadOnlyList<string> ignoredLifecycleEvents)
+    {
+        job.Status = "Running";
+        job.StartDate ??= DateTimeOffset.UtcNow;
+        var progress = new JsonObject
+        {
+            ["phase"] = "BarrierDelay",
+            ["ignoredLifecycleEvents"] = new JsonArray(
+                ignoredLifecycleEvents
+                    .Select(value => (JsonNode?)JsonValue.Create(value))
+                    .ToArray()),
+            ["notCovered"] = job.Progress?["notCovered"]?.DeepClone() ??
+                new JsonArray(
+                    job.Definition.SearchParameters
+                        .Where(target => !IsFullyCovered(target))
+                        .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
+                        .ToArray())
+        };
+        foreach (var tenantId in tenantIds)
+        {
+            _ = GetOrAddTenant(progress, tenantId);
+        }
+
+        Recalculate(progress, job.Status);
+        job.Progress = progress;
+    }
 
     public Task ReportBarrierAsync(
         string jobId,
