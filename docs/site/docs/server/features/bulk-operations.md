@@ -703,6 +703,16 @@ changing it only affects jobs started afterwards.
   [Authorization](#authorization)).
 - `_revinclude=*:*` fan-out for `_remove-references` is bounded only by the configured batch size,
   not globally.
+- **A page whose matches cannot be deleted fails the job.** Soft and hard delete re-read the first
+  page every batch, because deleted matches drop out of it. If a page's matches survive the batch
+  and more matches remain, the next batch reads the same page, and the job fails with
+  `A batch made no progress: '{Type}/{id}' still leads the matches after it was processed.` rather
+  than looping forever. In practice this means a search index that still matches a resource the
+  store cannot delete — the counts already recorded stay, and the job is safe to re-run once the
+  underlying inconsistency is resolved. A page like that as the *last* page of a type is not
+  detected: there is no next batch to compare against, so the job completes with those matches
+  undeleted. The per-batch log line records matches found against resources deleted, which is
+  where that shows up.
 
 ### Compatibility with microsoft/fhir-server and Azure Health Data Services
 
@@ -788,6 +798,7 @@ Providers:
 - `AzureStorage` - Uses Azure Storage for distributed scenarios
 - `FileSystem` - Development/testing only. It does not complete multi-step orchestrations:
   `$bulk-delete` jobs stay `Running` after their first batch, so use `SqlServer` or `AzureStorage`.
+  Tracked as [#483](https://github.com/brendankowitz/ignixa-fhir/issues/483).
 
 ### Background Job Repository
 

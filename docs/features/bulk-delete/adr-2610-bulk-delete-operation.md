@@ -214,7 +214,8 @@ byte-for-byte parity:
 - `$bulk-delete` requires a durable job repository (`BackgroundJobs:Repository=SqlServer`) in
   production; with the in-memory default, status polls return `404` after a restart or on another
   scaled-out instance. The FileSystem DurableTask provider is dev/test only and does not complete
-  multi-step orchestrations, so bulk-delete jobs hang on it.
+  multi-step orchestrations, so bulk-delete jobs hang on it
+  ([#483](https://github.com/brendankowitz/ignixa-fhir/issues/483)).
 - Hard delete only covers live (searchable) resources; resources already soft-deleted before the
   job runs are untouched, since `$bulk-delete-soft-deleted` is out of scope.
 - `_revinclude=*:*` fan-out for `_remove-references` is per page, not globally bounded; it is
