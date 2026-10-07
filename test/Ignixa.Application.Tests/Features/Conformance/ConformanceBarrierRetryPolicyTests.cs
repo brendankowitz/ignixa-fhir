@@ -51,6 +51,31 @@ public class ConformanceBarrierRetryPolicyTests
         await synchronizer.Received(1).SynchronizeAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task GivenTheRetryFailsForAnotherReason_WhenOperationRetries_ThenFailureIsRecordedAndRethrown()
+    {
+        var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
+        var policy = CreatePolicy(synchronizer);
+        var retryFailure = new IOException("Retry storage failure.");
+        var attempts = 0;
+        using var listener = ListenForOutcomes(out var outcomes);
+
+        var exception = await Should.ThrowAsync<IOException>(() =>
+            policy.ExecuteAsync<int>(
+                _ =>
+                {
+                    attempts++;
+                    return attempts == 1
+                        ? Task.FromException<int>(Stale())
+                        : Task.FromException<int>(retryFailure);
+                },
+                CancellationToken.None));
+
+        exception.ShouldBeSameAs(retryFailure);
+        attempts.ShouldBe(2);
+        outcomes.Count(outcome => outcome == "failed").ShouldBe(1);
+    }
+
     private static ConformanceBarrierRetryPolicy CreatePolicy(IConformanceDefinitionsSynchronizer synchronizer) =>
         new(
             synchronizer,

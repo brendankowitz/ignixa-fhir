@@ -38,9 +38,6 @@ public interface IFhirRepository
         long definitionsEventId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
-        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
-
     /// <summary>
     /// Batch write operation for bulk resource creation/updates.
     /// Atomically writes multiple resources in a single transaction.
@@ -188,13 +185,6 @@ public interface IFhirRepository
         long definitionsEventId,
         TransactionId? transactionId = null,
         CancellationToken cancellationToken = default);
-
-    ValueTask<ResourceKey?> DeleteAsync(
-        ResourceKey key,
-        ResourceRequest request,
-        TransactionId? transactionId = null,
-        CancellationToken cancellationToken = default) =>
-        DeleteAsync(key, request, definitionsEventId: 0, transactionId, cancellationToken);
 
     /// <summary>
     /// Gets expired resources from TTL table (ExpiresAt &lt; now).

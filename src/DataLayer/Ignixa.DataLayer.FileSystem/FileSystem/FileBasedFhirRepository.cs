@@ -195,8 +195,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         }
     }
 
-    /// <inheritdoc/>
-    public ValueTask<ResourceKey?> DeleteAsync(
+    internal ValueTask<ResourceKey?> DeleteAsync(
         ResourceKey key,
         ResourceRequest request,
         TransactionId? transactionId = null,
@@ -414,6 +413,9 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
             $"Resource {resourceId} not found in NDJSON file {path}");
     }
 
+    internal ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
+        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
+
     public async ValueTask<TransactionId> GetNextTransactionIdAsync(
         long definitionsEventId,
         CancellationToken cancellationToken = default)
@@ -422,9 +424,6 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         // In a production system, this might allocate from a sequence or global counter
         return await ValueTask.FromResult(TransactionId.Generate());
     }
-
-    public ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
-        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
 
     public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken cancellationToken = default)
     {

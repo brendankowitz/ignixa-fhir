@@ -342,8 +342,7 @@ public class SqlServerFhirRepository(
         }
     }
 
-    /// <inheritdoc/>
-    public ValueTask<ResourceKey?> DeleteAsync(
+    internal ValueTask<ResourceKey?> DeleteAsync(
         ResourceKey key,
         ResourceRequest request,
         TransactionId? transactionId = null,
@@ -523,6 +522,9 @@ public class SqlServerFhirRepository(
     }
 
     /// <inheritdoc/>
+    internal ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
+        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
+
     public async ValueTask<TransactionId> GetNextTransactionIdAsync(
         long definitionsEventId,
         CancellationToken cancellationToken = default)
@@ -530,9 +532,6 @@ public class SqlServerFhirRepository(
         var (id, _) = await _mergeRepository.BeginTransactionAsync(1000, definitionsEventId, cancellationToken);
         return new TransactionId(id);
     }
-
-    public ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
-        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
 
     /// <inheritdoc/>
     public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken cancellationToken = default)

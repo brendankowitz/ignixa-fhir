@@ -8,9 +8,12 @@ using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.DataLayer.SqlServer;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
+using System.Net.Http.Headers;
+using System.Text.Json;
 
 namespace Ignixa.Api.E2ETests;
 
@@ -19,6 +22,10 @@ public class SqlConformanceBarrierRetryTests(IgnixaApiFixture fixture) : IClassF
     [Fact]
     public async Task GivenAWriteExtractedBeforeTheBarrier_WhenTheEventIsAvailable_ThenItRefreshesAndRetriesOnce()
     {
+        var suffix = Guid.NewGuid().ToString("N");
+        var code = $"barrier-marker-{suffix}";
+        var canonical = $"http://example.org/SearchParameter/{code}";
+        var identifier = $"marker-{suffix}";
         var versions = fixture.Services.GetRequiredService<IFhirVersionContext>();
         var before = versions.GetDefinitionsHandle(FhirVersion.R4, tenantId: 1);
         var store = fixture.Services.GetRequiredService<ISourceEventStore>();
@@ -26,23 +33,56 @@ public class SqlConformanceBarrierRetryTests(IgnixaApiFixture fixture) : IClassF
         [
             new NewSourceEvent(
                 $"barrier-retry:{Guid.NewGuid():N}",
-                nameof(PackageActivated),
-                new PackageActivated("barrier.retry", "1.0.0", [])),
+                nameof(SearchParameterActivated),
+                new SearchParameterActivated(
+                    canonical,
+                    code,
+                    "Patient",
+                    "Patient.identifier",
+                    SearchParamType.Token,
+                    "barrier.retry@1.0.0",
+                    null,
+                    SearchParamId: BitConverter.ToInt32(Guid.NewGuid().ToByteArray(), 0) & int.MaxValue,
+                    TargetResourceTypes: null,
+                    Components: null,
+                    Name: "BarrierMarker",
+                    Description: null)),
         ],
         CancellationToken.None);
         var barrier = persisted.Single().EventId;
         barrier.ShouldBeGreaterThan(before.DefinitionsEventId);
         await RaiseBarrierAsync(barrier);
 
-        var id = $"barrier-retry-{Guid.NewGuid():N}";
+        var id = $"barrier-retry-{suffix}";
         using var response = await fixture.Client.PutAsJsonAsync(
             $"/tenant/1/Patient/{id}",
-            new { resourceType = "Patient", id });
+            new
+            {
+                resourceType = "Patient",
+                id,
+                identifier = new[] { new { system = "http://example.org/barrier", value = identifier } }
+            });
 
         response.EnsureSuccessStatusCode();
         var after = versions.GetDefinitionsHandle(FhirVersion.R4, tenantId: 1);
         after.DefinitionsEventId.ShouldBeGreaterThanOrEqualTo(barrier);
         (await CountFailedBarrierTransactionsAsync()).ShouldBeGreaterThanOrEqualTo(1);
+
+        using var search = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/tenant/1/Patient?{Uri.EscapeDataString(code)}={Uri.EscapeDataString(identifier)}");
+        search.Headers.Add("x-ms-use-partial-indices", "true");
+        search.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/fhir+json"));
+        using var searchResponse = await fixture.Client.SendAsync(search);
+        searchResponse.EnsureSuccessStatusCode();
+        using var bundle = JsonDocument.Parse(await searchResponse.Content.ReadAsByteArrayAsync());
+        bundle.RootElement.GetProperty("entry")
+            .EnumerateArray()
+            .Any(entry =>
+                entry.TryGetProperty("resource", out var resource) &&
+                resource.TryGetProperty("id", out var resourceId) &&
+                resourceId.GetString() == id)
+            .ShouldBeTrue();
     }
 
     private async Task RaiseBarrierAsync(long eventId)

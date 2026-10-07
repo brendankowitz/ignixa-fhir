@@ -143,11 +143,12 @@ public class SqlServerMergeRepository(
                 }
                 catch (Exception completionFailure)
                 {
-                    staleException.Data["Ignixa.TransactionCompletionFailure"] = completionFailure;
+                    completionFailure.Data["Ignixa.StaleConformanceDefinitions"] = staleException;
                     _logger.LogError(
                         completionFailure,
                         "Failed to complete stale transaction {TransactionId}; reconciliation is required",
                         transactionId);
+                    throw;
                 }
 
                 throw staleException;

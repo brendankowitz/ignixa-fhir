@@ -107,7 +107,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
                 "Conditional update: 0 matches, creating new {ResourceType}",
                 request.ResourceType);
 
-            var resource = await CreateNewResourceAsync(
+            var write = await CreateNewResourceAsync(
                 request.ResourceType,
                 request.JsonNode,
                 request.TenantId,
@@ -116,9 +116,10 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
                 cancellationToken);
 
             return new ConditionalUpdateResult(
-                Resource: resource,
+                Resource: write.Resource,
                 WasCreated: true,
-                MatchCount: 0);
+                MatchCount: 0,
+                OperationOutcomeBytes: write.OperationOutcomeBytes);
         }
         else if (matches.Count == 1)
         {
@@ -133,7 +134,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
                 existingId,
                 existingVersionId);
 
-            var resource = await UpdateExistingResourceAsync(
+            var write = await UpdateExistingResourceAsync(
                 request.ResourceType,
                 existingId,
                 existingVersionId,
@@ -144,9 +145,10 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
                 cancellationToken);
 
             return new ConditionalUpdateResult(
-                Resource: resource,
+                Resource: write.Resource,
                 WasCreated: false,
-                MatchCount: 1);
+                MatchCount: 1,
+                OperationOutcomeBytes: write.OperationOutcomeBytes);
         }
         else
         {
@@ -170,7 +172,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
     /// Used when 0 matches are found (conditional update creates new resource).
     /// FHIR Spec: Use client-provided ID if present, otherwise server-assigned.
     /// </summary>
-    private async Task<ResourceWrapper> CreateNewResourceAsync(
+    private async Task<(ResourceWrapper Resource, ReadOnlyMemory<byte>? OperationOutcomeBytes)> CreateNewResourceAsync(
         string resourceType,
         ResourceJsonNode jsonNode,
         int tenantId,
@@ -228,7 +230,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         };
 
         // Convert SearchEntryResult to ResourceWrapper
-        return ConvertSearchEntryToWrapper(createdEntry);
+        return (ConvertSearchEntryToWrapper(createdEntry), updateResult.OperationOutcomeBytes);
     }
 
     /// <summary>
@@ -237,7 +239,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
     /// FHIR Spec: If body contains an ID that differs from the matched resource, return 412 Precondition Failed.
     /// IMPORTANT: Sets If-Match header with existing version ID to prevent lost updates (optimistic concurrency control).
     /// </summary>
-    private async Task<ResourceWrapper> UpdateExistingResourceAsync(
+    private async Task<(ResourceWrapper Resource, ReadOnlyMemory<byte>? OperationOutcomeBytes)> UpdateExistingResourceAsync(
         string resourceType,
         string existingId,
         string existingVersionId,
@@ -295,7 +297,7 @@ public class ConditionalUpdateHandler : IRequestHandler<ConditionalUpdateCommand
         };
 
         // Convert SearchEntryResult to ResourceWrapper
-        return ConvertSearchEntryToWrapper(updatedEntry);
+        return (ConvertSearchEntryToWrapper(updatedEntry), updateResult.OperationOutcomeBytes);
     }
 
     /// <summary>

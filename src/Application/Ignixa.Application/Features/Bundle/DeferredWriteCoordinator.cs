@@ -110,13 +110,33 @@ public class DeferredWriteCoordinator
             {
                 var partitionId = ResolvePartition(operation.Wrapper);
                 var repository = await _repositoryFactory.GetRepositoryAsync(partitionId, cancellationToken);
-                var result = await repository.CreateOrUpdateAsync(operation.Wrapper, cancellationToken);
+                var attempt = 0;
+                var result = await _barrierRetryPolicy.ExecuteAsync(
+                    async ct =>
+                    {
+                        attempt++;
+                        var wrapper = attempt == 1
+                            ? operation.Wrapper
+                            : Reextract(operation.Wrapper, ct);
+                        return await repository.CreateOrUpdateAsync(wrapper, ct);
+                    },
+                    cancellationToken);
                 _createdEntries[operation.EntryIndex] = result.IsCreated ?? result.Key.VersionId == "1";
                 operation.CompletionSource.TrySetResult(result.Key);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 operation.CompletionSource.TrySetCanceled(cancellationToken);
+                throw;
+            }
+            catch (ConformanceDefinitionsUnavailableException ex)
+            {
+                operation.CompletionSource.TrySetException(ex);
+                CompleteWrites(ex);
+                while (_writeChannel.Reader.TryRead(out var pendingOperation))
+                {
+                    pendingOperation.CompletionSource.TrySetException(ex);
+                }
                 throw;
             }
             catch (Exception ex)
@@ -143,6 +163,24 @@ public class DeferredWriteCoordinator
             throw new BadRequestException("A transaction must target exactly one tenant partition.");
         }
         return partition.PartitionIds[0];
+    }
+
+    private ResourceWrapper Reextract(ResourceWrapper wrapper, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+        var schemaProvider = _fhirVersionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
+        var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
+
+        return wrapper with
+        {
+            SearchIndices = wrapper.IsDeleted
+                ? []
+                : definitionsHandle.Indexer.Extract(
+                    (IElement)wrapper.Resource.ToElement(schemaProvider)).ToArray(),
+            DefinitionsEventId = definitionsHandle.DefinitionsEventId,
+        };
     }
 
     private async Task<ResourceKey> StageWriteAsync(ResourceWrapper wrapper, int entryIndex, CancellationToken cancellationToken)

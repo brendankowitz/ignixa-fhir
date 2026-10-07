@@ -11,6 +11,7 @@ using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
+using Microsoft.Data.SqlClient;
 using Shouldly;
 using Xunit;
 
@@ -100,10 +101,14 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
         transactionState.ShouldBe("1:1:1");
     }
 
-    [Fact]
-    public async Task GivenConcurrentBarrierRaisesAndAllocations_WhenWriterIsStale_ThenItIsInsideTheBoundaryOrRejected()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenConcurrentBarrierRaisesAndAllocations_WhenWriterIsStale_ThenItIsInsideTheBoundaryOrRejected(
+        bool readCommittedSnapshot)
     {
         const int Iterations = 30;
+        await ConfigureReadCommittedSnapshotAsync(readCommittedSnapshot);
 
         for (var iteration = 1; iteration <= Iterations; iteration++)
         {
@@ -152,6 +157,29 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
                     CancellationToken.None);
             }
         }
+    }
+
+    private async Task ConfigureReadCommittedSnapshotAsync(bool enabled)
+    {
+        var builder = new SqlConnectionStringBuilder(_database.ConnectionString);
+        var databaseName = builder.InitialCatalog;
+        databaseName.ShouldStartWith("IgnixaDataLayerSqlServerTest_", Case.Sensitive);
+        using var pooledConnection = new SqlConnection(builder.ConnectionString);
+        SqlConnection.ClearPool(pooledConnection);
+        builder.InitialCatalog = "master";
+        await using var connection = new SqlConnection(builder.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+#pragma warning disable CA2100
+        command.CommandText =
+            $"ALTER DATABASE [{databaseName}] SET READ_COMMITTED_SNAPSHOT {(enabled ? "ON" : "OFF")} WITH ROLLBACK IMMEDIATE";
+#pragma warning restore CA2100
+        await command.ExecuteNonQueryAsync();
+        SqlConnection.ClearPool(pooledConnection);
+
+        (await _database.ExecuteScalarAsync<int>(
+            "SELECT CAST(is_read_committed_snapshot_on AS int) FROM sys.databases WHERE database_id = DB_ID()"))
+            .ShouldBe(enabled ? 1 : 0);
     }
 
     /// <summary>

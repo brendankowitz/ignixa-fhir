@@ -55,5 +55,10 @@ public sealed class ConformanceBarrierRetryPolicy(
                 secondRejection.TransactionId);
             throw new ConformanceDefinitionsUnavailableException(_retryAfter, secondRejection);
         }
+        catch
+        {
+            ConformanceBarrierMetrics.RecordRejection("failed");
+            throw;
+        }
     }
 }

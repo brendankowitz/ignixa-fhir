@@ -542,6 +542,13 @@ public static class FhirEndpoints
         {
             logger.LogInformation("Created {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType.SanitizeForLog(), result.Key.Id, result.Key.VersionId, tenantId);
 
+            if (result.OperationOutcomeBytes is { } createWarning)
+            {
+                return FhirResults.Created(location, createWarning, context)
+                    .WithETag(result.Key.VersionId!)
+                    .WithLastModified(result.LastModified);
+            }
+
             if (actualReturnPreference == ReturnPreference.Representation)
             {
                 // Return full resource representation with Location and ETag headers
@@ -557,6 +564,13 @@ public static class FhirEndpoints
         }
 
         logger.LogInformation("Updated {ResourceType}/{Id} (version {Version}) in tenant {TenantId}", resourceType.SanitizeForLog(), result.Key.Id, result.Key.VersionId, tenantId);
+
+        if (result.OperationOutcomeBytes is { } updateWarning)
+        {
+            return FhirResults.Ok(updateWarning, context)
+                .WithETag(result.Key.VersionId!)
+                .WithLastModified(result.LastModified);
+        }
 
         if (actualReturnPreference == ReturnPreference.Representation)
         {
@@ -1020,6 +1034,13 @@ public static class FhirEndpoints
             createResult.Key.VersionId,
             tenantId);
 
+        if (createResult.OperationOutcomeBytes is { } createWarning)
+        {
+            return FhirResults.Created(createLocation, createWarning, context)
+                .WithETag(createResult.Key.VersionId!)
+                .WithLastModified(createResult.LastModified);
+        }
+
         if (actualReturnPreference == ReturnPreference.Representation)
         {
             // Return full resource representation
@@ -1322,6 +1343,13 @@ public static class FhirEndpoints
             // Use the documented version-specific location for PUT-as-create.
             var location = $"{context.Request.Scheme}://{context.Request.Host}/tenant/{tenantId}/{resourceType}/{result.Resource.ResourceId}/_history/{result.Resource.VersionId}";
 
+            if (result.OperationOutcomeBytes is { } createWarning)
+            {
+                return FhirResults.Created(location, createWarning)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified);
+            }
+
             if (actualReturnPreference == ReturnPreference.Minimal)
             {
                 // return=minimal - return headers only, no body (FHIR spec compliant)
@@ -1348,6 +1376,13 @@ public static class FhirEndpoints
         else
         {
             // 200 OK
+            if (result.OperationOutcomeBytes is { } updateWarning)
+            {
+                return FhirResults.Ok(updateWarning)
+                    .WithETag(result.Resource.VersionId)
+                    .WithLastModified(result.Resource.LastModified);
+            }
+
             if (actualReturnPreference == ReturnPreference.Minimal)
             {
                 // return=minimal - return headers only, no body (FHIR spec compliant)
