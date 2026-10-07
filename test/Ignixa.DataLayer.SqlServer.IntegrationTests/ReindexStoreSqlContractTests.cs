@@ -2,9 +2,12 @@ using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Serialization.SourceNodes;
 using Shouldly;
 using Xunit;
+using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
@@ -74,6 +77,39 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenAnImportReservationWhoseResourceFallsPastItsFirstValue_WhenBarrierIsRaised_ThenTheCutoffRangeIncludesTheResource()
+    {
+        var (transactionId, _) = await _database.MergeRepository.BeginTransactionAsync(
+            resourceCount: 1000,
+            definitionsEventId: 0,
+            CancellationToken.None);
+        var resource = Patient("import-tail");
+
+        await _database.MergeRepository.MergeResourcesAsync(
+            transactionId,
+            singleTransaction: true,
+            [resource],
+            [999],
+            CancellationToken.None);
+        await _database.MergeRepository.CommitTransactionAsync(transactionId, null, CancellationToken.None);
+
+        var (cutoffTransactionId, cutoffSurrogateId) = await _store.RaiseBarrierAsync(55, CancellationToken.None);
+        var resourceSurrogateId = await _database.ExecuteScalarAsync<long>(
+            "SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = 'import-tail' AND IsHistory = 0");
+
+        transactionId.ShouldBeLessThanOrEqualTo(cutoffTransactionId);
+        resourceSurrogateId.ShouldBeGreaterThan(cutoffTransactionId);
+        cutoffSurrogateId.ShouldBeGreaterThanOrEqualTo(resourceSurrogateId);
+
+        var ranges = await _store.GetSurrogateIdRangesAsync("Patient", cutoffSurrogateId, 1000, CancellationToken.None);
+        var range = ranges.Single();
+        var resources = await _store.ReadRangeAsync(
+            "Patient", range.Start, range.End, 1000, afterSurrogateId: null, CancellationToken.None);
+
+        resources.Select(reindexResource => reindexResource.Resource.ResourceId).ShouldContain("import-tail");
+    }
+
+    [Fact]
     public async Task GivenAResourceSupersededAfterRead_WhenItsIndicesAreUpdated_ThenItIsReportedAsAConflictWithoutCreatingHistory()
     {
         await _database.Repository.CreateOrUpdateAsync(Patient("conflict"));
@@ -106,6 +142,8 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             "SELECT TransactionId FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0");
         var rawResource = await _database.ExecuteScalarBytesAsync(
             "SELECT RawResource FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0");
+        var isHistory = await _database.ExecuteScalarAsync<bool>(
+            "SELECT IsHistory FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0");
         var historyCount = await _database.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 1");
 
@@ -121,10 +159,91 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         (await _database.ExecuteScalarBytesAsync(
             "SELECT RawResource FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0"))
             .ShouldBe(rawResource);
+        (await _database.ExecuteScalarAsync<bool>(
+            "SELECT IsHistory FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0"))
+            .ShouldBe(isHistory);
         (await _database.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 1"))
             .ShouldBe(historyCount);
     }
+
+    [Fact]
+    public async Task GivenDriftInEveryTypedSearchIndexTable_WhenIndexOnlyUpdateRuns_ThenAllRowsAndExtensionColumnsAreRestored()
+    {
+        await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
+        await _database.Repository.CreateOrUpdateAsync(Patient("reindex-target"));
+
+        var resource = Patient("reindex-all-types") with
+        {
+            SearchIndices = BuildSearchIndicesWithExtensions("reindex-target"),
+        };
+        await _database.Repository.CreateOrUpdateAsync(resource);
+
+        var (_, cutoff) = await _store.RaiseBarrierAsync(80, CancellationToken.None);
+        var reindexResource = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None))
+            .Single(reindexResource => reindexResource.Resource.ResourceId == resource.ResourceId);
+        var indexedResource = reindexResource with
+        {
+            Resource = reindexResource.Resource with { SearchIndices = resource.SearchIndices },
+        };
+        var resourceSurrogateId = reindexResource.ResourceSurrogateId;
+        var expectedRowCounts = new Dictionary<string, int>();
+
+        foreach (var table in SearchIndexTableSeeder.SearchIndexTables.Where(table => table != "ResourceWriteClaim"))
+        {
+            var expectedCount = await _database.ExecuteScalarAsync<int>(
+                $"SELECT COUNT(*) FROM dbo.{table} WHERE ResourceSurrogateId = {resourceSurrogateId}");
+            expectedCount.ShouldBeGreaterThan(0, $"dbo.{table} must have a row before drift is introduced.");
+            expectedRowCounts.Add(table, expectedCount);
+            await _database.ExecuteNonQueryAsync(
+                $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId = {resourceSurrogateId}");
+        }
+
+        (await _store.UpdateSearchIndicesAsync([indexedResource], CancellationToken.None)).ShouldBe((1, 0));
+
+        foreach (var (table, expectedCount) in expectedRowCounts)
+        {
+            (await _database.ExecuteScalarAsync<int>(
+                $"SELECT COUNT(*) FROM dbo.{table} WHERE ResourceSurrogateId = {resourceSurrogateId}"))
+                .ShouldBe(expectedCount, $"dbo.{table} must be restored to its pre-drift row count.");
+        }
+
+        var identifierTypeSystemId = await _database.ExecuteScalarAsync<int>(
+            $"SELECT TOP (1) IdentifierTypeSystemId FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId} AND IdentifierTypeCode = 'MR'");
+        var expectedIdentifierTypeSystemId = await _database.ExecuteScalarAsync<int>(
+            "SELECT SystemId FROM dbo.System WHERE Value = 'http://terminology.hl7.org/CodeSystem/v2-0203'");
+        identifierTypeSystemId.ShouldBe(expectedIdentifierTypeSystemId);
+        (await _database.ExecuteScalarAsync<string>(
+            $"SELECT TOP (1) IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId}"))
+            .ShouldBe("MR");
+        (await _database.ExecuteScalarAsync<string>(
+            $"SELECT TOP (1) Version FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId}"))
+            .ShouldBe("1.0");
+        (await _database.ExecuteScalarAsync<string>(
+            $"SELECT TOP (1) Fragment FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId}"))
+            .ShouldBe("fragment");
+    }
+
+    private static IReadOnlyList<object> BuildSearchIndicesWithExtensions(string referenceTargetId) =>
+        SearchIndexTableSeeder.BuildSearchIndicesCoveringEverySearchIndexTable(referenceTargetId)
+            .Cast<SearchIndexEntry>()
+            .Select(entry => entry.SearchParameter.Type switch
+            {
+                SearchParamType.Token => new SearchIndexEntry(
+                    entry.SearchParameter,
+                    new TokenSearchValue(
+                        system: null,
+                        code: "sweep-code",
+                        text: "sweep text",
+                        identifierTypeSystem: "http://terminology.hl7.org/CodeSystem/v2-0203",
+                        identifierTypeCode: "MR")),
+                SearchParamType.Uri => new SearchIndexEntry(
+                    entry.SearchParameter,
+                    new UriSearchValue("http://example.org/sweep-uri|1.0#fragment", separateCanonicalComponents: true)),
+                _ => entry,
+            })
+            .Cast<object>()
+            .ToArray();
 
     private static ResourceWrapper Patient(string id) => new(
         "Patient",
