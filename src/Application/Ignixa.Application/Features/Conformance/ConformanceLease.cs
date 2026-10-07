@@ -87,7 +87,7 @@ public sealed class ConformanceLease : IConformanceLease
     {
         Interlocked.Exchange(ref _leaseStartUtcTicks, start.Utc.UtcTicks);
         Interlocked.Exchange(ref _leaseStartTimestamp, start.Timestamp);
-        ObserveTransition(held: true);
+        ObserveTransition(_timeProvider.GetElapsedTime(start.Timestamp) <= _maxStaleness);
     }
 
     private bool IsStarted => Interlocked.Read(ref _leaseStartTimestamp) >= 0;

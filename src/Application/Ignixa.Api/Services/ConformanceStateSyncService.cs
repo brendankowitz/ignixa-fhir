@@ -51,6 +51,7 @@ public class ConformanceStateSyncService(
             }
             catch (Exception ex)
             {
+                _ = conformanceLease.IsHeld;
                 logger.LogWarning(
                     ex,
                     "Conformance sync failed at applied EventId {AppliedEventId}, refreshed EventId {RefreshedEventId}; will retry",
@@ -64,6 +65,7 @@ public class ConformanceStateSyncService(
 
     protected async Task SyncAsync(CancellationToken cancellationToken)
     {
+        _ = conformanceLease.IsHeld;
         var syncStart = conformanceLease.CaptureStart();
         var beforeEventId = conformanceState.LastProcessedEventId;
 

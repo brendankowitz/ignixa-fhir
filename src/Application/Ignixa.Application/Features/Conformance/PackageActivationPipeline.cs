@@ -28,6 +28,7 @@ public class PackageActivationPipeline(
     IOptions<SearchParameterResolutionOptions> options,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
+    IConformanceCacheRefresher cacheRefresher,
     IConformanceLease conformanceLease,
     ILogger<PackageActivationPipeline> logger)
 {
@@ -38,6 +39,7 @@ public class PackageActivationPipeline(
     private readonly SearchParameterResolutionOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly ISearchParameterTransitionScheduler _transitionScheduler = transitionScheduler ?? throw new ArgumentNullException(nameof(transitionScheduler));
     private readonly ConformanceTransitionOptions _transitionOptions = transitionOptions?.Value ?? throw new ArgumentNullException(nameof(transitionOptions));
+    private readonly IConformanceCacheRefresher _cacheRefresher = cacheRefresher ?? throw new ArgumentNullException(nameof(cacheRefresher));
     private readonly IConformanceLease _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -115,8 +117,9 @@ public class PackageActivationPipeline(
             _state.ApplyAndTrack(evt);
         }
 
-        // 6. Invalidate search parameter caches so new parameters are visible
+        // 6. Rebuild definitions, then synchronize every local consumer before this instance can renew its search lease.
         _fhirVersionContext.InvalidateSearchParameterCaches();
+        await _cacheRefresher.RefreshAsync(cancellationToken);
 
         // 7. Schedule phase two only after the phase-one event is durable.
         foreach (var eventId in persistedEvents

@@ -1,7 +1,7 @@
-namespace Ignixa.Api.Services;
+namespace Ignixa.Application.Features.Conformance;
 
 /// <summary>
-/// Refreshes the local consumers of conformance state after replay.
+/// Refreshes the local consumers of conformance state after replay or activation.
 /// </summary>
 public interface IConformanceCacheRefresher
 {

@@ -19,7 +19,7 @@ public class ConformanceStateInitializerTests
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        using var service = new TestInitializer(store, state, CreateLease());
+        using var service = new TestInitializer(store, state, CreateRefresher(), CreateLease());
 
         await service.RunAsync();
 
@@ -34,11 +34,32 @@ public class ConformanceStateInitializerTests
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
         var lease = CreateLease();
-        using var service = new TestInitializer(store, state, lease);
+        using var service = new TestInitializer(store, state, CreateRefresher(), lease);
 
         await service.RunAsync();
 
         lease.IsHeld.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenInitialLoad_WhenItSucceeds_ThenItRefreshesConsumersBeforeRenewingTheConformanceLease()
+    {
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        using var state = new ConformanceState();
+        var cacheRefresher = CreateRefresher();
+        var lease = Substitute.For<IConformanceLease>();
+        var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
+        lease.CaptureStart().Returns(leaseStart);
+        using var service = new TestInitializer(store, state, cacheRefresher, lease);
+
+        await service.RunAsync();
+
+        Received.InOrder(() =>
+        {
+            cacheRefresher.RefreshAsync(Arg.Any<CancellationToken>());
+            lease.Renew(leaseStart);
+        });
     }
 
     private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
@@ -53,10 +74,18 @@ public class ConformanceStateInitializerTests
             TimeProvider.System,
             NullLogger<ConformanceLease>.Instance);
 
-    private sealed class TestInitializer(ISourceEventStore store, ConformanceState state, IConformanceLease lease)
+    private static IConformanceCacheRefresher CreateRefresher() =>
+        Substitute.For<IConformanceCacheRefresher>();
+
+    private sealed class TestInitializer(
+        ISourceEventStore store,
+        ConformanceState state,
+        IConformanceCacheRefresher cacheRefresher,
+        IConformanceLease lease)
         : ConformanceStateInitializerService(
             store,
             state,
+            cacheRefresher,
             lease,
             NullLogger<ConformanceStateInitializerService>.Instance)
     {

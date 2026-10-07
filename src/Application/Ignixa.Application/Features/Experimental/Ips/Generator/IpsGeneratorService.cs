@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Application.Features.Experimental.Ips.Api;
 using Ignixa.Application.Infrastructure;
@@ -46,6 +47,7 @@ public class IpsGeneratorService(
     IFhirRequestContextAccessor contextAccessor,
     INarrativeGenerator narrativeGenerator,
     ISchema schema,
+    IConformanceLease conformanceLease,
     ILogger<IpsGeneratorService> logger) : IIpsGeneratorService
 {
     /// <summary>
@@ -189,6 +191,11 @@ public class IpsGeneratorService(
 
         var sectionResources = sections.ToDictionary(s => s, _ => new List<ResourceJsonNode>());
         var resourceTracker = new HashSet<string>(); // Deduplication
+
+        ConformanceSearchGuard.EnsureRequestCanSearch(
+            conformanceLease,
+            requestOriginated: true,
+            requestContext.IsBackgroundTask);
 
         // Stream results and classify into sections
         await foreach (var result in executionStrategy.SearchStreamAsync(partition, searchOptions, cancellationToken))

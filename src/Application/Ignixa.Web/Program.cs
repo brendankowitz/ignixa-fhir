@@ -219,8 +219,11 @@ static async Task InitializeSqlConformanceAsync(
     // after this pre-host initialization, and replay itself needs the conformance SQL schema.
     var conformanceLease = app.Services.GetRequiredService<IConformanceLease>();
     var leaseStart = conformanceLease.CaptureStart();
-    await app.Services.GetRequiredService<ConformanceState>().InitializeFromEventsAsync(
+    var conformanceState = app.Services.GetRequiredService<ConformanceState>();
+    await conformanceState.InitializeFromEventsAsync(
         app.Services.GetRequiredService<ISourceEventStore>(), cancellationToken);
+    using var activationLock = await conformanceState.AcquireActivationLockAsync(cancellationToken);
+    await app.Services.GetRequiredService<IConformanceCacheRefresher>().RefreshAsync(cancellationToken);
     conformanceLease.Renew(leaseStart);
 }
 

@@ -9,6 +9,7 @@ using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Medino;
 using Microsoft.Extensions.Logging;
+using ConformanceStaleException = Ignixa.Application.Features.Conformance.ConformanceStaleException;
 
 namespace Ignixa.Application.Operations.Features.MemberMatch;
 
@@ -72,6 +73,10 @@ public class MemberMatchHandler : IRequestHandler<MemberMatchCommand, MemberMatc
             }
 
             return result;
+        }
+        catch (ConformanceStaleException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

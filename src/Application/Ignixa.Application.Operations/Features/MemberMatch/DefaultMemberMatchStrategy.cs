@@ -16,6 +16,8 @@ using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
+using ConformanceSearchGuard = Ignixa.Application.Features.Conformance.ConformanceSearchGuard;
+using IConformanceLease = Ignixa.Application.Features.Conformance.IConformanceLease;
 
 namespace Ignixa.Application.Operations.Features.MemberMatch;
 
@@ -39,17 +41,20 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
     private readonly ISearchServiceFactory _searchServiceFactory;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly IFhirVersionContext _versionContext;
+    private readonly IConformanceLease _conformanceLease;
     private readonly ILogger<DefaultMemberMatchStrategy> _logger;
 
     public DefaultMemberMatchStrategy(
         ISearchServiceFactory searchServiceFactory,
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext versionContext,
+        IConformanceLease conformanceLease,
         ILogger<DefaultMemberMatchStrategy> logger)
     {
         _searchServiceFactory = searchServiceFactory ?? throw new ArgumentNullException(nameof(searchServiceFactory));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
+        _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -123,6 +128,11 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
             MaxItemCount = 10, // Limit to detect multiple matches
             Total = TotalType.Accurate
         };
+
+        ConformanceSearchGuard.EnsureRequestCanSearch(
+            _conformanceLease,
+            requestOriginated: true,
+            context.IsBackgroundTask);
 
         var searchService = await _searchServiceFactory.GetSearchServiceAsync(context.TenantId, cancellationToken);
         var results = new List<SearchEntryResult>();

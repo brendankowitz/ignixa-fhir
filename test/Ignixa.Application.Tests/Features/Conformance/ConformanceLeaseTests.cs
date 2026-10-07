@@ -1,4 +1,5 @@
 using Ignixa.Application.Features.Conformance;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -38,6 +39,26 @@ public class ConformanceLeaseTests
         lease.IsHeld.ShouldBeFalse();
         lease.Age.ShouldBe(TimeSpan.MaxValue);
         lease.LeaseStartUtc.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenSyncExceedsMaxStaleness_WhenLeaseIsRenewed_ThenTheLossIsObservedWithoutARequest()
+    {
+        var clock = new ManualTimeProvider();
+        var logger = Substitute.For<ILogger<ConformanceLease>>();
+        var lease = new ConformanceLease(
+            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
+            clock,
+            logger);
+        lease.Renew(lease.CaptureStart());
+        var syncStart = lease.CaptureStart();
+
+        clock.Advance(TimeSpan.FromSeconds(11));
+        lease.Renew(syncStart);
+
+        logger.ReceivedCalls()
+            .Count(call => Equals(call.GetArguments()[0], LogLevel.Warning))
+            .ShouldBe(1);
     }
 
     [Fact]

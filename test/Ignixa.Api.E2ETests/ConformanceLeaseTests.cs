@@ -11,7 +11,7 @@ namespace Ignixa.Api.E2ETests;
 public class ConformanceLeaseTests
 {
     [Fact]
-    public async Task GivenExpiredLease_WhenSearchingAndReadingOrWriting_ThenOnlySearchFailsClosed()
+    public async Task GivenExpiredLease_WhenSearchEvaluatingOperationsRun_ThenTheyFailClosed()
     {
         await using var fixture = new StaleLeaseFixture();
         await fixture.InitializeAsync();
@@ -42,13 +42,50 @@ public class ConformanceLeaseTests
         using var search = await client.GetAsync("/tenant/1/Patient?active=true&_include=Patient:organization");
         using var compartment = await client.GetAsync($"/tenant/1/Patient/{id}/Observation");
         using var everything = await client.GetAsync($"/tenant/1/Patient/{id}/$everything");
+        using var memberMatch = await client.PostAsync(
+            "/tenant/1/Patient/$member-match",
+            new StringContent(
+                """
+                {
+                  "resourceType": "Parameters",
+                  "parameter": [
+                    {
+                      "name": "MemberPatient",
+                      "resource": {
+                        "resourceType": "Patient",
+                        "identifier": [{ "value": "member-123" }]
+                      }
+                    },
+                    {
+                      "name": "CoverageToMatch",
+                      "resource": {
+                        "resourceType": "Coverage",
+                        "subscriberId": "member-123"
+                      }
+                    }
+                  ]
+                }
+                """,
+                Encoding.UTF8,
+                "application/fhir+json"));
+        using var summary = await client.GetAsync($"/tenant/1/Patient/{id}/$summary");
 
         search.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await search.Content.ReadAsStringAsync());
         compartment.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await compartment.Content.ReadAsStringAsync());
         everything.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await everything.Content.ReadAsStringAsync());
+        memberMatch.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await memberMatch.Content.ReadAsStringAsync());
+        summary.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await summary.Content.ReadAsStringAsync());
         search.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromHours(1));
+        memberMatch.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromHours(1));
+        summary.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromHours(1));
         var outcome = JsonNode.Parse(await search.Content.ReadAsStringAsync())!;
         outcome["issue"]![0]!["diagnostics"]!.GetValue<string>()
+            .ShouldBe("Conformance state is stale; search is temporarily unavailable.");
+        var memberMatchOutcome = JsonNode.Parse(await memberMatch.Content.ReadAsStringAsync())!;
+        memberMatchOutcome["issue"]![0]!["diagnostics"]!.GetValue<string>()
+            .ShouldBe("Conformance state is stale; search is temporarily unavailable.");
+        var summaryOutcome = JsonNode.Parse(await summary.Content.ReadAsStringAsync())!;
+        summaryOutcome["issue"]![0]!["diagnostics"]!.GetValue<string>()
             .ShouldBe("Conformance state is stale; search is temporarily unavailable.");
     }
 

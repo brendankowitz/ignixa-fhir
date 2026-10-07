@@ -19,6 +19,7 @@ using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using IConformanceLease = Ignixa.Application.Features.Conformance.IConformanceLease;
 
 namespace Ignixa.Application.Tests.Features.Experimental.Ips;
 
@@ -71,10 +72,12 @@ public class IpsSearchAnchoringTests
             Arg.Any<IElement>(), Arg.Any<string>(), Arg.Any<CultureInfo>(),
             TemplateFormat.Html, Arg.Any<CancellationToken>())
             .Returns("""<div xmlns="http://www.w3.org/1999/xhtml">Clinical resource</div>""");
+        var conformanceLease = Substitute.For<IConformanceLease>();
+        conformanceLease.IsHeld.Returns(true);
         var generator = new IpsGeneratorService(
             [new DefaultIpsGenerationStrategy()], execution, repositoryFactory,
             new IsolatedModePartitionStrategy(NullLogger<IsolatedModePartitionStrategy>.Instance),
-            accessor, narratives, schema, NullLogger<IpsGeneratorService>.Instance);
+            accessor, narratives, schema, conformanceLease, NullLogger<IpsGeneratorService>.Instance);
 
         var bundle = await generator.GenerateIpsAsync(PatientId, cancellationToken: CancellationToken.None);
 
