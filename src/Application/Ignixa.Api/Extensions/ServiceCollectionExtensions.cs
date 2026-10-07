@@ -131,7 +131,7 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Fails startup when semantic search is enabled for a deployment that is not entirely on the SQL
-    /// Server data layer. Vector persistence (schema version 4) only exists in
+    /// Server data layer. Vector persistence (schema version 5) only exists in
     /// <c>Ignixa.DataLayer.SqlServer</c>; a tenant on <c>FileSystem</c> storage with VectorSearch enabled
     /// would accept writes to a semantic parameter and silently never persist or query its vectors.
     /// </summary>

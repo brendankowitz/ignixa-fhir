@@ -9,7 +9,7 @@ namespace Ignixa.DataLayer.SqlServer;
 public static class SchemaVersionConstants
 {
     /// <summary>The schema version this build's dacpac represents.</summary>
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     /// <summary>
     /// The oldest tenant schema version this build still tolerates reading an
@@ -38,13 +38,22 @@ public static class SchemaVersionConstants
     // columns in PackageResource, TermValueSet and TermConceptMap, and TermCodeSystem.Version, use CS_AS
     // identity comparisons and indexes. Existing procedure callers may omit the new optional ContentHash
     // parameter. No core resource tables or TVPs change.
-    // Version 4 (expand) -- semantic vector search, slice 1. Adds dbo.EmbeddingModel and
+    // Version 4 (expand) -- INCLUDE (ResourceId) on IX_Resource_ResourceTypeId_ResourceSurrgateId --
+    // removes a clustered-index key lookup from chained search and _include. DacFx applies this as a
+    // drop-and-recreate of that nonclustered index; no column or table is dropped and no data is
+    // discarded. The rebuild has no ONLINE = ON option in the DDL, so UpgradeIfNeededAsync's automatic
+    // upgrade path rebuilds the index OFFLINE, holding a schema-modification (Sch-M) lock on
+    // dbo.Resource -- the largest table in the schema -- for the rebuild's entire duration, blocking
+    // all reads and writes against it for every tenant sharing that database. Schedule the automatic
+    // upgrade of large tenants accordingly (e.g. during a maintenance window).
+    // Version 5 (expand) -- semantic vector search, slice 1. Adds dbo.EmbeddingModel and
     // dbo.VectorSearchParam (Embedding vector(1536), native SQL Database Engine type -- requires Azure SQL
-    // Database or SQL Server 2025+; SchemaDeployer refuses to deploy or upgrade onto an engine without it),
-    // the dbo.VectorResourceList and dbo.VectorSearchParamList table types, and dbo.MergeVectorSearchParams
-    // / dbo.GetOrCreateEmbeddingModel. HardDeleteResource.sql and DeleteHistory.sql gain a VectorSearchParam
-    // cleanup step alongside every other search-index table. dbo.MergeResources, its TVPs and
-    // dbo.MergeResourcesAndSearchParams are unchanged -- vectors are written by a separate post-merge
-    // procedure, never atomically with the resource write (see docs/features/semantic-search). No column
-    // or table used by an older build is dropped, renamed or retyped.
+    // Database or SQL Server 2025+; SchemaDeployer refuses to deploy or upgrade onto an engine without it,
+    // so tenants on older engines stop at version 4), the dbo.VectorResourceList and
+    // dbo.VectorSearchParamList table types, and dbo.MergeVectorSearchParams / dbo.GetOrCreateEmbeddingModel.
+    // HardDeleteResource.sql and DeleteHistory.sql gain a VectorSearchParam cleanup step alongside every
+    // other search-index table. dbo.MergeResources, its TVPs and dbo.MergeResourcesAndSearchParams are
+    // unchanged -- vectors are written by a separate post-merge procedure, never atomically with the
+    // resource write (see docs/features/semantic-search). No column or table used by an older build is
+    // dropped, renamed or retyped.
 }

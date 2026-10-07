@@ -46,6 +46,7 @@ CREATE UNIQUE NONCLUSTERED INDEX IX_Resource_ResourceTypeId_ResourceId
 GO
 
 CREATE UNIQUE NONCLUSTERED INDEX IX_Resource_ResourceTypeId_ResourceSurrgateId
-    ON dbo.Resource(ResourceTypeId, ResourceSurrogateId) WHERE IsHistory = 0
-                                                               AND IsDeleted = 0
+    ON dbo.Resource(ResourceTypeId, ResourceSurrogateId)
+    INCLUDE(ResourceId)
+    WHERE IsHistory = 0 AND IsDeleted = 0
     ON PartitionScheme_ResourceTypeId (ResourceTypeId);

@@ -207,7 +207,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
     private const string VectorTypeProbeQuery = "SELECT COUNT(*) FROM sys.types WHERE name = 'vector' AND is_user_defined = 0";
 
     /// <summary>
-    /// Schema version 4 introduces dbo.VectorSearchParam, whose Embedding column is the native SQL
+    /// Schema version 5 introduces dbo.VectorSearchParam, whose Embedding column is the native SQL
     /// Database Engine <c>vector</c> type -- a type that does not exist on a box SQL Server older than
     /// 2025. Deploying or upgrading onto such an engine anyway fails deep inside DacFx's own publish with
     /// an opaque "Invalid data type 'vector'", which names no version and no remedy. This probe runs
@@ -247,7 +247,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
         if (vectorTypeCount == 0)
         {
             throw new InvalidOperationException(
-                "Ignixa schema version 4 requires a SQL engine with the native vector type (Azure SQL Database or SQL Server 2025+).");
+                "Ignixa schema version 5 requires a SQL engine with the native vector type (Azure SQL Database or SQL Server 2025+).");
         }
     }
 

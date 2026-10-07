@@ -12,10 +12,10 @@ using Microsoft.IO;
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 
 /// <summary>
-/// Test fixture providing a real, uniquely-named, freshly-deployed scratch tenant database, backed
-/// by a real <see cref="SqlExecutionService"/>. Reused by every SQL-backed integration test in the
-/// Phase D write-path plan. Follows the exact fake-<see cref="ITenantConfigurationStore"/> and
-/// create/deploy/drop pattern already established in SchemaDeployerUpgradeTests.cs.
+/// Test fixture providing a real, uniquely-named scratch tenant database, restored from a schema deployed once
+/// per test process (see <see cref="SchemaTemplate"/>) and backed by a real <see cref="SqlExecutionService"/>.
+/// Reused by every SQL-backed integration test in the Phase D write-path plan. Follows the
+/// fake-<see cref="ITenantConfigurationStore"/> pattern established in SchemaDeployerUpgradeTests.cs.
 /// </summary>
 public sealed class TestTenantDatabase
 {
@@ -45,32 +45,10 @@ public sealed class TestTenantDatabase
         var databaseName = $"IgnixaDataLayerSqlServerTest_{Guid.NewGuid():N}";
         var connectionString = BuildConnectionStringForDatabase(databaseName);
 
-        await CreateEmptyDatabaseAsync(databaseName, cancellationToken);
+        var template = await SchemaTemplate.Value.WaitAsync(cancellationToken);
+        await RestoreTemplateAsync(template, databaseName, cancellationToken);
 
         var tenantConfigurationStore = new SingleTenantStore(connectionString);
-        var deployer = new SchemaDeployer(
-            tenantConfigurationStore,
-            new FakeHostEnvironment(),
-            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = true }),
-            new SchemaVersionResolver(tenantConfigurationStore, NullLogger<SchemaVersionResolver>.Instance),
-            NullLogger<SchemaDeployer>.Instance);
-
-        // Serialised for the same reason CREATE DATABASE is, and more urgently. A DacFx deploy reverse-
-        // engineers the target database before it can diff, holding several connections for the duration;
-        // sixteen xUnit collections doing that at once put 32 sleeping DacFx sessions on the server and the
-        // deploys start timing out inside SqlReverseEngineer -- an environmental failure that looks nothing
-        // like the assertion it interrupts. Gating creation alone was not enough: the deploy is far heavier
-        // than the CREATE.
-        await SchemaDeploymentGate.WaitAsync(cancellationToken);
-
-        try
-        {
-            await deployer.DeployIfEmptyAsync(TestTenantId, cancellationToken);
-        }
-        finally
-        {
-            SchemaDeploymentGate.Release();
-        }
 
         // dbo.ResourceType has no seed data of its own: the dacpac's post-deployment script only
         // seeds dbo.ResourceChangeType (see Script.PostDeployment.sql), and real deployments only
@@ -260,10 +238,168 @@ public sealed class TestTenantDatabase
     /// </summary>
     private static readonly SemaphoreSlim DatabaseCreationGate = new(1, 1);
 
-    /// <summary>Serialises DacFx schema deployment; see the call site for why one gate is not enough.</summary>
-    private static readonly SemaphoreSlim SchemaDeploymentGate = new(1, 1);
+    /// <summary>
+    /// The deployed schema, captured once per test process as a backup that every test database is restored from.
+    /// <para>
+    /// A DacFx deploy costs 16-18 seconds and cannot run concurrently (sixteen xUnit collections deploying at once
+    /// put 32 sleeping DacFx sessions on the server and the deploys time out inside SqlReverseEngineer), so one
+    /// serialised deploy per test made fixture setup, not the tests, take most of a two-hour CI run. A restore of
+    /// the same schema takes about a second. Tests whose subject is deployment itself (SchemaDeployer*,
+    /// SchemaVersionResolver, PopulatedTerminologySchemaUpgrade, PostDeploymentScriptIdempotency) deploy through
+    /// their own code paths and never come through here.
+    /// </para>
+    /// <para>
+    /// The <see cref="Lazy{T}"/> default (ExecutionAndPublication) guarantees exactly one deploy; a failed deploy
+    /// stays cached, so every test reports the same root cause instead of retrying a two-minute operation.
+    /// </para>
+    /// </summary>
+    private static readonly Lazy<Task<SchemaTemplateBackup>> SchemaTemplate = new(CreateSchemaTemplateBackupAsync);
 
     private const int DatabaseLifecycleCommandTimeoutSeconds = 180;
+
+    private static async Task<SchemaTemplateBackup> CreateSchemaTemplateBackupAsync()
+    {
+        var templateName = $"IgnixaDataLayerSqlServerTestTemplate_{Guid.NewGuid():N}";
+        var cancellationToken = CancellationToken.None;
+
+        await CreateEmptyDatabaseAsync(templateName, cancellationToken);
+
+        var tenantConfigurationStore = new SingleTenantStore(BuildConnectionStringForDatabase(templateName));
+        var deployer = new SchemaDeployer(
+            tenantConfigurationStore,
+            new FakeHostEnvironment(),
+            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = true }),
+            new SchemaVersionResolver(tenantConfigurationStore, NullLogger<SchemaVersionResolver>.Instance),
+            NullLogger<SchemaDeployer>.Instance);
+        await deployer.DeployIfEmptyAsync(TestTenantId, cancellationToken);
+
+        var template = await ReadTemplateFilesAsync(templateName, cancellationToken);
+        await BackupTemplateAsync(template, cancellationToken);
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => DeleteBackupFile(template.BackupPath);
+
+        // Only the backup is needed from here on; restores never touch the source database. Not in a finally: a
+        // failed deploy leaves the template behind for diagnosis rather than risk a drop failure replacing the
+        // deploy error that every test will report.
+        await DropDatabaseAsync(templateName, cancellationToken);
+        return template;
+    }
+
+    private static async Task<SchemaTemplateBackup> ReadTemplateFilesAsync(string templateName, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(BuildConnectionStringForDatabase("master"));
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT type_desc, name, physical_name FROM sys.master_files WHERE database_id = DB_ID(@Name)";
+        command.Parameters.AddWithValue("@Name", templateName);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        var files = new List<(string Type, string LogicalName, string PhysicalName)>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            files.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+        }
+
+        // RESTORE ... WITH MOVE must relocate every file, and the restore statement below names exactly one data
+        // and one log file. A schema that adds a filegroup or file needs RestoreTemplateAsync extended to match.
+        if (files.Count != 2 || files.Count(f => f.Type == "ROWS") != 1 || files.Count(f => f.Type == "LOG") != 1)
+        {
+            throw new InvalidOperationException(
+                $"Expected the deployed template database '{templateName}' to have exactly one ROWS and one LOG file, but found: " +
+                string.Join(", ", files.Select(f => $"{f.Type} '{f.LogicalName}'")) + ".");
+        }
+
+        var data = files.Single(f => f.Type == "ROWS");
+        var log = files.Single(f => f.Type == "LOG");
+
+        // The data directory, not InstanceDefaultBackupPath: it is necessarily writable by the SQL Server service
+        // account, and deriving it from the server's own path keeps '\' vs '/' correct for Windows and the Linux
+        // container alike. The path is server-side, which is what BACKUP/RESTORE need when the server is in Docker.
+        var directory = data.PhysicalName[..(data.PhysicalName.LastIndexOfAny(['\\', '/']) + 1)];
+
+        return new SchemaTemplateBackup(
+            templateName,
+            directory + templateName + ".bak",
+            data.LogicalName,
+            data.PhysicalName,
+            log.LogicalName,
+            log.PhysicalName);
+    }
+
+    private static async Task BackupTemplateAsync(SchemaTemplateBackup template, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(BuildConnectionStringForDatabase("master"));
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandTimeout = DatabaseLifecycleCommandTimeoutSeconds;
+        command.CommandText = "BACKUP DATABASE @Name TO DISK = @Path WITH INIT, COPY_ONLY";
+        command.Parameters.AddWithValue("@Name", template.TemplateName);
+        command.Parameters.AddWithValue("@Path", template.BackupPath);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    // Serialised on the creation gate for the reason that gate exists: a restore creates a database too.
+    private static async Task RestoreTemplateAsync(SchemaTemplateBackup template, string databaseName, CancellationToken cancellationToken)
+    {
+        await DatabaseCreationGate.WaitAsync(cancellationToken);
+
+        try
+        {
+            await using var connection = new SqlConnection(BuildConnectionStringForDatabase("master"));
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandTimeout = DatabaseLifecycleCommandTimeoutSeconds;
+            command.CommandText = """
+                RESTORE DATABASE @Name FROM DISK = @BackupPath
+                WITH MOVE @DataLogicalName TO @DataPath, MOVE @LogLogicalName TO @LogPath
+                """;
+            command.Parameters.AddWithValue("@Name", databaseName);
+            command.Parameters.AddWithValue("@BackupPath", template.BackupPath);
+            command.Parameters.AddWithValue("@DataLogicalName", template.DataLogicalName);
+            command.Parameters.AddWithValue("@DataPath", template.DataPathFor(databaseName));
+            command.Parameters.AddWithValue("@LogLogicalName", template.LogLogicalName);
+            command.Parameters.AddWithValue("@LogPath", template.LogPathFor(databaseName));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            DatabaseCreationGate.Release();
+        }
+    }
+
+    // ProcessExit handlers are synchronous, hence the blocking calls. xp_delete_files is the server-side way to
+    // remove a file the test process cannot reach directly (the server may be in a container). A failure here
+    // cannot fail a test run that has already finished, so it is reported rather than thrown.
+    private static void DeleteBackupFile(string backupPath)
+    {
+        try
+        {
+            using var connection = new SqlConnection(BuildConnectionStringForDatabase("master"));
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "EXEC master.sys.xp_delete_files @Path";
+            command.Parameters.AddWithValue("@Path", backupPath);
+            command.ExecuteNonQuery();
+        }
+        catch (SqlException ex)
+        {
+            Console.Error.WriteLine($"Could not delete the integration-test schema template backup '{backupPath}': {ex.Message}");
+        }
+    }
+
+    private sealed record SchemaTemplateBackup(
+        string TemplateName,
+        string BackupPath,
+        string DataLogicalName,
+        string DataPhysicalName,
+        string LogLogicalName,
+        string LogPhysicalName)
+    {
+        // The template's file names embed its unique database name, so substituting it yields unique, collision-free
+        // files for each restored copy in the same directory.
+        public string DataPathFor(string databaseName) => DataPhysicalName.Replace(TemplateName, databaseName, StringComparison.Ordinal);
+
+        public string LogPathFor(string databaseName) => LogPhysicalName.Replace(TemplateName, databaseName, StringComparison.Ordinal);
+    }
 
     private static async Task CreateEmptyDatabaseAsync(string databaseName, CancellationToken cancellationToken)
     {

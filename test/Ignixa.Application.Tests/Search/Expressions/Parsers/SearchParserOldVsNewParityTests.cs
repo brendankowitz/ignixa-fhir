@@ -557,6 +557,30 @@ public class SearchParserOldVsNewParityTests
     }
 
     /// <summary>
+    /// The legacy parser remains frozen as the rollback oracle and therefore rejects a reference
+    /// <c>:identifier</c> modifier. The current parser resolves the derived token parameter before
+    /// value syntax parsing, so it accepts the same input as a token search. This is a deliberate
+    /// feature divergence, pinned without changing the legacy implementation.
+    /// </summary>
+    [Fact]
+    public void GivenReferenceIdentifierModifier_WhenParsing_ThenNewParserBindsDerivedTokenWhereOldParserRejects()
+    {
+        var context = new SearchParserTestContext();
+        var subject = context.Add("Observation", "subject", SearchParamType.Reference, targets: Patient);
+        var derived = context.AddIdentifierDerivative(subject);
+        var oldParser = BuildOldParser(context);
+
+        var (_, oldError) = TryParse(oldParser, Observation, "subject:identifier", "http://example.org/facilityA|1234");
+        oldError.ShouldBeOfType<SearchModifierNotSupportedException>(
+            "documenting legacy behavior: the frozen parser does not implement reference :identifier");
+
+        var (newExpression, newError) = TryParse(context.Parser, Observation, "subject:identifier", "http://example.org/facilityA|1234");
+        newError.ShouldBeNull("the current parser must bind reference :identifier to the derived token parameter");
+        var searchParameter = newExpression.ShouldBeOfType<SearchParameterExpression>();
+        searchParameter.Parameter.ShouldBeSameAs(derived);
+    }
+
+    /// <summary>
     /// Old parser let a raw FormatException escape BuildOfTypeExpression on a malformed :of-type
     /// value. New parser wraps it in BadSearchRequestException (proper 400 categorization instead
     /// of an unhandled framework exception type). Documented improvement.

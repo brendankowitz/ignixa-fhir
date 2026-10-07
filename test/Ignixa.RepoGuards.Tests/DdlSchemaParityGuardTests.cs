@@ -68,14 +68,14 @@ public class DdlSchemaParityGuardTests
     /// <c>20251118050351_AddTerminologyImportTracking.cs</c>, and
     /// <c>20251223154537_AddSourceEventsTable.cs</c>.
     /// <para>
-    /// Schema v4 (semantic vector search) adds a new table here too: <c>VectorSearchParam</c>, created
-    /// directly by the SSDT project's own schema version 4 (see <c>SchemaVersionConstants</c>), not by an
+    /// Schema v5 (semantic vector search) adds a new table here too: <c>VectorSearchParam</c>, created
+    /// directly by the SSDT project's own schema version 5 (see <c>SchemaVersionConstants</c>), not by an
     /// EF migration. It ends in "SearchParam", so <see cref="SqlCatalogTableFilter.IsCatalogTable"/> parses
     /// it into <c>decomposed</c> like every sibling *SearchParam table, and without this entry the loop
     /// below would report it as unexplained drift.
     /// </para>
     /// <para>
-    /// Schema v4 also adds <c>dbo.EmbeddingModel</c>, which deliberately has NO entry here, even though it
+    /// Schema v5 also adds <c>dbo.EmbeddingModel</c>, which deliberately has NO entry here, even though it
     /// is equally new and equally migration-free. Its name matches none of
     /// <see cref="SqlCatalogTableFilter.IsCatalogTable"/>'s patterns (no "SearchParam" suffix, not on its
     /// explicit name list), so the decomposed-DDL parse this test drives never produces an
@@ -87,7 +87,7 @@ public class DdlSchemaParityGuardTests
     /// asserting a fact that contradicts what the parser actually did), so this set must NOT list it. If
     /// <see cref="SqlCatalogTableFilter.IsCatalogTable"/> is ever widened to reach <c>EmbeddingModel</c>
     /// (e.g. to cover every table, not just search-index and hand-written-SQL ones), the subset assertion
-    /// above starts requiring an entry here and this comment is the explanation for why it is schema-v4,
+    /// above starts requiring an entry here and this comment is the explanation for why it is schema-v5,
     /// migration-free, and expected when that day comes.
     /// </para>
     /// </summary>

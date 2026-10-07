@@ -29,7 +29,7 @@ namespace Ignixa.DataLayer.SqlServer.SemanticSearch;
 /// <c>SqlServerSearchIndexCacheRegistry.Invalidate(tenantId)</c> clears this mapping along with everything
 /// else that cache holds -- which matters because, unlike system/quantity-code ids, a stale EmbeddingModelId
 /// is not merely a missed optimization: <c>dbo.VectorSearchParam.EmbeddingModelId</c> is foreign-keyed to
-/// <c>dbo.EmbeddingModel.EmbeddingModelId</c> (schema v4), so a cached id surviving a tenant database that
+/// <c>dbo.EmbeddingModel.EmbeddingModelId</c> (schema v5), so a cached id surviving a tenant database that
 /// was dropped and re-provisioned under the same TenantId would fail every subsequent vector write with a
 /// foreign-key violation instead of transparently recreating the row.
 /// </para>

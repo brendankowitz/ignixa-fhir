@@ -4,10 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using Shouldly;
+using System.Text.Json.Nodes;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Api.E2ETests._TestData.Fixtures.DataTypeSearch;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.DataTypes;
 
@@ -135,6 +137,67 @@ public class ReferenceSearchTests : CapabilityDrivenTestBase, IClassFixture<Refe
             unqualifiedResults.ShouldContain(r => r.Id == qualifiedResult.Id,
                 "Qualified and unqualified searches should return same results");
         }
+    }
+
+    [Fact]
+    public async Task GivenEncounterSubjectsWithTypedLogicalIdentifiers_WhenSearchingPatientIdentifier_ThenOnlyThePatientTypedSubjectIsFound()
+    {
+        // Arrange - two logical-only references (no 'reference' string, so resolve() cannot resolve either
+        // one) that differ only in Reference.type: one names Patient, the other Group.
+        const string system = "http://example.org/facilityA";
+        const string value = "5678";
+        var tag = Guid.NewGuid().ToString();
+        ResourceJsonNode patientTyped = CreateEncounterWithSubjectIdentifier(tag, reference: null, system, value, type: "Patient");
+        ResourceJsonNode groupTyped = CreateEncounterWithSubjectIdentifier(tag, reference: null, system, value, type: "Group");
+        await Harness.CreateResourcesAsync([patientTyped, groupTyped]);
+
+        // Act - "patient" (clinical-patient) is type-filtered to Patient on Encounter
+        // (Encounter.subject.where(resolve() is Patient)); its ':identifier' derivative now also honors
+        // Reference.type, so the logical reference typed 'Patient' matches without resolve() succeeding.
+        ResourceJsonNode[] results = await Harness.SearchAsync(
+            "Encounter",
+            $"_tag={tag}&patient:identifier={Uri.EscapeDataString($"{system}|{value}")}");
+
+        // Assert - only the Patient-typed logical reference matches; the Group-typed one, which does not
+        // satisfy 'resolve() is Patient' nor the type-honoring rewrite, is excluded.
+        results.Select(result => result.Id).ShouldBe([patientTyped.Id], ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task GivenEncounterSubjectsWithReferenceAndLogicalIdentifiers_WhenSearchingSubjectIdentifier_ThenReturnsBoth()
+    {
+        // Arrange
+        const string system = "http://example.org/facilityA";
+        const string value = "1234";
+        var tag = Guid.NewGuid().ToString();
+        ResourceJsonNode referencedSubject = CreateEncounterWithSubjectIdentifier(
+            tag,
+            "Patient/does-not-exist",
+            system,
+            value);
+        ResourceJsonNode logicalSubject = CreateEncounterWithSubjectIdentifier(
+            tag,
+            reference: null,
+            system,
+            value);
+        ResourceJsonNode[] encounters = await Harness.CreateResourcesAsync([referencedSubject, logicalSubject]);
+
+        // Act - "subject" (Encounter-subject, expression "Encounter.subject") is used rather than the
+        // "patient" compartment parameter (clinical-patient, expression
+        // "Encounter.subject.where(resolve() is Patient)"): that expression's resolve()-based type
+        // narrowing is a pre-existing, unrelated characteristic of the shipped multi-resource "patient"
+        // parameter, and it cannot pass for a logical-only reference regardless of ':identifier' - there
+        // is no literal reference string for resolve() to type-check. ':identifier' never resolves
+        // anything itself, but it inherits whatever resolve() gate the source parameter's own expression
+        // already has.
+        ResourceJsonNode[] results = await Harness.SearchAsync(
+            "Encounter",
+            $"_tag={tag}&subject:identifier={Uri.EscapeDataString($"{system}|{value}")}");
+
+        // Assert
+        results.Select(result => result.Id).ShouldBe(
+            encounters.Select(encounter => encounter.Id),
+            ignoreOrder: true);
     }
 
     /// <summary>
@@ -312,5 +375,50 @@ public class ReferenceSearchTests : CapabilityDrivenTestBase, IClassFixture<Refe
         results.ShouldContain(r => r.Id == _fixture.Observations[1].Id, "Observation[1] references Patient[1]");
         results.ShouldContain(r => r.Id == _fixture.Observations[3].Id, "Observation[3] references Patient[0]");
         results.ShouldContain(r => r.Id == _fixture.Observations[4].Id, "Observation[4] references Patient[1]");
+    }
+
+    private static ResourceJsonNode CreateEncounterWithSubjectIdentifier(
+        string tag,
+        string? reference,
+        string system,
+        string value,
+        string? type = null)
+    {
+        var subject = new JsonObject
+        {
+            ["identifier"] = new JsonObject
+            {
+                ["system"] = system,
+                ["value"] = value,
+            },
+        };
+        if (reference is not null)
+        {
+            subject["reference"] = reference;
+        }
+
+        if (type is not null)
+        {
+            subject["type"] = type;
+        }
+
+        var encounter = new ResourceJsonNode { ResourceType = "Encounter", Id = Guid.NewGuid().ToString("N") };
+        encounter.MutableNode["meta"] = new JsonObject
+        {
+            ["tag"] = new JsonArray(
+                new JsonObject
+                {
+                    ["system"] = "http://ignixa.test/tags",
+                    ["code"] = tag,
+                }),
+        };
+        encounter.MutableNode["status"] = "finished";
+        encounter.MutableNode["class"] = new JsonObject
+        {
+            ["system"] = "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+            ["code"] = "AMB",
+        };
+        encounter.MutableNode["subject"] = subject;
+        return encounter;
     }
 }

@@ -28,7 +28,7 @@ Proposed: [ADR-2610: Semantic Vector Search Parameters](adr-2610-semantic-vector
 ## Status
 
 Slice 1 (contract + synchronous SQL Server search) is implemented: the `vector-search-config`
-SearchParameter extension, write-path chunking/embedding before `MergeResources`, schema version 4
+SearchParameter extension, write-path chunking/embedding before `MergeResources`, schema version 5
 (`dbo.VectorSearchParam` / `dbo.EmbeddingModel`), the SQL compiler's gating CTE and distance ranking, and
 `Bundle.entry.search.score`. See `docs/site/docs/server/features/semantic-search.md` for user-facing
 configuration and behavior, and the [Not yet supported](../../site/docs/server/features/semantic-search.md#not-yet-supported)

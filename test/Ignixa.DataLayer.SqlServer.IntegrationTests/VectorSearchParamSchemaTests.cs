@@ -12,7 +12,7 @@ using Xunit;
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
 /// <summary>
-/// Schema version 4: <c>dbo.VectorSearchParam</c>, <c>dbo.EmbeddingModel</c>, their table-valued-parameter
+/// Schema version 5: <c>dbo.VectorSearchParam</c>, <c>dbo.EmbeddingModel</c>, their table-valued-parameter
 /// types, and <c>dbo.MergeVectorSearchParams</c> / <c>dbo.GetOrCreateEmbeddingModel</c>. Exercises the DDL
 /// and stored procedures directly against a freshly deployed tenant database.
 /// <para>
@@ -372,7 +372,7 @@ public class VectorSearchParamSchemaTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Pins FK_VectorSearchParam_EmbeddingModel (schema v4): a bare INSERT naming an EmbeddingModelId with
+    /// Pins FK_VectorSearchParam_EmbeddingModel (schema v5): a bare INSERT naming an EmbeddingModelId with
     /// no corresponding dbo.EmbeddingModel row must fail loudly rather than orphan the row. This is exactly
     /// the failure mode a stale, process-lifetime id cache would otherwise hide -- see
     /// SqlServerEmbeddingModelRegistry's remarks on why its cache lives on the tenant-scoped reference data
@@ -434,7 +434,7 @@ public class VectorSearchParamSchemaTests : IAsyncLifetime
     /// as much as DeleteHistory's sweep is supposed to -- see
     /// GivenVectorsOnHistoryVersions_WhenDeleteHistory_ThenRowsRemoved for the scenario this avoids.
     /// EmbeddingModelId must still reference a real dbo.EmbeddingModel row -- FK_VectorSearchParam_EmbeddingModel
-    /// (schema v4) rejects a bare literal the same as production code would.
+    /// (schema v5) rejects a bare literal the same as production code would.
     /// </summary>
     private async Task InsertVectorRowRawAsync(short resourceTypeId, long surrogateId)
     {
