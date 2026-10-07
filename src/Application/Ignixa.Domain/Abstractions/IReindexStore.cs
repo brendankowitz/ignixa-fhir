@@ -16,10 +16,12 @@ public interface IReindexStore
 
     Task<long> GetVisibleWatermarkAsync(CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<(long Start, long End)>> GetSurrogateIdRangesAsync(
+    Task<(IReadOnlyList<(long Start, long End)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
         string resourceType,
+        long startAfterSurrogateId,
         long upperBoundSurrogateId,
         int targetRangeSize,
+        int maxRanges,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ReindexResource>> ReadRangeAsync(

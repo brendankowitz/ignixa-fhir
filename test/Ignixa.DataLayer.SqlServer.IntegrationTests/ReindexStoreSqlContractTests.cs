@@ -1,11 +1,17 @@
 using Ignixa.Abstractions;
+using Ignixa.DataLayer.SqlServer;
+using Ignixa.DataLayer.SqlServer.Compression;
+using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.IO;
 using Shouldly;
 using Xunit;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
@@ -85,7 +91,8 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             new ResourceRequest("DELETE", "Patient/deleted"));
 
         var (_, cutoff) = await _store.RaiseBarrierAsync(50, CancellationToken.None);
-        var ranges = await _store.GetSurrogateIdRangesAsync("Patient", cutoff, 1, CancellationToken.None);
+        var (ranges, _) = await _store.GetSurrogateIdRangesAsync(
+            "Patient", -1, cutoff, 1, 10, CancellationToken.None);
         var resources = new List<ReindexResource>();
 
         foreach (var (start, end) in ranges)
@@ -124,7 +131,8 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             $"UPDATE dbo.Resource SET ResourceSurrogateId = {lastId + 2_000} WHERE ResourceId = 'sparse-last' AND IsHistory = 0");
         var upperBound = lastId + 2_050;
 
-        var ranges = await _store.GetSurrogateIdRangesAsync("Patient", upperBound, 1, CancellationToken.None);
+        var (ranges, _) = await _store.GetSurrogateIdRangesAsync(
+            "Patient", -1, upperBound, 1, 10, CancellationToken.None);
 
         ranges.Count.ShouldBe(3);
         ranges[0].Start.ShouldBe(firstId);
@@ -133,6 +141,37 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         {
             ranges[index].Start.ShouldBe(ranges[index - 1].End + 1);
         }
+    }
+
+    [Fact]
+    public async Task GivenNoCurrentResources_WhenRangesArePlanned_ThenThePageIsEmptyAndHasNoContinuation()
+    {
+        var page = await _store.GetSurrogateIdRangesAsync(
+            "Patient", -1, long.MaxValue, 100, 10, CancellationToken.None);
+
+        page.Ranges.ShouldBeEmpty();
+        page.NextStartAfter.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenMoreRangesThanFitInOnePage_WhenRangesArePlanned_ThenPagesRemainContiguous()
+    {
+        await _database.Repository.CreateOrUpdateAsync(Patient("paged-first"));
+        await _database.Repository.CreateOrUpdateAsync(Patient("paged-second"));
+        await _database.Repository.CreateOrUpdateAsync(Patient("paged-third"));
+        var upperBound = await GetCurrentResourceSurrogateIdAsync("paged-third");
+
+        var firstPage = await _store.GetSurrogateIdRangesAsync(
+            "Patient", -1, upperBound, 1, 2, CancellationToken.None);
+        var secondPage = await _store.GetSurrogateIdRangesAsync(
+            "Patient", firstPage.NextStartAfter!.Value, upperBound, 1, 2, CancellationToken.None);
+
+        firstPage.Ranges.Count.ShouldBe(2);
+        firstPage.NextStartAfter.ShouldBe(firstPage.Ranges[^1].End);
+        secondPage.Ranges.ShouldHaveSingleItem();
+        secondPage.Ranges[0].Start.ShouldBe(firstPage.Ranges[^1].End + 1);
+        secondPage.Ranges[^1].End.ShouldBe(upperBound);
+        secondPage.NextStartAfter.ShouldBeNull();
     }
 
     [Fact]
@@ -160,7 +199,8 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         resourceSurrogateId.ShouldBeGreaterThan(cutoffTransactionId);
         cutoffSurrogateId.ShouldBeGreaterThanOrEqualTo(resourceSurrogateId);
 
-        var ranges = await _store.GetSurrogateIdRangesAsync("Patient", cutoffSurrogateId, 1000, CancellationToken.None);
+        var (ranges, _) = await _store.GetSurrogateIdRangesAsync(
+            "Patient", -1, cutoffSurrogateId, 1000, 10, CancellationToken.None);
         var range = ranges.Single();
         var resources = await _store.ReadRangeAsync(
             "Patient", range.Start, range.End, 1000, afterSurrogateId: null, CancellationToken.None);
@@ -237,14 +277,18 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
 
                 try
                 {
-                    return await _database.MergeRepository.BeginTransactionAsync(
+                    return (
+                        Allocation: ((long TransactionId, int SequenceStart)?)await _database.MergeRepository.BeginTransactionAsync(
                         resourceCount: 1,
                         definitionsEventId: iteration - 1,
-                        CancellationToken.None);
+                        CancellationToken.None),
+                        RejectedTransactionId: (long?)null);
                 }
-                catch (Ignixa.Domain.Exceptions.StaleConformanceDefinitionsException)
+                catch (StaleConformanceDefinitionsException exception)
                 {
-                    return ((long TransactionId, int SequenceStart)?)null;
+                    return (
+                        Allocation: ((long TransactionId, int SequenceStart)?)null,
+                        RejectedTransactionId: exception.TransactionId);
                 }
             });
             var raiseTask = Task.Run(async () =>
@@ -262,19 +306,56 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             var allocation = await allocationTask;
             var cutoff = await raiseTask;
 
-            if (allocation.HasValue)
+            if (allocation.Allocation.HasValue)
             {
-                allocation.Value.TransactionId.ShouldBeLessThanOrEqualTo(cutoff.TransactionId);
+                allocation.Allocation.Value.TransactionId.ShouldBeLessThanOrEqualTo(cutoff.TransactionId);
                 await _database.MergeRepository.CommitTransactionAsync(
-                    allocation.Value.TransactionId,
+                    allocation.Allocation.Value.TransactionId,
                     failureReason: "Reindex barrier race test cleanup.",
                     CancellationToken.None);
             }
             else
             {
-                (await _store.GetVisibleWatermarkAsync(CancellationToken.None))
-                    .ShouldBeGreaterThanOrEqualTo(cutoff.TransactionId);
+                var transaction = allocation.RejectedTransactionId!.Value;
+                (await _database.ExecuteScalarAsync<int>(
+                    $"SELECT COUNT(*) FROM dbo.Transactions WHERE SurrogateIdRangeFirstValue = {transaction} AND IsCompleted = 1 AND IsSuccess = 0"))
+                    .ShouldBe(1);
+                await WaitForVisibleWatermarkAsync(transaction);
             }
+        }
+    }
+
+    [Fact]
+    public async Task GivenAResourceSupersededAfterClaimsAndIndexesAreRead_WhenTheReindexProcedureRuns_ThenNoStaleRowsAreRecreated()
+    {
+        await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
+        var indexed = Patient("conflicted-input") with
+        {
+            SearchIndices = SearchIndexTableSeeder.BuildSearchIndicesCoveringEverySearchIndexTable("conflicted-input"),
+        };
+        await _database.Repository.CreateOrUpdateAsync(indexed);
+
+        var (_, cutoff) = await _store.RaiseBarrierAsync(65, CancellationToken.None);
+        var read = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None))
+            .Single(resource => resource.Resource.ResourceId == indexed.ResourceId);
+        var stale = read with { Resource = read.Resource with { SearchIndices = indexed.SearchIndices } };
+        await SearchIndexTableSeeder.InsertResourceWriteClaimAsync(
+            _database, stale.ResourceSurrogateId, CancellationToken.None);
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(
+            _database, stale.ResourceSurrogateId, CancellationToken.None);
+
+        var (gate, store, cache) = await CreateGatedReindexStoreAsync();
+        using (cache)
+        {
+            var update = store.UpdateSearchIndicesAsync([stale], CancellationToken.None);
+            await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await _database.Repository.CreateOrUpdateAsync(
+                Patient(indexed.ResourceId) with { VersionId = "2", DefinitionsEventId = 65 });
+            gate.Release.SetResult();
+
+            (await update).ShouldBe((0, 1));
+            await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(
+                _database, stale.ResourceSurrogateId, CancellationToken.None);
         }
     }
 
@@ -429,6 +510,84 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         (await _database.ExecuteScalarAsync<int>(
             "SELECT CAST(is_read_committed_snapshot_on AS int) FROM sys.databases WHERE database_id = DB_ID()"))
             .ShouldBe(enabled ? 1 : 0);
+    }
+
+    private async Task WaitForVisibleWatermarkAsync(long transactionId)
+    {
+        var timeout = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < timeout)
+        {
+            if (await _store.GetVisibleWatermarkAsync(CancellationToken.None) >= transactionId)
+            {
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        throw new TimeoutException($"Visible watermark did not advance past failed transaction {transactionId}.");
+    }
+
+    private async Task<(UpdateResourceSearchParamsGate Gate, IReindexStore Store, SqlServerSearchIndexReferenceDataCache Cache)> CreateGatedReindexStoreAsync()
+    {
+        var gate = new UpdateResourceSearchParamsGate(_database.SqlExecutionService);
+        var cache = new SqlServerSearchIndexReferenceDataCache(
+            gate, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
+        await cache.PreloadResourceTypesAsync(CancellationToken.None);
+        var compressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
+        var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
+            gate, _database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
+        return (gate, new SqlServerReindexStore(
+            gate,
+            _database.TenantId,
+            compressor,
+            cache,
+            extensionUpdater,
+            NullLogger.Instance), cache);
+    }
+
+    private sealed class UpdateResourceSearchParamsGate(ISqlExecutionService inner) : ISqlExecutionService
+    {
+        private readonly ISqlExecutionService _inner = inner;
+
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<int> ExecuteNonQueryAsync(
+            int tenantId,
+            SqlCommand command,
+            CancellationToken cancellationToken,
+            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
+        {
+            if (command.CommandText.Contains("EXEC dbo.UpdateResourceSearchParams", StringComparison.Ordinal))
+            {
+                Entered.TrySetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+            }
+
+            return await _inner.ExecuteNonQueryAsync(tenantId, command, cancellationToken, idempotency);
+        }
+
+        public Task<IReadOnlyList<T>> ExecuteReaderAsync<T>(
+            int tenantId,
+            SqlCommand command,
+            Func<SqlDataReader, T> readRow,
+            CancellationToken cancellationToken,
+            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent) =>
+            _inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken, idempotency);
+
+        public Task<T> ExecuteInTransactionAsync<T>(
+            int tenantId,
+            Func<ISqlTransactionContext, CancellationToken, Task<T>> work,
+            CancellationToken cancellationToken) =>
+            _inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
+
+        public Task ExecuteInTransactionAsync(
+            int tenantId,
+            Func<ISqlTransactionContext, CancellationToken, Task> work,
+            CancellationToken cancellationToken) =>
+            _inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
     }
 
     private static ResourceWrapper Patient(string id) => new(

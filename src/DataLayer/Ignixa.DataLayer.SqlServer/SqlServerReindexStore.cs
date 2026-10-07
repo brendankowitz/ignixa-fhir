@@ -128,54 +128,37 @@ public sealed class SqlServerReindexStore(
         return values.Single();
     }
 
-    public async Task<IReadOnlyList<(long Start, long End)>> GetSurrogateIdRangesAsync(
+    public async Task<(IReadOnlyList<(long Start, long End)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
         string resourceType,
+        long startAfterSurrogateId,
         long upperBoundSurrogateId,
         int targetRangeSize,
+        int maxRanges,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(resourceType);
+        ArgumentOutOfRangeException.ThrowIfLessThan(startAfterSurrogateId, -1);
         ArgumentOutOfRangeException.ThrowIfNegative(targetRangeSize);
         ArgumentOutOfRangeException.ThrowIfZero(targetRangeSize);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRanges);
+        ArgumentOutOfRangeException.ThrowIfZero(maxRanges);
 
         var resourceTypeId = await GetResourceTypeIdAsync(resourceType, cancellationToken);
-        if (!resourceTypeId.HasValue)
+        if (!resourceTypeId.HasValue || startAfterSurrogateId >= upperBoundSurrogateId)
         {
-            return [];
-        }
-
-        using var firstIdCommand = new SqlCommand(
-            """
-            SELECT MIN(ResourceSurrogateId)
-            FROM dbo.Resource
-            WHERE ResourceTypeId = @ResourceTypeId
-              AND IsHistory = 0
-              AND IsDeleted = 0
-              AND ResourceSurrogateId <= @UpperBoundSurrogateId;
-            """);
-        firstIdCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
-        firstIdCommand.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
-        var firstIds = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId,
-            firstIdCommand,
-            static reader => reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0),
-            cancellationToken);
-        if (firstIds.Single() is not { } firstId)
-        {
-            return [];
+            return ([], null);
         }
 
         // Each seek reads at most targetRangeSize rows from the clustered resource key. The resulting
-        // ranges deliberately cover ID gaps, so they partition [firstId, upperBoundSurrogateId] without
-        // a ROW_NUMBER window over the whole cutoff set.
+        // ranges deliberately cover ID gaps. Pages continue from the preceding range end, so the
+        // caller can discard each page without losing the contiguous cutoff partition.
         var ranges = new List<(long Start, long End)>();
-        var cursor = long.MinValue;
-        var rangeStart = firstId;
+        var cursor = startAfterSurrogateId;
         while (true)
         {
             using var nextRangeCommand = new SqlCommand(
                 """
-                SELECT MAX(ResourceSurrogateId), COUNT_BIG(*)
+                SELECT MIN(ResourceSurrogateId), MAX(ResourceSurrogateId), COUNT_BIG(*)
                 FROM (
                     SELECT TOP (@TargetRangeSize) ResourceSurrogateId
                     FROM dbo.Resource
@@ -195,24 +178,36 @@ public sealed class SqlServerReindexStore(
                 _tenantId,
                 nextRangeCommand,
                 static reader => (
-                    End: reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0),
-                    Count: reader.GetInt64(1)),
+                    Start: reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0),
+                    End: reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1),
+                    Count: reader.GetInt64(2)),
                 cancellationToken);
-            var (end, count) = rangeEnds.Single();
+            var (first, end, count) = rangeEnds.Single();
             if (!end.HasValue)
             {
-                ranges[^1] = (ranges[^1].Start, upperBoundSurrogateId);
-                return ranges;
+                if (ranges.Count > 0)
+                {
+                    ranges[^1] = (ranges[^1].Start, upperBoundSurrogateId);
+                }
+
+                return (ranges, null);
             }
 
+            var rangeStart = cursor == startAfterSurrogateId && startAfterSurrogateId == -1
+                ? first!.Value
+                : checked(cursor + 1);
             if (count < targetRangeSize || end.Value == upperBoundSurrogateId)
             {
                 ranges.Add((rangeStart, upperBoundSurrogateId));
-                return ranges;
+                return (ranges, null);
             }
 
             ranges.Add((rangeStart, end.Value));
-            rangeStart = end.Value + 1;
+            if (ranges.Count == maxRanges)
+            {
+                return (ranges, end.Value);
+            }
+
             cursor = end.Value;
         }
     }

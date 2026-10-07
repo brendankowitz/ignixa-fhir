@@ -9,7 +9,7 @@ namespace Ignixa.DataLayer.SqlServer;
 public static class SchemaVersionConstants
 {
     /// <summary>The schema version this build's dacpac represents.</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     /// <summary>
     /// The oldest tenant schema version this build still tolerates reading an
@@ -38,4 +38,6 @@ public static class SchemaVersionConstants
     // columns in PackageResource, TermValueSet and TermConceptMap, and TermCodeSystem.Version, use CS_AS
     // identity comparisons and indexes. Existing procedure callers may omit the new optional ContentHash
     // parameter. No core resource tables or TVPs change.
+    // Version 4 (expand, unreleased) -- UpdateResourceSearchParams ignores all stale resource write
+    // claim and typed-index inserts after its current-resource update rejects a superseded surrogate.
 }

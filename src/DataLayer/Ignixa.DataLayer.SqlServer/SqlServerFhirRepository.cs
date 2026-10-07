@@ -66,15 +66,19 @@ public class SqlServerFhirRepository(
         _reindexStore.GetVisibleWatermarkAsync(cancellationToken);
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<(long Start, long End)>> GetSurrogateIdRangesAsync(
+    public Task<(IReadOnlyList<(long Start, long End)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
         string resourceType,
+        long startAfterSurrogateId,
         long upperBoundSurrogateId,
         int targetRangeSize,
+        int maxRanges,
         CancellationToken cancellationToken) =>
         _reindexStore.GetSurrogateIdRangesAsync(
             resourceType,
+            startAfterSurrogateId,
             upperBoundSurrogateId,
             targetRangeSize,
+            maxRanges,
             cancellationToken);
 
     /// <inheritdoc/>

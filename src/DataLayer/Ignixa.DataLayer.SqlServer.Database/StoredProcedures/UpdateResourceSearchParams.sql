@@ -1207,148 +1207,207 @@ BEGIN TRY
                                       AND A.HighValue3 IS NULL)
                               AND B.HasRange = A.HasRange);
     INSERT INTO dbo.ResourceWriteClaim (ResourceSurrogateId, ClaimTypeId, ClaimValue)
-    SELECT ResourceSurrogateId,
-           ClaimTypeId,
-           ClaimValue
-    FROM   @ResourceWriteClaimsInsert;
+    SELECT A.ResourceSurrogateId,
+           A.ClaimTypeId,
+           A.ClaimValue
+    FROM   @ResourceWriteClaimsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.ReferenceSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, BaseUri, ReferenceResourceTypeId, ReferenceResourceId, ReferenceResourceVersion)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           BaseUri,
-           ReferenceResourceTypeId,
-           ReferenceResourceId,
-           ReferenceResourceVersion
-    FROM   @ReferenceSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.BaseUri,
+           A.ReferenceResourceTypeId,
+           A.ReferenceResourceId,
+           A.ReferenceResourceVersion
+    FROM   @ReferenceSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.TokenSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, Code, CodeOverflow)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           SystemId,
-           Code,
-           CodeOverflow
-    FROM   @TokenSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.SystemId,
+           A.Code,
+           A.CodeOverflow
+    FROM   @TokenSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.TokenStringCompositeSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1, CodeOverflow1, Text2, TextOverflow2)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           SystemId1,
-           Code1,
-           CodeOverflow1,
-           Text2,
-           TextOverflow2
-    FROM   @TokenStringCompositeSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.SystemId1,
+           A.Code1,
+           A.CodeOverflow1,
+           A.Text2,
+           A.TextOverflow2
+    FROM   @TokenStringCompositeSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.TokenText (ResourceTypeId, ResourceSurrogateId, SearchParamId, Text)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           Text
-    FROM   @TokenTextsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.Text
+    FROM   @TokenTextsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.StringSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, Text, TextOverflow, IsMin, IsMax)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           Text,
-           TextOverflow,
-           IsMin,
-           IsMax
-    FROM   @StringSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.Text,
+           A.TextOverflow,
+           A.IsMin,
+           A.IsMax
+    FROM   @StringSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.UriSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, Uri)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           Uri
-    FROM   @UriSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.Uri
+    FROM   @UriSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.NumberSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SingleValue, LowValue, HighValue)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           SingleValue,
-           LowValue,
-           HighValue
-    FROM   @NumberSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.SingleValue,
+           A.LowValue,
+           A.HighValue
+    FROM   @NumberSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.QuantitySearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId, QuantityCodeId, SingleValue, LowValue, HighValue)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           SystemId,
-           QuantityCodeId,
-           SingleValue,
-           LowValue,
-           HighValue
-    FROM   @QuantitySearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.SystemId,
+           A.QuantityCodeId,
+           A.SingleValue,
+           A.LowValue,
+           A.HighValue
+    FROM   @QuantitySearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.DateTimeSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, StartDateTime, EndDateTime, IsLongerThanADay, IsMin, IsMax)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           StartDateTime,
-           EndDateTime,
-           IsLongerThanADay,
-           IsMin,
-           IsMax
-    FROM   @DateTimeSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.StartDateTime,
+           A.EndDateTime,
+           A.IsLongerThanADay,
+           A.IsMin,
+           A.IsMax
+    FROM   @DateTimeSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.ReferenceTokenCompositeSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, BaseUri1, ReferenceResourceTypeId1, ReferenceResourceId1, ReferenceResourceVersion1, SystemId2, Code2, CodeOverflow2)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           BaseUri1,
-           ReferenceResourceTypeId1,
-           ReferenceResourceId1,
-           ReferenceResourceVersion1,
-           SystemId2,
-           Code2,
-           CodeOverflow2
-    FROM   @ReferenceTokenCompositeSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.BaseUri1,
+           A.ReferenceResourceTypeId1,
+           A.ReferenceResourceId1,
+           A.ReferenceResourceVersion1,
+           A.SystemId2,
+           A.Code2,
+           A.CodeOverflow2
+    FROM   @ReferenceTokenCompositeSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.TokenTokenCompositeSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1, CodeOverflow1, SystemId2, Code2, CodeOverflow2)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           SystemId1,
-           Code1,
-           CodeOverflow1,
-           SystemId2,
-           Code2,
-           CodeOverflow2
-    FROM   @TokenTokenCompositeSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.SystemId1,
+           A.Code1,
+           A.CodeOverflow1,
+           A.SystemId2,
+           A.Code2,
+           A.CodeOverflow2
+    FROM   @TokenTokenCompositeSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.TokenDateTimeCompositeSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1, CodeOverflow1, StartDateTime2, EndDateTime2, IsLongerThanADay2)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           SystemId1,
-           Code1,
-           CodeOverflow1,
-           StartDateTime2,
-           EndDateTime2,
-           IsLongerThanADay2
-    FROM   @TokenDateTimeCompositeSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.SystemId1,
+           A.Code1,
+           A.CodeOverflow1,
+           A.StartDateTime2,
+           A.EndDateTime2,
+           A.IsLongerThanADay2
+    FROM   @TokenDateTimeCompositeSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.TokenQuantityCompositeSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1, CodeOverflow1, SingleValue2, SystemId2, QuantityCodeId2, LowValue2, HighValue2)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           SystemId1,
-           Code1,
-           CodeOverflow1,
-           SingleValue2,
-           SystemId2,
-           QuantityCodeId2,
-           LowValue2,
-           HighValue2
-    FROM   @TokenQuantityCompositeSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.SystemId1,
+           A.Code1,
+           A.CodeOverflow1,
+           A.SingleValue2,
+           A.SystemId2,
+           A.QuantityCodeId2,
+           A.LowValue2,
+           A.HighValue2
+    FROM   @TokenQuantityCompositeSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     INSERT INTO dbo.TokenNumberNumberCompositeSearchParam (ResourceTypeId, ResourceSurrogateId, SearchParamId, SystemId1, Code1, CodeOverflow1, SingleValue2, LowValue2, HighValue2, SingleValue3, LowValue3, HighValue3, HasRange)
-    SELECT ResourceTypeId,
-           ResourceSurrogateId,
-           SearchParamId,
-           SystemId1,
-           Code1,
-           CodeOverflow1,
-           SingleValue2,
-           LowValue2,
-           HighValue2,
-           SingleValue3,
-           LowValue3,
-           HighValue3,
-           HasRange
-    FROM   @TokenNumberNumberCompositeSearchParamsInsert;
+    SELECT A.ResourceTypeId,
+           A.ResourceSurrogateId,
+           A.SearchParamId,
+           A.SystemId1,
+           A.Code1,
+           A.CodeOverflow1,
+           A.SingleValue2,
+           A.LowValue2,
+           A.HighValue2,
+           A.SingleValue3,
+           A.LowValue3,
+           A.HighValue3,
+           A.HasRange
+    FROM   @TokenNumberNumberCompositeSearchParamsInsert AS A
+           INNER JOIN
+           @Ids AS B
+           ON B.ResourceTypeId = A.ResourceTypeId
+              AND B.ResourceSurrogateId = A.ResourceSurrogateId;
     COMMIT TRANSACTION;
     SET @FailedResources = (SELECT count(*)
                             FROM   @Resources) - @Rows;
