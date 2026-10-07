@@ -274,6 +274,7 @@ public sealed class TtlCleanupLifecycleTests : IAsyncLifetime, IDisposable
         public void LogHttpRequest(HttpRequestAuditEvent auditEvent) { }
         public void LogTtlDeletion(int tenantId, string resourceType, string resourceId, DateTimeOffset expiresAt, bool success) =>
             Deletions.Add(success);
+        public void LogBackgroundJobCompleted(BackgroundJobAuditEvent auditEvent) { }
     }
 
     private sealed class CleanupSqlInterceptor(ISqlExecutionService inner) : ISqlExecutionService

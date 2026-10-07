@@ -273,6 +273,12 @@ Bundle responses place `link` elements after `entry` because streaming serializa
 - **urn:uuid in batch**: References between batch entries are not resolved
 - **Parallel conflicts**: Conditional creates in parallel may race
 
+## Auditing
+
+Each bundle entry is audited as its own interaction, in addition to the bundle request.
+[Custom audit headers](/docs/server/security/authorization#custom-audit-headers)
+(`X-IGNIXA-AUDIT-*`, or the AHDS-compatible `X-MS-AZUREFHIR-AUDIT-*`) sent on the bundle request are recorded on every entry's audit record.
+
 ## Related Documentation
 
 - [ADR: Bundle Processing](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2509-bundle-processing.md)

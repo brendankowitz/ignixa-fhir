@@ -81,6 +81,10 @@ public static class BackgroundServicesRegistration
             .As<IRequestHandler<GetJobStatusQuery, GetJobStatusResult>>()
             .InstancePerDependency();
 
+        builder.RegisterType<BackgroundJobCompletionAuditor>()
+            .AsSelf()
+            .SingleInstance();
+
         return builder;
     }
 

@@ -47,7 +47,7 @@ public class BulkJobStatusMcpContractTests
             },
             Result = JsonNode.Parse("""{"TotalResources":1,"TotalErrors":0,"ErrorFileUrl":null}""")
         }, CancellationToken.None);
-        var handler = new GetJobStatusHandler(new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()), imports, exports);
+        var handler = new GetJobStatusHandler(new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()), imports, exports, new BackgroundJobCompletionAuditor(Substitute.For<IAuditLogger>(), NullLogger<BackgroundJobCompletionAuditor>.Instance));
         var mediator = Substitute.For<IMediator>();
         mediator.SendAsync(Arg.Any<GetJobStatusQuery>(), Arg.Any<CancellationToken>())
             .Returns(call => handler.HandleAsync(call.Arg<GetJobStatusQuery>(), call.Arg<CancellationToken>()));

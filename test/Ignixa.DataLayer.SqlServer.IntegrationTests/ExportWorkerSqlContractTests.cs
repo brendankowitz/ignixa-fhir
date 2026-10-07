@@ -181,6 +181,8 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
         builder.Services.AddSingleton<IFhirVersionContext>(_versions);
         builder.Services.AddSingleton<IFhirRequestContextAccessor>(_contextAccessor);
         builder.Services.AddSingleton(_baseUriResolver);
+        // MapExportEndpoints applies FhirAuditFilter; production registers IAuditLogger in RegisterDataLayerServices.
+        builder.Services.AddSingleton<IAuditLogger>(new AuditLogger(NullLogger<AuditLogger>.Instance));
         await using var app = builder.Build();
         app.UseRouting();
         app.UseFhirExceptionHandler();
