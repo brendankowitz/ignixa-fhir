@@ -109,6 +109,34 @@ public sealed class ConformanceState : IDisposable
             candidate.SearchParamId == parameter.SearchParamId &&
             candidate.Status == SearchParameterStatus.Staged);
 
+    public IReadOnlyList<SearchParameterTransitionCandidate> GetTransitionCandidates(long hideEventId) =>
+        _searchParameterActivations
+            .Where(parameter =>
+                parameter.Status == SearchParameterStatus.Staged &&
+                parameter.ActivationEventId == hideEventId ||
+                parameter.Status == SearchParameterStatus.Disabling &&
+                parameter.DeactivationEventId == hideEventId)
+            .GroupBy(parameter => parameter.SearchParamId)
+            .Select(group => new SearchParameterTransitionCandidate(
+                group.Key,
+                group.Where(parameter => parameter.Status == SearchParameterStatus.Staged)
+                    .Select(parameter => parameter.ActivationEventId)
+                    .Distinct()
+                    .ToArray(),
+                group.Where(parameter => parameter.Status == SearchParameterStatus.Disabling)
+                    .Select(parameter => parameter.DeactivationEventId!.Value)
+                    .Distinct()
+                    .ToArray()))
+            .ToArray();
+
+    public IReadOnlyList<long> GetTransitionHideEventIds() =>
+        _searchParameterActivations
+            .Where(parameter => parameter.Status is SearchParameterStatus.Staged or SearchParameterStatus.Disabling)
+            .SelectMany(parameter => new[] { parameter.ActivationEventId, parameter.DeactivationEventId })
+            .OfType<long>()
+            .Distinct()
+            .ToArray();
+
     public bool TryGetSearchParameterStorageCanonical(string canonical, out string storageCanonical) =>
         _storageCanonicals.TryGetValue(canonical, out storageCanonical!);
 

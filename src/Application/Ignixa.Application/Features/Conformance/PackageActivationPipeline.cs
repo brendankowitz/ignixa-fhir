@@ -26,6 +26,8 @@ public class PackageActivationPipeline(
     ConformanceState state,
     IFhirVersionContext fhirVersionContext,
     IOptions<SearchParameterResolutionOptions> options,
+    ISearchParameterTransitionScheduler transitionScheduler,
+    IOptions<ConformanceTransitionOptions> transitionOptions,
     ILogger<PackageActivationPipeline> logger)
 {
     private readonly IPackageResourceRepository _packageRepo = packageRepo ?? throw new ArgumentNullException(nameof(packageRepo));
@@ -33,6 +35,8 @@ public class PackageActivationPipeline(
     private readonly ConformanceState _state = state ?? throw new ArgumentNullException(nameof(state));
     private readonly IFhirVersionContext _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
     private readonly SearchParameterResolutionOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+    private readonly ISearchParameterTransitionScheduler _transitionScheduler = transitionScheduler ?? throw new ArgumentNullException(nameof(transitionScheduler));
+    private readonly ConformanceTransitionOptions _transitionOptions = transitionOptions?.Value ?? throw new ArgumentNullException(nameof(transitionOptions));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <summary>
@@ -111,7 +115,19 @@ public class PackageActivationPipeline(
         // 6. Invalidate search parameter caches so new parameters are visible
         _fhirVersionContext.InvalidateSearchParameterCaches();
 
-        // 7. Detect reindex requirements
+        // 7. Schedule phase two only after the phase-one event is durable.
+        foreach (var eventId in persistedEvents
+            .Where(evt => evt.Data is SearchParameterActivated)
+            .Select(evt => evt.EventId)
+            .Where(eventId => _state.GetTransitionCandidates(eventId).Count > 0))
+        {
+            await _transitionScheduler.ScheduleAsync(
+                eventId,
+                _transitionOptions.TransitionGrace,
+                cancellationToken);
+        }
+
+        // 8. Detect reindex requirements
         var reindexNeeded = DetectReindexRequirements(packageKey);
 
         _logger.LogInformation(

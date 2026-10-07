@@ -5,6 +5,7 @@ using DurableTask.AzureStorage;
 using DurableTask.Core;
 using DurableTask.SqlServer;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
+using Ignixa.Application.BackgroundOperations.Conformance;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Terminology.Orchestrations;
@@ -57,6 +58,7 @@ public static class DurableTaskConfiguration
             worker.AddTaskOrchestrations(typeof(ExportOrchestration));
             worker.AddTaskOrchestrations(typeof(ImportOrchestration));
             worker.AddTaskOrchestrations(typeof(TerminologyImportOrchestration));
+            worker.AddTaskOrchestrations(typeof(SearchParameterTransitionOrchestration));
 
             // Register orchestrations with DI dependencies
             worker.AddTaskOrchestrationsFromInterface<TransactionWatcherOrchestration>(sp);
@@ -81,6 +83,7 @@ public static class DurableTaskConfiguration
 
             // Register TTL Cleanup activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<TtlCleanupActivities.TtlCleanupActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<SearchParameterTransitionCommitActivity>(sp);
 
             return worker;
         });

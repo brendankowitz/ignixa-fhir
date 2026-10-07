@@ -11,6 +11,7 @@ using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Import;
 using Ignixa.Application.BackgroundOperations.Jobs;
+using Ignixa.Application.Features.Conformance;
 using Medino;
 
 namespace Ignixa.Api.Registrations;
@@ -50,6 +51,28 @@ public static class BackgroundServicesRegistration
 
         // Transaction watcher options (used by eternal orchestration)
         services.Configure<TransactionWatcherOptions>(configuration.GetSection(TransactionWatcherOptions.SectionName));
+
+        services.AddOptions<ReindexOptions>()
+            .Configure(options =>
+            {
+                configuration.GetSection(ReindexOptions.SectionName).Bind(options);
+                options.BarrierDelay = configuration.GetValue<TimeSpan?>("Reindex:BarrierDelay")
+                    ?? TimeSpan.FromSeconds(2 * configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
+            })
+            .ValidateOnStart();
+
+        services.AddOptions<ConformanceTransitionOptions>()
+            .Configure(options =>
+            {
+                configuration.GetSection(ConformanceTransitionOptions.SectionName).Bind(options);
+                options.SyncIntervalSeconds = configuration.GetValue("Conformance:SyncIntervalSeconds", 30);
+                options.MaxStaleness = configuration.GetValue<TimeSpan?>("Conformance:MaxStaleness")
+                    ?? TimeSpan.FromSeconds(2 * options.SyncIntervalSeconds);
+                options.TransitionGrace = configuration.GetValue<TimeSpan?>("Conformance:TransitionGrace")
+                    ?? options.MaxStaleness + TimeSpan.FromSeconds(options.SyncIntervalSeconds);
+            })
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ConformanceTransitionOptions>, ConformanceTransitionOptionsValidator>();
 
         // Eternal orchestration starter (starts all periodic DurableTask orchestrations)
         services.AddHostedService<EternalOrchestrationStarter>();

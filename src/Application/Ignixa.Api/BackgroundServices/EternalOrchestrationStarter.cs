@@ -9,6 +9,8 @@ using Ignixa.Application.BackgroundOperations.TtlCleanup.Models;
 using Ignixa.Application.BackgroundOperations.TtlCleanup.Orchestrations;
 using Ignixa.Application.BackgroundOperations.TransactionWatcher.Models;
 using Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrations;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Conformance.Events.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.BackgroundServices;
@@ -22,6 +24,11 @@ public sealed class EternalOrchestrationStarter(
     TaskHubClient taskHubClient,
     IOptions<TtlCleanupOptions> ttlCleanupOptions,
     IOptions<TransactionWatcherOptions> transactionWatcherOptions,
+    IOptions<ConformanceTransitionOptions> transitionOptions,
+    ISourceEventStore eventStore,
+    ConformanceState conformanceState,
+    SearchParameterTransitionCommitter transitionCommitter,
+    ISearchParameterTransitionScheduler transitionScheduler,
     ILogger<EternalOrchestrationStarter> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -49,11 +56,43 @@ public sealed class EternalOrchestrationStarter(
             transactionWatcherOptions.Value.Enabled,
             stoppingToken);
 
+        await ReconcileTransitionsAsync(stoppingToken);
+
         logger.LogInformation("EternalOrchestrationStarter completed startup");
 
         // Future eternal orchestrations go here:
         // await EnsureOrchestrationAsync<ReindexOrchestration>(...);
         // await EnsureOrchestrationAsync<AuditCleanupOrchestration>(...);
+    }
+
+    private async Task ReconcileTransitionsAsync(CancellationToken cancellationToken)
+    {
+        while (!conformanceState.IsInitialized)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        var eventTimes = new Dictionary<long, DateTimeOffset>();
+        await foreach (var evt in eventStore.ReadAllAsync(cancellationToken))
+        {
+            eventTimes[evt.EventId] = evt.Timestamp;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var hideEventId in conformanceState.GetTransitionHideEventIds())
+        {
+            if (!eventTimes.TryGetValue(hideEventId, out var committedAt) ||
+                now - committedAt >= transitionOptions.Value.TransitionGrace)
+            {
+                await transitionCommitter.CommitAsync(hideEventId, cancellationToken);
+                continue;
+            }
+
+            await transitionScheduler.ScheduleAsync(
+                hideEventId,
+                transitionOptions.Value.TransitionGrace - (now - committedAt),
+                cancellationToken);
+        }
     }
 
     /// <summary>

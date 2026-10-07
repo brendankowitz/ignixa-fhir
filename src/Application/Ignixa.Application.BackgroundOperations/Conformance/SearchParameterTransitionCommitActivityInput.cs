@@ -1,0 +1,3 @@
+namespace Ignixa.Application.BackgroundOperations.Conformance;
+
+public sealed record SearchParameterTransitionCommitActivityInput(long HideEventId);

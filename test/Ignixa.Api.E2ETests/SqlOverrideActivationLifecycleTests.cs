@@ -59,6 +59,41 @@ public class SqlOverrideActivationLifecycleTests
     }
 
     [SqlFact]
+    public async Task GivenStagedOverride_WhenTransitionGraceElapses_ThenItIsCommittedAutomatically()
+    {
+        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
+            ?? throw new InvalidOperationException("A SQL test connection is required.");
+        var database = $"IgnixaAutomaticTransition_{Guid.NewGuid():N}";
+        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
+        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
+        using var names = new SqlCommandBuilder();
+        var quotedDatabase = names.QuoteIdentifier(database);
+        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quotedDatabase}");
+        try
+        {
+            await using var template = new IgnixaApiFixture();
+            await using var host = CreateHost(template, connectionString, shortTransitionGrace: true);
+
+            await ActivateAsync(host.Services, "hl7.fhir.r4.core", "automatic-base", BaseUrl, null);
+            await ActivateAsync(host.Services, PackageId, "automatic", PackageUrl, BaseUrl);
+
+            var state = host.Services.GetRequiredService<ConformanceState>();
+            var completed = await SpinWaitAsync(
+                () => state.FindByCanonical(PackageUrl)?.Status == Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending,
+                TimeSpan.FromSeconds(10));
+
+            completed.ShouldBeTrue("the durable transition orchestration should commit the staged override");
+            state.FindByCanonical(BaseUrl)!.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Disabled);
+        }
+        finally
+        {
+            using var pool = new SqlConnection(connectionString);
+            SqlConnection.ClearPool(pool);
+            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedDatabase}");
+        }
+    }
+
+    [SqlFact]
     public async Task GivenInProcessBaseParameter_WhenOverrideIsFirstEventSourcedActivation_ThenItUsesDistinctIdentity()
     {
         var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
@@ -276,8 +311,19 @@ public class SqlOverrideActivationLifecycleTests
         (await command.ExecuteNonQueryAsync()).ShouldBe(1);
     }
 
-    private static WebApplicationFactory<Program> CreateHost(IgnixaApiFixture template, string connectionString) =>
+    private static WebApplicationFactory<Program> CreateHost(
+        IgnixaApiFixture template,
+        string connectionString,
+        bool shortTransitionGrace = false) =>
         template.WithWebHostBuilder(builder =>
+        {
+            if (shortTransitionGrace)
+            {
+                builder.UseSetting("Conformance:MaxStaleness", "00:00:00.050");
+                builder.UseSetting("Conformance:TransitionGrace", "00:00:00.100");
+                builder.UseSetting("Reindex:BarrierDelay", "00:00:00.050");
+            }
+
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -285,7 +331,24 @@ public class SqlOverrideActivationLifecycleTests
                     ["Tenants:Configurations:1:Storage:Type"] = "SqlServer",
                     ["Tenants:Configurations:0:Storage:Type"] = "SqlServer",
                     ["Conformance:SyncIntervalSeconds"] = "3600"
-                })));
+                }));
+        });
+
+    private static async Task<bool> SpinWaitAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var expires = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < expires)
+        {
+            if (condition())
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        return condition();
+    }
 
     private static async Task ExecuteDatabaseCommandAsync(string connectionString, string statement)
     {

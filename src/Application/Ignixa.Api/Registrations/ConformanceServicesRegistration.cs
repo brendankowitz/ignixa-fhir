@@ -68,6 +68,18 @@ public static class ConformanceServicesRegistration
             .AsSelf()
             .SingleInstance();
 
+        builder.RegisterType<NullReindexTrigger>()
+            .As<IReindexTrigger>()
+            .SingleInstance();
+
+        builder.RegisterType<SearchParameterTransitionCommitter>()
+            .AsSelf()
+            .SingleInstance();
+
+        builder.RegisterType<DurableSearchParameterTransitionScheduler>()
+            .As<ISearchParameterTransitionScheduler>()
+            .SingleInstance();
+
         // PackageActivationPipeline
         builder.RegisterType<PackageActivationPipeline>()
             .AsSelf()
