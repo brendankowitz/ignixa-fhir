@@ -127,4 +127,15 @@ public class VectorSearchOptionsValidatorTests
 
         Should.Throw<OptionsValidationException>(() => VectorSearchOptionsValidator.Validate(options));
     }
+
+    [Fact]
+    public void GivenNegativeEmbeddingCacheMaxEntries_WhenValidated_ThenFails()
+    {
+        var options = ValidEnabledOptions();
+        options.Query.EmbeddingCacheMaxEntries = -1;
+
+        var exception = Should.Throw<OptionsValidationException>(() => VectorSearchOptionsValidator.Validate(options));
+
+        exception.Failures.ShouldContain("Query.EmbeddingCacheMaxEntries must be 0 or greater.");
+    }
 }

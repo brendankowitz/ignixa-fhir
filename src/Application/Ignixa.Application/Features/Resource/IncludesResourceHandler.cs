@@ -111,7 +111,7 @@ public class IncludesResourceHandler(
             Total: null,
             ContinuationToken: null,
             HasMore: false,
-            SearchOptions: request.SearchOptions);
+            SearchOptions: searchOptionsForIncludes); // Prepared instance, same MaxItemCount as the request
 
         return result;
     }

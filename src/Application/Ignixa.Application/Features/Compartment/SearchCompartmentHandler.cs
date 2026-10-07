@@ -164,7 +164,8 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         var result = new SearchResourcesResult(
             Resources: resourceStream,
             Total: total,
-            ContinuationToken: null); // TODO: Implement paging in Phase 1.2a
+            ContinuationToken: null, // TODO: Implement paging in Phase 1.2a
+            SearchOptions: compartmentSearchOptions); // Prepared instance, including any semantic rewrite
 
         return result;
     }

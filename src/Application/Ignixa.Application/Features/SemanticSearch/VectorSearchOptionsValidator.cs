@@ -72,6 +72,11 @@ public static class VectorSearchOptionsValidator
             failures.Add("Query.EmbeddingCacheMinutes must be 0 or greater.");
         }
 
+        if (options.Query.EmbeddingCacheMaxEntries < 0)
+        {
+            failures.Add("Query.EmbeddingCacheMaxEntries must be 0 or greater.");
+        }
+
         if (options.Indexing.ChunkSizeTokens < VectorSearchOptions.MinimumChunkSizeTokens ||
             options.Indexing.ChunkSizeTokens > VectorSearchOptions.MaxEmbeddingInputTokens)
         {

@@ -146,6 +146,29 @@ public class SemanticQueryPreparerTests
             preparer.PrepareAsync(options, cancellation.Token));
     }
 
+    [Fact]
+    public async Task GivenCacheLimitReached_WhenNewTextPrepared_ThenStillReturnsEmbedding()
+    {
+        // The regression this pins: MemoryCache.Set throws InvalidOperationException if an entry is
+        // written without a Size once the cache has a SizeLimit -- a cache entry past the limit does NOT
+        // throw, the cache instead evicts to make room. SizeLimit = 2 here is small enough that the third
+        // distinct text's Set is written while the cache is already at (or over) capacity.
+        var generator = new SpyEmbeddingGenerator();
+        var cache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 2 });
+        var options = Options();
+        options.Query.EmbeddingCacheMaxEntries = 2;
+        var preparer = new SemanticQueryPreparer(generator, cache, options);
+
+        var first = await preparer.PrepareAsync(SemanticOptions("chest pain"), CancellationToken.None);
+        var second = await preparer.PrepareAsync(SemanticOptions("shortness of breath"), CancellationToken.None);
+        var third = await preparer.PrepareAsync(SemanticOptions("nausea"), CancellationToken.None);
+
+        generator.Batches.Count.ShouldBe(3);
+        RequirePrepared(first).Embedding.Length.ShouldBe(VectorSearchOptions.SupportedDimensions);
+        RequirePrepared(second).Embedding.Length.ShouldBe(VectorSearchOptions.SupportedDimensions);
+        RequirePrepared(third).Embedding.Length.ShouldBe(VectorSearchOptions.SupportedDimensions);
+    }
+
     private static SearchOptions SemanticOptions(string queryText) => new()
     {
         ResourceType = "Observation",
