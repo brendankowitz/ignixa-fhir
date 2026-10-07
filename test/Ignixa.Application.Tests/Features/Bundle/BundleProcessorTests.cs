@@ -170,6 +170,23 @@ public class BundleProcessorTests
         harness.ExecutedEntries.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task GivenTransactionEnumerationThrowsBodyLimitException_WhenProcessed_ThenNoEntryIsExecuted()
+    {
+        var harness = new ProcessorHarness();
+        var bodyLimitException = new BadHttpRequestException(
+            "Request body too large.",
+            StatusCodes.Status413PayloadTooLarge);
+
+        var act = () => harness.Processor.ProcessAsync(
+            ThrowAfterFirstEntry(bodyLimitException),
+            new BundleProcessingOptions { Type = BundleType.Transaction },
+            CancellationToken.None);
+
+        (await act.ShouldThrowAsync<BadHttpRequestException>()).ShouldBeSameAs(bodyLimitException);
+        harness.ExecutedEntries.ShouldBe(0);
+    }
+
     private static BundleEntryContext CreateEntry(int index, string method = "GET") =>
         new()
         {
@@ -194,6 +211,16 @@ public class BundleProcessorTests
             yield return entry;
             await Task.Yield();
         }
+    }
+
+    private static async IAsyncEnumerable<BundleEntryContext> ThrowAfterFirstEntry(
+        Exception exception,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return CreateEntry(0);
+        await Task.Yield();
+        throw exception;
     }
 
     private sealed class ProcessorHarness

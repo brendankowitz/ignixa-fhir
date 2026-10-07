@@ -15,6 +15,7 @@ using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Specification;
+using Microsoft.AspNetCore.Http;
 using Ignixa.Abstractions;
 using ISchema = Ignixa.Abstractions.ISchema;
 using FhirBundleLink = Ignixa.Models.BundleLink;
@@ -779,6 +780,16 @@ public static class StreamingBundleSerializer
                 await writer.FlushAsync(cancellationToken);
             }
         }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                DiscardTierOneBuffer(writer);
+                throw;
+            }
+
+            streamingException = ex;
+        }
         catch (OperationCanceledException ex)
         {
             // A canceled `cancellationToken` means the client itself disconnected: nobody is
@@ -828,20 +839,38 @@ public static class StreamingBundleSerializer
     /// </summary>
     private static void WriteErrorEntry(FhirJsonWriter writer, Exception exception)
     {
-        WriteErrorEntry(writer, new IssueComponent("fatal", "exception", Diagnostics: $"Streaming serialization failed: {exception.Message}"));
+        if (exception is BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge })
+        {
+            WriteErrorEntry(
+                writer,
+                "413 Payload Too Large",
+                new IssueComponent(
+                    "fatal",
+                    "too-costly",
+                    Diagnostics: "The request body limit was exceeded while reading the bundle."));
+            return;
+        }
+
+        WriteErrorEntry(
+            writer,
+            "500 Internal Server Error",
+            new IssueComponent("fatal", "exception", Diagnostics: $"Streaming serialization failed: {exception.Message}"));
     }
 
+    private static void WriteErrorEntry(FhirJsonWriter writer, IssueComponent issue) =>
+        WriteErrorEntry(writer, "500 Internal Server Error", issue);
+
     /// <summary>
-    /// Writes the batch-response/transaction-response error entry shape: <c>response.status = "500 Internal Server Error"</c>
-    /// plus the OperationOutcome as <c>resource</c>. Shared by both the streaming-exception path and
-    /// <see cref="WriteOperationOutcomeEntry"/> so the shape is defined exactly once.
+    /// Writes the batch-response/transaction-response error entry shape plus the OperationOutcome as
+    /// <c>resource</c>. Shared by both the streaming-exception path and <see cref="WriteOperationOutcomeEntry"/>
+    /// so the shape is defined exactly once.
     /// </summary>
-    private static void WriteErrorEntry(FhirJsonWriter writer, IssueComponent issue)
+    private static void WriteErrorEntry(FhirJsonWriter writer, string status, IssueComponent issue)
     {
         writer.WriteStartObject();
 
         writer.WriteStartObject("response");
-        writer.WriteString("status", "500 Internal Server Error");
+        writer.WriteString("status", status);
         writer.WriteEndObject(); // end response
 
         WriteOperationOutcomeResource(writer, issue);
