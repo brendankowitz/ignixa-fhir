@@ -26,6 +26,28 @@ namespace Ignixa.Application.Tests.Features.Bundle;
 public class BundleProcessorTests
 {
     [Fact]
+    public async Task GivenMissingBatchWriteResult_WhenCheckingCreationStatus_ThenFailsFast()
+    {
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Substitute.For<IFhirRepository>()));
+        var requestContextAccessor = new FhirRequestContextAccessor
+        {
+            RequestContext = FhirRequestContextFactory.CreateBackgroundContext(tenantId: 1)
+        };
+        var coordinator = await DeferredWriteCoordinator.CreateAsync(
+            channelCapacity: 1,
+            repositoryFactory,
+            Substitute.For<IPartitionStrategy>(),
+            requestContextAccessor,
+            NullLogger<DeferredWriteCoordinator>.Instance);
+
+        var exception = Should.Throw<InvalidOperationException>(() => coordinator.IsCreated(42));
+
+        exception.Message.ShouldBe("No write result recorded for entry 42.");
+    }
+
+    [Fact]
     public async Task GivenTransactionAboveEntryLimit_WhenProcessed_ThenRequestTooCostlyAndNoEntryExecutes()
     {
         var harness = new ProcessorHarness();

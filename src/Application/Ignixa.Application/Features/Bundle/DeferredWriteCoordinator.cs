@@ -161,7 +161,9 @@ public class DeferredWriteCoordinator
     public bool IsCreated(int entryIndex) =>
         IsAtomic
             ? _createdEntries[entryIndex]
-            : _createdEntries.TryRemove(entryIndex, out var isCreated) && isCreated;
+            : _createdEntries.TryRemove(entryIndex, out var isCreated)
+                ? isCreated
+                : throw new InvalidOperationException($"No write result recorded for entry {entryIndex}.");
 
     public ResourceWrapper? FindStagedResource(string resourceType, string resourceId) =>
         _stagedWrites.FirstOrDefault(write =>
