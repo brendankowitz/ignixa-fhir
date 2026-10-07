@@ -110,7 +110,7 @@ public class SqlOverrideRestartTests
             CancellationToken.None)).ShouldBe(originalId);
 
         await PutPatientAsync(client, afterId, identifier);
-        // T7 owns reindexing the resource written before the persisted definition transition.
+        // This restart test uses the synthetic lifecycle helper to isolate replay and storage-identity behavior.
         await AssertPatientAsync(client, identifier, afterId);
 
         await using var connection = new SqlConnection(connectionString);

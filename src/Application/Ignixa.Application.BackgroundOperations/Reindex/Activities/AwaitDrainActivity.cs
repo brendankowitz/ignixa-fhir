@@ -8,6 +8,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 public sealed class AwaitDrainActivity(
     IFhirRepositoryFactory repositoryFactory,
     TimeProvider timeProvider,
+    ReindexProgressReporter progress,
     ILogger<AwaitDrainActivity> logger)
     : AsyncTaskActivity<AwaitDrainInput, AwaitDrainOutput>
 {
@@ -28,13 +29,26 @@ public sealed class AwaitDrainActivity(
         if (!isDrained &&
             timeProvider.GetUtcNow() - input.DrainStartedUtc >= input.DrainWarningAfter)
         {
+            var oldest = await store.GetOldestIncompleteTransactionAsync(
+                input.CutoffTransactionId,
+                CancellationToken.None);
             logger.LogWarning(
-                "Reindex: drain is still waiting for tenant {TenantId}; visible watermark {VisibleWatermark}, cutoff transaction {CutoffTransactionId}",
+                "Reindex: drain is still waiting for tenant {TenantId}; visible watermark {VisibleWatermark}, cutoff transaction {CutoffTransactionId}, oldest incomplete transaction {OldestTransactionId}, created {OldestCreateDate}, heartbeat {OldestHeartbeatDate}",
                 input.TenantId,
                 watermark,
-                input.CutoffTransactionId);
+                input.CutoffTransactionId,
+                oldest?.TransactionId,
+                oldest?.CreateDate,
+                oldest?.HeartbeatDate);
         }
 
-        return new AwaitDrainOutput(input.TenantId, isDrained, watermark);
+        var output = new AwaitDrainOutput(input.TenantId, isDrained, watermark);
+        await progress.ReportDrainAsync(input.JobId, output, CancellationToken.None);
+        if (isDrained)
+        {
+            ReindexMetrics.RecordDrainWait(timeProvider.GetUtcNow() - input.DrainStartedUtc);
+        }
+
+        return output;
     }
 }

@@ -13,6 +13,8 @@ public sealed class ReindexRangeProcessor(
     ITenantConfigurationStore tenantConfigurationStore,
     IFhirVersionContext fhirVersionContext)
 {
+    private const int MinimumWriteBatchSize = 10;
+
     private readonly IFhirRepositoryFactory _repositoryFactory =
         repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
     private readonly ITenantConfigurationStore _tenantConfigurationStore =
@@ -49,6 +51,7 @@ public sealed class ReindexRangeProcessor(
         long resourcesReindexed = 0;
         long conflicts = 0;
         long? afterSurrogateId = null;
+        var writeBatchSize = input.MaximumNumberOfResourcesPerWrite;
         var failures = new List<ReindexFailedResource>();
         while (true)
         {
@@ -56,7 +59,7 @@ public sealed class ReindexRangeProcessor(
                 input.ResourceType,
                 input.StartSurrogateId,
                 input.EndSurrogateId,
-                input.MaximumNumberOfResourcesPerWrite,
+                writeBatchSize,
                 afterSurrogateId,
                 cancellationToken);
             if (page.Count == 0)
@@ -97,9 +100,23 @@ public sealed class ReindexRangeProcessor(
 
             if (extracted.Count > 0)
             {
-                var updated = await store.UpdateSearchIndicesAsync(extracted, cancellationToken);
-                resourcesReindexed += updated.Updated;
-                conflicts += updated.Conflicts;
+                var offset = 0;
+                while (offset < extracted.Count)
+                {
+                    var count = Math.Min(writeBatchSize, extracted.Count - offset);
+                    var batch = extracted.GetRange(offset, count);
+                    try
+                    {
+                        var updated = await store.UpdateSearchIndicesAsync(batch, cancellationToken);
+                        resourcesReindexed += updated.Updated;
+                        conflicts += updated.Conflicts;
+                        offset += count;
+                    }
+                    catch (TimeoutException) when (writeBatchSize > MinimumWriteBatchSize)
+                    {
+                        writeBatchSize = Math.Max(MinimumWriteBatchSize, writeBatchSize / 2);
+                    }
+                }
             }
 
             afterSurrogateId = page[^1].ResourceSurrogateId;

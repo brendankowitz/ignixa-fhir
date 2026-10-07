@@ -173,7 +173,6 @@ public class SqlActivationPreflightTests
 
         await using var restarted = CreateHost(template, connectionString);
         using var restartedClient = restarted.CreateClient();
-        // T7 owns reindexing resources created before a subsequent definition transition.
         await AssertSearchAsync(restartedClient, "after-reject", patientId);
         var replayed = restarted.Services.GetRequiredService<ConformanceState>();
         replayed.IsInitialized.ShouldBeTrue();

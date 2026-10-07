@@ -10,6 +10,7 @@ public sealed class CompleteReindexActivity(
     IFhirRepositoryFactory repositoryFactory,
     ReindexLifecycleEventWriter lifecycle,
     ReindexJobUpdater jobs,
+    ReindexProgressReporter progress,
     TimeProvider timeProvider)
     : AsyncTaskActivity<CompleteReindexInput, CompleteReindexOutput>
 {
@@ -18,6 +19,7 @@ public sealed class CompleteReindexActivity(
         CompleteReindexInput input)
     {
         var completedAt = timeProvider.GetUtcNow();
+        await progress.ReportCompletingAsync(input.JobId, CancellationToken.None);
         var completions = new List<ReindexTargetCompletion>();
         foreach (var target in input.Targets)
         {
@@ -56,18 +58,22 @@ public sealed class CompleteReindexActivity(
                 errors.Count == 0 ? null : string.Join(" ", errors)));
         }
 
-        var ignored = await lifecycle.CompleteAsync(
-            input.JobId,
-            completions,
-            CancellationToken.None);
         var success = input.Tenants.All(tenant => tenant.Success) &&
             completions.All(completion => completion.Success);
         var failedResources = input.Tenants
             .SelectMany(tenant => tenant.FailedResources)
             .Take(100)
             .ToArray();
-        await jobs.CompleteAsync(
+        IReadOnlyList<string> ignored = [];
+        var won = await jobs.TryCompleteAsync(
             input.JobId,
+            async (_, cancellationToken) =>
+            {
+                ignored = await lifecycle.CompleteAsync(
+                    input.JobId,
+                    completions,
+                    cancellationToken);
+            },
             job =>
             {
                 job.Status = success ? "Completed" : "Failed";
@@ -83,6 +89,9 @@ public sealed class CompleteReindexActivity(
                     phase = "Completing",
                     resourcesSuccessfullyReindexed = input.Tenants.Sum(tenant => tenant.ResourcesReindexed),
                     totalResourcesToReindex = input.Tenants.Sum(tenant => tenant.ResourcesToReindex),
+                    progress = success
+                        ? 100
+                        : CalculateProgress(input.Tenants),
                     conflicts = input.Tenants.Sum(tenant => tenant.Conflicts),
                     tenants = input.Tenants,
                     failedResources,
@@ -92,9 +101,21 @@ public sealed class CompleteReindexActivity(
                 {
                     ["success"] = success
                 };
+                if (job.StartDate.HasValue)
+                {
+                    ReindexMetrics.RecordJobDuration(completedAt - job.StartDate.Value);
+                }
             },
             CancellationToken.None);
 
-        return new CompleteReindexOutput(success, ignored);
+        return new CompleteReindexOutput(won && success, ignored);
+    }
+
+    private static double CalculateProgress(IReadOnlyList<ReindexTenantOutput> tenants)
+    {
+        var total = tenants.Sum(tenant => tenant.ResourcesToReindex);
+        return total == 0
+            ? 0
+            : Math.Min(99.9, tenants.Sum(tenant => tenant.ResourcesReindexed) * 100.0 / total);
     }
 }

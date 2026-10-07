@@ -367,8 +367,7 @@ public class SqlOverrideActivationLifecycleTests
         using var response = await client.PutAsync($"/tenant/1/Patient/{id}", body);
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
         ids.Add(id);
-        // T7 owns rebuilding existing resources before a transition can safely claim them searchable.
-        // This test only proves the post-enable write uses the inherited SearchParamId.
+        // Synthetic lifecycle completion is intentional here; this assertion isolates post-enable identity reuse.
         await AssertPatientAsync(client, marker, id);
     }
 

@@ -27,8 +27,9 @@ public sealed class ReindexJobUpdater(
             },
             cancellationToken);
 
-    public Task CompleteAsync(
+    public Task<bool> TryCompleteAsync(
         string jobId,
+        Func<BackgroundJob<ReindexJobDefinition>, CancellationToken, Task> beforeCommit,
         Action<BackgroundJob<ReindexJobDefinition>> update,
         CancellationToken cancellationToken) =>
         jobLock.ExecuteAsync(
@@ -36,20 +37,28 @@ public sealed class ReindexJobUpdater(
             {
                 var job = await repository.GetAsync(jobId, GlobalTenantId, ct)
                     ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
+                if (IsTerminal(job.Status))
+                {
+                    return false;
+                }
+
+                await beforeCommit(job, ct);
                 update(job);
                 job.HeartbeatDate = DateTimeOffset.UtcNow;
+                await completionHook.OnCompletedAsync(job, ct);
                 try
                 {
                     await repository.UpdateAsync(job, GlobalTenantId, ct);
                 }
                 catch (BackgroundJobUpdateConflictException)
                 {
-                    job = await repository.GetAsync(jobId, GlobalTenantId, ct)
-                        ?? throw new InvalidOperationException($"Reindex job {jobId} disappeared after a terminal update conflict.");
+                    return false;
                 }
 
-                await completionHook.OnCompletedAsync(job, ct);
                 return true;
             },
             cancellationToken);
+
+    private static bool IsTerminal(string status) =>
+        status is "Completed" or "Failed" or "Cancelled";
 }

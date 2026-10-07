@@ -38,17 +38,17 @@ public sealed class CancelReindexHandler(
             target.SearchParamId,
             target.ActivationEventId,
             target.AffectedResourceTypes)).ToArray();
-        await lifecycle.CompleteAsync(
+        var won = await jobs.TryCompleteAsync(
             job.JobId,
-            targets.Select(target => new ReindexTargetCompletion(
-                target,
-                false,
-                0,
-                TimeSpan.Zero,
-                $"Cancelled: {request.Reason}")).ToArray(),
-            cancellationToken);
-        await jobs.CompleteAsync(
-            job.JobId,
+            (_, ct) => lifecycle.CompleteAsync(
+                job.JobId,
+                targets.Select(target => new ReindexTargetCompletion(
+                    target,
+                    false,
+                    0,
+                    TimeSpan.Zero,
+                    $"Cancelled: {request.Reason}")).ToArray(),
+                ct),
             current =>
             {
                 current.Status = "Cancelled";
@@ -60,6 +60,13 @@ public sealed class CancelReindexHandler(
             },
             cancellationToken);
 
-        return new ReindexCancelledResult(job.JobId);
+        if (won)
+        {
+            return new ReindexCancelledResult(job.JobId);
+        }
+
+        var terminal = await repository.GetAsync(request.JobId, 1, cancellationToken)
+            ?? throw new InvalidOperationException($"Reindex job {request.JobId} disappeared during cancellation.");
+        return new ReindexJobAlreadyTerminalResult(terminal.JobId, terminal.Status);
     }
 }

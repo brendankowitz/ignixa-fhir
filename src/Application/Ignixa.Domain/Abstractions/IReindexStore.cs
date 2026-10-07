@@ -16,7 +16,11 @@ public interface IReindexStore
 
     Task<long> GetVisibleWatermarkAsync(CancellationToken cancellationToken);
 
-    Task<(IReadOnlyList<(long Start, long End)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
+    Task<(long TransactionId, DateTime CreateDate, DateTime HeartbeatDate)?> GetOldestIncompleteTransactionAsync(
+        long cutoffTransactionId,
+        CancellationToken cancellationToken);
+
+    Task<(IReadOnlyList<(long Start, long End, long ResourceCount)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
         string resourceType,
         long startAfterSurrogateId,
         long upperBoundSurrogateId,

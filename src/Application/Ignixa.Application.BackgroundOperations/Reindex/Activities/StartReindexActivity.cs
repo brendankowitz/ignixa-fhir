@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 
@@ -6,7 +5,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class StartReindexActivity(
     ReindexLifecycleEventWriter lifecycle,
-    ReindexJobUpdater jobs)
+    ReindexProgressReporter progress)
     : AsyncTaskActivity<StartReindexInput, StartReindexOutput>
 {
     protected override async Task<StartReindexOutput> ExecuteAsync(
@@ -17,19 +16,10 @@ public sealed class StartReindexActivity(
             input.JobId,
             input.Targets,
             CancellationToken.None);
-        await jobs.UpdateAsync(
+        await progress.ReportBarrierDelayAsync(
             input.JobId,
-            job =>
-            {
-                job.Status = "Running";
-                job.StartDate ??= DateTimeOffset.UtcNow;
-                job.Progress = new JsonObject
-                {
-                    ["phase"] = "BarrierDelay",
-                    ["ignoredLifecycleEvents"] = new JsonArray(
-                        ignored.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray())
-                };
-            },
+            input.TenantIds,
+            ignored,
             CancellationToken.None);
         return new StartReindexOutput(ignored);
     }

@@ -128,7 +128,31 @@ public sealed class SqlServerReindexStore(
         return values.Single();
     }
 
-    public async Task<(IReadOnlyList<(long Start, long End)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
+    public async Task<(long TransactionId, DateTime CreateDate, DateTime HeartbeatDate)?> GetOldestIncompleteTransactionAsync(
+        long cutoffTransactionId,
+        CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand(
+            """
+            SELECT TOP (1) SurrogateIdRangeFirstValue, CreateDate, HeartbeatDate
+            FROM dbo.Transactions
+            WHERE IsVisible = 0
+              AND SurrogateIdRangeFirstValue <= @CutoffTransactionId
+            ORDER BY SurrogateIdRangeFirstValue;
+            """);
+        command.Parameters.Add("@CutoffTransactionId", SqlDbType.BigInt).Value = cutoffTransactionId;
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId,
+            command,
+            static reader => (
+                TransactionId: reader.GetInt64(0),
+                CreateDate: reader.GetDateTime(1),
+                HeartbeatDate: reader.GetDateTime(2)),
+            cancellationToken);
+        return rows.Count == 0 ? null : rows[0];
+    }
+
+    public async Task<(IReadOnlyList<(long Start, long End, long ResourceCount)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
         string resourceType,
         long startAfterSurrogateId,
         long upperBoundSurrogateId,
@@ -152,7 +176,7 @@ public sealed class SqlServerReindexStore(
         // Each seek reads at most targetRangeSize rows from the clustered resource key. The resulting
         // ranges deliberately cover ID gaps. Pages continue from the preceding range end, so the
         // caller can discard each page without losing the contiguous cutoff partition.
-        var ranges = new List<(long Start, long End)>();
+        var ranges = new List<(long Start, long End, long ResourceCount)>();
         var cursor = startAfterSurrogateId;
         while (true)
         {
@@ -187,7 +211,10 @@ public sealed class SqlServerReindexStore(
             {
                 if (ranges.Count > 0)
                 {
-                    ranges[^1] = (ranges[^1].Start, upperBoundSurrogateId);
+                    ranges[^1] = (
+                        ranges[^1].Start,
+                        upperBoundSurrogateId,
+                        ranges[^1].ResourceCount);
                 }
 
                 return (ranges, null);
@@ -198,11 +225,11 @@ public sealed class SqlServerReindexStore(
                 : checked(cursor + 1);
             if (count < targetRangeSize || end.Value == upperBoundSurrogateId)
             {
-                ranges.Add((rangeStart, upperBoundSurrogateId));
+                ranges.Add((rangeStart, upperBoundSurrogateId, count));
                 return (ranges, null);
             }
 
-            ranges.Add((rangeStart, end.Value));
+            ranges.Add((rangeStart, end.Value, count));
             if (ranges.Count == maxRanges)
             {
                 return (ranges, end.Value);
@@ -373,7 +400,14 @@ public sealed class SqlServerReindexStore(
         AddTableValuedParameter(command, "@TokenStringCompositeSearchParams", "dbo.TokenStringCompositeSearchParamList", tokenStringComposites);
         AddTableValuedParameter(command, "@TokenNumberNumberCompositeSearchParams", "dbo.TokenNumberNumberCompositeSearchParamList", tokenNumberNumberComposites);
 
-        await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
+        try
+        {
+            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
+        }
+        catch (SqlException ex) when (ex.Number == -2)
+        {
+            throw new TimeoutException("The SQL reindex write timed out.", ex);
+        }
 
         var conflicts = Convert.ToInt32(failedResources.Value, CultureInfo.InvariantCulture);
         var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(

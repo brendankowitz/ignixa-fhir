@@ -4,7 +4,9 @@ using Ignixa.Domain.Abstractions;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
-public sealed class RaiseBarrierActivity(IFhirRepositoryFactory repositoryFactory)
+public sealed class RaiseBarrierActivity(
+    IFhirRepositoryFactory repositoryFactory,
+    ReindexProgressReporter progress)
     : AsyncTaskActivity<RaiseBarrierInput, RaiseBarrierOutput>
 {
     protected override async Task<RaiseBarrierOutput> ExecuteAsync(
@@ -22,9 +24,11 @@ public sealed class RaiseBarrierActivity(IFhirRepositoryFactory repositoryFactor
         var cutoff = await store.RaiseBarrierAsync(
             input.TargetEventId,
             CancellationToken.None);
-        return new RaiseBarrierOutput(
+        var output = new RaiseBarrierOutput(
             input.TenantId,
             cutoff.TransactionId,
             cutoff.SurrogateId);
+        await progress.ReportBarrierAsync(input.JobId, output, CancellationToken.None);
+        return output;
     }
 }

@@ -113,7 +113,8 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             "Patient", -1, cutoff, 1, 10, CancellationToken.None);
         var resources = new List<ReindexResource>();
 
-        foreach (var (start, end) in ranges)
+        ranges.Sum(range => range.ResourceCount).ShouldBe(2);
+        foreach (var (start, end, _) in ranges)
         {
             var after = (long?)null;
             while (true)

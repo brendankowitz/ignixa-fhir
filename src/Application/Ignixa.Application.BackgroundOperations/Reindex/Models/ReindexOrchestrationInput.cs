@@ -9,7 +9,8 @@ public sealed record ReindexOrchestrationInput(
     IReadOnlyList<ReindexTarget> Targets,
     ReindexJobParameters Parameters,
     TimeSpan? DrainWarningAfter = null,
-    int ContinueAsNewThreshold = 2_000)
+    int ContinueAsNewThreshold = 2_000,
+    ReindexOrchestrationState? State = null)
 {
     public static ReindexOrchestrationInput CreateForTest(
         string jobId,

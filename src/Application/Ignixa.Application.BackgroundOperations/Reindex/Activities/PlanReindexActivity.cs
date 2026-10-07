@@ -4,7 +4,9 @@ using Ignixa.Domain.Abstractions;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
-public sealed class PlanReindexActivity(IFhirRepositoryFactory repositoryFactory)
+public sealed class PlanReindexActivity(
+    IFhirRepositoryFactory repositoryFactory,
+    ReindexProgressReporter progress)
     : AsyncTaskActivity<PlanReindexInput, PlanReindexOutput>
 {
     protected override async Task<PlanReindexOutput> ExecuteAsync(
@@ -26,8 +28,13 @@ public sealed class PlanReindexActivity(IFhirRepositoryFactory repositoryFactory
             input.TargetRangeSize,
             input.MaxRanges,
             CancellationToken.None);
-        return new PlanReindexOutput(
-            page.Ranges.Select(range => new ReindexRange(range.Start, range.End)).ToArray(),
+        var output = new PlanReindexOutput(
+            page.Ranges.Select(range => new ReindexRange(
+                range.Start,
+                range.End,
+                range.ResourceCount)).ToArray(),
             page.NextStartAfter);
+        await progress.ReportPlanAsync(input, output, CancellationToken.None);
+        return output;
     }
 }
