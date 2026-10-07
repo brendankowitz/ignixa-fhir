@@ -154,6 +154,7 @@ public sealed class TestTenantDatabase
         database.Repository = new SqlServerFhirRepository(
             database.SqlExecutionService, database.TenantId, compressor, cache, mergeRepository,
             NullLogger<SqlServerFhirRepository>.Instance);
+        database.ReindexStore = database.Repository;
         return database;
     }
 
@@ -165,6 +166,8 @@ public sealed class TestTenantDatabase
     /// sees -- the two must share one instance or the assertion proves nothing.
     /// </summary>
     public SqlServerMergeRepository MergeRepository { get; private set; } = null!;
+
+    public IReindexStore ReindexStore { get; private set; } = null!;
 
     private sealed class SingleTenantStore : ITenantConfigurationStore
     {

@@ -28,7 +28,7 @@ public class SqlServerFhirRepository(
     GzipResourceCompressor compressor,
     SqlServerSearchIndexReferenceDataCache cache,
     SqlServerMergeRepository mergeRepository,
-    ILogger<SqlServerFhirRepository> logger) : IFhirRepository, IAtomicFhirRepository, IVersionedResourceRepository
+    ILogger<SqlServerFhirRepository> logger) : IFhirRepository, IAtomicFhirRepository, IVersionedResourceRepository, IReindexStore
 {
     private readonly ISqlExecutionService _sqlExecutionService =
         sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
@@ -38,6 +38,10 @@ public class SqlServerFhirRepository(
         cache ?? throw new ArgumentNullException(nameof(cache));
     private readonly SqlServerMergeRepository _mergeRepository =
         mergeRepository ?? throw new ArgumentNullException(nameof(mergeRepository));
+    private readonly IReindexStore _reindexStore =
+        (mergeRepository ?? throw new ArgumentNullException(nameof(mergeRepository))).CreateReindexStore(
+            compressor ?? throw new ArgumentNullException(nameof(compressor)),
+            cache ?? throw new ArgumentNullException(nameof(cache)));
     private readonly ILogger<SqlServerFhirRepository> _logger =
         logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly int _tenantId = tenantId;
@@ -50,6 +54,50 @@ public class SqlServerFhirRepository(
     /// fourteen and cannot on this one.
     /// </summary>
     private const string TableWithoutResourceTypeId = "ResourceWriteClaim";
+
+    /// <inheritdoc/>
+    public Task<(long TransactionId, long SurrogateId)> RaiseBarrierAsync(
+        long targetEventId,
+        CancellationToken cancellationToken) =>
+        _reindexStore.RaiseBarrierAsync(targetEventId, cancellationToken);
+
+    /// <inheritdoc/>
+    public Task<long> GetVisibleWatermarkAsync(CancellationToken cancellationToken) =>
+        _reindexStore.GetVisibleWatermarkAsync(cancellationToken);
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<(long Start, long End)>> GetSurrogateIdRangesAsync(
+        string resourceType,
+        long upperBoundSurrogateId,
+        int targetRangeSize,
+        CancellationToken cancellationToken) =>
+        _reindexStore.GetSurrogateIdRangesAsync(
+            resourceType,
+            upperBoundSurrogateId,
+            targetRangeSize,
+            cancellationToken);
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ReindexResource>> ReadRangeAsync(
+        string resourceType,
+        long start,
+        long endSurrogateId,
+        int maxCount,
+        long? afterSurrogateId,
+        CancellationToken cancellationToken) =>
+        _reindexStore.ReadRangeAsync(
+            resourceType,
+            start,
+            endSurrogateId,
+            maxCount,
+            afterSurrogateId,
+            cancellationToken);
+
+    /// <inheritdoc/>
+    public Task<(int Updated, int Conflicts)> UpdateSearchIndicesAsync(
+        IReadOnlyList<ReindexResource> resources,
+        CancellationToken cancellationToken) =>
+        _reindexStore.UpdateSearchIndicesAsync(resources, cancellationToken);
 
     private static readonly string[] SearchIndexTables =
     [
