@@ -679,6 +679,14 @@ public static class OperationEndpoints
                 "The _includesContinuationToken parameter is required for the $includes operation"));
         }
 
+        if (!IncludesContinuationToken.TryDecode(includesContinuationToken, out _, out _))
+        {
+            return FhirResults.BadRequest(CreateOperationOutcome(
+                FhirOperationOutcomeIssue.IssueSeverityCode.Error,
+                FhirOperationOutcomeIssue.IssueTypeCommon.Invalid,
+                IncludesContinuationToken.InvalidTokenMessage));
+        }
+
         var fhirContext = fhirContextAccessor.RequestContext;
         if (fhirContext?.TenantConfiguration == null)
         {
@@ -705,8 +713,9 @@ public static class OperationEndpoints
         searchOptions.IncludesContinuationToken = includesContinuationToken;
 
         // searchOptionsBuilder.Build already parsed and validated _includesCount (invariant culture,
-        // clamped to MaxAllowedItemCount) via the query parameters passed in above. Only the "absent"
-        // case needs handling here.
+        // clamped to MaxAllowedItemCount) via the query parameters passed in above, and defaulted it to
+        // MaxAllowedItemCount when the query carries _include/_revinclude -- the same cap the originating
+        // search page used, so page boundaries line up. Only a query with neither reaches this fallback.
         searchOptions.IncludesMaxItemCount ??= DefaultIncludesPageSize;
 
         var query = new IncludesResourceQuery(resourceType, searchOptions);

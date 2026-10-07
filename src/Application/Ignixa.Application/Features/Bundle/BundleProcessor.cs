@@ -300,6 +300,11 @@ public class BundleProcessor
             .ResourceTypeNames.ToHashSet(StringComparer.Ordinal);
         await foreach (var entry in entryStream.WithCancellation(cancellationToken))
         {
+            if (entries.Count >= options.MaxTransactionEntries)
+            {
+                throw new Domain.Exceptions.RequestTooCostlyException(
+                    $"Transaction bundle has more than {options.MaxTransactionEntries} entries (Bundle:MaxTransactionEntries). No entries were executed.");
+            }
             entries.Add(TransactionRequestValidator.Validate(entry, resourceTypes));
         }
 
@@ -690,7 +695,6 @@ public class BundleProcessor
         var batchProcessorTask = System.Threading.Tasks.Task.Run(async () =>
         {
             const int batchSize = 50;
-            var allErrors = new List<Exception>();
 
             _logger.LogDebug("Background batch processor started");
 
@@ -703,7 +707,6 @@ public class BundleProcessor
                     if (coordinator.PendingOperationCount > 0)
                     {
                         var errors = await coordinator.ProcessBatchAsync(batchSize, cancellationToken);
-                        allErrors.AddRange(errors);
 
                         if (errors.Count > 0)
                         {
