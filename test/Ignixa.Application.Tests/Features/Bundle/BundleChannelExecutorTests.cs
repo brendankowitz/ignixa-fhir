@@ -26,9 +26,21 @@ public class BundleChannelExecutorTests
         const int channelCapacity = 8;
         const int entryCount = 1_000;
         var sourceEntriesYielded = 0;
+        var entriesPastFirstCompleted = 0;
         var slowEntryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseSlowEntry = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var executor = CreateExecutor(slowEntryStarted, releaseSlowEntry);
+        var nonFirstEntriesCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executor = CreateExecutor(
+            slowEntryStarted,
+            releaseSlowEntry,
+            entryIndex =>
+            {
+                if (entryIndex != 0 &&
+                    Interlocked.Increment(ref entriesPastFirstCompleted) == channelCapacity - 1)
+                {
+                    nonFirstEntriesCompleted.TrySetResult();
+                }
+            });
         var options = new BundleProcessingOptions
         {
             Type = BundleType.Batch,
@@ -44,20 +56,57 @@ public class BundleChannelExecutorTests
 
         var firstResponse = responseEnumerator.MoveNextAsync().AsTask();
         await slowEntryStarted.Task.WaitAsync(HangTimeout);
-        await WaitForSourceProgressToStopAsync(() => Volatile.Read(ref sourceEntriesYielded));
+        await nonFirstEntriesCompleted.Task.WaitAsync(HangTimeout);
 
         var entriesYieldedBeforeFirstResponse = Volatile.Read(ref sourceEntriesYielded);
         releaseSlowEntry.SetResult();
         (await firstResponse.WaitAsync(HangTimeout)).ShouldBeTrue();
 
         var responses = new List<int> { GetResponseIndex(responseEnumerator.Current) };
-        while (await responseEnumerator.MoveNextAsync())
-        {
-            responses.Add(GetResponseIndex(responseEnumerator.Current));
-        }
+        responses.AddRange(await CollectRemainingResponseIndexesAsync(responseEnumerator).WaitAsync(HangTimeout));
 
-        entriesYieldedBeforeFirstResponse.ShouldBeLessThanOrEqualTo(channelCapacity + 1);
+        entriesYieldedBeforeFirstResponse.ShouldBe(channelCapacity);
         responses.ShouldBe(Enumerable.Range(0, entryCount));
+    }
+
+    [Fact]
+    public async Task GivenNonZeroFirstEntryIndex_WhenExecutingBatchStreaming_ThenResponsesAreYieldedWithoutDeadlock()
+    {
+        const int channelCapacity = 8;
+        const int firstEntryIndex = 1;
+        const int entryCount = channelCapacity + 1;
+        using var cancellationSource = new CancellationTokenSource();
+        var executor = CreateExecutor(WriteResponseAsync);
+        var options = new BundleProcessingOptions
+        {
+            Type = BundleType.Batch,
+            ChannelCapacity = channelCapacity,
+            MaxParallelism = 4
+        };
+        var completion = CollectResponseIndexesAsync(
+            executor.ExecuteStreamingAsync(
+                CreateEntries(entryCount, static () => { }, firstEntryIndex),
+                new ReferenceResolutionContext(),
+                options,
+                cancellationSource.Token));
+
+        try
+        {
+            var responses = await completion.WaitAsync(HangTimeout);
+
+            responses.ShouldBe(Enumerable.Range(firstEntryIndex, entryCount));
+        }
+        finally
+        {
+            cancellationSource.Cancel();
+            try
+            {
+                await completion;
+            }
+            catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+            {
+            }
+        }
     }
 
     [Fact]
@@ -144,10 +193,61 @@ public class BundleChannelExecutorTests
         }
     }
 
+    [Fact]
+    public async Task GivenSourceFaultAfterEarlyDisposal_WhenExecutingBatchStreaming_ThenFaultIsNotSwallowed()
+    {
+        var sourceMayThrow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sourceCancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockedEntryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var backgroundWorkStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executor = CreateExecutor(context => ExecuteRequestUntilCancellationAsync(
+            context,
+            blockedEntryStarted,
+            backgroundWorkStopped,
+            firstBlockedEntryIndex: 1));
+        var options = new BundleProcessingOptions
+        {
+            Type = BundleType.Batch,
+            ChannelCapacity = 8,
+            MaxParallelism = 4
+        };
+        var responseEnumerator = executor.ExecuteStreamingAsync(
+            CreateEntriesThenThrowAfterCancellationAsync(sourceMayThrow.Task, sourceCancellationObserved),
+            new ReferenceResolutionContext(),
+            options,
+            CancellationToken.None).GetAsyncEnumerator();
+
+        try
+        {
+            (await responseEnumerator.MoveNextAsync()).ShouldBeTrue();
+            GetResponseIndex(responseEnumerator.Current).ShouldBe(0);
+            await blockedEntryStarted.Task.WaitAsync(HangTimeout);
+
+            var disposeTask = responseEnumerator.DisposeAsync().AsTask();
+            await sourceCancellationObserved.Task.WaitAsync(HangTimeout);
+            await backgroundWorkStopped.Task.WaitAsync(HangTimeout);
+            await Task.Delay(TimeSpan.FromMilliseconds(25));
+            sourceMayThrow.SetResult();
+
+            var exception = await Should.ThrowAsync<JsonException>(async () =>
+            {
+                await disposeTask.WaitAsync(HangTimeout);
+            });
+
+            exception.Message.ShouldBe("The source fault followed cancellation.");
+        }
+        finally
+        {
+            sourceMayThrow.TrySetResult();
+            await responseEnumerator.DisposeAsync();
+        }
+    }
+
     private static BundleChannelExecutor CreateExecutor(
         TaskCompletionSource slowEntryStarted,
-        TaskCompletionSource releaseSlowEntry)
-        => CreateExecutor(context => ExecuteRequestAsync(context, slowEntryStarted, releaseSlowEntry));
+        TaskCompletionSource releaseSlowEntry,
+        Action<int>? entryCompleted = null)
+        => CreateExecutor(context => ExecuteRequestAsync(context, slowEntryStarted, releaseSlowEntry, entryCompleted));
 
     private static BundleChannelExecutor CreateExecutor(Func<HttpContext, Task> executeRequest)
     {
@@ -176,7 +276,8 @@ public class BundleChannelExecutorTests
     private static async Task ExecuteRequestAsync(
         HttpContext context,
         TaskCompletionSource slowEntryStarted,
-        TaskCompletionSource releaseSlowEntry)
+        TaskCompletionSource releaseSlowEntry,
+        Action<int>? entryCompleted)
     {
         var entryIndex = int.Parse(context.Request.Path.Value!.Split('/')[^1]);
         if (entryIndex == 0)
@@ -185,7 +286,8 @@ public class BundleChannelExecutorTests
             await releaseSlowEntry.Task.WaitAsync(context.RequestAborted);
         }
 
-        await context.Response.Body.WriteAsync(Encoding.UTF8.GetBytes($$"""{"index":{{entryIndex}}}"""), context.RequestAborted);
+        await WriteResponseAsync(context);
+        entryCompleted?.Invoke(entryIndex);
     }
 
     private static async Task ExecuteRequestUntilCancellationAsync(
@@ -209,19 +311,20 @@ public class BundleChannelExecutorTests
             }
         }
 
-        await context.Response.Body.WriteAsync(Encoding.UTF8.GetBytes($$"""{"index":{{entryIndex}}}"""), context.RequestAborted);
+        await WriteResponseAsync(context);
     }
 
     private static async IAsyncEnumerable<BundleEntryContext> CreateEntries(
         int entryCount,
         Action entryYielded,
+        int startingIndex = 0,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        for (var index = 0; index < entryCount; index++)
+        for (var offset = 0; offset < entryCount; offset++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             entryYielded();
-            yield return CreateEntry(index);
+            yield return CreateEntry(startingIndex + offset);
             await Task.Yield();
         }
     }
@@ -236,6 +339,18 @@ public class BundleChannelExecutorTests
         throw new JsonException("The bundle entry source failed.");
     }
 
+    private static async IAsyncEnumerable<BundleEntryContext> CreateEntriesThenThrowAfterCancellationAsync(
+        Task sourceMayThrow,
+        TaskCompletionSource sourceCancellationObserved,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return CreateEntry(0);
+        yield return CreateEntry(1);
+        using var registration = cancellationToken.Register(() => sourceCancellationObserved.TrySetResult());
+        await sourceMayThrow;
+        throw new JsonException("The source fault followed cancellation.");
+    }
+
     private static BundleEntryContext CreateEntry(int index) =>
         new()
         {
@@ -248,22 +363,36 @@ public class BundleChannelExecutorTests
             FullUrl = null
         };
 
-    private static async Task WaitForSourceProgressToStopAsync(Func<int> getSourceEntriesYielded)
+    private static Task WriteResponseAsync(HttpContext context)
     {
-        var previousCount = getSourceEntriesYielded();
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(25));
-            var currentCount = getSourceEntriesYielded();
-            if (currentCount == previousCount)
-            {
-                return;
-            }
+        var entryIndex = int.Parse(context.Request.Path.Value!.Split('/')[^1]);
+        return context.Response.Body.WriteAsync(
+            Encoding.UTF8.GetBytes($$"""{"index":{{entryIndex}}}"""),
+            context.RequestAborted).AsTask();
+    }
 
-            previousCount = currentCount;
+    private static async Task<List<int>> CollectResponseIndexesAsync(
+        IAsyncEnumerable<BundleEntryResponse> responses)
+    {
+        var indexes = new List<int>();
+        await foreach (var response in responses)
+        {
+            indexes.Add(GetResponseIndex(response));
         }
 
-        throw new TimeoutException("The entry source did not stop progressing while the first response was blocked.");
+        return indexes;
+    }
+
+    private static async Task<List<int>> CollectRemainingResponseIndexesAsync(
+        IAsyncEnumerator<BundleEntryResponse> responseEnumerator)
+    {
+        var indexes = new List<int>();
+        while (await responseEnumerator.MoveNextAsync())
+        {
+            indexes.Add(GetResponseIndex(responseEnumerator.Current));
+        }
+
+        return indexes;
     }
 
     private static int GetResponseIndex(BundleEntryResponse response) =>

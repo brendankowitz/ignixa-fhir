@@ -152,8 +152,8 @@ public class BundleChannelExecutor
         var executionCancellationToken = linkedCancellationSource.Token;
         using var window = new SemaphoreSlim(options.ChannelCapacity, options.ChannelCapacity);
 
-        // Create response channel with (index, response) tuples
-        var responseChannel = Channel.CreateBounded<(int index, BundleEntryResponse response)>(
+        // Create response channel with admission ordinal and response tuples
+        var responseChannel = Channel.CreateBounded<(int ordinal, BundleEntryResponse response)>(
             new BoundedChannelOptions(options.ChannelCapacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
@@ -161,13 +161,14 @@ public class BundleChannelExecutor
                 SingleWriter = false
             });
 
-        Exception? executionFailure = null;
+        Exception? executionFault = null;
         void RecordExecutionFailure(Exception exception)
         {
-            if (Interlocked.CompareExchange(ref executionFailure, exception, null) == null)
+            if (exception is not OperationCanceledException)
             {
-                linkedCancellationSource.Cancel();
+                Interlocked.CompareExchange(ref executionFault, exception, null);
             }
+            linkedCancellationSource.Cancel();
         }
 
         // Execute entries in parallel and write to response channel
@@ -176,7 +177,7 @@ public class BundleChannelExecutor
             try
             {
                 // Create entry channel for work distribution
-                var entryChannel = Channel.CreateBounded<(int index, BundleEntryContext entry)>(
+                var entryChannel = Channel.CreateBounded<(int ordinal, BundleEntryContext entry)>(
                     new BoundedChannelOptions(options.ChannelCapacity)
                     {
                         FullMode = BoundedChannelFullMode.Wait,
@@ -189,6 +190,7 @@ public class BundleChannelExecutor
                 {
                     try
                     {
+                        var nextOrdinal = 0;
                         await using var enumerator = entryStream.GetAsyncEnumerator(executionCancellationToken);
                         while (true)
                         {
@@ -207,7 +209,7 @@ public class BundleChannelExecutor
                                 ValidateStreamingEntry(entry);
                             }
 
-                            await entryChannel.Writer.WriteAsync((entry.Index, entry), executionCancellationToken);
+                            await entryChannel.Writer.WriteAsync((nextOrdinal++, entry), executionCancellationToken);
                         }
                     }
                     catch (Exception ex)
@@ -228,7 +230,7 @@ public class BundleChannelExecutor
                     {
                         try
                         {
-                            await foreach (var (index, entry) in entryChannel.Reader.ReadAllAsync(executionCancellationToken))
+                            await foreach (var (ordinal, entry) in entryChannel.Reader.ReadAllAsync(executionCancellationToken))
                             {
                                 var response = await _entryExecutor.ExecuteAsync(
                                     entry,
@@ -236,7 +238,7 @@ public class BundleChannelExecutor
                                     executionCancellationToken,
                                     deferredWriteCoordinator);
 
-                                await responseChannel.Writer.WriteAsync((index, response), executionCancellationToken);
+                                await responseChannel.Writer.WriteAsync((ordinal, response), executionCancellationToken);
                             }
                         }
                         catch (Exception ex)
@@ -247,15 +249,30 @@ public class BundleChannelExecutor
                     }))
                     .ToArray();
 
-                await Task.WhenAll([producerTask, .. consumerTasks]);
+                var workersTask = Task.WhenAll([producerTask, .. consumerTasks]);
+                try
+                {
+                    await workersTask;
+                }
+                catch
+                {
+                    var fault = FindNonCancellationFault(workersTask.Exception) ??
+                                Volatile.Read(ref executionFault);
+                    if (fault != null)
+                    {
+                        ExceptionDispatchInfo.Capture(fault).Throw();
+                    }
+                    throw;
+                }
             }
             catch (Exception ex)
             {
                 RecordExecutionFailure(ex);
-                responseChannel.Writer.TryComplete(executionFailure ?? ex);
-                if (executionFailure != null)
+                var fault = FindNonCancellationFault(ex) ?? Volatile.Read(ref executionFault);
+                responseChannel.Writer.TryComplete(fault ?? ex);
+                if (fault != null)
                 {
-                    ExceptionDispatchInfo.Capture(executionFailure).Throw();
+                    ExceptionDispatchInfo.Capture(fault).Throw();
                 }
                 throw;
             }
@@ -268,20 +285,20 @@ public class BundleChannelExecutor
         // Yield responses in order
         // Each admitted entry retains a window permit until its ordered response is yielded, bounding this buffer.
         var completedResponses = new Dictionary<int, BundleEntryResponse>();
-        int nextIndex = 0;
+        int nextOrdinalToYield = 0;
 
         try
         {
-            await foreach (var (index, response) in responseChannel.Reader.ReadAllAsync(executionCancellationToken))
+            await foreach (var (ordinal, response) in responseChannel.Reader.ReadAllAsync(executionCancellationToken))
             {
-                completedResponses[index] = response;
+                completedResponses[ordinal] = response;
 
-                // Yield all consecutive responses starting from nextIndex
-                while (completedResponses.TryGetValue(nextIndex, out var nextResponse))
+                // Yield all consecutive responses starting from nextOrdinalToYield
+                while (completedResponses.TryGetValue(nextOrdinalToYield, out var nextResponse))
                 {
-                    _logger.LogTrace("Yielding batch response for entry {Index}", nextIndex);
-                    completedResponses.Remove(nextIndex);
-                    nextIndex++;
+                    _logger.LogTrace("Yielding batch response with admission ordinal {Ordinal}", nextOrdinalToYield);
+                    completedResponses.Remove(nextOrdinalToYield);
+                    nextOrdinalToYield++;
                     window.Release();
                     yield return nextResponse;
                 }
@@ -294,7 +311,7 @@ public class BundleChannelExecutor
             {
                 await executionTask;
             }
-            catch (OperationCanceledException) when (linkedCancellationSource.IsCancellationRequested &&
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested &&
                                                      !executionTask.IsFaulted)
             {
             }
@@ -302,6 +319,15 @@ public class BundleChannelExecutor
 
         _logger.LogInformation("Streaming batch execution complete");
     }
+
+    private static Exception? FindNonCancellationFault(Exception? exception) =>
+        exception switch
+        {
+            AggregateException aggregateException => aggregateException.Flatten().InnerExceptions
+                .FirstOrDefault(innerException => innerException is not OperationCanceledException),
+            OperationCanceledException => null,
+            _ => exception
+        };
 
     /// <summary>
     /// Executes transaction bundle entries in streaming mode with verb-grouped parallel execution.
