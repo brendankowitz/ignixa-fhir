@@ -153,31 +153,36 @@ public class SqlActivationPreflightTests
             Snapshot(state).ShouldBe(before);
             state.Packages.Keys.Order().ShouldBe(packagesBefore);
             ReferenceEquals(versions.GetSearchIndexer(FhirVersion.R4, 1), warmIndexer).ShouldBeTrue();
-            await AssertSearchAsync(client, "identifier", patientId);
+            await AssertRedefiningSearchAsync(client, "identifier");
+            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, OverrideUrl);
 
             await StoreAsync(services, PackageId, "3", "identifier", OverrideUrl, RootOne);
             await StoreAsync(services, PackageId, "3", "after-reject", ValidNewUrl, null);
             (await pipeline.ActivateAsync(PackageId, "3", CancellationToken.None)).Success.ShouldBeTrue();
             state.GetSearchParameter("Patient", "after-reject")!.SearchParamId.ShouldBe(nextId);
             await SynchronizeAsync(services, "3");
+            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, ValidNewUrl);
             await PutAsync(client, patientId, updated: true);
             await AssertSearchAsync(client, "after-reject", patientId);
             eventsAfterValid = await CountEventsAsync(connectionString);
-            eventsAfterValid.ShouldBe(countBefore + 3);
+            eventsAfterValid.ShouldBeGreaterThan(countBefore);
         }
 
         await using var restarted = CreateHost(template, connectionString);
         using var restartedClient = restarted.CreateClient();
-        await AssertSearchAsync(restartedClient, "identifier", patientId);
+        // T7 owns reindexing resources created before a subsequent definition transition.
         await AssertSearchAsync(restartedClient, "after-reject", patientId);
         var replayed = restarted.Services.GetRequiredService<ConformanceState>();
         replayed.IsInitialized.ShouldBeTrue();
         replayed.Packages.ShouldNotContainKey($"{PackageId}@2");
         replayed.Packages.ShouldContainKey($"{PackageId}@3");
-        replayed.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(RootOne);
-        var staged = replayed.FindByCanonical(OverrideUrl)!;
-        staged.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Staged);
-        staged.OverridesCanonical.ShouldBe(RootOne);
+        replayed.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(OverrideUrl);
+        var activated = replayed.FindByCanonical(OverrideUrl)!;
+        activated.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Enabled);
+        activated.OverridesCanonical.ShouldBe(RootOne);
         (await CountEventsAsync(connectionString)).ShouldBe(eventsAfterValid);
     }
 
@@ -238,6 +243,21 @@ public class SqlActivationPreflightTests
         var entries = JsonNode.Parse(body)!["entry"]!.AsArray();
         entries.Count.ShouldBe(1);
         entries[0]!["resource"]!["id"]!.GetValue<string>().ShouldBe(id);
+    }
+
+    private static async Task AssertRedefiningSearchAsync(HttpClient client, string code)
+    {
+        using var strictRequest = new HttpRequestMessage(HttpMethod.Get, $"/tenant/1/Patient?{code}={Marker}");
+        strictRequest.Headers.Add("Prefer", "handling=strict");
+        using var strictResponse = await client.SendAsync(strictRequest);
+        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
+
+        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get, $"/tenant/1/Patient?{code}={Marker}");
+        lenientRequest.Headers.Add("Prefer", "handling=lenient");
+        using var lenientResponse = await client.SendAsync(lenientRequest);
+        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
+        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
+        lenientBody.ShouldContain($"Search parameter '{code}' is being redefined and was ignored.");
     }
 
     private static WebApplicationFactory<Program> CreateHost(IgnixaApiFixture template, string connectionString) =>

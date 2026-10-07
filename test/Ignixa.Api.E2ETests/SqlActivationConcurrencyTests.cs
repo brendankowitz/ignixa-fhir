@@ -140,11 +140,33 @@ public class SqlActivationConcurrencyTests
         var definitions = restarted.Services.GetRequiredService<IFhirVersionContext>()
             .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
         definitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(FirstRoot));
+        await AssertRedefiningSearchAsync(client);
+        await SearchParameterLifecycleTestHelper.CommitTransitionAsync(restarted.Services, ContendedCanonical);
+        await SearchParameterLifecycleTestHelper.CompleteReindexAsync(restarted.Services, ContendedCanonical);
+        finalCount = await CountAsync(connectionString);
+        definitions = restarted.Services.GetRequiredService<IFhirVersionContext>()
+            .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+        definitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(ContendedCanonical));
         using var request = new HttpRequestMessage(HttpMethod.Get, "/tenant/1/Patient?identifier=none");
         request.Headers.Add("Prefer", "handling=strict");
         using var response = await client.SendAsync(request);
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         (await CountAsync(connectionString)).ShouldBe(finalCount);
+    }
+
+    private static async Task AssertRedefiningSearchAsync(HttpClient client)
+    {
+        using var strictRequest = new HttpRequestMessage(HttpMethod.Get, "/tenant/1/Patient?identifier=none");
+        strictRequest.Headers.Add("Prefer", "handling=strict");
+        using var strictResponse = await client.SendAsync(strictRequest);
+        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
+
+        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get, "/tenant/1/Patient?identifier=none");
+        lenientRequest.Headers.Add("Prefer", "handling=lenient");
+        using var lenientResponse = await client.SendAsync(lenientRequest);
+        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
+        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
+        lenientBody.ShouldContain("Search parameter 'identifier' is being redefined and was ignored.");
     }
 
     private static async Task WaitForHostedReplayAsync(IServiceProvider services, CancellationToken cancellationToken)

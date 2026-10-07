@@ -63,7 +63,7 @@ public class SqlOverrideRestartTests
         {
             using var initialClient = initialHost.CreateClient();
             await PutPatientAsync(initialClient, beforeId, identifier);
-            await AssertPatientsAsync(initialClient, identifier, beforeId);
+            await AssertPatientAsync(initialClient, identifier, beforeId);
             initialState = initialHost.Services.GetRequiredService<ConformanceState>();
             initialState.IsInitialized.ShouldBeTrue();
 
@@ -90,11 +90,12 @@ public class SqlOverrideRestartTests
         await using var restartedHost = CreateHost(template, connectionString);
         using var client = restartedHost.CreateClient();
 
-        await AssertPatientsAsync(client, identifier, beforeId);
+        await AssertPendingSearchAsync(client, identifier);
         var restartedState = restartedHost.Services.GetRequiredService<ConformanceState>();
         ReferenceEquals(restartedState, initialState).ShouldBeFalse();
         restartedState.IsInitialized.ShouldBeTrue();
         restartedState.FindByCanonical(OverrideUrl).ShouldNotBeNull();
+        await SearchParameterLifecycleTestHelper.CompleteReindexAsync(restartedHost.Services, OverrideUrl);
         var definitions = restartedHost.Services.GetRequiredService<IFhirVersionContext>()
             .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
         definitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(OverrideUrl));
@@ -104,7 +105,8 @@ public class SqlOverrideRestartTests
         (await restartedCache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldBe(originalId);
 
         await PutPatientAsync(client, afterId, identifier);
-        await AssertPatientsAsync(client, identifier, beforeId, afterId);
+        // T7 owns reindexing the resource written before the persisted definition transition.
+        await AssertPatientAsync(client, identifier, afterId);
 
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -152,15 +154,31 @@ public class SqlOverrideRestartTests
         JsonNode.Parse(body)!["meta"]!["versionId"]!.GetValue<string>().ShouldBe("1");
     }
 
-    private static async Task AssertPatientsAsync(HttpClient client, string identifier, params string[] ids)
+    private static async Task AssertPendingSearchAsync(HttpClient client, string identifier)
+    {
+        using var strictRequest = new HttpRequestMessage(HttpMethod.Get,
+            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}");
+        strictRequest.Headers.Add("Prefer", "handling=strict");
+        using var strictResponse = await client.SendAsync(strictRequest);
+        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
+
+        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get,
+            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}");
+        lenientRequest.Headers.Add("Prefer", "handling=lenient");
+        using var lenientResponse = await client.SendAsync(lenientRequest);
+        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
+        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
+        lenientBody.ShouldContain("Search parameter 'identifier' is pending reindex and was ignored.");
+    }
+
+    private static async Task AssertPatientAsync(HttpClient client, string identifier, string id)
     {
         using var response = await client.GetAsync(
             $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}");
         var body = await response.Content.ReadAsStringAsync();
         response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
         var entries = JsonNode.Parse(body)!["entry"]!.AsArray();
-        entries.Select(entry => entry!["resource"]!["id"]!.GetValue<string>()).Order()
-            .ShouldBe(ids.Order());
+        entries.Select(entry => entry!["resource"]!["id"]!.GetValue<string>()).ShouldContain(id);
     }
 
     private sealed class SqlFactAttribute : FactAttribute

@@ -82,7 +82,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var unsupportedModifierParameters = new List<string>();
         var typeFilterParameters = new List<string>();
         var bundleIssues = new List<IssueComponent>();
-        var pendingReindexParameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var ignoredSearchParameterWarnings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var resolvedSearchParameters = new List<SearchParameterInfo>();
         var wildcardReferenceSearchParameters = new List<SearchParameterInfo>();
 
@@ -247,7 +247,27 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
             catch (PartiallyIndexedSearchParameterException ex)
             {
                 unsupportedParameters.Add(param.Name);
-                pendingReindexParameters[param.Name] = ex.SearchParameter.Code;
+                ignoredSearchParameterWarnings[param.Name] =
+                    $"Search parameter '{ex.SearchParameter.Code}' is pending reindex and was ignored.";
+
+                if (outcomes is not null && param.Category == ParameterCategory.Search)
+                {
+                    outcomes.Add(new ParameterTrace(
+                        ordinal: searchOrdinal++,
+                        key: param.Name,
+                        keySyntax: null,
+                        value: param.Value,
+                        valueSyntax: null,
+                        ir: null,
+                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
+                        dataType: null));
+                }
+            }
+            catch (TransitionHiddenSearchParameterException ex)
+            {
+                unsupportedParameters.Add(param.Name);
+                ignoredSearchParameterWarnings[param.Name] =
+                    $"Search parameter '{ex.SearchParameter.Code}' is being redefined and was ignored.";
 
                 if (outcomes is not null && param.Category == ParameterCategory.Search)
                 {
@@ -338,7 +358,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 resourceTypes,
                 sortParameters,
                 unsupportedParameters,
-                pendingReindexParameters,
+                ignoredSearchParameterWarnings,
                 resolvedSearchParameters);
         }
 
@@ -350,7 +370,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 includeParameters,
                 isReversed: false,
                 unsupportedParameters,
-                pendingReindexParameters,
+                ignoredSearchParameterWarnings,
                 resolvedSearchParameters,
                 wildcardReferenceSearchParameters);
         }
@@ -363,7 +383,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 revIncludeParameters,
                 isReversed: true,
                 unsupportedParameters,
-                pendingReindexParameters,
+                ignoredSearchParameterWarnings,
                 resolvedSearchParameters,
                 wildcardReferenceSearchParameters);
         }
@@ -436,21 +456,21 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         {
             if (!parameter.IsSearchable && parameter.IsSupported)
             {
-                AddIncompleteIndexWarning(bundleIssues, parameter.Code);
+                AddHiddenSearchParameterWarning(bundleIssues, parameter);
             }
         }
         foreach (SearchParameterInfo parameter in wildcardReferenceSearchParameters)
         {
             if (!parameter.IsSearchable)
             {
-                AddIncompleteIndexWarning(bundleIssues, parameter.Code);
+                AddHiddenSearchParameterWarning(bundleIssues, parameter);
             }
         }
 
         foreach (var param in unsupportedParameters)
         {
-            var diagnostics = pendingReindexParameters.TryGetValue(param, out string? code)
-                ? $"Search parameter '{code}' is pending reindex and was ignored."
+            var diagnostics = ignoredSearchParameterWarnings.TryGetValue(param, out string? warning)
+                ? warning
                 : $"Search parameter '{param}' is not supported";
 
             bundleIssues.Add(new IssueComponent(
@@ -494,7 +514,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         string[] resourceTypes,
         List<string> sortParameters,
         List<string> unsupportedParameters,
-        Dictionary<string, string> pendingReindexParameters,
+        Dictionary<string, string> ignoredSearchParameterWarnings,
         List<SearchParameterInfo> resolvedSearchParameters)
     {
         var sortExpressions = new List<SortExpression>();
@@ -554,7 +574,15 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 {
                     string parameterName = $"_sort={fieldName}";
                     unsupportedParameters.Add(parameterName);
-                    pendingReindexParameters[parameterName] = ex.SearchParameter.Code;
+                    ignoredSearchParameterWarnings[parameterName] =
+                        $"Search parameter '{ex.SearchParameter.Code}' is pending reindex and was ignored.";
+                }
+                catch (TransitionHiddenSearchParameterException ex)
+                {
+                    string parameterName = $"_sort={fieldName}";
+                    unsupportedParameters.Add(parameterName);
+                    ignoredSearchParameterWarnings[parameterName] =
+                        $"Search parameter '{ex.SearchParameter.Code}' is being redefined and was ignored.";
                 }
                 catch (BadSearchRequestException)
                 {
@@ -574,9 +602,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         return sortExpressions;
     }
 
-    private static void AddIncompleteIndexWarning(List<IssueComponent> bundleIssues, string code)
+    private static void AddHiddenSearchParameterWarning(
+        List<IssueComponent> bundleIssues,
+        SearchParameterInfo parameter)
     {
-        var diagnostics = $"Search results may be incomplete because search parameter '{code}' is pending reindex.";
+        var diagnostics = parameter.IsHiddenByTransition
+            ? $"Search parameter '{parameter.Code}' is being redefined and was ignored."
+            : $"Search results may be incomplete because search parameter '{parameter.Code}' is pending reindex.";
         if (bundleIssues.All(issue => issue.Diagnostics != diagnostics))
         {
             bundleIssues.Add(new IssueComponent(
@@ -591,7 +623,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         List<(string ParameterName, string Value)> includeParameters,
         bool isReversed,
         List<string> unsupportedParameters,
-        Dictionary<string, string> pendingReindexParameters,
+        Dictionary<string, string> ignoredSearchParameterWarnings,
         List<SearchParameterInfo> resolvedSearchParameters,
         List<SearchParameterInfo> wildcardReferenceSearchParameters)
     {
@@ -627,7 +659,14 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
             catch (PartiallyIndexedSearchParameterException ex)
             {
                 unsupportedParameters.Add(parameterName);
-                pendingReindexParameters[parameterName] = ex.SearchParameter.Code;
+                ignoredSearchParameterWarnings[parameterName] =
+                    $"Search parameter '{ex.SearchParameter.Code}' is pending reindex and was ignored.";
+            }
+            catch (TransitionHiddenSearchParameterException ex)
+            {
+                unsupportedParameters.Add(parameterName);
+                ignoredSearchParameterWarnings[parameterName] =
+                    $"Search parameter '{ex.SearchParameter.Code}' is being redefined and was ignored.";
             }
             catch (SearchParameterNotSupportedException)
             {

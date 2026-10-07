@@ -254,6 +254,32 @@ public class ParameterOutcomeTests
                 : "Search parameter 'pending' is pending reindex and was ignored."));
     }
 
+    [Theory]
+    [InlineData("direct")]
+    [InlineData("forward-chain")]
+    [InlineData("reverse-chain")]
+    [InlineData("include")]
+    [InlineData("revinclude")]
+    [InlineData("wildcard-include")]
+    [InlineData("wildcard-revinclude")]
+    [InlineData("sort")]
+    [InlineData("system")]
+    public void GivenARedefinedParameterInAnyResolvedPosition_WhenBuilt_ThenItIsIgnoredWithTheRedefinitionWarning(
+        string form)
+    {
+        var context = new SearchParserTestContext();
+        var (resourceType, parameters) = AddHiddenParameter(context, form, isSupported: false);
+        var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager);
+        var builder = new SearchOptionsBuilder(
+            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
+            definitions);
+
+        var options = builder.Build(resourceType, parameters);
+
+        options.BundleIssues.ShouldContain(issue =>
+            issue.Diagnostics == "Search parameter 'pending' is being redefined and was ignored.");
+    }
+
     [Fact]
     public void GivenAnUnsupportedModifier_WhenBuilt_ThenTheParameterIsReportedAsIgnored()
     {
@@ -296,12 +322,19 @@ public class ParameterOutcomeTests
 
     private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddPendingParameter(
         SearchParserTestContext context,
-        string form)
+        string form) => AddHiddenParameter(context, form, isSupported: true);
+
+    private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddHiddenParameter(
+        SearchParserTestContext context,
+        string form,
+        bool isSupported)
     {
-        SearchParameterInfo AddPending(string resourceType, SearchParamType type, string[]? targets = null)
+        SearchParameterInfo AddHidden(string resourceType, SearchParamType type, string[]? targets = null)
         {
             var pending = context.Add(resourceType, "pending", type, targets);
             pending.IsSearchable = false;
+            pending.IsSupported = isSupported;
+            pending.IsHiddenByTransition = !isSupported;
             return pending;
         }
 
@@ -312,57 +345,74 @@ public class ParameterOutcomeTests
             "reverse-chain" => ReverseChain(),
             "include" => Include(),
             "revinclude" => RevInclude(),
+            "wildcard-include" => WildcardInclude(),
+            "wildcard-revinclude" => WildcardRevInclude(),
             "sort" => Sort(),
 
-            "system" => AddSystemPendingParameter(context),
+            "system" => AddSystemPendingParameter(context, isSupported),
 
             _ => throw new ArgumentOutOfRangeException(nameof(form), form, "Unknown search form."),
         };
 
         (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Direct()
         {
-            AddPending("Patient", SearchParamType.String);
+            AddHidden("Patient", SearchParamType.String);
             return ("Patient", [new QueryParameter("pending", "Smith")]);
         }
 
         (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) ForwardChain()
         {
             context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
-            AddPending("Patient", SearchParamType.String);
+            AddHidden("Patient", SearchParamType.String);
             return ("Observation", [new QueryParameter("subject:Patient.pending", "Smith")]);
         }
 
         (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) ReverseChain()
         {
             context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
-            AddPending("Observation", SearchParamType.String);
+            AddHidden("Observation", SearchParamType.String);
             return ("Patient", [new QueryParameter("_has:Observation:subject:pending", "Smith")]);
         }
 
         (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Include()
         {
-            AddPending("Observation", SearchParamType.Reference, ["Patient"]);
+            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
             return ("Observation", [new QueryParameter("_include", "Observation:pending:Patient")]);
         }
 
         (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) RevInclude()
         {
-            AddPending("Observation", SearchParamType.Reference, ["Patient"]);
+            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
             return ("Patient", [new QueryParameter("_revinclude", "Observation:pending:Patient")]);
+        }
+
+        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) WildcardInclude()
+        {
+            AddHidden("Patient", SearchParamType.Reference, ["Organization"]);
+            return ("Patient", [new QueryParameter("_include", "Patient:*")]);
+        }
+
+        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) WildcardRevInclude()
+        {
+            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
+            return ("Patient", [new QueryParameter("_revinclude", "Observation:*")]);
         }
 
         (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Sort()
         {
-            AddPending("Patient", SearchParamType.String);
+            AddHidden("Patient", SearchParamType.String);
             return ("Patient", [new QueryParameter("_sort", "pending")]);
         }
     }
 
     private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddSystemPendingParameter(
-        SearchParserTestContext context)
+        SearchParserTestContext context,
+        bool isSupported)
     {
         var pending = context.Add("Patient", "pending", SearchParamType.String);
         pending.IsSearchable = false;
+        pending.IsSupported = isSupported;
+        pending.IsHiddenByTransition = !isSupported;
         context.AddCommon(pending, "Patient", "Observation");
 
         return (null, [

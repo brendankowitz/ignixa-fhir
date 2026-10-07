@@ -147,6 +147,10 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
             {
                 throw;
             }
+            catch (TransitionHiddenSearchParameterException)
+            {
+                throw;
+            }
             catch (SearchParameterNotSupportedException)
             {
                 // Unsupported candidates are intentionally filtered so chain binding can resolve supported targets.
@@ -178,6 +182,10 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
             return Bind([candidate], next);
         }
         catch (PartiallyIndexedSearchParameterException)
+        {
+            throw;
+        }
+        catch (TransitionHiddenSearchParameterException)
         {
             throw;
         }
