@@ -72,6 +72,82 @@ public class ParameterOutcomeTests
     }
 
     [Theory]
+    [InlineData("_include", "*", false)]
+    [InlineData("_include", "Patient:*", false)]
+    [InlineData("_revinclude", "*", false)]
+    [InlineData("_revinclude", "Observation:*", false)]
+    [InlineData("_include", "*", true)]
+    [InlineData("_include", "Patient:*", true)]
+    [InlineData("_revinclude", "*", true)]
+    [InlineData("_revinclude", "Observation:*", true)]
+    public void GivenAWildcardIncludeWithAPendingReference_WhenBuilt_ThenItWarnsOfIncompleteResultsAndTracksTheParameter(
+        string parameterName,
+        string parameterValue,
+        bool usePartialIndices)
+    {
+        var context = new SearchParserTestContext();
+        var pending = context.Add(
+            parameterName == "_include" ? "Patient" : "Observation",
+            "pending-reference",
+            SearchParamType.Reference,
+            ["Organization", "Patient"]);
+        pending.IsSearchable = false;
+        var definitions = new SearchableSearchParameterDefinitionManager(
+            context.DefinitionManager,
+            () => usePartialIndices);
+        var builder = new SearchOptionsBuilder(
+            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
+            definitions);
+
+        var options = builder.Build("Patient", [new QueryParameter(parameterName, parameterValue)]);
+
+        options.ResolvedSearchParameters.ShouldContain(parameter => ReferenceEquals(parameter, pending));
+        options.BundleIssues.ShouldContain(issue => issue.Diagnostics ==
+            "Search results may be incomplete because search parameter 'pending-reference' is pending reindex.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GivenASystemSortWithAPendingDefinitionForOneType_WhenBuilt_ThenItUsesThePendingDefinitionRulesForEveryType(
+        bool usePartialIndices)
+    {
+        var context = new SearchParserTestContext();
+        var canonical = new Uri("http://ignixa.test/SearchParameter/custom");
+        var enabled = context.Add("Patient", "custom", SearchParamType.String, url: canonical);
+        var pending = context.Add("Observation", "custom", SearchParamType.String, url: canonical);
+        pending.IsSearchable = false;
+        var definitions = new SearchableSearchParameterDefinitionManager(
+            context.DefinitionManager,
+            () => usePartialIndices);
+        var builder = new SearchOptionsBuilder(
+            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
+            definitions);
+
+        var options = builder.Build(null,
+        [
+            new QueryParameter("_type", "Patient,Observation"),
+            new QueryParameter("_sort", "custom"),
+        ]);
+
+        options.ResolvedSearchParameters.ShouldContain(parameter => ReferenceEquals(parameter, enabled));
+        if (usePartialIndices)
+        {
+            options.ResolvedSearchParameters.ShouldContain(parameter => ReferenceEquals(parameter, pending));
+            options.Sort.ShouldHaveSingleItem().Parameter.ShouldBe(enabled);
+            options.BundleIssues.ShouldContain(issue => issue.Diagnostics ==
+                "Search results may be incomplete because search parameter 'custom' is pending reindex.");
+        }
+        else
+        {
+            options.Sort.ShouldBeEmpty();
+            options.UnsupportedParams.ShouldContain("_sort=custom");
+            options.BundleIssues.ShouldContain(issue => issue.Diagnostics ==
+                "Search parameter 'custom' is pending reindex and was ignored.");
+        }
+    }
+
+    [Theory]
     [InlineData("direct", false)]
     [InlineData("forward-chain", false)]
     [InlineData("reverse-chain", false)]

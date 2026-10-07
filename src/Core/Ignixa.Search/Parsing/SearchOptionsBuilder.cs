@@ -14,6 +14,7 @@ using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Abstractions;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Parsing;
 
@@ -83,6 +84,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var bundleIssues = new List<IssueComponent>();
         var pendingReindexParameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var resolvedSearchParameters = new List<SearchParameterInfo>();
+        var wildcardReferenceSearchParameters = new List<SearchParameterInfo>();
 
         // For system-wide search (resourceType is null), we need to first extract _type parameters
         // to know what resource types we're searching. This is essential for parsing reverse chain
@@ -349,7 +351,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 isReversed: false,
                 unsupportedParameters,
                 pendingReindexParameters,
-                resolvedSearchParameters);
+                resolvedSearchParameters,
+                wildcardReferenceSearchParameters);
         }
 
         // STEP 5: Parse reverse includes
@@ -361,7 +364,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 isReversed: true,
                 unsupportedParameters,
                 pendingReindexParameters,
-                resolvedSearchParameters);
+                resolvedSearchParameters,
+                wildcardReferenceSearchParameters);
         }
 
         // STEP 6: Parse and validate elements
@@ -431,6 +435,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         foreach (SearchParameterInfo parameter in resolvedSearchParameters)
         {
             if (!parameter.IsSearchable && parameter.IsSupported)
+            {
+                AddIncompleteIndexWarning(bundleIssues, parameter.Code);
+            }
+        }
+        foreach (SearchParameterInfo parameter in wildcardReferenceSearchParameters)
+        {
+            if (!parameter.IsSearchable)
             {
                 AddIncompleteIndexWarning(bundleIssues, parameter.Code);
             }
@@ -511,21 +522,33 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 {
                     // Look up the search parameter directly (no need to parse a value for sorting)
                     // For sorting, we only need the SearchParameterInfo metadata, not a parsed value expression
-                    SearchParameterInfo searchParameter = _searchParameterDefinitionManager.GetSearchParameter(resourceTypes[0], fieldName);
+                    var searchParameters = new List<SearchParameterInfo>(resourceTypes.Length);
+                    foreach (string resourceType in resourceTypes)
+                    {
+                        SearchParameterInfo searchParameter = _searchParameterDefinitionManager.GetSearchParameter(resourceType, fieldName);
+                        searchParameters.Add(searchParameter);
+                        resolvedSearchParameters.Add(searchParameter);
+                    }
 
                     // Check if the parameter is sortable
-                    if (searchParameter.SortStatus != SortParameterStatus.Enabled)
+                    if (searchParameters.Any(parameter => parameter.SortStatus != SortParameterStatus.Enabled))
                     {
                         // Parameter exists but is not sortable
-                        System.Diagnostics.Debug.WriteLine($"Sort field '{fieldName}' is not sortable (SortStatus: {searchParameter.SortStatus})");
+                        System.Diagnostics.Debug.WriteLine($"Sort field '{fieldName}' is not sortable.");
                         unsupportedParameters.Add($"_sort={fieldName}");
                         continue;
                     }
 
-                    sortExpressions.Add(new SortExpression(searchParameter, sortOrder));
-                    resolvedSearchParameters.Add(searchParameter);
+                    SearchParameterInfo firstSearchParameter = searchParameters[0];
+                    if (searchParameters.Any(parameter => !parameter.Equals(firstSearchParameter)))
+                    {
+                        throw new BadSearchRequestException(
+                            string.Format(Resources.SearchParameterMustBeCommon, fieldName, resourceTypes[0], resourceTypes[1]));
+                    }
 
-                    System.Diagnostics.Debug.WriteLine($"✅ Added sort expression: {searchParameter.Code} ({searchParameter.Type}) {sortOrder}");
+                    sortExpressions.Add(new SortExpression(firstSearchParameter, sortOrder));
+
+                    System.Diagnostics.Debug.WriteLine($"✅ Added sort expression: {firstSearchParameter.Code} ({firstSearchParameter.Type}) {sortOrder}");
                 }
                 catch (PartiallyIndexedSearchParameterException ex)
                 {
@@ -565,7 +588,8 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         bool isReversed,
         List<string> unsupportedParameters,
         Dictionary<string, string> pendingReindexParameters,
-        List<SearchParameterInfo> resolvedSearchParameters)
+        List<SearchParameterInfo> resolvedSearchParameters,
+        List<SearchParameterInfo> wildcardReferenceSearchParameters)
     {
         var includeExpressions = new List<IncludeExpression>();
 
@@ -588,6 +612,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 {
                     resolvedSearchParameters.Add(includeExpr.ReferenceSearchParameter);
                 }
+                else if (includeExpr.WildCard)
+                {
+                    AddWildcardReferenceSearchParameters(
+                        includeExpr,
+                        resolvedSearchParameters,
+                        wildcardReferenceSearchParameters);
+                }
             }
             catch (PartiallyIndexedSearchParameterException ex)
             {
@@ -601,6 +632,47 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         }
 
         return includeExpressions;
+    }
+
+    private void AddWildcardReferenceSearchParameters(
+        IncludeExpression includeExpression,
+        List<SearchParameterInfo> resolvedSearchParameters,
+        List<SearchParameterInfo> wildcardReferenceSearchParameters)
+    {
+        foreach (SearchParameterInfo searchParameter in _searchParameterDefinitionManager.GetAllKnownSearchParameters()
+                     .Where(parameter => parameter.Type == SearchParamType.Reference)
+                     .Where(parameter => IsApplicableWildcardReferenceParameter(includeExpression, parameter))
+                     .Distinct())
+        {
+            resolvedSearchParameters.Add(searchParameter);
+            wildcardReferenceSearchParameters.Add(searchParameter);
+        }
+    }
+
+    private static bool IsApplicableWildcardReferenceParameter(
+        IncludeExpression includeExpression,
+        SearchParameterInfo searchParameter)
+    {
+        if (!includeExpression.Reversed)
+        {
+            IEnumerable<string> sourceTypes = includeExpression.SourceResourceType == "*"
+                ? includeExpression.ResourceTypes
+                : [includeExpression.SourceResourceType];
+            return sourceTypes.Any(sourceType =>
+                searchParameter.BaseResourceTypes.Contains(sourceType, StringComparer.OrdinalIgnoreCase));
+        }
+
+        IEnumerable<string> reverseSourceTypes = includeExpression.SourceResourceType == "*"
+            ? searchParameter.BaseResourceTypes
+            : [includeExpression.SourceResourceType];
+        IEnumerable<string> targetTypes = includeExpression.TargetResourceType is null
+            ? includeExpression.ResourceTypes
+            : [includeExpression.TargetResourceType];
+
+        return reverseSourceTypes.Any(sourceType =>
+                   searchParameter.BaseResourceTypes.Contains(sourceType, StringComparer.OrdinalIgnoreCase))
+            && targetTypes.Any(targetType =>
+                   searchParameter.TargetResourceTypes.Contains(targetType, StringComparer.OrdinalIgnoreCase));
     }
 
     private static void AddResolvedSearchParameters(Expression expression, List<SearchParameterInfo> resolvedSearchParameters)
