@@ -17,11 +17,12 @@ public static class LogSanitizationExtensions
     /// (CodeQL <c>cs/log-forging</c>). The result is always the same length as the input.
     /// </summary>
     /// <remarks>
-    /// This is for log arguments only. It must never be applied to a value used functionally
-    /// (e.g. route values that drive authorization or a data operation) because doing so would
-    /// let a caller smuggle a value through sanitization undetected while routing/authorizing/
-    /// acting on the original, un-sanitized value elsewhere -- sanitize at the log call site, not
-    /// upstream where the value is still doing real work.
+    /// This is for log arguments only. Never apply it to a value used functionally (for example a
+    /// route value that drives authorization or a data operation); sanitize at the log call site.
+    /// CodeQL recognizes this method as a log-injection barrier through
+    /// <c>.github/codeql/extensions/log-sanitization.model.yml</c>, which names it by namespace and
+    /// type: renaming or moving this method requires updating that model, or every caller's
+    /// <c>cs/log-forging</c> alert reopens.
     /// </remarks>
     /// <param name="value">The value to sanitize; <see langword="null"/> is returned unchanged.</param>
     /// <returns>
