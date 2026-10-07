@@ -18,11 +18,17 @@ namespace Ignixa.Api.Tests.Registrations;
 public class BundleLimitsRegistrationTests
 {
     [Theory]
+    [InlineData("Bundle:MaxTransactionEntries", null)]
+    [InlineData("Bundle:MaxTransactionEntries", "-1")]
     [InlineData("Bundle:MaxTransactionEntries", "0")]
+    [InlineData("Bundle:MaxTransactionEntries", "not-a-number")]
+    [InlineData("Kestrel:Limits:MaxRequestBodySize", null)]
+    [InlineData("Kestrel:Limits:MaxRequestBodySize", "-1")]
     [InlineData("Kestrel:Limits:MaxRequestBodySize", "0")]
+    [InlineData("Kestrel:Limits:MaxRequestBodySize", "not-a-number")]
     public void GivenInvalidBundleLimitConfiguration_WhenRegisteringServices_ThenStartupFails(
         string key,
-        string value)
+        string? value)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { [key] = value })

@@ -146,7 +146,14 @@ public static class ApplicationServicesRegistration
         var configuredValue = configuration[key];
         if (configuredValue == null)
         {
-            return defaultValue;
+            if (!configuration.AsEnumerable()
+                .Any(entry => string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase)))
+            {
+                return defaultValue;
+            }
+
+            throw new InvalidOperationException(
+                $"Configuration setting '{key}' must be a positive integer.");
         }
         if (!int.TryParse(configuredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value <= 0)
         {
