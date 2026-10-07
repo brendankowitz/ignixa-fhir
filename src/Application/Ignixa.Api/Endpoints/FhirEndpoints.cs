@@ -1130,25 +1130,17 @@ public static class FhirEndpoints
             Bundle responseBundle = await bundleProcessor.ProcessAsync(
                 bundleContext.Entries, options, ct);
 
-            // Serialize response bundle with System.Text.Json
-            string responseJson;
-            try
-            {
-                responseJson = responseBundle.SerializeToString();
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to serialize response bundle");
-                return Results.StatusCode(StatusCodes.Status500InternalServerError);
-            }
-
             logger.LogInformation("Successfully processed bundle (buffered mode)");
             if (validationOverride.HasValue)
             {
                 context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
             }
-                
-            return Results.Content(responseJson, KnownContentTypes.ApplicationFhirJson);
+
+            // Streamed entry by entry rather than built as one string: the transaction is already committed and
+            // its response bundle is in memory, so a second full UTF-16 copy plus its UTF-8 encoding is pure overhead.
+            context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
+            await responseBundle.SerializeToStreamAsync(context.Response.Body, cancellationToken: ct);
+            return Results.Empty;
         }
         else
         {
