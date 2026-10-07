@@ -5,6 +5,7 @@
 
 using Medino;
 using Microsoft.Extensions.Logging;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -29,17 +30,20 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
     private readonly IQueryExecutionStrategy _executionStrategy;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<SearchResourcesHandler> _logger;
+    private readonly SemanticQueryPreparer? _semanticQueryPreparer;
 
     public SearchResourcesHandler(
         IPartitionStrategy partitionStrategy,
         IQueryExecutionStrategy executionStrategy,
         IFhirRequestContextAccessor contextAccessor,
-        ILogger<SearchResourcesHandler> logger)
+        ILogger<SearchResourcesHandler> logger,
+        SemanticQueryPreparer? semanticQueryPreparer = null)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _executionStrategy = executionStrategy ?? throw new ArgumentNullException(nameof(executionStrategy));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _semanticQueryPreparer = semanticQueryPreparer;
     }
 
     public async Task<SearchResourcesResult> HandleAsync(
@@ -51,6 +55,13 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
             ?? throw new InvalidOperationException("FHIR request context not available");
 
         _logger.LogInformation("Searching for {ResourceType} resources (streaming)", request.ResourceType ?? "all resource types");
+
+        // Embed this search's one semantic query term (if any) before anything below reads
+        // request.SearchOptions.Expression: a no-op when the feature is disabled (preparer is null) or
+        // the request carries no semantic parameter (PrepareAsync returns the same instance).
+        var searchOptions = _semanticQueryPreparer is null
+            ? request.SearchOptions
+            : await _semanticQueryPreparer.PrepareAsync(request.SearchOptions, cancellationToken);
 
         // Create partition resolution context from FHIR request context
         var partitionContext = new PartitionResolutionContext
@@ -74,11 +85,11 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
             partition.Mode);
 
         // Handle _summary=count - return only total, no resources
-        if (request.SearchOptions.Summary == SummaryType.Count)
+        if (searchOptions.Summary == SummaryType.Count)
         {
             _logger.LogDebug("Summary=Count requested, returning only total count");
 
-            int totalCount = await _executionStrategy.CountAsync(partition, request.SearchOptions, cancellationToken);
+            int totalCount = await _executionStrategy.CountAsync(partition, searchOptions, cancellationToken);
             _logger.LogDebug("Count query returned {TotalCount}", totalCount);
 
             return new SearchResourcesResult(
@@ -86,22 +97,22 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
                 Total: totalCount,
                 ContinuationToken: null,
                 HasMore: false,
-                SearchOptions: request.SearchOptions);
+                SearchOptions: searchOptions);
         }
 
         // 2. Ask the data layer for the caller's page plus a probe row (count-as-render pattern).
         //    The page size stays the caller's own: the over-fetch is stated, not folded into the count,
         //    so the data layer knows which rows are genuinely on the page and seeds _include from those.
         //
-        //    This copy-constructs a SEPARATE SearchOptions instance from request.SearchOptions -- the
-        //    result below (line ~137) hands the serializer the ORIGINAL request.SearchOptions, not this
+        //    This copy-constructs a SEPARATE SearchOptions instance from searchOptions -- the
+        //    result below (line ~137) hands the serializer the PREPARED searchOptions, not this
         //    one, so anything a data-layer execution wrote onto searchOptionsWithExtra after this point
         //    would never reach the serializer. Currently inert: BundleIssues, the only property either
         //    instance carries that the serializer reads, is written once by SearchOptionsBuilder.cs
         //    (~:399) BEFORE either instance exists and copied into both by the constructor below. A
         //    future runtime data-layer warning routed through BundleIssues (or any other property
         //    written post-construction) would silently vanish on this path.
-        var searchOptionsWithExtra = new SearchOptions(request.SearchOptions)
+        var searchOptionsWithExtra = new SearchOptions(searchOptions)
         {
             ProbeExtraRow = true,
         };
@@ -121,18 +132,18 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
 
         // Calculate total count for Bundle.total field if explicitly requested
         int? total = null;
-        if (request.SearchOptions.Total == TotalType.Accurate)
+        if (searchOptions.Total == TotalType.Accurate)
         {
             // Only execute COUNT query if explicitly requested
-            int totalCount = await _executionStrategy.CountAsync(partition, request.SearchOptions, cancellationToken);
+            int totalCount = await _executionStrategy.CountAsync(partition, searchOptions, cancellationToken);
             _logger.LogDebug("Accurate total requested, COUNT query returned {TotalCount}", totalCount);
             total = totalCount;
         }
-        else if (request.SearchOptions.Total == TotalType.Estimate)
+        else if (searchOptions.Total == TotalType.Estimate)
         {
             // For estimate mode, we could implement a cheaper estimation strategy in the future
             // For now, execute count query
-            int totalCount = await _executionStrategy.CountAsync(partition, request.SearchOptions, cancellationToken);
+            int totalCount = await _executionStrategy.CountAsync(partition, searchOptions, cancellationToken);
             _logger.LogDebug("Estimate total requested, using COUNT query result {TotalCount}", totalCount);
             total = totalCount;
         }

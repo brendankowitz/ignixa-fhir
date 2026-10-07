@@ -7,6 +7,7 @@ using Azure.AI.OpenAI;
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,7 +16,8 @@ namespace Ignixa.Application.Features.SemanticSearch;
 /// <summary>
 /// Registers semantic (vector) search services: bound and validated <see cref="VectorSearchOptions"/>,
 /// the <see cref="SemanticTextChunker"/>, the Azure OpenAI-backed
-/// <see cref="IEmbeddingGenerator{TInput, TEmbedding}"/>, and the write-path <see cref="SemanticIndexer"/>.
+/// <see cref="IEmbeddingGenerator{TInput, TEmbedding}"/>, the write-path <see cref="SemanticIndexer"/>,
+/// and the query-path <see cref="SemanticQueryPreparer"/>.
 /// When semantic search is disabled, registers nothing -- no embedding generator is resolvable, no
 /// provider call is possible, and <see cref="SemanticIndexer"/> is not constructed.
 /// </summary>
@@ -88,6 +90,17 @@ public static class SemanticSearchServiceRegistration
         services.AddSingleton(sp => new SemanticIndexer(
             sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
             sp.GetRequiredService<SemanticTextChunker>(),
+            options));
+
+        // Query-path preparer. Takes the same optional-dependency pattern as SemanticIndexer above: every
+        // handler that can carry a user-supplied semantic search parameter (see SearchResourcesHandler and
+        // its siblings) takes this as SemanticQueryPreparer?, resolved when enabled and null otherwise.
+        // Shares the process-wide IMemoryCache (CoreServicesRegistration.AddMemoryCache) rather than a
+        // dedicated cache instance -- see the type's own remarks for why a tenant-independent cache is
+        // correct here.
+        services.AddSingleton(sp => new SemanticQueryPreparer(
+            sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+            sp.GetRequiredService<IMemoryCache>(),
             options));
 
         return services;

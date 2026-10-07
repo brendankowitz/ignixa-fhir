@@ -311,7 +311,7 @@ public sealed class SemanticIndexer
         {
             embeddings = await _generator.GenerateAsync(passages, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (IsProviderUnavailable(ex, cancellationToken))
+        catch (Exception ex) when (EmbeddingProviderFailureClassifier.IsProviderUnavailable(ex, cancellationToken))
         {
             throw new EmbeddingUnavailableException("The embedding provider is unavailable.", ex);
         }
@@ -334,23 +334,6 @@ public sealed class SemanticIndexer
 
         return embeddings;
     }
-
-    /// <summary>
-    /// True for a provider failure that should be reported as <see cref="EmbeddingUnavailableException"/>:
-    /// a transport or SDK-level failure (<see cref="HttpRequestException"/>,
-    /// <see cref="System.ClientModel.ClientResultException"/>, <see cref="Azure.RequestFailedException"/>),
-    /// or a cancellation the provider itself raised (a request timeout) rather than one caused by
-    /// <paramref name="cancellationToken"/>. The caller's own cancellation must propagate unchanged, not be
-    /// reported as a provider outage.
-    /// </summary>
-    private static bool IsProviderUnavailable(Exception exception, CancellationToken cancellationToken) => exception switch
-    {
-        HttpRequestException => true,
-        System.ClientModel.ClientResultException => true,
-        Azure.RequestFailedException => true,
-        OperationCanceledException => !cancellationToken.IsCancellationRequested,
-        _ => false
-    };
 
     /// <summary>
     /// Everything needed to assemble one <see cref="VectorIndexEntry"/> once embeddings are available:

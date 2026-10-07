@@ -6,6 +6,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql;
 using Ignixa.Search.Sql.Ast;
@@ -164,6 +165,16 @@ public sealed class SqlServerCompiledSearchService(
                 options.Include.Count != 0 || options.RevInclude.Count != 0)
             {
                 throw new ArgumentException("Export continuation requires a bounded, unsorted single-type search with a probe and no includes.", nameof(options));
+            }
+
+            // A semantic ranking has no distance term in the keyset seek predicate: a second export page
+            // would re-run the gate but not re-apply "closer than the last page's boundary row", so rows
+            // at or near the seam would be silently skipped or repeated. See VectorRankSpec's own remarks
+            // for the same rule enforced inside the compiler -- this is the same rule, checked earlier
+            // and with a clearer message, rather than relying solely on that deeper rejection.
+            if (VectorSearchExpressionLocator.FindAll(options.Expression).Count > 0)
+            {
+                throw new ArgumentException("Export continuation cannot be combined with a semantic search parameter.", nameof(options));
             }
 
             var compiledExport = await CompileAsync(options, cancellationToken);
@@ -523,10 +534,15 @@ public sealed class SqlServerCompiledSearchService(
         // being non-empty does not imply the emitted statement carries an IsMatch column.
         var hasIncludes = compiled.Query.Includes is { Count: > 0 };
 
+        // Same reasoning for Distance: only a plan whose MatchSpec carries a VectorRankSpec projects it
+        // (ShapeEmitter.RankSelectColumn / the union arms' matchDistance), regardless of what the caller's
+        // SearchOptions.Expression happens to contain.
+        var ranked = compiled.Query.MatchSpec.Ranking is not null;
+
         return await _sqlExecutionService.ExecuteReaderAsync(
             _tenantId,
             command,
-            reader => ReadMatchRow(reader, hasIncludes),
+            reader => ReadMatchRow(reader, hasIncludes, ranked),
             cancellationToken);
     }
 
@@ -583,7 +599,7 @@ public sealed class SqlServerCompiledSearchService(
                 // malformed RawResource) is factored into TryBuildSearchEntryResult -- mirroring
                 // SqlServerHistoryQueryExecutor.TryMapHistoryRow's try/catch-and-skip, just called from
                 // outside the try rather than inside it.
-                if (TryBuildSearchEntryResult(resource, matchRow.IsMatch) is { } result)
+                if (TryBuildSearchEntryResult(resource, matchRow.IsMatch, matchRow.Distance) is { } result)
                 {
                     // Even a healthy probe is not a page member. Retain its identity for cross-phase
                     // match/include deduplication, but expose no content that could be rendered.
@@ -686,10 +702,15 @@ public sealed class SqlServerCompiledSearchService(
         };
     }
 
-    private SearchEntryResult? TryBuildSearchEntryResult(FetchedResource resource, bool? isMatch)
+    private SearchEntryResult? TryBuildSearchEntryResult(FetchedResource resource, bool? isMatch, double? distance)
     {
         try
         {
+            // IsMatch == false -> Include, IsMatch == true or null (a no-includes plan, where every row is
+            // implicitly a match and the IsMatch column is absent) -> Match. Never derive this from
+            // IsPartial, which is a truncation marker on included rows, not the include/match discriminator.
+            var searchMode = isMatch is false ? SearchEntryMode.Include : SearchEntryMode.Match;
+
             return new SearchEntryResult(
                 ResourceType: resource.ResourceTypeName,
                 ResourceId: resource.ResourceId,
@@ -698,11 +719,12 @@ public sealed class SqlServerCompiledSearchService(
                 ResourceBytes: _compressor.DecompressBytes(resource.RawResource))
             {
                 IsDeleted = resource.IsDeleted,
-                // IsMatch == false -> Include, IsMatch == true or null (a no-includes plan, where every
-                // row is implicitly a match and the IsMatch column is absent) -> Match. Never derive this
-                // from IsPartial, which is a truncation marker on included rows, not the include/match
-                // discriminator.
-                SearchMode = isMatch is false ? SearchEntryMode.Include : SearchEntryMode.Match,
+                SearchMode = searchMode,
+                // Score is derived from the match page's own ranking, never recomputed here -- only a
+                // genuine Match row carries a score; an Include row's distance is already NULL from the
+                // SQL (ShapeEmitter's nullDistance), but the mode check guards the formula even if a
+                // future shape ever carried a stray value through.
+                Score = searchMode == SearchEntryMode.Match && distance is { } d ? 1 - (d / 2) : null,
             };
         }
         catch (Exception ex)
@@ -773,15 +795,29 @@ public sealed class SqlServerCompiledSearchService(
         }
     }
 
-    private static MatchRow ReadMatchRow(SqlDataReader reader, bool hasIncludes)
+    private static MatchRow ReadMatchRow(SqlDataReader reader, bool hasIncludes, bool ranked)
     {
         var resourceTypeId = reader.GetInt16(0);
         var surrogateId = reader.GetInt64(1);
         var isMatch = hasIncludes ? (bool?)reader.GetBoolean(2) : null;
-        return new MatchRow(resourceTypeId, surrogateId, isMatch);
+
+        // Distance's ordinal varies with how many sort/projection columns precede it (ShapeEmitter emits
+        // it last on every arm, after any _sort columns and any projected resource columns) -- read by
+        // name rather than position, which the Includes and no-Includes shapes do not share. NULL on an
+        // Include row even when the plan is ranked (ShapeEmitter's nullDistance). "Distance" is the
+        // compiler's own documented column name (Ignixa.Search.Sql's EmittedSql.cs remarks /
+        // VectorSearchEmitter.DistanceColumn), not something this reader invents.
+        double? distance = null;
+        if (ranked)
+        {
+            var distanceOrdinal = reader.GetOrdinal("Distance");
+            distance = reader.IsDBNull(distanceOrdinal) ? null : reader.GetDouble(distanceOrdinal);
+        }
+
+        return new MatchRow(resourceTypeId, surrogateId, isMatch, distance);
     }
 
-    private readonly record struct MatchRow(short ResourceTypeId, long SurrogateId, bool? IsMatch);
+    private readonly record struct MatchRow(short ResourceTypeId, long SurrogateId, bool? IsMatch, double? Distance);
 
     private readonly record struct FetchedResource(
         short ResourceTypeId,
