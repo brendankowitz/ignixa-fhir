@@ -56,6 +56,9 @@ internal sealed class LeafContext
     /// <inheritdoc cref="SymbolTable.QuantityCodeId"/>
     public int? QuantityCodeId(string code) => _symbols.QuantityCodeId(code);
 
+    /// <inheritdoc cref="SymbolTable.EmbeddingModelId"/>
+    public short? EmbeddingModelId(string modelKey) => _symbols.EmbeddingModelId(modelKey);
+
     /// <summary>
     /// The ResourceTypeIds a reference parameter declares it may point at; empty leaves it unconstrained by
     /// type. Unknown targets map to the unmatchable sentinel (-1), not dropped: dropping all of them falls

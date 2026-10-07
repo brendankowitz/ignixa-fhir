@@ -31,6 +31,63 @@ public class ResolveTests
     }
 
     [Fact]
+    public async Task GivenTwoPreparedSemanticExpressionsSharingAModel_WhenResolved_ThenTheModelIsLookedUpOnceAndTheParameterResolved()
+    {
+        // Arrange -- a model key is a per-search constant, so two leaves naming it must cost one lookup.
+        var semantic = new SearchParameterInfo(
+            "semantic-text", "semantic-text", SearchParamType.Special, new Uri("http://example.org/SearchParameter/semantic-text"));
+        var prepared = new PreparedVectorQuery(new float[1536], "model|1", MaxDistance: 2);
+        var tree = Expression.And(
+            new VectorSearchExpression(semantic, "chest pain").WithPrepared(prepared),
+            new VectorSearchExpression(semantic, "nausea").WithPrepared(prepared));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[semantic.Url!.ToString()] = 300;
+        resolver.EmbeddingModelIds["model|1"] = 7;
+
+        // Act
+        var resolved = await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
+
+        // Assert
+        resolved.Unresolved.ShouldBeEmpty();
+        resolved.Symbols.SearchParamId(semantic).ShouldBe((short)300);
+        resolved.Symbols.EmbeddingModelId("model|1").ShouldBe((short)7);
+        resolver.EmbeddingModelIdCallCounts["model|1"].ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownEmbeddingModel_WhenResolved_ThenItIsAKnownMissNotAFailure()
+    {
+        var semantic = new SearchParameterInfo(
+            "semantic-text", "semantic-text", SearchParamType.Special, new Uri("http://example.org/SearchParameter/semantic-text"));
+        var expression = new VectorSearchExpression(semantic, "chest pain")
+            .WithPrepared(new PreparedVectorQuery(new float[1536], "never-written|1", MaxDistance: 2));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[semantic.Url!.ToString()] = 300;
+
+        var resolved = await ResolveHarness.RunAsync(expression, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
+
+        resolved.Unresolved.ShouldBeEmpty();
+        resolved.Symbols.EmbeddingModelId("never-written|1").ShouldBeNull();
+        Should.Throw<KeyNotFoundException>(() => resolved.Symbols.EmbeddingModelId("never-collected|1"));
+    }
+
+    [Fact]
+    public async Task GivenAnUnpreparedSemanticExpression_WhenResolved_ThenNoModelIsLookedUp()
+    {
+        // Resolve must not fail here: an unprepared query is Lower's to reject, with an attributable message.
+        var semantic = new SearchParameterInfo(
+            "semantic-text", "semantic-text", SearchParamType.Special, new Uri("http://example.org/SearchParameter/semantic-text"));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[semantic.Url!.ToString()] = 300;
+
+        var resolved = await ResolveHarness.RunAsync(
+            new VectorSearchExpression(semantic, "chest pain"), includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None);
+
+        resolved.Unresolved.ShouldBeEmpty();
+        resolver.EmbeddingModelIdCallCounts.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenACompositeTree_WhenResolved_ThenTheCompositeAndBothComponentsAreResolved()
     {
         // Arrange -- matches the tree shape SearchExpressionBinder builds for a composite parameter:
@@ -679,6 +736,17 @@ public class ResolveTests
         {
             QuantityCodeIdCallCounts[code] = QuantityCodeIdCallCounts.GetValueOrDefault(code) + 1;
             return Task.FromResult(QuantityCodeIds.TryGetValue(code, out var id) ? (int?)id : null);
+        }
+
+        public Dictionary<string, short> EmbeddingModelIds { get; } = [];
+
+        /// <summary>Tracks how many times <see cref="GetEmbeddingModelIdAsync"/> was called per model key.</summary>
+        public Dictionary<string, int> EmbeddingModelIdCallCounts { get; } = [];
+
+        public Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+        {
+            EmbeddingModelIdCallCounts[modelKey] = EmbeddingModelIdCallCounts.GetValueOrDefault(modelKey) + 1;
+            return Task.FromResult(EmbeddingModelIds.TryGetValue(modelKey, out var id) ? (short?)id : null);
         }
     }
 }

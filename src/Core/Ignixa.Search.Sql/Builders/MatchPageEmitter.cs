@@ -25,6 +25,11 @@ internal static class MatchPageEmitter
         // value, and the include stages seed from that bounded set.
         var sortColumns = spec.IncludesOnly ? string.Empty : EmitSortSelectColumns(spec.Sort);
 
+        // Bound before the WHERE clauses, the order EmitMatchOnlyShape binds in too, so PlanExplainer reads the
+        // ranking's embedding at the same point under either shape.
+        var rankJoin = VectorSearchEmitter.EmitRankJoin(spec.Ranking, parameters);
+        var rankColumn = VectorSearchEmitter.RankSelectColumn(spec.Ranking);
+
         // Projection is handled in the UNION ALL assembly, not here, so includesProjection is false.
         var resourceJoin = spec.OuterPredicate is not null || spec.SearchParameterHash is not null
             ? "\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1"
@@ -33,7 +38,7 @@ internal static class MatchPageEmitter
         // A CTE's own ORDER BY is legal only alongside TOP or OFFSET/FETCH (SQL Server Msg 1033). The outer
         // UNION ALL's ORDER BY is a top-level SELECT and always legal regardless.
         var cteOrderBy = spec.Top is not null || spec.OffsetPage is not null
-            ? $"\n    ORDER BY {EmitOrderBy(spec.Sort)}"
+            ? $"\n    ORDER BY {EmitOrderBy(spec.Sort, ranked: spec.Ranking is not null)}"
             : string.Empty;
 
         var whereClauses = BuildMatchWhereClauses(spec, parameters, out var seekClauseIndex);
@@ -44,8 +49,8 @@ internal static class MatchPageEmitter
 
         var writer = new SqlTextWriter(recordRanges: true);
         writer.Append(
-            $"    SELECT {top}m.T1, m.Sid1{sortColumns}\n" +
-            $"    FROM {CteLabel(spec.Root.Index)} m{sortJoins}{resourceJoin}");
+            $"    SELECT {top}m.T1, m.Sid1{sortColumns}{rankColumn}\n" +
+            $"    FROM {CteLabel(spec.Root.Index)} m{sortJoins}{rankJoin}{resourceJoin}");
         WriteWhereSection(writer, whereClauses, seekClauseIndex, indent: "    ");
         writer.Append(cteOrderBy);
         writer.Append(offsetClause);
@@ -83,7 +88,7 @@ internal static class MatchPageEmitter
             Top = trimmedSize,
             Columns = "T1, Sid1",
             From = MatchPage,
-            OrderBy = EmitSortValueOrderBy(seed.Spec.Sort),
+            OrderBy = EmitSortValueOrderBy(seed.Spec.Sort, ranked: seed.Spec.Ranking is not null),
         }.Render());
     }
 

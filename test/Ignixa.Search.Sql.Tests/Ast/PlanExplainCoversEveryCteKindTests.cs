@@ -38,6 +38,8 @@ public class PlanExplainCoversEveryCteKindTests
             { nameof(CteDefinition.VisibleSinceFilter), new CteDefinition.VisibleSinceFilter(new SqlParameterRef(DateTimeOffset.UnixEpoch)) },
             { nameof(CteDefinition.CompartmentSource), new CteDefinition.CompartmentSource([104], 77, predicate) },
             { nameof(CteDefinition.NotReferencedSource), new CteDefinition.NotReferencedSource(103, null, null) },
+            { nameof(CteDefinition.VectorMatchSource), new CteDefinition.VectorMatchSource(104, 300, 7, new SqlParameterRef("[0.5,0.25]"), new SqlParameterRef(1.2)) },
+            { $"{nameof(CteDefinition.VectorMatchSource)}(system-level)", new CteDefinition.VectorMatchSource(null, 300, 7, new SqlParameterRef("[0.5,0.25]"), new SqlParameterRef(1.2)) },
         };
     }
 

@@ -78,12 +78,17 @@ internal static class ShapeEmitter
         var (projectionCols, projectionJoinFilter) = ProjectionJoin(plan, visibility);
         var sortJoins = EmitSortJoins(plan.Sort);
         var sortColumns = EmitSortSelectColumns(plan.Sort);
+        var ranking = plan.MatchSpec.Ranking;
+
+        // Bound before the WHERE clauses -- see EmitMatchPage, which binds in the same order.
+        var rankJoin = VectorSearchEmitter.EmitRankJoin(ranking, parameters);
+        var rankColumn = VectorSearchEmitter.RankSelectColumn(ranking);
 
         var whereClauses = BuildMatchWhereClauses(plan.MatchSpec, parameters, out var seekClauseIndex);
 
         WriteCteHeader(writer, plan, cteBodies);
         writer.Append("\n");
-        writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns}{projectionCols} FROM {CteLabel(plan.Match.Index)} m{sortJoins}");
+        writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns}{projectionCols}{rankColumn} FROM {CteLabel(plan.Match.Index)} m{sortJoins}{rankJoin}");
 
         // All three of outer predicate, projection, and hash filter share this one join.
         if (NeedsResourceJoin(plan, includesProjection: true))
@@ -96,7 +101,7 @@ internal static class ShapeEmitter
         writer.Append("\nORDER BY ");
         using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
         {
-            writer.Append(EmitOrderBy(plan.Sort));
+            writer.Append(EmitOrderBy(plan.Sort, ranked: ranking is not null));
         }
 
         if (plan.OffsetPage is { } offsetPage)
@@ -151,7 +156,7 @@ internal static class ShapeEmitter
         writer.Append("\nORDER BY ");
         using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
         {
-            writer.Append(EmitOuterOrderByForIncludes(plan.Sort));
+            writer.Append(EmitOuterOrderByForIncludes(plan.Sort, ranked: plan.MatchSpec.Ranking is not null));
         }
     }
 
@@ -315,14 +320,19 @@ internal static class ShapeEmitter
         var nullSortColumns = string.Concat(Enumerable.Repeat(", NULL", activeSortKeyCount));
         var matchSortColumnRefs = string.Concat(Enumerable.Range(0, activeSortKeyCount).Select(o => $", SortValue{o}"));
 
+        // A ranked page carries Distance last on every arm; include rows have none.
+        var ranked = plan.MatchSpec.Ranking is not null;
+        var matchDistance = ranked ? $", {VectorSearchEmitter.DistanceColumn}" : string.Empty;
+        var nullDistance = ranked ? ", NULL" : string.Empty;
+
         var arms = new List<string>();
 
         if (!plan.IncludesOnly)
         {
             arms.Add(hasActiveProjection
-                ? $"SELECT m.T1, m.Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs}{projectionCols} FROM {MatchPage} m\n" +
+                ? $"SELECT m.T1, m.Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs}{projectionCols}{matchDistance} FROM {MatchPage} m\n" +
                   $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1{projectionJoinFilter}"
-                : $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM {MatchPage}");
+                : $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs}{matchDistance} FROM {MatchPage}");
         }
 
         for (var i = 0; i < includes.Count; i++)
@@ -332,10 +342,10 @@ internal static class ShapeEmitter
             // cannot break the ordinal contract when IncludesOnly omits the match arm.
             var isMatchAlias = plan.IncludesOnly && arms.Count == 0 ? " AS IsMatch" : string.Empty;
             arms.Add(hasActiveProjection
-                ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns}{projectionCols} FROM {IncludeLimitLabel(i)} i\n" +
+                ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns}{projectionCols}{nullDistance} FROM {IncludeLimitLabel(i)} i\n" +
                   $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = i.T1 AND r.ResourceSurrogateId = i.Sid1{projectionJoinFilter}\n" +
                   ExcludeMatchPageRows
-                : $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
+                : $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns}{nullDistance} FROM {IncludeLimitLabel(i)} i\n" +
                   ExcludeMatchPageRows);
         }
 

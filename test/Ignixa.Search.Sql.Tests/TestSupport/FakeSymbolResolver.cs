@@ -13,6 +13,8 @@ internal sealed class FakeSymbolResolver : ISymbolResolver
 
     public Dictionary<string, int> QuantityCodeIds { get; } = [];
 
+    public Dictionary<string, short> EmbeddingModelIds { get; } = [];
+
     public Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken)
         => Task.FromResult(parameter.Url?.ToString() is { } url && SearchParamIds.TryGetValue(url, out var id) ? (short?)id : null);
 
@@ -24,4 +26,7 @@ internal sealed class FakeSymbolResolver : ISymbolResolver
 
     public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
         => Task.FromResult(QuantityCodeIds.TryGetValue(code, out var id) ? (int?)id : null);
+
+    public Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+        => Task.FromResult(EmbeddingModelIds.TryGetValue(modelKey, out var id) ? (short?)id : null);
 }

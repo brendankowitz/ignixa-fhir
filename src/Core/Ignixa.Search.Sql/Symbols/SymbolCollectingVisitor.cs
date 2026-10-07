@@ -219,17 +219,26 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         constraint.Predicate.AcceptVisitor(this, context: null);
     }
 
+    /// <summary>The embedding model keys of every prepared semantic expression in the tree.</summary>
+    public HashSet<string> EmbeddingModelKeys { get; } = new(StringComparer.Ordinal);
+
     /// <summary>
-    /// Overrides the base <see cref="ExpressionRewriter{TContext}"/>'s pass-through for
-    /// <see cref="VectorSearchExpression"/> back to a throw: the SQL compiler does not lower semantic
-    /// search yet (query-time SQL lowering is Task 7 in the slice-1 plan), so a query reaching this far
-    /// must fail loudly here rather than silently compile as if the parameter contributed no predicate at
-    /// all (which Resolve's accumulated symbol set would otherwise do, happily yielding a filter that
-    /// ignores the semantic condition entirely).
+    /// Records a semantic search's parameter and, when the query has been embedded, the model key its
+    /// <c>EmbeddingModelId</c> must be resolved for. An unprepared expression is collected without a key:
+    /// rejecting it is Lower's job, where the failure is attributed to the parameter, rather than an
+    /// unattributed throw out of Resolve.
     /// </summary>
     public override Expression VisitVectorSearch(VectorSearchExpression expression, object? context)
     {
-        throw new NotSupportedException($"{nameof(SymbolCollectingVisitor)} does not implement {nameof(VisitVectorSearch)}. Semantic search SQL lowering is not yet implemented.");
+        ArgumentNullException.ThrowIfNull(expression);
+
+        AddParameter(expression.Parameter);
+        if (expression.Prepared is { } prepared)
+        {
+            EmbeddingModelKeys.Add(prepared.EmbeddingModelKey);
+        }
+
+        return expression;
     }
 
     /// <summary>
