@@ -28,6 +28,11 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class PatchEndpoints
 {
+    private const string JsonPatchContentType = "application/json-patch+json";
+
+    private const string FhirPathPatchRequirement =
+        "Use FHIRPath Patch: send a Parameters resource with Content-Type application/fhir+json " +
+        "(in a bundle, put the Parameters resource in entry.resource). See http://hl7.org/fhir/fhirpatch.html.";
 
     /// <summary>
     /// Registers FHIR PATCH endpoints.
@@ -42,6 +47,7 @@ public static class PatchEndpoints
     ///
     /// Request Body: Parameters resource (FHIRPath Patch operations)
     /// Content-Type: application/fhir+json
+    /// JSON Patch (application/json-patch+json, array bodies, or Binary entries) is rejected with 400.
     /// </summary>
     public static IEndpointRouteBuilder MapPatchEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -75,7 +81,8 @@ public static class PatchEndpoints
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
             .Produces<object>(StatusCodes.Status404NotFound, KnownContentTypes.ApplicationFhirJson)
-            .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson);
+            .Produces<object>(StatusCodes.Status412PreconditionFailed, KnownContentTypes.ApplicationFhirJson)
+            .Produces(StatusCodes.Status400BadRequest);
 
         // PATCH /{resourceType}/{id} - Direct Patch
         tenantGroup.MapPatch("/{resourceType}/{id}", (HttpContext context, int tenantId, string resourceType, string id,
@@ -84,7 +91,8 @@ public static class PatchEndpoints
             .WithName("PatchResource")
             .Accepts<object>(KnownContentTypes.ApplicationFhirJson, KnownContentTypes.ApplicationJson)
             .Produces<object>(StatusCodes.Status200OK, KnownContentTypes.ApplicationFhirJson)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status400BadRequest);
 
         return endpoints;
     }
@@ -155,36 +163,7 @@ public static class PatchEndpoints
             return Results.NotFound(new { error = $"Resource type '{resourceType}' not supported" });
         }
 
-        // Parse request body - detect JSON Patch vs FHIR Parameters patch
-        ResourceJsonNode patchDocument;
-        await using (var memoryStream = memoryStreamManager.GetStream("patch-request"))
-        {
-            await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
-            memoryStream.Position = 0;
-
-            // Check Content-Type header to detect JSON Patch (RFC 6902)
-            var contentType = context.Request.ContentType;
-            if (!string.IsNullOrEmpty(contentType) && contentType.Contains("application/json-patch+json", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new Domain.Exceptions.NotImplementedException(
-                    "JSON Patch (RFC 6902) is not yet supported. Please use FHIRPath Patch with Content-Type: application/fhir+json. " +
-                    "See FHIR R4 Section 3.1.0.7.1 for FHIRPath Patch format using Parameters resource.");
-            }
-
-            // Peek at first character to detect array format (JSON Patch)
-            memoryStream.Position = 0;
-            using var reader = new System.IO.StreamReader(memoryStream, System.Text.Encoding.UTF8, leaveOpen: true);
-            var firstChar = (char)reader.Peek();
-            if (firstChar == '[')
-            {
-                throw new Domain.Exceptions.NotImplementedException(
-                    "JSON Patch (RFC 6902) array format is not yet supported. Please use FHIRPath Patch (Parameters resource). " +
-                    "See FHIR R4 Section 3.1.0.7.1 for FHIRPath Patch format.");
-            }
-
-            memoryStream.Position = 0;
-            patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
-        }
+        var patchDocument = await ReadFhirPathPatchDocumentAsync(context, memoryStreamManager, "patch-request", cancellationToken);
 
         // Execute patch via mediator
         var command = new PatchResourceCommand(
@@ -218,10 +197,13 @@ public static class PatchEndpoints
 
         logger.LogInformation("Patched {ResourceType}/{Id} (version {VersionId})", resourceType, id, result.VersionId);
 
+        var location = BuildVersionedLocation(context, tenantId, resourceType, result.ResourceId, result.VersionId);
+
         if (actualReturnPreference == ReturnPreference.Minimal)
         {
             // return=minimal - return headers only, no body (FHIR spec compliant)
             return new FhirResult(StatusCodes.Status200OK)
+                .WithLocation(location)
                 .WithETag(result.VersionId)
                 .WithLastModified(result.LastModified);
         }
@@ -235,12 +217,14 @@ public static class PatchEndpoints
                 IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = $"Successfully patched {resourceType}/{id}"
             });
-            return FhirResults.Ok(outcome, context);
+            return FhirResults.Ok(outcome, context)
+                .WithLocation(location);
         }
         else
         {
             // return=representation - return full resource
             return FhirResults.Ok(result.Resource, context)
+                .WithLocation(location)
                 .WithETag(result.VersionId)
                 .WithLastModified(result.LastModified);
         }
@@ -297,36 +281,7 @@ public static class PatchEndpoints
         // Remove leading '?'
         var searchCriteria = queryString.TrimStart('?');
 
-        // Parse request body - detect JSON Patch vs FHIR Parameters patch
-        ResourceJsonNode patchDocument;
-        await using (var memoryStream = memoryStreamManager.GetStream("conditional-patch-request"))
-        {
-            await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
-            memoryStream.Position = 0;
-
-            // Check Content-Type header to detect JSON Patch (RFC 6902)
-            var contentType = context.Request.ContentType;
-            if (!string.IsNullOrEmpty(contentType) && contentType.Contains("application/json-patch+json", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new Domain.Exceptions.NotImplementedException(
-                    "JSON Patch (RFC 6902) is not yet supported. Please use FHIRPath Patch with Content-Type: application/fhir+json. " +
-                    "See FHIR R4 Section 3.1.0.7.1 for FHIRPath Patch format using Parameters resource.");
-            }
-
-            // Peek at first character to detect array format (JSON Patch)
-            memoryStream.Position = 0;
-            using var reader = new System.IO.StreamReader(memoryStream, System.Text.Encoding.UTF8, leaveOpen: true);
-            var firstChar = (char)reader.Peek();
-            if (firstChar == '[')
-            {
-                throw new Domain.Exceptions.NotImplementedException(
-                    "JSON Patch (RFC 6902) array format is not yet supported. Please use FHIRPath Patch (Parameters resource). " +
-                    "See FHIR R4 Section 3.1.0.7.1 for FHIRPath Patch format.");
-            }
-
-            memoryStream.Position = 0;
-            patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
-        }
+        var patchDocument = await ReadFhirPathPatchDocumentAsync(context, memoryStreamManager, "conditional-patch-request", cancellationToken);
 
         // Execute conditional patch
         var command = new ConditionalPatchCommand(
@@ -356,10 +311,13 @@ public static class PatchEndpoints
             context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(actualReturnPreference));
         }
 
+        var location = BuildVersionedLocation(context, tenantId, resourceType, result.Resource.ResourceId, result.Resource.VersionId);
+
         if (actualReturnPreference == ReturnPreference.Minimal)
         {
             // return=minimal - return headers only, no body (FHIR spec compliant)
             return new FhirResult(StatusCodes.Status200OK)
+                .WithLocation(location)
                 .WithETag(result.Resource.VersionId)
                 .WithLastModified(result.Resource.LastModified);
         }
@@ -373,15 +331,94 @@ public static class PatchEndpoints
                 IssueTypeCode = FhirOperationOutcomeIssue.IssueTypeCommon.Informational,
                 Diagnostics = $"Successfully patched {resourceType}/{result.Resource.ResourceId}"
             });
-            return FhirResults.Ok(outcome, context);
+            return FhirResults.Ok(outcome, context)
+                .WithLocation(location);
         }
         else
         {
             // return=representation - return full resource
             return FhirResults.Ok(result.Resource.Resource, context)
+                .WithLocation(location)
                 .WithETag(result.Resource.VersionId)
                 .WithLastModified(result.Resource.LastModified);
         }
+    }
+
+    /// <summary>
+    /// Reads a FHIRPath Patch Parameters body and rejects every other patch shape with 400: the JSON Patch
+    /// content type, a bare JSON array, an empty body, or any Binary resource. Bundle PATCH entries arrive
+    /// with Content-Type application/fhir+json, so a Binary-wrapped patch can only be caught from the body.
+    /// </summary>
+    /// <exception cref="Domain.Exceptions.BadRequestException">The body is not a FHIRPath Patch document.</exception>
+    private static async Task<ResourceJsonNode> ReadFhirPathPatchDocumentAsync(
+        HttpContext context,
+        RecyclableMemoryStreamManager memoryStreamManager,
+        string streamTag,
+        CancellationToken cancellationToken)
+    {
+        var contentType = context.Request.ContentType;
+        if (!string.IsNullOrEmpty(contentType) &&
+            contentType.Contains(JsonPatchContentType, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Domain.Exceptions.BadRequestException(
+                $"JSON Patch (Content-Type: {JsonPatchContentType}) is not supported. {FhirPathPatchRequirement}");
+        }
+
+        await using var memoryStream = memoryStreamManager.GetStream(streamTag);
+        await context.Request.Body.CopyToAsync(memoryStream, cancellationToken);
+
+        memoryStream.Position = 0;
+        switch (ReadFirstSignificantByte(memoryStream))
+        {
+            case -1:
+                throw new Domain.Exceptions.BadRequestException(
+                    $"PATCH requires a request body. {FhirPathPatchRequirement}");
+            case '[':
+                throw new Domain.Exceptions.BadRequestException(
+                    $"JSON Patch (RFC 6902) array bodies are not supported. {FhirPathPatchRequirement}");
+        }
+
+        memoryStream.Position = 0;
+        var patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
+
+        if (string.Equals(patchDocument.ResourceType, "Binary", StringComparison.Ordinal))
+        {
+            var binaryContentType = patchDocument.MutableNode["contentType"] is System.Text.Json.Nodes.JsonValue value &&
+                value.TryGetValue<string>(out var declared)
+                ? declared
+                : "unspecified";
+            throw new Domain.Exceptions.BadRequestException(
+                $"A Binary patch payload (contentType '{binaryContentType}') is not supported; JSON Patch and XML Patch are not supported. {FhirPathPatchRequirement}");
+        }
+
+        return patchDocument;
+    }
+
+    /// <summary>
+    /// Returns the first byte after JSON whitespace and any UTF-8 BOM, or -1 if the stream has no content.
+    /// </summary>
+    private static int ReadFirstSignificantByte(Stream stream)
+    {
+        int value;
+        do
+        {
+            value = stream.ReadByte();
+        }
+        while (value is ' ' or '\t' or '\r' or '\n' or 0xEF or 0xBB or 0xBF);
+
+        return value;
+    }
+
+    /// <summary>
+    /// Builds the absolute versioned Location URL, in the tenant-agnostic form when the request arrived on an agnostic route.
+    /// </summary>
+    private static string BuildVersionedLocation(HttpContext context, int tenantId, string resourceType, string id, string versionId)
+    {
+        var isAgnosticRoute = context.Items.TryGetValue("IsAgnosticRoute", out var flag) && flag is true;
+        var path = isAgnosticRoute
+            ? $"/{resourceType}/{id}/_history/{versionId}"
+            : $"/tenant/{tenantId}/{resourceType}/{id}/_history/{versionId}";
+        return $"{context.Request.Scheme}://{context.Request.Host}{path}";
     }
 
     /// <summary>

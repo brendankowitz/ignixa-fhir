@@ -225,6 +225,45 @@ Transaction entries are reordered by HTTP verb for consistent outcomes:
 - Operations that must all succeed or all fail
 - Workflows requiring atomicity
 
+### Failure Response
+
+If any entry fails, the whole transaction is rolled back. The response is a single `OperationOutcome`
+with the failing entry's status (for example `412` for a stale `ifMatch`) that includes that entry's own
+issues.
+
+## PATCH Entries
+
+PATCH entries use [FHIRPath Patch](http://hl7.org/fhir/fhirpatch.html): `entry.resource` is a
+`Parameters` resource. `request.ifMatch` takes a weak ETag such as `W/"1"`. This example appends a
+reference to a `List`. `List.entry` is a backbone element, so its value is given as nested parts:
+
+```json
+{
+  "resource": {
+    "resourceType": "Parameters",
+    "parameter": [{
+      "name": "operation",
+      "part": [
+        { "name": "type", "valueCode": "add" },
+        { "name": "path", "valueString": "List" },
+        { "name": "name", "valueString": "entry" },
+        { "name": "value", "part": [
+          { "name": "item", "valueReference": { "reference": "DocumentReference/doc-1" } }
+        ] }
+      ]
+    }]
+  },
+  "request": { "method": "PATCH", "url": "List/session-1", "ifMatch": "W/\"1\"" }
+}
+```
+
+A successful PATCH entry responds with `200`, a versioned `location`
+(`.../List/session-1/_history/2`), and the new `etag`.
+
+JSON Patch is not supported. Any `Binary` PATCH entry (the shape used to carry JSON Patch or XML Patch)
+is rejected with `400` and an `OperationOutcome` that asks for FHIRPath Patch. Direct JSON Patch
+requests get the same response.
+
 ## Conditional Operations
 
 Both bundle types support conditional operations:

@@ -72,7 +72,7 @@ containerBuilder.RegisterAssemblyTypes(typeof(GetResourceHandler).Assembly)
 | **Delete** | `DeleteResourceCommand` | Soft delete a resource |
 | **Search** | `SearchResourcesQuery` | FHIR search with parameters |
 | **History** | `GetResourceHistoryQuery` | Instance/type/system history |
-| **Patch** | `PatchResourceCommand` | FHIRPath and JSON Patch |
+| **Patch** | `PatchResourceCommand` | FHIRPath Patch only (JSON Patch is rejected with 400) |
 | **Bundle** | `ProcessBundleCommand` | Batch/transaction bundles |
 | **Metadata** | `GetCapabilityStatementQuery` | CapabilityStatement generation |
 | **Terminology** | `ValueSetExpandQuery` | $expand, $lookup, $translate |

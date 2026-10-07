@@ -288,6 +288,56 @@ public class BundleProcessor
                entry.RequestUrl?.Contains('?', StringComparison.Ordinal) == true;
     }
 
+    /// <summary>
+    /// Copies the issues of a failed entry's OperationOutcome so the transaction failure explains the cause.
+    /// The failure itself must survive an undecodable body, so decoding problems are logged rather than thrown.
+    /// </summary>
+    private IEnumerable<FhirOperationOutcomeIssue> ReadEntryIssues(BundleEntryContext entry, BundleEntryResponse response)
+    {
+        if (string.IsNullOrWhiteSpace(response.ResourceJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            if (JsonNode.Parse(response.ResourceJson) is not JsonObject outcome ||
+                outcome["resourceType"] is not JsonValue resourceType ||
+                !resourceType.TryGetValue<string>(out var type) || type != "OperationOutcome" ||
+                outcome["issue"] is not JsonArray issues)
+            {
+                _logger.LogWarning(
+                    "Transaction entry {Index} (status {StatusCode}) failed without an OperationOutcome body",
+                    entry.Index, response.StatusCode);
+                return [];
+            }
+
+            var result = new List<FhirOperationOutcomeIssue>();
+            for (var issueIndex = 0; issueIndex < issues.Count; issueIndex++)
+            {
+                if (issues[issueIndex] is not JsonObject issue)
+                {
+                    _logger.LogWarning(
+                        "Skipping malformed issue {IssueIndex} of failed transaction entry {Index} (status {StatusCode})",
+                        issueIndex, entry.Index, response.StatusCode);
+                    continue;
+                }
+
+                result.Add(new FhirOperationOutcomeIssue(issue.DeepClone().AsObject()));
+            }
+
+            return result;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or ArgumentException)
+        {
+            // ArgumentException: duplicate property names surface when the parsed object is first indexed.
+            _logger.LogWarning(ex,
+                "Could not decode failure details for transaction entry {Index} (status {StatusCode})",
+                entry.Index, response.StatusCode);
+            return [];
+        }
+    }
+
     private async Task<FhirBundle> ProcessAtomicTransactionAsync(
         IAsyncEnumerable<BundleEntryContext> entryStream,
         BundleProcessingOptions options,
@@ -328,7 +378,8 @@ public class BundleProcessor
             {
                 throw new BundleTransactionException(
                     $"Transaction entry {entry.Index} ({entry.HttpVerb} {entry.RequestUrl}) failed with status {response.StatusCode}. No transaction writes were committed.",
-                    response.StatusCode);
+                    response.StatusCode,
+                    ReadEntryIssues(entry, response));
             }
             responses.Add(entry.Index, response);
             if (entry.HttpVerb == "POST" && entry.FullUrl != null &&

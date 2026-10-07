@@ -40,8 +40,10 @@ public class StaticCapabilitySegment(
         // Supported formats
         statement.Format.Clear();
         statement.Format.Add("application/fhir+json");
+        // FHIRPath Patch (a Parameters resource) is identified by the FHIR content type in every
+        // supported version (http.html#patch); JSON Patch and XML Patch are not supported.
         statement.PatchFormat.Clear();
-        statement.PatchFormat.Add("application/json-patch+json");
+        statement.PatchFormat.Add("application/fhir+json");
 
         // Software component
         statement.Software = new SoftwareComponentJsonNode

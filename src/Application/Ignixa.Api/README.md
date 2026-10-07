@@ -17,7 +17,7 @@ This package is distributed via the internal GitHub Packages feed and contains t
 - Search endpoints
 - Operation endpoints ($validate, $everything, etc.)
 - Terminology endpoints ($expand, $translate, $subsumes)
-- PATCH endpoints (JSON Patch and FHIRPath Patch)
+- PATCH endpoints (FHIRPath Patch; JSON Patch is rejected with 400)
 - Compartment search endpoints
 - History endpoints (_history)
 - Bulk import/export endpoints
