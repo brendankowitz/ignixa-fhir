@@ -103,6 +103,12 @@ public class SqlServerFhirRepository(
         CancellationToken cancellationToken) =>
         _reindexStore.UpdateSearchIndicesAsync(resources, cancellationToken);
 
+    /// <inheritdoc/>
+    public Task<bool> HasSearchParameterAsync(
+        string canonical,
+        CancellationToken cancellationToken) =>
+        _reindexStore.HasSearchParameterAsync(canonical, cancellationToken);
+
     private static readonly string[] SearchIndexTables =
     [
         "ReferenceSearchParam",

@@ -35,4 +35,8 @@ public interface IReindexStore
     Task<(int Updated, int Conflicts)> UpdateSearchIndicesAsync(
         IReadOnlyList<ReindexResource> resources,
         CancellationToken cancellationToken);
+
+    Task<bool> HasSearchParameterAsync(
+        string canonical,
+        CancellationToken cancellationToken);
 }

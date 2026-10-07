@@ -56,6 +56,24 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenSearchParameterCatalog_WhenPhysicalIdIsChecked_ThenPresenceIsReported()
+    {
+        const string provisionedCanonical = "http://example.org/SearchParameter/provisioned";
+        await _database.ExecuteNonQueryAsync(
+            $"""
+             INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported)
+             VALUES ('{provisionedCanonical}', 'Supported', SYSUTCDATETIME(), 0);
+             """);
+
+        (await _store.HasSearchParameterAsync(
+            provisionedCanonical,
+            CancellationToken.None)).ShouldBeTrue();
+        (await _store.HasSearchParameterAsync(
+            "http://example.org/SearchParameter/not-provisioned",
+            CancellationToken.None)).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task GivenLegacyCurrentResourcesWithoutTransactions_WhenBarrierIsRaised_ThenTheSurrogateCutoffIncludesThem()
     {
         await InsertLegacyCurrentResourceAsync("legacy-only", surrogateId: 999_999);

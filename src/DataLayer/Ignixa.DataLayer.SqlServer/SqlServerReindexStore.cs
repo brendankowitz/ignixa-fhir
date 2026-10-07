@@ -401,6 +401,15 @@ public sealed class SqlServerReindexStore(
         return (resources.Count - conflicts, conflicts);
     }
 
+    public async Task<bool> HasSearchParameterAsync(
+        string canonical,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(canonical);
+        return await _referenceDataCache.GetSearchParamIdAsync(canonical, cancellationToken).ConfigureAwait(false)
+            is not null;
+    }
+
     private async Task<IList<SqlDataRecord>?> ReadResourceWriteClaimsAsync(
         IReadOnlyList<ReindexResource> resources,
         CancellationToken cancellationToken)

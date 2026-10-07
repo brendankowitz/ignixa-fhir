@@ -281,7 +281,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     /// <summary>
     /// Applies events after the current projection position while the caller holds the activation lock.
     /// </summary>
-    internal async Task CatchUpWhileActivationLockHeldAsync(
+    public async Task CatchUpWhileActivationLockHeldAsync(
         ISourceEventStore store,
         CancellationToken cancellationToken)
     {

@@ -11,6 +11,8 @@ using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Import;
 using Ignixa.Application.BackgroundOperations.Jobs;
+using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.BackgroundOperations.Reindex.Workers;
 using Ignixa.Application.Features.Conformance;
 using Medino;
 
@@ -60,6 +62,7 @@ public static class BackgroundServicesRegistration
                     ?? TimeSpan.FromSeconds(2 * configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
             })
             .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ReindexOptions>, ReindexOptionsValidator>();
 
         services.AddOptions<ConformanceTransitionOptions>()
             .Configure(options =>
@@ -103,6 +106,22 @@ public static class BackgroundServicesRegistration
         builder.RegisterType<GetJobStatusHandler>()
             .As<IRequestHandler<GetJobStatusQuery, GetJobStatusResult>>()
             .InstancePerDependency();
+
+        builder.RegisterType<CreateReindexJobHandler>()
+            .As<IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>>()
+            .InstancePerDependency();
+        builder.RegisterType<GetReindexStatusHandler>()
+            .As<IRequestHandler<GetReindexStatusQuery, ReindexStatusResult?>>()
+            .InstancePerDependency();
+        builder.RegisterType<CancelReindexHandler>()
+            .As<IRequestHandler<CancelReindexCommand, CancelReindexResult>>()
+            .InstancePerDependency();
+        builder.RegisterType<ReindexRangeProcessor>().AsSelf().InstancePerDependency();
+        builder.RegisterType<ReindexLifecycleEventWriter>().AsSelf().SingleInstance();
+        builder.RegisterType<ReindexJobUpdater>().AsSelf().SingleInstance();
+        builder.RegisterType<NullReindexCompletionHook>()
+            .As<IReindexCompletionHook>()
+            .SingleInstance();
 
         return builder;
     }

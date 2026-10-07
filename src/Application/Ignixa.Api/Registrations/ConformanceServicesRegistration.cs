@@ -9,6 +9,7 @@ using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.EventStore;
+using Ignixa.Domain.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -88,6 +89,10 @@ public static class ConformanceServicesRegistration
 
         builder.RegisterType<NullReindexTrigger>()
             .As<IReindexTrigger>()
+            .SingleInstance();
+
+        builder.RegisterType<ReindexJobLock>()
+            .As<IReindexJobLock>()
             .SingleInstance();
 
         builder.RegisterType<SearchParameterTransitionCommitter>()
