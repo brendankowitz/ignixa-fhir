@@ -548,7 +548,18 @@ public sealed class SqlServerCompiledSearchService(
         // would throw ArgumentException on the second occurrence. A FHIR bundle should only ever contain
         // one entry per resource anyway, so collapsing to distinct identities here is correct, not just
         // crash-avoidance.
-        var surrogateIds = rows.Select(r => (r.ResourceTypeId, r.SurrogateId)).Distinct().ToList();
+        // The first row per identity decides IsMatch, exactly as the former rows.First lookup did, but in
+        // one pass: include/revinclude row sets are not capped by the query, so a per-identity linear scan
+        // was quadratic in the raw row count.
+        var firstRowByIdentity = new Dictionary<(short ResourceTypeId, long SurrogateId), MatchRow>(rows.Count);
+        var surrogateIds = new List<(short ResourceTypeId, long SurrogateId)>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (firstRowByIdentity.TryAdd((row.ResourceTypeId, row.SurrogateId), row))
+            {
+                surrogateIds.Add((row.ResourceTypeId, row.SurrogateId));
+            }
+        }
 
         foreach (var batch in surrogateIds.Chunk(100))
         {
@@ -576,7 +587,7 @@ public sealed class SqlServerCompiledSearchService(
                     continue;
                 }
 
-                var matchRow = rows.First(r => r.ResourceTypeId == resourceTypeId && r.SurrogateId == surrogateId);
+                var matchRow = firstRowByIdentity[(resourceTypeId, surrogateId)];
 
                 // Iterator methods cannot yield inside a try block that has a catch clause, so the
                 // decompress-and-build step (the one piece of this that can actually throw, on a
