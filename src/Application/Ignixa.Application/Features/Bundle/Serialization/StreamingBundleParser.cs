@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -82,7 +83,7 @@ public class StreamingBundleParser
                 parserState.ParsingIssues.Count);
 
             // Create streaming enumerable for entries
-            var entries = ParseEntriesInternalAsync(sharedBuffer, parserState, ct);
+            var entries = ParseEntriesInternalAsync(sharedBuffer, parserState, new EntryStreamConsumption(), ct);
 
             // Return context with metadata + streaming entries
             return new StreamingBundleContext
@@ -249,8 +250,10 @@ public class StreamingBundleParser
     private async IAsyncEnumerable<BundleEntryContext> ParseEntriesInternalAsync(
         SharedStreamBuffer buffer,
         BundleParserState parserState,
+        EntryStreamConsumption consumption,
         [EnumeratorCancellation] CancellationToken ct)
     {
+        consumption.Start();
         var state = buffer.GetCurrentReaderState();
         int entriesYielded = 0;
         try
@@ -546,11 +549,7 @@ public class StreamingBundleParser
     /// </summary>
     private static void AppendResourceStringToken(ref Utf8JsonReader reader, BundleParserState state)
     {
-        if (reader.HasValueSequence)
-        {
-            throw new InvalidOperationException("Streaming bundle parser requires contiguous JSON string tokens.");
-        }
-
+        Debug.Assert(!reader.HasValueSequence);
         state.AppendResourceToken("\"");
         state.AppendResourceToken(Encoding.UTF8.GetString(reader.ValueSpan));
         state.AppendResourceToken("\"");
@@ -574,6 +573,19 @@ public class StreamingBundleParser
     private void AppendResourceValue(BundleParserState state, string value)
     {
         state.AppendResourceToken(value);
+    }
+
+    private sealed class EntryStreamConsumption
+    {
+        private int _started;
+
+        public void Start()
+        {
+            if (Interlocked.Exchange(ref _started, 1) != 0)
+            {
+                throw new InvalidOperationException("Bundle entries can only be enumerated once.");
+            }
+        }
     }
 
     /// <summary>
@@ -684,6 +696,7 @@ public class StreamingBundleParser
             bool reachesMaximum = _buffer.Length > _maxTokenBytes / 2;
             int newBufferSize = reachesMaximum ? _maxTokenBytes : _buffer.Length * 2;
             bool newBufferIsPooled = !reachesMaximum && newBufferSize <= MaxPooledBufferSize;
+            // The buffer never shrinks, so peak memory is the largest buffer reached (up to _maxTokenBytes), not the largest token; later reads use it.
             byte[] newBuffer = newBufferIsPooled
                 ? ArrayPool<byte>.Shared.Rent(newBufferSize)
                 : GC.AllocateUninitializedArray<byte>(newBufferSize);

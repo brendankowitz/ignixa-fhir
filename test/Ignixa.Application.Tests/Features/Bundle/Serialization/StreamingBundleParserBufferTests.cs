@@ -221,6 +221,66 @@ public class StreamingBundleParserBufferTests
         context.Links.ShouldContain(link => link.Relation == "self" && link.Url == "https://example.test/Bundle");
     }
 
+    [Fact]
+    public async Task GivenAbandonedEntryEnumeration_WhenEnumeratingAgain_ThenInvalidOperationExceptionIsThrown()
+    {
+        var bundleJson = BuildBundle(
+            header: string.Empty,
+            BinaryEntry("bin-0", "AAAA"),
+            BinaryEntry("bin-1", "AAAA"));
+        var context = await _parser.ParseStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
+
+        await foreach (var _ in context.Entries)
+        {
+            break;
+        }
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in context.Entries)
+            {
+            }
+        });
+    }
+
+    [Fact]
+    public async Task GivenConcurrentEntryEnumerations_WhenSecondEnumerationStarts_ThenInvalidOperationExceptionIsThrown()
+    {
+        var bundleJson = BuildBundle(
+            header: string.Empty,
+            BinaryEntry("bin-0", "AAAA"),
+            BinaryEntry("bin-1", "AAAA"));
+        var context = await _parser.ParseStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
+
+        await using var firstEnumerator = context.Entries.GetAsyncEnumerator();
+        (await firstEnumerator.MoveNextAsync()).ShouldBeTrue();
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in context.Entries)
+            {
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData(" \t\r\n ")]
+    public async Task GivenValidBundleWithTrailingWhitespace_WhenParsing_ThenAllEntriesAreYielded(string trailingWhitespace)
+    {
+        var bundleJson = BuildBundle(
+                header: string.Empty,
+                BinaryEntry("bin-0", "AAAA"),
+                BinaryEntry("bin-1", "AAAA"))
+            + trailingWhitespace;
+
+        var entries = await Task.Run(() => ParseAllAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson))))
+            .WaitAsync(HangTimeout);
+
+        entries.Select(entry => entry.Index).ShouldBe([0, 1]);
+    }
+
     private async Task<List<BundleEntryContext>> ParseAllAsync(Stream stream)
     {
         var context = await _parser.ParseStreamAsync(stream);
