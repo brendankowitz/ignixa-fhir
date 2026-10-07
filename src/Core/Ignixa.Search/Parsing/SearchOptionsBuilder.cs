@@ -23,7 +23,7 @@ namespace Ignixa.Search.Parsing;
 public class SearchOptionsBuilder : ISearchOptionsBuilder
 {
     private const int DefaultMaxItemCount = 10;
-    private const int MaxAllowedItemCount = 1000;
+    public const int MaxAllowedItemCount = 1000;
 
     private readonly IExpressionParser _expressionParser;
     private readonly ISearchParameterDefinitionManager _searchParameterDefinitionManager;
