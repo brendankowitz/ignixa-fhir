@@ -79,9 +79,9 @@ public sealed class BulkDeleteKickoffAuthorizer(
             {
                 logger.LogWarning(
                     "Bulk delete kickoff denied for user {User} on tenant {TenantId}: {Denial}",
-                    context.UserId ?? "anonymous",
+                    context.UserId.SanitizeForLog() ?? "anonymous",
                     fhirContext.TenantId,
-                    denial);
+                    denial.SanitizeForLog());
                 return AuthorizationResult.Denied(denial);
             }
         }

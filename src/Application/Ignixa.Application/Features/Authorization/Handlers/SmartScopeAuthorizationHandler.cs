@@ -5,6 +5,7 @@
 
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Smart;
+using Ignixa.Application.Infrastructure;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Authorization.Handlers;
@@ -45,7 +46,7 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
         _logger.LogDebug(
             "SMART scope check: Checking {ScopeCount} scopes for {ResourceType}.{Interaction}",
             scopes.Count,
-            resourceType ?? "system",
+            resourceType.SanitizeForLog() ?? "system",
             interaction);
 
         // Find matching scope using SMART v2 matching
@@ -58,7 +59,7 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
             _logger.LogWarning(
                 "SMART scope check: Request denied - no scope grants {Interaction} access to {ResourceType}",
                 interaction,
-                resourceType ?? "system");
+                resourceType.SanitizeForLog() ?? "system");
 
             return ValueTask.FromResult(AuthorizationResult.InsufficientPermissions(
                 resourceType ?? "system",
@@ -69,7 +70,7 @@ public class SmartScopeAuthorizationHandler : IAuthorizationHandler
             "SMART scope check: Matched scope {Scope} (permissions: {Permissions}) for {ResourceType}.{Interaction}",
             matchingScope.OriginalScope,
             matchingScope.PermissionString,
-            resourceType ?? "system",
+            resourceType.SanitizeForLog() ?? "system",
             interaction);
 
         // Build data filter for context-scoped requests
