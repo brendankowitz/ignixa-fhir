@@ -309,7 +309,6 @@ public class CreateReindexJobHandlerTests
             repository,
             lifecycle,
             updater,
-            state,
             jobLock,
             Options.Create(new ReindexOptions
             {

@@ -19,6 +19,86 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexJobReconcilerTests
 {
+    [Theory]
+    [InlineData("Completed", true, SearchParameterStatus.Enabled)]
+    [InlineData("Failed", false, SearchParameterStatus.Pending)]
+    public async Task GivenPersistedStartIsNotAppliedLocally_WhenStartupReconciles_ThenLifecycleDecisionIsApplied(
+        string decision,
+        bool success,
+        SearchParameterStatus expectedStatus)
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-custom";
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        var repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var events = new List<SourceEvent>
+        {
+            new(
+                2,
+                $"reindex:{canonical}",
+                nameof(SearchParameterReindexStarted),
+                new SearchParameterReindexStarted(
+                    canonical,
+                    "custom",
+                    "Patient",
+                    "job",
+                    ["Patient"],
+                    1),
+                DateTimeOffset.UtcNow)
+        };
+        var eventStore = EventStore(events);
+        var lifecycle = new ReindexLifecycleEventWriter(eventStore, state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            OrchestrationInstanceId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Completing",
+            Definition = Definition(target),
+            Progress = new JsonObject
+            {
+                ["terminalDecision"] = decision,
+                ["terminalOutcomes"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["canonical"] = canonical,
+                        ["success"] = success,
+                        ["resourcesIndexed"] = success ? 12 : 0,
+                        ["errorMessage"] = success ? null : "failed"
+                    }
+                }
+            },
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        var runtime = Substitute.For<IOrchestrationServiceClient>();
+        runtime.GetOrchestrationStateAsync("job", false).Returns([]);
+        using var jobLock = new TestJobLock();
+        var updater = new ReindexJobUpdater(
+            repository,
+            jobLock,
+            Substitute.For<IReindexCompletionHook>());
+        var reconciler = new ReindexJobReconciler(
+            new TaskHubClient(runtime),
+            repository,
+            lifecycle,
+            updater,
+            jobLock,
+            Options.Create(new ReindexOptions()),
+            TimeProvider.System,
+            NullLogger<ReindexJobReconciler>.Instance);
+
+        await reconciler.ReconcileAsync(CancellationToken.None);
+
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(expectedStatus);
+    }
+
     [Fact]
     public async Task GivenPersistedCompletingDecision_WhenStartupReconciles_ThenLifecycleAndJobAreCompleted()
     {
@@ -66,7 +146,6 @@ public class ReindexJobReconcilerTests
             repository,
             lifecycle,
             updater,
-            state,
             jobLock,
             Options.Create(new ReindexOptions()),
             TimeProvider.System,
@@ -105,23 +184,45 @@ public class ReindexJobReconcilerTests
 
     private static ISourceEventStore EventStore()
     {
+        return EventStore([]);
+    }
+
+    private static ISourceEventStore EventStore(List<SourceEvent> events)
+    {
         var store = Substitute.For<ISourceEventStore>();
         store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(AsyncEnumerable.Empty<SourceEvent>());
-        long nextEventId = 2;
+            .Returns(call => ReadFrom(events, call.Arg<long>()));
+        long nextEventId = events.Count == 0 ? 2 : events.Max(evt => evt.EventId) + 1;
         store.AppendAsync(
                 Arg.Any<IEnumerable<NewSourceEvent>>(),
                 Arg.Any<long>(),
                 Arg.Any<CancellationToken>())
-            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
-                .Select(evt => new SourceEvent(
-                    nextEventId++,
-                    evt.StreamId,
-                    evt.EventType,
-                    evt.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray());
+            .Returns(call =>
+            {
+                var committed = call.Arg<IEnumerable<NewSourceEvent>>()
+                    .Select(evt => new SourceEvent(
+                        nextEventId++,
+                        evt.StreamId,
+                        evt.EventType,
+                        evt.Data,
+                        DateTimeOffset.UtcNow))
+                    .ToArray();
+                events.AddRange(committed);
+                return committed;
+            });
         return store;
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> ReadFrom(
+        IReadOnlyList<SourceEvent> events,
+        long afterEventId)
+    {
+        foreach (var evt in events.Where(evt => evt.EventId > afterEventId).ToArray())
+        {
+            yield return evt;
+        }
+
+        await Task.CompletedTask;
     }
 
     private static SourceEvent Activation(string canonical) => new(

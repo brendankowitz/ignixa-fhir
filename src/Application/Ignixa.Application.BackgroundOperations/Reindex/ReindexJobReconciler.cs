@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging;
@@ -14,7 +13,6 @@ public sealed class ReindexJobReconciler(
     IBackgroundJobRepository<ReindexJobDefinition> repository,
     ReindexLifecycleEventWriter lifecycle,
     ReindexJobUpdater jobs,
-    ConformanceState conformanceState,
     IReindexJobLock jobLock,
     IOptions<ReindexOptions> options,
     TimeProvider timeProvider,
@@ -85,8 +83,8 @@ public sealed class ReindexJobReconciler(
         }
 
         var outcomes = ReadPersistedOutcomes(job.Progress);
-        var startedTargets = await GetStartedTargetsAsync(job, cancellationToken);
-        var completions = startedTargets
+        var completions = ReconstructTargets(job)
+            .Where(target => target.IsFullyCovered)
             .Where(target => outcomes.ContainsKey(target.Canonical))
             .Select(target =>
             {
@@ -125,7 +123,9 @@ public sealed class ReindexJobReconciler(
         var reason = state is null
             ? "Reindex orchestration instance is missing."
             : $"Reindex orchestration ended as {state.OrchestrationStatus} before the job was finalized.";
-        var targets = await GetStartedTargetsAsync(job, cancellationToken);
+        var targets = ReconstructTargets(job)
+            .Where(target => target.IsFullyCovered)
+            .ToArray();
         var completions = targets.Select(target => new ReindexTargetCompletion(
             target,
             false,
@@ -162,27 +162,6 @@ public sealed class ReindexJobReconciler(
             "Reindex: finalized orphaned job {JobId}: {Reason}",
             job.JobId,
             reason);
-    }
-
-    private async Task<IReadOnlyList<ReindexTarget>> GetStartedTargetsAsync(
-        BackgroundJob<ReindexJobDefinition> job,
-        CancellationToken cancellationToken)
-    {
-        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
-        {
-            return ReconstructTargets(job)
-                .Where(target =>
-                {
-                    var current = conformanceState.GetSearchParameter(
-                        target.ResourceType,
-                        target.Code);
-                    return target.IsFullyCovered &&
-                        current?.ActivationEventId == target.ActivationEventId &&
-                        current.Status == SearchParameterStatus.Reindexing &&
-                        current.ReindexJobId == job.JobId;
-                })
-                .ToArray();
-        }
     }
 
     private static IReadOnlyList<ReindexTarget> ReconstructTargets(

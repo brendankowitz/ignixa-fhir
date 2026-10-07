@@ -27,6 +27,7 @@ public sealed class ReindexLifecycleEventWriter(
                 target.AffectedResourceTypes,
                 target.ActivationEventId),
             jobId,
+            requireOwnership: false,
             cancellationToken);
 
     public Task<IReadOnlyList<string>> CompleteAsync(
@@ -56,19 +57,16 @@ public sealed class ReindexLifecycleEventWriter(
                         target.ActivationEventId);
             },
             jobId,
+            requireOwnership: true,
             cancellationToken);
 
     private async Task<IReadOnlyList<string>> AppendAsync(
         IReadOnlyList<ReindexTarget> targets,
         Func<ReindexTarget, object> createEvent,
         string jobId,
+        bool requireOwnership,
         CancellationToken cancellationToken)
     {
-        if (targets.Count == 0)
-        {
-            return [];
-        }
-
         using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
         {
             for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
@@ -76,8 +74,21 @@ public sealed class ReindexLifecycleEventWriter(
                 await conformanceState.CatchUpWhileActivationLockHeldAsync(
                     eventStore,
                     cancellationToken);
+                var currentTargets = requireOwnership
+                    ? targets.Where(target => IsOwnedByJob(target, jobId)).ToArray()
+                    : targets;
+                var ignored = requireOwnership
+                    ? targets.Where(target => !IsOwnedByJob(target, jobId))
+                        .Select(target => target.Canonical)
+                        .ToArray()
+                    : Array.Empty<string>();
+                if (currentTargets.Count == 0)
+                {
+                    return ignored.Distinct(StringComparer.Ordinal).ToArray();
+                }
+
                 var expectedPosition = conformanceState.LastProcessedEventId;
-                var events = targets.Select(target =>
+                var events = currentTargets.Select(target =>
                 {
                     var data = createEvent(target);
                     return new
@@ -108,7 +119,7 @@ public sealed class ReindexLifecycleEventWriter(
                     conformanceState.ApplyAndTrack(evt);
                 }
 
-                return events
+                return ignored.Concat(events
                     .Where(item =>
                     {
                         var current = conformanceState.GetSearchParameter(
@@ -133,7 +144,7 @@ public sealed class ReindexLifecycleEventWriter(
                             _ => true
                         };
                     })
-                    .Select(item => item.Target.Canonical)
+                    .Select(item => item.Target.Canonical))
                     .Distinct(StringComparer.Ordinal)
                     .ToArray();
             }
@@ -142,6 +153,14 @@ public sealed class ReindexLifecycleEventWriter(
         throw new SourceEventConcurrencyException(
             conformanceState.LastProcessedEventId,
             conformanceState.LastProcessedEventId);
+    }
+
+    private bool IsOwnedByJob(ReindexTarget target, string jobId)
+    {
+        var current = conformanceState.GetSearchParameter(target.ResourceType, target.Code);
+        return current?.ActivationEventId == target.ActivationEventId &&
+            current.Status == SearchParameterStatus.Reindexing &&
+            current.ReindexJobId == jobId;
     }
 }
 
