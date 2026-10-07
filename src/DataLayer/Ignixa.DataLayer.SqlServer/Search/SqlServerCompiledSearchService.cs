@@ -423,9 +423,7 @@ public sealed class SqlServerCompiledSearchService(
         {
             Shape = BuildResultShape(options, countOnly, countPhaseScoped, offsetPageOverride),
             SortPhase = sortPhase,
-            // The serializer and $includes handler own include pagination over this complete traversal.
-            // A per-stage cap loses later rows and iterate seeds before their cursors can reach them.
-            IncludeLimit = null,
+            IncludeLimit = IncludeWindowLimit(options),
             SurrogateRange = surrogateIdRange,
 
             // Left at the default None. This is the live search path and nothing here reads a parameter
@@ -446,6 +444,36 @@ public sealed class SqlServerCompiledSearchService(
         return compilation.Succeeded
             ? compilation.Compiled
             : throw new RequestNotValidException(compilation.Failure.Message);
+    }
+
+    /// <summary>
+    /// The per-stage include budget that still yields the first <c>offset + count + 1</c> includes of the
+    /// result exactly, where <c>offset</c> is the <c>$includes</c> continuation offset and <c>count</c> is
+    /// <see cref="SearchOptions.IncludesMaxItemCount"/>: the serializer renders <c>count</c> of them after the
+    /// <c>$includes</c> handler skips <c>offset</c>, and reads one more to decide whether a <c>related</c> link
+    /// is needed. The compiler ranks each stage in final include order and emits <c>TOP (limit + 1)</c>.
+    /// </summary>
+    /// <remarks>
+    /// The match page's row count is added as slack. Match rows are removed from a stage's capped rows only
+    /// after the cap (the include arm's anti-join), and a sorted search's two phases each remove the other
+    /// phase's matches only once merged, so up to that many capped rows may never become includes. Null --
+    /// no SQL cap -- when nothing caps the rendered includes or the search has no includes; also when the
+    /// window cannot be expressed as a TOP, which the compiler rejects at <see cref="int.MaxValue"/>.
+    /// </remarks>
+    private static int? IncludeWindowLimit(SearchOptions options)
+    {
+        if ((options.Include.Count == 0 && options.RevInclude.Count == 0) || options.IncludesMaxItemCount is not { } count)
+        {
+            return null;
+        }
+
+        var offset = !string.IsNullOrWhiteSpace(options.IncludesContinuationToken)
+            && IncludesContinuationToken.TryDecode(options.IncludesContinuationToken, out var tokenOffset, out _)
+                ? tokenOffset
+                : 0;
+
+        var limit = (long)offset + count + DefaultOffsetPage(options).FetchCount;
+        return limit < int.MaxValue ? (int)limit : null;
     }
 
     /// <summary>

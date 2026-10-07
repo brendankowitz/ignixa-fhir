@@ -291,9 +291,16 @@ GET /Patient?_revinclude=Observation:subject
 
 Control the number of included resources returned separately from primary matches:
 
-`_count` limits matching resources, not their includes. If `_includesCount` is omitted,
-all resolved includes are returned. Rows fetched only to detect the next match page
-do not seed `_include`, `_revinclude`, or `:iterate`.
+`_count` limits matching resources, not their includes. Included resources are capped
+separately: a page returns at most **1000** included resources by default, and
+`_includesCount` sets a different cap (0 to 1000). When more included resources exist than
+the cap allows, the Bundle carries a `related` link to [`$includes`](/docs/server/fhir/operations#includes) that pages
+through the rest. Rows fetched only to detect the next match page do not seed `_include`,
+`_revinclude`, or `:iterate`.
+
+On SQL Server storage the cap is applied in the database, so a search whose matches reference
+many resources reads only the page it returns rather than every included resource.
+Follow-up `$includes` pages accept offsets up to 100,000 included resources.
 
 ```bash
 # Limit primary results to 10, includes to 50
@@ -307,12 +314,12 @@ GET /Patient?_include=Patient:organization&_count=10&_includesCount=50
 
 | Parameter | Description |
 |-----------|-------------|
-| `_includesCount` | Maximum number of included resources per page (separate from `_count`) |
+| `_includesCount` | Maximum number of included resources per page (separate from `_count`; default 1000) |
 | `_includesContinuationToken` | Continuation token for fetching additional included resources |
 
-When `_includesCount` is specified:
+For every search with `_include` or `_revinclude`:
 - The Bundle will contain up to `_count` primary matches
-- The Bundle will contain up to `_includesCount` included resources
+- The Bundle will contain up to `_includesCount` included resources (1000 when omitted)
 - If more includes exist, a "related" link is added with `_includesContinuationToken`
 - Use the `$includes` operation to fetch additional included resources
 

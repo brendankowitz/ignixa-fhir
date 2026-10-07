@@ -53,7 +53,7 @@ internal static class CompilationContextMapping
         [nameof(SearchOptions.ResourceType)] =
             "Superseded by the targetResourceType argument, which is normalized once in CompilationContext.Create so every stage observes the same value.",
         [nameof(SearchOptions.IncludesMaxItemCount)] =
-            "The $includes operation's page size, applied by the caller. The compiler's per-stage cap is SearchPlanOptions.IncludeLimit.",
+            "The include page size, applied by the caller. The adapter folds it into SearchPlanOptions.IncludeLimit, the compiler's per-stage cap.",
         [nameof(SearchOptions.IncludesContinuationToken)] =
             "Decoded by the adapter layer, like ContinuationToken.",
     }.ToFrozenDictionary(StringComparer.Ordinal);

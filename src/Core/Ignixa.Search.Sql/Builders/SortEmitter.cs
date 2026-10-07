@@ -139,13 +139,17 @@ internal static class SortEmitter
         var activeIndices = ActiveKeyIndices(sort);
         var terms = activeIndices.Select((idx, ordinal) =>
             $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
-        if (sort?.HasCustomKey is not true)
-        {
-            terms = terms.Append("T1 ASC");
-        }
 
-        return string.Join(", ", terms.Append("Sid1 ASC"));
+        return string.Join(", ", terms.Append(EmitIncludeIdentityOrderBy(sort)));
     }
+
+    /// <summary>
+    /// The (T1, Sid1) tail of <see cref="EmitSortValueOrderBy"/>. Include rows project NULL for every
+    /// SortValueN, so this tail alone is their order in the final result, and a per-stage include cap must rank
+    /// by it to keep the rows that order puts first. A custom sort drops T1, as in <see cref="EmitOrderBy"/>.
+    /// </summary>
+    internal static string EmitIncludeIdentityOrderBy(SortSpec? sort)
+        => sort?.HasCustomKey is true ? "Sid1 ASC" : "T1 ASC, Sid1 ASC";
 
     /// <summary>Renders the ", SortValueN AS ..." select-list columns that project each active key's value for the outer ORDER BY to read.</summary>
     internal static string EmitSortSelectColumns(SortSpec? sort)

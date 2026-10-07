@@ -323,6 +323,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
             options.RevInclude = ParseIncludeParameters(resourceTypes, revIncludeParameters, isReversed: true);
         }
 
+        // Every include-bearing page is capped, so a data layer can bound the included rows it reads; the
+        // remainder is reachable through the bundle's related $includes link.
+        if (options.Include.Count > 0 || options.RevInclude.Count > 0)
+        {
+            options.IncludesMaxItemCount ??= MaxAllowedItemCount;
+        }
+
         // STEP 6: Parse and validate elements
         var bundleIssues = new List<IssueComponent>();
         if (elementsParameters.Count > 0)

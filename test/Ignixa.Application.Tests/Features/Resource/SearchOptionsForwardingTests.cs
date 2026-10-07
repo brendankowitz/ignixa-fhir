@@ -118,8 +118,9 @@ public class SearchOptionsForwardingTests
         executed.ContinuationToken.ShouldBe(options.ContinuationToken);
         executed.Total.ShouldBe(TotalType.None);
         executed.MaxItemCount.ShouldBe(options.MaxItemCount);
-        executed.IncludesContinuationToken.ShouldBeNull();
-        executed.IncludesMaxItemCount.ShouldBeNull();
+        // The include window is forwarded so the data layer can bound include rows at offset + count.
+        executed.IncludesContinuationToken.ShouldBe(options.IncludesContinuationToken);
+        executed.IncludesMaxItemCount.ShouldBe(options.IncludesMaxItemCount);
         executed.ProbeExtraRow.ShouldBeTrue();
         options.ProbeExtraRow.ShouldBeFalse();
     }

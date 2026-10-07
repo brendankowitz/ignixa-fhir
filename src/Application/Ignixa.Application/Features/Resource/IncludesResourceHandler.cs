@@ -69,13 +69,14 @@ public class IncludesResourceHandler(
 
         // Only include pagination is consumed here. Changing the match count or cursor would resolve
         // a different include set, making the include offset skip or duplicate resources.
+        // The include window (continuation token and page size) is forwarded: a SQL data layer caps include
+        // rows at offset + page size from the start of the ordered include set, and the skip below then
+        // drops the first offset of them, as it does for a data layer that returns every include.
         var searchOptionsForIncludes = new SearchOptions(request.SearchOptions)
         {
             // Match the original search's probe exclusion and include-seed boundary.
             ProbeExtraRow = true,
             Total = TotalType.None,
-            IncludesContinuationToken = null,
-            IncludesMaxItemCount = null,
         };
 
         logger.LogDebug(
@@ -145,90 +146,5 @@ public class IncludesResourceHandler(
             yielded++;
             yield return entry;
         }
-    }
-}
-
-/// <summary>
-/// Helper for encoding/decoding continuation tokens for paginated $includes results.
-/// Extends the base ContinuationToken with includes-specific state.
-/// </summary>
-public static class IncludesContinuationToken
-{
-    /// <summary>
-    /// Encodes pagination state into an includes continuation token.
-    /// </summary>
-    /// <param name="includesOffset">The offset for include entries (number of includes skipped).</param>
-    /// <param name="pageSize">The page size (_includesCount parameter).</param>
-    /// <returns>Base64-encoded token string.</returns>
-    public static string Encode(int includesOffset, int pageSize)
-    {
-        var state = new IncludesPaginationState
-        {
-            IncludesOffset = includesOffset,
-            PageSize = pageSize
-        };
-
-        string json = System.Text.Json.JsonSerializer.Serialize(state);
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(json);
-        return Convert.ToBase64String(bytes);
-    }
-
-    private const int MaxAllowedOffset = 1_000_000;
-    private const int MaxAllowedPageSize = 1000;
-    private const int MinAllowedPageSize = 1;
-
-    /// <summary>
-    /// Decodes an includes continuation token into pagination state.
-    /// Includes validation to prevent DoS attacks via malicious token values.
-    /// </summary>
-    /// <param name="token">The Base64-encoded token string.</param>
-    /// <param name="includesOffset">The decoded includes offset value.</param>
-    /// <param name="pageSize">The decoded page size value.</param>
-    /// <returns>True if decoding succeeded and values are valid, false otherwise.</returns>
-    public static bool TryDecode(string token, out int includesOffset, out int pageSize)
-    {
-        includesOffset = 0;
-        pageSize = 10;
-
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            return false;
-        }
-
-        try
-        {
-            byte[] bytes = Convert.FromBase64String(token);
-            string json = System.Text.Encoding.UTF8.GetString(bytes);
-            var state = System.Text.Json.JsonSerializer.Deserialize<IncludesPaginationState>(json);
-
-            if (state == null)
-            {
-                return false;
-            }
-
-            if (state.IncludesOffset < 0 || state.IncludesOffset > MaxAllowedOffset)
-            {
-                return false;
-            }
-
-            if (state.PageSize < MinAllowedPageSize || state.PageSize > MaxAllowedPageSize)
-            {
-                return false;
-            }
-
-            includesOffset = state.IncludesOffset;
-            pageSize = state.PageSize;
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private class IncludesPaginationState
-    {
-        public int IncludesOffset { get; set; }
-        public int PageSize { get; set; }
     }
 }
