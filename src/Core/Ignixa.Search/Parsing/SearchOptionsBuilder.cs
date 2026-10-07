@@ -556,6 +556,10 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                     unsupportedParameters.Add(parameterName);
                     pendingReindexParameters[parameterName] = ex.SearchParameter.Code;
                 }
+                catch (BadSearchRequestException)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     // Log other exceptions for debugging, add to unsupported, then skip
@@ -639,7 +643,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         List<SearchParameterInfo> resolvedSearchParameters,
         List<SearchParameterInfo> wildcardReferenceSearchParameters)
     {
-        foreach (SearchParameterInfo searchParameter in _searchParameterDefinitionManager.GetAllKnownSearchParameters()
+        foreach (SearchParameterInfo searchParameter in GetKnownWildcardReferenceSearchParameters(includeExpression)
                      .Where(parameter => parameter.Type == SearchParamType.Reference)
                      .Where(parameter => IsApplicableWildcardReferenceParameter(includeExpression, parameter))
                      .Distinct())
@@ -649,30 +653,35 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         }
     }
 
+    private IEnumerable<SearchParameterInfo> GetKnownWildcardReferenceSearchParameters(IncludeExpression includeExpression)
+    {
+        if (includeExpression.Reversed && includeExpression.SourceResourceType == "*")
+        {
+            return _searchParameterDefinitionManager.GetAllKnownSearchParameters();
+        }
+
+        IEnumerable<string> sourceTypes = includeExpression.SourceResourceType == "*"
+            ? includeExpression.ResourceTypes
+            : [includeExpression.SourceResourceType];
+
+        return sourceTypes.SelectMany(_searchParameterDefinitionManager.GetAllKnownSearchParameters);
+    }
+
     private static bool IsApplicableWildcardReferenceParameter(
         IncludeExpression includeExpression,
         SearchParameterInfo searchParameter)
     {
         if (!includeExpression.Reversed)
         {
-            IEnumerable<string> sourceTypes = includeExpression.SourceResourceType == "*"
-                ? includeExpression.ResourceTypes
-                : [includeExpression.SourceResourceType];
-            return sourceTypes.Any(sourceType =>
-                searchParameter.BaseResourceTypes.Contains(sourceType, StringComparer.OrdinalIgnoreCase));
+            return true;
         }
 
-        IEnumerable<string> reverseSourceTypes = includeExpression.SourceResourceType == "*"
-            ? searchParameter.BaseResourceTypes
-            : [includeExpression.SourceResourceType];
         IEnumerable<string> targetTypes = includeExpression.TargetResourceType is null
             ? includeExpression.ResourceTypes
             : [includeExpression.TargetResourceType];
 
-        return reverseSourceTypes.Any(sourceType =>
-                   searchParameter.BaseResourceTypes.Contains(sourceType, StringComparer.OrdinalIgnoreCase))
-            && targetTypes.Any(targetType =>
-                   searchParameter.TargetResourceTypes.Contains(targetType, StringComparer.OrdinalIgnoreCase));
+        return targetTypes.Any(targetType =>
+            searchParameter.TargetResourceTypes.Contains(targetType, StringComparer.OrdinalIgnoreCase));
     }
 
     private static void AddResolvedSearchParameters(Expression expression, List<SearchParameterInfo> resolvedSearchParameters)

@@ -32,6 +32,16 @@ public interface ISearchParameterDefinitionManager
     IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters() => AllSearchParameters;
 
     /// <summary>
+    /// Gets every known search parameter applicable to a resource type, including definitions hidden from ordinary
+    /// search binding.
+    /// </summary>
+    /// <remarks>
+    /// The default delegates to the manager's per-type lookup. Filtering wrappers override it to reach their
+    /// unfiltered inner manager.
+    /// </remarks>
+    IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters(string resourceType) => GetSearchParameters(resourceType);
+
+    /// <summary>
     /// Represents a mapping of resource type to a hash of the search parameters
     /// currently supported for that resource type.
     /// </summary>

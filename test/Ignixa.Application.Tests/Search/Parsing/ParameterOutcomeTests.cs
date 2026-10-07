@@ -7,10 +7,12 @@
 
 using Ignixa.Application.Tests.Search.Expressions.Parsers;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Exceptions;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Specification.ValueSets.Normative;
+using NSubstitute;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.Search.Parsing;
@@ -107,6 +109,49 @@ public class ParameterOutcomeTests
     }
 
     [Theory]
+    [InlineData("_include", "Patient:*", "Patient", "Resource", false)]
+    [InlineData("_include", "Patient:*", "Patient", "Resource", true)]
+    [InlineData("_include", "Patient:*", "Patient", "DomainResource", false)]
+    [InlineData("_include", "Patient:*", "Patient", "DomainResource", true)]
+    [InlineData("_revinclude", "Observation:*", "Observation", "Resource", false)]
+    [InlineData("_revinclude", "Observation:*", "Observation", "Resource", true)]
+    [InlineData("_revinclude", "Observation:*", "Observation", "DomainResource", false)]
+    [InlineData("_revinclude", "Observation:*", "Observation", "DomainResource", true)]
+    public void GivenAWildcardIncludeWithAnAbstractPendingReference_WhenBuilt_ThenItWarnsAndTracksTheExpandedParameter(
+        string parameterName,
+        string parameterValue,
+        string sourceResourceType,
+        string baseResourceType,
+        bool usePartialIndices)
+    {
+        var context = new SearchParserTestContext();
+        var pending = new SearchParameterInfo(
+            name: "pending-abstract-reference",
+            code: "pending-abstract-reference",
+            searchParamType: SearchParamType.Reference,
+            targetResourceTypes: ["Patient"],
+            baseResourceTypes: [baseResourceType],
+            url: new Uri("http://ignixa.test/SearchParameter/pending-abstract-reference"))
+        {
+            IsSearchable = false,
+        };
+        context.DefinitionManager.GetSearchParameters(sourceResourceType).Returns([pending]);
+        context.DefinitionManager.AllSearchParameters.Returns([pending]);
+        var definitions = new SearchableSearchParameterDefinitionManager(
+            context.DefinitionManager,
+            () => usePartialIndices);
+        var builder = new SearchOptionsBuilder(
+            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
+            definitions);
+
+        var options = builder.Build("Patient", [new QueryParameter(parameterName, parameterValue)]);
+
+        options.ResolvedSearchParameters.ShouldContain(parameter => ReferenceEquals(parameter, pending));
+        options.BundleIssues.ShouldContain(issue => issue.Diagnostics ==
+            "Search results may be incomplete because search parameter 'pending-abstract-reference' is pending reindex.");
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void GivenASystemSortWithAPendingDefinitionForOneType_WhenBuilt_ThenItUsesThePendingDefinitionRulesForEveryType(
@@ -145,6 +190,32 @@ public class ParameterOutcomeTests
             options.BundleIssues.ShouldContain(issue => issue.Diagnostics ==
                 "Search parameter 'custom' is pending reindex and was ignored.");
         }
+    }
+
+    [Fact]
+    public void GivenASystemSortWithDifferentCanonicalDefinitions_WhenBuilt_ThenItRejectsTheRequest()
+    {
+        var context = new SearchParserTestContext();
+        context.Add(
+            "Patient",
+            "custom",
+            SearchParamType.String,
+            url: new Uri("http://ignixa.test/SearchParameter/patient-custom"));
+        context.Add(
+            "Observation",
+            "custom",
+            SearchParamType.String,
+            url: new Uri("http://ignixa.test/SearchParameter/observation-custom"));
+        var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager);
+        var builder = new SearchOptionsBuilder(
+            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
+            definitions);
+
+        Should.Throw<BadSearchRequestException>(() => builder.Build(null,
+        [
+            new QueryParameter("_type", "Patient,Observation"),
+            new QueryParameter("_sort", "custom"),
+        ]));
     }
 
     [Theory]

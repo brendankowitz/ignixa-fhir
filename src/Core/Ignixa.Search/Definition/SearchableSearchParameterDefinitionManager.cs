@@ -49,6 +49,10 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     /// <inheritdoc />
     public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters() => _inner.AllSearchParameters;
 
+    /// <inheritdoc />
+    public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters(string resourceType) =>
+        _inner.GetSearchParameters(resourceType);
+
     public IReadOnlyDictionary<string, string> SearchParameterHashMap => _inner.SearchParameterHashMap;
 
     public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)
