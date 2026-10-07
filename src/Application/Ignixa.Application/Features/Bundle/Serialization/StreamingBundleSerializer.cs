@@ -172,10 +172,13 @@ public static class StreamingBundleSerializer
     }
 
     /// <summary>
-    /// Flush the writer to the output stream when its pending buffer exceeds this size.
-    /// Prevents unbounded memory growth for large result sets without flushing on every entry.
+    /// Flush the writer to the output stream when its pending buffer exceeds this size. The pending
+    /// buffer is the memory a search page holds per in-flight request, so it must stay small: at 50 MB a
+    /// 1000-entry page of large resources pinned ~64 MB of pooled LOH per concurrent request.
+    /// Trade-off: pages under the threshold still fail as tier 1 (a real HTTP status); a failure after
+    /// the first flush is tier 2 (HTTP 200 with a fatal OperationOutcome entry closing the bundle).
     /// </summary>
-    private const int FlushThresholdBytes = 50 * 1024 * 1024; // 50 MB
+    private const int FlushThresholdBytes = 256 * 1024;
 
     /// <summary>
     /// fullUrl carried by the mid-stream fatal OperationOutcome entry. A well-formed UUID URN, distinct
