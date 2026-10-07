@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Ignixa.Abstractions;
+using Ignixa.Api.Extensions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.BackgroundOperations.BulkDelete;
@@ -147,6 +148,9 @@ public static class BulkDeleteEndpoints
         BulkDeleteKickoffAuthorizer authorizer,
         CancellationToken cancellationToken)
     {
+        // Route values are logged downstream by the authorization handlers.
+        resourceType = resourceType.SanitizeForLog();
+
         var queryParameters = Flatten(httpContext.Request.Query);
         var preferHeader = httpContext.Request.Headers.TryGetValue("Prefer", out var preferValues)
             ? preferValues.ToString()
@@ -208,7 +212,7 @@ public static class BulkDeleteEndpoints
         catch (JsonException ex)
         {
             loggerFactory.CreateLogger(typeof(BulkDeleteEndpoints)).LogError(
-                ex, "Bulk delete job {JobId} for tenant {TenantId} has an invalid persisted result or progress record", jobId, tenantId);
+                ex, "Bulk delete job {JobId} for tenant {TenantId} has an invalid persisted result or progress record", jobId.SanitizeForLog(), tenantId);
             return OperationOutcomeResult(
                 StatusCodes.Status500InternalServerError,
                 FhirOperationOutcomeIssue.IssueSeverityCode.Error,
