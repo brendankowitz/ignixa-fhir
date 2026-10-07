@@ -229,6 +229,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
 
                     case ParameterCategory.IncludesContinuationToken:
+                        // Validated once here so no data layer or serializer can quietly restart an
+                        // undecodable token at the first include page.
+                        if (!IncludesContinuationToken.TryDecode(param.Value, out _, out _))
+                        {
+                            throw new BadSearchRequestException(IncludesContinuationToken.InvalidTokenMessage);
+                        }
+
                         options.IncludesContinuationToken = param.Value;
                         break;
 
