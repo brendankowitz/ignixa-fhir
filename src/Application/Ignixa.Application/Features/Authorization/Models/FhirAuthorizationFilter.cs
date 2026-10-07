@@ -45,6 +45,17 @@ public record FhirAuthorizationFilter
     public static FhirAuthorizationFilter None => new();
 
     /// <summary>
+    /// Whether this filter narrows the data the caller may touch (a compartment or search constraint).
+    /// Operations that act on a whole tenant rather than on query results, such as <c>$bulk-delete</c>,
+    /// cannot honour such a restriction and must reject the request instead of ignoring it.
+    /// </summary>
+    public bool RestrictsData =>
+        PatientFilter is not null ||
+        PractitionerFilter is not null ||
+        EncounterFilter is not null ||
+        SearchFilters is { Count: > 0 };
+
+    /// <summary>
     /// Creates a patient compartment filter.
     /// PatientFilter is used for compartment-based filtering logic.
     /// SearchFilters should only be added if there are explicit SMART v2 search constraints.

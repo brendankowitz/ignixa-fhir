@@ -33,6 +33,12 @@ public class OperationsSegmentTests
         _packageResourceRepository = Substitute.For<IPackageResourceRepository>();
         _features = [];
 
+        // Default: no OperationDefinition rows (tests that care configure a specific match, which
+        // NSubstitute resolves in preference to this one since it is set up first).
+        _packageResourceRepository.GetOperationDefinitionsAsync(
+                Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<PackageResource>());
+
         _segment = new OperationsSegment(
             _features,
             _packageResourceRepository,
@@ -312,5 +318,101 @@ public class OperationsSegmentTests
 
         // Assert
         versions.ShouldBeNull("null means supports all FHIR versions");
+    }
+
+    // ---- "*" (AllResourceTypesWildcard) expansion ----
+
+    [Fact]
+    public async Task GivenWildcardResourceOperation_WhenApplyingSegment_ThenExpandsToEveryAdvertisedResourceTypeAndNeverCreatesALiteralWildcardResource()
+    {
+        var statement = new CapabilityStatementJsonNode();
+        SeedAdvertisedResources(statement, "Patient", "Observation");
+        _features.Add(WildcardFeature("test.wildcard", "bulk-delete"));
+
+        var context = new CapabilityContext(FhirVersion.R4, TenantId: 1);
+        await _segment.ApplyAsync(statement, context, CancellationToken.None);
+
+        var restComponent = statement.Rest.ShouldHaveSingleItem();
+        restComponent.Resource.Any(r => r.Type == OperationsSegment.AllResourceTypesWildcard).ShouldBeFalse(
+            "a literal '*' is not a valid FHIR resource type and must never be created");
+        restComponent.Resource.Single(r => r.Type == "Patient").Operation
+            .Any(op => op.Name == "bulk-delete").ShouldBeTrue();
+        restComponent.Resource.Single(r => r.Type == "Observation").Operation
+            .Any(op => op.Name == "bulk-delete").ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenWildcardOperationAndAnExplicitOperationWithTheSameName_WhenApplyingSegment_ThenTheResourceHasOnlyOneEntry()
+    {
+        var statement = new CapabilityStatementJsonNode();
+        SeedAdvertisedResources(statement, "Patient");
+        _features.Add(ExplicitFeature("test.explicit", "Patient", "bulk-delete"));
+        _features.Add(WildcardFeature("test.wildcard", "bulk-delete"));
+
+        var context = new CapabilityContext(FhirVersion.R4, TenantId: 1);
+        await _segment.ApplyAsync(statement, context, CancellationToken.None);
+
+        var patientResource = statement.Rest.ShouldHaveSingleItem().Resource.Single(r => r.Type == "Patient");
+        patientResource.Operation.Count(op => op.Name == "bulk-delete").ShouldBe(1,
+            "the explicit declaration and the wildcard expansion name the same operation on the same type");
+    }
+
+    [Fact]
+    public async Task GivenAnExplicitResourceOperationAlongsideAWildcard_WhenApplyingSegment_ThenTheExplicitTypeStillGetsItsOwnOperation()
+    {
+        var statement = new CapabilityStatementJsonNode();
+        SeedAdvertisedResources(statement, "Patient", "Observation");
+        _features.Add(ExplicitFeature("test.explicit", "Patient", "patch"));
+        _features.Add(WildcardFeature("test.wildcard", "bulk-delete"));
+
+        var context = new CapabilityContext(FhirVersion.R4, TenantId: 1);
+        await _segment.ApplyAsync(statement, context, CancellationToken.None);
+
+        var restComponent = statement.Rest.ShouldHaveSingleItem();
+        var patientOps = restComponent.Resource.Single(r => r.Type == "Patient").Operation.Select(op => op.Name).ToList();
+        patientOps.ShouldContain("patch");
+        patientOps.ShouldContain("bulk-delete");
+        restComponent.Resource.Single(r => r.Type == "Observation").Operation
+            .Select(op => op.Name).ShouldBe(["bulk-delete"]);
+    }
+
+    [Fact]
+    public async Task GivenWildcardResourceOperationAndNoAdvertisedResources_WhenApplyingSegment_ThenNothingIsAddedAndNoWildcardResourceIsCreated()
+    {
+        var statement = new CapabilityStatementJsonNode();
+        _features.Add(WildcardFeature("test.wildcard", "bulk-delete"));
+
+        var context = new CapabilityContext(FhirVersion.R4, TenantId: 1);
+        await _segment.ApplyAsync(statement, context, CancellationToken.None);
+
+        statement.Rest.Any(rest => rest.Resource.Any(r => r.Type == OperationsSegment.AllResourceTypesWildcard)).ShouldBeFalse();
+        statement.Rest.SelectMany(rest => rest.Resource).SelectMany(r => r.Operation).ShouldBeEmpty();
+    }
+
+    private static void SeedAdvertisedResources(CapabilityStatementJsonNode statement, params string[] resourceTypes)
+    {
+        var restComponent = new RestComponentJsonNode { Mode = RestComponentJsonNode.RestfulCapabilityMode.Server };
+        foreach (var type in resourceTypes)
+        {
+            restComponent.Resource.Add(new ResourceComponentJsonNode { Type = type });
+        }
+
+        statement.Rest.Add(restComponent);
+    }
+
+    private static IPackageFeature WildcardFeature(string packageId, params string[] operations) =>
+        ResourceFeature(packageId, OperationsSegment.AllResourceTypesWildcard, operations);
+
+    private static IPackageFeature ExplicitFeature(string packageId, string resourceType, params string[] operations) =>
+        ResourceFeature(packageId, resourceType, operations);
+
+    private static IPackageFeature ResourceFeature(string packageId, string resourceTypeKey, params string[] operations)
+    {
+        var feature = Substitute.For<IPackageFeature>();
+        feature.PackageId.Returns(packageId);
+        feature.SystemOperations.Returns(Array.Empty<string>());
+        feature.ResourceOperations.Returns(new Dictionary<string, IReadOnlyList<string>> { [resourceTypeKey] = operations });
+        feature.SupportedFhirVersions.Returns((IReadOnlyList<string>?)null);
+        return feature;
     }
 }

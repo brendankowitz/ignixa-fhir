@@ -31,9 +31,10 @@ public static class EndpointRouteBuilderExtensions
         app.MapHealthCheckEndpoints();
 
         // Bulk operations BEFORE generic FHIR endpoints
-        // This ensures /$import and /$export routes match before the generic /{resourceType} catch-all
+        // This ensures /$import, /$export and /$bulk-delete routes match before the generic /{resourceType} catch-all
         app.MapExportEndpoints();
         app.MapImportEndpoints();
+        app.MapBulkDeleteEndpoints();
 
         // Admin package management endpoints
         app.MapAdminPackageEndpoints();
