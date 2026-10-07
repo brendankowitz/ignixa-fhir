@@ -123,6 +123,104 @@ public class StreamingBundleParserBufferTests
         yielded.Select(e => e.Index).ShouldBe([0]);
     }
 
+    [Fact]
+    public async Task GivenTokenWithinNonPowerOfTwoMaximumBuffer_WhenParsing_ThenMultibyteValueIsPreserved()
+    {
+        const int maxTokenBytes = 100_000;
+        var data = new string('é', 45_000);
+        var parser = new StreamingBundleParser(NullLogger<StreamingBundleParser>.Instance, maxTokenBytes);
+        var bundleJson = BuildBundle(header: string.Empty, BinaryEntry("bin-0", data));
+
+        var context = await parser.ParseStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
+        var entries = new List<BundleEntryContext>();
+        await foreach (var entry in context.Entries)
+        {
+            entries.Add(entry);
+        }
+
+        entries.Count.ShouldBe(1);
+        JsonDocument.Parse(entries[0].RawJson!).RootElement.GetProperty("data").GetString().ShouldBe(data);
+    }
+
+    [Fact]
+    public async Task GivenTokenLargerThanNonPowerOfTwoMaximumBuffer_WhenParsing_ThenRequestIsRejected()
+    {
+        const int maxTokenBytes = 100_000;
+        var parser = new StreamingBundleParser(NullLogger<StreamingBundleParser>.Instance, maxTokenBytes);
+        var bundleJson = BuildBundle(header: string.Empty, BinaryEntry("bin-0", new string('A', 110_000)));
+
+        var context = await parser.ParseStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
+
+        var exception = await Should.ThrowAsync<RequestNotValidException>(async () =>
+        {
+            await foreach (var _ in context.Entries)
+            {
+            }
+        });
+
+        exception.Message.ShouldContain("100000");
+    }
+
+    [Fact]
+    public async Task GivenMalformedContentAfterEntryArray_WhenParsing_ThenJsonExceptionIsThrownBeforeEnumerationCompletes()
+    {
+        var bundleJson = $$"""
+            {
+              "resourceType": "Bundle",
+              "type": "batch",
+              "entry": [],
+              "signature": { "data": "{{new string('s', 9_000)}}
+            """;
+        var context = await _parser.ParseStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
+
+        await Should.ThrowAsync<JsonException>(async () =>
+        {
+            await foreach (var _ in context.Entries)
+            {
+            }
+        });
+    }
+
+    [Fact]
+    public async Task GivenTrailingNonWhitespaceAfterRootObject_WhenParsing_ThenJsonExceptionIsThrown()
+    {
+        var bundleJson = BuildBundle(header: string.Empty, BinaryEntry("bin-0", "AAAA"))
+            + new string(' ', 9_000)
+            + "trailing";
+        var context = await _parser.ParseStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
+
+        await Should.ThrowAsync<JsonException>(async () =>
+        {
+            await foreach (var _ in context.Entries)
+            {
+            }
+        });
+    }
+
+    [Fact]
+    public async Task GivenHeaderPropertiesAfterEntryArray_WhenParsing_ThenEntriesAndLinksAreAccepted()
+    {
+        var bundleJson = $$"""
+            {
+              "resourceType": "Bundle",
+              "type": "batch",
+              "entry": [ {{BinaryEntry("bin-0", "AAAA")}} ],
+              "link": [ { "relation": "self", "url": "https://example.test/Bundle" } ],
+              "signature": { "data": "signed" }
+            }
+            """;
+
+        var context = await _parser.ParseStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes(bundleJson)));
+        var entries = new List<BundleEntryContext>();
+        await foreach (var entry in context.Entries)
+        {
+            entries.Add(entry);
+        }
+
+        entries.Select(entry => entry.Index).ShouldBe([0]);
+        context.Links.ShouldContain(link => link.Relation == "self" && link.Url == "https://example.test/Bundle");
+    }
+
     private async Task<List<BundleEntryContext>> ParseAllAsync(Stream stream)
     {
         var context = await _parser.ParseStreamAsync(stream);

@@ -284,11 +284,6 @@ public class StreamingBundleParser
                     yield return entry;
                 }
 
-                if (parserState.EntryArrayClosed)
-                {
-                    break;
-                }
-
                 if (!buffer.IsComplete)
                 {
                     await buffer.ReadNextChunkAsync(ct);
@@ -332,6 +327,12 @@ public class StreamingBundleParser
     /// </summary>
     private void ProcessToken(ref Utf8JsonReader reader, BundleParserState state)
     {
+        if (state.EntryArrayClosed)
+        {
+            ProcessHeaderToken(ref reader, state);
+            return;
+        }
+
         switch (reader.TokenType)
         {
             case JsonTokenType.PropertyName:
@@ -674,14 +675,15 @@ public class StreamingBundleParser
                 return;
             }
 
-            int newBufferSize = checked(_buffer.Length * 2);
-            if (newBufferSize > _maxTokenBytes)
+            if (_buffer.Length >= _maxTokenBytes)
             {
                 throw new RequestNotValidException(
                     $"Bundle contains a JSON token larger than the maximum supported size of {_maxTokenBytes} bytes.");
             }
 
-            bool newBufferIsPooled = newBufferSize <= MaxPooledBufferSize;
+            bool reachesMaximum = _buffer.Length > _maxTokenBytes / 2;
+            int newBufferSize = reachesMaximum ? _maxTokenBytes : _buffer.Length * 2;
+            bool newBufferIsPooled = !reachesMaximum && newBufferSize <= MaxPooledBufferSize;
             byte[] newBuffer = newBufferIsPooled
                 ? ArrayPool<byte>.Shared.Rent(newBufferSize)
                 : GC.AllocateUninitializedArray<byte>(newBufferSize);
