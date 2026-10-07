@@ -46,6 +46,35 @@ namespace Ignixa.Api.Endpoints;
 /// </summary>
 public static class FhirEndpoints
 {
+    /// <summary>
+    /// Writes a committed transaction's response bundle entry by entry rather than as one string: the bundle is
+    /// already in memory, so a second full UTF-16 copy plus its UTF-8 encoding is pure overhead.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the searchset serializer there is no tier-2 bundle close for a failure after the first flush, and
+    /// FhirExceptionMiddleware deliberately returns quietly once the response has started. Left alone, Kestrel
+    /// would then finish the response cleanly as a truncated 200, so the connection is aborted instead and the
+    /// client sees a transport failure.
+    /// </remarks>
+    internal static async Task WriteTransactionResponseAsync(
+        HttpContext context,
+        Bundle responseBundle,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
+        try
+        {
+            await responseBundle.SerializeToStreamAsync(context.Response.Body, cancellationToken: cancellationToken);
+        }
+        catch (Exception ex) when (context.Response.HasStarted)
+        {
+            logger.LogError(ex, "Transaction response failed after the response started; aborting the connection");
+            context.Abort();
+            throw;
+        }
+    }
+
     private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
     /// <summary>
     /// Registers FHIR RESTful endpoints for all resource types.
@@ -1136,10 +1165,7 @@ public static class FhirEndpoints
                 context.Response.Headers.Append("Preference-Applied", PreferHeaderParser.ToPreferenceAppliedHeader(validationOverride.Value));
             }
 
-            // Streamed entry by entry rather than built as one string: the transaction is already committed and
-            // its response bundle is in memory, so a second full UTF-16 copy plus its UTF-8 encoding is pure overhead.
-            context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
-            await responseBundle.SerializeToStreamAsync(context.Response.Body, cancellationToken: ct);
+            await WriteTransactionResponseAsync(context, responseBundle, logger, ct);
             return Results.Empty;
         }
         else
