@@ -369,7 +369,7 @@ A missing `Prefer: respond-async` token returns `400`. The header may carry othe
 | `_hardDelete` / `hardDelete` | query or body (`valueBoolean`) | Physically remove each matched resource: every version, its search indexes, and its TTL entry, instead of soft-deleting it. Requires a storage provider with `SupportsPhysicalDeletion`. |
 | `_purgeHistory` | query or body (`valueBoolean`) | Physically remove the resource's historical versions, keeping the current version. Ignored when `_hardDelete`/`hardDelete` is also set. |
 | `excludedResourceTypes` | query (comma-separated, repeatable) | Resource types never deleted, including from the `_include`/`_revinclude` cascade. Unknown type names return `400`. |
-| `_remove-references` / `removeReferences` | query only (`true`/`false`) | For each hard-deleted resource, rewrite referrers found via `_id={target}&_revinclude=*:*`: remove the `reference` element and set `display` to `"Referenced resource deleted"`, saving a new version. A reference is recognized in every form the search index resolves to the target — relative (`Patient/p1`), versioned (`Patient/p1/_history/2`), and absolute under one of this server's base URIs. A reference under another server's base names a different resource and is left alone. **Requires hard delete**; with soft delete or purge it returns `400`. Not accepted in the request body (a body parameter by this name returns `400`). |
+| `_remove-references` / `removeReferences` | query only (`true`/`false`) | For each hard-deleted resource, rewrite referrers found via `_id={target}&_revinclude=*:*`: remove the `reference` element and set `display` to `"Referenced resource deleted"`, saving a new version. A reference is recognized in every form the search index resolves to the target — relative (`Patient/p1`), versioned (`Patient/p1/_history/2`), and absolute under one of this server's base URIs (see the note on `Fhir:BaseUri` under [Known Limitations](#known-limitations)). A reference under another server's base names a different resource and is left alone. **Requires hard delete**; with soft delete or purge it returns `400`. Not accepted in the request body (a body parameter by this name returns `400`). |
 | `_type` | query, system-level route only | Comma-separated resource types to restrict the delete to, intersected with the tenant schema's concrete types. Not allowed on the type-level route (`400`). |
 | `_include` / `_revinclude` | query | Cascade matches to their included/reverse-included resources, which are deleted alongside the matches (includes first, then matches). Excluded types are filtered out of the includes. Only supported by storage providers that evaluate includes (SQL); on providers that do not (FileSystem), these return `400`. |
 | any other search parameter | query | Forwarded to search to filter which resources are deleted (for example `identifier`, `status`, `_lastUpdated`). |
@@ -703,6 +703,16 @@ changing it only affects jobs started afterwards.
   [Authorization](#authorization)).
 - `_revinclude=*:*` fan-out for `_remove-references` is bounded only by the configured batch size,
   not globally.
+- **`_remove-references` needs `Fhir:BaseUri` configured to recognize self-absolute references.**
+  A batch runs outside the HTTP pipeline, so its request context carries no service base URIs and
+  `Fhir:BaseUri` (plus tenant addressing) is what identifies "this server" — not the host of the
+  request that stored the reference, and not the host of the request that started the job. With no
+  configured base, a reference written as `https://this-server/Patient/p1` is treated as pointing
+  at another server and is left in place, even though the search index collapsed it onto the
+  target and so reported the referrer. The same mismatch already applies to indexing itself
+  (background-indexed rows store self-references as external while request-indexed rows collapse
+  them), which is why `Fhir:BaseUri` is not optional in practice. A referrer skipped this way is
+  logged at warning naming the referrer and the target, so it is visible rather than silent.
 - **A page whose matches cannot be deleted fails the job.** Soft and hard delete re-read the first
   page every batch, because deleted matches drop out of it. If a page's matches survive the batch
   and more matches remain, the next batch reads the same page, and the job fails with
