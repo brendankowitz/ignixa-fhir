@@ -216,11 +216,18 @@ public class SqlOverrideActivationLifecycleTests
             }
 
             RenewLease(host.Services);
-            using var compartmentResponse = await client.GetAsync(
-                $"/tenant/1/Patient/{beforeId}/Patient?identifier={Uri.EscapeDataString($"{System}|shared-identity")}");
-            compartmentResponse.StatusCode.ShouldBe(
-                HttpStatusCode.OK,
-                await compartmentResponse.Content.ReadAsStringAsync());
+            using var enabledRequest = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|shared-identity")}");
+            enabledRequest.Headers.Add("Prefer", "handling=strict");
+            using var enabledResponse = await client.SendAsync(enabledRequest);
+            var enabledBody = await enabledResponse.Content.ReadAsStringAsync();
+            enabledResponse.StatusCode.ShouldBe(HttpStatusCode.OK, enabledBody);
+            var enabledIds = JsonNode.Parse(enabledBody)!["entry"]!.AsArray()
+                .Select(entry => entry!["resource"]!["id"]!.GetValue<string>())
+                .ToArray();
+            enabledIds.ShouldContain(beforeId);
+            enabledIds.ShouldContain(afterId);
         }
 
         finally

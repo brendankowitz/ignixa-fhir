@@ -152,6 +152,83 @@ public class PackageActivationPipelineTests
     }
 
     [Fact]
+    public async Task GivenAnotherPackageShadowsDuringTransition_WhenActivated_ThenConflictMatchesPostCommitResult()
+    {
+        var duringTransition = await ActivateSecondShadowAsync(commitFirstTransition: false);
+        var afterTransition = await ActivateSecondShadowAsync(commitFirstTransition: true);
+
+        duringTransition.Success.ShouldBe(afterTransition.Success);
+        duringTransition.Issues.Select(issue => issue.Code)
+            .ShouldBe(afterTransition.Issues.Select(issue => issue.Code));
+        duringTransition.Success.ShouldBeFalse();
+        duringTransition.Issues.ShouldContain(issue => issue.Code == "SP_CONFLICT");
+    }
+
+    [Theory]
+    [InlineData("Practitioner")]
+    [InlineData("Binary")]
+    public async Task GivenMultiBaseParameterDoesNotShareOneBaseCanonical_WhenActivated_ThenItUsesDistinctIdentity(
+        string secondBaseType)
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.multi-base",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource(
+                packageId: "test.multi-base",
+                canonical: "http://example.org/SearchParameter/multi-identifier",
+                baseTypes: ["Patient", secondBaseType],
+                includeDerivedFrom: false)]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+
+        var result = await pipeline.ActivateAsync("test.multi-base", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        var activations = persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>().ToArray();
+        activations.ShouldAllBe(activation => activation.SourcePackage == "test.multi-base@1.0.0");
+        activations.ShouldAllBe(activation => activation.Overrides == null);
+        activations.Select(activation => activation.SearchParamId).Distinct().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GivenUnknownFhirVersion_WhenBaseCodeIsShadowed_ThenActivationSkipsBaseSynthesis()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.future",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource(
+                packageId: "test.future",
+                canonical: "http://example.org/SearchParameter/future-identifier",
+                includeDerivedFrom: false,
+                fhirVersion: "99.0.0")]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+
+        var result = await pipeline.ActivateAsync("test.future", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>()
+            .ShouldHaveSingleItem()
+            .Overrides.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task GivenActivationCreatesPendingParameter_WhenActivated_ThenAutomaticReindexOutcomeIsReturned()
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();
@@ -591,6 +668,47 @@ public class PackageActivationPipelineTests
         return eventStore;
     }
 
+    private static async Task<ActivationResult> ActivateSecondShadowAsync(bool commitFirstTransition)
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                Arg.Any<string>(),
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns(call => [CreateOverrideResource(
+                packageId: call.ArgAt<string>(0),
+                canonical: $"http://example.org/SearchParameter/{call.ArgAt<string>(0)}",
+                includeDerivedFrom: false)]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+        (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
+
+        if (commitFirstTransition)
+        {
+            var staged = state.FindByCanonical("http://example.org/SearchParameter/test.first")!;
+            var outgoing = state.GetSearchParameter("Patient", "identifier")!;
+            var committed = new SourceEvent(
+                persistedEvents.Count + 1,
+                "transition:test",
+                nameof(SearchParameterTransitionCommitted),
+                new SearchParameterTransitionCommitted(
+                    staged.SearchParamId,
+                    [staged.ActivationEventId],
+                    [outgoing.DeactivationEventId!.Value]),
+                DateTimeOffset.UtcNow);
+            persistedEvents.Add(committed);
+            state.ApplyAndTrack(committed);
+        }
+
+        return await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None);
+    }
+
     private static PackageResource CreateOverrideResource(
         string packageId = "test.override",
         string canonical = OverrideCanonical,
@@ -598,7 +716,8 @@ public class PackageActivationPipelineTests
         string code = "identifier",
         string expression = "Resource.identifier",
         bool includeDerivedFrom = true,
-        string? derivedFrom = null)
+        string? derivedFrom = null,
+        string fhirVersion = "4.0.1")
     {
         var resource = new System.Text.Json.Nodes.JsonObject
         {
@@ -623,7 +742,7 @@ public class PackageActivationPipelineTests
             ResourceType = "SearchParameter",
             ResourceId = "patient-identifier",
             Canonical = canonical,
-            FhirVersion = "4.0.1",
+            FhirVersion = fhirVersion,
             ResourceJson = resource.ToJsonString()
         };
     }
