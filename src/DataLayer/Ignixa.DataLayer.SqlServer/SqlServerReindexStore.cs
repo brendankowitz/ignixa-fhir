@@ -66,9 +66,8 @@ public sealed class SqlServerReindexStore(
     {
         ArgumentOutOfRangeException.ThrowIfNegative(targetEventId);
 
-        // The update/insert each auto-commit before the MAX query. A duplicate-key race on the first
-        // insert is retried as the monotonic update rather than being hidden; after either branch the
-        // following read necessarily observes the raised barrier.
+        // IGNORE_DUP_KEY makes a concurrent insert a warning. The second monotonic update ensures a
+        // higher target still wins that race before the cutoff is read.
         using var command = new SqlCommand(
             """
             UPDATE dbo.Parameters
@@ -76,19 +75,15 @@ public sealed class SqlServerReindexStore(
             WHERE Id = @BarrierId
               AND (Bigint IS NULL OR Bigint < @TargetEventId);
 
-            IF @@ROWCOUNT = 0 AND NOT EXISTS (SELECT 1 FROM dbo.Parameters WHERE Id = @BarrierId)
-            BEGIN TRY
+            IF NOT EXISTS (SELECT 1 FROM dbo.Parameters WHERE Id = @BarrierId)
+            BEGIN
                 INSERT INTO dbo.Parameters (Id, Bigint) VALUES (@BarrierId, @TargetEventId);
-            END TRY
-            BEGIN CATCH
-                IF ERROR_NUMBER() IN (2601, 2627)
-                    UPDATE dbo.Parameters
-                    SET Bigint = @TargetEventId
-                    WHERE Id = @BarrierId
-                      AND (Bigint IS NULL OR Bigint < @TargetEventId);
-                ELSE
-                    THROW;
-            END CATCH;
+            END;
+
+            UPDATE dbo.Parameters
+            SET Bigint = @TargetEventId
+            WHERE Id = @BarrierId
+              AND (Bigint IS NULL OR Bigint < @TargetEventId);
 
             SELECT
                 ISNULL((SELECT MAX(SurrogateIdRangeFirstValue) FROM dbo.Transactions), -1),
