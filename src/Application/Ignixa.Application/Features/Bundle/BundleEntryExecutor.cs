@@ -113,7 +113,7 @@ public class BundleEntryExecutor
 
             // Create mini HttpContext for bundle entry
             var httpContext = new DefaultHttpContext();
-            var responseBodyStream = _memoryStreamManager.GetStream("bundle-entry-response");
+            await using var responseBodyStream = _memoryStreamManager.GetStream("bundle-entry-response");
             var parentHttpContext = _httpContextAccessor.HttpContext
                 ?? throw new InvalidOperationException("No parent HTTP context available for bundle entry execution");
 
@@ -164,9 +164,12 @@ public class BundleEntryExecutor
             }
 
             // Serialize resource to request body (if present)
+            await using var requestBodyStream = entry.Resource == null
+                ? Stream.Null
+                : SerializeResourceToStream(entry);
             if (entry.Resource != null)
             {
-                httpContext.Request.Body = SerializeResourceToStream(entry);
+                httpContext.Request.Body = requestBodyStream;
                 httpContext.Request.ContentType = "application/fhir+json";
             }
 

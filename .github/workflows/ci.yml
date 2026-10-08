@@ -212,10 +212,10 @@ jobs:
           Logging__LogLevel__Default: "Warning"
           Logging__LogLevel__Microsoft: "Warning"
 
-      # The schema-upgrade CLI's safety-critical assertions (a genuinely destructive diff is refused,
-      # --allow-data-loss is load-bearing) need a live database. They're [SkippableFact]: harmless no-ops in
-      # the SQL-Server-less unit-test job, real here. Runs even when the integration suite fails, so one
-      # suite's failure doesn't hide the other's result, but not when SQL Server never came up.
+      # The schema-upgrade CLI's safety-critical test (a destructive diff is refused without --allow-data-loss and
+      # applied with it) needs a live database. It's a [SkippableFact]: a no-op in the SQL-Server-less unit-test
+      # job, real here. Runs even when the integration suite fails, so one suite's failure doesn't hide the other's
+      # result, but not when SQL Server never came up.
       - name: Run schema upgrade CLI tests
         if: ${{ !cancelled() && steps.verify-sql.outcome == 'success' }}
         run: |

@@ -4,15 +4,18 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Buffers;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using EnsureThat;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
+using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
 using Ignixa.Specification;
+using Microsoft.AspNetCore.Http;
 using Ignixa.Abstractions;
 using ISchema = Ignixa.Abstractions.ISchema;
 using FhirBundleLink = Ignixa.Models.BundleLink;
@@ -173,10 +176,13 @@ public static class StreamingBundleSerializer
     }
 
     /// <summary>
-    /// Flush the writer to the output stream when its pending buffer exceeds this size.
-    /// Prevents unbounded memory growth for large result sets without flushing on every entry.
+    /// Flush the writer to the output stream when its pending buffer exceeds this size. The pending
+    /// buffer is the memory a search page holds per in-flight request, so it must stay small: at 50 MB a
+    /// 1000-entry page of large resources pinned ~64 MB of pooled LOH per concurrent request.
+    /// Trade-off: pages under the threshold still fail as tier 1 (a real HTTP status); a failure after
+    /// the first flush is tier 2 (HTTP 200 with a fatal OperationOutcome entry closing the bundle).
     /// </summary>
-    private const int FlushThresholdBytes = 50 * 1024 * 1024; // 50 MB
+    private const int FlushThresholdBytes = 256 * 1024;
 
     /// <summary>
     /// fullUrl carried by the mid-stream fatal OperationOutcome entry. A well-formed UUID URN, distinct
@@ -434,7 +440,11 @@ public static class StreamingBundleSerializer
         }
 
         int nextIncludesOffset = includesOffset + includesCount;
-        string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesMaxCount.Value);
+
+        // _includesCount=0 renders no includes inline, but $includes must page with a positive size: a zero
+        // page would re-serve the same empty page and the same link forever.
+        int includesPageSize = includesMaxCount.Value > 0 ? includesMaxCount.Value : SearchOptionsBuilder.MaxAllowedItemCount;
+        string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesPageSize);
 
         string includesBaseUrl;
         if (baseUrl.Contains("/$includes", StringComparison.Ordinal))
@@ -450,6 +460,7 @@ public static class StreamingBundleSerializer
 
         var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
         parsedQuery["_includesContinuationToken"] = includesContinuationToken;
+        parsedQuery["_includesCount"] = includesPageSize.ToString(CultureInfo.InvariantCulture);
         return $"{includesBaseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
     }
 
@@ -771,6 +782,16 @@ public static class StreamingBundleSerializer
                 await writer.FlushAsync(cancellationToken);
             }
         }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                DiscardTierOneBuffer(writer);
+                throw;
+            }
+
+            streamingException = ex;
+        }
         catch (OperationCanceledException ex)
         {
             // A canceled `cancellationToken` means the client itself disconnected: nobody is
@@ -820,20 +841,38 @@ public static class StreamingBundleSerializer
     /// </summary>
     private static void WriteErrorEntry(FhirJsonWriter writer, Exception exception)
     {
-        WriteErrorEntry(writer, new IssueComponent("fatal", "exception", Diagnostics: $"Streaming serialization failed: {exception.Message}"));
+        if (exception is BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge })
+        {
+            WriteErrorEntry(
+                writer,
+                "413 Payload Too Large",
+                new IssueComponent(
+                    "fatal",
+                    "too-costly",
+                    Diagnostics: "The request body limit was exceeded while reading the bundle."));
+            return;
+        }
+
+        WriteErrorEntry(
+            writer,
+            "500 Internal Server Error",
+            new IssueComponent("fatal", "exception", Diagnostics: $"Streaming serialization failed: {exception.Message}"));
     }
 
+    private static void WriteErrorEntry(FhirJsonWriter writer, IssueComponent issue) =>
+        WriteErrorEntry(writer, "500 Internal Server Error", issue);
+
     /// <summary>
-    /// Writes the batch-response/transaction-response error entry shape: <c>response.status = "500 Internal Server Error"</c>
-    /// plus the OperationOutcome as <c>resource</c>. Shared by both the streaming-exception path and
-    /// <see cref="WriteOperationOutcomeEntry"/> so the shape is defined exactly once.
+    /// Writes the batch-response/transaction-response error entry shape plus the OperationOutcome as
+    /// <c>resource</c>. Shared by both the streaming-exception path and <see cref="WriteOperationOutcomeEntry"/>
+    /// so the shape is defined exactly once.
     /// </summary>
-    private static void WriteErrorEntry(FhirJsonWriter writer, IssueComponent issue)
+    private static void WriteErrorEntry(FhirJsonWriter writer, string status, IssueComponent issue)
     {
         writer.WriteStartObject();
 
         writer.WriteStartObject("response");
-        writer.WriteString("status", "500 Internal Server Error");
+        writer.WriteString("status", status);
         writer.WriteEndObject(); // end response
 
         WriteOperationOutcomeResource(writer, issue);

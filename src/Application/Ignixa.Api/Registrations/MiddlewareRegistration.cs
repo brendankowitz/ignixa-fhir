@@ -3,8 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Api.Extensions;
 using Ignixa.Api.Middleware;
+using Ignixa.Application.Infrastructure;
 
 namespace Ignixa.Api.Registrations;
 
@@ -69,7 +69,7 @@ public static class MiddlewareRegistration
         {
             var logger = context.RequestServices.GetRequiredService<ILogger<TenantResolutionMiddleware>>();
             var fhirContextAccessor = context.RequestServices
-                .GetRequiredService<Ignixa.Application.Infrastructure.IFhirRequestContextAccessor>();
+                .GetRequiredService<IFhirRequestContextAccessor>();
 
             if (context.GetEndpoint() != null &&
                 !context.Items.ContainsKey("TenantId") &&

@@ -434,9 +434,7 @@ public sealed class SqlServerCompiledSearchService(
         {
             Shape = BuildResultShape(options, countOnly, countPhaseScoped, offsetPageOverride),
             SortPhase = sortPhase,
-            // The serializer and $includes handler own include pagination over this complete traversal.
-            // A per-stage cap loses later rows and iterate seeds before their cursors can reach them.
-            IncludeLimit = null,
+            IncludeLimit = IncludeWindowLimit(options),
             SurrogateRange = surrogateIdRange,
 
             // Left at the default None. This is the live search path and nothing here reads a parameter
@@ -457,6 +455,36 @@ public sealed class SqlServerCompiledSearchService(
         return compilation.Succeeded
             ? compilation.Compiled
             : throw new RequestNotValidException(compilation.Failure.Message);
+    }
+
+    /// <summary>
+    /// The per-stage include budget that still yields the first <c>offset + count + 1</c> includes of the
+    /// result exactly, where <c>offset</c> is the <c>$includes</c> continuation offset and <c>count</c> is
+    /// <see cref="SearchOptions.IncludesMaxItemCount"/>: the serializer renders <c>count</c> of them after the
+    /// <c>$includes</c> handler skips <c>offset</c>, and reads one more to decide whether a <c>related</c> link
+    /// is needed. The compiler ranks each stage in final include order and emits <c>TOP (limit + 1)</c>.
+    /// </summary>
+    /// <remarks>
+    /// The match page's row count is added as slack. Match rows are removed from a stage's capped rows only
+    /// after the cap (the include arm's anti-join), and a sorted search's two phases each remove the other
+    /// phase's matches only once merged, so up to that many capped rows may never become includes. Null --
+    /// no SQL cap -- when nothing caps the rendered includes or the search has no includes; also when the
+    /// window cannot be expressed as a TOP, which the compiler rejects at <see cref="int.MaxValue"/>.
+    /// </remarks>
+    private static int? IncludeWindowLimit(SearchOptions options)
+    {
+        if ((options.Include.Count == 0 && options.RevInclude.Count == 0) || options.IncludesMaxItemCount is not { } count)
+        {
+            return null;
+        }
+
+        var offset = !string.IsNullOrWhiteSpace(options.IncludesContinuationToken)
+            && IncludesContinuationToken.TryDecode(options.IncludesContinuationToken, out var tokenOffset, out _)
+                ? tokenOffset
+                : 0;
+
+        var limit = (long)offset + count + DefaultOffsetPage(options).FetchCount;
+        return limit < int.MaxValue ? (int)limit : null;
     }
 
     /// <summary>
@@ -564,7 +592,18 @@ public sealed class SqlServerCompiledSearchService(
         // would throw ArgumentException on the second occurrence. A FHIR bundle should only ever contain
         // one entry per resource anyway, so collapsing to distinct identities here is correct, not just
         // crash-avoidance.
-        var surrogateIds = rows.Select(r => (r.ResourceTypeId, r.SurrogateId)).Distinct().ToList();
+        // The first row per identity decides IsMatch, exactly as the former rows.First lookup did, but in
+        // one pass: include/revinclude row sets are not capped by the query, so a per-identity linear scan
+        // was quadratic in the raw row count.
+        var firstRowByIdentity = new Dictionary<(short ResourceTypeId, long SurrogateId), MatchRow>(rows.Count);
+        var surrogateIds = new List<(short ResourceTypeId, long SurrogateId)>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (firstRowByIdentity.TryAdd((row.ResourceTypeId, row.SurrogateId), row))
+            {
+                surrogateIds.Add((row.ResourceTypeId, row.SurrogateId));
+            }
+        }
 
         foreach (var batch in surrogateIds.Chunk(100))
         {
@@ -592,7 +631,7 @@ public sealed class SqlServerCompiledSearchService(
                     continue;
                 }
 
-                var matchRow = rows.First(r => r.ResourceTypeId == resourceTypeId && r.SurrogateId == surrogateId);
+                var matchRow = firstRowByIdentity[(resourceTypeId, surrogateId)];
 
                 // Iterator methods cannot yield inside a try block that has a catch clause, so the
                 // decompress-and-build step (the one piece of this that can actually throw, on a

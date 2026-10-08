@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.IO;
@@ -54,13 +55,23 @@ public class GzipResourceCompressor(RecyclableMemoryStreamManager memoryStreamMa
             return ReadOnlyMemory<byte>.Empty;
         }
 
-        using RecyclableMemoryStream inputStream = _memoryStreamManager.GetStream("gzip-decompress-input");
-        inputStream.Write(compressedData.Span);
-        inputStream.Position = 0;
+        // Read the caller's array in place: copying the compressed payload into a pooled stream first
+        // doubled the compressed bytes held per in-flight resource on every search and read.
+        using Stream inputStream = MemoryMarshal.TryGetArray(compressedData, out ArraySegment<byte> segment)
+            ? new MemoryStream(segment.Array!, segment.Offset, segment.Count, writable: false)
+            : CopyToPooledStream(compressedData);
         using var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress);
         using RecyclableMemoryStream outputStream = _memoryStreamManager.GetStream("gzip-decompress-output");
         gzipStream.CopyTo(outputStream);
 
         return outputStream.ToArray();
+    }
+
+    private RecyclableMemoryStream CopyToPooledStream(ReadOnlyMemory<byte> data)
+    {
+        RecyclableMemoryStream stream = _memoryStreamManager.GetStream("gzip-decompress-input");
+        stream.Write(data.Span);
+        stream.Position = 0;
+        return stream;
     }
 }
