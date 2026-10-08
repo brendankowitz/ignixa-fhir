@@ -40,8 +40,9 @@ public class StaticCapabilitySegment(
         // Supported formats
         statement.Format.Clear();
         statement.Format.Add("application/fhir+json");
-        // FHIRPath Patch (a Parameters resource) is identified by the FHIR content type in every
-        // supported version (http.html#patch); JSON Patch and XML Patch are not supported.
+        // FHIRPath Patch (a Parameters resource, defined from R4) is identified by the FHIR content type.
+        // Ignixa also accepts it on STU3, so it is advertised for every version. JSON Patch and XML Patch
+        // are not supported.
         statement.PatchFormat.Clear();
         statement.PatchFormat.Add("application/fhir+json");
 

@@ -294,6 +294,93 @@ public sealed class FhirPatchSpecFormTests : IDisposable
         result.MutableNode()["name"]!.AsArray().Select(name => name!["family"]!.GetValue<string>()).ShouldBe(["Doe", "Smith"]);
     }
 
+    [Fact]
+    public async Task GivenInvalidFhirPathParent_WhenAddingByName_ThenPatchIsRejected()
+    {
+        // Arrange
+        var patient = Parse("""{"resourceType":"Patient","id":"p"}""");
+        var patch = Parameters(Operation("add", "Patient.name[", "family", """{"name":"value","valueString":"Smith"}"""));
+
+        // Act & Assert
+        var exception = await Should.ThrowAsync<FhirPatchException>(() => ApplyAsync(patient, patch, FhirVersion.R4));
+        exception.Message.ShouldContain("Path 'Patient.name[' is not a valid FHIRPath expression");
+    }
+
+    [Fact]
+    public async Task GivenPrimitiveParent_WhenAddingByName_ThenPatchIsRejectedAsNeedingAComplexParent()
+    {
+        // Arrange
+        var patient = Parse("""{"resourceType":"Patient","id":"p","birthDate":"1930-01-01"}""");
+        var patch = Parameters(Operation("add", "Patient.birthDate", "id", """{"name":"value","valueString":"x"}"""));
+
+        // Act & Assert
+        var exception = await Should.ThrowAsync<FhirPatchException>(() => ApplyAsync(patient, patch, FhirVersion.R4));
+        exception.Message.ShouldContain("resolves to a primitive date value; adding 'id' by name requires a complex parent element");
+    }
+
+    [Fact]
+    public async Task GivenListWithoutEntries_WhenPathOnlyAddingNestedParts_ThenEntryArrayIsCreated()
+    {
+        // Arrange
+        var list = Parse("""{"resourceType":"List","id":"session","status":"current","mode":"working"}""");
+        var patch = Parameters(PathOnly("add", "List.entry",
+            """{"name":"value","part":[{"name":"item","valueReference":{"reference":"DocumentReference/doc-1"}}]}"""));
+
+        // Act
+        var result = await ApplyAsync(list, patch, FhirVersion.R4);
+
+        // Assert
+        var entry = result.MutableNode()["entry"].ShouldBeOfType<JsonArray>().ShouldHaveSingleItem()!;
+        entry["item"]!["reference"]!.GetValue<string>().ShouldBe("DocumentReference/doc-1");
+    }
+
+    [Fact]
+    public async Task GivenAbsentRepeatingElement_WhenInsertingNestedPartsAtIndexZero_ThenArrayIsCreated()
+    {
+        // Arrange
+        var patient = Parse("""{"resourceType":"Patient","id":"p"}""");
+        var patch = Parameters(PathOnly("insert", "Patient.contact",
+            """{"name":"index","valueInteger":0},{"name":"value","part":[{"name":"gender","valueCode":"female"}]}"""));
+
+        // Act
+        var result = await ApplyAsync(patient, patch, FhirVersion.R4);
+
+        // Assert
+        var contact = result.MutableNode()["contact"].ShouldBeOfType<JsonArray>().ShouldHaveSingleItem()!;
+        contact["gender"]!.GetValue<string>().ShouldBe("female");
+    }
+
+    [Fact]
+    public async Task GivenExistingElement_WhenReplacingWithNestedParts_ThenValueIsShapedBySchema()
+    {
+        // Arrange
+        var patient = Parse("""{"resourceType":"Patient","id":"p","contact":[{"gender":"male"}]}""");
+        var patch = Parameters(PathOnly("replace", "Patient.contact[0]",
+            """{"name":"value","part":[{"name":"name","part":[{"name":"family","valueString":"Doe"}]},{"name":"gender","valueCode":"female"}]}"""));
+
+        // Act
+        var result = await ApplyAsync(patient, patch, FhirVersion.R4);
+
+        // Assert
+        var contact = result.MutableNode()["contact"]!.AsArray().ShouldHaveSingleItem()!;
+        contact["gender"]!.GetValue<string>().ShouldBe("female");
+        contact["name"]!["family"]!.GetValue<string>().ShouldBe("Doe");
+    }
+
+    [Fact]
+    public async Task GivenAbsentElement_WhenReplacingWithNestedParts_ThenPatchIsRejectedLikeValueForm()
+    {
+        // Arrange
+        var patient = Parse("""{"resourceType":"Patient","id":"p"}""");
+        var patch = Parameters(PathOnly("replace", "Patient.maritalStatus",
+            """{"name":"value","part":[{"name":"text","valueString":"Married"}]}"""));
+
+        // Act & Assert
+        var exception = await Should.ThrowAsync<FhirPatchException>(() => ApplyAsync(patient, patch, FhirVersion.R4));
+        exception.Message.ShouldContain("did not match any elements");
+        patient.MutableNode().ContainsKey("maritalStatus").ShouldBeFalse();
+    }
+
     [Theory]
     [InlineData("""{"name":"operation","part":[{"name":"type","valueCode":"add"},{"name":"path","valueString":"List"},{"name":"name","valueString":"entry"},{"name":"value"}]}""", "must have a value[x] or nested parts")]
     [InlineData("""{"name":"operation","part":[{"name":"type","valueCode":"add"},{"name":"path","valueString":"List"},{"name":"name","valueInteger":1},{"name":"value","valueString":"x"}]}""", "'name' part must have a non-empty valueString")]
@@ -325,12 +412,16 @@ public sealed class FhirPatchSpecFormTests : IDisposable
         [
             new AddOperationExecutor(NullLogger<AddOperationExecutor>.Instance, mutator),
             new ReplaceOperationExecutor(NullLogger<ReplaceOperationExecutor>.Instance, mutator),
+            new InsertOperationExecutor(NullLogger<InsertOperationExecutor>.Instance, mutator),
         ]);
     }
 
     private static string AppendListEntry(string reference) =>
         Operation("add", "List", "entry",
             $$$"""{"name":"value","part":[{"name":"item","valueReference":{"reference":"{{{reference}}}"}}]}""");
+
+    private static string PathOnly(string type, string path, string parts) =>
+        $$"""{"name":"operation","part":[{"name":"type","valueCode":"{{type}}"},{"name":"path","valueString":"{{path}}"},{{parts}}]}""";
 
     private static string Operation(string type, string path, string name, string valuePart) =>
         $$"""{"name":"operation","part":[{"name":"type","valueCode":"{{type}}"},{"name":"path","valueString":"{{path}}"},{"name":"name","valueString":"{{name}}"},{{valuePart}}]}""";

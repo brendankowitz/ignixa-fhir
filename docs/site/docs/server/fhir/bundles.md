@@ -262,7 +262,7 @@ A successful PATCH entry responds with `200`, a versioned `location`
 
 JSON Patch is not supported. Any `Binary` PATCH entry (the shape used to carry JSON Patch or XML Patch)
 is rejected with `400` and an `OperationOutcome` that asks for FHIRPath Patch. Direct JSON Patch
-requests get the same response.
+requests, and bodies that are not a JSON resource (malformed JSON, XML, a bare scalar), get the same response.
 
 ## Conditional Operations
 

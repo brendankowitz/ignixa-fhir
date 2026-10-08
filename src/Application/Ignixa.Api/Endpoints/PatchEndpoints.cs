@@ -345,11 +345,12 @@ public static class PatchEndpoints
     }
 
     /// <summary>
-    /// Reads a FHIRPath Patch Parameters body and rejects every other patch shape with 400: the JSON Patch
-    /// content type, a bare JSON array, an empty body, or any Binary resource. Bundle PATCH entries arrive
-    /// with Content-Type application/fhir+json, so a Binary-wrapped patch can only be caught from the body.
+    /// Reads a FHIRPath Patch Parameters body. Rejects with 400 the JSON Patch content type, an empty body,
+    /// a bare JSON array, a body that does not start as a JSON object (XML, a top-level scalar or null),
+    /// malformed JSON, and any Binary resource. Bundle PATCH entries arrive with Content-Type
+    /// application/fhir+json, so a Binary-wrapped patch can only be caught from the body.
     /// </summary>
-    /// <exception cref="Domain.Exceptions.BadRequestException">The body is not a FHIRPath Patch document.</exception>
+    /// <exception cref="Domain.Exceptions.BadRequestException">The body is one of the rejected shapes above.</exception>
     private static async Task<ResourceJsonNode> ReadFhirPathPatchDocumentAsync(
         HttpContext context,
         RecyclableMemoryStreamManager memoryStreamManager,
@@ -376,10 +377,22 @@ public static class PatchEndpoints
             case '[':
                 throw new Domain.Exceptions.BadRequestException(
                     $"JSON Patch (RFC 6902) array bodies are not supported. {FhirPathPatchRequirement}");
+            case not '{':
+                throw new Domain.Exceptions.BadRequestException(
+                    $"The PATCH body is not a JSON resource. {FhirPathPatchRequirement}");
         }
 
         memoryStream.Position = 0;
-        var patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
+        ResourceJsonNode patchDocument;
+        try
+        {
+            patchDocument = await JsonSourceNodeFactory.ParseAsync(memoryStream, cancellationToken);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new Domain.Exceptions.BadRequestException(
+                $"The PATCH body is not valid JSON: {ex.Message} {FhirPathPatchRequirement}", ex);
+        }
 
         if (string.Equals(patchDocument.ResourceType, "Binary", StringComparison.Ordinal))
         {
@@ -395,7 +408,10 @@ public static class PatchEndpoints
     }
 
     /// <summary>
-    /// Returns the first byte after JSON whitespace and any UTF-8 BOM, or -1 if the stream has no content.
+    /// Returns the first byte that is neither JSON whitespace nor one of the UTF-8 BOM bytes (0xEF, 0xBB, 0xBF),
+    /// or -1 if the stream has no such byte. BOM bytes are skipped individually anywhere in that leading run, not only
+    /// as one leading BOM sequence; this is safe because a body that passes this check is still fully validated by the
+    /// JSON parser.
     /// </summary>
     private static int ReadFirstSignificantByte(Stream stream)
     {

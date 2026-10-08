@@ -23,8 +23,7 @@ public static class FhirPatchOperationResolver
     /// folded into executable form. Resolve immediately before execution so earlier operations are visible.
     /// </summary>
     /// <exception cref="FhirPatchException">
-    /// The parent path does not match exactly one object, the name is not an element of the parent type,
-    /// a choice value has no allowed type, or a non-repeating target already has a value.
+    /// The path is not valid FHIRPath, or the operation cannot be bound to the resource schema.
     /// </exception>
     public static FhirPatchOperation Resolve(ResourceJsonNode resource, FhirPatchOperation operation, ISchema schema)
     {
@@ -53,13 +52,19 @@ public static class FhirPatchOperationResolver
     private static FhirPatchOperation ResolveNamedAdd(ResourceJsonNode resource, FhirPatchOperation operation, ISchema schema)
     {
         var matches = Evaluate(resource, schema, operation.Path!);
-        if (matches.Count != 1 || matches[0].Meta<JsonNode>() is not JsonObject parent)
+        if (matches.Count != 1)
         {
             throw new FhirPatchException(
                 $"Add path '{operation.Path}' must resolve to a single element, but matched {matches.Count}");
         }
 
         var parentType = matches[0].InstanceType;
+        if (matches[0].Meta<JsonNode>() is not JsonObject parent)
+        {
+            throw new FhirPatchException(
+                $"Add path '{operation.Path}' resolves to a primitive {parentType} value; adding '{operation.Name}' by name requires a complex parent element");
+        }
+
         var element = ResolveElement(schema, parentType, operation.Name!, operation.ValueType);
         if (!element.IsCollection && element.JsonNames.FirstOrDefault(name => parent.ContainsKey(name) || parent.ContainsKey("_" + name)) is { } existing)
         {
@@ -82,19 +87,55 @@ public static class FhirPatchOperationResolver
     private static string ResolveTargetType(ResourceJsonNode resource, ISchema schema, string path)
     {
         var matches = Evaluate(resource, schema, path);
-        if (matches.Count == 0)
+        return matches.Count > 0 ? matches[0].InstanceType : ResolveAbsentTargetType(resource, schema, path);
+    }
+
+    /// <summary>
+    /// An absent target (e.g. the first List.entry) is typed from the schema through its parent, matching
+    /// the value[x] form, where the executor creates the missing element. Whether the operation may create
+    /// it (add, insert) or requires it to exist (replace) is left to the executor.
+    /// </summary>
+    private static string ResolveAbsentTargetType(ResourceJsonNode resource, ISchema schema, string path)
+    {
+        var lastDot = path.LastIndexOf('.');
+        var name = lastDot > 0 ? path[(lastDot + 1)..] : string.Empty;
+        if (!IsSimpleIdentifier(name))
         {
             throw new FhirPatchException($"Path '{path}' did not match any element");
         }
 
-        return matches[0].InstanceType;
+        var parentPath = path[..lastDot];
+        var parents = Evaluate(resource, schema, parentPath);
+        if (parents.Count != 1)
+        {
+            throw new FhirPatchException(
+                $"Path '{path}' did not match any element, and its parent '{parentPath}' matched {parents.Count} elements (expected 1)");
+        }
+
+        var element = ResolveElement(schema, parents[0].InstanceType, name, valueType: null);
+        return element.TypeName
+            ?? throw new FhirPatchException($"Element '{element.PropertyName}' cannot be built from nested parts");
     }
+
+    private static bool IsSimpleIdentifier(string name) =>
+        name.Length > 0 && char.IsAsciiLetter(name[0]) && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
 
     private static List<IElement> Evaluate(ResourceJsonNode resource, ISchema schema, string path)
     {
         // Earlier operations in the same patch may have changed the resource.
         resource.InvalidateCaches();
-        return resource.ToElement(schema).Select(path).ToList();
+        try
+        {
+            return resource.ToElement(schema).Select(path).ToList();
+        }
+        catch (FormatException ex)
+        {
+            throw new FhirPatchException($"Path '{path}' is not a valid FHIRPath expression: {ex.Message}", ex);
+        }
+        catch (FhirPathEvaluationException ex)
+        {
+            throw new FhirPatchException($"Path '{path}' could not be evaluated: {ex.Message}", ex);
+        }
     }
 
     private static JsonNode BuildValue(ISchema schema, ElementResolution element, IReadOnlyList<FhirPatchValuePart> parts) =>
