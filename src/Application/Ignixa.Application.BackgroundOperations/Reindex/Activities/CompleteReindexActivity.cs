@@ -25,18 +25,23 @@ public sealed class CompleteReindexActivity(
         var completedAt = timeProvider.GetUtcNow();
         var ownedTargets = (await lifecycle.GetOwnedTargetsAsync(CancellationToken.None))
             .Where(owned => owned.JobId == input.JobId)
-            .Select(owned => input.Targets.FirstOrDefault(target =>
-                    target.Canonical == owned.Target.Canonical &&
-                    target.ResourceType == owned.Target.ResourceType &&
-                    target.Code == owned.Target.Code &&
-                    target.ActivationEventId == owned.Target.ActivationEventId)
-                ?? owned.Target)
             .ToArray();
         var completions = new List<ReindexTargetCompletion>();
-        foreach (var target in ownedTargets)
+        foreach (var owned in ownedTargets)
         {
+            var plannedTarget = input.Targets.FirstOrDefault(target =>
+                target.Canonical == owned.Target.Canonical &&
+                target.ResourceType == owned.Target.ResourceType &&
+                target.Code == owned.Target.Code &&
+                target.ActivationEventId == owned.Target.ActivationEventId);
+            var target = plannedTarget ?? owned.Target;
             var errors = new List<string>();
             long resourcesIndexed = 0;
+            if (plannedTarget is not { IsFullyCovered: true })
+            {
+                errors.Add($"Search parameter {target.Canonical} was not planned by this job.");
+            }
+
             if (input.FailureMessage is not null)
             {
                 errors.Add(input.FailureMessage);
@@ -98,8 +103,8 @@ public sealed class CompleteReindexActivity(
                 if (missingTenantIds.Length > 0)
                 {
                     success = false;
-                    completions = ownedTargets.Select(target => new ReindexTargetCompletion(
-                        target,
+                    completions = ownedTargets.Select(owned => new ReindexTargetCompletion(
+                        owned.Target,
                         false,
                         0,
                         TimeSpan.Zero,
