@@ -165,9 +165,10 @@ public class PackageActivationPipelineTests
     }
 
     [Theory]
-    [InlineData("Practitioner")]
-    [InlineData("Binary")]
-    public async Task GivenMultiBaseParameterDoesNotShareOneBaseCanonical_WhenActivated_ThenItUsesDistinctIdentity(
+    [InlineData("Patient", "Binary")]
+    [InlineData("Binary", "Patient")]
+    public async Task GivenSomeBaseTypesHaveNoBaseCode_WhenActivated_ThenAllTypesShareTheResolvedBaseIdentity(
+        string firstBaseType,
         string secondBaseType)
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();
@@ -178,7 +179,7 @@ public class PackageActivationPipelineTests
             .Returns([CreateOverrideResource(
                 packageId: "test.multi-base",
                 canonical: "http://example.org/SearchParameter/multi-identifier",
-                baseTypes: ["Patient", secondBaseType],
+                baseTypes: [firstBaseType, secondBaseType],
                 includeDerivedFrom: false)]);
         var persistedEvents = new List<SourceEvent>();
         using var state = new ConformanceState();
@@ -193,9 +194,47 @@ public class PackageActivationPipelineTests
 
         result.Success.ShouldBeTrue();
         var activations = persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>().ToArray();
-        activations.ShouldAllBe(activation => activation.SourcePackage == "test.multi-base@1.0.0");
-        activations.ShouldAllBe(activation => activation.Overrides == null);
-        activations.Select(activation => activation.SearchParamId).Distinct().ShouldHaveSingleItem();
+        var baseActivation = activations.Single(activation => activation.SourcePackage == "hl7.fhir.r4.core@4.0.1");
+        var shadows = activations.Where(activation => activation.SourcePackage == "test.multi-base@1.0.0").ToArray();
+        shadows.Length.ShouldBe(2);
+        shadows.ShouldAllBe(activation => activation.SearchParamId == baseActivation.SearchParamId);
+        shadows.ShouldAllBe(activation => activation.Overrides!.OverridesCanonical == BaseCanonical);
+    }
+
+    [Fact]
+    public async Task GivenBaseTypesResolveDifferentCanonicals_WhenActivated_ThenMixedBaseShadowIsRejected()
+    {
+        var result = await ActivateMultiBaseAsync(["Patient", "Practitioner"]);
+
+        result.Success.ShouldBeFalse();
+        result.Issues.ShouldContain(issue => issue.Code == "SP_MIXED_BASE_SHADOW");
+    }
+
+    [Theory]
+    [InlineData("Patient", "Practitioner")]
+    [InlineData("Practitioner", "Patient")]
+    public async Task GivenOneBaseTypeIsAlreadyOwned_WhenBaseOrderChanges_ThenMixedRootOutcomeIsStable(
+        string firstBaseType,
+        string secondBaseType)
+    {
+        var result = await ActivateMultiBaseAsync([firstBaseType, secondBaseType], preOwnPatient: true);
+
+        result.Success.ShouldBeFalse();
+        result.Issues.ShouldContain(issue => issue.Code == "SP_MIXED_BASE_SHADOW");
+    }
+
+    [Fact]
+    public async Task GivenEnabledPackageIsRemoved_WhenAnotherPackageActivatesDuringRestoration_ThenResultMatchesPostCommit()
+    {
+        var duringRemoval = await ActivateSecondShadowDuringRemovalAsync(commitRestoration: false);
+        var afterRemoval = await ActivateSecondShadowDuringRemovalAsync(commitRestoration: true);
+
+        duringRemoval.Success.ShouldBe(
+            afterRemoval.Success,
+            string.Join("; ", duringRemoval.Issues.Select(issue => $"{issue.Code}: {issue.Message}")));
+        duringRemoval.Issues.Select(issue => issue.Code)
+            .ShouldBe(afterRemoval.Issues.Select(issue => issue.Code));
+        afterRemoval.Success.ShouldBeTrue(string.Join("; ", afterRemoval.Issues.Select(issue => $"{issue.Code}: {issue.Message}")));
     }
 
     [Fact]
@@ -707,6 +746,134 @@ public class PackageActivationPipelineTests
         }
 
         return await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None);
+    }
+
+    private static async Task<ActivationResult> ActivateMultiBaseAsync(
+        IReadOnlyList<string> baseTypes,
+        bool preOwnPatient = false)
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.multi-base",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource(
+                packageId: "test.multi-base",
+                canonical: "http://example.org/SearchParameter/multi-identifier",
+                baseTypes: baseTypes,
+                includeDerivedFrom: false)]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        if (preOwnPatient)
+        {
+            state.ApplyAndTrack(CreateBaseActivation());
+            state.ApplyAndTrack(new SourceEvent(
+                2,
+                "package:existing.owner@1.0.0",
+                nameof(SearchParameterActivated),
+                new SearchParameterActivated(
+                    "http://example.org/SearchParameter/existing-identifier",
+                    "identifier",
+                    "Patient",
+                    "Patient.identifier",
+                    SearchParamType.Token,
+                    "existing.owner@1.0.0",
+                    new OverrideInfo(BaseCanonical, 1),
+                    1,
+                    null,
+                    null,
+                    null,
+                    null),
+                DateTimeOffset.UtcNow));
+            persistedEvents.AddRange([
+                CreateBaseActivation(),
+                new SourceEvent(
+                    2,
+                    "package:existing.owner@1.0.0",
+                    nameof(SearchParameterActivated),
+                    new SearchParameterActivated(
+                        "http://example.org/SearchParameter/existing-identifier",
+                        "identifier",
+                        "Patient",
+                        "Patient.identifier",
+                        SearchParamType.Token,
+                        "existing.owner@1.0.0",
+                        new OverrideInfo(BaseCanonical, 1),
+                        1,
+                        null,
+                        null,
+                        null,
+                        null),
+                    DateTimeOffset.UtcNow)
+            ]);
+        }
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+
+        return await pipeline.ActivateAsync("test.multi-base", "1.0.0", CancellationToken.None);
+    }
+
+    private static async Task<ActivationResult> ActivateSecondShadowDuringRemovalAsync(bool commitRestoration)
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                Arg.Any<string>(),
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns(call => [CreateOverrideResource(
+                packageId: call.ArgAt<string>(0),
+                canonical: $"http://example.org/SearchParameter/{call.ArgAt<string>(0)}",
+                includeDerivedFrom: false)]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+        (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
+        var first = state.FindByCanonical("http://example.org/SearchParameter/test.first")!;
+        var baseOwner = state.GetSearchParameter("Patient", "identifier")!;
+        ApplyAndRecord(new SearchParameterTransitionCommitted(
+            first.SearchParamId,
+            [first.ActivationEventId],
+            [baseOwner.DeactivationEventId!.Value]));
+        ApplyAndRecord(new SearchParameterReindexStarted(
+            first.Canonical, first.Code, first.ResourceType, "job", ["Patient"], first.ActivationEventId));
+        ApplyAndRecord(new SearchParameterReindexCompleted(
+            first.Canonical, first.Code, first.ResourceType, "job", 0, TimeSpan.Zero, first.ActivationEventId));
+        ApplyAndRecord(new PackageDeactivated("test.first", "1.0.0", "test"));
+        state.GetLatestNonDisabledActivation("Patient", "identifier")!.SourcePackage
+            .ShouldBe("hl7.fhir.r4.core@4.0.1");
+
+        if (commitRestoration)
+        {
+            var restored = state.FindByCanonical(BaseCanonical)!;
+            var outgoing = state.GetSearchParameter("Patient", "identifier")!;
+            ApplyAndRecord(new SearchParameterTransitionCommitted(
+                restored.SearchParamId,
+                [restored.ActivationEventId],
+                [outgoing.DeactivationEventId!.Value]));
+        }
+
+        return await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None);
+
+        void ApplyAndRecord(object data)
+        {
+            var sourceEvent = new SourceEvent(
+                persistedEvents.Count + 1,
+                "lifecycle:test",
+                data.GetType().Name,
+                data,
+                DateTimeOffset.UtcNow);
+            persistedEvents.Add(sourceEvent);
+            state.ApplyAndTrack(sourceEvent);
+        }
     }
 
     private static PackageResource CreateOverrideResource(

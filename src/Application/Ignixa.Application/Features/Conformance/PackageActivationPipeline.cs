@@ -337,8 +337,42 @@ public class PackageActivationPipeline(
         // Emit SearchParameter events (non-composite first, then composite)
         foreach (var sp in resources.SearchParameters.OrderBy(sp => sp.Type == SearchParamType.Composite ? 1 : 0))
         {
-            var sharedBaseParameters = ResolveSharedBaseParameters(packageId, fhirVersionString, sp);
-            foreach (var resourceType in sp.BaseResourceTypes)
+            var existingOwners = sp.BaseResourceTypes.ToDictionary(
+                resourceType => resourceType,
+                resourceType => staged.GetSearchParameter(resourceType, sp.Code));
+            var baseParameters = ResolveBaseParameters(packageId, fhirVersionString, sp);
+            var storageRoots = sp.BaseResourceTypes
+                .Select(resourceType =>
+                    existingOwners[resourceType]?.OverridesCanonical ??
+                    existingOwners[resourceType]?.Canonical ??
+                    baseParameters.GetValueOrDefault(resourceType)?.Url.ToString())
+                .Where(root => root is not null)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (storageRoots.Length > 1)
+            {
+                return (events, new ValidationIssue(
+                    "SP_MIXED_BASE_SHADOW",
+                    $"SearchParameter '{sp.Code}' resolves to different storage roots across its base resource types: {string.Join(", ", storageRoots)}",
+                    string.Join(",", sp.BaseResourceTypes),
+                    sp.Code));
+            }
+
+            var storageRoot = storageRoots.SingleOrDefault() ?? sp.Canonical;
+            int? sharedSearchParamId = existingOwners.Values
+                .FirstOrDefault(owner =>
+                    owner is not null &&
+                    string.Equals(
+                        owner.OverridesCanonical ?? owner.Canonical,
+                        storageRoot,
+                        StringComparison.Ordinal))
+                ?.SearchParamId;
+            var orderedResourceTypes = sp.BaseResourceTypes
+                .OrderByDescending(resourceType =>
+                    existingOwners[resourceType] is not null || baseParameters.ContainsKey(resourceType))
+                .ToArray();
+
+            foreach (var resourceType in orderedResourceTypes)
             {
                 var ownerKey = (resourceType, sp.Code);
                 if (proposedOwners.TryGetValue(ownerKey, out var proposedOwner) &&
@@ -355,7 +389,7 @@ public class PackageActivationPipeline(
 
                 var existing = staged.GetSearchParameter(resourceType, sp.Code);
                 if (existing is null &&
-                    sharedBaseParameters?.TryGetValue(resourceType, out var baseParameter) == true)
+                    baseParameters.TryGetValue(resourceType, out var baseParameter))
                 {
                     var baseCanonical = baseParameter.Url.ToString();
                     var baseSearchParamId = staged.GetSearchParamIdForActivation(baseCanonical, null);
@@ -386,6 +420,7 @@ public class PackageActivationPipeline(
                     }
                     events.Add(baseActivation);
                     existing = staged.GetSearchParameter(resourceType, sp.Code);
+                    sharedSearchParamId ??= baseSearchParamId;
                 }
 
                 OverrideInfo? overrides = null;
@@ -393,10 +428,7 @@ public class PackageActivationPipeline(
                 if (existing is not null)
                 {
                     var latest = staged.GetLatestNonDisabledActivation(resourceType, sp.Code);
-                    var validationOwner = latest is not null &&
-                        !IsBaseFhirPackage(latest.SourcePackage.Split('@')[0])
-                            ? latest
-                            : existing;
+                    var validationOwner = latest ?? existing;
                     if (!IsValidOverride(sp, validationOwner))
                     {
                         return (events, new ValidationIssue(
@@ -404,10 +436,22 @@ public class PackageActivationPipeline(
                             $"SearchParameter '{sp.Code}' on {resourceType} conflicts with existing from {validationOwner.SourcePackage}",
                             resourceType, sp.Code));
                     }
-                    overrides = new OverrideInfo(existing.OverridesCanonical ?? existing.Canonical, existing.SearchParamId);
                 }
 
-                var searchParamId = staged.GetSearchParamIdForActivation(sp.Canonical, existing);
+                if (!string.Equals(storageRoot, sp.Canonical, StringComparison.Ordinal))
+                {
+                    sharedSearchParamId ??= staged.GetSearchParamIdForActivation(storageRoot, existing);
+                    overrides = new OverrideInfo(storageRoot, sharedSearchParamId.Value);
+                }
+                else if (existing is not null)
+                {
+                    overrides = new OverrideInfo(
+                        existing.OverridesCanonical ?? existing.Canonical,
+                        existing.SearchParamId);
+                }
+
+                var searchParamId = sharedSearchParamId ??
+                    staged.GetSearchParamIdForActivation(sp.Canonical, existing);
 
                 var componentData = sp.Components?.Select(c =>
                     new SearchParameterComponentData(c.DefinitionUrl, c.Expression)).ToList();
@@ -474,7 +518,7 @@ public class PackageActivationPipeline(
         return (events, null);
     }
 
-    private IReadOnlyDictionary<string, Ignixa.Search.Models.SearchParameterInfo>? ResolveSharedBaseParameters(
+    private IReadOnlyDictionary<string, Ignixa.Search.Models.SearchParameterInfo> ResolveBaseParameters(
         string packageId,
         string? fhirVersionString,
         SearchParameterInfo parameter)
@@ -483,32 +527,26 @@ public class PackageActivationPipeline(
             IntrinsicSearchParameters.IsIntrinsicCode(parameter.Code) ||
             string.IsNullOrWhiteSpace(fhirVersionString))
         {
-            return null;
+            return new Dictionary<string, Ignixa.Search.Models.SearchParameterInfo>();
         }
 
         var fhirVersion = FhirSpecificationExtensions.FromVersionString(fhirVersionString);
         if (fhirVersion == FhirVersion.Unspecified)
         {
-            return null;
+            return new Dictionary<string, Ignixa.Search.Models.SearchParameterInfo>();
         }
 
         var baseManager = _fhirVersionContext.GetSearchParameterDefinitionManager(fhirVersion);
         var baseParameters = new Dictionary<string, Ignixa.Search.Models.SearchParameterInfo>();
         foreach (var resourceType in parameter.BaseResourceTypes)
         {
-            if (!baseManager.TryGetSearchParameter(resourceType, parameter.Code, out var baseParameter))
+            if (baseManager.TryGetSearchParameter(resourceType, parameter.Code, out var baseParameter))
             {
-                return null;
+                baseParameters[resourceType] = baseParameter;
             }
-            baseParameters[resourceType] = baseParameter;
         }
 
-        return baseParameters.Values
-            .Select(baseParameter => baseParameter.Url)
-            .Distinct()
-            .Count() == 1
-                ? baseParameters
-                : null;
+        return baseParameters;
     }
 
     private string GetBasePackageKey(FhirVersion fhirVersion)

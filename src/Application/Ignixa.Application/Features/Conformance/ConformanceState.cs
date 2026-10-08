@@ -121,6 +121,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         _searchParameterActivations.LastOrDefault(parameter =>
             parameter.ResourceType == resourceType &&
             parameter.Code == code &&
+            parameter.IsAvailable &&
             parameter.Status != SearchParameterStatus.Disabled);
 
     public ActiveSearchParameter? FindExtractedByCanonical(string canonical) =>

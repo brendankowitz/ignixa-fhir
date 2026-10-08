@@ -564,12 +564,8 @@ public class PackageSearchParameterInheritanceTests
         yield return new SourceEvent(
             4,
             "package-restore",
-            nameof(SearchParameterDeactivated),
-            new SearchParameterDeactivated(
-                "http://example.org/SearchParameter/identifier",
-                "identifier",
-                "Patient",
-                "custom.package@1.0"),
+            nameof(PackageDeactivated),
+            new PackageDeactivated("custom.package", "1.0", "test"),
             DateTimeOffset.UtcNow);
         yield return new SourceEvent(
             5,
