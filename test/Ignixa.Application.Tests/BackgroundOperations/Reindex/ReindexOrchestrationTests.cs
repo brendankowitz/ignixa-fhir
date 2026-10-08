@@ -53,6 +53,20 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
+    public async Task GivenBarrierActivityThrowsTransiently_WhenRetried_ThenTenantCompletes()
+    {
+        var context = new ExecutingContext(failBarrierOnce: true);
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
+
+        var result = await new ReindexOrchestration().RunTask(context, input);
+
+        result.Success.ShouldBeTrue();
+        context.BarrierCalls.ShouldBe(2);
+        result.Tenants.Single().Success.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task GivenContinueAsNewThreshold_WhenOrchestrated_ThenResumedOutcomeMatchesUninterruptedRun()
     {
         var uninterrupted = await RunToCompletionAsync(continueAsNewThreshold: 100);
@@ -229,7 +243,8 @@ public class ReindexOrchestrationTests
         bool includeResourceFailures = false,
         bool failStart = false,
         bool failProgressOnce = false,
-        bool drainNeverCompletes = false) : OrchestrationContext
+        bool drainNeverCompletes = false,
+        bool failBarrierOnce = false) : OrchestrationContext
     {
         private DateTime _currentUtcDateTime = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
 
@@ -331,6 +346,11 @@ public class ReindexOrchestrationTests
         private RaiseBarrierOutput Barrier()
         {
             BarrierCalls++;
+            if (failBarrierOnce && BarrierCalls == 1)
+            {
+                throw new InvalidOperationException("transient barrier failure");
+            }
+
             return new RaiseBarrierOutput(1, 10, 30);
         }
 
