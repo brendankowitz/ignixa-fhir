@@ -10,4 +10,6 @@ public sealed record InvalidReindexRequestResult(string ErrorMessage) : CreateRe
 
 public sealed record NoReindexWorkResult(string ErrorMessage) : CreateReindexJobResult;
 
+public sealed record ReindexDisabledResult : CreateReindexJobResult;
+
 public sealed record ReindexProviderUnavailableResult(int TenantId) : CreateReindexJobResult;

@@ -431,6 +431,10 @@ public static class ApplicationServicesRegistration
             .As<IPackageFeature>()
             .SingleInstance();
 
+        builder.RegisterType<ReindexAvailabilityService>()
+            .As<IReindexAvailability>()
+            .SingleInstance();
+
         builder.RegisterType<ReindexFeature>()
             .As<IPackageFeature>()
             .SingleInstance();

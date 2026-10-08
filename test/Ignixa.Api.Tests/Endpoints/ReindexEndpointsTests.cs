@@ -7,6 +7,7 @@ using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -25,6 +26,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
 {
     private readonly WebApplication _app;
     private readonly IMediator _mediator = Substitute.For<IMediator>();
+    private readonly IReindexAvailability _availability = Substitute.For<IReindexAvailability>();
     private readonly List<CreateReindexJobCommand> _createCommands = [];
     private CreateReindexJobResult _createResult = new ReindexJobCreatedResult("created-job");
     private ReindexStatusResult _status = CreateStatus();
@@ -33,6 +35,8 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
 
     public ReindexEndpointsTests()
     {
+        _availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ReindexAvailability.Available));
         _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
@@ -52,6 +56,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         var metrics = Substitute.For<IMetricsService>();
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(_mediator);
+        builder.Services.AddSingleton(_availability);
         builder.Services.AddSingleton(authorization);
         builder.Services.AddSingleton(requestContext);
         builder.Services.AddSingleton(audit);
@@ -86,24 +91,38 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands[0].TargetResourceTypes.ShouldBe(["Patient", "Observation"]);
     }
 
-    [Fact]
-    public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOnlyTheOperationDefinitionIsMapped()
+    [Theory]
+    [InlineData("CreateReindexForTenant")]
+    [InlineData("ListReindexForTenant")]
+    [InlineData("GetReindexForTenant")]
+    [InlineData("CancelReindexForTenant")]
+    [InlineData("CreateReindex")]
+    [InlineData("ListReindex")]
+    [InlineData("GetReindex")]
+    [InlineData("CancelReindex")]
+    public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOperationalRoutesRemainMapped(
+        string operationEndpointName)
     {
-        var builder = WebApplication.CreateBuilder();
-        builder.Services.AddSingleton<IOptions<ReindexOptions>>(
-            Options.Create(new ReindexOptions { Enabled = false }));
-        await using var app = builder.Build();
+        _availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ReindexAvailability.Disabled));
 
-        app.MapReindexEndpoints();
-
-        var endpointNames = ((IEndpointRouteBuilder)app).DataSources
+        var endpointNames = ((IEndpointRouteBuilder)_app).DataSources
             .SelectMany(source => source.Endpoints)
             .Select(endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName)
             .ToArray();
 
-        endpointNames.ShouldNotContain("CreateReindexForTenant");
-        endpointNames.ShouldNotContain("ListReindexForTenant");
+        endpointNames.ShouldContain(operationEndpointName);
         endpointNames.ShouldContain("GetReindexOperationDefinitionForTenant");
+
+        var response = await SendAsync(operationEndpointName, body: Parameters());
+
+        response.StatusCode.ShouldBe(StatusCodes.Status404NotFound);
+        response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        response.Body["issue"]![0]!["diagnostics"]!.GetValue<string>()
+            .ShouldBe("The $reindex operation is disabled on this server.");
+        await _mediator.DidNotReceive().SendAsync(
+            Arg.Any<CreateReindexJobCommand>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -369,15 +388,27 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands.ShouldBeEmpty();
     }
 
-    [Fact]
-    public async Task GivenUnsupportedProvider_WhenCreating_ThenReturnsNotImplementedOutcome()
+    [Theory]
+    [InlineData("CreateReindexForTenant")]
+    [InlineData("ListReindexForTenant")]
+    [InlineData("GetReindexForTenant")]
+    [InlineData("CancelReindexForTenant")]
+    [InlineData("CreateReindex")]
+    [InlineData("ListReindex")]
+    [InlineData("GetReindex")]
+    [InlineData("CancelReindex")]
+    public async Task GivenMixedProviderServer_WhenUsingOperationalRoute_ThenReturnsNotImplementedOutcome(
+        string operationEndpointName)
     {
-        _createResult = new ReindexProviderUnavailableResult(1);
+        _availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new ReindexAvailability(ReindexAvailabilityStatus.Unsupported, 2)));
 
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters());
+        var response = await SendAsync(operationEndpointName, body: Parameters());
 
         response.StatusCode.ShouldBe(StatusCodes.Status501NotImplemented);
         response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        response.Body["issue"]![0]!["diagnostics"]!.GetValue<string>()
+            .ShouldBe("The $reindex operation is not supported by all active tenant providers.");
     }
 
     [Fact]
@@ -396,7 +427,10 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         var mediator = Substitute.For<IMediator>();
         var authorization = Substitute.For<IFhirAuthorizationService>();
         var contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
+        var availability = Substitute.For<IReindexAvailability>();
         contextAccessor.RequestContext.Returns(Substitute.For<IFhirRequestContext>());
+        availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ReindexAvailability.Available));
         FhirAuthorizationContext? captured = null;
         authorization.AuthorizeAsync(Arg.Any<FhirAuthorizationContext>(), Arg.Any<CancellationToken>())
             .Returns(call =>
@@ -407,6 +441,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
 
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(mediator);
+        builder.Services.AddSingleton(availability);
         builder.Services.AddSingleton(authorization);
         builder.Services.AddSingleton(contextAccessor);
         builder.Services.AddSingleton(Substitute.For<IAuditLogger>());

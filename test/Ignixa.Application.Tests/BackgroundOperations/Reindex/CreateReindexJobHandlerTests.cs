@@ -3,6 +3,7 @@ using DurableTask.Core.History;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
@@ -20,6 +21,21 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class CreateReindexJobHandlerTests
 {
+    [Fact]
+    public async Task GivenMixedProviderServer_WhenJobIsCreated_ThenSharedAvailabilityRejectsIt()
+    {
+        var fixture = CreateFixture();
+        fixture.Availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new ReindexAvailability(ReindexAvailabilityStatus.Unsupported, 2)));
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand(),
+            CancellationToken.None);
+
+        result.ShouldBe(new ReindexProviderUnavailableResult(2));
+        (await fixture.Repository.ListAsync()).ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task GivenInvalidConcurrency_WhenJobIsCreated_ThenTypedValidationResultIsReturned()
     {
@@ -293,9 +309,9 @@ public class CreateReindexJobHandlerTests
             .Returns(call => call.Arg<Func<CancellationToken, Task<CreateReindexJobResult>>>()(call.ArgAt<CancellationToken>(1)));
         jobLock.ExecuteAsync(Arg.Any<Func<CancellationToken, Task<bool>>>(), Arg.Any<CancellationToken>())
             .Returns(call => call.Arg<Func<CancellationToken, Task<bool>>>()(call.ArgAt<CancellationToken>(1)));
-        var repositories = Substitute.For<IFhirRepositoryFactory>();
-        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
-            .Returns(Substitute.For<IFhirRepository, IReindexStore>());
+        var availability = Substitute.For<IReindexAvailability>();
+        availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ReindexAvailability.Available));
         var eventStore = EventStore();
         var lifecycle = new ReindexLifecycleEventWriter(eventStore, state);
         var updater = new ReindexJobUpdater(
@@ -325,12 +341,13 @@ public class CreateReindexJobHandlerTests
                 tenants,
                 versions,
                 state,
-                repositories,
+                availability,
                 jobLock,
                 reconciler,
                 Options.Create(new ReindexOptions { BarrierDelay = TimeSpan.Zero })),
             repository,
             runtime,
+            availability,
             lifecycle,
             state,
             target,
@@ -363,6 +380,7 @@ public class CreateReindexJobHandlerTests
         CreateReindexJobHandler Handler,
         IBackgroundJobRepository<ReindexJobDefinition> Repository,
         IOrchestrationServiceClient Runtime,
+        IReindexAvailability Availability,
         ReindexLifecycleEventWriter Lifecycle,
         ConformanceState State,
         ReindexTarget Target,

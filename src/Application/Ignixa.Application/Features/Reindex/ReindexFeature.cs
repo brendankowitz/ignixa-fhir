@@ -1,24 +1,19 @@
-using Ignixa.Domain.Abstractions;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Metadata.Segments;
-using Microsoft.Extensions.Options;
+using Ignixa.Domain.Abstractions;
 
 namespace Ignixa.Application.Features.Reindex;
 
 public sealed class ReindexFeature(
-    IOptions<ReindexOptions> options,
-    IFhirRepositoryFactory repositoryFactory)
+    IReindexAvailability availability)
     : IPackageFeature, ICapabilityContextAwarePackageFeature
 {
     private static readonly string[] Operations = ["reindex"];
-    private readonly ReindexOptions _options =
-        options?.Value ?? throw new ArgumentNullException(nameof(options));
-    private readonly IFhirRepositoryFactory _repositoryFactory =
-        repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
+    private readonly IReindexAvailability _availability =
+        availability ?? throw new ArgumentNullException(nameof(availability));
 
     public string PackageId => "ignixa.reindex";
 
-    public IReadOnlyList<string> SystemOperations => _options.Enabled ? Operations : [];
+    public IReadOnlyList<string> SystemOperations => Operations;
 
     public IReadOnlyDictionary<string, IReadOnlyList<string>> ResourceOperations =>
         new Dictionary<string, IReadOnlyList<string>>();
@@ -27,19 +22,7 @@ public sealed class ReindexFeature(
 
     public async ValueTask<bool> IsAvailableAsync(
         CapabilityContext context,
-        CancellationToken cancellationToken)
-    {
-        if (!_options.Enabled)
-        {
-            return false;
-        }
-
-        if (context.TenantId is not { } tenantId)
-        {
-            return true;
-        }
-
-        var repository = await _repositoryFactory.GetRepositoryAsync(tenantId, cancellationToken);
-        return repository is IReindexStore;
-    }
+        CancellationToken cancellationToken) =>
+        (await _availability.GetAvailabilityAsync(cancellationToken)).Status ==
+        ReindexAvailabilityStatus.Available;
 }

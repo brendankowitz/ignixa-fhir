@@ -3,6 +3,7 @@ using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -19,7 +20,7 @@ public sealed class CreateReindexJobHandler(
     ITenantConfigurationStore tenantConfigurationStore,
     IFhirVersionContext fhirVersionContext,
     ConformanceState conformanceState,
-    IFhirRepositoryFactory repositoryFactory,
+    IReindexAvailability availability,
     IReindexJobLock jobLock,
     ReindexJobReconciler reconciler,
     IOptions<ReindexOptions> options)
@@ -35,8 +36,8 @@ public sealed class CreateReindexJobHandler(
         fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
     private readonly ConformanceState _conformanceState =
         conformanceState ?? throw new ArgumentNullException(nameof(conformanceState));
-    private readonly IFhirRepositoryFactory _repositoryFactory =
-        repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
+    private readonly IReindexAvailability _availability =
+        availability ?? throw new ArgumentNullException(nameof(availability));
     private readonly IReindexJobLock _jobLock =
         jobLock ?? throw new ArgumentNullException(nameof(jobLock));
     private readonly ReindexJobReconciler _reconciler =
@@ -48,6 +49,17 @@ public sealed class CreateReindexJobHandler(
         CreateReindexJobCommand request,
         CancellationToken cancellationToken)
     {
+        var availability = await _availability.GetAvailabilityAsync(cancellationToken);
+        if (availability.Status == ReindexAvailabilityStatus.Disabled)
+        {
+            return new ReindexDisabledResult();
+        }
+
+        if (availability.Status == ReindexAvailabilityStatus.Unsupported)
+        {
+            return new ReindexProviderUnavailableResult(availability.UnsupportedTenantId ?? 0);
+        }
+
         ReindexJobParameters parameters;
         try
         {
@@ -80,14 +92,6 @@ public sealed class CreateReindexJobHandler(
         var domainResourceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var tenant in tenants)
         {
-            var repository = await _repositoryFactory.GetRepositoryAsync(
-                tenant.TenantId,
-                cancellationToken);
-            if (repository is not IReindexStore)
-            {
-                return new ReindexProviderUnavailableResult(tenant.TenantId);
-            }
-
             var version = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
             var schema = _fhirVersionContext.GetSchemaProvider(version, tenant.TenantId);
             foreach (var resourceType in schema.ResourceTypeNames)

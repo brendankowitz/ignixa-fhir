@@ -268,28 +268,33 @@ public class OperationsSegmentTests
     [Fact]
     public async Task GivenUnavailableReindexProvider_WhenApplyingSegment_ThenOmitsReindexOperation()
     {
-        var repositories = Substitute.For<IFhirRepositoryFactory>();
-        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(Substitute.For<IFhirRepository>()));
-        _features.Add(new ReindexFeature(
-            Options.Create(new ReindexOptions { Enabled = true }),
-            repositories));
-        var statement = new CapabilityStatementJsonNode();
+        var availability = Substitute.For<IReindexAvailability>();
+        availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new ReindexAvailability(ReindexAvailabilityStatus.Unsupported, 2)));
+        _features.Add(new ReindexFeature(availability));
+        var firstTenantStatement = new CapabilityStatementJsonNode();
+        var secondTenantStatement = new CapabilityStatementJsonNode();
 
         await _segment.ApplyAsync(
-            statement,
+            firstTenantStatement,
             new CapabilityContext(FhirVersion.R4, TenantId: 1),
             CancellationToken.None);
+        await _segment.ApplyAsync(
+            secondTenantStatement,
+            new CapabilityContext(FhirVersion.R4, TenantId: 2),
+            CancellationToken.None);
 
-        statement.Rest.ShouldBeEmpty();
+        firstTenantStatement.Rest.ShouldBeEmpty();
+        secondTenantStatement.Rest.ShouldBeEmpty();
     }
 
     [Fact]
     public async Task GivenDisabledReindex_WhenApplyingSegment_ThenOmitsReindexOperation()
     {
-        _features.Add(new ReindexFeature(
-            Options.Create(new ReindexOptions { Enabled = false }),
-            Substitute.For<IFhirRepositoryFactory>()));
+        var availability = Substitute.For<IReindexAvailability>();
+        availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ReindexAvailability.Disabled));
+        _features.Add(new ReindexFeature(availability));
         var statement = new CapabilityStatementJsonNode();
 
         await _segment.ApplyAsync(
