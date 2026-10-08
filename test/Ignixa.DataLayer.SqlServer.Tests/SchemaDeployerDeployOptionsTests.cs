@@ -94,8 +94,8 @@ public class SchemaDeployerDeployOptionsTests
     [InlineData("Development")]
     [InlineData("Test")]
     [InlineData("Production")]
-    public void GivenAnyEnvironment_WhenBuildingDeployOptions_ThenObjectsAbsentFromTheDacpacAreDropped(string environmentName)
+    public void GivenAnyEnvironment_WhenBuildingDeployOptions_ThenObjectsAbsentFromTheDacpacArePreserved(string environmentName)
     {
-        CreateDeployer(environmentName).CreateDeployOptions().DropObjectsNotInSource.ShouldBeTrue();
+        CreateDeployer(environmentName).CreateDeployOptions().DropObjectsNotInSource.ShouldBeFalse();
     }
 }

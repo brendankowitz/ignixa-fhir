@@ -188,6 +188,11 @@ public class SchemaDeployerDeploymentTests
                   AND name IN
                       ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob',
                        'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
+                UNION ALL
+                SELECT name
+                FROM sys.table_types
+                WHERE schema_id = SCHEMA_ID('dbo')
+                  AND name = 'BulkReindexResourceTableType_1'
                 """;
             await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
 

@@ -170,15 +170,6 @@ public sealed class SchemaDeployer : ISchemaDeployer
     /// The deploy options both automatic paths use, for the deploy itself and for the report
     /// generated to classify it -- the report must be produced under the same options it will be
     /// applied under, or it describes a different operation than the one that runs.
-    /// <c>BlockOnPossibleDataLoss</c> and <c>DropObjectsNotInSource</c> are explicit rather than
-    /// inherited from DacFx defaults. The latter makes an object removed from the dacpac model a
-    /// real drop in the report; the former then protects automatic deployment from applying a
-    /// destructive drop.
-    /// </summary>
-    /// <summary>
-    /// The deploy options both automatic paths use, for the deploy itself and for the report
-    /// generated to classify it -- the report must be produced under the same options it will be
-    /// applied under, or it describes a different operation than the one that runs.
     /// <c>BlockOnPossibleDataLoss</c> is set explicitly rather than left to DacFx's default: it is
     /// the last backstop behind <see cref="DeployReportClassifier"/>, and inheriting it implicitly
     /// meant any later change that started passing options here would have dropped it silently.
@@ -191,7 +182,6 @@ public sealed class SchemaDeployer : ISchemaDeployer
     internal DacDeployOptions CreateDeployOptions() => new()
     {
         BlockOnPossibleDataLoss = true,
-        DropObjectsNotInSource = true,
         // The dacpac targets Azure SQL Database, so a box SQL Server is the incompatible side.
         // Permissive for every non-Production host because they all run box SQL Server: local
         // development and docker-compose use mssql/server:2022, and the E2E test host runs as

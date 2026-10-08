@@ -19,6 +19,7 @@ public class RunAsyncDataLossTests
     private static readonly string[] LegacyReindexObjectNames =
     [
         "AcquireReindexJobs",
+        "BulkReindexResourceTableType_1",
         "CheckActiveReindexJobs",
         "CreateReindexJob",
         "GetReindexJobById",
@@ -101,6 +102,11 @@ public class RunAsyncDataLossTests
               AND name IN
                   ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob',
                    'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
+            UNION ALL
+            SELECT name
+            FROM sys.table_types
+            WHERE schema_id = SCHEMA_ID('dbo')
+              AND name = 'BulkReindexResourceTableType_1'
             ORDER BY name
             """;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -227,7 +233,7 @@ public class RunAsyncDataLossTests
     }
 
     [SkippableFact]
-    public async Task GivenAVersionFiveTenantWithLegacyReindexObjects_WhenSchemaUpgradeCliAllowsDataLoss_ThenItRemovesThoseObjects()
+    public async Task GivenAVersionFiveTenantWithEmptyLegacyReindexStorage_WhenSchemaUpgradeCliRunsWithoutAllowDataLoss_ThenItRetiresOnlyThoseObjects()
     {
         var databaseName = $"SchemaUpgradeCliReindexRetirementTest_{Guid.NewGuid():N}";
         var connectionString = BuildConnectionStringForDatabase(databaseName);
@@ -254,37 +260,16 @@ public class RunAsyncDataLossTests
             (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
                 .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
 
-            await using (var legacyConnection = new SqlConnection(connectionString))
-            {
-                await legacyConnection.OpenAsync(CancellationToken.None);
-                await using var insertLegacyJob = legacyConnection.CreateCommand();
-                insertLegacyJob.CommandText = """
-                    INSERT dbo.ReindexJob (Id, Status, RawJobRecord)
-                    VALUES ('obsolete-reindex-job', 'Running', '{}')
-                    """;
-                await insertLegacyJob.ExecuteNonQueryAsync(CancellationToken.None);
-            }
-
             var configPath = Path.Combine(configDirectory, "appsettings.json");
             await WriteAppSettingsAsync(configPath, connectionString);
-
-            using (var input = new StringReader(string.Empty))
-            using (var output = new StringWriter())
-            {
-                var blockedOptions = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: false, AllowIncompatiblePlatform: true, ConfigPath: configPath);
-                await Should.ThrowAsync<Exception>(() =>
-                    Program.RunAsync(blockedOptions, input, output, CancellationToken.None));
-            }
-
-            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
-                .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
 
             int exitCode;
             using (var input = new StringReader(string.Empty))
             using (var output = new StringWriter())
             {
-                var allowedOptions = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: true, AllowIncompatiblePlatform: true, ConfigPath: configPath);
-                exitCode = await Program.RunAsync(allowedOptions, input, output, CancellationToken.None);
+                var options = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: false, AllowIncompatiblePlatform: true, ConfigPath: configPath);
+                exitCode = await Program.RunAsync(options, input, output, CancellationToken.None);
+                output.ToString().ShouldContain("IS classified as auto-safe");
             }
 
             exitCode.ShouldBe(0);

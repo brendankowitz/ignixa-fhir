@@ -43,7 +43,7 @@ public static class SchemaVersionConstants
     // Version 5 (expand, unreleased) -- BackgroundJobs.RowVersion fences optimistic progress and
     // heartbeat updates without serializing range workers through the singleton reindex lock.
     // Version 6 (contract, unreleased) -- retires the unused legacy reindex table, its five
-    // procedures, and the unused bulk reindex TVP. DacFx drops these model-absent objects;
-    // because dropping the table may discard legacy job records, automatic deployment refuses the
-    // diff and operators must use the schema-upgrade CLI with --allow-data-loss.
+    // procedures, and the unused bulk reindex TVP. Script.PostDeployment.sql removes precisely
+    // those objects only when ReindexJob is empty; otherwise it fails with an actionable error
+    // and preserves the legacy records. DacFx leaves all other target-only objects untouched.
 }

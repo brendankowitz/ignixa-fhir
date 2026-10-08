@@ -1,3 +1,5 @@
+using DurableTask.Core;
+using DurableTask.SqlServer;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
@@ -12,6 +14,17 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
 public class SchemaDeployerUpgradeTests
 {
+    private static readonly string[] LegacyReindexObjectNames =
+    [
+        "AcquireReindexJobs",
+        "BulkReindexResourceTableType_1",
+        "CheckActiveReindexJobs",
+        "CreateReindexJob",
+        "GetReindexJobById",
+        "ReindexJob",
+        "UpdateReindexJob",
+    ];
+
     private sealed class SingleTenantStore : ITenantConfigurationStore
     {
         private readonly TenantConfiguration _tenant;
@@ -128,6 +141,74 @@ public class SchemaDeployerUpgradeTests
         return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
+    private static async Task DeployVersionFiveSchemaAsync(string connectionString, string databaseName, CancellationToken cancellationToken)
+    {
+        var legacyDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "schema-v5-before-reindex-retirement.dacpac");
+        using var legacyDacpacStream = File.OpenRead(legacyDacpacPath);
+        using var legacyPackage = DacPackage.Load(legacyDacpacStream);
+        var legacyDacServices = new DacServices(connectionString);
+        legacyDacServices.Deploy(
+            legacyPackage,
+            databaseName,
+            upgradeExisting: true,
+            options: TestDeployOptions(),
+            cancellationToken: cancellationToken);
+
+        await SchemaDeployer.StampSchemaVersionAsync(connectionString, 5, cancellationToken);
+    }
+
+    private static async Task<List<string>> GetLegacyReindexObjectNamesAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT name
+            FROM sys.objects
+            WHERE schema_id = SCHEMA_ID('dbo')
+              AND name IN
+                  ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob',
+                   'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
+            UNION ALL
+            SELECT name
+            FROM sys.table_types
+            WHERE schema_id = SCHEMA_ID('dbo')
+              AND name = 'BulkReindexResourceTableType_1'
+            ORDER BY name
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        var names = new List<string>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            names.Add(reader.GetString(0));
+        }
+
+        return names;
+    }
+
+    private static async Task CreateDurableTaskStateAsync(string connectionString)
+    {
+        var orchestrationService = new SqlOrchestrationService(
+            new SqlOrchestrationServiceSettings(connectionString, "ignixa-schema-upgrade-test"));
+        await orchestrationService.CreateIfNotExistsAsync();
+
+        var taskHubClient = new TaskHubClient(orchestrationService);
+        await taskHubClient.CreateOrchestrationInstanceAsync(
+            "SchemaUpgradeTest",
+            Guid.NewGuid().ToString("N"),
+            input: new { State = "must-survive" });
+    }
+
+    private static async Task<int> GetDurableTaskStateCountAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM dt.NewEvents";
+        return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
     /// <summary>
     /// The schema targets Azure SQL Database (see the .sqlproj's DSP), so publishing it to the
     /// box SQL Server container these tests run against is a platform mismatch DacFx blocks by
@@ -178,6 +259,85 @@ public class SchemaDeployerUpgradeTests
         }
     }
 
+    [SkippableFact]
+    public async Task GivenAVersionFiveTenantWithEmptyLegacyReindexStorageAndDurableTaskState_WhenUpgradeIfNeededAsyncCalled_ThenRetiresOnlyLegacyObjects()
+    {
+        var databaseName = $"SchemaDeployerReindexRetirementTest_{Guid.NewGuid():N}";
+        var connectionString = BuildConnectionStringForDatabase(databaseName);
+        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
+
+        try
+        {
+            await DeployVersionFiveSchemaAsync(connectionString, databaseName, CancellationToken.None);
+            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
+                .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
+
+            await CreateDurableTaskStateAsync(connectionString);
+            (await GetDurableTaskStateCountAsync(connectionString, CancellationToken.None)).ShouldBeGreaterThan(0);
+
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync(CancellationToken.None);
+                await using var command = connection.CreateCommand();
+                command.CommandText = """
+                    CREATE TABLE dbo.UnmanagedUpgradeMarker (Id INT NOT NULL PRIMARY KEY);
+                    INSERT dbo.UnmanagedUpgradeMarker (Id) VALUES (1);
+                    """;
+                await command.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            var deployer = CreateDeployer(connectionString);
+            await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
+
+            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None)).ShouldBeEmpty();
+            (await GetDurableTaskStateCountAsync(connectionString, CancellationToken.None)).ShouldBeGreaterThan(0);
+
+            await using var verifyConnection = new SqlConnection(connectionString);
+            await verifyConnection.OpenAsync(CancellationToken.None);
+            await using var verifyCommand = verifyConnection.CreateCommand();
+            verifyCommand.CommandText = "SELECT COUNT(*) FROM dbo.UnmanagedUpgradeMarker";
+            ((int)(await verifyCommand.ExecuteScalarAsync(CancellationToken.None))!).ShouldBe(1);
+        }
+        finally
+        {
+            await DropDatabaseAsync(databaseName, CancellationToken.None);
+        }
+    }
+
+    [SkippableFact]
+    public async Task GivenAVersionFiveTenantWithPopulatedLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenFailsWithoutDroppingLegacyObjects()
+    {
+        var databaseName = $"SchemaDeployerReindexRetirementRowsTest_{Guid.NewGuid():N}";
+        var connectionString = BuildConnectionStringForDatabase(databaseName);
+        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
+
+        try
+        {
+            await DeployVersionFiveSchemaAsync(connectionString, databaseName, CancellationToken.None);
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync(CancellationToken.None);
+                await using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT dbo.ReindexJob (Id, Status, RawJobRecord)
+                    VALUES ('legacy-reindex-job', 'Running', '{}');
+                    """;
+                await command.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            var deployer = CreateDeployer(connectionString);
+            await Should.ThrowAsync<DacServicesException>(
+                () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
+
+            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
+                .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
+        }
+        finally
+        {
+            await DropDatabaseAsync(databaseName, CancellationToken.None);
+        }
+    }
+
     // A Phase-B-era build of this project's .sqlproj, committed as a binary fixture so the test is
     // runnable without git archaeology or a scratch worktree still being present. It is structurally
     // missing the terminology tables (TermCodeSystem/TermConcept/etc) and the SchemaVersion table
@@ -198,7 +358,7 @@ public class SchemaDeployerUpgradeTests
     private const string OldDacpacFixtureFileName = "phase-b-pre-task9-schema.dacpac";
 
     [SkippableFact]
-    public async Task GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenRequiresManualUpgrade()
+    public async Task GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenUpgradesToCurrentAndStampsTheVersion()
     {
         // Arrange -- a real, empty, freshly-created database.
         var databaseName = $"SchemaDeployerUpgradeTest_{Guid.NewGuid():N}";
@@ -232,20 +392,20 @@ public class SchemaDeployerUpgradeTests
 
             var deployer = CreateDeployer(connectionString);
 
-            // The current model retires dbo.ReindexJob, so this legacy database has a
-            // data-loss-classified drop pending. Automatic deployment must direct operators to
-            // the CLI rather than deleting the table.
-            var ex = await Should.ThrowAsync<InvalidOperationException>(
-                () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
+            // Act -- the pending diff is pure net-new tables/columns (TermCodeSystem etc.), no
+            // drops, so it must classify as auto-safe and apply without throwing.
+            await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
 
-            ex.Message.ShouldContain("tools/Ignixa.SchemaUpgrade.Cli");
+            // Assert
+            var tableNamesAfterUpgrade = await GetTableNamesAsync(connectionString, CancellationToken.None);
+            tableNamesAfterUpgrade.ShouldContain("TermCodeSystem");
+            tableNamesAfterUpgrade.ShouldContain("SchemaVersion");
 
-            var tableNamesAfterAttempt = await GetTableNamesAsync(connectionString, CancellationToken.None);
-            tableNamesAfterAttempt.ShouldNotContain("TermCodeSystem");
-            tableNamesAfterAttempt.ShouldNotContain("SchemaVersion");
+            var schemaVersionRowCount = await GetSchemaVersionRowCountAsync(connectionString, CancellationToken.None);
+            schemaVersionRowCount.ShouldBe(1);
 
-            var versionAfterAttempt = await resolver.GetCurrentVersionAsync(1, CancellationToken.None);
-            versionAfterAttempt.ShouldBe(0);
+            var versionAfterUpgrade = await resolver.GetCurrentVersionAsync(1, CancellationToken.None);
+            versionAfterUpgrade.ShouldBe(SchemaVersionConstants.CurrentVersion);
         }
         finally
         {
