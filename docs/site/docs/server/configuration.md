@@ -607,7 +607,7 @@ and every duration derives from `Conformance:SyncIntervalSeconds`.
 |---|---|---|
 | `Conformance:SyncIntervalSeconds` | `30` | How often each server polls for conformance changes. |
 | `Conformance:MaxStaleness` | `3 × SyncIntervalSeconds` | A server whose last successful sync *started* longer ago than this returns `503` for requests that evaluate search parameters. The default tolerates one missed poll. See [search parameters](/docs/server/fhir/search-parameters#reindexing-and-search-parameter-lifecycle). |
-| `Conformance:TransitionGrace` | `MaxStaleness + SyncIntervalSeconds` | Delay between hiding a replaced or removed parameter and changing how it is extracted. |
+| `Conformance:TransitionGrace` | `MaxStaleness + max(SyncIntervalSeconds, TransitionSafetyMargin)` | Delay between hiding a replaced or removed parameter and changing how it is extracted. |
 | `Conformance:TransitionSafetyMargin` | `00:00:30` | Minimum time added above `MaxStaleness` before a transition may commit, covering one in-flight search plus clock skew. |
 | `Reindex:Enabled` | `true` | Registers the `$reindex` endpoints and the job. |
 | `Reindex:AutoStart` | `true` | Start a reindex job automatically after a package activation creates parameters that need one. When `false`, start jobs with `POST $reindex`. |

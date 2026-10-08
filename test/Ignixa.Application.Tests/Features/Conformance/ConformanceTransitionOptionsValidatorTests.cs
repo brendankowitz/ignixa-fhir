@@ -133,4 +133,22 @@ public class ConformanceTransitionOptionsValidatorTests
 
         result.Succeeded.ShouldBeTrue();
     }
+
+    [Fact]
+    public void GivenDurationsNearTimeSpanMaximum_WhenValidated_ThenItFailsWithoutOverflowing()
+    {
+        var options = new ConformanceTransitionOptions
+        {
+            MaxStaleness = TimeSpan.MaxValue,
+            TransitionGrace = TimeSpan.MaxValue,
+            TransitionSafetyMargin = TimeSpan.FromSeconds(1),
+        };
+
+        var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions
+        {
+            BarrierDelay = TimeSpan.MaxValue,
+        });
+
+        result.Failed.ShouldBeTrue();
+    }
 }

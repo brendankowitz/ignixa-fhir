@@ -77,8 +77,13 @@ public static class BackgroundServicesRegistration
                 options.SyncIntervalSeconds = configuration.GetValue("Conformance:SyncIntervalSeconds", 30);
                 options.MaxStaleness = configuration.GetValue<TimeSpan?>("Conformance:MaxStaleness")
                     ?? TimeSpan.FromSeconds(3 * options.SyncIntervalSeconds);
+                var transitionMargin = TimeSpan.FromSeconds(options.SyncIntervalSeconds);
+                if (transitionMargin < options.TransitionSafetyMargin)
+                {
+                    transitionMargin = options.TransitionSafetyMargin;
+                }
                 options.TransitionGrace = configuration.GetValue<TimeSpan?>("Conformance:TransitionGrace")
-                    ?? options.MaxStaleness + TimeSpan.FromSeconds(options.SyncIntervalSeconds);
+                    ?? options.MaxStaleness + transitionMargin;
             })
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<ConformanceTransitionOptions>, ConformanceTransitionOptionsValidator>();

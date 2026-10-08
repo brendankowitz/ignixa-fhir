@@ -39,7 +39,8 @@ public sealed class ConformanceTransitionOptionsValidator(IOptions<ReindexOption
             failures.Add($"{ReindexOptions.SectionName}:BarrierDelay must be greater than or equal to zero.");
         }
 
-        if (options.TransitionGrace < options.MaxStaleness + options.TransitionSafetyMargin)
+        if (options.TransitionGrace < options.MaxStaleness ||
+            options.TransitionGrace - options.MaxStaleness < options.TransitionSafetyMargin)
         {
             failures.Add(
                 $"{ConformanceTransitionOptions.SectionName}:TransitionGrace must be greater than or equal to " +

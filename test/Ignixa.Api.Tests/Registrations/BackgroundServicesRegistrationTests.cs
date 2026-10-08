@@ -27,6 +27,26 @@ public sealed class BackgroundServicesRegistrationTests
     }
 
     [Fact]
+    public void GivenAShortSyncIntervalAndDerivedDurations_WhenOptionsAreResolved_ThenTheSafetyMarginStillValidates()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Conformance:SyncIntervalSeconds"] = "5",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddIgnixaBackgroundServices(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IStartupValidator>().Validate();
+        var conformance = provider.GetRequiredService<IOptions<ConformanceTransitionOptions>>().Value;
+
+        conformance.MaxStaleness.ShouldBe(TimeSpan.FromSeconds(15));
+        conformance.TransitionGrace.ShouldBe(TimeSpan.FromSeconds(45));
+    }
+
+    [Fact]
     public void GivenReindexEnabledAndTransactionWatcherDisabled_WhenStartingOptionsValidation_ThenStartupFails()
     {
         var configuration = new ConfigurationBuilder()
