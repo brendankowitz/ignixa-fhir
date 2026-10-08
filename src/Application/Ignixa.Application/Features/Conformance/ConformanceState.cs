@@ -120,13 +120,6 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     public ActiveSearchParameter? FindExtractedByCanonical(string canonical) =>
         _searchParameters.Values.LastOrDefault(sp => sp.Canonical == canonical);
 
-    public bool HasStagedSearchParameterReplacement(ActiveSearchParameter parameter) =>
-        _searchParameterActivations.Any(candidate =>
-            candidate.ResourceType == parameter.ResourceType &&
-            candidate.Code == parameter.Code &&
-            candidate.SearchParamId == parameter.SearchParamId &&
-            candidate.Status == SearchParameterStatus.Staged);
-
     public IReadOnlyList<SearchParameterTransitionCandidate> GetTransitionCandidates(long hideEventId) =>
         _searchParameterActivations
             .Where(parameter =>

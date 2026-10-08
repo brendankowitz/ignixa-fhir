@@ -1,3 +1,4 @@
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
@@ -19,6 +20,136 @@ public class PackageActivationPipelineTests
 {
     private const string BaseCanonical = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
     private const string OverrideCanonical = "http://example.org/SearchParameter/Patient-identifier";
+
+    [Fact]
+    public async Task GivenInProcessBaseCode_WhenShadowed_ThenBaseIsMaterialisedAndOverrideIsStaged()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.override",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource()]);
+        var persistedEvents = new List<SourceEvent>();
+        var eventStore = CreateEventStore(persistedEvents);
+        using var state = new ConformanceState();
+        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            eventStore,
+            state,
+            transitionScheduler,
+            Substitute.For<IConformanceCacheRefresher>());
+
+        var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        var activations = persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>().ToArray();
+        activations.Length.ShouldBe(2);
+        activations[0].Canonical.ShouldBe(BaseCanonical);
+        activations[0].SourcePackage.ShouldBe("hl7.fhir.r4.core@4.0.1");
+        activations[1].Overrides!.OverridesCanonical.ShouldBe(BaseCanonical);
+        activations[1].SearchParamId.ShouldBe(activations[0].SearchParamId);
+        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
+        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
+        await transitionScheduler.Received(1).ScheduleAsync(
+            Arg.Any<long>(),
+            Arg.Any<TimeSpan>(),
+            CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task GivenInProcessBaseCodeWithoutDerivedFrom_WhenShadowed_ThenItUsesTheBaseIdentity()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.override",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource(includeDerivedFrom: false)]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+
+        var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        var activations = persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>().ToArray();
+        activations.Length.ShouldBe(2);
+        activations[1].Overrides!.OverridesCanonical.ShouldBe(BaseCanonical);
+        activations[1].SearchParamId.ShouldBe(activations[0].SearchParamId);
+    }
+
+    [Fact]
+    public async Task GivenBaseWasMaterialisedByEarlierShadowing_WhenShadowedAgain_ThenNoSecondBaseActivationIsEmitted()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call => [CreateOverrideResource(
+                packageId: call.ArgAt<string>(0),
+                canonical: $"http://example.org/SearchParameter/{call.ArgAt<string>(0)}",
+                derivedFrom: call.ArgAt<string>(0) == "test.second"
+                    ? "http://example.org/SearchParameter/test.first"
+                    : null)]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+
+        (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
+        (await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
+
+        persistedEvents.Select(row => row.Data)
+            .OfType<SearchParameterActivated>()
+            .Count(activation => activation.Canonical == BaseCanonical)
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GivenOneBaseCanonicalOnTwoTypes_WhenEachTypeIsShadowed_ThenBothUseTheSameIdentity()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.override",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource(
+                canonical: "http://example.org/SearchParameter/resource-tag",
+                baseTypes: ["Patient", "Practitioner"],
+                code: "_tag",
+                expression: "Resource.meta.tag",
+                includeDerivedFrom: false)]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+
+        var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        var overrides = persistedEvents.Select(row => row.Data)
+            .OfType<SearchParameterActivated>()
+            .Where(activation => activation.SourcePackage == "test.override@1.0.0")
+            .ToArray();
+        overrides.Length.ShouldBe(2);
+        overrides.Select(activation => activation.SearchParamId).Distinct().ShouldHaveSingleItem();
+    }
 
     [Fact]
     public async Task GivenActivationCreatesPendingParameter_WhenActivated_ThenAutomaticReindexOutcomeIsReturned()
@@ -209,6 +340,7 @@ public class PackageActivationPipelineTests
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
             new NullReindexTrigger(),
+            CreateFhirVersionContext(state),
             logger);
 
         await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
@@ -323,6 +455,7 @@ public class PackageActivationPipelineTests
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
             new NullReindexTrigger(),
+            CreateFhirVersionContext(state),
             Substitute.For<ILogger<PackageActivationPipeline>>());
 
         var result = await pipeline.ActivateAsync(
@@ -416,8 +549,16 @@ public class PackageActivationPipelineTests
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
             reindexTrigger ?? new NullReindexTrigger(),
+            CreateFhirVersionContext(state),
             Substitute.For<ILogger<PackageActivationPipeline>>());
     }
+
+    private static IFhirVersionContext CreateFhirVersionContext(ConformanceState state) =>
+        new FhirVersionContext(
+            Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
+            new SearchParameterResolutionOptions(),
+            NullFhirBaseUriProvider.Instance,
+            conformanceState: state);
 
     private static ConformanceRefreshPublisher CreateRefreshPublisher(
         ConformanceState state,
@@ -426,28 +567,66 @@ public class PackageActivationPipelineTests
 
     private sealed record TestConsumerSnapshot(long Generation) : IConformanceConsumerSnapshot;
 
-    private static PackageResource CreateOverrideResource() =>
-        new()
+    private static ISourceEventStore CreateEventStore(List<SourceEvent> persistedEvents)
+    {
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var nextEventId = persistedEvents.Count + 1;
+                SourceEvent[] appended = call.ArgAt<IEnumerable<NewSourceEvent>>(0)
+                    .Select((sourceEvent, index) => new SourceEvent(
+                        nextEventId + index,
+                        sourceEvent.StreamId,
+                        sourceEvent.EventType,
+                        sourceEvent.Data,
+                        DateTimeOffset.UtcNow))
+                    .ToArray();
+                persistedEvents.AddRange(appended);
+                return Task.FromResult<IReadOnlyList<SourceEvent>>(appended);
+            });
+        return eventStore;
+    }
+
+    private static PackageResource CreateOverrideResource(
+        string packageId = "test.override",
+        string canonical = OverrideCanonical,
+        IReadOnlyList<string>? baseTypes = null,
+        string code = "identifier",
+        string expression = "Resource.identifier",
+        bool includeDerivedFrom = true,
+        string? derivedFrom = null)
+    {
+        var resource = new System.Text.Json.Nodes.JsonObject
         {
-            PackageId = "test.override",
+            ["resourceType"] = "SearchParameter",
+            ["id"] = "patient-identifier",
+            ["url"] = canonical,
+            ["code"] = code,
+            ["base"] = new System.Text.Json.Nodes.JsonArray(
+                (baseTypes ?? ["Patient"]).Select(type => System.Text.Json.Nodes.JsonValue.Create(type)).ToArray()),
+            ["type"] = "token",
+            ["expression"] = expression
+        };
+        if (includeDerivedFrom || derivedFrom is not null)
+        {
+            resource["derivedFrom"] = derivedFrom ?? BaseCanonical;
+        }
+
+        return new PackageResource
+        {
+            PackageId = packageId,
             PackageVersion = "1.0.0",
             ResourceType = "SearchParameter",
             ResourceId = "patient-identifier",
-            Canonical = OverrideCanonical,
+            Canonical = canonical,
             FhirVersion = "4.0.1",
-            ResourceJson = $$"""
-                {
-                  "resourceType": "SearchParameter",
-                  "id": "patient-identifier",
-                  "url": "{{OverrideCanonical}}",
-                  "code": "identifier",
-                  "base": ["Patient"],
-                  "type": "token",
-                  "expression": "Patient.identifier",
-                  "derivedFrom": "{{BaseCanonical}}"
-                }
-                """
+            ResourceJson = resource.ToJsonString()
         };
+    }
 
     private static PackageResource CreateCustomResource() =>
         new()

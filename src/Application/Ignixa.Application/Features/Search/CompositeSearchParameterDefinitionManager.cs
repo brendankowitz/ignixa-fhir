@@ -202,11 +202,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             {
                 foreach (var packageParam in packageParams)
                 {
-                    var active = allParams[(packageParam.BaseResourceTypes[0], packageParam.Code)];
-                    if (ShouldOverrideBase(active, merged.ContainsKey(packageParam.Code)))
-                    {
-                        merged[packageParam.Code] = packageParam;
-                    }
+                    merged[packageParam.Code] = packageParam;
                 }
             }
 
@@ -276,11 +272,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             var baseParameters = _baseManager.AllSearchParameters.ToList();
             return _conformanceState.AllSearchParameters.Values
                 .Where(IsIncludedInThisView)
-                .Where(asp => ShouldOverrideBase(
-                    asp,
-                    baseParameters.Any(baseParameter =>
-                        string.Equals(baseParameter.Code, asp.Code, StringComparison.OrdinalIgnoreCase) &&
-                        baseParameter.BaseResourceTypes.Contains(asp.ResourceType, StringComparer.OrdinalIgnoreCase))))
                 .Select(ConvertToSearchParameterInfo)
                 .Concat(baseParameters)
                 .GroupBy(p => p.OverridesUrl ?? p.Url)
@@ -319,11 +310,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         foreach (var asp in packageParameters)
         {
-            if (!ShouldOverrideBase(asp, merged.ContainsKey(asp.Code)))
-            {
-                continue;
-            }
-
             var searchParamInfo = ConvertToSearchParameterInfo(asp);
             merged[searchParamInfo.Code] = searchParamInfo;
 
@@ -450,17 +436,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _useSearchVisibility
             ? parameter.Status is not SearchParameterStatus.Disabled
             : IsExtracted(parameter.Status);
-
-    private bool ShouldOverrideBase(ActiveSearchParameter parameter, bool baseParameterExists)
-    {
-        if (!_useSearchVisibility || !baseParameterExists || parameter.Status == SearchParameterStatus.Enabled)
-        {
-            return true;
-        }
-
-        return parameter.OverridesCanonical is not null ||
-            _conformanceState.HasStagedSearchParameterReplacement(parameter);
-    }
 
     /// <inheritdoc/>
     public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap)

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
@@ -10,6 +11,7 @@ using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Indexing;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,6 +32,7 @@ public class PackageActivationPipeline(
     ConformanceRefreshPublisher refreshPublisher,
     IConformanceLease conformanceLease,
     IReindexTrigger reindexTrigger,
+    IFhirVersionContext fhirVersionContext,
     ILogger<PackageActivationPipeline> logger)
 {
     private const int TransitionSchedulingAttempts = 3;
@@ -44,6 +47,7 @@ public class PackageActivationPipeline(
     private readonly ConformanceRefreshPublisher _refreshPublisher = refreshPublisher ?? throw new ArgumentNullException(nameof(refreshPublisher));
     private readonly IConformanceLease _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
     private readonly IReindexTrigger _reindexTrigger = reindexTrigger ?? throw new ArgumentNullException(nameof(reindexTrigger));
+    private readonly IFhirVersionContext _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <summary>
@@ -94,7 +98,12 @@ public class PackageActivationPipeline(
             // Build and apply every proposed event to detached state before anything is durable.
             var expectedLastEventId = _state.LastProcessedEventId;
             using var staged = _state.CreateStagingCopy();
-            var (events, issue) = BuildAndValidateActivationEvents(packageId, version, resources, staged);
+            var (events, issue) = BuildAndValidateActivationEvents(
+                packageId,
+                version,
+                packageResources.FirstOrDefault()?.FhirVersion,
+                resources,
+                staged);
             if (issue is not null)
             {
                 return RejectActivation([issue]);
@@ -291,6 +300,11 @@ public class PackageActivationPipeline(
             return true;
         }
 
+        if (IsBaseFhirPackage(existing.SourcePackage.Split('@')[0]))
+        {
+            return true;
+        }
+
         // Priority-based override
         if (HasHigherPriority(newSp.SourcePackageId, existing.SourcePackage.Split('@')[0]))
         {
@@ -310,19 +324,69 @@ public class PackageActivationPipeline(
     private (List<NewSourceEvent> Events, ValidationIssue? Issue) BuildAndValidateActivationEvents(
         string packageId,
         string version,
+        string? fhirVersionString,
         PackageResources resources,
         ConformanceState staged)
     {
         var events = new List<NewSourceEvent>();
         var streamId = $"package:{packageId}@{version}";
         var packageKey = $"{packageId}@{version}";
+        var proposedOwners = new Dictionary<(string ResourceType, string Code), SearchParameterInfo>();
 
         // Emit SearchParameter events (non-composite first, then composite)
         foreach (var sp in resources.SearchParameters.OrderBy(sp => sp.Type == SearchParamType.Composite ? 1 : 0))
         {
             foreach (var resourceType in sp.BaseResourceTypes)
             {
+                var ownerKey = (resourceType, sp.Code);
+                if (proposedOwners.TryGetValue(ownerKey, out var proposedOwner) &&
+                    sp.DerivedFrom != proposedOwner.Canonical &&
+                    sp.Canonical != proposedOwner.Canonical)
+                {
+                    return (events, new ValidationIssue(
+                        "SP_CONFLICT",
+                        $"SearchParameter '{sp.Code}' on {resourceType} conflicts with another definition in the package",
+                        resourceType,
+                        sp.Code));
+                }
+                proposedOwners[ownerKey] = sp;
+
                 var existing = staged.GetSearchParameter(resourceType, sp.Code);
+                if (existing is null &&
+                    !IsBaseFhirPackage(packageId) &&
+                    !IntrinsicSearchParameters.IsIntrinsicCode(sp.Code) &&
+                    TryGetBaseSearchParameter(fhirVersionString, resourceType, sp.Code, out var baseParameter))
+                {
+                    var baseCanonical = baseParameter.Url.ToString();
+                    var baseSearchParamId = staged.GetSearchParamIdForActivation(baseCanonical, null);
+                    var basePackage = GetBasePackageKey(ParseFhirVersion(fhirVersionString!));
+                    var baseActivation = new NewSourceEvent(
+                        streamId,
+                        nameof(SearchParameterActivated),
+                        new SearchParameterActivated(
+                            baseCanonical,
+                            baseParameter.Code,
+                            resourceType,
+                            baseParameter.Expression,
+                            baseParameter.Type,
+                            basePackage,
+                            null,
+                            baseSearchParamId,
+                            baseParameter.TargetResourceTypes,
+                            baseParameter.Component.Select(component =>
+                                new SearchParameterComponentData(
+                                    component.DefinitionUrl?.ToString() ?? string.Empty,
+                                    component.Expression)).ToList(),
+                            baseParameter.Name,
+                            baseParameter.Description));
+                    if (staged.ApplyProposedEvent(baseActivation) is { } baseIssue)
+                    {
+                        return (events, baseIssue);
+                    }
+                    events.Add(baseActivation);
+                    existing = staged.GetSearchParameter(resourceType, sp.Code);
+                }
+
                 OverrideInfo? overrides = null;
 
                 if (existing is not null)
@@ -403,6 +467,48 @@ public class PackageActivationPipeline(
 
         return (events, null);
     }
+
+    private bool TryGetBaseSearchParameter(
+        string? fhirVersionString,
+        string resourceType,
+        string code,
+        out Ignixa.Search.Models.SearchParameterInfo parameter)
+    {
+        if (string.IsNullOrWhiteSpace(fhirVersionString))
+        {
+            parameter = null!;
+            return false;
+        }
+
+        return _fhirVersionContext
+            .GetSearchParameterDefinitionManager(ParseFhirVersion(fhirVersionString))
+            .TryGetSearchParameter(resourceType, code, out parameter);
+    }
+
+    private string GetBasePackageKey(FhirVersion fhirVersion)
+    {
+        var release = fhirVersion switch
+        {
+            FhirVersion.Stu3 => "r3",
+            FhirVersion.R4 => "r4",
+            FhirVersion.R4B => "r4b",
+            FhirVersion.R5 => "r5",
+            FhirVersion.R6 => "r6",
+            _ => throw new ArgumentOutOfRangeException(nameof(fhirVersion), fhirVersion, "Unsupported FHIR version"),
+        };
+        return $"hl7.fhir.{release}.core@{_fhirVersionContext.GetBaseSchemaProvider(fhirVersion).FullVersion}";
+    }
+
+    private static FhirVersion ParseFhirVersion(string fhirVersion) =>
+        fhirVersion switch
+        {
+            _ when fhirVersion.StartsWith("3.", StringComparison.Ordinal) => FhirVersion.Stu3,
+            _ when fhirVersion.StartsWith("4.0", StringComparison.Ordinal) => FhirVersion.R4,
+            _ when fhirVersion.StartsWith("4.3", StringComparison.Ordinal) => FhirVersion.R4B,
+            _ when fhirVersion.StartsWith("5.", StringComparison.Ordinal) => FhirVersion.R5,
+            _ when fhirVersion.StartsWith("6.", StringComparison.Ordinal) => FhirVersion.R6,
+            _ => throw new InvalidOperationException($"Unsupported FHIR version '{fhirVersion}'."),
+        };
 
     private List<string> DetectReindexRequirements(string packageKey)
     {

@@ -206,7 +206,7 @@ public class PackageSearchParameterInheritanceTests
     }
 
     [Fact]
-    public async Task GivenADistinctIdentityPendingOverride_WhenSearchDefinitionsAreResolved_ThenTheBaseCodeRemainsSearchable()
+    public async Task GivenADistinctIdentityPendingOverride_WhenSearchDefinitionsAreResolved_ThenTheCodeIsHiddenAndNotBoundToBase()
     {
         const string baseUrl = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
         using var state = new ConformanceState();
@@ -223,7 +223,28 @@ public class PackageSearchParameterInheritanceTests
         var searchDefinitions = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
 
         extractionDefinitions.GetSearchParameter("Patient", "identifier").Url.ShouldNotBe(new Uri(baseUrl));
-        searchDefinitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(baseUrl));
+        searchDefinitions.TryGetSearchParameter("Patient", "identifier", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenRestoredBaseIsPending_WhenSearchDefinitionsAreResolved_ThenItStaysHiddenUntilEnabled()
+    {
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(RestoredBasePendingEvents());
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        using var context = new FhirVersionContext(
+            NullLoggerFactory.Instance,
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
+            NullFhirBaseUriProvider.Instance,
+            conformanceState: state);
+
+        var extractionDefinitions = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+        var searchDefinitions = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
+
+        extractionDefinitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        searchDefinitions.TryGetSearchParameter("Patient", "identifier", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -278,6 +299,95 @@ public class PackageSearchParameterInheritanceTests
 
         entries.ShouldContain(entry => entry.SearchParameter.Code == "disabling");
         entries.ShouldNotContain(entry => entry.SearchParameter.Url == new Uri("http://example.org/SearchParameter/staged"));
+    }
+
+    [Fact]
+    public async Task GivenShadowedCodeBeforeAndAfterCommit_WhenAResourceIsIndexed_ThenStorageIdentityStaysOnTheBase()
+    {
+        const string baseUrl = "http://hl7.org/fhir/SearchParameter/Patient-name";
+        const string overrideUrl = "http://example.org/SearchParameter/staged";
+        var schema = FhirVersion.R4.GetSchemaProvider();
+        var patient = ResourceJsonNode.Parse(
+            """
+            {
+              "resourceType": "Patient",
+              "name": [{ "family": "Shadowed" }]
+            }
+            """).ToElement(schema);
+
+        var stagedEntries = await ExtractAsync(LifecycleEvents(), patient);
+        var staged = stagedEntries.Single(entry => entry.SearchParameter.Url == new Uri(baseUrl));
+        staged.SearchParameter.Url.ShouldBe(new Uri(baseUrl));
+
+        var committedEntries = await ExtractAsync(CommittedOverrideEvents(), patient);
+        var committed = committedEntries.Single(entry => entry.SearchParameter.Url == new Uri(overrideUrl));
+        committed.SearchParameter.Url.ShouldBe(new Uri(overrideUrl));
+        committed.SearchParameter.OverridesUrl.ShouldBe(new Uri(baseUrl));
+
+        async Task<IReadOnlyCollection<SearchIndexEntry>> ExtractAsync(
+            IAsyncEnumerable<SourceEvent> events,
+            IElement resource)
+        {
+            var baseManager = new SearchParameterDefinitionManager(
+                schema, NullLogger<SearchParameterDefinitionManager>.Instance);
+            using var state = new ConformanceState();
+            var store = Substitute.For<ISourceEventStore>();
+            store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(events);
+            await state.InitializeFromEventsAsync(store, CancellationToken.None);
+            var manager = new CompositeSearchParameterDefinitionManager(
+                baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+                new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true });
+            await manager.InitializeAsync();
+            return SearchIndexerFactory.CreateInstance(
+                    schema,
+                    NullLoggerFactory.Instance,
+                    manager,
+                    NullFhirBaseUriProvider.Instance)
+                .Extract(resource);
+        }
+    }
+
+    [Fact]
+    public async Task GivenLaggingInstancesAtEachShadowTransitionCut_WhenDefinitionsReplay_ThenNoPairBindsDifferentStorageIdentity()
+    {
+        var events = new List<SourceEvent>();
+        await foreach (var row in SharedIdentityTransitionEvents())
+        {
+            events.Add(row);
+        }
+
+        foreach (int eventCount in new[] { 1, 2, 3 })
+        {
+            using var state = new ConformanceState();
+            var store = Substitute.For<ISourceEventStore>();
+            store.ReadAllAsync(Arg.Any<CancellationToken>())
+                .Returns(ReplayCut(events, eventCount));
+            await state.InitializeFromEventsAsync(store, CancellationToken.None);
+            using var context = new FhirVersionContext(
+                NullLoggerFactory.Instance,
+                new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
+                NullFhirBaseUriProvider.Instance,
+                conformanceState: state);
+            var extraction = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+            var search = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
+
+            if (search.TryGetSearchParameter("Patient", "identifier", out var searchable))
+            {
+                var extracted = extraction.GetSearchParameter("Patient", "identifier");
+                (extracted.OverridesUrl ?? extracted.Url).ShouldBe(searchable.OverridesUrl ?? searchable.Url);
+            }
+        }
+
+        static async IAsyncEnumerable<SourceEvent> ReplayCut(
+            IReadOnlyList<SourceEvent> rows,
+            int eventCount)
+        {
+            await Task.CompletedTask;
+            for (var index = 0; index < eventCount; index++)
+            {
+                yield return rows[index];
+            }
+        }
     }
 
     [Fact]
@@ -342,12 +452,24 @@ public class PackageSearchParameterInheritanceTests
                 "Patient",
                 "test"),
             DateTimeOffset.UtcNow);
-        yield return Activation(
+        yield return new SourceEvent(
             5,
-            "http://hl7.org/fhir/SearchParameter/Patient-name",
-            "name",
-            3,
-            "hl7.fhir.r4.core@4.0.1");
+            "package-lifecycle",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://hl7.org/fhir/SearchParameter/Patient-name",
+                "name",
+                "Patient",
+                "Patient.name",
+                SearchParamType.String,
+                "hl7.fhir.r4.core@4.0.1",
+                null,
+                3,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow);
         yield return new SourceEvent(
             6,
             "package-lifecycle",
@@ -388,6 +510,107 @@ public class PackageSearchParameterInheritanceTests
                 null,
                 null,
                 null),
+            DateTimeOffset.UtcNow);
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> CommittedOverrideEvents()
+    {
+        await foreach (var row in LifecycleEvents())
+        {
+            yield return row;
+        }
+
+        yield return new SourceEvent(
+            7,
+            "package-lifecycle",
+            nameof(SearchParameterTransitionCommitted),
+            new SearchParameterTransitionCommitted(3, [6], [6]),
+            DateTimeOffset.UtcNow);
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> RestoredBasePendingEvents()
+    {
+        await Task.CompletedTask;
+        yield return Activation(
+            1,
+            "http://hl7.org/fhir/SearchParameter/Patient-identifier",
+            "identifier",
+            1,
+            "hl7.fhir.r4.core@4.0.1");
+        yield return new SourceEvent(
+            2,
+            "package-restore",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://example.org/SearchParameter/identifier",
+                "identifier",
+                "Patient",
+                "Patient.identifier",
+                SearchParamType.Token,
+                "custom.package@1.0",
+                new OverrideInfo("http://hl7.org/fhir/SearchParameter/Patient-identifier", 1),
+                1,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow);
+        yield return new SourceEvent(
+            3,
+            "package-restore",
+            nameof(SearchParameterTransitionCommitted),
+            new SearchParameterTransitionCommitted(1, [2], [2]),
+            DateTimeOffset.UtcNow);
+        yield return new SourceEvent(
+            4,
+            "package-restore",
+            nameof(SearchParameterDeactivated),
+            new SearchParameterDeactivated(
+                "http://example.org/SearchParameter/identifier",
+                "identifier",
+                "Patient",
+                "custom.package@1.0"),
+            DateTimeOffset.UtcNow);
+        yield return new SourceEvent(
+            5,
+            "package-restore",
+            nameof(SearchParameterTransitionCommitted),
+            new SearchParameterTransitionCommitted(1, [4], [4]),
+            DateTimeOffset.UtcNow);
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> SharedIdentityTransitionEvents()
+    {
+        await Task.CompletedTask;
+        yield return Activation(
+            1,
+            "http://hl7.org/fhir/SearchParameter/Patient-identifier",
+            "identifier",
+            1,
+            "hl7.fhir.r4.core@4.0.1");
+        yield return new SourceEvent(
+            2,
+            "package-shared-identity",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://example.org/SearchParameter/identifier",
+                "identifier",
+                "Patient",
+                "Patient.identifier",
+                SearchParamType.Token,
+                "custom.package@1.0",
+                new OverrideInfo("http://hl7.org/fhir/SearchParameter/Patient-identifier", 1),
+                1,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow);
+        yield return new SourceEvent(
+            3,
+            "package-shared-identity",
+            nameof(SearchParameterTransitionCommitted),
+            new SearchParameterTransitionCommitted(1, [2], [2]),
             DateTimeOffset.UtcNow);
     }
 

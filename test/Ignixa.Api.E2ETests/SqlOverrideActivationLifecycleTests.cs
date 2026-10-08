@@ -96,7 +96,7 @@ public class SqlOverrideActivationLifecycleTests
     }
 
     [SqlFact]
-    public async Task GivenInProcessBaseParameter_WhenOverrideIsFirstEventSourcedActivation_ThenItUsesDistinctIdentity()
+    public async Task GivenInProcessBaseParameter_WhenOverrideIsActivatedAndReindexed_ThenItUsesSharedIdentity()
     {
         var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
             ?? throw new InvalidOperationException("A SQL test connection is required.");
@@ -109,50 +109,171 @@ public class SqlOverrideActivationLifecycleTests
         try
         {
             await using var template = new IgnixaApiFixture();
-            await using var host = CreateHost(template, connectionString);
+            await using var host = CreateHost(template, connectionString, fastReindex: true);
             using var client = host.CreateClient();
             var cache = await host.Services.GetRequiredService<SqlServerSearchIndexCacheRegistry>()
                 .GetOrCreateAsync(1, CancellationToken.None);
             var baseId = await cache.GetSearchParamIdAsync(BaseUrl, CancellationToken.None)
                 ?? throw new InvalidOperationException("Missing in-process base identifier ID.");
-            var patientId = $"pending-override-{Guid.NewGuid():N}";
-            using (var body = new StringContent($$"""
-                {"resourceType":"Patient","id":"{{patientId}}","identifier":[{"system":"{{System}}","value":"pending-override"}]}
-                """, Encoding.UTF8, "application/fhir+json"))
-            {
-                using var writeResponse = await client.PutAsync($"/tenant/1/Patient/{patientId}", body);
-                writeResponse.StatusCode.ShouldBe(HttpStatusCode.Created, await writeResponse.Content.ReadAsStringAsync());
-            }
+            var beforeId = $"before-override-{Guid.NewGuid():N}";
+            var afterId = $"after-override-{Guid.NewGuid():N}";
+            await PutPatientAsync(client, beforeId, "shared-identity");
 
             await ActivateAsync(host.Services, PackageId, "distinct", PackageUrl, BaseUrl);
 
-            var overrideId = await cache.GetSearchParamIdAsync(PackageUrl, CancellationToken.None)
-                ?? throw new InvalidOperationException("Missing package override identifier ID.");
-            overrideId.ShouldNotBe(baseId);
             var owner = host.Services.GetRequiredService<ConformanceState>()
-                .GetSearchParameter("Patient", "identifier")!;
-            owner.Canonical.ShouldBe(PackageUrl);
-            owner.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending);
-            owner.OverridesCanonical.ShouldBeNull();
+                .FindByCanonical(PackageUrl)!;
+            owner.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Staged);
+            owner.OverridesCanonical.ShouldBe(BaseUrl);
 
-            using var searchRequest = new HttpRequestMessage(
+            await PutPatientAsync(client, afterId, "shared-identity");
+            RenewLease(host.Services);
+
+            using var strictRequest = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|pending-override")}");
-            searchRequest.Headers.Add("Prefer", "handling=strict");
-            using var searchResponse = await client.SendAsync(searchRequest);
-            var searchBody = await searchResponse.Content.ReadAsStringAsync();
-            searchResponse.StatusCode.ShouldBe(HttpStatusCode.OK, searchBody);
-            JsonNode.Parse(searchBody)!["entry"]!
-                .AsArray()
-                .Select(entry => entry!["resource"]!["id"]!.GetValue<string>())
-                .ShouldContain(patientId);
+                $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|not-yet-searchable")}");
+            strictRequest.Headers.Add("Prefer", "handling=strict");
+            using var strictResponse = await client.SendAsync(strictRequest);
+            strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
+
+            RenewLease(host.Services);
+            using var lenientRequest = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|not-yet-searchable")}");
+            lenientRequest.Headers.Add("Prefer", "handling=lenient");
+            using var lenientResponse = await client.SendAsync(lenientRequest);
+            var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
+            lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
+            JsonNode.Parse(lenientBody)!["entry"]!.AsArray()
+                .Select(entry => entry!["resource"])
+                .ShouldContain(resource =>
+                    resource!["resourceType"]!.GetValue<string>() == "OperationOutcome" &&
+                    resource["issue"]![0]!["severity"]!.GetValue<string>() == "warning");
+
+            (await SpinWaitAsync(
+                () => host.Services.GetRequiredService<ConformanceState>()
+                    .FindByCanonical(PackageUrl)?.Status ==
+                    Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending,
+                TimeSpan.FromSeconds(20))).ShouldBeTrue();
+            var definitions = host.Services.GetRequiredService<IFhirVersionContext>()
+                .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+            var resolver = new SqlServerSymbolResolver(cache);
+            (await resolver.GetSearchParamIdAsync(
+                definitions.GetSearchParameter("Patient", "identifier"),
+                CancellationToken.None)).ShouldBe(baseId);
+            using var reindexResponse = await client.PostAsync(
+                "/tenant/1/$reindex",
+                new StringContent("""{"resourceType":"Parameters"}""", Encoding.UTF8, "application/fhir+json"));
+            var reindexBody = await reindexResponse.Content.ReadAsStringAsync();
+            reindexResponse.StatusCode.ShouldBe(HttpStatusCode.Created, reindexBody);
+            var jobId = JsonNode.Parse(reindexBody)!["parameter"]!.AsArray()
+                .Single(parameter => parameter!["name"]!.GetValue<string>() == "id")!["valueString"]!
+                .GetValue<string>();
+            await WaitForReindexAsync(client, jobId);
+            RenewLease(host.Services);
+            var searchableDefinitions = host.Services.GetRequiredService<IFhirVersionContext>()
+                .GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
+            var searchable = searchableDefinitions.GetSearchParameter("Patient", "identifier");
+            searchable.OverridesUrl.ShouldBe(new Uri(BaseUrl));
+            (await resolver.GetSearchParamIdAsync(searchable, CancellationToken.None)).ShouldBe(baseId);
+            var packageId = await cache.GetSearchParamIdAsync(PackageUrl, CancellationToken.None);
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                using var command = new SqlCommand(
+                    """
+                    SELECT token.SearchParamId, resource.ResourceId
+                    FROM dbo.TokenSearchParam token
+                    JOIN dbo.System system ON system.SystemId = token.SystemId
+                    JOIN dbo.Resource resource
+                      ON resource.ResourceTypeId = token.ResourceTypeId
+                     AND resource.ResourceSurrogateId = token.ResourceSurrogateId
+                    WHERE token.Code = @Code AND system.Value = @System
+                      AND resource.IsHistory = 0
+                      AND resource.IsDeleted = 0
+                    """,
+                    connection);
+                command.Parameters.Add("@Code", SqlDbType.NVarChar, 256).Value = "shared-identity";
+                command.Parameters.Add("@System", SqlDbType.NVarChar, 256).Value = System;
+                await using var reader = await command.ExecuteReaderAsync();
+                var idsBySearchParamId = new Dictionary<short, List<string>>();
+                while (await reader.ReadAsync())
+                {
+                    var searchParamId = reader.GetInt16(0);
+                    if (!idsBySearchParamId.TryGetValue(searchParamId, out var ids))
+                    {
+                        ids = [];
+                        idsBySearchParamId[searchParamId] = ids;
+                    }
+                    ids.Add(reader.GetString(1));
+                }
+                idsBySearchParamId[baseId].ShouldContain(beforeId);
+                idsBySearchParamId[baseId].ShouldContain(afterId);
+                if (packageId is { } physicalPackageId)
+                {
+                    idsBySearchParamId.ShouldNotContainKey(physicalPackageId);
+                }
+            }
+
+            RenewLease(host.Services);
+            using var compartmentResponse = await client.GetAsync(
+                $"/tenant/1/Patient/{beforeId}/Patient?identifier={Uri.EscapeDataString($"{System}|shared-identity")}");
+            compartmentResponse.StatusCode.ShouldBe(
+                HttpStatusCode.OK,
+                await compartmentResponse.Content.ReadAsStringAsync());
         }
+
         finally
         {
             using var pool = new SqlConnection(connectionString);
             SqlConnection.ClearPool(pool);
             await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedDatabase}");
         }
+    }
+
+    private static async Task PutPatientAsync(
+        HttpClient client,
+        string patientId,
+        string value,
+        HttpStatusCode expectedStatus = HttpStatusCode.Created)
+    {
+        using var body = new StringContent($$"""
+            {"resourceType":"Patient","id":"{{patientId}}","identifier":[{"system":"{{System}}","value":"{{value}}"}]}
+            """, Encoding.UTF8, "application/fhir+json");
+        using var response = await client.PutAsync($"/tenant/1/Patient/{patientId}", body);
+        response.StatusCode.ShouldBe(expectedStatus, await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task WaitForReindexAsync(HttpClient client, string jobId)
+    {
+        var expires = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < expires)
+        {
+            using var response = await client.GetAsync($"/tenant/1/$reindex/{jobId}");
+            var body = await response.Content.ReadAsStringAsync();
+            response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+            var status = JsonNode.Parse(body)!["parameter"]!.AsArray()
+                .Single(parameter => parameter!["name"]!.GetValue<string>() == "status")!["valueString"]!
+                .GetValue<string>();
+            if (status == "Completed")
+            {
+                return;
+            }
+            if (status is "Failed" or "Cancelled")
+            {
+                throw new InvalidOperationException($"Reindex job {jobId} ended as {status}: {body}");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        throw new TimeoutException($"Reindex job {jobId} did not complete.");
+    }
+
+    private static void RenewLease(IServiceProvider services)
+    {
+        var lease = services.GetRequiredService<IConformanceLease>();
+        lease.Renew(lease.CaptureStart());
     }
 
     private static async Task AssertLifecycleAsync(string connectionString, bool legacyEvents)
@@ -313,7 +434,8 @@ public class SqlOverrideActivationLifecycleTests
     private static WebApplicationFactory<Program> CreateHost(
         IgnixaApiFixture template,
         string connectionString,
-        bool shortTransitionGrace = false) =>
+        bool shortTransitionGrace = false,
+        bool fastReindex = false) =>
         template.WithWebHostBuilder(builder =>
         {
             if (shortTransitionGrace)
@@ -321,6 +443,12 @@ public class SqlOverrideActivationLifecycleTests
                 builder.UseSetting("Conformance:MaxStaleness", "00:00:00.050");
                 builder.UseSetting("Conformance:TransitionGrace", "00:00:00.100");
                 builder.UseSetting("Reindex:BarrierDelay", "00:00:00.050");
+            }
+            else if (fastReindex)
+            {
+                builder.UseSetting("Conformance:MaxStaleness", "00:00:10");
+                builder.UseSetting("Conformance:TransitionGrace", "00:00:15");
+                builder.UseSetting("Reindex:BarrierDelay", "00:00:10");
             }
 
             builder.ConfigureAppConfiguration((_, configuration) =>
