@@ -63,6 +63,16 @@ public class OperationsSegment : ICapabilitySegment
                 continue;
             }
 
+            if (feature is ICapabilityContextAwarePackageFeature contextAwareFeature &&
+                !await contextAwareFeature.IsAvailableAsync(context, cancellationToken))
+            {
+                _logger.LogDebug(
+                    "Feature {PackageId} is unavailable for tenant {TenantId}",
+                    feature.PackageId,
+                    context.TenantId?.ToString() ?? "default");
+                continue;
+            }
+
             // Collect system operations
             foreach (var op in feature.SystemOperations)
             {
@@ -152,7 +162,7 @@ public class OperationsSegment : ICapabilitySegment
         }
     }
 
-    public ValueTask<string> GetVersionHashAsync(
+    public async ValueTask<string> GetVersionHashAsync(
         CapabilityContext context,
         CancellationToken cancellationToken)
     {
@@ -172,6 +182,13 @@ public class OperationsSegment : ICapabilitySegment
 
             featureDeclarations.Append(feature.PackageId);
             featureDeclarations.Append(':');
+
+            if (feature is ICapabilityContextAwarePackageFeature contextAwareFeature &&
+                !await contextAwareFeature.IsAvailableAsync(context, cancellationToken))
+            {
+                featureDeclarations.Append("unavailable;");
+                continue;
+            }
 
             foreach (var op in feature.SystemOperations.OrderBy(x => x, StringComparer.Ordinal))
             {
@@ -198,7 +215,7 @@ public class OperationsSegment : ICapabilitySegment
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(featureDeclarations.ToString()));
         var hashString = BitConverter.ToString(hash).Replace("-", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
-        return ValueTask.FromResult(hashString);
+        return hashString;
     }
 
     private static string GetFhirVersionString(FhirVersion fhirVersion)

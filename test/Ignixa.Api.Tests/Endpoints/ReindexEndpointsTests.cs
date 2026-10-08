@@ -1,10 +1,12 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Api.Endpoints;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -85,6 +87,120 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOnlyTheOperationDefinitionIsMapped()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSingleton<IOptions<ReindexOptions>>(
+            Options.Create(new ReindexOptions { Enabled = false }));
+        await using var app = builder.Build();
+
+        app.MapReindexEndpoints();
+
+        var endpointNames = ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(source => source.Endpoints)
+            .Select(endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName)
+            .ToArray();
+
+        endpointNames.ShouldNotContain("CreateReindexForTenant");
+        endpointNames.ShouldNotContain("ListReindexForTenant");
+        endpointNames.ShouldContain("GetReindexOperationDefinitionForTenant");
+    }
+
+    [Fact]
+    public async Task GivenEmptyChunkedRequestBody_WhenCreating_ThenUsesDefaultParameters()
+    {
+        var response = await SendAsync(
+            "CreateReindexForTenant",
+            body: string.Empty,
+            setContentLength: false);
+
+        response.StatusCode.ShouldBe(StatusCodes.Status201Created);
+        _createCommands.ShouldHaveSingleItem();
+    }
+
+    [Theory]
+    [InlineData("maximumNumberOfResourcesPerQuery", "valueInteger", 10)]
+    [InlineData("maximumNumberOfResourcesPerWrite", "valueInteger", 10)]
+    [InlineData("maximumConcurrency", "valueInteger", 2)]
+    [InlineData("queryDelayIntervalInMilliseconds", "valueInteger", 5)]
+    [InlineData("targetResourceTypes", "valueString", "Patient")]
+    public async Task GivenDuplicateSingletonParameter_WhenCreating_ThenReturnsBadRequestWithoutDispatching(
+        string name,
+        string valueName,
+        object value)
+    {
+        var response = await SendAsync("CreateReindexForTenant", body: Parameters(
+            (name, valueName, value),
+            (name, valueName, value)));
+
+        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        _createCommands.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("3.0", "valueDecimal", "valueString")]
+    [InlineData("4.0", "valueDecimal", "valueString")]
+    [InlineData("4.3", "valueDecimal", "valueString")]
+    [InlineData("5.0", "valueInteger64", "valueInteger64")]
+    public async Task GivenValuesAboveInt32Max_WhenGettingStatus_ThenUsesVersionAppropriateFhirTypes(
+        string fhirVersion,
+        string countValueName,
+        string identifierValueName)
+    {
+        const long largeValue = (long)int.MaxValue + 1;
+        var status = CreateStatus();
+        _status = status with
+        {
+            Progress = JsonNode.Parse($$"""
+                {
+                  "totalResourcesToReindex": {{largeValue}},
+                  "resourcesSuccessfullyReindexed": {{largeValue}},
+                  "conflicts": {{largeValue}},
+                  "tenants": [{
+                    "tenantId": 1,
+                    "cutoffTransactionId": {{largeValue}},
+                    "cutoffSurrogateId": {{largeValue}},
+                    "resourcesToReindex": {{largeValue}},
+                    "resourcesReindexed": {{largeValue}},
+                    "conflicts": {{largeValue}},
+                    "failedResources": {{largeValue}}
+                  }]
+                }
+                """),
+            Definition = new ReindexJobDefinition
+            {
+                TargetEventId = largeValue,
+                TenantIds = status.Definition!.TenantIds,
+                ResourceTypes = status.Definition.ResourceTypes,
+                SearchParameters = status.Definition.SearchParameters,
+                MaximumNumberOfResourcesPerQuery = status.Definition.MaximumNumberOfResourcesPerQuery,
+                MaximumNumberOfResourcesPerWrite = status.Definition.MaximumNumberOfResourcesPerWrite,
+                MaximumConcurrency = status.Definition.MaximumConcurrency,
+                QueryDelayIntervalInMilliseconds = status.Definition.QueryDelayIntervalInMilliseconds,
+                Trigger = status.Definition.Trigger
+            }
+        };
+
+        var response = await SendAsync(
+            "GetReindexForTenant",
+            fhirVersion: fhirVersion);
+
+        response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+        ValueProperty(response.Body, "totalResourcesToReindex").ShouldBe(countValueName);
+        ValueProperty(response.Body, "resourcesSuccessfullyReindexed").ShouldBe(countValueName);
+        ValueProperty(response.Body, "conflicts").ShouldBe(countValueName);
+        ValueProperty(response.Body, "targetEventId").ShouldBe(identifierValueName);
+
+        var tenant = Parts(response.Body, "tenant").ShouldHaveSingleItem();
+        ValueProperty(tenant, "cutoffTransactionId").ShouldBe(identifierValueName);
+        ValueProperty(tenant, "cutoffSurrogateId").ShouldBe(identifierValueName);
+        ValueProperty(tenant, "resourcesToReindex").ShouldBe(countValueName);
+        ValueProperty(tenant, "resourcesReindexed").ShouldBe(countValueName);
+        ValueProperty(tenant, "conflicts").ShouldBe(countValueName);
+        ValueProperty(tenant, "failedResources").ShouldBe(countValueName);
+    }
+
+    [Fact]
     public async Task GivenActiveJob_WhenCreating_ThenReturnsConflictOutcomeAndActiveLocation()
     {
         _createResult = new ActiveReindexJobResult("active-job");
@@ -124,7 +240,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         Value(response.Body, "maximumConcurrency").ShouldBe(2);
         Value(response.Body, "queryDelayIntervalInMilliseconds").ShouldBe(5);
         Value(response.Body, "trigger").ShouldBe("Manual");
-        Value(response.Body, "targetEventId").ShouldBe(42);
+        Value(response.Body, "targetEventId").ShouldBe("42");
         Values(response.Body, "resources").ShouldBe(["Patient", "Observation"]);
         Values(response.Body, "searchParams").ShouldBe(["http://example.test/SearchParameter/name"]);
         Values(response.Body, "notCovered").ShouldBe(["http://example.test/SearchParameter/not-covered"]);
@@ -133,8 +249,8 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         var tenants = Parts(response.Body, "tenant");
         tenants.Count.ShouldBe(2);
         Value(tenants[0], "tenantId").ShouldBe(1);
-        Value(tenants[0], "cutoffTransactionId").ShouldBe(10L);
-        Value(tenants[0], "cutoffSurrogateId").ShouldBe(20L);
+        Value(tenants[0], "cutoffTransactionId").ShouldBe("10");
+        Value(tenants[0], "cutoffSurrogateId").ShouldBe("20");
         Value(tenants[0], "resourcesToReindex").ShouldBe(5);
         Value(tenants[1], "tenantId").ShouldBe(2);
 
@@ -333,8 +449,10 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         int tenantId = 1,
         string jobId = "job",
         string? body = null,
-        string? prefer = null) =>
-        await SendAsync(_app, endpointName, tenantId, jobId, body, prefer);
+        string? prefer = null,
+        bool setContentLength = true,
+        string fhirVersion = "4.0") =>
+        await SendAsync(_app, endpointName, tenantId, jobId, body, prefer, setContentLength, fhirVersion);
 
     private static async Task<Response> SendAsync(
         WebApplication app,
@@ -342,13 +460,21 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         int tenantId = 1,
         string jobId = "job",
         string? body = null,
-        string? prefer = null)
+        string? prefer = null,
+        bool setContentLength = true,
+        string fhirVersion = "4.0")
     {
         var endpoint = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints)
             .Single(candidate => candidate.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == endpointName);
         await using var scope = app.Services.CreateAsyncScope();
         var context = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
         context.Items["TenantId"] = tenantId;
+        context.Items["TenantConfiguration"] = new TenantConfiguration
+        {
+            TenantId = tenantId,
+            DisplayName = "Test tenant",
+            FhirVersion = fhirVersion
+        };
         context.Request.RouteValues["tenantId"] = tenantId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         context.Request.RouteValues["jobId"] = jobId;
         context.Request.Scheme = "http";
@@ -363,7 +489,10 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         {
             var bytes = Encoding.UTF8.GetBytes(body);
             context.Request.Body = new MemoryStream(bytes);
-            context.Request.ContentLength = bytes.Length;
+            if (setContentLength)
+            {
+                context.Request.ContentLength = bytes.Length;
+            }
             context.Request.ContentType = "application/fhir+json";
         }
         if (prefer is not null)
@@ -421,6 +550,13 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             .Single(property => property.Key.StartsWith("value", StringComparison.Ordinal))
             .Value
         ?? throw new InvalidOperationException("Expected a Parameters value.");
+
+    private static string ValueProperty(JsonNode parameters, string name) =>
+        ParameterArray(parameters)
+            .Single(parameter => parameter!["name"]!.GetValue<string>() == name)!
+            .AsObject()
+            .Single(property => property.Key.StartsWith("value", StringComparison.Ordinal))
+            .Key;
 
     private static object ConvertValue(JsonNode value)
     {

@@ -1,11 +1,16 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Domain.Models;
 using Ignixa.Models;
+using Ignixa.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -20,10 +25,6 @@ public static class ReindexEndpoints
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>();
 
-        tenantEndpoints.MapPost("/$reindex", CreateForTenantAsync).WithName("CreateReindexForTenant");
-        tenantEndpoints.MapGet("/$reindex", ListForTenantAsync).WithName("ListReindexForTenant");
-        tenantEndpoints.MapGet("/$reindex/{jobId}", GetForTenantAsync).WithName("GetReindexForTenant");
-        tenantEndpoints.MapDelete("/$reindex/{jobId}", CancelForTenantAsync).WithName("CancelReindexForTenant");
         tenantEndpoints.MapGet("/OperationDefinition/reindex", GetOperationDefinition)
             .WithName("GetReindexOperationDefinitionForTenant");
 
@@ -32,12 +33,22 @@ public static class ReindexEndpoints
             .AddEndpointFilter<FhirAuditFilter>()
             .AddEndpointFilter<FhirMetricsFilter>();
 
+        systemEndpoints.MapGet("/OperationDefinition/reindex", GetOperationDefinition)
+            .WithName("GetReindexOperationDefinition");
+
+        if (endpoints.ServiceProvider.GetService<IOptions<ReindexOptions>>()?.Value.Enabled is false)
+        {
+            return endpoints;
+        }
+
+        tenantEndpoints.MapPost("/$reindex", CreateForTenantAsync).WithName("CreateReindexForTenant");
+        tenantEndpoints.MapGet("/$reindex", ListForTenantAsync).WithName("ListReindexForTenant");
+        tenantEndpoints.MapGet("/$reindex/{jobId}", GetForTenantAsync).WithName("GetReindexForTenant");
+        tenantEndpoints.MapDelete("/$reindex/{jobId}", CancelForTenantAsync).WithName("CancelReindexForTenant");
         systemEndpoints.MapPost("/$reindex", CreateSystemAsync).WithName("CreateReindex");
         systemEndpoints.MapGet("/$reindex", ListSystemAsync).WithName("ListReindex");
         systemEndpoints.MapGet("/$reindex/{jobId}", GetSystemAsync).WithName("GetReindex");
         systemEndpoints.MapDelete("/$reindex/{jobId}", CancelSystemAsync).WithName("CancelReindex");
-        systemEndpoints.MapGet("/OperationDefinition/reindex", GetOperationDefinition)
-            .WithName("GetReindexOperationDefinition");
 
         return endpoints;
     }
@@ -143,7 +154,8 @@ public static class ReindexEndpoints
                         false,
                         null,
                         null,
-                        null)));
+                        null),
+                        GetFhirVersion(context)));
             }
             case ActiveReindexJobResult active:
                 context.Response.Headers["Content-Location"] = GetStatusUrl(context, active.ActiveJobId);
@@ -172,7 +184,7 @@ public static class ReindexEndpoints
         var parameters = new JsonObject
         {
             ["resourceType"] = "Parameters",
-            ["parameter"] = new JsonArray(jobs.Select(BuildJobPart).ToArray())
+            ["parameter"] = new JsonArray(jobs.Select(job => BuildJobPart(job, GetFhirVersion(context))).ToArray())
         };
         return FhirResponse(StatusCodes.Status200OK, parameters);
     }
@@ -186,7 +198,7 @@ public static class ReindexEndpoints
         var status = await mediator.SendAsync(new GetReindexStatusQuery(jobId), cancellationToken);
         return status is null
             ? Error(StatusCodes.Status404NotFound, $"Reindex job '{jobId}' was not found.")
-            : FhirResponse(StatusCodes.Status200OK, BuildJobParameters(status));
+            : FhirResponse(StatusCodes.Status200OK, BuildJobParameters(status, GetFhirVersion(context)));
     }
 
     private static async Task<IResult> CancelAsync(
@@ -263,14 +275,26 @@ public static class ReindexEndpoints
         JsonObject? body;
         try
         {
-            body = await JsonNode.ParseAsync(context.Request.Body, cancellationToken: cancellationToken) as JsonObject;
+            using var reader = new StreamReader(context.Request.Body, leaveOpen: true);
+            var requestBody = await reader.ReadToEndAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(requestBody))
+            {
+                return (new CreateReindexJobCommand(), null);
+            }
+
+            body = JsonNode.Parse(requestBody) as JsonObject;
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
         {
             return (null, "Invalid request body. Expected a FHIR Parameters resource.");
         }
 
-        if (body is null ||
+        if (body is null)
+        {
+            return (new CreateReindexJobCommand(), null);
+        }
+
+        if (
             body["resourceType"] is not JsonValue resourceType ||
             !resourceType.TryGetValue<string>(out var resourceTypeName) ||
             resourceTypeName != "Parameters")
@@ -288,6 +312,7 @@ public static class ReindexEndpoints
         int? maximumConcurrency = null;
         int? queryDelayIntervalInMilliseconds = null;
         var targetResourceTypes = new List<string>();
+        var parameterNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var parameter in body["parameter"]?.AsArray() ?? [])
         {
             if (parameter is not JsonObject value ||
@@ -295,6 +320,11 @@ public static class ReindexEndpoints
                 !nameValue.TryGetValue<string>(out var name))
             {
                 return (null, "Each Parameters.parameter must have a name.");
+            }
+
+            if (!parameterNames.Add(name))
+            {
+                return (null, $"Parameter '{name}' must not be repeated.");
             }
 
             switch (name)
@@ -359,7 +389,7 @@ public static class ReindexEndpoints
             (value = parsed) is not null;
     }
 
-    private static JsonObject BuildJobParameters(ReindexStatusResult status)
+    private static JsonObject BuildJobParameters(ReindexStatusResult status, FhirVersion fhirVersion)
     {
         var parameters = new JsonObject
         {
@@ -375,12 +405,12 @@ public static class ReindexEndpoints
         AddValue(values, "lastModified", "valueDateTime", status.LastModified);
 
         var progress = status.Progress as JsonObject;
-        AddProgressValue(values, progress, "totalResourcesToReindex", "valueInteger");
-        AddProgressValue(values, progress, "resourcesSuccessfullyReindexed", "valueInteger");
+        AddProgressValue(values, progress, "totalResourcesToReindex", CountValueName(fhirVersion));
+        AddProgressValue(values, progress, "resourcesSuccessfullyReindexed", CountValueName(fhirVersion));
         AddProgressValue(values, progress, "progress", "valueDecimal", status.Status);
         AddProgressValue(values, progress, "phase", "valueString");
         AddProgressValue(values, progress, "cancellationReason", "valueString");
-        AddProgressValue(values, progress, "conflicts", "valueInteger");
+        AddProgressValue(values, progress, "conflicts", CountValueName(fhirVersion));
         AddValue(values, "failureDetails", "valueString", status.ErrorMessage);
 
         if (status.Definition is { } definition)
@@ -390,7 +420,7 @@ public static class ReindexEndpoints
             AddValue(values, "maximumConcurrency", "valueInteger", definition.MaximumConcurrency);
             AddValue(values, "queryDelayIntervalInMilliseconds", "valueInteger", definition.QueryDelayIntervalInMilliseconds);
             AddValue(values, "trigger", "valueString", definition.Trigger);
-            AddValue(values, "targetEventId", "valueInteger", definition.TargetEventId);
+            AddIdentifierValue(values, "targetEventId", definition.TargetEventId, fhirVersion);
             foreach (var resourceType in definition.ResourceTypes)
             {
                 AddValue(values, "resources", "valueString", resourceType);
@@ -403,7 +433,7 @@ public static class ReindexEndpoints
 
         AddStringArray(values, "notCovered", progress?["notCovered"] as JsonArray);
         AddStringArray(values, "ignoredLifecycleEvents", progress?["ignoredLifecycleEvents"] as JsonArray);
-        AddTenantParts(values, progress?["tenants"] as JsonArray);
+        AddTenantParts(values, progress?["tenants"] as JsonArray, fhirVersion);
         AddFailedResources(values, progress?["failedResources"] as JsonArray);
         AddFailedResources(values, status.Result?["failedResources"] as JsonArray);
         return parameters;
@@ -421,9 +451,9 @@ public static class ReindexEndpoints
         return parameters;
     }
 
-    private static JsonObject BuildJobPart(ReindexStatusResult status)
+    private static JsonObject BuildJobPart(ReindexStatusResult status, FhirVersion fhirVersion)
     {
-        var job = BuildJobParameters(status);
+        var job = BuildJobParameters(status, fhirVersion);
         return new JsonObject
         {
             ["name"] = "job",
@@ -431,19 +461,19 @@ public static class ReindexEndpoints
         };
     }
 
-    private static void AddTenantParts(JsonArray parameters, JsonArray? tenants)
+    private static void AddTenantParts(JsonArray parameters, JsonArray? tenants, FhirVersion fhirVersion)
     {
         foreach (var tenant in tenants?.OfType<JsonObject>() ?? [])
         {
             var parts = new JsonArray();
             AddJsonValue(parts, "tenantId", "valueInteger", tenant["tenantId"]);
-            AddJsonValue(parts, "cutoffTransactionId", "valueInteger", tenant["cutoffTransactionId"]);
-            AddJsonValue(parts, "cutoffSurrogateId", "valueInteger", tenant["cutoffSurrogateId"]);
+            AddIdentifierJsonValue(parts, "cutoffTransactionId", tenant["cutoffTransactionId"], fhirVersion);
+            AddIdentifierJsonValue(parts, "cutoffSurrogateId", tenant["cutoffSurrogateId"], fhirVersion);
             AddJsonValue(parts, "status", "valueString", tenant["status"]);
-            AddJsonValue(parts, "resourcesToReindex", "valueInteger", tenant["resourcesToReindex"]);
-            AddJsonValue(parts, "resourcesReindexed", "valueInteger", tenant["resourcesReindexed"]);
-            AddJsonValue(parts, "conflicts", "valueInteger", tenant["conflicts"]);
-            AddJsonValue(parts, "failedResources", "valueInteger", tenant["failedResources"]);
+            AddJsonValue(parts, "resourcesToReindex", CountValueName(fhirVersion), tenant["resourcesToReindex"]);
+            AddJsonValue(parts, "resourcesReindexed", CountValueName(fhirVersion), tenant["resourcesReindexed"]);
+            AddJsonValue(parts, "conflicts", CountValueName(fhirVersion), tenant["conflicts"]);
+            AddJsonValue(parts, "failedResources", CountValueName(fhirVersion), tenant["failedResources"]);
             parameters.Add(new JsonObject { ["name"] = "tenant", ["part"] = parts });
         }
     }
@@ -504,6 +534,40 @@ public static class ReindexEndpoints
         }
     }
 
+    private static string CountValueName(FhirVersion fhirVersion) =>
+        fhirVersion == FhirVersion.R5 ? "valueInteger64" : "valueDecimal";
+
+    private static string IdentifierValueName(FhirVersion fhirVersion) =>
+        fhirVersion == FhirVersion.R5 ? "valueInteger64" : "valueString";
+
+    private static void AddIdentifierValue(
+        JsonArray parameters,
+        string name,
+        long value,
+        FhirVersion fhirVersion) =>
+        AddValue(
+            parameters,
+            name,
+            IdentifierValueName(fhirVersion),
+            fhirVersion == FhirVersion.R5
+                ? value
+                : value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    private static void AddIdentifierJsonValue(
+        JsonArray parameters,
+        string name,
+        JsonNode? value,
+        FhirVersion fhirVersion)
+    {
+        if (value is not JsonValue jsonValue ||
+            !jsonValue.TryGetValue<long>(out var identifier))
+        {
+            return;
+        }
+
+        AddIdentifierValue(parameters, name, identifier, fhirVersion);
+    }
+
     private static IResult FhirResponse(int statusCode, JsonObject body) =>
         new FhirResult(statusCode, Encoding.UTF8.GetBytes(body.ToJsonString()));
 
@@ -533,6 +597,11 @@ public static class ReindexEndpoints
         tenantId == 0
             ? Task.FromResult<IResult>(Error(StatusCodes.Status404NotFound, "Tenant 0 is reserved for system operations."))
             : next();
+
+    private static FhirVersion GetFhirVersion(HttpContext context) =>
+        context.Items["TenantConfiguration"] is TenantConfiguration tenantConfiguration
+            ? FhirSpecificationExtensions.FromVersionString(tenantConfiguration.FhirVersion)
+            : FhirVersion.R4;
 
     private static string GetStatusUrl(HttpContext context, string jobId) =>
         $"{context.Request.PathBase}{context.Request.Path}/{jobId}";

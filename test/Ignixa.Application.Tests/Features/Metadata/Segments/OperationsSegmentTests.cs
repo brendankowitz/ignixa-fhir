@@ -8,12 +8,15 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Features.Metadata;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Microsoft.Extensions.Options;
 using Xunit;
 using Ignixa.Serialization.TestSupport;
 
@@ -260,6 +263,41 @@ public class OperationsSegmentTests
         graphQlOp.ShouldNotBeNull("graphql operation should be listed as a system operation");
         graphQlOp["definition"]?.GetValue<string>()
             .ShouldBe("http://hl7.org/fhir/OperationDefinition/Resource-graphql");
+    }
+
+    [Fact]
+    public async Task GivenUnavailableReindexProvider_WhenApplyingSegment_ThenOmitsReindexOperation()
+    {
+        var repositories = Substitute.For<IFhirRepositoryFactory>();
+        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Substitute.For<IFhirRepository>()));
+        _features.Add(new ReindexFeature(
+            Options.Create(new ReindexOptions { Enabled = true }),
+            repositories));
+        var statement = new CapabilityStatementJsonNode();
+
+        await _segment.ApplyAsync(
+            statement,
+            new CapabilityContext(FhirVersion.R4, TenantId: 1),
+            CancellationToken.None);
+
+        statement.Rest.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenDisabledReindex_WhenApplyingSegment_ThenOmitsReindexOperation()
+    {
+        _features.Add(new ReindexFeature(
+            Options.Create(new ReindexOptions { Enabled = false }),
+            Substitute.For<IFhirRepositoryFactory>()));
+        var statement = new CapabilityStatementJsonNode();
+
+        await _segment.ApplyAsync(
+            statement,
+            new CapabilityContext(FhirVersion.R4, TenantId: 1),
+            CancellationToken.None);
+
+        statement.Rest.ShouldBeEmpty();
     }
 
     [Fact]
