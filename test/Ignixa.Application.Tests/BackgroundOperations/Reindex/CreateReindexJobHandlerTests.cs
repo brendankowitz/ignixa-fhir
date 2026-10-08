@@ -58,7 +58,7 @@ public class CreateReindexJobHandlerTests
     }
 
     [Fact]
-    public async Task GivenNoPendingParameters_WhenPeriodicReconciliationRuns_ThenSingletonLockIsNotTaken()
+    public async Task GivenTrulyIdleSystem_WhenPeriodicReconciliationRuns_ThenSingletonLockIsNotTaken()
     {
         var fixture = CreateFixture(withPendingParameter: false);
 
@@ -92,6 +92,81 @@ public class CreateReindexJobHandlerTests
         result.ShouldBeOfType<ActiveReindexJobResult>().ActiveJobId.ShouldBe("active");
         _ = fixture.JobLock.DidNotReceiveWithAnyArgs()
             .ExecuteAsync<CreateReindexJobResult>(default!, default);
+    }
+
+    [Fact]
+    public async Task GivenStaleActiveJob_WhenPeriodicReconciliationRuns_ThenSingletonLockIsTaken()
+    {
+        var fixture = CreateFixture();
+        await fixture.Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "stale",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = fixture.Now - TimeSpan.FromMinutes(3),
+            HeartbeatDate = fixture.Now - TimeSpan.FromMinutes(3)
+        }, CancellationToken.None);
+
+        _ = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            CancellationToken.None);
+
+        _ = fixture.JobLock.Received(1).ExecuteAsync<CreateReindexJobResult>(
+            Arg.Any<Func<CancellationToken, Task<CreateReindexJobResult>>>(),
+            CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task GivenCompletingJob_WhenPeriodicReconciliationRuns_ThenSingletonLockIsTaken()
+    {
+        var fixture = CreateFixture();
+        await fixture.Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "completing",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Completing",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = fixture.Now,
+            HeartbeatDate = fixture.Now
+        }, CancellationToken.None);
+
+        _ = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            CancellationToken.None);
+
+        _ = fixture.JobLock.Received(1).ExecuteAsync<CreateReindexJobResult>(
+            Arg.Any<Func<CancellationToken, Task<CreateReindexJobResult>>>(),
+            CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task GivenOrphanedReindexingParameter_WhenPeriodicReconciliationRuns_ThenSingletonLockIsTaken()
+    {
+        var fixture = CreateFixture();
+        fixture.State.ApplyAndTrack(new SourceEvent(
+            43,
+            "reindex:orphan",
+            nameof(SearchParameterReindexStarted),
+            new SearchParameterReindexStarted(
+                fixture.Target.Canonical,
+                fixture.Target.Code,
+                fixture.Target.ResourceType,
+                "orphaned-job",
+                fixture.Target.AffectedResourceTypes,
+                fixture.Target.ActivationEventId),
+            fixture.Now));
+
+        fixture.State.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(
+            Ignixa.Conformance.Events.Models.SearchParameterStatus.Reindexing);
+
+        _ = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            CancellationToken.None);
+
+        _ = fixture.JobLock.Received(1).ExecuteAsync<CreateReindexJobResult>(
+            Arg.Any<Func<CancellationToken, Task<CreateReindexJobResult>>>(),
+            CancellationToken.None);
     }
 
     [Fact]
@@ -692,7 +767,12 @@ public class CreateReindexJobHandlerTests
                 reconciler,
                 new ReindexAutomationStateStore(repository),
                 eventStore,
-                Options.Create(new ReindexOptions { BarrierDelay = TimeSpan.Zero })),
+                Options.Create(new ReindexOptions
+                {
+                    BarrierDelay = TimeSpan.Zero,
+                    OrphanGrace = TimeSpan.FromMinutes(2)
+                }),
+                timeProvider),
             repository,
             runtime,
             availability,
