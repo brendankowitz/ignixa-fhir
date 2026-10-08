@@ -238,7 +238,7 @@ public class PackageActivationPipelineTests
     }
 
     [Fact]
-    public async Task GivenUnknownFhirVersion_WhenBaseCodeIsShadowed_ThenActivationSkipsBaseSynthesis()
+    public async Task GivenUnknownFhirVersionWithSearchParameters_WhenActivated_ThenItIsRejected()
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();
         packageRepository.GetResourcesForActivationAsync(
@@ -261,10 +261,26 @@ public class PackageActivationPipelineTests
 
         var result = await pipeline.ActivateAsync("test.future", "1.0.0", CancellationToken.None);
 
+        result.Success.ShouldBeFalse();
+        result.Issues.ShouldContain(issue => issue.Code == "SP_UNKNOWN_FHIR_VERSION");
+        persistedEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenUnavailableOwnerWithoutReplacement_WhenAnotherPackageActivates_ThenValidationIsSkipped()
+    {
+        var result = await ActivateAgainstDisabledLeftoverAsync(commitDeactivation: false);
+
         result.Success.ShouldBeTrue();
-        persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>()
-            .ShouldHaveSingleItem()
-            .Overrides.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenDisabledOwnerLeftInLookup_WhenAnotherPackageActivates_ThenRootResolutionIgnoresIt()
+    {
+        var result = await ActivateAgainstDisabledLeftoverAsync(commitDeactivation: true);
+
+        result.Success.ShouldBeTrue();
+        result.PendingReindex.ShouldContain("Patient");
     }
 
     [Fact]
@@ -862,6 +878,71 @@ public class PackageActivationPipelineTests
         }
 
         return await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None);
+
+        void ApplyAndRecord(object data)
+        {
+            var sourceEvent = new SourceEvent(
+                persistedEvents.Count + 1,
+                "lifecycle:test",
+                data.GetType().Name,
+                data,
+                DateTimeOffset.UtcNow);
+            persistedEvents.Add(sourceEvent);
+            state.ApplyAndTrack(sourceEvent);
+        }
+    }
+
+    private static async Task<ActivationResult> ActivateAgainstDisabledLeftoverAsync(bool commitDeactivation)
+    {
+        const string oldCanonical = "http://example.org/SearchParameter/old-custom";
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.new",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource(
+                packageId: "test.new",
+                canonical: "http://example.org/SearchParameter/new-custom",
+                code: "custom-code",
+                expression: "Patient.active",
+                includeDerivedFrom: false)]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        ApplyAndRecord(new SearchParameterActivated(
+            oldCanonical,
+            "custom-code",
+            "Patient",
+            "Patient.active",
+            SearchParamType.Token,
+            "test.old@1.0.0",
+            null,
+            1,
+            null,
+            null,
+            null,
+            null));
+        ApplyAndRecord(new PackageActivated(
+            "test.old",
+            "1.0.0",
+            [new ActivatedResource("Patient", oldCanonical)]));
+        ApplyAndRecord(new PackageDeactivated("test.old", "1.0.0", "test"));
+        if (commitDeactivation)
+        {
+            var outgoing = state.GetSearchParameter("Patient", "custom-code")!;
+            ApplyAndRecord(new SearchParameterTransitionCommitted(
+                outgoing.SearchParamId,
+                [],
+                [outgoing.DeactivationEventId!.Value]));
+            state.GetSearchParameter("Patient", "custom-code")!.Status.ShouldBe(SearchParameterStatus.Disabled);
+        }
+
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>());
+        return await pipeline.ActivateAsync("test.new", "1.0.0", CancellationToken.None);
 
         void ApplyAndRecord(object data)
         {

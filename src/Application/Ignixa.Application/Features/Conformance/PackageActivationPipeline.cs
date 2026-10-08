@@ -333,13 +333,23 @@ public class PackageActivationPipeline(
         var streamId = $"package:{packageId}@{version}";
         var packageKey = $"{packageId}@{version}";
         var proposedOwners = new Dictionary<(string ResourceType, string Code), SearchParameterInfo>();
+        if (resources.SearchParameters.Count > 0 &&
+            (string.IsNullOrWhiteSpace(fhirVersionString) ||
+             FhirSpecificationExtensions.FromVersionString(fhirVersionString) == FhirVersion.Unspecified))
+        {
+            return (events, new ValidationIssue(
+                "SP_UNKNOWN_FHIR_VERSION",
+                $"Package {packageKey} declares SearchParameters for unknown FHIR version '{fhirVersionString ?? "(missing)"}'."));
+        }
 
         // Emit SearchParameter events (non-composite first, then composite)
         foreach (var sp in resources.SearchParameters.OrderBy(sp => sp.Type == SearchParamType.Composite ? 1 : 0))
         {
             var existingOwners = sp.BaseResourceTypes.ToDictionary(
                 resourceType => resourceType,
-                resourceType => staged.GetSearchParameter(resourceType, sp.Code));
+                resourceType => staged.GetSearchParameter(resourceType, sp.Code) is { Status: not SearchParameterStatus.Disabled } owner
+                    ? owner
+                    : null);
             var baseParameters = ResolveBaseParameters(packageId, fhirVersionString, sp);
             var storageRoots = sp.BaseResourceTypes
                 .Select(resourceType =>
@@ -387,7 +397,9 @@ public class PackageActivationPipeline(
                 }
                 proposedOwners[ownerKey] = sp;
 
-                var existing = staged.GetSearchParameter(resourceType, sp.Code);
+                var existing = staged.GetSearchParameter(resourceType, sp.Code) is { Status: not SearchParameterStatus.Disabled } owner
+                    ? owner
+                    : null;
                 if (existing is null &&
                     baseParameters.TryGetValue(resourceType, out var baseParameter))
                 {
@@ -428,20 +440,20 @@ public class PackageActivationPipeline(
                 if (existing is not null)
                 {
                     var latest = staged.GetLatestNonDisabledActivation(resourceType, sp.Code);
-                    var validationOwner = latest ?? existing;
-                    if (!IsValidOverride(sp, validationOwner))
+                    if (latest is not null && !IsValidOverride(sp, latest))
                     {
                         return (events, new ValidationIssue(
                             "SP_CONFLICT",
-                            $"SearchParameter '{sp.Code}' on {resourceType} conflicts with existing from {validationOwner.SourcePackage}",
+                            $"SearchParameter '{sp.Code}' on {resourceType} conflicts with existing from {latest.SourcePackage}",
                             resourceType, sp.Code));
                     }
                 }
 
                 if (!string.Equals(storageRoot, sp.Canonical, StringComparison.Ordinal))
                 {
-                    sharedSearchParamId ??= staged.GetSearchParamIdForActivation(storageRoot, existing);
-                    overrides = new OverrideInfo(storageRoot, sharedSearchParamId.Value);
+                    var resolvedSharedSearchParamId = sharedSearchParamId ?? throw new InvalidOperationException(
+                        $"Shared storage root '{storageRoot}' must have a SearchParamId before activating {sp.Canonical}.");
+                    overrides = new OverrideInfo(storageRoot, resolvedSharedSearchParamId);
                 }
                 else if (existing is not null)
                 {
