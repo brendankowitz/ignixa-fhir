@@ -144,6 +144,41 @@ public class SearchParameterTransitionCommitterTests
     }
 
     [Fact]
+    public async Task GivenAStaleCandidateThatWouldBeIgnored_WhenCommitted_ThenItDoesNotAppendANoOpEvent()
+    {
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
+        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        state.FindByCanonical("http://hl7.org/fhir/SearchParameter/Patient-identifier")!
+            .DeactivationEventId = 30;
+        state.GetTransitionCandidates(20).Count.ShouldBe(1);
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 20, Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(
+                [new SourceEvent(
+                    30,
+                    "transition:20",
+                    nameof(SearchParameterTransitionCommitted),
+                    call.Arg<IEnumerable<NewSourceEvent>>().Single().Data,
+                    DateTimeOffset.UtcNow)]));
+        var committer = new SearchParameterTransitionCommitter(
+            store,
+            state,
+            Substitute.For<IReindexTrigger>(),
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
+
+        var committed = await committer.CommitAsync(20, CancellationToken.None);
+
+        committed.ShouldBeFalse();
+        await store.DidNotReceive().AppendAsync(
+            Arg.Any<IEnumerable<NewSourceEvent>>(),
+            Arg.Any<long>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GivenUnrelatedEventWinsFirstAppend_WhenCommitted_ThenItCatchesUpAndRetries()
     {
         using var state = new ConformanceState();

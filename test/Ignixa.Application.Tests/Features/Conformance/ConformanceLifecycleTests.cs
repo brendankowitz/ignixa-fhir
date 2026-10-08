@@ -233,6 +233,63 @@ public class ConformanceLifecycleTests
     }
 
     [Fact]
+    public void GivenAnOwnerAlreadyDisabling_WhenItIsDeactivatedAgain_ThenTheOriginalHideEventIsPreserved()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
+        state.Apply(Deactivation(20, OverrideCanonical, "custom"));
+
+        state.Apply(Deactivation(30, OverrideCanonical, "custom"));
+
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.DeactivationEventId.ShouldBe(20);
+        state.GetTransitionCandidates(20).Count.ShouldBe(1);
+        state.GetTransitionCandidates(30).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenAnotherParameterSharesThePredecessorEventId_WhenAnOverrideIsRemoved_ThenTheMatchingCodeIsRestored()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Activation(10, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.1"));
+        state.Apply(new SourceEvent(
+            10,
+            "lifecycle-test",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://hl7.org/fhir/SearchParameter/Observation-subject",
+                "subject",
+                "Observation",
+                "Observation.subject",
+                SearchParamType.Reference,
+                "hl7.fhir.r4.core@4.0.1",
+                null,
+                8,
+                ["Patient"],
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow));
+        state.Apply(Activation(
+            20,
+            OverrideCanonical,
+            "identifier",
+            7,
+            new OverrideInfo(BaseCanonical, 7)));
+        state.Apply(Transition(30, 7, [20], [20]));
+        state.Apply(ReindexStarted(31, activationEventId: 20, jobId: "job"));
+        state.Apply(ReindexCompleted(32, activationEventId: 20, jobId: "job"));
+
+        state.Apply(Deactivation(40, OverrideCanonical));
+
+        var restored = state.FindByCanonical(BaseCanonical)!;
+        restored.ResourceType.ShouldBe("Patient");
+        restored.Code.ShouldBe("identifier");
+        restored.Status.ShouldBe(SearchParameterStatus.Staged);
+        restored.ActivationEventId.ShouldBe(40);
+    }
+
+    [Fact]
     public void GivenNewerActivation_WhenStaleReindexEventsArrive_ThenTheyAreIgnored()
     {
         using var state = new ConformanceState();

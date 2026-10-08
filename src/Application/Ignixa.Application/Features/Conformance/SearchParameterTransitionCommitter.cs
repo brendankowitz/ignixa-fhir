@@ -34,18 +34,36 @@ public sealed class SearchParameterTransitionCommitter(
                     break;
                 }
 
+                using var staging = conformanceState.CreateStagingCopy();
+                var applicable = new List<(SearchParameterTransitionCandidate Candidate, NewSourceEvent Event)>();
+                foreach (var candidate in candidates)
+                {
+                    var proposed = new NewSourceEvent(
+                        $"transition:{hideEventId}",
+                        nameof(SearchParameterTransitionCommitted),
+                        new SearchParameterTransitionCommitted(
+                            candidate.SearchParamId,
+                            candidate.ActivationEventIds,
+                            candidate.DeactivationEventIds));
+                    _ = staging.ApplyProposedEvent(proposed);
+                    if (staging.GetTransitionCandidates(hideEventId)
+                        .All(current => current.SearchParamId != candidate.SearchParamId))
+                    {
+                        applicable.Add((candidate, proposed));
+                    }
+                }
+
+                if (applicable.Count == 0)
+                {
+                    break;
+                }
+
                 var expectedLastEventId = conformanceState.LastProcessedEventId;
                 IReadOnlyList<SourceEvent> committed;
                 try
                 {
                     committed = await eventStore.AppendAsync(
-                        candidates.Select(candidate => new NewSourceEvent(
-                            $"transition:{hideEventId}",
-                            nameof(SearchParameterTransitionCommitted),
-                            new SearchParameterTransitionCommitted(
-                                candidate.SearchParamId,
-                                candidate.ActivationEventIds,
-                                candidate.DeactivationEventIds))),
+                        applicable.Select(item => item.Event),
                         expectedLastEventId,
                         cancellationToken);
                 }
@@ -61,8 +79,9 @@ public sealed class SearchParameterTransitionCommitter(
                     conformanceState.ApplyAndTrack(evt);
                 }
 
-                committedTransition = true;
-                reindexRequired = candidates.Any(candidate => candidate.ActivationEventIds.Count > 0);
+                committedTransition = committed.Count > 0;
+                reindexRequired = committedTransition &&
+                    applicable.Any(item => item.Candidate.ActivationEventIds.Count > 0);
                 break;
             }
         }

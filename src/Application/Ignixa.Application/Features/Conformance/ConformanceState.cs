@@ -749,9 +749,12 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
             parameter.Status = SearchParameterStatus.Disabled;
         }
 
-        outgoing.Status = SearchParameterStatus.Disabling;
-        outgoing.DeactivationEventId = eventId;
-        outgoing.ReindexJobId = null;
+        if (outgoing.Status != SearchParameterStatus.Disabling)
+        {
+            outgoing.Status = SearchParameterStatus.Disabling;
+            outgoing.DeactivationEventId = eventId;
+            outgoing.ReindexJobId = null;
+        }
 
         var previous = FindAvailablePredecessor(parameter);
         if (previous is null)
@@ -768,7 +771,10 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         while (previousActivationEventId is { } activationEventId)
         {
             var previous = _searchParameterActivations.LastOrDefault(
-                candidate => candidate.ActivationEventId == activationEventId);
+                candidate =>
+                    candidate.ResourceType == parameter.ResourceType &&
+                    candidate.Code == parameter.Code &&
+                    candidate.ActivationEventId == activationEventId);
             if (previous is null)
             {
                 return null;
