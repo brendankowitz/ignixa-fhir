@@ -739,6 +739,40 @@ public class StreamingBundleSerializerPaginationTests
     }
 
     [Fact]
+    public async Task GivenDefaultThreshold_WhenSerializingMultiMegabytePage_ThenPendingBufferStaysBoundedAndBytesStreamEarly()
+    {
+        // Arrange: 8 entries of ~200 KB (~1.6 MB) with the production default threshold. The writer's
+        // pending buffer is the per-request memory a large page holds, so it must flush long before
+        // the page ends -- a multi-megabyte default holds the whole page and multiplies by concurrency.
+        const int entrySize = 200_000;
+        const int entryCount = 8;
+
+        var entries = Enumerable.Range(1, entryCount)
+            .Select(i => CreateLargeEntry($"binary-{i}", entrySize))
+            .ToList();
+
+        var searchOptions = new SearchOptions { MaxItemCount = entryCount };
+        var trackingStream = new FlushTrackingStream();
+
+        // Act
+        await StreamingBundleSerializer.SerializeWithPaginationAsync(
+            trackingStream,
+            "searchset",
+            null,
+            CreateAsyncEnumerable(entries),
+            searchOptions,
+            BaseUrl,
+            QueryString);
+
+        // Assert
+        trackingStream.WritePositions.Count.ShouldBeGreaterThanOrEqualTo(entryCount / 2,
+            "the default threshold should flush about every entry or two for 200 KB entries");
+        trackingStream.WritePositions.First().ShouldBeLessThan(2 * entrySize + 64 * 1024,
+            "the first bytes should reach the client after at most a couple of entries");
+        ParseBundleResponse(trackingStream.ToMemoryStream()).EntryCount.ShouldBe(entryCount);
+    }
+
+    [Fact]
     public async Task SerializeWithPaginationAsync_ThresholdFlush_ProducesIdenticalJsonToUnflushedVersion()
     {
         // Prove the fix is purely a streaming optimization — it does not change the

@@ -402,6 +402,7 @@ currently stands; the changelog in `SchemaVersionConstants.cs` says what each ve
 - ✅ **Tenant 1-N** (Production Tenants) - Each configured with their own SQL database
 - ✅ **Database Schema** - Deployed from the server's embedded dacpac (tables, indexes, stored procedures) per tenant database
 - ✅ **DurableTask Backend** - Connected to Azure Storage with Managed Identity
+- ✅ **Background Job Repository** - `BackgroundJobs__Repository=SqlServer`: `$export`/`$import`/`$bulk-delete` job status is persisted in tenant 1's database, so status polls survive restarts and scale-out
 - ✅ **Export/Import Storage** - Connected to Azure Blob Storage with Managed Identity
 
 The schema-upgrade CLI does not create the database user for the SQL user-assigned Managed Identity --
@@ -560,6 +561,7 @@ After deployment, the FHIR server is configured with:
   - Account: `{appName}tasks`
   - Authentication: Managed Identity
   - Task Hub: `ignixa`
+  - Job status: persisted in SQL (`BackgroundJobs__Repository=SqlServer`, tenant 1's database)
 
 ## Managed Identity Configuration
 

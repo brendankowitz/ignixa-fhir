@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using EnsureThat;
 using Microsoft.Extensions.Logging;
@@ -147,8 +148,12 @@ public class BundleChannelExecutor
     {
         _logger.LogInformation("Executing batch bundle in streaming mode with parallel execution (skipValidation: {SkipValidation})", skipStreamingValidation);
 
-        // Create response channel with (index, response) tuples
-        var responseChannel = Channel.CreateBounded<(int index, BundleEntryResponse response)>(
+        using var linkedCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var executionCancellationToken = linkedCancellationSource.Token;
+        using var window = new SemaphoreSlim(options.ChannelCapacity, options.ChannelCapacity);
+
+        // Create response channel with admission ordinal and response tuples
+        var responseChannel = Channel.CreateBounded<(int ordinal, BundleEntryResponse response)>(
             new BoundedChannelOptions(options.ChannelCapacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
@@ -156,13 +161,23 @@ public class BundleChannelExecutor
                 SingleWriter = false
             });
 
+        Exception? executionFault = null;
+        void RecordExecutionFailure(Exception exception)
+        {
+            if (exception is not OperationCanceledException)
+            {
+                Interlocked.CompareExchange(ref executionFault, exception, null);
+            }
+            linkedCancellationSource.Cancel();
+        }
+
         // Execute entries in parallel and write to response channel
         var executionTask = Task.Run(async () =>
         {
             try
             {
                 // Create entry channel for work distribution
-                var entryChannel = Channel.CreateBounded<(int index, BundleEntryContext entry)>(
+                var entryChannel = Channel.CreateBounded<(int ordinal, BundleEntryContext entry)>(
                     new BoundedChannelOptions(options.ChannelCapacity)
                     {
                         FullMode = BoundedChannelFullMode.Wait,
@@ -175,8 +190,18 @@ public class BundleChannelExecutor
                 {
                     try
                     {
-                        await foreach (var entry in entryStream.WithCancellation(cancellationToken))
+                        var nextOrdinal = 0;
+                        await using var enumerator = entryStream.GetAsyncEnumerator(executionCancellationToken);
+                        while (true)
                         {
+                            await window.WaitAsync(executionCancellationToken);
+                            if (!await enumerator.MoveNextAsync())
+                            {
+                                window.Release();
+                                break;
+                            }
+
+                            var entry = enumerator.Current;
                             // Validate no urn:uuid or conditional references in streaming mode
                             // Skip validation if entries were pre-processed (buffered Phase 2)
                             if (!skipStreamingValidation)
@@ -184,64 +209,125 @@ public class BundleChannelExecutor
                                 ValidateStreamingEntry(entry);
                             }
 
-                            await entryChannel.Writer.WriteAsync((entry.Index, entry), cancellationToken);
+                            await entryChannel.Writer.WriteAsync((nextOrdinal++, entry), executionCancellationToken);
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        RecordExecutionFailure(ex);
+                        entryChannel.Writer.TryComplete(ex);
+                        throw;
                     }
                     finally
                     {
-                        entryChannel.Writer.Complete();
+                        entryChannel.Writer.TryComplete();
                     }
-                }, cancellationToken);
+                });
 
                 // Consumers: Process entries in parallel and write responses
                 var consumerTasks = Enumerable.Range(0, options.MaxParallelism)
                     .Select(_ => Task.Run(async () =>
                     {
-                        await foreach (var (index, entry) in entryChannel.Reader.ReadAllAsync(cancellationToken))
+                        try
                         {
-                            var response = await _entryExecutor.ExecuteAsync(
-                                entry,
-                                referenceContext,
-                                cancellationToken,
-                                deferredWriteCoordinator);
+                            await foreach (var (ordinal, entry) in entryChannel.Reader.ReadAllAsync(executionCancellationToken))
+                            {
+                                var response = await _entryExecutor.ExecuteAsync(
+                                    entry,
+                                    referenceContext,
+                                    executionCancellationToken,
+                                    deferredWriteCoordinator);
 
-                            await responseChannel.Writer.WriteAsync((index, response), cancellationToken);
+                                await responseChannel.Writer.WriteAsync((ordinal, response), executionCancellationToken);
+                            }
                         }
-                    }, cancellationToken))
+                        catch (Exception ex)
+                        {
+                            RecordExecutionFailure(ex);
+                            throw;
+                        }
+                    }))
                     .ToArray();
 
-                await producerTask;
-                await Task.WhenAll(consumerTasks);
+                var workersTask = Task.WhenAll([producerTask, .. consumerTasks]);
+                try
+                {
+                    await workersTask;
+                }
+                catch
+                {
+                    var fault = FindNonCancellationFault(workersTask.Exception) ??
+                                Volatile.Read(ref executionFault);
+                    if (fault != null)
+                    {
+                        ExceptionDispatchInfo.Capture(fault).Throw();
+                    }
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                RecordExecutionFailure(ex);
+                var fault = FindNonCancellationFault(ex) ?? Volatile.Read(ref executionFault);
+                responseChannel.Writer.TryComplete(fault ?? ex);
+                if (fault != null)
+                {
+                    ExceptionDispatchInfo.Capture(fault).Throw();
+                }
+                throw;
             }
             finally
             {
-                responseChannel.Writer.Complete();
+                responseChannel.Writer.TryComplete();
             }
-        }, cancellationToken);
+        });
 
         // Yield responses in order
+        // Each admitted entry retains a window permit until its ordered response is yielded, bounding this buffer.
         var completedResponses = new Dictionary<int, BundleEntryResponse>();
-        int nextIndex = 0;
+        int nextOrdinalToYield = 0;
 
-        await foreach (var (index, response) in responseChannel.Reader.ReadAllAsync(cancellationToken))
+        try
         {
-            completedResponses[index] = response;
-
-            // Yield all consecutive responses starting from nextIndex
-            while (completedResponses.TryGetValue(nextIndex, out var nextResponse))
+            await foreach (var (ordinal, response) in responseChannel.Reader.ReadAllAsync(executionCancellationToken))
             {
-                _logger.LogTrace("Yielding batch response for entry {Index}", nextIndex);
-                yield return nextResponse;
-                completedResponses.Remove(nextIndex);
-                nextIndex++;
+                completedResponses[ordinal] = response;
+
+                // Yield all consecutive responses starting from nextOrdinalToYield
+                while (completedResponses.TryGetValue(nextOrdinalToYield, out var nextResponse))
+                {
+                    _logger.LogTrace("Yielding batch response with admission ordinal {Ordinal}", nextOrdinalToYield);
+                    completedResponses.Remove(nextOrdinalToYield);
+                    nextOrdinalToYield++;
+                    window.Release();
+                    yield return nextResponse;
+                }
+            }
+        }
+        finally
+        {
+            await linkedCancellationSource.CancelAsync();
+            try
+            {
+                await executionTask;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested &&
+                                                     !executionTask.IsFaulted)
+            {
             }
         }
 
-        // Wait for execution to complete
-        await executionTask;
-
         _logger.LogInformation("Streaming batch execution complete");
     }
+
+    private static Exception? FindNonCancellationFault(Exception? exception) =>
+        exception switch
+        {
+            AggregateException aggregateException => aggregateException.Flatten().InnerExceptions
+                .FirstOrDefault(innerException => innerException is not OperationCanceledException),
+            OperationCanceledException => null,
+            _ => exception
+        };
 
     /// <summary>
     /// Executes transaction bundle entries in streaming mode with verb-grouped parallel execution.

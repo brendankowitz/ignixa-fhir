@@ -89,7 +89,8 @@ public static class ServiceCollectionExtensions
     public static ContainerBuilder RegisterIgnixaServices(
         this ContainerBuilder builder,
         IConfiguration configuration,
-        string environmentName)
+        string environmentName,
+        int maxRequestBodySize)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(configuration);
@@ -111,7 +112,7 @@ public static class ServiceCollectionExtensions
         builder.RegisterPackageManagementServices(configuration);
 
         // Application services (handlers, behaviors, etc.)
-        builder.RegisterApplicationServices(configuration);
+        builder.RegisterApplicationServices(configuration, maxRequestBodySize);
 
         // DurableTask activities and orchestrations
         builder.RegisterDurableTaskActivities();

@@ -198,9 +198,16 @@ both default to *not fetching*:
 > `OffsetSpec.ProbeExtraRow`.
 
 A numeric `IncludeLimit` over-fetches one row so truncation is detectable: the extra row comes back flagged
-`IsPartial` and the caller trims it. Set `IncludeLimit = null` to preserve all include rows and iterate
-seeds without a SQL cap. The SQL search service uses this mode because the application owns
-`_includesCount` pagination over the complete traversal; `_count` bounds only match rows.
+`IsPartial` and the caller trims it. Each stage keeps its first `IncludeLimit + 1` rows in the order the final
+result lists includes — `(T1, Sid1)`, or `Sid1` alone under a custom `_sort` — so together the stages hold the
+first `IncludeLimit + 1` includes of the whole result. That holds across `:iterate` too: an iterate stage seeds
+from its parent's uncapped body (`incN`), never from the parent's capped companion (`incNlim`), because a parent
+ranked past the budget can still reference a child ranked inside it.
+
+The SQL search service sets `IncludeLimit` to the include window it must serve — the `$includes` offset plus
+`_includesCount`, plus the match page's row count as slack, since match rows a stage also reaches are removed only
+after its cap — and leaves it `null` (no SQL cap) when the search has no `_include`/`_revinclude`.
+`_count` bounds only match rows.
 
 #### Alpha API migration: nullable include budgets
 
