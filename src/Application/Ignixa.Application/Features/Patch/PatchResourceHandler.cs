@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
@@ -26,6 +28,8 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
     private readonly ImmutablePropertyValidator _immutablePropertyValidator;
     private readonly ILogger<PatchResourceHandler> _logger;
     private readonly IMediator _mediator;
+    private readonly IFhirRequestContextAccessor _contextAccessor;
+    private readonly IFhirVersionContext _fhirVersionContext;
 
     public PatchResourceHandler(
         IFhirRepositoryFactory repositoryFactory,
@@ -34,7 +38,9 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         FhirPatchValidator fhirPatchValidator,
         ImmutablePropertyValidator immutablePropertyValidator,
         ILogger<PatchResourceHandler> logger,
-        IMediator mediator)
+        IMediator mediator,
+        IFhirRequestContextAccessor contextAccessor,
+        IFhirVersionContext fhirVersionContext)
     {
         _repositoryFactory = repositoryFactory;
         _parametersParser = parametersParser;
@@ -43,6 +49,8 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         _immutablePropertyValidator = immutablePropertyValidator;
         _logger = logger;
         _mediator = mediator;
+        _contextAccessor = contextAccessor;
+        _fhirVersionContext = fhirVersionContext;
     }
 
     public async Task<ResourceWrapper?> HandleAsync(
@@ -112,9 +120,13 @@ public class PatchResourceHandler : IRequestHandler<PatchResourceCommand, Resour
         var beforeClone = CloneResource(existingResource);
 
         // 7. Apply patch operations
+        var context = _contextAccessor.RequestContext
+            ?? throw new InvalidOperationException("FHIR request context not available");
+        var schema = _fhirVersionContext.GetSchemaProvider(context.FhirVersion, context.TenantId);
         var patchedResource = await _patchEngine.ApplyPatchAsync(
             existingResource,
             operations,
+            schema,
             cancellationToken);
 
         // OPTIMIZATION: Invalidate caches after mutations to ensure fresh views on next access

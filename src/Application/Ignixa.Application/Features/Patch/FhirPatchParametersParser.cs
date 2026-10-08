@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text.Json.Nodes;
 using Ignixa.Models;
 using Ignixa.Serialization.SourceNodes;
 
@@ -89,6 +90,7 @@ public class FhirPatchParametersParser
 
         // Extract optional parts based on operation type
         var pathPart = operationParameter.FindPart("path");
+        var namePart = operationParameter.FindPart("name");
         var valuePart = operationParameter.FindPart("value");
         var indexPart = operationParameter.FindPart("index");
         var sourcePart = operationParameter.FindPart("source");
@@ -97,15 +99,97 @@ public class FhirPatchParametersParser
         // Validate required parts for each operation type
         ValidateOperationParts(operationType, pathPart, valuePart, indexPart, sourcePart, destinationPart);
 
+        var name = ReadName(namePart, operationType);
+        var (value, valueType) = valuePart == null ? (null, null) : ReadValue(valuePart, "Operation 'value'");
+        var valueParts = valuePart != null && value == null ? ReadValueParts(valuePart) : null;
+        if (valueParts is { Count: 0 })
+        {
+            throw new FhirPatchException("Operation 'value' part must have a value[x] or nested parts");
+        }
+
         return new FhirPatchOperation
         {
             Type = operationType,
             Path = pathPart?.GetValueAs<string>("valueString"),
-            Value = valuePart?.GetValue(),
+            Name = name,
+            Value = value,
+            ValueType = valueType,
+            ValueParts = valueParts,
             Index = indexPart?.GetValueAs<int?>("valueInteger"),
             Source = sourcePart?.GetValueAs<string>("valueString"),
             Destination = destinationPart?.GetValueAs<string>("valueString"),
         };
+    }
+
+    /// <summary>
+    /// Reads the 'name' part. Only an absent part selects the path-only add shorthand; a present but
+    /// malformed part is rejected so it cannot silently change the operation's meaning.
+    /// </summary>
+    private static string? ReadName(ParametersParameter? namePart, FhirPatchOperationType operationType)
+    {
+        if (namePart == null)
+        {
+            return null;
+        }
+
+        if (operationType != FhirPatchOperationType.Add)
+        {
+            throw new FhirPatchException($"The 'name' part is only valid for add operations, not {operationType}");
+        }
+
+        if (namePart.MutableNode["valueString"] is not JsonValue nameValue ||
+            !nameValue.TryGetValue<string>(out var name) ||
+            string.IsNullOrWhiteSpace(name))
+        {
+            throw new FhirPatchException("Operation 'name' part must have a non-empty valueString");
+        }
+
+        return name;
+    }
+
+    /// <summary>
+    /// Reads a part's value[x]. A part carries exactly one representation: a single value[x] or nested parts.
+    /// </summary>
+    private static (JsonNode? Value, string? ValueType) ReadValue(ParametersParameter part, string description)
+    {
+        var values = part.MutableNode
+            .Where(property => property.Key.StartsWith("value", StringComparison.Ordinal) && property.Key.Length > "value".Length)
+            .ToList();
+
+        if (values.Count > 1)
+        {
+            throw new FhirPatchException($"{description} must have a single value[x], but has {values.Count}");
+        }
+
+        if (values.Count == 1 && part.Part.Count > 0)
+        {
+            throw new FhirPatchException($"{description} must use either value[x] or nested parts, not both");
+        }
+
+        return values.Count == 1 ? (values[0].Value, values[0].Key["value".Length..]) : (null, null);
+    }
+
+    private static List<FhirPatchValuePart> ReadValueParts(ParametersParameter part)
+    {
+        var parts = new List<FhirPatchValuePart>();
+        foreach (var child in part.Part)
+        {
+            if (string.IsNullOrEmpty(child.Name))
+            {
+                throw new FhirPatchException("Every nested part of an operation 'value' must have a name");
+            }
+
+            var (value, valueType) = ReadValue(child, $"Nested value part '{child.Name}'");
+            var nested = value == null ? ReadValueParts(child) : [];
+            if (value == null && nested.Count == 0)
+            {
+                throw new FhirPatchException($"Nested value part '{child.Name}' must have a value[x] or nested parts");
+            }
+
+            parts.Add(new FhirPatchValuePart(child.Name, valueType, value, nested));
+        }
+
+        return parts;
     }
 
     [SuppressMessage("Globalization", "CA1308:Normalize strings to uppercase", Justification = "FHIR codes are conventionally lowercase")]
