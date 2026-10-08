@@ -28,16 +28,23 @@ public sealed class ConformanceTransitionOptionsValidator(IOptions<ReindexOption
             failures.Add($"{ConformanceTransitionOptions.SectionName}:TransitionGrace must be greater than zero.");
         }
 
+        if (options.TransitionSafetyMargin < TimeSpan.Zero)
+        {
+            failures.Add(
+                $"{ConformanceTransitionOptions.SectionName}:TransitionSafetyMargin must be greater than or equal to zero.");
+        }
+
         if (reindexOptions.BarrierDelay < TimeSpan.Zero)
         {
             failures.Add($"{ReindexOptions.SectionName}:BarrierDelay must be greater than or equal to zero.");
         }
 
-        if (options.TransitionGrace <= options.MaxStaleness)
+        if (options.TransitionGrace < options.MaxStaleness + options.TransitionSafetyMargin)
         {
             failures.Add(
-                $"{ConformanceTransitionOptions.SectionName}:TransitionGrace must be greater than " +
-                $"{ConformanceTransitionOptions.SectionName}:MaxStaleness.");
+                $"{ConformanceTransitionOptions.SectionName}:TransitionGrace must be greater than or equal to " +
+                $"{ConformanceTransitionOptions.SectionName}:MaxStaleness plus " +
+                $"{ConformanceTransitionOptions.SectionName}:TransitionSafetyMargin.");
         }
 
         if (reindexOptions.BarrierDelay < options.MaxStaleness)

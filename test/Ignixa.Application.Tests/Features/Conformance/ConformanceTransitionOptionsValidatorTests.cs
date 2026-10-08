@@ -69,12 +69,27 @@ public class ConformanceTransitionOptionsValidatorTests
     }
 
     [Fact]
-    public void GivenGraceEqualToMaxStaleness_WhenValidated_ThenItFails()
+    public void GivenNegativeTransitionSafetyMargin_WhenValidated_ThenItFails()
+    {
+        var result = ConformanceTransitionOptionsValidator.Validate(
+            new ConformanceTransitionOptions
+            {
+                MaxStaleness = TimeSpan.FromSeconds(10),
+                TransitionGrace = TimeSpan.FromSeconds(11),
+                TransitionSafetyMargin = TimeSpan.FromSeconds(-1),
+            },
+            new ReindexOptions { BarrierDelay = TimeSpan.FromSeconds(10) });
+
+        result.Failed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenGraceBelowMaxStalenessPlusSafetyMargin_WhenValidated_ThenItFails()
     {
         var options = new ConformanceTransitionOptions
         {
             MaxStaleness = TimeSpan.FromSeconds(10),
-            TransitionGrace = TimeSpan.FromSeconds(10),
+            TransitionGrace = TimeSpan.FromSeconds(39),
         };
 
         var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions
@@ -103,12 +118,12 @@ public class ConformanceTransitionOptionsValidatorTests
     }
 
     [Fact]
-    public void GivenSafeTransitionDurations_WhenValidated_ThenItSucceeds()
+    public void GivenGraceEqualToMaxStalenessPlusSafetyMargin_WhenValidated_ThenItSucceeds()
     {
         var options = new ConformanceTransitionOptions
         {
             MaxStaleness = TimeSpan.FromSeconds(10),
-            TransitionGrace = TimeSpan.FromSeconds(11),
+            TransitionGrace = TimeSpan.FromSeconds(40),
         };
 
         var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions
