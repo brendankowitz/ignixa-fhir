@@ -47,11 +47,10 @@ public sealed class ReindexJobReconciler(
         bool recoverFreshQueuedJobs,
         CancellationToken cancellationToken)
     {
-        var candidates = (await repository.ListAsync(
-                (int)BackgroundJobType.Reindex,
-                cancellationToken))
-            .Where(job => !IsTerminal(job.Status))
-            .ToArray();
+        var active = await repository.GetActiveAsync(
+            (int)BackgroundJobType.Reindex,
+            cancellationToken);
+        var candidates = active is null ? [] : new[] { active };
         foreach (var job in candidates)
         {
             if (job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase))

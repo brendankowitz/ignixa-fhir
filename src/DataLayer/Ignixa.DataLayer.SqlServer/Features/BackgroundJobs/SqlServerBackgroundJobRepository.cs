@@ -249,6 +249,25 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         return await sqlExecutionService.ExecuteReaderAsync(connectionTenantId, command, ReadJob, cancellationToken);
     }
 
+    public async Task<BackgroundJob<T>?> GetActiveAsync(
+        int jobType,
+        CancellationToken cancellationToken = default)
+    {
+        using var command = CreateCommand(
+            $"SELECT TOP (1) {AllColumns} FROM {QualifiedTable} " +
+            $"WHERE {Jobs.Column("JobType").Name} = @jobType " +
+            $"AND {Jobs.Column("Status").Name} IN ('Queued', 'Running', 'Completing') " +
+            $"ORDER BY {Jobs.Column("CreateDate").Name} DESC");
+        command.Parameters.AddWithValue("@jobType", jobType);
+
+        var jobs = await sqlExecutionService.ExecuteReaderAsync(
+            connectionTenantId,
+            command,
+            ReadJob,
+            cancellationToken);
+        return jobs.Count == 0 ? null : jobs[0];
+    }
+
     private async Task<BackgroundJob<T>?> FindByJobIdAsync(
         string jobId, CancellationToken cancellationToken, int? rowTenantId = null)
     {

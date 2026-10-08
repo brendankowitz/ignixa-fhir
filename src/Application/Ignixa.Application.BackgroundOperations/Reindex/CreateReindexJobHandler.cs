@@ -56,6 +56,24 @@ public sealed class CreateReindexJobHandler(
         CreateReindexJobCommand request,
         CancellationToken cancellationToken)
     {
+        if (request.Trigger.Equals("Reconciliation", StringComparison.OrdinalIgnoreCase))
+        {
+            var hasPendingParameters = _conformanceState.AllSearchParameters.Values.Any(
+                parameter => parameter.Status == Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending);
+            if (!hasPendingParameters)
+            {
+                return new NoReindexWorkResult("No resources need reindexing.");
+            }
+
+            var activeJob = await _jobRepository.GetActiveAsync(
+                (int)BackgroundJobType.Reindex,
+                cancellationToken);
+            if (activeJob is not null)
+            {
+                return new ActiveReindexJobResult(activeJob.JobId);
+            }
+        }
+
         var availability = await _availability.GetAvailabilityAsync(cancellationToken);
         if (availability.Status == ReindexAvailabilityStatus.Disabled)
         {

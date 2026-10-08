@@ -58,6 +58,43 @@ public class CreateReindexJobHandlerTests
     }
 
     [Fact]
+    public async Task GivenNoPendingParameters_WhenPeriodicReconciliationRuns_ThenSingletonLockIsNotTaken()
+    {
+        var fixture = CreateFixture(withPendingParameter: false);
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            CancellationToken.None);
+
+        result.ShouldBeOfType<NoReindexWorkResult>();
+        _ = fixture.JobLock.DidNotReceiveWithAnyArgs()
+            .ExecuteAsync<CreateReindexJobResult>(default!, default);
+    }
+
+    [Fact]
+    public async Task GivenActiveJobExists_WhenPeriodicReconciliationRuns_ThenSingletonLockIsNotTaken()
+    {
+        var fixture = CreateFixture();
+        await fixture.Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "active",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = fixture.Now,
+            HeartbeatDate = fixture.Now
+        }, CancellationToken.None);
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            CancellationToken.None);
+
+        result.ShouldBeOfType<ActiveReindexJobResult>().ActiveJobId.ShouldBe("active");
+        _ = fixture.JobLock.DidNotReceiveWithAnyArgs()
+            .ExecuteAsync<CreateReindexJobResult>(default!, default);
+    }
+
+    [Fact]
     public async Task GivenRemoteCompletionAfterPollCatchUp_WhenReconciliationAcquiresJobLock_ThenNoRedundantJobIsCreated()
     {
         var fixture = CreateFixture();

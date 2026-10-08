@@ -65,6 +65,13 @@ public interface IBackgroundJobRepository<T> where T : class, IJobDefinition
     Task<IReadOnlyList<BackgroundJob<T>>> ListAsync(int? jobType = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets the most recently created non-terminal job of the requested type, if any.
+    /// </summary>
+    Task<BackgroundJob<T>?> GetActiveAsync(
+        int jobType,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes a background job with tenant validation.
     /// </summary>
     /// <param name="jobId">Job ID.</param>

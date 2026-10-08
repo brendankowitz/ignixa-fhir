@@ -23,6 +23,33 @@ namespace Ignixa.DataLayer.SqlServer.Tests.Features.BackgroundJobs;
 public class SqlServerBackgroundJobRepositoryIdempotencyTests
 {
     [Fact]
+    public async Task GivenActiveJobLookup_WhenQueried_ThenOnlyNonTerminalStatusesAreSelected()
+    {
+        var sql = Substitute.For<ISqlExecutionService>();
+        sql.ExecuteReaderAsync(
+                1,
+                Arg.Any<SqlCommand>(),
+                Arg.Any<Func<SqlDataReader, BackgroundJob<ExportJobDefinition>>>(),
+                Arg.Any<CancellationToken>())
+            .Returns([]);
+        var repository = new SqlServerBackgroundJobRepository<ExportJobDefinition>(
+            sql,
+            connectionTenantId: 1,
+            Substitute.For<ITenantConfigurationStore>(),
+            NullLogger<SqlServerBackgroundJobRepository<ExportJobDefinition>>.Instance);
+
+        _ = await repository.GetActiveAsync(1, CancellationToken.None);
+
+        await sql.Received(1).ExecuteReaderAsync(
+            1,
+            Arg.Is<SqlCommand>(command =>
+                command.CommandText.Contains("TOP (1)", StringComparison.Ordinal) &&
+                command.CommandText.Contains("'Queued', 'Running', 'Completing'", StringComparison.Ordinal)),
+            Arg.Any<Func<SqlDataReader, BackgroundJob<ExportJobDefinition>>>(),
+            CancellationToken.None);
+    }
+
+    [Fact]
     public async Task GivenANewJob_WhenCreated_ThenTheInsertDeclaresItselfNonIdempotent()
     {
         var sql = Substitute.For<ISqlExecutionService>();
