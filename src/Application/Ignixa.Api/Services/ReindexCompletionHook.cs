@@ -1,6 +1,5 @@
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Models;
 using Medino;
 
@@ -8,9 +7,9 @@ namespace Ignixa.Api.Services;
 
 public sealed class ReindexCompletionHook(
     ConformanceRefreshPublisher refreshPublisher,
-    ConformanceState conformanceState,
     ReindexAutomationStateStore automationState,
     IMediator mediator,
+    IOptions<ReindexOptions> options,
     ILogger<ReindexCompletionHook> logger)
     : IReindexCompletionHook
 {
@@ -20,11 +19,14 @@ public sealed class ReindexCompletionHook(
     {
         await refreshPublisher.RefreshUntilCurrentAsync(cancellationToken);
 
+        if (!options.Value.AutoStart)
+        {
+            return;
+        }
+
         var requestedGeneration =
             await automationState.GetRequestedGenerationAsync(cancellationToken);
-        var pendingExists = conformanceState.AllSearchParameters.Values.Any(
-            parameter => parameter.Status == SearchParameterStatus.Pending);
-        if (requestedGeneration <= job.Definition.ConsumedGeneration && !pendingExists)
+        if (requestedGeneration <= job.Definition.ConsumedGeneration)
         {
             return;
         }

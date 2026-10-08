@@ -1,4 +1,6 @@
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -7,6 +9,8 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 
 public sealed class ReindexStartupReconciler(
     IMediator mediator,
+    IBackgroundJobRepository<ReindexJobDefinition> repository,
+    ReindexAutomationStateStore automationState,
     IOptions<ReindexOptions> options,
     ILogger<ReindexStartupReconciler> logger)
 {
@@ -16,6 +20,23 @@ public sealed class ReindexStartupReconciler(
         {
             logger.LogInformation(
                 "Reindex: startup reconciliation skipped because AutoStart is false");
+            return;
+        }
+
+        var requestedGeneration = await automationState.GetRequestedGenerationAsync(cancellationToken);
+        var lastFailedOrCancelled = (await repository.ListAsync(
+                (int)BackgroundJobType.Reindex,
+                cancellationToken))
+            .Where(job => job.Status is "Failed" or "Cancelled")
+            .OrderByDescending(job => job.EndDate ?? job.CreateDate)
+            .FirstOrDefault();
+        if (lastFailedOrCancelled is not null &&
+            requestedGeneration <= lastFailedOrCancelled.Definition.ConsumedGeneration)
+        {
+            logger.LogInformation(
+                "Reindex: reconciliation skipped after {Status} job {JobId}; a new request generation is required",
+                lastFailedOrCancelled.Status,
+                lastFailedOrCancelled.JobId);
             return;
         }
 
