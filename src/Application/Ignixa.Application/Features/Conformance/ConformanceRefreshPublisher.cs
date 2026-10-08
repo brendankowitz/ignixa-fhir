@@ -57,8 +57,12 @@ public sealed class ConformanceRefreshPublisher(
 
                     cacheRefresher.PublishSnapshot(consumerSnapshot);
                     Interlocked.Exchange(ref _publishedGeneration, generation);
-                    return generation;
                 }
+
+                await cacheRefresher.InvalidatePublishedSnapshotCachesAsync(
+                    consumerSnapshot,
+                    cancellationToken);
+                return generation;
             }
         }
         finally

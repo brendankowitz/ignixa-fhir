@@ -351,11 +351,12 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             extractionDefinitions,
             _baseUriProvider);
 
+        var publicationSequence = Interlocked.Increment(ref _conformancePublicationSequence);
         return new ConformanceDefinitionsSnapshot(
             extractionDefinitions,
             searchableDefinitions,
-            new DefinitionsHandle(indexer, schemaProvider, generation),
-            Interlocked.Increment(ref _conformancePublicationSequence));
+            new DefinitionsHandle(indexer, schemaProvider, generation, publicationSequence),
+            publicationSequence);
     }
 
     /// <inheritdoc/>

@@ -29,7 +29,7 @@ public class PackageSchemaNotificationDispatchTests
         var registry = Substitute.For<ICompositeSchemaProviderRegistry>();
         var capabilities = Substitute.For<ICapabilityCacheInvalidator>();
         using var state = new ConformanceState();
-        var refresher = new RecordingCacheRefresher();
+        var refresher = new RecordingCacheRefresher(capabilities);
         var invalidatedAfterPublication = false;
         capabilities.When(service => service.InvalidateForTenantAsync(1, Arg.Any<CancellationToken>()))
             .Do(_ => invalidatedAfterPublication = refresher.PublishedGenerations.Count == 1);
@@ -75,6 +75,13 @@ public class PackageSchemaNotificationDispatchTests
 
     private sealed class RecordingCacheRefresher : IConformanceCacheRefresher
     {
+        private readonly ICapabilityCacheInvalidator _capabilityCacheInvalidator;
+
+        public RecordingCacheRefresher(ICapabilityCacheInvalidator capabilityCacheInvalidator)
+        {
+            _capabilityCacheInvalidator = capabilityCacheInvalidator;
+        }
+
         public List<long> BuiltGenerations { get; } = [];
         public List<long> PublishedGenerations { get; } = [];
 
@@ -89,6 +96,11 @@ public class PackageSchemaNotificationDispatchTests
 
         public void PublishSnapshot(IConformanceConsumerSnapshot snapshot) =>
             PublishedGenerations.Add(snapshot.Generation);
+
+        public ValueTask InvalidatePublishedSnapshotCachesAsync(
+            IConformanceConsumerSnapshot snapshot,
+            CancellationToken cancellationToken) =>
+            _capabilityCacheInvalidator.InvalidateForTenantAsync(1, cancellationToken);
 
         private sealed record Snapshot(long Generation) : IConformanceConsumerSnapshot;
     }

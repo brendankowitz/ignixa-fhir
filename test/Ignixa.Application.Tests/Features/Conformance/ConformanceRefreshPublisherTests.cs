@@ -53,6 +53,22 @@ public class ConformanceRefreshPublisherTests
         refresher.PublishedGenerations.ShouldBe([1, 1]);
     }
 
+    [Fact]
+    public async Task GivenPublishedSnapshot_WhenRefreshCompletes_ThenItInvalidatesCachesAfterPublicationAndActivationLockRelease()
+    {
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(CreatePackageEvent(1, "first"));
+        var refresher = new BlockingCacheRefresher(state, blockFirstBuild: false);
+        using var publisher = new ConformanceRefreshPublisher(
+            state,
+            refresher,
+            NullLogger<ConformanceRefreshPublisher>.Instance);
+
+        await publisher.RefreshUntilCurrentAsync(CancellationToken.None);
+
+        refresher.Events.ShouldBe(["published", "invalidated"]);
+    }
+
     private static SourceEvent CreatePackageEvent(long eventId, string packageId) =>
         new(
             eventId,
@@ -63,10 +79,14 @@ public class ConformanceRefreshPublisherTests
 
     private sealed class BlockingCacheRefresher : IConformanceCacheRefresher
     {
+        private readonly ConformanceState? _conformanceState;
         private readonly bool _blockFirstBuild;
 
-        public BlockingCacheRefresher(bool blockFirstBuild = true)
+        public BlockingCacheRefresher(
+            ConformanceState? conformanceState = null,
+            bool blockFirstBuild = true)
         {
+            _conformanceState = conformanceState;
             _blockFirstBuild = blockFirstBuild;
         }
 
@@ -78,6 +98,7 @@ public class ConformanceRefreshPublisherTests
 
         public List<long> BuiltGenerations { get; } = [];
         public List<long> PublishedGenerations { get; } = [];
+        public List<string> Events { get; } = [];
 
         public async Task<IConformanceConsumerSnapshot> BuildSnapshotAsync(
             ConformanceStateSnapshot stateSnapshot,
@@ -94,8 +115,25 @@ public class ConformanceRefreshPublisherTests
             return new Snapshot(generation);
         }
 
-        public void PublishSnapshot(IConformanceConsumerSnapshot snapshot) =>
+        public void PublishSnapshot(IConformanceConsumerSnapshot snapshot)
+        {
             PublishedGenerations.Add(snapshot.Generation);
+            Events.Add("published");
+        }
+
+        public async ValueTask InvalidatePublishedSnapshotCachesAsync(
+            IConformanceConsumerSnapshot snapshot,
+            CancellationToken cancellationToken)
+        {
+            if (_conformanceState is not null)
+            {
+                using (await _conformanceState.AcquireActivationLockAsync(cancellationToken))
+                {
+                }
+            }
+
+            Events.Add("invalidated");
+        }
 
         private sealed record Snapshot(long Generation) : IConformanceConsumerSnapshot;
     }

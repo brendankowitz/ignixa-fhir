@@ -527,12 +527,10 @@ public static class ApplicationServicesRegistration
 
         // Package loaded notification handler
         builder.RegisterType<Ignixa.Application.Events.Package.PackageLoadedNotificationHandler>()
-            .As<INotificationHandler<Ignixa.Application.Events.Package.IPackageLoaded>>()
             .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
             .InstancePerDependency();
 
         builder.RegisterType<Ignixa.Application.Events.Package.PackageUnloadedNotificationHandler>()
-            .As<INotificationHandler<Ignixa.Application.Events.Package.IPackageUnloaded>>()
             .As<INotificationHandler<Ignixa.Application.Events.Package.PackageUnloadedEvent>>()
             .InstancePerDependency();
 

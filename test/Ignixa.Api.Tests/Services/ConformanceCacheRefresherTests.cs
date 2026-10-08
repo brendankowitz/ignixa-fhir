@@ -3,10 +3,12 @@ using Ignixa.Api.Services;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure.Caching;
+using Ignixa.Application.Events.Package;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 
@@ -45,7 +47,7 @@ public class ConformanceCacheRefresherTests
     }
 
     [Fact]
-    public async Task GivenPublishedSchemaProvider_WhenFutureSnapshotBuildsOffLock_ThenTheBuildDoesNotRequireInvalidation()
+    public async Task GivenPublishedSchemaProvider_WhenFutureSnapshotBuildsOffLock_ThenTheBuildDoesNotInvalidateCapabilityCaches()
     {
         var tenant = new TenantConfiguration
         {
@@ -88,5 +90,64 @@ public class ConformanceCacheRefresherTests
             tenant.TenantId,
             Arg.Any<ConformanceStateSnapshot>(),
             29);
+        await capabilityCache.DidNotReceiveWithAnyArgs()
+            .InvalidateForTenantAsync(default, default);
     }
+
+    [Fact]
+    public async Task GivenMultiTenantSnapshot_WhenPackageIsUnloaded_ThenItInvalidatesAllPublishedTenantCaches()
+    {
+        var tenants = new List<TenantConfiguration>
+        {
+            CreateFileSystemTenant(1),
+            CreateFileSystemTenant(2),
+        };
+        var tenantStore = Substitute.For<ITenantConfigurationStore>();
+        tenantStore.GetAllTenantsAsync(CancellationToken.None)
+            .Returns(new ValueTask<IReadOnlyList<TenantConfiguration>>(tenants));
+        var definitions = Substitute.For<ISearchParameterDefinitionManager>();
+        definitions.AllSearchParameters.Returns([]);
+        var versions = Substitute.For<IFhirVersionContext>();
+        versions.CreateConformanceDefinitionsSnapshot(
+                Arg.Any<FhirVersion>(),
+                Arg.Any<int>(),
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>())
+            .Returns(call => new ConformanceDefinitionsSnapshot(
+                definitions,
+                definitions,
+                new DefinitionsHandle(
+                    Substitute.For<ISearchIndexer>(),
+                    Substitute.For<IFhirSchemaProvider>(),
+                    call.ArgAt<long>(3))));
+        var capabilityCache = Substitute.For<ICapabilityCacheInvalidator>();
+        var refresher = new ConformanceCacheRefresher(
+            versions,
+            null!,
+            tenantStore,
+            capabilityCache);
+        using var state = new ConformanceState();
+        using var publisher = new ConformanceRefreshPublisher(
+            state,
+            refresher,
+            NullLogger<ConformanceRefreshPublisher>.Instance);
+        var handler = new PackageUnloadedNotificationHandler(
+            publisher,
+            NullLogger<PackageUnloadedNotificationHandler>.Instance);
+
+        await handler.HandleAsync(
+            new PackageUnloadedEvent("example.package", "1.0.0", 1, DateTimeOffset.UtcNow),
+            CancellationToken.None);
+
+        await capabilityCache.Received(1).InvalidateForTenantAsync(1, CancellationToken.None);
+        await capabilityCache.Received(1).InvalidateForTenantAsync(2, CancellationToken.None);
+    }
+
+    private static TenantConfiguration CreateFileSystemTenant(int tenantId) => new()
+    {
+        TenantId = tenantId,
+        DisplayName = $"Tenant {tenantId}",
+        FhirVersion = "4.0",
+        Storage = new TenantStorageConfiguration { Type = "FileSystem" },
+    };
 }

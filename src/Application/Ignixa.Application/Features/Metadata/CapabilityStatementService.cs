@@ -250,10 +250,10 @@ public class CapabilityStatementService
 
     private string GetCacheKey(CapabilityContext context)
     {
-        var definitionsEventId = _versionContext
-            .GetDefinitionsHandle(context.FhirVersion, context.TenantId)
-            ?.DefinitionsEventId ?? 0;
-        return $"{context.ToCacheKey()}:{definitionsEventId}";
+        var definitionsHandle = _versionContext.GetDefinitionsHandle(
+            context.FhirVersion,
+            context.TenantId);
+        return $"{context.ToCacheKey()}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
     }
 
     /// <summary>
