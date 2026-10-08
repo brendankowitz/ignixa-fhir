@@ -41,7 +41,7 @@ public class PackageLoadedNotificationHandler : INotificationHandler<IPackageLoa
         {
             if (evt.RequiresConformanceRefresh)
             {
-                await _refreshPublisher.RefreshCurrentAsync(cancellationToken);
+                await _refreshPublisher.RefreshCurrentAsync(CancellationToken.None);
             }
             else
             {
@@ -55,6 +55,7 @@ public class PackageLoadedNotificationHandler : INotificationHandler<IPackageLoa
                 "Package {PackageId}@{Version} loaded durably, but local conformance refresh is deferred",
                 evt.PackageId,
                 evt.PackageVersion);
+            ConformanceConsumerRefreshMetrics.RecordFailure("package-load");
             return;
         }
 

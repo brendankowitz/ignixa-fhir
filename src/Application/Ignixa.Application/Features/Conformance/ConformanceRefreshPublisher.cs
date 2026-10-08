@@ -14,6 +14,8 @@ public sealed class ConformanceRefreshPublisher(
     private long _publishedGeneration = -1;
     private bool _forcePending;
 
+    public bool HasPendingRefresh => _forcePending;
+
     public Task<long> RefreshUntilCurrentAsync(CancellationToken cancellationToken) =>
         RefreshAsync(forceRefresh: false, cancellationToken);
 
@@ -50,7 +52,7 @@ public sealed class ConformanceRefreshPublisher(
                         generation,
                         cancellationToken);
                 }
-                catch (ConformanceConsumerRefreshException) when (forceRefresh)
+                catch when (forceRefresh)
                 {
                     _forcePending = true;
                     throw;

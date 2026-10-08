@@ -58,6 +58,54 @@ public class ConformanceStateSyncServiceTests
     }
 
     [Fact]
+    public async Task GivenForcedRefreshFails_WhenNextSyncHasNoNewEvents_ThenItPublishesThePendingRefresh()
+    {
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(new SourceEvent(
+            1,
+            "package:test@1",
+            nameof(PackageActivated),
+            new PackageActivated("test", "1", []),
+            DateTimeOffset.UtcNow));
+        var builds = 0;
+        var refresher = Substitute.For<IConformanceCacheRefresher>();
+        refresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                builds++;
+                return builds == 2
+                    ? Task.FromException<IConformanceConsumerSnapshot>(
+                        new ConformanceConsumerRefreshException("failed", new IOException("failed")))
+                    : Task.FromResult<IConformanceConsumerSnapshot>(new TestSnapshot(1));
+            });
+        using var publisher = new ConformanceRefreshPublisher(
+            state,
+            refresher,
+            NullLogger<ConformanceRefreshPublisher>.Instance);
+        using var service = new TestSyncService(
+            store,
+            state,
+            refresher,
+            Substitute.For<IConformanceLease>(),
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TimeProvider.System,
+            TimeSpan.FromMinutes(3),
+            refreshPublisher: publisher);
+
+        await service.RunSyncAsync();
+        await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
+            publisher.RefreshCurrentAsync(CancellationToken.None));
+        await service.RunSyncAsync();
+
+        builds.ShouldBe(3);
+    }
+
+    [Fact]
     public async Task GivenUncommittedTransitionObservedPastTwiceGrace_WhenSyncRuns_ThenTheWatchdogSchedulesAFullGraceReconciliation()
     {
         var store = Substitute.For<ISourceEventStore>();
@@ -251,11 +299,12 @@ public class ConformanceStateSyncServiceTests
         ISearchParameterTransitionScheduler transitionScheduler,
         TimeProvider timeProvider,
         TimeSpan transitionGrace,
-        ReindexStartupReconciler? reindexReconciler = null)
+        ReindexStartupReconciler? reindexReconciler = null,
+        ConformanceRefreshPublisher? refreshPublisher = null)
         : ConformanceStateSyncService(
             store,
             state,
-            new ConformanceRefreshPublisher(
+            refreshPublisher ?? new ConformanceRefreshPublisher(
                 state,
                 cacheRefresher,
                 NullLogger<ConformanceRefreshPublisher>.Instance),
