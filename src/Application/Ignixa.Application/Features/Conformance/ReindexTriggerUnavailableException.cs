@@ -19,22 +19,40 @@ public sealed class ReindexTriggerUnavailableException(string message, Exception
     {
         ArgumentNullException.ThrowIfNull(exception);
 
-        return !IsNonOperational(exception)
-            && GetExceptionChain(exception).Any(IsOperationalFailure);
+        List<Exception> exceptionGraph = GetExceptionChain(exception).ToList();
+
+        if (exceptionGraph.Any(static current => current is OperationCanceledException))
+        {
+            return false;
+        }
+
+        // Programmer errors take precedence at the call boundary and as independent aggregate branches.
+        // An operational provider exception remains operational when its ordinary InnerException records
+        // a provider-state programmer error, because the provider exception owns that failure boundary.
+        if (IsProgrammerError(exception)
+            || exceptionGraph
+                .OfType<AggregateException>()
+                .SelectMany(static aggregateException => aggregateException.InnerExceptions)
+                .Any(IsProgrammerError))
+        {
+            return false;
+        }
+
+        return exceptionGraph.Any(IsOperationalFailure);
     }
 
-    private static bool IsNonOperational(Exception exception) =>
+    private static bool IsProgrammerError(Exception exception) =>
         exception is ArgumentException
             or InvalidOperationException
             or NullReferenceException
-            or OperationCanceledException
         || IsTypeOrBaseType(exception, OrchestrationAlreadyExistsExceptionTypeName);
 
     private static bool IsOperationalFailure(Exception exception) =>
-        exception is DbException or IOException or TimeoutException
+        !IsTypeOrBaseType(exception, OrchestrationAlreadyExistsExceptionTypeName)
+        && (exception is DbException or IOException or TimeoutException
         || IsTypeOrBaseType(exception, RequestFailedExceptionTypeName)
         || IsTypeOrBaseType(exception, DurableTaskStorageExceptionTypeName)
-        || IsTypeOrBaseType(exception, OrchestrationFrameworkExceptionTypeName);
+        || IsTypeOrBaseType(exception, OrchestrationFrameworkExceptionTypeName));
 
     private static IEnumerable<Exception> GetExceptionChain(Exception exception)
     {

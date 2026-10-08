@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Ignixa.Application.Features.Conformance;
 using Shouldly;
 
@@ -49,4 +50,37 @@ public sealed class ReindexTriggerUnavailableExceptionTests
 
         ReindexTriggerUnavailableException.IsOperational(exception).ShouldBeFalse();
     }
+
+    [Fact]
+    public void GivenAggregateContainsOperationalFailureAndCancellation_WhenClassifyingOperationalFailures_ThenItPropagates()
+    {
+        var exception = new AggregateException(
+            new IOException("Database unavailable."),
+            new OperationCanceledException("Request cancelled."));
+
+        ReindexTriggerUnavailableException.IsOperational(exception).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenAggregateContainsOperationalFailureAndProgrammerError_WhenClassifyingOperationalFailures_ThenItPropagates()
+    {
+        var exception = new AggregateException(
+            new IOException("Database unavailable."),
+            new InvalidOperationException("Unexpected result."));
+
+        ReindexTriggerUnavailableException.IsOperational(exception).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenOperationalFailureWrapsProgrammerError_WhenClassifyingOperationalFailures_ThenItIsOperational()
+    {
+        var exception = new TestDbException(
+            "Database unavailable.",
+            new InvalidOperationException("Provider state is invalid."));
+
+        ReindexTriggerUnavailableException.IsOperational(exception).ShouldBeTrue();
+    }
+
+    private sealed class TestDbException(string message, Exception innerException)
+        : DbException(message, innerException);
 }
