@@ -24,4 +24,4 @@ CREATE INDEX IX_IsVisible
 GO
 
 CREATE INDEX IX_Transactions_SurrogateIdRangeLastValue
-    ON dbo.Transactions(SurrogateIdRangeLastValue DESC);
+    ON dbo.Transactions(SurrogateIdRangeLastValue DESC) WITH (ONLINE = ON);
