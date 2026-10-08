@@ -214,6 +214,22 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenTheLastResourceEndsExactlyAtThePageLimit_WhenRangesArePlanned_ThenThePageExtendsToTheUpperBound()
+    {
+        await _database.Repository.CreateOrUpdateAsync(Patient("page-limit-first"));
+        await _database.Repository.CreateOrUpdateAsync(Patient("page-limit-last"));
+        var lastId = await GetCurrentResourceSurrogateIdAsync("page-limit-last");
+        var upperBound = lastId + 100;
+
+        var page = await _store.GetSurrogateIdRangesAsync(
+            "Patient", -1, upperBound, 1, 2, CancellationToken.None);
+
+        page.Ranges.Count.ShouldBe(2);
+        page.Ranges[^1].End.ShouldBe(upperBound);
+        page.NextStartAfter.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task GivenAnImportReservationWhoseResourceFallsPastItsFirstValue_WhenBarrierIsRaised_ThenTheCutoffRangeIncludesTheResource()
     {
         var (transactionId, _) = await _database.MergeRepository.BeginTransactionAsync(

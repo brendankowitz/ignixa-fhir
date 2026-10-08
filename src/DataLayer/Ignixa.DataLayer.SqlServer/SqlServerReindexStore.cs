@@ -232,6 +232,35 @@ public sealed class SqlServerReindexStore(
             ranges.Add((rangeStart, end.Value, count));
             if (ranges.Count == maxRanges)
             {
+                using var continuationCommand = new SqlCommand(
+                    """
+                    SELECT CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM dbo.Resource
+                        WHERE ResourceTypeId = @ResourceTypeId
+                          AND IsHistory = 0
+                          AND IsDeleted = 0
+                          AND ResourceSurrogateId > @Cursor
+                          AND ResourceSurrogateId <= @UpperBoundSurrogateId)
+                        THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END;
+                    """);
+                continuationCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
+                continuationCommand.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
+                continuationCommand.Parameters.Add("@Cursor", SqlDbType.BigInt).Value = end.Value;
+                var hasMore = await _sqlExecutionService.ExecuteReaderAsync(
+                    _tenantId,
+                    continuationCommand,
+                    static reader => reader.GetBoolean(0),
+                    cancellationToken);
+                if (!hasMore.Single())
+                {
+                    ranges[^1] = (
+                        ranges[^1].Start,
+                        upperBoundSurrogateId,
+                        ranges[^1].ResourceCount);
+                    return (ranges, null);
+                }
+
                 return (ranges, end.Value);
             }
 
