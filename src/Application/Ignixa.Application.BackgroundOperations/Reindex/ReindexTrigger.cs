@@ -1,4 +1,3 @@
-using DurableTask.Core.Exceptions;
 using Ignixa.Application.Features.Conformance;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -43,13 +42,6 @@ public sealed class ReindexTrigger(
                 "The automatic reindex trigger is temporarily unavailable.",
                 exception);
         }
-        catch (OrchestrationFrameworkException exception)
-        {
-            throw new ReindexTriggerUnavailableException(
-                "The automatic reindex trigger is temporarily unavailable.",
-                exception);
-        }
-
         return result switch
         {
             ReindexJobCreatedResult created => RecordStarted(created.JobId, reason),

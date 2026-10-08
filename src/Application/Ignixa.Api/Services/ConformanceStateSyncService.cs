@@ -114,6 +114,7 @@ public class ConformanceStateSyncService(
             await reindexReconciler.ReconcileAsync(cancellationToken);
         }
         catch (ReindexTriggerUnavailableException exception)
+            when (ReindexTriggerUnavailableException.IsOperational(exception))
         {
             ReindexReconciliationMetrics.RecordFailure();
             logger.LogError(

@@ -1,4 +1,3 @@
-using DurableTask.Core.Exceptions;
 using Ignixa.Application.Features.Conformance;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -33,13 +32,6 @@ public sealed class ReindexStartupReconciler(
                 "Reindex reconciliation is temporarily unavailable.",
                 exception);
         }
-        catch (OrchestrationFrameworkException exception)
-        {
-            throw new ReindexTriggerUnavailableException(
-                "Reindex reconciliation is temporarily unavailable.",
-                exception);
-        }
-
         switch (result)
         {
             case ReindexJobCreatedResult created:
