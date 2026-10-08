@@ -8,7 +8,7 @@ public sealed record ReindexJobParameters(
 {
     public static ReindexJobParameters Create(
         int maximumNumberOfResourcesPerQuery = 10_000,
-        int maximumNumberOfResourcesPerWrite = 1_000,
+        int maximumNumberOfResourcesPerWrite = 100,
         int maximumConcurrency = 4,
         int queryDelayIntervalInMilliseconds = 0)
     {

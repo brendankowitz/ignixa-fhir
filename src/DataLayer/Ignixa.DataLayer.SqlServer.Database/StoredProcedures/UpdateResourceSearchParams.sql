@@ -1411,6 +1411,8 @@ BEGIN TRY
     COMMIT TRANSACTION;
     SET @FailedResources = (SELECT count(*)
                             FROM   @Resources) - @Rows;
+    SELECT ResourceSurrogateId
+    FROM   @Ids;
     EXECUTE dbo.LogEvent @Process = @SP, @Mode = @Mode, @Status = 'End', @Start = @st, @Rows = @Rows;
 END TRY
 BEGIN CATCH

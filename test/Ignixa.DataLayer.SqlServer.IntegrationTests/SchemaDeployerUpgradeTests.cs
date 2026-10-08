@@ -141,6 +141,34 @@ public class SchemaDeployerUpgradeTests
         return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
+    private static async Task<(bool HasLastValueIndex, bool ReturnsUpdatedSurrogates)> GetReindexObjectStateAsync(
+        string connectionString,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                CAST(CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE object_id = OBJECT_ID('dbo.Transactions')
+                      AND name = 'IX_Transactions_SurrogateIdRangeLastValue')
+                    THEN 1 ELSE 0 END AS bit),
+                CAST(CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM sys.dm_exec_describe_first_result_set_for_object(
+                        OBJECT_ID('dbo.UpdateResourceSearchParams'),
+                        0)
+                    WHERE name = 'ResourceSurrogateId')
+                    THEN 1 ELSE 0 END AS bit);
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        (await reader.ReadAsync(cancellationToken)).ShouldBeTrue();
+        return (reader.GetBoolean(0), reader.GetBoolean(1));
+    }
+
     private static async Task DeployVersionFiveSchemaAsync(string connectionString, string databaseName, CancellationToken cancellationToken)
     {
         var legacyDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "schema-v5-before-reindex-retirement.dacpac");
@@ -291,6 +319,9 @@ public class SchemaDeployerUpgradeTests
 
             (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None)).ShouldBeEmpty();
             (await GetDurableTaskStateCountAsync(connectionString, CancellationToken.None)).ShouldBeGreaterThan(0);
+            var reindexObjects = await GetReindexObjectStateAsync(connectionString, CancellationToken.None);
+            reindexObjects.HasLastValueIndex.ShouldBeTrue();
+            reindexObjects.ReturnsUpdatedSurrogates.ShouldBeTrue();
 
             await using var verifyConnection = new SqlConnection(connectionString);
             await verifyConnection.OpenAsync(CancellationToken.None);

@@ -317,7 +317,7 @@ as for `$export` (`EndpointRouteBuilderExtensions.cs:34`).
 | Parameter | Type | Range | Default | Effect |
 |---|---|---|---|---|
 | `maximumNumberOfResourcesPerQuery` | integer | 1..10000 | 10000 | Target range size (§8.3) |
-| `maximumNumberOfResourcesPerWrite` | integer | 1..10000 | 1000 | Worker page and TVP batch size (§8.4) |
+| `maximumNumberOfResourcesPerWrite` | integer | 1..10000 | 100 | Worker page and TVP batch size (§8.4) |
 | `maximumConcurrency` | integer | 1..16 | 4 | Concurrent range workers **per tenant** |
 | `queryDelayIntervalInMilliseconds` | integer | 0..60000 | 0 | Delay between worker pages |
 | `targetResourceTypes` | string (comma list) | Known, concrete types | Affected types (§5.1) | Narrows the scope. With nothing `Pending`, it runs a maintenance reindex that enables nothing. |
@@ -606,7 +606,7 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
 | `AutoStart` | `true` | Activation-triggered jobs (§7) |
 | `BarrierDelay` | `2 × Conformance:SyncIntervalSeconds` | Advisory catch-up time before the barrier (§5.2); must be `≥ MaxStaleness` |
 | `DefaultMaximumNumberOfResourcesPerQuery` | `10000` | §6.1 |
-| `DefaultMaximumNumberOfResourcesPerWrite` | `1000` | §6.1 |
+| `DefaultMaximumNumberOfResourcesPerWrite` | `100` | §6.1 |
 | `DefaultMaximumConcurrency` | `4` | §6.1 |
 | `StartDebounce` | `00:00:10` | §7 |
 | `OrphanGrace` | `00:02:00` | Minimum job age before two missing/terminal orchestration-state reads can classify it as orphaned (§8.6) |

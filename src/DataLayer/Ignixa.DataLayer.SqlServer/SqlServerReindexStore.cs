@@ -69,7 +69,7 @@ public sealed class SqlServerReindexStore(
         // IGNORE_DUP_KEY makes a concurrent insert a warning. The second monotonic update ensures a
         // higher target still wins that race before the cutoff is read.
         using var command = new SqlCommand(
-            """
+            $"""
             UPDATE dbo.Parameters
             SET Bigint = @TargetEventId
             WHERE Id = @BarrierId
@@ -85,14 +85,29 @@ public sealed class SqlServerReindexStore(
             WHERE Id = @BarrierId
               AND (Bigint IS NULL OR Bigint < @TargetEventId);
 
+            ;WITH ResourceCutoffCandidates AS (
+                SELECT MAX(resource.ResourceSurrogateId) AS CutoffValue
+                FROM dbo.ResourceType AS resourceTypes
+                OUTER APPLY (
+                    SELECT TOP (1) ResourceSurrogateId
+                    FROM dbo.Resource
+                    WHERE ResourceTypeId = resourceTypes.ResourceTypeId
+                    ORDER BY ResourceSurrogateId DESC
+                ) AS resource
+            )
             SELECT
-                ISNULL((SELECT MAX(SurrogateIdRangeFirstValue) FROM dbo.Transactions), -1),
+                ISNULL((
+                    SELECT TOP (1) SurrogateIdRangeFirstValue
+                    FROM dbo.Transactions
+                    ORDER BY SurrogateIdRangeFirstValue DESC), -1),
                 ISNULL((
                     SELECT MAX(CutoffValue)
                     FROM (
-                        SELECT MAX(SurrogateIdRangeLastValue) AS CutoffValue FROM dbo.Transactions
+                        SELECT TOP (1) SurrogateIdRangeLastValue AS CutoffValue
+                        FROM dbo.Transactions
+                        ORDER BY SurrogateIdRangeLastValue DESC
                         UNION ALL
-                        SELECT MAX(ResourceSurrogateId) AS CutoffValue FROM dbo.Resource
+                        SELECT CutoffValue FROM ResourceCutoffCandidates
                     ) AS CutoffCandidates), -1);
             """);
         command.Parameters.Add("@TargetEventId", SqlDbType.BigInt).Value = targetEventId;
@@ -426,37 +441,80 @@ public sealed class SqlServerReindexStore(
 
         try
         {
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
+            var updatedResourceSurrogateIds = await _sqlExecutionService.ExecuteReaderAsync(
+                _tenantId,
+                command,
+                static reader => reader.GetInt64(0),
+                cancellationToken,
+                SqlCommandIdempotency.Idempotent);
+
+            var updatedResourceSurrogateIdSet = updatedResourceSurrogateIds.ToHashSet();
+            var filterExtensionUpdates = updatedResourceSurrogateIds.Count != 0 ||
+                await SupportsUpdatedResourceResultSetAsync(cancellationToken);
+            if (!filterExtensionUpdates)
+            {
+                _logger.LogWarning(
+                    "UpdateResourceSearchParams ran without returning updated surrogate ids because the tenant schema predates version 8. Applying extension updates to every reindex input (TenantId={TenantId}, ResourceCount={ResourceCount}).",
+                    _tenantId,
+                    resources.Count);
+            }
+
+            var conflicts = Convert.ToInt32(failedResources.Value, CultureInfo.InvariantCulture);
+            var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
+                    resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger)
+                .Where(extension => !filterExtensionUpdates || updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
+                .ToArray();
+            var uriExtensions = _uriRowGenerator.ExtractExtensionData(
+                    resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger)
+                .Where(extension => !filterExtensionUpdates || updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
+                .ToArray();
+            if (tokenExtensions.Length > 0 || uriExtensions.Length > 0)
+            {
+                try
+                {
+                    await _extensionUpdater.UpdateAllExtensionsAsync(tokenExtensions, uriExtensions, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Failed to update extension columns after reindex (TenantId={TenantId}, ResourceCount={ResourceCount}, TokenExtensionCount={TokenExtensionCount}, UriExtensionCount={UriExtensionCount}). Core search indices were successfully updated; extension columns remain NULL.",
+                        _tenantId,
+                        resources.Count,
+                        tokenExtensions.Length,
+                        uriExtensions.Length);
+                }
+            }
+
+            return (resources.Count - conflicts, conflicts);
         }
         catch (SqlException ex) when (ex.Number == -2)
         {
             throw new TimeoutException("The SQL reindex write timed out.", ex);
         }
+    }
 
-        var conflicts = Convert.ToInt32(failedResources.Value, CultureInfo.InvariantCulture);
-        var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
-            resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToArray();
-        var uriExtensions = _uriRowGenerator.ExtractExtensionData(
-            resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToArray();
-        if (tokenExtensions.Length > 0 || uriExtensions.Length > 0)
-        {
-            try
-            {
-                await _extensionUpdater.UpdateAllExtensionsAsync(tokenExtensions, uriExtensions, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Failed to update extension columns after reindex (TenantId={TenantId}, ResourceCount={ResourceCount}, TokenExtensionCount={TokenExtensionCount}, UriExtensionCount={UriExtensionCount}). Core search indices were successfully updated; extension columns remain NULL.",
-                    _tenantId,
-                    resources.Count,
-                    tokenExtensions.Length,
-                    uriExtensions.Length);
-            }
-        }
-
-        return (resources.Count - conflicts, conflicts);
+    private async Task<bool> SupportsUpdatedResourceResultSetAsync(CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand(
+            """
+            SELECT CAST(CASE WHEN EXISTS (
+                SELECT 1
+                FROM sys.tables
+                WHERE schema_id = SCHEMA_ID('dbo')
+                  AND name = 'SchemaVersion')
+              AND EXISTS (
+                SELECT 1
+                FROM dbo.SchemaVersion
+                WHERE Version >= 8)
+              THEN 1 ELSE 0 END AS bit);
+            """);
+        var values = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId,
+            command,
+            static reader => reader.GetBoolean(0),
+            cancellationToken);
+        return values.Single();
     }
 
     public async Task<bool> HasSearchParameterAsync(

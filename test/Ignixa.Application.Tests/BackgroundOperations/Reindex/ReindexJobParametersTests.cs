@@ -11,7 +11,7 @@ public class ReindexJobParametersTests
         var parameters = ReindexJobParameters.Create();
 
         parameters.MaximumNumberOfResourcesPerQuery.ShouldBe(10_000);
-        parameters.MaximumNumberOfResourcesPerWrite.ShouldBe(1_000);
+        parameters.MaximumNumberOfResourcesPerWrite.ShouldBe(100);
         parameters.MaximumConcurrency.ShouldBe(4);
         parameters.QueryDelayIntervalInMilliseconds.ShouldBe(0);
     }
