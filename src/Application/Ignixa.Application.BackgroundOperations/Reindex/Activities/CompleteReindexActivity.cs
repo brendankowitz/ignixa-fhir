@@ -103,12 +103,16 @@ public sealed class CompleteReindexActivity(
                 if (missingTenantIds.Length > 0)
                 {
                     success = false;
-                    completions = ownedTargets.Select(owned => new ReindexTargetCompletion(
-                        owned.Target,
-                        false,
-                        0,
-                        TimeSpan.Zero,
-                        $"Active tenants {string.Join(", ", missingTenantIds)} were added after this job started; a manual $reindex is needed."))
+                    var manualReindexMessage =
+                        $"Active tenants {string.Join(", ", missingTenantIds)} were added after this job started; a manual $reindex is needed.";
+                    completions = completions.Select(completion => completion with
+                    {
+                        Success = false,
+                        ErrorMessage = string.Join(
+                            " ",
+                            new[] { completion.ErrorMessage, manualReindexMessage }
+                                .Where(message => message is not null))
+                    })
                         .ToList();
                 }
 
