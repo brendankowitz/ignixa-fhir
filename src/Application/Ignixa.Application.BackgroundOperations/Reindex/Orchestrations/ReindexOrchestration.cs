@@ -1,4 +1,5 @@
 using DurableTask.Core;
+using DurableTask.Core.Exceptions;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 
@@ -287,7 +288,6 @@ public sealed class ReindexOrchestration
             var wave = state.PendingRanges
                 .Take(input.Parameters.MaximumConcurrency)
                 .ToArray();
-            var retry = CreateRetryOptions();
             var tasks = wave.Select(
                 async range =>
                 {
@@ -295,7 +295,7 @@ public sealed class ReindexOrchestration
                     {
                         var output = await context.ScheduleWithRetry<ReindexRangeOutput>(
                             typeof(ReindexRangeActivity),
-                            retry,
+                            CreateRangeRetryOptions(input.StaleJobTimeout),
                             new ReindexRangeInput(
                                 input.JobId,
                                 state.TenantId,
@@ -400,6 +400,24 @@ public sealed class ReindexOrchestration
                 PlannerCursor = -1,
                 NextPlannerCursor = null
             };
+
+    private static RetryOptions CreateRangeRetryOptions(TimeSpan retryTimeout)
+    {
+        var standardFailureCount = 0;
+        return new RetryOptions(TimeSpan.FromSeconds(1), int.MaxValue)
+        {
+            BackoffCoefficient = 2,
+            MaxRetryInterval = TimeSpan.FromSeconds(30),
+            RetryTimeout = retryTimeout,
+            Handle = error => IsDefinitionsNotReady(error) || ++standardFailureCount < 5
+        };
+    }
+
+    private static bool IsDefinitionsNotReady(Exception error) =>
+        error is ReindexDefinitionsNotReadyException ||
+        error.InnerException is ReindexDefinitionsNotReadyException ||
+        error is TaskFailedException { FailureDetails: { } details } &&
+        details.IsCausedBy<ReindexDefinitionsNotReadyException>();
 
     private static bool ContinueIfNeeded(
         OrchestrationContext context,
