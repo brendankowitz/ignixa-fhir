@@ -6,7 +6,6 @@ using Medino;
 namespace Ignixa.Api.Services;
 
 public sealed class ReindexCompletionHook(
-    ConformanceRefreshPublisher refreshPublisher,
     ReindexAutomationStateStore automationState,
     IMediator mediator,
     IOptions<ReindexOptions> options,
@@ -17,8 +16,6 @@ public sealed class ReindexCompletionHook(
         BackgroundJob<ReindexJobDefinition> job,
         CancellationToken cancellationToken)
     {
-        await refreshPublisher.RefreshUntilCurrentAsync(cancellationToken);
-
         if (!options.Value.AutoStart)
         {
             return;
