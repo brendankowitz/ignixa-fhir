@@ -204,7 +204,12 @@ public class DeferredWriteCoordinator
         return new ResourceKey(wrapper.ResourceType, wrapper.ResourceId, version, partitionId);
     }
 
-    public bool IsCreated(int entryIndex) => _createdEntries[entryIndex];
+    public bool IsCreated(int entryIndex) =>
+        IsAtomic
+            ? _createdEntries[entryIndex]
+            : _createdEntries.TryRemove(entryIndex, out var isCreated)
+                ? isCreated
+                : throw new InvalidOperationException($"No write result recorded for entry {entryIndex}.");
 
     public ResourceWrapper? FindStagedResource(string resourceType, string resourceId) =>
         _stagedWrites.FirstOrDefault(write =>

@@ -298,6 +298,24 @@ public class PatientEverythingHandlerTests
         result.SearchOptions.MaxItemCount.ShouldBe(100);
     }
 
+    [Theory]
+    [InlineData(int.MaxValue, 1000)]
+    [InlineData(1001, 1000)]
+    [InlineData(0, 1)]
+    [InlineData(-5, 1)]
+    public async Task GivenOutOfRangeCount_WhenHandling_ThenMaxItemCountIsClampedToSearchPageBounds(int count, int expected)
+    {
+        // Arrange
+        SetupDefaultMocks();
+        var query = new PatientEverythingQuery("patient-123", Count: count);
+
+        // Act
+        var result = await _handler.HandleAsync(query, CancellationToken.None);
+
+        // Assert
+        result.SearchOptions.MaxItemCount.ShouldBe(expected);
+    }
+
     [Fact]
     public async Task GivenNoCount_WhenHandling_ThenDefaultsTo50()
     {

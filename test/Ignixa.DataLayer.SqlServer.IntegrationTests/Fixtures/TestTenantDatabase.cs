@@ -12,10 +12,9 @@ using Microsoft.IO;
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 
 /// <summary>
-/// Test fixture providing a real, uniquely-named scratch tenant database, restored from a schema deployed once
-/// per test process (see <see cref="SchemaTemplate"/>) and backed by a real <see cref="SqlExecutionService"/>.
-/// Reused by every SQL-backed integration test in the Phase D write-path plan. Follows the
-/// fake-<see cref="ITenantConfigurationStore"/> pattern established in SchemaDeployerUpgradeTests.cs.
+/// Provides a uniquely named scratch tenant database, restored from a schema deployed once per test process and
+/// backed by a real <see cref="SqlExecutionService"/>. Follows the fake-<see cref="ITenantConfigurationStore"/>
+/// pattern in SchemaDeployerUpgradeTests.cs.
 /// </summary>
 public sealed class TestTenantDatabase
 {
@@ -244,16 +243,12 @@ public sealed class TestTenantDatabase
     /// <summary>
     /// The deployed schema, captured once per test process as a backup that every test database is restored from.
     /// <para>
-    /// A DacFx deploy costs 16-18 seconds and cannot run concurrently (sixteen xUnit collections deploying at once
-    /// put 32 sleeping DacFx sessions on the server and the deploys time out inside SqlReverseEngineer), so one
-    /// serialised deploy per test made fixture setup, not the tests, take most of a two-hour CI run. A restore of
-    /// the same schema takes about a second. Tests whose subject is deployment itself (SchemaDeployer*,
-    /// SchemaVersionResolver, PopulatedTerminologySchemaUpgrade, PostDeploymentScriptIdempotency) deploy through
-    /// their own code paths and never come through here.
+    /// A DacFx deploy takes 16-18 s and times out when run concurrently; a restore takes about a second. Tests whose
+    /// subject is deployment itself bypass this fixture and deploy through their own code paths.
     /// </para>
     /// <para>
-    /// The <see cref="Lazy{T}"/> default (ExecutionAndPublication) guarantees exactly one deploy; a failed deploy
-    /// stays cached, so every test reports the same root cause instead of retrying a two-minute operation.
+    /// <see cref="Lazy{T}"/>'s default ExecutionAndPublication mode runs the deploy exactly once. A failure is captured
+    /// in the cached task, so every test reports the same root cause rather than redeploying.
     /// </para>
     /// </summary>
     private static readonly Lazy<Task<SchemaTemplateBackup>> SchemaTemplate = new(CreateSchemaTemplateBackupAsync);
@@ -263,6 +258,9 @@ public sealed class TestTenantDatabase
     private static async Task<SchemaTemplateBackup> CreateSchemaTemplateBackupAsync()
     {
         var templateName = $"IgnixaDataLayerSqlServerTestTemplate_{Guid.NewGuid():N}";
+
+        // Shared by every test: one caller's cancellation must not cancel the template for the rest. Callers cancel
+        // only their own wait.
         var cancellationToken = CancellationToken.None;
 
         await CreateEmptyDatabaseAsync(templateName, cancellationToken);
@@ -280,9 +278,9 @@ public sealed class TestTenantDatabase
         await BackupTemplateAsync(template, cancellationToken);
         AppDomain.CurrentDomain.ProcessExit += (_, _) => DeleteBackupFile(template.BackupPath);
 
-        // Only the backup is needed from here on; restores never touch the source database. Not in a finally: a
-        // failed deploy leaves the template behind for diagnosis rather than risk a drop failure replacing the
-        // deploy error that every test will report.
+        // Only the backup is needed from here on; restores never touch the source database. Not in a finally: on any
+        // failure above, the template is left for diagnosis rather than risk a drop failure masking the original
+        // error that every test will report.
         await DropDatabaseAsync(templateName, cancellationToken);
         return template;
     }
@@ -302,8 +300,9 @@ public sealed class TestTenantDatabase
             files.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
         }
 
-        // RESTORE ... WITH MOVE must relocate every file, and the restore statement below names exactly one data
-        // and one log file. A schema that adds a filegroup or file needs RestoreTemplateAsync extended to match.
+        // Every file must be MOVEd to a per-database path or restored copies collide, and RestoreTemplateAsync moves
+        // exactly one ROWS and one LOG file. A schema that adds a file or filegroup needs this check,
+        // SchemaTemplateBackup, and RestoreTemplateAsync extended to match.
         if (files.Count != 2 || files.Count(f => f.Type == "ROWS") != 1 || files.Count(f => f.Type == "LOG") != 1)
         {
             throw new InvalidOperationException(
@@ -314,9 +313,19 @@ public sealed class TestTenantDatabase
         var data = files.Single(f => f.Type == "ROWS");
         var log = files.Single(f => f.Type == "LOG");
 
-        // The data directory, not InstanceDefaultBackupPath: it is necessarily writable by the SQL Server service
-        // account, and deriving it from the server's own path keeps '\' vs '/' correct for Windows and the Linux
-        // container alike. The path is server-side, which is what BACKUP/RESTORE need when the server is in Docker.
+        // SchemaTemplateBackup derives each copy's file paths by substituting the database name, so a server that
+        // does not embed it in default file names would hand every restore the same files.
+        if (!data.PhysicalName.Contains(templateName, StringComparison.Ordinal) ||
+            !log.PhysicalName.Contains(templateName, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Expected the template's physical file names to embed '{templateName}' so restored copies get unique files, " +
+                $"but found '{data.PhysicalName}' and '{log.PhysicalName}'.");
+        }
+
+        // Back up next to the data file: that directory is writable by the SQL Server service account, and slicing the
+        // server's own path keeps its separator (Windows or Linux container). BACKUP/RESTORE paths are server-side, so
+        // a client temp directory would not work when the server is in a container.
         var directory = data.PhysicalName[..(data.PhysicalName.LastIndexOfAny(['\\', '/']) + 1)];
 
         return new SchemaTemplateBackup(
@@ -340,7 +349,8 @@ public sealed class TestTenantDatabase
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    // Serialised on the creation gate for the reason that gate exists: a restore creates a database too.
+    // Shares DatabaseCreationGate to keep the serialisation the suite was validated with; parallel restores have not
+    // been measured.
     private static async Task RestoreTemplateAsync(SchemaTemplateBackup template, string databaseName, CancellationToken cancellationToken)
     {
         await DatabaseCreationGate.WaitAsync(cancellationToken);

@@ -12,6 +12,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
+using Ignixa.Search.Parsing;
 
 namespace Ignixa.Application.Operations.Features.PatientEverything;
 
@@ -103,7 +104,7 @@ public class PatientEverythingHandler(
         {
             ResourceType = "Patient",
             Expression = patientEverythingExpression,
-            MaxItemCount = request.Count ?? 50, // Default to 50 if not specified
+            MaxItemCount = Math.Clamp(request.Count ?? 50, 1, SearchOptionsBuilder.MaxAllowedItemCount),
             Sort = [], // _sort parameter not currently supported for $everything
             Include = [], // Not applicable for $everything (already includes everything)
             RevInclude = [], // Not applicable for $everything

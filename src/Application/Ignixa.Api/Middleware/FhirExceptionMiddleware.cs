@@ -39,6 +39,11 @@ public class FhirExceptionMiddleware
             _logger.LogWarning(fhirEx, "FHIR exception occurred: {ExceptionType}", fhirEx.GetType().Name);
             await HandleExceptionAsync(context, fhirEx);
         }
+        catch (BadHttpRequestException badRequestEx)
+        {
+            _logger.LogWarning(badRequestEx, "Request rejected by the server: {StatusCode}", badRequestEx.StatusCode);
+            await HandleExceptionAsync(context, badRequestEx);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception occurred");
@@ -80,7 +85,15 @@ public class FhirExceptionMiddleware
         var code = OperationOutcomeIssue.IssueTypeCommon.Exception;
 
         // Map specific exceptions to HTTP status codes
-        if (exception is ArgumentException or ArgumentNullException)
+        if (exception is BadHttpRequestException badRequest)
+        {
+            // Kestrel's own rejections (an over-limit body, malformed framing) are client errors, not 500s.
+            statusCode = (HttpStatusCode)badRequest.StatusCode;
+            code = badRequest.StatusCode == StatusCodes.Status413PayloadTooLarge
+                ? OperationOutcomeIssue.IssueTypeCommon.TooCostly
+                : OperationOutcomeIssue.IssueTypeCommon.Invalid;
+        }
+        else if (exception is ArgumentException or ArgumentNullException)
         {
             statusCode = HttpStatusCode.BadRequest;
             code = OperationOutcomeIssue.IssueTypeCommon.Invalid;

@@ -26,6 +26,13 @@ public record BundleProcessingOptions
     public int ChannelCapacity { get; init; } = 100;
 
     /// <summary>
+    /// Gets the maximum number of entries permitted in a transaction bundle.
+    /// Default: 500 entries.
+    /// Batch bundles are not subject to this limit.
+    /// </summary>
+    public int MaxTransactionEntries { get; init; } = 500;
+
+    /// <summary>
     /// Gets the bundle type (Transaction or Batch).
     /// Determines transaction semantics and error handling.
     /// </summary>

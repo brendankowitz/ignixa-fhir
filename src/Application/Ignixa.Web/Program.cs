@@ -8,6 +8,7 @@ using Autofac.Extensions.DependencyInjection;
 using Ignixa.Api.Extensions;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Api.OpenIddict.Extensions;
+using Ignixa.Api.Registrations;
 using Ignixa.Api.Services;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
@@ -20,6 +21,8 @@ using Ignixa.Abstractions;
 using Ignixa.Specification;
 
 var builder = WebApplication.CreateBuilder(args);
+var maxRequestBodySize = ApplicationServicesRegistration.GetMaxRequestBodySize(builder.Configuration);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = maxRequestBodySize);
 
 // Configure Autofac as the service provider factory
 builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
@@ -34,7 +37,10 @@ builder.Services.AddIgnixaOpenIddict(builder.Configuration, GetSchemaProviders()
 // Configure Autofac container with all Ignixa registrations
 builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
 {
-    containerBuilder.RegisterIgnixaServices(builder.Configuration, builder.Environment.EnvironmentName);
+    containerBuilder.RegisterIgnixaServices(
+        builder.Configuration,
+        builder.Environment.EnvironmentName,
+        maxRequestBodySize);
 });
 
 var app = builder.Build();

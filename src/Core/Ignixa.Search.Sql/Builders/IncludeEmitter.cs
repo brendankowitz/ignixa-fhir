@@ -9,16 +9,15 @@ internal static class IncludeEmitter
 {
     /// <summary>
     /// Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by
-    /// reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. The ordinary
-    /// path selects <c>TOP (Limit + 1)</c> ordered by (T1, Sid1) when bounded; an unbounded stage or the
-    /// IncludesOnly path drops both. The body is
-    /// never filtered by the resume boundary — it seeds downstream <c>:iterate</c> stages (<see cref="EmitSeedExists"/>).
+    /// reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. The body is
+    /// never capped and never filtered by the resume boundary: it seeds downstream <c>:iterate</c> stages
+    /// (<see cref="EmitSeedExists"/>), where a parent ranked past the budget can still have a child ranked
+    /// inside it. The budget is applied by the stage's limit companion, or once globally on an IncludesOnly page.
     /// </summary>
     internal static string EmitIncludeStage(
         QueryPlan plan,
         IncludeStage stage,
         ResourceVisibility visibility,
-        bool includesOnly,
         string matchSeedLabel)
     {
         var (selectColumns, seedTypeColumn, outputTypeColumn, outputSurrogateColumn, seedCorrelationAlias) = stage.Direction switch
@@ -45,7 +44,7 @@ internal static class IncludeEmitter
         }
 
         whereClauses.Add("rsp.BaseUri IS NULL");
-        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias, includesOnly, matchSeedLabel));
+        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias, matchSeedLabel));
 
         foreach (var constraint in stage.Constraints ?? [])
         {
@@ -58,35 +57,30 @@ internal static class IncludeEmitter
         // An inline caller must not trim it; see ResourceRowFilter's remarks.
         var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
 
-        // Drop the per-stage TOP and its ORDER BY for the IncludesOnly page: the budget is applied once
-        // globally, and a CTE ORDER BY without TOP is illegal T-SQL anyway.
-        var bounded = !includesOnly && stage.Limit.HasValue;
-        var topClause = bounded ? $"TOP ({stage.Limit + 1}) " : string.Empty;
-        var orderByClause = bounded ? "\n    ORDER BY T1 ASC, Sid1 ASC" : string.Empty;
-
-        return $"    SELECT DISTINCT {topClause}{selectColumns}\n" +
+        return $"    SELECT DISTINCT {selectColumns}\n" +
                $"    FROM dbo.ReferenceSearchParam rsp\n" +
                $"    INNER JOIN dbo.Resource r\n" +
                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
                rowFilterLine +
-               $"    WHERE {string.Join("\n      AND ", whereClauses)}" +
-               orderByClause;
+               $"    WHERE {string.Join("\n      AND ", whereClauses)}";
     }
 
-    /// <summary>Renders the EXISTS clause correlating an include row back to its seeds — the match page and/or earlier stages.</summary>
+    /// <summary>
+    /// Renders the EXISTS clause correlating an include row back to its seeds — the match page and/or earlier
+    /// stages. An earlier stage is always read through its uncapped body (<see cref="IncludeLabel"/>), never
+    /// its limit companion: the per-stage <c>TOP (Limit + 1)</c> rows together hold the first Limit + 1 rows
+    /// of the whole include set only if every stage ranks its complete row set, which an iterate stage seeded
+    /// from a capped parent would not. Reading the body also keeps an IncludesOnly page's iterate stage
+    /// unfiltered by the resume boundary, so page 2 still sees page-1 targets.
+    /// </summary>
     /// <param name="stage">The stage whose seeds are being correlated.</param>
     /// <param name="correlationAlias">Alias of the include row being tested.</param>
-    /// <param name="includesOnly">
-    /// Which label an earlier stage is read through: the ordinary path seeds from the limit companion
-    /// (<see cref="IncludeLimitLabel"/>); an IncludesOnly page seeds from the stage body (<see cref="IncludeLabel"/>),
-    /// unfiltered by the resume boundary so an <c>:iterate</c> stage on page 2 still sees page-1 targets.
-    /// </param>
     /// <param name="matchSeedLabel">
     /// Which label the match seed is read through: <see cref="MatchSeed"/> when the page over-fetches a
     /// has-more probe row that must not pull includes of its own, otherwise <see cref="MatchPage"/> itself.
     /// </param>
-    private static string EmitSeedExists(IncludeStage stage, string correlationAlias, bool includesOnly, string matchSeedLabel)
+    private static string EmitSeedExists(IncludeStage stage, string correlationAlias, string matchSeedLabel)
     {
         var branches = new List<string>();
         if (stage.SeedFromMatch)
@@ -96,8 +90,7 @@ internal static class IncludeEmitter
 
         foreach (var seedStageIndex in stage.SeedStages)
         {
-            var seedLabel = includesOnly ? IncludeLabel(seedStageIndex) : IncludeLimitLabel(seedStageIndex);
-            branches.Add($"SELECT 1 FROM {seedLabel} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+            branches.Add($"SELECT 1 FROM {IncludeLabel(seedStageIndex)} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
         }
 
         return $"EXISTS (\n        {string.Join("\n        UNION ALL\n        ", branches)}\n    )";

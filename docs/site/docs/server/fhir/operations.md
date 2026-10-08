@@ -327,7 +327,7 @@ GET /Patient/$includes?_includesContinuationToken=xyz123&_include=Patient:organi
 | `_includesContinuationToken` | string | **Required**. Continuation token from previous search "related" link |
 | `_include` | string | Include parameters (inherited from original search) |
 | `_revinclude` | string | Reverse include parameters (inherited from original search) |
-| `_includesCount` | integer | Maximum number of included resources per page (optional) |
+| `_includesCount` | integer | Maximum number of included resources per page (optional; defaults to 1000, the same cap as the originating search page) |
 
 #### Behavior
 
