@@ -1,3 +1,4 @@
+using System.Reflection;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Compression;
@@ -30,6 +31,22 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     public Task DisposeAsync() => _database.DisposeAsync();
+
+    [Fact]
+    public void GivenTheSqlRepository_WhenInspectingWriteOverloads_ThenNoZeroStampCompatibilityOverloadExists()
+    {
+        var methods = typeof(SqlServerFhirRepository).GetMethods(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+        methods.Count(method =>
+                method.Name == nameof(IFhirRepository.GetNextTransactionIdAsync) &&
+                method.GetParameters().All(parameter => parameter.ParameterType != typeof(long)))
+            .ShouldBe(0);
+        methods.Count(method =>
+                method.Name == nameof(IFhirRepository.DeleteAsync) &&
+                method.GetParameters().All(parameter => parameter.ParameterType != typeof(long)))
+            .ShouldBe(0);
+    }
 
     [Fact]
     public async Task GivenExistingTransactions_WhenBarrierIsRaisedMonotonically_ThenItReturnsThePostBarrierCutoff()
@@ -108,7 +125,8 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         await _database.Repository.CreateOrUpdateAsync(Patient("deleted"));
         await _database.Repository.DeleteAsync(
             new ResourceKey("Patient", "deleted"),
-            new ResourceRequest("DELETE", "Patient/deleted"));
+            new ResourceRequest("DELETE", "Patient/deleted"),
+            definitionsEventId: 0);
 
         var (_, cutoff) = await _store.RaiseBarrierAsync(50, CancellationToken.None);
         var (ranges, _) = await _store.GetSurrogateIdRangesAsync(

@@ -59,7 +59,7 @@ public class SqlServerFhirRepositoryCrudTests : IAsyncLifetime
         await _repository.CreateOrUpdateAsync(resource, CancellationToken.None);
 
         var deletedKey = await _repository.DeleteAsync(
-            new ResourceKey("Patient", "patient-crud-3"), new ResourceRequest("DELETE", "Patient/patient-crud-3"), null, CancellationToken.None);
+            new ResourceKey("Patient", "patient-crud-3"), new ResourceRequest("DELETE", "Patient/patient-crud-3"), 0, null, CancellationToken.None);
 
         deletedKey.ShouldNotBeNull();
         var fetched = await _repository.GetAsync(new ResourceKey("Patient", "patient-crud-3"), CancellationToken.None);
@@ -72,8 +72,8 @@ public class SqlServerFhirRepositoryCrudTests : IAsyncLifetime
         var resource = BuildTestPatientWrapper("patient-crud-4");
         await _repository.CreateOrUpdateAsync(resource, CancellationToken.None);
         var key = new ResourceKey("Patient", "patient-crud-4");
-        var firstDelete = await _repository.DeleteAsync(key, new ResourceRequest("DELETE", "Patient/patient-crud-4"), null, CancellationToken.None);
-        var secondDelete = await _repository.DeleteAsync(key, new ResourceRequest("DELETE", "Patient/patient-crud-4"), null, CancellationToken.None);
+        var firstDelete = await _repository.DeleteAsync(key, new ResourceRequest("DELETE", "Patient/patient-crud-4"), 0, null, CancellationToken.None);
+        var secondDelete = await _repository.DeleteAsync(key, new ResourceRequest("DELETE", "Patient/patient-crud-4"), 0, null, CancellationToken.None);
 
         secondDelete!.VersionId.ShouldBe(firstDelete!.VersionId);
     }
@@ -124,10 +124,10 @@ public class SqlServerFhirRepositoryCrudTests : IAsyncLifetime
 
         // A real, non-null TransactionId -- deliberately never committed via CommitTransactionAsync
         // anywhere in this test, to prove DeleteAsync's own writes don't depend on that commit.
-        var transactionId = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+        var transactionId = await _repository.GetNextTransactionIdAsync(0, CancellationToken.None);
 
         var deletedKey = await _repository.DeleteAsync(
-            new ResourceKey("Patient", resourceId), new ResourceRequest("DELETE", $"Patient/{resourceId}"), transactionId, CancellationToken.None);
+            new ResourceKey("Patient", resourceId), new ResourceRequest("DELETE", $"Patient/{resourceId}"), 0, transactionId, CancellationToken.None);
 
         deletedKey.ShouldNotBeNull();
         deletedKey!.VersionId.ShouldBe("2");
@@ -159,15 +159,15 @@ public class SqlServerFhirRepositoryCrudTests : IAsyncLifetime
     public async Task GivenAResourceThatNeverExisted_WhenDeleteAsyncCalled_ThenReturnsNull()
     {
         var result = await _repository.DeleteAsync(
-            new ResourceKey("Patient", "never-existed"), new ResourceRequest("DELETE", "Patient/never-existed"), null, CancellationToken.None);
+            new ResourceKey("Patient", "never-existed"), new ResourceRequest("DELETE", "Patient/never-existed"), 0, null, CancellationToken.None);
         result.ShouldBeNull();
     }
 
     [Fact]
     public async Task GivenTwoCallsToGetNextTransactionIdAsync_WhenBothReturn_ThenTheyAreDifferentValues()
     {
-        var first = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
-        var second = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+        var first = await _repository.GetNextTransactionIdAsync(0, CancellationToken.None);
+        var second = await _repository.GetNextTransactionIdAsync(0, CancellationToken.None);
         first.ShouldNotBe(second);
     }
 
@@ -270,7 +270,7 @@ public class SqlServerFhirRepositoryCrudTests : IAsyncLifetime
         await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(_database, surrogateId, CancellationToken.None);
 
         await _repository.DeleteAsync(
-            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None);
+            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), 0, null, CancellationToken.None);
 
         await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(_database, surrogateId, CancellationToken.None);
     }

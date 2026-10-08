@@ -416,13 +416,6 @@ public class SqlServerFhirRepository(
         }
     }
 
-    internal ValueTask<ResourceKey?> DeleteAsync(
-        ResourceKey key,
-        ResourceRequest request,
-        TransactionId? transactionId = null,
-        CancellationToken cancellationToken = default) =>
-        DeleteAsync(key, request, definitionsEventId: 0, transactionId, cancellationToken);
-
     public async ValueTask<ResourceKey?> DeleteAsync(
         ResourceKey key,
         ResourceRequest request,
@@ -594,10 +587,6 @@ public class SqlServerFhirRepository(
 
         return new ResourceKey(key.ResourceType, key.Id, newVersion.ToString(), key.TenantId);
     }
-
-    /// <inheritdoc/>
-    internal ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
-        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
 
     public async ValueTask<TransactionId> GetNextTransactionIdAsync(
         long definitionsEventId,

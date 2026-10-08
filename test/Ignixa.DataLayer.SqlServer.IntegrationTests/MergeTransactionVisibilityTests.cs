@@ -27,7 +27,7 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
     [Fact]
     public async Task GivenAnEarlierPendingAllocation_WhenItCompletes_ThenVisibilityAdvancesWithoutSkippingIt()
     {
-        var pending = await _database.Repository.GetNextTransactionIdAsync();
+        var pending = await _database.Repository.GetNextTransactionIdAsync(0);
         await _database.Repository.CreateOrUpdateAsync(Patient("behind-pending"));
         (await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions WHERE IsVisible = 1"))
             .ShouldBe(0);
@@ -47,7 +47,8 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
 
         await _database.Repository.DeleteAsync(
             new ResourceKey("Patient", "delete-allocation"),
-            new ResourceRequest("DELETE", "Patient/delete-allocation"));
+            new ResourceRequest("DELETE", "Patient/delete-allocation"),
+            definitionsEventId: 0);
 
         var after = await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions");
         after.ShouldBe(before + 1);
@@ -71,13 +72,14 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
         CancellationToken.None);
         await AssertTransactionCountAsync(++transactionCount);
 
-        var batchTransaction = await _database.Repository.GetNextTransactionIdAsync();
+        var batchTransaction = await _database.Repository.GetNextTransactionIdAsync(0);
         await AssertTransactionCountAsync(++transactionCount);
         await _database.Repository.CommitTransactionAsync(batchTransaction);
 
         await _database.Repository.DeleteAsync(
             new ResourceKey("Patient", "allocation-create"),
-            new ResourceRequest("DELETE", "Patient/allocation-create"));
+            new ResourceRequest("DELETE", "Patient/allocation-create"),
+            definitionsEventId: 0);
         await AssertTransactionCountAsync(++transactionCount);
     }
 
