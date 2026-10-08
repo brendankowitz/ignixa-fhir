@@ -1,3 +1,4 @@
+using DurableTask.Core.Exceptions;
 using Ignixa.Application.Features.Conformance;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -19,9 +20,26 @@ public sealed class ReindexStartupReconciler(
             return;
         }
 
-        var result = await mediator.SendAsync(
-            new CreateReindexJobCommand { Trigger = "Reconciliation" },
-            cancellationToken);
+        CreateReindexJobResult result;
+        try
+        {
+            result = await mediator.SendAsync(
+                new CreateReindexJobCommand { Trigger = "Reconciliation" },
+                cancellationToken);
+        }
+        catch (Exception exception) when (ReindexTriggerUnavailableException.IsOperational(exception))
+        {
+            throw new ReindexTriggerUnavailableException(
+                "Reindex reconciliation is temporarily unavailable.",
+                exception);
+        }
+        catch (OrchestrationFrameworkException exception)
+        {
+            throw new ReindexTriggerUnavailableException(
+                "Reindex reconciliation is temporarily unavailable.",
+                exception);
+        }
+
         switch (result)
         {
             case ReindexJobCreatedResult created:

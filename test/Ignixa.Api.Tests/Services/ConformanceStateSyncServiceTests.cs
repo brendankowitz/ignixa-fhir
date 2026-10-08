@@ -141,6 +141,38 @@ public class ConformanceStateSyncServiceTests
             CancellationToken.None);
     }
 
+    [Fact]
+    public async Task GivenReindexReconciliationFailsOperationally_WhenSyncRuns_ThenTheLeaseIsStillRenewed()
+    {
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        using var state = new ConformanceState();
+        var lease = Substitute.For<IConformanceLease>();
+        var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
+        lease.CaptureStart().Returns(leaseStart);
+        var mediator = Substitute.For<IMediator>();
+        mediator.SendAsync(
+                Arg.Any<CreateReindexJobCommand>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<CreateReindexJobResult>>(_ => throw new IOException("Database unavailable."));
+        using var service = new TestSyncService(
+            store,
+            state,
+            CreateRefresher(),
+            lease,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TimeProvider.System,
+            TimeSpan.FromMinutes(3),
+            new ReindexStartupReconciler(
+                mediator,
+                Options.Create(new ReindexOptions { AutoStart = true }),
+                NullLogger<ReindexStartupReconciler>.Instance));
+
+        await service.RunSyncAsync();
+
+        lease.Received(1).Renew(leaseStart);
+    }
+
     private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
     {
         await Task.CompletedTask;

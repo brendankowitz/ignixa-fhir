@@ -93,7 +93,9 @@ public class PackageActivationPipelineTests
         var trigger = Substitute.For<IReindexTrigger>();
         trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns<Task<ReindexTriggerResult>>(_ =>
-                throw new InvalidOperationException("Injected trigger failure."));
+                throw new ReindexTriggerUnavailableException(
+                    "Injected trigger failure.",
+                    new IOException("Database unavailable.")));
         var pipeline = CreatePipeline(
             packageRepository,
             eventStore,
@@ -111,6 +113,47 @@ public class PackageActivationPipelineTests
         result.PendingReindex.ShouldNotBeEmpty();
         result.ReindexTriggerDeferred.ShouldBeTrue();
         result.ReindexMessage.ShouldContain("periodic reconciliation");
+    }
+
+    [Fact]
+    public async Task GivenAutomaticReindexTriggerHasProgrammerError_WhenActivated_ThenTheFailurePropagates()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.custom",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateCustomResource()]);
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                0,
+                Arg.Any<CancellationToken>())
+            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
+                .Select((sourceEvent, index) => new SourceEvent(
+                    index + 1,
+                    sourceEvent.StreamId,
+                    sourceEvent.EventType,
+                    sourceEvent.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray());
+        using var state = new ConformanceState();
+        var trigger = Substitute.For<IReindexTrigger>();
+        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ReindexTriggerResult>>(_ =>
+                throw new InvalidOperationException("Unsupported trigger result."));
+        var pipeline = CreatePipeline(
+            packageRepository,
+            eventStore,
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>(),
+            reindexTrigger: trigger);
+
+        await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
+            "test.custom",
+            "1.0.0",
+            CancellationToken.None));
     }
 
     [Fact]

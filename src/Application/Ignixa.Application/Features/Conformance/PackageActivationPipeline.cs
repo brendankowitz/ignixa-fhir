@@ -176,7 +176,7 @@ public class PackageActivationPipeline(
                     $"Package {packageId}@{version} activation created Pending search parameters",
                     CancellationToken.None);
             }
-            catch (Exception exception)
+            catch (ReindexTriggerUnavailableException exception)
             {
                 ReindexTriggerMetrics.RecordFailure("Activation");
                 _logger.LogError(

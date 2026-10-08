@@ -75,7 +75,7 @@ public sealed class SearchParameterTransitionCommitter(
                     $"Search parameter transition {hideEventId} committed",
                     cancellationToken);
             }
-            catch (Exception exception)
+            catch (ReindexTriggerUnavailableException exception)
             {
                 ReindexTriggerMetrics.RecordFailure("TransitionCommit");
                 logger.LogError(

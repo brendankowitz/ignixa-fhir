@@ -51,4 +51,44 @@ public sealed class ReindexTriggerTests
         result.Message.ShouldContain("tenant 3");
         result.Message.ShouldContain("Pending");
     }
+
+    [Fact]
+    public async Task GivenOperationalFailure_WhenActivationTriggers_ThenUnavailableExceptionIsThrown()
+    {
+        var mediator = Substitute.For<IMediator>();
+        mediator.SendAsync(
+                Arg.Any<CreateReindexJobCommand>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<CreateReindexJobResult>>(_ => throw new IOException("Database unavailable."));
+        var trigger = new ReindexTrigger(
+            mediator,
+            Options.Create(new ReindexOptions()),
+            NullLogger<ReindexTrigger>.Instance);
+
+        var exception = await Should.ThrowAsync<ReindexTriggerUnavailableException>(() =>
+            trigger.RequestReindexAsync("activation", CancellationToken.None));
+
+        exception.InnerException.ShouldBeOfType<IOException>();
+    }
+
+    [Fact]
+    public async Task GivenUnsupportedResult_WhenActivationTriggers_ThenItFailsFast()
+    {
+        var mediator = Substitute.For<IMediator>();
+        mediator.SendAsync(
+                Arg.Any<CreateReindexJobCommand>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new UnsupportedReindexResult());
+        var trigger = new ReindexTrigger(
+            mediator,
+            Options.Create(new ReindexOptions()),
+            NullLogger<ReindexTrigger>.Instance);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
+            trigger.RequestReindexAsync("activation", CancellationToken.None));
+
+        exception.Message.ShouldContain(nameof(UnsupportedReindexResult));
+    }
+
+    private sealed record UnsupportedReindexResult : CreateReindexJobResult;
 }

@@ -106,8 +106,20 @@ public class ConformanceStateSyncService(
                 _lastRefreshedEventId);
         }
 
+        conformanceLease.Renew(syncStart);
+
         await ScheduleOverdueTransitionsAsync(overdueTransitionIds, cancellationToken);
-        await reindexReconciler.ReconcileAsync(cancellationToken);
+        try
+        {
+            await reindexReconciler.ReconcileAsync(cancellationToken);
+        }
+        catch (ReindexTriggerUnavailableException exception)
+        {
+            ReindexReconciliationMetrics.RecordFailure();
+            logger.LogError(
+                exception,
+                "Reindex reconciliation failed operationally; the next conformance sync will retry");
+        }
 
         if (afterEventId > beforeEventId)
         {
@@ -123,7 +135,6 @@ public class ConformanceStateSyncService(
             logger.LogDebug("ConformanceStateSyncService: no new events (at EventId {EventId})", afterEventId);
         }
 
-        conformanceLease.Renew(syncStart);
     }
 
     private IReadOnlyList<long> GetOverdueTransitionIds()

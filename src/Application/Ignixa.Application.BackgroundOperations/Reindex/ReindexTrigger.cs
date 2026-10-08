@@ -1,3 +1,4 @@
+using DurableTask.Core.Exceptions;
 using Ignixa.Application.Features.Conformance;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -25,13 +26,30 @@ public sealed class ReindexTrigger(
                 "Automatic reindex is disabled; parameters remain Pending.");
         }
 
-        var result = await mediator.SendAsync(
-            new CreateReindexJobCommand
-            {
-                Trigger = "Activation",
-                QueueRequest = true
-            },
-            cancellationToken);
+        CreateReindexJobResult result;
+        try
+        {
+            result = await mediator.SendAsync(
+                new CreateReindexJobCommand
+                {
+                    Trigger = "Activation",
+                    QueueRequest = true
+                },
+                cancellationToken);
+        }
+        catch (Exception exception) when (ReindexTriggerUnavailableException.IsOperational(exception))
+        {
+            throw new ReindexTriggerUnavailableException(
+                "The automatic reindex trigger is temporarily unavailable.",
+                exception);
+        }
+        catch (OrchestrationFrameworkException exception)
+        {
+            throw new ReindexTriggerUnavailableException(
+                "The automatic reindex trigger is temporarily unavailable.",
+                exception);
+        }
+
         return result switch
         {
             ReindexJobCreatedResult created => RecordStarted(created.JobId, reason),

@@ -58,6 +58,46 @@ public class CreateReindexJobHandlerTests
     }
 
     [Fact]
+    public async Task GivenRemoteCompletionAfterPollCatchUp_WhenReconciliationAcquiresJobLock_ThenNoRedundantJobIsCreated()
+    {
+        var fixture = CreateFixture();
+        fixture.EventStore.ReadFromAsync(42, Arg.Any<CancellationToken>())
+            .Returns(Events(
+                new SourceEvent(
+                    43,
+                    "reindex:remote",
+                    nameof(SearchParameterReindexStarted),
+                    new SearchParameterReindexStarted(
+                        fixture.Target.Canonical,
+                        fixture.Target.Code,
+                        fixture.Target.ResourceType,
+                        "remote-job",
+                        fixture.Target.AffectedResourceTypes,
+                        fixture.Target.ActivationEventId),
+                    DateTimeOffset.UtcNow),
+                new SourceEvent(
+                    44,
+                    "reindex:remote",
+                    nameof(SearchParameterReindexCompleted),
+                    new SearchParameterReindexCompleted(
+                        fixture.Target.Canonical,
+                        fixture.Target.Code,
+                        fixture.Target.ResourceType,
+                        "remote-job",
+                        1,
+                        TimeSpan.FromSeconds(1),
+                        fixture.Target.ActivationEventId),
+                    DateTimeOffset.UtcNow)));
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            CancellationToken.None);
+
+        result.ShouldBeOfType<NoReindexWorkResult>();
+        (await fixture.Repository.ListAsync((int)BackgroundJobType.Reindex)).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenMixedProviderServer_WhenJobIsCreated_ThenSharedAvailabilityRejectsIt()
     {
         var fixture = CreateFixture();
@@ -579,6 +619,7 @@ public class CreateReindexJobHandlerTests
                 jobLock,
                 reconciler,
                 new ReindexAutomationStateStore(repository),
+                eventStore,
                 Options.Create(new ReindexOptions { BarrierDelay = TimeSpan.Zero })),
             repository,
             runtime,
@@ -587,7 +628,8 @@ public class CreateReindexJobHandlerTests
             state,
             target,
             definition,
-            now);
+            now,
+            eventStore);
     }
 
     private static ISourceEventStore EventStore()
@@ -620,7 +662,18 @@ public class CreateReindexJobHandlerTests
         ConformanceState State,
         ReindexTarget Target,
         ReindexJobDefinition Definition,
-        DateTimeOffset Now);
+        DateTimeOffset Now,
+        ISourceEventStore EventStore);
+
+    private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
+    {
+        foreach (var sourceEvent in events)
+        {
+            yield return sourceEvent;
+        }
+
+        await Task.CompletedTask;
+    }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {

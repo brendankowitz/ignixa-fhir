@@ -64,7 +64,9 @@ public class SearchParameterTransitionCommitterTests
         var trigger = Substitute.For<IReindexTrigger>();
         trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns<Task<ReindexTriggerResult>>(_ =>
-                throw new InvalidOperationException("Injected trigger failure."));
+                throw new ReindexTriggerUnavailableException(
+                    "Injected trigger failure.",
+                    new IOException("Database unavailable.")));
         var committer = new SearchParameterTransitionCommitter(
             store,
             state,
@@ -76,6 +78,37 @@ public class SearchParameterTransitionCommitterTests
 
         committed.ShouldBeTrue();
         state.GetSearchParameter("Patient", "identifier")!.Status.ShouldBe(SearchParameterStatus.Pending);
+    }
+
+    [Fact]
+    public async Task GivenReindexTriggerHasProgrammerErrorAfterTransitionCommit_WhenCommitted_ThenTheFailurePropagates()
+    {
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
+        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 20, Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(
+                [new SourceEvent(
+                    30,
+                    "transition:20",
+                    nameof(SearchParameterTransitionCommitted),
+                    call.Arg<IEnumerable<NewSourceEvent>>().Single().Data,
+                    DateTimeOffset.UtcNow)]));
+        var trigger = Substitute.For<IReindexTrigger>();
+        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ReindexTriggerResult>>(_ =>
+                throw new InvalidOperationException("Unsupported trigger result."));
+        var committer = new SearchParameterTransitionCommitter(
+            store,
+            state,
+            trigger,
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            committer.CommitAsync(20, CancellationToken.None));
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Features.Search;
+using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
@@ -24,6 +25,7 @@ public sealed class CreateReindexJobHandler(
     IReindexJobLock jobLock,
     ReindexJobReconciler reconciler,
     ReindexAutomationStateStore automationState,
+    ISourceEventStore eventStore,
     IOptions<ReindexOptions> options)
     : IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>
 {
@@ -45,6 +47,8 @@ public sealed class CreateReindexJobHandler(
         reconciler ?? throw new ArgumentNullException(nameof(reconciler));
     private readonly ReindexAutomationStateStore _automationState =
         automationState ?? throw new ArgumentNullException(nameof(automationState));
+    private readonly ISourceEventStore _eventStore =
+        eventStore ?? throw new ArgumentNullException(nameof(eventStore));
     private readonly ReindexOptions _options =
         options?.Value ?? throw new ArgumentNullException(nameof(options));
 
@@ -132,6 +136,9 @@ public sealed class CreateReindexJobHandler(
             {
                 using (await _conformanceState.AcquireActivationLockAsync(ct))
                 {
+                    await _conformanceState.CatchUpWhileActivationLockHeldAsync(
+                        _eventStore,
+                        ct);
                     return (
                         _conformanceState.LastProcessedEventId,
                         ReindexTargetResolver.Resolve(
