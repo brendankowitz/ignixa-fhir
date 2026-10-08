@@ -92,6 +92,15 @@ public sealed class CompleteReindexActivity(
             input.JobId,
             async (job, cancellationToken) =>
             {
+                if (job.Status == "Completing")
+                {
+                    var terminalStatus = job.Progress?["terminalDecision"]?.GetValue<string>()
+                        ?? throw new InvalidOperationException(
+                            $"Reindex job {job.JobId} is Completing without a persisted terminal decision.");
+                    success = terminalStatus == "Completed";
+                    return terminalStatus;
+                }
+
                 var activeTenantIds = (await tenantConfigurationStore.GetAllTenantsAsync(cancellationToken))
                     .Where(tenant =>
                         tenant.IsActive &&
