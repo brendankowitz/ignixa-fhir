@@ -8,31 +8,71 @@ namespace Ignixa.Application.Features.Reindex;
 public sealed class ReindexAvailabilityService(
     IOptions<ReindexOptions> options,
     ITenantConfigurationStore tenantConfigurationStore,
-    IFhirRepositoryFactory repositoryFactory) : IReindexAvailability
+    IReindexProviderCapabilities providerCapabilities) : IReindexAvailability
 {
     private readonly ReindexOptions _options =
         options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly ITenantConfigurationStore _tenantConfigurationStore =
         tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
-    private readonly IFhirRepositoryFactory _repositoryFactory =
-        repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
+    private readonly IReindexProviderCapabilities _providerCapabilities =
+        providerCapabilities ?? throw new ArgumentNullException(nameof(providerCapabilities));
+    private readonly object _availabilityLock = new();
+    private Task<ReindexAvailability>? _availabilityTask;
 
-    public async Task<ReindexAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
+    public Task<ReindexAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_availabilityLock)
+        {
+            var availabilityTask = _availabilityTask;
+            if (availabilityTask is null)
+            {
+                var completionSource = new TaskCompletionSource<ReindexAvailability>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                availabilityTask = completionSource.Task;
+                _availabilityTask = availabilityTask;
+                _ = CompleteAvailabilityProbeAsync(completionSource);
+            }
+
+            return availabilityTask.WaitAsync(cancellationToken);
+        }
+    }
+
+    private async Task CompleteAvailabilityProbeAsync(
+        TaskCompletionSource<ReindexAvailability> completionSource)
+    {
+        try
+        {
+            completionSource.SetResult(await ProbeAvailabilityAsync());
+        }
+        catch (Exception exception)
+        {
+            lock (_availabilityLock)
+            {
+                if (ReferenceEquals(_availabilityTask, completionSource.Task))
+                {
+                    _availabilityTask = null;
+                }
+            }
+
+            completionSource.SetException(exception);
+        }
+    }
+
+    private async Task<ReindexAvailability> ProbeAvailabilityAsync()
     {
         if (!_options.Enabled)
         {
             return ReindexAvailability.Disabled;
         }
 
-        var tenants = await _tenantConfigurationStore.GetAllTenantsAsync(cancellationToken);
+        var tenants = await _tenantConfigurationStore.GetAllTenantsAsync(CancellationToken.None);
         foreach (var tenant in tenants
             .Where(tenant => tenant.IsActive && tenant.TenantId != SystemConstants.SystemPartitionId)
             .OrderBy(tenant => tenant.TenantId))
         {
-            var repository = await _repositoryFactory.GetRepositoryAsync(
-                tenant.TenantId,
-                cancellationToken);
-            if (repository is not IReindexStore)
+            if (!_providerCapabilities.SupportsReindex(tenant))
             {
                 return new ReindexAvailability(
                     ReindexAvailabilityStatus.Unsupported,

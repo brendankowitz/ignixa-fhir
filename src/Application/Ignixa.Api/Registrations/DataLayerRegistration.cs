@@ -222,11 +222,13 @@ public static class DataLayerRegistration
     private static void RegisterCompositeFactories(ContainerBuilder builder)
     {
         // Composite repository factory
-        builder.Register<IFhirRepositoryFactory>(c =>
+        builder.Register(c =>
             new CompositeRepositoryFactory(
                 c.Resolve<ITenantConfigurationStore>(),
                 c.ResolveNamed<IFhirRepositoryFactory>("FileSystem"),
                 c.ResolveNamed<IFhirRepositoryFactory>("SqlEf")))
+            .As<IFhirRepositoryFactory>()
+            .As<IReindexProviderCapabilities>()
             .SingleInstance();
 
         // Composite search service factory

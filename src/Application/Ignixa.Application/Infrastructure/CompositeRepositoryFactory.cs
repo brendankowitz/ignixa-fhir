@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.Infrastructure;
 
@@ -12,7 +13,7 @@ namespace Ignixa.Application.Infrastructure;
 /// based on tenant configuration (FileSystem, SqlEntityFramework, etc.).
 /// Multi-tenancy: Each tenant can use a different storage backend.
 /// </summary>
-public class CompositeRepositoryFactory : IFhirRepositoryFactory
+public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexProviderCapabilities
 {
     private readonly ITenantConfigurationStore _tenantStore;
     private readonly IFhirRepositoryFactory _fileSystemFactory;
@@ -51,5 +52,13 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory
             "SqlEntityFramework" or "SqlServer" => await _sqlEfFactory.GetRepositoryAsync(tenantId, ct),
             _ => throw new NotSupportedException($"Storage type '{tenantConfig.Storage.Type}' is not supported")
         };
+    }
+
+    /// <inheritdoc/>
+    public bool SupportsReindex(TenantConfiguration tenantConfiguration)
+    {
+        ArgumentNullException.ThrowIfNull(tenantConfiguration);
+
+        return tenantConfiguration.Storage.Type is "SqlEntityFramework" or "SqlServer";
     }
 }
