@@ -250,9 +250,12 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 searchParamInfo.IsSearchable = false;
                 break;
             case SearchParameterStatus.Staged:
-            case SearchParameterStatus.Disabling:
                 searchParamInfo.IsSearchable = false;
                 searchParamInfo.IsSupported = false;
+                searchParamInfo.IsHiddenByTransition = true;
+                break;
+            case SearchParameterStatus.Disabling:
+                searchParamInfo.IsSearchable = false;
                 searchParamInfo.IsHiddenByTransition = true;
                 break;
         }

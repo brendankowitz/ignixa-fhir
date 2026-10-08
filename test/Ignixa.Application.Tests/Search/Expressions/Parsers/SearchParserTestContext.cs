@@ -29,8 +29,11 @@ internal sealed class SearchParserTestContext
         Parser = new ExpressionParser(() => DefinitionManager, ValueParser, SchemaProvider);
 
         DefinitionManager.GetSearchParameters(Arg.Any<string>()).Returns(callInfo => GetSearchParameters(callInfo.ArgAt<string>(0)));
+        DefinitionManager.GetAllKnownSearchParameters(Arg.Any<string>()).Returns(callInfo => GetSearchParameters(callInfo.ArgAt<string>(0)));
         DefinitionManager.GetSearchParameter(Arg.Any<string>(), Arg.Any<string>()).Returns(callInfo => GetSearchParameter(callInfo.ArgAt<string>(0), callInfo.ArgAt<string>(1))!);
         DefinitionManager.AllSearchParameters.Returns(_ => _searchParametersByResourceType.Values.SelectMany(parameters => parameters).ToArray());
+        DefinitionManager.GetAllKnownSearchParameters().Returns(_ =>
+            _searchParametersByResourceType.Values.SelectMany(parameters => parameters).ToArray());
         DefinitionManager.SearchParameterHashMap.Returns(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 

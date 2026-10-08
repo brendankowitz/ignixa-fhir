@@ -47,11 +47,11 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     public IEnumerable<SearchParameterInfo> AllSearchParameters => GetAllSearchParameters();
 
     /// <inheritdoc />
-    public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters() => _inner.AllSearchParameters;
+    public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters() => _inner.GetAllKnownSearchParameters();
 
     /// <inheritdoc />
     public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters(string resourceType) =>
-        _inner.GetSearchParameters(resourceType);
+        _inner.GetAllKnownSearchParameters(resourceType);
 
     public IReadOnlyDictionary<string, string> SearchParameterHashMap => _inner.SearchParameterHashMap;
 
@@ -100,7 +100,8 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
         if (_inner.TryGetSearchParameter(resourceType, code, out SearchParameterInfo parameter)
             && !parameter.IsSearchable
-            && parameter.IsSupported)
+            && parameter.IsSupported
+            && !parameter.IsHiddenByTransition)
         {
             searchParameter = parameter;
             return true;
@@ -197,6 +198,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     /// testing a different combination of the two than the rest.</summary>
     private static bool IsVisible(SearchParameterInfo parameter, bool includePartiallyIndexed)
     {
-        return parameter.IsSearchable || (includePartiallyIndexed && parameter.IsSupported);
+        return !parameter.IsHiddenByTransition
+            && (parameter.IsSearchable || (includePartiallyIndexed && parameter.IsSupported));
     }
 }

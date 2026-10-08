@@ -7,7 +7,9 @@ using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Exceptions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -200,6 +202,7 @@ public class PackageSearchParameterInheritanceTests
         var partialDefinitions = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1, () => true);
 
         partialDefinitions.TryGetSearchParameter("Patient", "name", out _).ShouldBeFalse();
+        partialDefinitions.TryGetSearchParameter("Patient", "disabling", out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -241,6 +244,40 @@ public class PackageSearchParameterInheritanceTests
         manager.TryGetSearchParameter("Patient", "reindexing", out _).ShouldBeTrue();
         manager.TryGetSearchParameter("Patient", "disabling", out _).ShouldBeTrue();
         manager.TryGetSearchParameter(new Uri("http://example.org/SearchParameter/staged"), out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenLifecycleStatuses_WhenAResourceIsIndexed_ThenDisablingIsExtractedButStagedIsNot()
+    {
+        var schema = FhirVersion.R4.GetSchemaProvider();
+        var baseManager = new SearchParameterDefinitionManager(
+            schema, NullLogger<SearchParameterDefinitionManager>.Instance);
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(LifecycleEvents());
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var manager = new CompositeSearchParameterDefinitionManager(
+            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true });
+        await manager.InitializeAsync();
+        var indexer = SearchIndexerFactory.CreateInstance(
+            schema,
+            NullLoggerFactory.Instance,
+            manager,
+            NullFhirBaseUriProvider.Instance);
+        var patient = ResourceJsonNode.Parse(
+            """
+            {
+              "resourceType": "Patient",
+              "active": true,
+              "name": [{ "family": "Hidden" }]
+            }
+            """).ToElement(schema);
+
+        var entries = indexer.Extract(patient);
+
+        entries.ShouldContain(entry => entry.SearchParameter.Code == "disabling");
+        entries.ShouldNotContain(entry => entry.SearchParameter.Url == new Uri("http://example.org/SearchParameter/staged"));
     }
 
     [Fact]
@@ -289,7 +326,12 @@ public class PackageSearchParameterInheritanceTests
                 ["Patient"],
                 1),
             DateTimeOffset.UtcNow);
-        yield return Activation(3, "http://example.org/SearchParameter/disabling", "disabling", 2);
+        yield return Activation(
+            3,
+            "http://example.org/SearchParameter/disabling",
+            "disabling",
+            2,
+            expression: "Patient.active");
         yield return new SourceEvent(
             4,
             "package-lifecycle",
@@ -354,7 +396,8 @@ public class PackageSearchParameterInheritanceTests
         string canonical,
         string code,
         int searchParamId,
-        string sourcePackage = "custom.package@1.0") =>
+        string sourcePackage = "custom.package@1.0",
+        string? expression = null) =>
         new(
             eventId,
             "package-lifecycle",
@@ -363,7 +406,7 @@ public class PackageSearchParameterInheritanceTests
                 canonical,
                 code,
                 "Patient",
-                $"Patient.{code}",
+                expression ?? $"Patient.{code}",
                 SearchParamType.Token,
                 sourcePackage,
                 null,

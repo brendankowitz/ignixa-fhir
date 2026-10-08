@@ -137,6 +137,8 @@ public class ParameterOutcomeTests
         };
         context.DefinitionManager.GetSearchParameters(sourceResourceType).Returns([pending]);
         context.DefinitionManager.AllSearchParameters.Returns([pending]);
+        context.DefinitionManager.GetAllKnownSearchParameters().Returns([pending]);
+        context.DefinitionManager.GetAllKnownSearchParameters(sourceResourceType).Returns([pending]);
         var definitions = new SearchableSearchParameterDefinitionManager(
             context.DefinitionManager,
             () => usePartialIndices);
