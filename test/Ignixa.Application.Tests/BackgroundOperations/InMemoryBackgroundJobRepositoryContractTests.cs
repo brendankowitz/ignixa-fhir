@@ -12,6 +12,49 @@ public class InMemoryBackgroundJobRepositoryContractTests
 {
     private const string ConflictType = "Ignixa.Domain.Exceptions.BackgroundJobUpdateConflictException";
 
+    [Theory]
+    [InlineData("Completing")]
+    [InlineData("Completed")]
+    [InlineData("Failed")]
+    [InlineData("Cancelled")]
+    public async Task GivenClosedJobWithCurrentVersion_WhenProgressIsWritten_ThenTheWriteIsANoOp(string status)
+    {
+        var repository = CreateRepository<ExportJobDefinition>();
+        var job = ExportJob();
+        job.Status = status;
+        await repository.CreateAsync(job, CancellationToken.None);
+        var closed = (await repository.GetAsync(job.JobId, 1, CancellationToken.None))!;
+        var before = System.Text.Json.JsonSerializer.Serialize(closed);
+        closed.Progress = new JsonObject { ["count"] = 999 };
+
+        (await repository.TryUpdateProgressAsync(closed, 1, CancellationToken.None)).ShouldBeFalse();
+
+        System.Text.Json.JsonSerializer.Serialize(await repository.GetAsync(job.JobId, 1, CancellationToken.None))
+            .ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task GivenCurrentVersion_WhenProgressIsWritten_ThenLifecycleAndDefinitionAreNotReplaced()
+    {
+        var repository = CreateRepository<ExportJobDefinition>();
+        var job = ExportJob();
+        await repository.CreateAsync(job, CancellationToken.None);
+        var progress = (await repository.GetAsync(job.JobId, 1, CancellationToken.None))!;
+        progress.Status = "Failed";
+        progress.ErrorMessage = "not a progress field";
+        progress.CancelRequested = true;
+        progress.Progress = new JsonObject { ["count"] = 17 };
+
+        (await repository.TryUpdateProgressAsync(progress, 1, CancellationToken.None)).ShouldBeTrue();
+
+        var current = (await repository.GetAsync(job.JobId, 1, CancellationToken.None))!;
+        current.Status.ShouldBe(job.Status);
+        current.ErrorMessage.ShouldBeNull();
+        current.CancelRequested.ShouldBeFalse();
+        current.Progress!["count"]!.GetValue<int>().ShouldBe(17);
+        current.RowVersion.ShouldNotBe(progress.RowVersion);
+    }
+
     [Fact]
     public async Task GivenCompletionAfterTheStoredEntryIsRead_WhenTheStaleUpdateResumes_ThenItConflicts()
     {

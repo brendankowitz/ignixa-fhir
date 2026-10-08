@@ -36,13 +36,15 @@ public sealed class SqlServerBackgroundJobRepository<T>(
 {
     private static readonly TableDescriptor Jobs = SqlCatalog.Default.Table("BackgroundJobs");
 
-    private static readonly string AllColumns = string.Join(", ",
+    private static readonly string WritableColumns = string.Join(", ",
         "TenantId", "JobId", "JobType", "OrchestrationInstanceId", "Status", "Definition", "Progress",
         "Result", "CreateDate", "StartDate", "EndDate", "HeartbeatDate", "Worker", "ErrorMessage",
         "CancelRequested")
         .Split(", ")
         .Select(c => Jobs.Column(c).Name)
         .Aggregate((a, b) => $"{a}, {b}");
+
+    private static readonly string AllColumns = $"{WritableColumns}, CAST({Jobs.Column("RowVersion").Name} AS bigint)";
 
     private static readonly string QualifiedTable = $"{Jobs.SchemaName}.{Jobs.TableName}";
 
@@ -51,7 +53,7 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         ArgumentNullException.ThrowIfNull(job);
 
         using var command = CreateCommand(
-            $"INSERT INTO {QualifiedTable} ({AllColumns}) VALUES " +
+            $"INSERT INTO {QualifiedTable} ({WritableColumns}) VALUES " +
             "(@tenantId, @jobId, @jobType, @orchestrationInstanceId, @status, @definition, @progress, " +
             "@result, @createDate, @startDate, @endDate, @heartbeatDate, @worker, @errorMessage, @cancelRequested)");
 
@@ -152,6 +154,51 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         }
 
         logger.LogDebug("Updated background job {JobId}", job.JobId);
+    }
+
+    public async Task<bool> TryUpdateProgressAsync(
+        BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        var existing = await FindByJobIdAsync(job.JobId, cancellationToken) ?? throw NotFound(job.JobId);
+        if (ShouldValidateTenant() && existing.Definition.TenantId != tenantId)
+        {
+            throw new InvalidOperationException($"Not authorized to update job {job.JobId}");
+        }
+
+        if (job.Definition.TenantId != existing.Definition.TenantId)
+        {
+            throw new InvalidOperationException($"Cannot change the owning tenant of background job {job.JobId}");
+        }
+
+        using var command = CreateCommand(
+            $"UPDATE {QualifiedTable} SET " +
+            $"{Jobs.Column("Progress").Name} = @progress, " +
+            $"{Jobs.Column("HeartbeatDate").Name} = @heartbeatDate " +
+            $"WHERE {Jobs.Column("TenantId").Name} = @rowTenantId AND {Jobs.Column("JobId").Name} = @jobId " +
+            $"AND {Jobs.Column("RowVersion").Name} = CONVERT(binary(8), @rowVersion) " +
+            $"AND {Jobs.Column("Status").Name} COLLATE Latin1_General_100_CI_AS " +
+            "NOT IN (N'Completing', N'Completed', N'Failed', N'Cancelled')");
+        command.Parameters.AddWithValue("@rowTenantId", existing.Definition.TenantId);
+        command.Parameters.AddWithValue("@jobId", job.JobId);
+        command.Parameters.AddWithValue("@rowVersion", job.RowVersion);
+        command.Parameters.AddWithValue("@progress", (object?)job.Progress?.ToJsonString() ?? DBNull.Value);
+        command.Parameters.AddWithValue("@heartbeatDate", DateTimeOffset.UtcNow);
+        var affectedRows = await sqlExecutionService.ExecuteNonQueryAsync(
+            connectionTenantId, command, cancellationToken, SqlCommandIdempotency.NonIdempotent);
+        if (affectedRows == 1)
+        {
+            return true;
+        }
+
+        var current = await FindByJobIdAsync(job.JobId, cancellationToken, existing.Definition.TenantId)
+            ?? throw NotFound(job.JobId);
+        if (IsTerminal(current.Status) || current.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        throw new BackgroundJobUpdateConflictException(job.JobId, current.Status);
     }
 
     public async Task DeleteAsync(string jobId, int tenantId, CancellationToken cancellationToken = default)
@@ -266,6 +313,7 @@ public sealed class SqlServerBackgroundJobRepository<T>(
             Worker = reader.IsDBNull(12) ? null : reader.GetString(12),
             ErrorMessage = reader.IsDBNull(13) ? null : reader.GetString(13),
             CancelRequested = reader.GetBoolean(14),
+            RowVersion = reader.GetInt64(15),
         };
     }
 

@@ -8,30 +8,33 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 public sealed class AwaitDrainActivity(
     IFhirRepositoryFactory repositoryFactory,
     TimeProvider timeProvider,
-    ReindexProgressReporter progress,
+    ReindexActivityHeartbeat heartbeat,
     ILogger<AwaitDrainActivity> logger)
     : AsyncTaskActivity<AwaitDrainInput, AwaitDrainOutput>
 {
-    protected override async Task<AwaitDrainOutput> ExecuteAsync(
+    protected override Task<AwaitDrainOutput> ExecuteAsync(
         TaskContext context,
-        AwaitDrainInput input)
+        AwaitDrainInput input) =>
+        heartbeat.RunAsync(input.JobId, cancellationToken => DrainAsync(input, cancellationToken), CancellationToken.None);
+
+    private async Task<AwaitDrainOutput> DrainAsync(AwaitDrainInput input, CancellationToken cancellationToken)
     {
         var repository = await repositoryFactory.GetRepositoryAsync(
             input.TenantId,
-            CancellationToken.None);
+            cancellationToken);
         if (repository is not IReindexStore store)
         {
             throw new ReindexProviderNotSupportedException(input.TenantId);
         }
 
-        var watermark = await store.GetVisibleWatermarkAsync(CancellationToken.None);
+        var watermark = await store.GetVisibleWatermarkAsync(cancellationToken);
         var isDrained = watermark >= input.CutoffTransactionId;
         if (!isDrained &&
             timeProvider.GetUtcNow() - input.DrainStartedUtc >= input.DrainWarningAfter)
         {
             var oldest = await store.GetOldestIncompleteTransactionAsync(
                 input.CutoffTransactionId,
-                CancellationToken.None);
+                cancellationToken);
             logger.LogWarning(
                 "Reindex: drain is still waiting for tenant {TenantId}; visible watermark {VisibleWatermark}, cutoff transaction {CutoffTransactionId}, oldest incomplete transaction {OldestTransactionId}, created {OldestCreateDate}, heartbeat {OldestHeartbeatDate}",
                 input.TenantId,
@@ -43,7 +46,6 @@ public sealed class AwaitDrainActivity(
         }
 
         var output = new AwaitDrainOutput(input.TenantId, isDrained, watermark);
-        await progress.ReportDrainAsync(input.JobId, output, CancellationToken.None);
         if (isDrained)
         {
             ReindexMetrics.RecordDrainWait(timeProvider.GetUtcNow() - input.DrainStartedUtc);

@@ -18,6 +18,10 @@ internal static class ReindexMetrics
         Meter.CreateHistogram<double>("reindex.drain.wait", "s");
     private static readonly Histogram<double> JobDuration =
         Meter.CreateHistogram<double>("reindex.job.duration", "s");
+    private static readonly Counter<long> ProgressFailures =
+        Meter.CreateCounter<long>("reindex.progress.persistence_failures");
+
+    public static void ProgressPersistenceFailed() => ProgressFailures.Add(1);
 
     public static void RangeStarted() => ActiveRanges.Add(1);
 

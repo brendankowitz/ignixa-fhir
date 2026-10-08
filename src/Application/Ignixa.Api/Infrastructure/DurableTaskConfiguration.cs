@@ -92,6 +92,7 @@ public static class DurableTaskConfiguration
             worker.AddTaskActivitiesFromInterface<ReindexActivities.AwaitDrainActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ReindexActivities.PlanReindexActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ReindexActivities.ReindexRangeActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ReindexActivities.PersistReindexProgressActivity>(sp);
             worker.AddTaskActivitiesFromInterface<ReindexActivities.CompleteReindexActivity>(sp);
 
             return worker;

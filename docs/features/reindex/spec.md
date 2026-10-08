@@ -416,6 +416,7 @@ All components live in `src/Application/Ignixa.Application.BackgroundOperations/
 | `AwaitDrainActivity` | For each tenant: waits for the visible watermark to reach B_t (step 3). |
 | `PlanReindexActivity` | For each tenant and affected type: surrogate ranges up to S_t (§8.3). |
 | `ReindexRangeActivity` | Processes one (tenant, type, range) (§8.4). |
+| `PersistReindexProgressActivity` | Persists the orchestration's cumulative counts and phase with optimistic concurrency, independently of range retries. |
 | `CompleteReindexActivity` | Appends guarded lifecycle events, finalizes the job, and performs the hand-off (§7). |
 | `SearchParameterTransitionOrchestration` | Runs a durable `TransitionGrace` timer, then appends a guarded `SearchParameterTransitionCommitted` (§4.4), then calls `StartOrQueueReindex` if anything became `Pending`. Lives in `…/Conformance/` next to the activation pipeline. |
 | `GetReindexStatusQuery`, `CancelReindexCommand`, `ReindexSingleResourceCommand` | API handlers. |
@@ -449,7 +450,11 @@ sequenceDiagram
 - `BarrierDelay` is a DurableTask timer, so it costs nothing and survives restarts.
 - Tenants run in parallel, each limited by `maximumConcurrency`, as in `TtlCleanupOrchestration`.
 - Ranges are scheduled in waves. Above `Reindex:ContinueAsNewThreshold` scheduled activities, the orchestration
-  calls `ContinueAsNew` and carries B_t, S_t, and the counts forward.
+  calls `ContinueAsNew` and carries B_t, S_t, counts, and the progress sequence forward.
+- Range activities return counts rather than persisting them. After each completed wave and phase advance,
+  the orchestration persists one cumulative snapshot through `PersistReindexProgressActivity`. Snapshot sequences
+  make duplicate or delayed delivery idempotent. Progress persistence retries independently with durable backoff
+  (up to 30 seconds between attempts); it never reruns successful ranges or marks a resource type failed.
 
 ### 8.3 Range planning
 
@@ -481,16 +486,27 @@ resources. `CompleteReindexActivity` then appends
 ignores. Otherwise the job ends `Failed` with a guarded `SearchParameterReindexFailed`. Either way, the hand-off
 in §7 runs.
 
-Lifecycle start and its initial progress write share the singleton reindex job lock with terminal completion.
-After acquiring the lock, the updater reloads the job and skips lifecycle start, progress writes, and
-heartbeat changes if it is `Completing`, `Completed`, `Failed`, or `Cancelled`. Only terminal completion may
-resume a persisted `Completing` decision. A delayed activity cannot reopen a finalized job or its parameters.
+Only creation, lifecycle start, cancellation, reconciliation, and terminal decisions take the singleton reindex
+job lock. Lifecycle start reloads under that lock and skips closed jobs before appending events or initializing
+progress. Routine progress and heartbeat writes use a repository-level rowversion compare-and-swap, with an
+atomic status predicate excluding `Completing`, `Completed`, `Failed`, and `Cancelled`. Closed writes return
+false without changing even the heartbeat; active conflicts reload and re-merge, up to five attempts.
+Only terminal completion may resume a persisted `Completing` decision. A delayed activity cannot reopen a
+finalized job or its parameters. SQL schema version 5 adds `BackgroundJobs.RowVersion`; the development
+in-memory job repository provides the same conditional-write contract.
 
 ### 8.6 Failure and liveness
 
 - **Activity failure after retries:** that (tenant, type) is marked failed, the other tenants continue, and the
   job ends `Failed`. Unlike MS, one bad range does not abort healthy tenants.
-- **Liveness:** every activity updates the `BackgroundJob` heartbeat. A job that is `Running` with a heartbeat
+- **Progress storage failures:** logged and metered as `reindex.progress.persistence_failures`; the dedicated
+  persistence activity retries without repeating ranges. Long-running worker heartbeats retry on their next tick
+  without failing the underlying work.
+- **Liveness:** wave/phase snapshots refresh the `BackgroundJob` heartbeat. Long-running barrier, drain,
+  planning, and range activities also heartbeat through the optimistic path every
+  `min(30 seconds, StaleJobTimeout / 4)` (30 seconds versus a 30-minute stale timeout by default).
+  Long barrier delays are split into durable waits at the same cadence with progress heartbeats between them.
+  A job that is `Running` with a heartbeat
   older than `Reindex:StaleJobTimeout` is flagged in status and logged at error level. A drain still waiting
   beyond `Reindex:DrainWarningAfter` logs the oldest incomplete transaction. `TransactionWatcher` already
   recovers stalled transactions, so the drain does not wait forever.

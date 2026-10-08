@@ -6,16 +6,19 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class PlanReindexActivity(
     IFhirRepositoryFactory repositoryFactory,
-    ReindexProgressReporter progress)
+    ReindexActivityHeartbeat heartbeat)
     : AsyncTaskActivity<PlanReindexInput, PlanReindexOutput>
 {
-    protected override async Task<PlanReindexOutput> ExecuteAsync(
+    protected override Task<PlanReindexOutput> ExecuteAsync(
         TaskContext context,
-        PlanReindexInput input)
+        PlanReindexInput input) =>
+        heartbeat.RunAsync(input.JobId, cancellationToken => PlanAsync(input, cancellationToken), CancellationToken.None);
+
+    private async Task<PlanReindexOutput> PlanAsync(PlanReindexInput input, CancellationToken cancellationToken)
     {
         var repository = await repositoryFactory.GetRepositoryAsync(
             input.TenantId,
-            CancellationToken.None);
+            cancellationToken);
         if (repository is not IReindexStore store)
         {
             throw new ReindexProviderNotSupportedException(input.TenantId);
@@ -27,14 +30,12 @@ public sealed class PlanReindexActivity(
             input.CutoffSurrogateId,
             input.TargetRangeSize,
             input.MaxRanges,
-            CancellationToken.None);
-        var output = new PlanReindexOutput(
+            cancellationToken);
+        return new PlanReindexOutput(
             page.Ranges.Select(range => new ReindexRange(
                 range.Start,
                 range.End,
                 range.ResourceCount)).ToArray(),
             page.NextStartAfter);
-        await progress.ReportPlanAsync(input, output, CancellationToken.None);
-        return output;
     }
 }

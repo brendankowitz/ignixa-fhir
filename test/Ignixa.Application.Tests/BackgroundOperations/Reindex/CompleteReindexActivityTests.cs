@@ -67,7 +67,6 @@ public class CompleteReindexActivityTests
             repositoryFactory,
             lifecycle,
             updater,
-            new ReindexProgressReporter(updater),
             TimeProvider.System);
 
         await activity.RunAsync(

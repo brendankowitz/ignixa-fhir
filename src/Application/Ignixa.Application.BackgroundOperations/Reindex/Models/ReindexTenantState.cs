@@ -19,6 +19,8 @@ public sealed record ReindexTenantState(
     IReadOnlyList<string> FailedResourceTypes,
     string? ErrorMessage)
 {
+    public long? VisibleWatermark { get; init; }
+
     public static ReindexTenantState Create(int tenantId) =>
         new(
             tenantId,

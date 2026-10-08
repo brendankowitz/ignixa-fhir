@@ -48,6 +48,11 @@ public class BackgroundJob<T> where T : class
     public JsonNode? Progress { get; set; }
 
     /// <summary>
+    /// Opaque repository version from the last read, used for optimistic progress updates.
+    /// </summary>
+    public long RowVersion { get; set; }
+
+    /// <summary>
     /// Final results as JSON (flexible schema).
     /// Example: { totalResources: 2000, totalErrors: 5, errorFileUrl: "...", outputFiles: [...] }
     /// </summary>

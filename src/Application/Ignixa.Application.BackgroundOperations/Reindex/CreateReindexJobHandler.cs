@@ -213,7 +213,10 @@ public sealed class CreateReindexJobHandler(
                             resolution.Targets,
                             parameters,
                             _options.DrainWarningAfter,
-                            _options.ContinueAsNewThreshold));
+                            _options.ContinueAsNewThreshold)
+                        {
+                            HeartbeatInterval = ReindexActivityHeartbeat.GetInterval(_options.StaleJobTimeout)
+                        });
                 }
                 catch (Exception ex)
                 {

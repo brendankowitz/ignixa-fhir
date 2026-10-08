@@ -12,18 +12,32 @@ public sealed class ReindexJobUpdater(
 {
     private const int GlobalTenantId = 1;
 
-    public Task UpdateAsync(
+    public async Task<bool> UpdateProgressAsync(
         string jobId,
         Action<BackgroundJob<ReindexJobDefinition>> update,
-        CancellationToken cancellationToken) =>
-        UpdateAsync(
-            jobId,
-            (job, _) =>
+        CancellationToken cancellationToken)
+    {
+        const int maximumAttempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            var job = await repository.GetAsync(jobId, GlobalTenantId, cancellationToken)
+                ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
+            if (IsClosed(job.Status))
             {
-                update(job);
-                return Task.CompletedTask;
-            },
-            cancellationToken);
+                return false;
+            }
+
+            update(job);
+            try
+            {
+                return await repository.TryUpdateProgressAsync(job, GlobalTenantId, cancellationToken);
+            }
+            catch (BackgroundJobUpdateConflictException) when (attempt < maximumAttempts)
+            {
+                // Reload and merge again; never replay a stale whole-job snapshot.
+            }
+        }
+    }
 
     public Task UpdateAsync(
         string jobId,
@@ -35,7 +49,7 @@ public sealed class ReindexJobUpdater(
                 var job = await repository.GetAsync(jobId, GlobalTenantId, ct)
                     ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
                 // Completing owns a durable decision; only terminal completion may write it again.
-                if (job.Status == "Completing" || IsTerminal(job.Status))
+                if (IsClosed(job.Status))
                 {
                     return false;
                 }
@@ -133,5 +147,10 @@ public sealed class ReindexJobUpdater(
     }
 
     private static bool IsTerminal(string status) =>
-        status is "Completed" or "Failed" or "Cancelled";
+        status.Equals("Completed", StringComparison.OrdinalIgnoreCase) ||
+        status.Equals("Failed", StringComparison.OrdinalIgnoreCase) ||
+        status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsClosed(string status) =>
+        status.Equals("Completing", StringComparison.OrdinalIgnoreCase) || IsTerminal(status);
 }

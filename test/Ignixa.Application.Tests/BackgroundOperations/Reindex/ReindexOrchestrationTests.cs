@@ -10,6 +10,22 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class ReindexOrchestrationTests
 {
     [Fact]
+    public async Task GivenProgressPersistenceFails_WhenRetried_ThenOnlyProgressIsRetriedNotRanges()
+    {
+        var context = new ExecutingContext(failProgressOnce: true);
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
+
+        var result = await new ReindexOrchestration().RunTask(context, input);
+
+        result.Success.ShouldBeTrue();
+        context.ProgressFailures.ShouldBe(1);
+        context.ProgressCalls.ShouldBeGreaterThan(1);
+        context.RangeCalls.ShouldBe(3);
+        context.Snapshots.Last().Tenants.Single().ResourcesReindexed.ShouldBe(30);
+    }
+
+    [Fact]
     public async Task GivenContinueAsNewThreshold_WhenOrchestrated_ThenResumedOutcomeMatchesUninterruptedRun()
     {
         var uninterrupted = await RunToCompletionAsync(continueAsNewThreshold: 100);
@@ -24,6 +40,22 @@ public class ReindexOrchestrationTests
         continued.Context.StartCalls.ShouldBe(1);
         continued.Context.BarrierCalls.ShouldBe(1);
         continued.Context.ContinuationCount.ShouldBeGreaterThan(0);
+        JsonSerializer.Serialize(continued.Context.Snapshots)
+            .ShouldBe(JsonSerializer.Serialize(uninterrupted.Context.Snapshots));
+    }
+
+    [Fact]
+    public async Task GivenLongBarrierDelay_WhenOrchestrated_ThenProgressHeartbeatsSplitTheDurableWait()
+    {
+        var context = new ExecutingContext();
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.FromSeconds(95), tenantIds: [1]);
+
+        await new ReindexOrchestration().RunTask(context, input);
+
+        context.TimerCalls.ShouldBe(4);
+        context.Snapshots.Count(snapshot => snapshot.Phase == "BarrierDelay").ShouldBe(3);
+        context.RangeCalls.ShouldBe(3);
     }
 
     [Fact]
@@ -116,13 +148,18 @@ public class ReindexOrchestrationTests
 
     private sealed class ExecutingContext(
         bool includeResourceFailures = false,
-        bool failStart = false) : OrchestrationContext
+        bool failStart = false,
+        bool failProgressOnce = false) : OrchestrationContext
     {
         public int StartCalls { get; private set; }
         public int BarrierCalls { get; private set; }
         public int TimerCalls { get; private set; }
         public int CompletionCalls { get; private set; }
         public int ContinuationCount { get; private set; }
+        public int ProgressCalls { get; private set; }
+        public int ProgressFailures { get; private set; }
+        public int RangeCalls { get; private set; }
+        public List<PersistReindexProgressInput> Snapshots { get; } = [];
         public CompleteReindexInput? LastCompletionInput { get; private set; }
 
         public override Task<T> ScheduleTask<T>(string name, string version, params object[] parameters)
@@ -139,6 +176,8 @@ public class ReindexOrchestrationTests
                     Range((ReindexRangeInput)parameters.Single()),
                 var value when value == typeof(CompleteReindexActivity).FullName =>
                     Complete((CompleteReindexInput)parameters.Single()),
+                var value when value == typeof(PersistReindexProgressActivity).FullName =>
+                    Progress((PersistReindexProgressInput)parameters.Single()),
                 _ => throw new InvalidOperationException($"Unexpected activity {name}.")
             };
 
@@ -213,6 +252,7 @@ public class ReindexOrchestrationTests
 
         private ReindexRangeOutput Range(ReindexRangeInput input)
         {
+            RangeCalls++;
             if (!includeResourceFailures)
             {
                 return new(10, 10, input.StartSurrogateId == 11 ? 1 : 0, []);
@@ -229,6 +269,19 @@ public class ReindexOrchestrationTests
                         $"{input.ResourceType}-{index}",
                         "extraction failed"))
                     .ToArray());
+        }
+
+        private bool Progress(PersistReindexProgressInput input)
+        {
+            ProgressCalls++;
+            if (failProgressOnce && RangeCalls > 0 && ProgressFailures == 0)
+            {
+                ProgressFailures++;
+                throw new InvalidOperationException("progress storage unavailable");
+            }
+
+            Snapshots.Add(input);
+            return true;
         }
 
         private CompleteReindexOutput Complete(CompleteReindexInput input)

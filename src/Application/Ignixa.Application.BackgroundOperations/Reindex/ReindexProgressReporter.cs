@@ -6,16 +6,6 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 
 public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
 {
-    public Task ReportBarrierDelayAsync(
-        string jobId,
-        IReadOnlyList<int> tenantIds,
-        IReadOnlyList<string> ignoredLifecycleEvents,
-        CancellationToken cancellationToken) =>
-        jobs.UpdateAsync(
-            jobId,
-            job => InitializeBarrierDelay(job, tenantIds, ignoredLifecycleEvents),
-            cancellationToken);
-
     internal static void InitializeBarrierDelay(
         BackgroundJob<ReindexJobDefinition> job,
         IReadOnlyList<int> tenantIds,
@@ -46,101 +36,41 @@ public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
         job.Progress = progress;
     }
 
-    public Task ReportBarrierAsync(
-        string jobId,
-        RaiseBarrierOutput output,
-        CancellationToken cancellationToken) =>
-        UpdateAsync(
-            jobId,
-            "Draining",
-            output.TenantId,
-            tenant =>
-            {
-                tenant["cutoffTransactionId"] = output.CutoffTransactionId;
-                tenant["cutoffSurrogateId"] = output.CutoffSurrogateId;
-                tenant["status"] = "Draining";
-            },
-            cancellationToken);
+    public Task<bool> HeartbeatAsync(string jobId, CancellationToken cancellationToken) =>
+        jobs.UpdateProgressAsync(jobId, _ => { }, cancellationToken);
 
-    public Task ReportDrainAsync(
-        string jobId,
-        AwaitDrainOutput output,
+    public Task<bool> ReportAsync(
+        PersistReindexProgressInput input,
         CancellationToken cancellationToken) =>
-        UpdateAsync(
-            jobId,
-            output.IsDrained ? "Reindexing" : "Draining",
-            output.TenantId,
-            tenant =>
-            {
-                tenant["visibleWatermark"] = output.VisibleWatermark;
-                tenant["status"] = output.IsDrained ? "Reindexing" : "Draining";
-            },
-            cancellationToken);
-
-    public Task ReportPlanAsync(
-        PlanReindexInput input,
-        PlanReindexOutput output,
-        CancellationToken cancellationToken) =>
-        UpdateAsync(
+        jobs.UpdateProgressAsync(
             input.JobId,
-            "Reindexing",
-            input.TenantId,
-            tenant =>
-            {
-                tenant["status"] = "Reindexing";
-                tenant["resourcesToReindex"] =
-                    GetInt64(tenant, "resourcesToReindex") +
-                    output.Ranges.Sum(range => range.ResourceCount);
-                tenant["plannerCursor"] = output.NextStartAfter;
-            },
-            cancellationToken);
-
-    public Task ReportRangeAsync(
-        ReindexRangeInput input,
-        ReindexRangeOutput output,
-        CancellationToken cancellationToken) =>
-        UpdateAsync(
-            input.JobId,
-            "Reindexing",
-            input.TenantId,
-            tenant =>
-            {
-                tenant["status"] = "Reindexing";
-                tenant["resourcesRead"] = GetInt64(tenant, "resourcesRead") + output.ResourcesRead;
-                tenant["resourcesReindexed"] =
-                    GetInt64(tenant, "resourcesReindexed") + output.ResourcesReindexed;
-                tenant["conflicts"] = GetInt64(tenant, "conflicts") + output.Conflicts;
-                tenant["failedResources"] =
-                    GetInt64(tenant, "failedResources") + output.FailedResourceCount;
-            },
-            cancellationToken);
-
-    public Task ReportCompletingAsync(string jobId, CancellationToken cancellationToken) =>
-        jobs.UpdateAsync(
-            jobId,
             job =>
             {
                 var progress = EnsureProgress(job.Progress);
-                SetPhase(progress, "Completing");
-                Recalculate(progress, job.Status);
-                job.Progress = progress;
-            },
-            cancellationToken);
+                // DurableTask may redeliver an activity whose write committed before its response was lost.
+                if (input.Sequence <= GetInt64(progress, "sequence"))
+                {
+                    return;
+                }
 
-    private Task UpdateAsync(
-        string jobId,
-        string phase,
-        int tenantId,
-        Action<JsonObject> updateTenant,
-        CancellationToken cancellationToken) =>
-        jobs.UpdateAsync(
-            jobId,
-            job =>
-            {
-                var progress = EnsureProgress(job.Progress);
-                SetPhase(progress, phase);
-                var tenant = GetOrAddTenant(progress, tenantId);
-                updateTenant(tenant);
+                progress["sequence"] = input.Sequence;
+                SetPhase(progress, input.Phase);
+                foreach (var state in input.Tenants)
+                {
+                    var tenant = GetOrAddTenant(progress, state.TenantId);
+                    tenant["status"] = state.Phase;
+                    tenant["cutoffTransactionId"] = state.CutoffTransactionId;
+                    tenant["cutoffSurrogateId"] = state.CutoffSurrogateId;
+                    tenant["visibleWatermark"] = state.VisibleWatermark;
+                    tenant["plannerCursor"] = state.PlannerCursor;
+                    tenant["resourcesToReindex"] = state.ResourcesToReindex;
+                    tenant["resourcesRead"] = state.ResourcesRead;
+                    tenant["resourcesReindexed"] = state.ResourcesReindexed;
+                    tenant["conflicts"] = state.Conflicts;
+                    tenant["failedResources"] = state.FailedResourceCount;
+                    tenant["errorMessage"] = state.ErrorMessage;
+                }
+
                 Recalculate(progress, job.Status);
                 job.Progress = progress;
             },

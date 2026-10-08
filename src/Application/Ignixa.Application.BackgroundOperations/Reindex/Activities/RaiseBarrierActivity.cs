@@ -6,16 +6,19 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class RaiseBarrierActivity(
     IFhirRepositoryFactory repositoryFactory,
-    ReindexProgressReporter progress)
+    ReindexActivityHeartbeat heartbeat)
     : AsyncTaskActivity<RaiseBarrierInput, RaiseBarrierOutput>
 {
-    protected override async Task<RaiseBarrierOutput> ExecuteAsync(
+    protected override Task<RaiseBarrierOutput> ExecuteAsync(
         TaskContext context,
-        RaiseBarrierInput input)
+        RaiseBarrierInput input) =>
+        heartbeat.RunAsync(input.JobId, cancellationToken => RaiseAsync(input, cancellationToken), CancellationToken.None);
+
+    private async Task<RaiseBarrierOutput> RaiseAsync(RaiseBarrierInput input, CancellationToken cancellationToken)
     {
         var repository = await repositoryFactory.GetRepositoryAsync(
             input.TenantId,
-            CancellationToken.None);
+            cancellationToken);
         if (repository is not IReindexStore store)
         {
             throw new ReindexProviderNotSupportedException(input.TenantId);
@@ -23,12 +26,10 @@ public sealed class RaiseBarrierActivity(
 
         var cutoff = await store.RaiseBarrierAsync(
             input.TargetEventId,
-            CancellationToken.None);
-        var output = new RaiseBarrierOutput(
+            cancellationToken);
+        return new RaiseBarrierOutput(
             input.TenantId,
             cutoff.TransactionId,
             cutoff.SurrogateId);
-        await progress.ReportBarrierAsync(input.JobId, output, CancellationToken.None);
-        return output;
     }
 }

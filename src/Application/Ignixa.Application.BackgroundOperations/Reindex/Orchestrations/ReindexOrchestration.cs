@@ -43,7 +43,19 @@ public sealed class ReindexOrchestration
         {
             try
             {
-                await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
+                var remaining = input.BarrierDelay;
+                do
+                {
+                    var delay = remaining > input.HeartbeatInterval ? input.HeartbeatInterval : remaining;
+                    await context.CreateTimer(context.CurrentUtcDateTime.Add(delay), true);
+                    remaining -= delay;
+                    if (remaining > TimeSpan.Zero)
+                    {
+                        state = await PersistProgressAsync(context, input, state, "BarrierDelay");
+                        scheduledActivities++;
+                    }
+                }
+                while (remaining > TimeSpan.Zero);
             }
             catch (Exception ex)
             {
@@ -63,6 +75,14 @@ public sealed class ReindexOrchestration
             {
                 Tenants = advances.Select(advance => advance.State).ToArray()
             };
+            var phase = state.Tenants.All(tenant => tenant.IsCompleted)
+                ? "Completing"
+                : state.Tenants.Any(tenant => tenant.Phase == "Reindexing")
+                    ? "Reindexing"
+                    : "Draining";
+            // Persist outside the tenant/range failure boundary: retrying this activity never repeats range work.
+            state = await PersistProgressAsync(context, input, state, phase);
+            scheduledActivities++;
             ContinueIfNeeded(context, input, state, scheduledActivities);
         }
 
@@ -122,6 +142,24 @@ public sealed class ReindexOrchestration
             MaxRetryInterval = TimeSpan.FromSeconds(30)
         };
 
+    private static async Task<ReindexOrchestrationState> PersistProgressAsync(
+        OrchestrationContext context,
+        ReindexOrchestrationInput input,
+        ReindexOrchestrationState state,
+        string phase)
+    {
+        var next = state with { ProgressSequence = state.ProgressSequence + 1 };
+        await context.ScheduleWithRetry<bool>(
+            typeof(PersistReindexProgressActivity),
+            new RetryOptions(TimeSpan.FromSeconds(1), int.MaxValue)
+            {
+                BackoffCoefficient = 2,
+                MaxRetryInterval = TimeSpan.FromSeconds(30)
+            },
+            new PersistReindexProgressInput(input.JobId, next.ProgressSequence, phase, next.Tenants));
+        return next;
+    }
+
     private static async Task<TenantAdvance> AdvanceTenantAsync(
         OrchestrationContext context,
         ReindexOrchestrationInput input,
@@ -163,10 +201,11 @@ public sealed class ReindexOrchestration
                 if (!drain.IsDrained)
                 {
                     await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(1), true);
-                    return new TenantAdvance(state, 1);
+                    return new TenantAdvance(state with { VisibleWatermark = drain.VisibleWatermark }, 1);
                 }
 
-                return new TenantAdvance(state with { Phase = "Reindexing" }, 1);
+                return new TenantAdvance(
+                    state with { Phase = "Reindexing", VisibleWatermark = drain.VisibleWatermark }, 1);
             }
 
             if (state.ResourceTypeIndex >= input.ResourceTypes.Count)

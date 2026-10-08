@@ -10,7 +10,6 @@ public sealed class CompleteReindexActivity(
     IFhirRepositoryFactory repositoryFactory,
     ReindexLifecycleEventWriter lifecycle,
     ReindexJobUpdater jobs,
-    ReindexProgressReporter progress,
     TimeProvider timeProvider)
     : AsyncTaskActivity<CompleteReindexInput, CompleteReindexOutput>
 {
@@ -19,7 +18,6 @@ public sealed class CompleteReindexActivity(
         CompleteReindexInput input)
     {
         var completedAt = timeProvider.GetUtcNow();
-        await progress.ReportCompletingAsync(input.JobId, CancellationToken.None);
         var completions = new List<ReindexTargetCompletion>();
         foreach (var target in input.Targets.Where(target => target.IsFullyCovered))
         {
