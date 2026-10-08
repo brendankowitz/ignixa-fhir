@@ -84,8 +84,13 @@ public class ConformanceBarrierRetryPolicyTests
 
     private static StaleConformanceDefinitionsException Stale() => new(101, 11, 29);
 
+    // The meter is process-wide and other test classes record barrier outcomes in parallel;
+    // measurements are recorded synchronously, so an AsyncLocal scopes capture to this test's flow.
+    private static readonly AsyncLocal<bool> _capturing = new();
+
     private static MeterListener ListenForOutcomes(out List<string> outcomes)
     {
+        _capturing.Value = true;
         outcomes = [];
         var captured = outcomes;
         var listener = new MeterListener();
@@ -99,6 +104,11 @@ public class ConformanceBarrierRetryPolicyTests
         };
         listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
         {
+            if (!_capturing.Value)
+            {
+                return;
+            }
+
             foreach (var tag in tags)
             {
                 if (tag.Key == "outcome" && tag.Value is string outcome)
