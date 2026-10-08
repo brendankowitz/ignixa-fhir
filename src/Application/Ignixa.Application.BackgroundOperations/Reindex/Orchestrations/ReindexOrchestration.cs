@@ -59,7 +59,10 @@ public sealed class ReindexOrchestration
                     Targets = started.Targets
                 };
             }
-            ContinueIfNeeded(context, input, state, scheduledActivities);
+            if (ContinueIfNeeded(context, input, state, scheduledActivities))
+            {
+                return default!;
+            }
         }
 
         if (!state.BarrierDelayCompleted)
@@ -108,7 +111,10 @@ public sealed class ReindexOrchestration
             // Persist outside the tenant/range failure boundary: retrying this activity never repeats range work.
             state = await PersistProgressAsync(context, input, state, phase);
             scheduledActivities++;
-            ContinueIfNeeded(context, input, state, scheduledActivities);
+            if (ContinueIfNeeded(context, input, state, scheduledActivities))
+            {
+                return default!;
+            }
         }
 
         var tenants = state.Tenants.Select(tenant => tenant.ToOutput()).ToArray();
@@ -383,7 +389,7 @@ public sealed class ReindexOrchestration
                 NextPlannerCursor = null
             };
 
-    private static void ContinueIfNeeded(
+    private static bool ContinueIfNeeded(
         OrchestrationContext context,
         ReindexOrchestrationInput input,
         ReindexOrchestrationState state,
@@ -392,10 +398,11 @@ public sealed class ReindexOrchestration
         if (scheduledActivities < Math.Max(1, input.ContinueAsNewThreshold) ||
             state.Tenants.All(tenant => tenant.IsCompleted))
         {
-            return;
+            return false;
         }
 
         context.ContinueAsNew(input with { State = state });
+        return true;
     }
 
     private sealed record TenantAdvance(ReindexTenantState State, int ScheduledActivities);

@@ -5,6 +5,8 @@ using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -127,10 +129,7 @@ public class ConformanceStateSyncServiceTests
             Substitute.For<ISearchParameterTransitionScheduler>(),
             TimeProvider.System,
             TimeSpan.FromMinutes(3),
-            new ReindexStartupReconciler(
-                mediator,
-                Options.Create(new ReindexOptions { AutoStart = true }),
-                NullLogger<ReindexStartupReconciler>.Instance));
+            CreateReindexReconciler(mediator, autoStart: true));
 
         await service.RunSyncAsync();
 
@@ -163,10 +162,7 @@ public class ConformanceStateSyncServiceTests
             Substitute.For<ISearchParameterTransitionScheduler>(),
             TimeProvider.System,
             TimeSpan.FromMinutes(3),
-            new ReindexStartupReconciler(
-                mediator,
-                Options.Create(new ReindexOptions { AutoStart = true }),
-                NullLogger<ReindexStartupReconciler>.Instance));
+            CreateReindexReconciler(mediator, autoStart: true));
 
         await service.RunSyncAsync();
 
@@ -243,6 +239,16 @@ public class ConformanceStateSyncServiceTests
         return refresher;
     }
 
+    private static ReindexStartupReconciler CreateReindexReconciler(
+        IMediator mediator,
+        bool autoStart)
+    {
+        return new ReindexStartupReconciler(
+            mediator,
+            Options.Create(new ReindexOptions { AutoStart = autoStart }),
+            NullLogger<ReindexStartupReconciler>.Instance);
+    }
+
     private sealed class TestSyncService(
         ISourceEventStore store,
         ConformanceState state,
@@ -262,10 +268,9 @@ public class ConformanceStateSyncServiceTests
             lease,
             transitionScheduler,
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = transitionGrace }),
-            reindexReconciler ?? new ReindexStartupReconciler(
+            reindexReconciler ?? CreateReindexReconciler(
                 Substitute.For<IMediator>(),
-                Options.Create(new ReindexOptions { AutoStart = false }),
-                NullLogger<ReindexStartupReconciler>.Instance),
+                autoStart: false),
             timeProvider,
             NullLogger<ConformanceStateSyncService>.Instance,
             new ConfigurationBuilder().Build())

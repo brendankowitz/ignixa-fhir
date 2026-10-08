@@ -1,6 +1,7 @@
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
@@ -11,7 +12,8 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Workers;
 public sealed class ReindexRangeProcessor(
     IFhirRepositoryFactory repositoryFactory,
     ITenantConfigurationStore tenantConfigurationStore,
-    IFhirVersionContext fhirVersionContext)
+    IFhirVersionContext fhirVersionContext,
+    IFhirRequestContextAccessor fhirContextAccessor)
 {
     private const int MinimumWriteBatchSize = 10;
 
@@ -21,6 +23,8 @@ public sealed class ReindexRangeProcessor(
         tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
     private readonly IFhirVersionContext _fhirVersionContext =
         fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor =
+        fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
 
     public async Task<ReindexRangeOutput> ProcessAsync(
         ReindexRangeInput input,
@@ -31,113 +35,126 @@ public sealed class ReindexRangeProcessor(
             cancellationToken)
             ?? throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive.");
         var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
-        var handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
-        if (handle.DefinitionsEventId < input.TargetEventId)
-        {
-            throw new ReindexDefinitionsNotReadyException(
-                handle.DefinitionsEventId,
-                input.TargetEventId);
-        }
-
-        var repository = await _repositoryFactory.GetRepositoryAsync(
+        var previousContext = _fhirContextAccessor.RequestContext;
+        _fhirContextAccessor.RequestContext = FhirRequestContextFactory.CreateBackgroundContext(
             input.TenantId,
-            cancellationToken);
-        if (repository is not IReindexStore store)
+            tenant,
+            fhirVersion,
+            input.ResourceType);
+        try
         {
-            throw new ReindexProviderNotSupportedException(input.TenantId);
-        }
+            var handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
+            if (handle.DefinitionsEventId < input.TargetEventId)
+            {
+                throw new ReindexDefinitionsNotReadyException(
+                    handle.DefinitionsEventId,
+                    input.TargetEventId);
+            }
 
-        long resourcesRead = 0;
-        long resourcesReindexed = 0;
-        long conflicts = 0;
-        long? afterSurrogateId = null;
-        var writeBatchSize = input.MaximumNumberOfResourcesPerWrite;
-        var failures = new List<ReindexFailedResource>();
-        long failedResourceCount = 0;
-        while (true)
-        {
-            var page = await store.ReadRangeAsync(
-                input.ResourceType,
-                input.StartSurrogateId,
-                input.EndSurrogateId,
-                writeBatchSize,
-                afterSurrogateId,
+            var repository = await _repositoryFactory.GetRepositoryAsync(
+                input.TenantId,
                 cancellationToken);
-            if (page.Count == 0)
+            if (repository is not IReindexStore store)
             {
-                break;
+                throw new ReindexProviderNotSupportedException(input.TenantId);
             }
 
-            resourcesRead += page.Count;
-            var extracted = new List<ReindexResource>(page.Count);
-            foreach (var resource in page)
+            long resourcesRead = 0;
+            long resourcesReindexed = 0;
+            long conflicts = 0;
+            long? afterSurrogateId = null;
+            var writeBatchSize = input.MaximumNumberOfResourcesPerWrite;
+            var failures = new List<ReindexFailedResource>();
+            long failedResourceCount = 0;
+            while (true)
             {
-                try
+                var page = await store.ReadRangeAsync(
+                    input.ResourceType,
+                    input.StartSurrogateId,
+                    input.EndSurrogateId,
+                    writeBatchSize,
+                    afterSurrogateId,
+                    cancellationToken);
+                if (page.Count == 0)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    extracted.Add(resource with
-                    {
-                        Resource = resource.Resource with
-                        {
-                            SearchIndices = handle.Indexer.Extract(
-                                (IElement)resource.Resource.Resource.ToElement(handle.SchemaProvider)).ToArray(),
-                            DefinitionsEventId = handle.DefinitionsEventId,
-                            FhirVersion = tenant.FhirVersion,
-                            TenantId = input.TenantId
-                        }
-                    });
+                    break;
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    failedResourceCount++;
-                    if (failures.Count < 100)
-                    {
-                        failures.Add(new ReindexFailedResource(
-                            input.ResourceType,
-                            resource.Resource.ResourceId,
-                            ex.Message));
-                    }
-                }
-            }
 
-            if (extracted.Count > 0)
-            {
-                var offset = 0;
-                while (offset < extracted.Count)
+                resourcesRead += page.Count;
+                var extracted = new List<ReindexResource>(page.Count);
+                foreach (var resource in page)
                 {
-                    var count = Math.Min(writeBatchSize, extracted.Count - offset);
-                    var batch = extracted.GetRange(offset, count);
                     try
                     {
-                        var updated = await store.UpdateSearchIndicesAsync(batch, cancellationToken);
-                        resourcesReindexed += updated.Updated;
-                        conflicts += updated.Conflicts;
-                        offset += count;
+                        cancellationToken.ThrowIfCancellationRequested();
+                        extracted.Add(resource with
+                        {
+                            Resource = resource.Resource with
+                            {
+                                SearchIndices = handle.Indexer.Extract(
+                                    (IElement)resource.Resource.Resource.ToElement(handle.SchemaProvider)).ToArray(),
+                                DefinitionsEventId = handle.DefinitionsEventId,
+                                FhirVersion = tenant.FhirVersion,
+                                TenantId = input.TenantId
+                            }
+                        });
                     }
-                    catch (TimeoutException) when (writeBatchSize > MinimumWriteBatchSize)
+                    catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        writeBatchSize = Math.Max(MinimumWriteBatchSize, writeBatchSize / 2);
+                        failedResourceCount++;
+                        if (failures.Count < 100)
+                        {
+                            failures.Add(new ReindexFailedResource(
+                                input.ResourceType,
+                                resource.Resource.ResourceId,
+                                ex.Message));
+                        }
                     }
+                }
+
+                if (extracted.Count > 0)
+                {
+                    var offset = 0;
+                    while (offset < extracted.Count)
+                    {
+                        var count = Math.Min(writeBatchSize, extracted.Count - offset);
+                        var batch = extracted.GetRange(offset, count);
+                        try
+                        {
+                            var updated = await store.UpdateSearchIndicesAsync(batch, cancellationToken);
+                            resourcesReindexed += updated.Updated;
+                            conflicts += updated.Conflicts;
+                            offset += count;
+                        }
+                        catch (TimeoutException) when (writeBatchSize > MinimumWriteBatchSize)
+                        {
+                            writeBatchSize = Math.Max(MinimumWriteBatchSize, writeBatchSize / 2);
+                        }
+                    }
+                }
+
+                afterSurrogateId = page[^1].ResourceSurrogateId;
+                if (input.QueryDelayIntervalInMilliseconds > 0)
+                {
+                    await Task.Delay(
+                        input.QueryDelayIntervalInMilliseconds,
+                        cancellationToken);
                 }
             }
 
-            afterSurrogateId = page[^1].ResourceSurrogateId;
-            if (input.QueryDelayIntervalInMilliseconds > 0)
+            return new ReindexRangeOutput(
+                resourcesRead,
+                resourcesReindexed,
+                conflicts,
+                failures)
             {
-                await Task.Delay(
-                    input.QueryDelayIntervalInMilliseconds,
-                    cancellationToken);
-            }
+                FailedResourceCount = failedResourceCount,
+                FailedResourceTypes = failedResourceCount == 0 ? [] : [input.ResourceType]
+            };
         }
-
-        return new ReindexRangeOutput(
-            resourcesRead,
-            resourcesReindexed,
-            conflicts,
-            failures)
+        finally
         {
-            FailedResourceCount = failedResourceCount,
-            FailedResourceTypes = failedResourceCount == 0 ? [] : [input.ResourceType]
-        };
+            _fhirContextAccessor.RequestContext = previousContext;
+        }
     }
 }

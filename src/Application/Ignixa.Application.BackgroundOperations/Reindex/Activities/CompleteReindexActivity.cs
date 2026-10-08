@@ -13,6 +13,9 @@ public sealed class CompleteReindexActivity(
     TimeProvider timeProvider)
     : AsyncTaskActivity<CompleteReindexInput, CompleteReindexOutput>
 {
+    private static readonly JsonSerializerOptions ProgressSerializerOptions =
+        new(JsonSerializerDefaults.Web);
+
     protected override async Task<CompleteReindexOutput> ExecuteAsync(
         TaskContext context,
         CompleteReindexInput input)
@@ -89,43 +92,47 @@ public sealed class CompleteReindexActivity(
                         " ",
                         completions.Where(completion => !completion.Success)
                             .Select(completion => completion.ErrorMessage));
-                job.Progress = JsonSerializer.SerializeToNode(new
-                {
-                    phase = "Completing",
-                    resourcesSuccessfullyReindexed = input.Tenants.Sum(tenant => tenant.ResourcesReindexed),
-                    totalResourcesToReindex = input.Tenants.Sum(tenant => tenant.ResourcesToReindex),
-                    progress = success
-                        ? 100
-                        : CalculateProgress(input.Tenants),
-                    conflicts = input.Tenants.Sum(tenant => tenant.Conflicts),
-                    tenants = input.Tenants.Select(tenant => new
+                job.Progress = JsonSerializer.SerializeToNode(
+                    new
                     {
-                        tenant.TenantId,
-                        tenant.CutoffTransactionId,
-                        tenant.CutoffSurrogateId,
-                        status = tenant.Success ? "Completed" : "Failed",
-                        tenant.ResourcesToReindex,
-                        tenant.ResourcesReindexed,
-                        tenant.Conflicts,
-                        failedResources = tenant.FailedResourceCount,
-                        tenant.ErrorMessage
-                    }).ToArray(),
-                    failedResources,
-                    ignoredLifecycleEvents = input.IgnoredLifecycleEvents.Concat(ignored).Distinct()
-                        .ToArray(),
-                    notCovered = input.Targets
-                        .Where(target => !target.IsFullyCovered)
-                        .Select(target => target.Canonical)
-                        .Distinct(StringComparer.Ordinal)
-                        .ToArray(),
-                    terminalOutcomes = completions.Select(completion => new
-                    {
-                        completion.Target.Canonical,
-                        completion.Success,
-                        completion.ResourcesIndexed,
-                        completion.ErrorMessage
-                    }).ToArray()
-                });
+                        phase = "Completing",
+                        resourcesSuccessfullyReindexed = input.Tenants.Sum(tenant => tenant.ResourcesReindexed),
+                        totalResourcesToReindex = input.Tenants.Sum(tenant => tenant.ResourcesToReindex),
+                        progress = success
+                            ? 100
+                            : CalculateProgress(input.Tenants),
+                        conflicts = input.Tenants.Sum(tenant => tenant.Conflicts),
+                        tenants = input.Tenants.Select(tenant => new
+                        {
+                            tenant.TenantId,
+                            tenant.CutoffTransactionId,
+                            tenant.CutoffSurrogateId,
+                            status = tenant.Success ? "Completed" : "Failed",
+                            tenant.ResourcesToReindex,
+                            tenant.ResourcesReindexed,
+                            tenant.Conflicts,
+                            failedResources = tenant.FailedResourceCount,
+                            tenant.ErrorMessage
+                        }).ToArray(),
+                        failedResources,
+                        ignoredLifecycleEvents = input.IgnoredLifecycleEvents.Concat(ignored).Distinct()
+                            .ToArray(),
+                        notCovered = input.Targets
+                            .Where(target => !target.IsFullyCovered)
+                            .Select(target => target.Canonical)
+                            .Distinct(StringComparer.Ordinal)
+                            .ToArray(),
+                        terminalOutcomes = completions.Select(completion => new
+                        {
+                            completion.Target.Canonical,
+                            completion.Target.ResourceType,
+                            completion.Target.Code,
+                            completion.Success,
+                            completion.ResourcesIndexed,
+                            completion.ErrorMessage
+                        }).ToArray()
+                    },
+                    ProgressSerializerOptions);
                 job.Result = new JsonObject
                 {
                     ["success"] = success

@@ -14,10 +14,7 @@ public sealed class ReindexStartupReconcilerTests
     public async Task GivenAutoStartIsFalse_WhenStartupReconciles_ThenNoJobIsRequested()
     {
         var mediator = Substitute.For<IMediator>();
-        var reconciler = new ReindexStartupReconciler(
-            mediator,
-            Options.Create(new ReindexOptions { AutoStart = false }),
-            NullLogger<ReindexStartupReconciler>.Instance);
+        var reconciler = CreateReconciler(mediator, autoStart: false);
 
         await reconciler.ReconcileAsync(CancellationToken.None);
 
@@ -34,10 +31,7 @@ public sealed class ReindexStartupReconcilerTests
                 Arg.Any<CreateReindexJobCommand>(),
                 Arg.Any<CancellationToken>())
             .Returns(new NoReindexWorkResult("No resources need reindexing."));
-        var reconciler = new ReindexStartupReconciler(
-            mediator,
-            Options.Create(new ReindexOptions()),
-            NullLogger<ReindexStartupReconciler>.Instance);
+        var reconciler = CreateReconciler(mediator, autoStart: true);
 
         await reconciler.ReconcileAsync(CancellationToken.None);
 
@@ -46,5 +40,15 @@ public sealed class ReindexStartupReconcilerTests
                 command.Trigger == "Reconciliation" &&
                 !command.QueueRequest),
             CancellationToken.None);
+    }
+
+    private static ReindexStartupReconciler CreateReconciler(
+        IMediator mediator,
+        bool autoStart)
+    {
+        return new ReindexStartupReconciler(
+            mediator,
+            Options.Create(new ReindexOptions { AutoStart = autoStart }),
+            NullLogger<ReindexStartupReconciler>.Instance);
     }
 }

@@ -106,10 +106,13 @@ public sealed class ReindexJobReconciler(
         var outcomes = ReadPersistedOutcomes(job.Progress);
         var completions = ReconstructTargets(job)
             .Where(target => target.IsFullyCovered)
-            .Where(target => outcomes.ContainsKey(target.Canonical))
+            .Where(target =>
+                outcomes.ContainsKey(TargetIdentity(target)) ||
+                outcomes.ContainsKey(target.Canonical))
             .Select(target =>
             {
-                var outcome = outcomes[target.Canonical];
+                var outcome = outcomes.GetValueOrDefault(TargetIdentity(target)) ??
+                    outcomes[target.Canonical];
                 return new ReindexTargetCompletion(
                     target,
                     outcome.Success,
@@ -168,6 +171,8 @@ public sealed class ReindexJobReconciler(
                     completions.Select(completion => (JsonNode?)new JsonObject
                     {
                         ["canonical"] = completion.Target.Canonical,
+                        ["resourceType"] = completion.Target.ResourceType,
+                        ["code"] = completion.Target.Code,
                         ["success"] = false,
                         ["resourcesIndexed"] = 0,
                         ["errorMessage"] = reason
@@ -203,14 +208,32 @@ public sealed class ReindexJobReconciler(
         (progress?["terminalOutcomes"] as JsonArray)?
             .OfType<JsonObject>()
             .Where(value => value["canonical"] is not null)
+            .GroupBy(
+                value => value["resourceType"] is not null && value["code"] is not null
+                    ? TargetIdentity(
+                        value["canonical"]!.GetValue<string>(),
+                        value["resourceType"]!.GetValue<string>(),
+                        value["code"]!.GetValue<string>())
+                    : value["canonical"]!.GetValue<string>(),
+                StringComparer.Ordinal)
             .ToDictionary(
-                value => value["canonical"]!.GetValue<string>(),
-                value => new PersistedOutcome(
-                    value["success"]?.GetValue<bool>() ?? false,
-                    value["resourcesIndexed"]?.GetValue<long>() ?? 0,
-                    value["errorMessage"]?.GetValue<string>()),
+                group => group.Key,
+                group =>
+                {
+                    var value = group.Last();
+                    return new PersistedOutcome(
+                        value["success"]?.GetValue<bool>() ?? false,
+                        value["resourcesIndexed"]?.GetValue<long>() ?? 0,
+                        value["errorMessage"]?.GetValue<string>());
+                },
                 StringComparer.Ordinal)
         ?? new Dictionary<string, PersistedOutcome>(StringComparer.Ordinal);
+
+    private static string TargetIdentity(ReindexTarget target) =>
+        TargetIdentity(target.Canonical, target.ResourceType, target.Code);
+
+    private static string TargetIdentity(string canonical, string resourceType, string code) =>
+        $"{canonical}|{resourceType}|{code}";
 
     private static bool IsActive(OrchestrationState? state) =>
         state?.OrchestrationStatus is OrchestrationStatus.Pending

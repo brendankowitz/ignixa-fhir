@@ -72,6 +72,29 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
+    public async Task GivenContinueAsNew_WhenRequested_ThenCurrentStateIsCarriedAndNoMoreWorkIsScheduled()
+    {
+        var context = new ExecutingContext();
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job",
+            targetEventId: 42,
+            barrierDelay: TimeSpan.Zero,
+            tenantIds: [1]) with
+        {
+            ContinueAsNewThreshold = 1
+        };
+
+        await new ReindexOrchestration().RunTask(context, input);
+
+        context.ContinuationCount.ShouldBe(1);
+        context.LastContinuationInput.ShouldNotBeNull();
+        context.LastContinuationInput.State!.Started.ShouldBeTrue();
+        context.BarrierCalls.ShouldBe(0);
+        context.ProgressCalls.ShouldBe(0);
+        context.CompletionCalls.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task GivenLongBarrierDelay_WhenOrchestrated_ThenProgressHeartbeatsSplitTheDurableWait()
     {
         var context = new ExecutingContext();
@@ -156,21 +179,15 @@ public class ReindexOrchestrationTests
 
         while (true)
         {
-            try
+            var continuationCount = context.ContinuationCount;
+            var output = await new ReindexOrchestration().RunTask(context, input);
+            if (context.ContinuationCount == continuationCount)
             {
-                var output = await new ReindexOrchestration().RunTask(context, input);
                 return (output, context);
             }
-            catch (ContinueAsNewException ex)
-            {
-                input = ex.Input;
-            }
-        }
-    }
 
-    private sealed class ContinueAsNewException(ReindexOrchestrationInput input) : Exception
-    {
-        public ReindexOrchestrationInput Input { get; } = input;
+            input = context.LastContinuationInput!;
+        }
     }
 
     private sealed class ExecutingContext(
@@ -188,6 +205,7 @@ public class ReindexOrchestrationTests
         public int RangeCalls { get; private set; }
         public List<PersistReindexProgressInput> Snapshots { get; } = [];
         public CompleteReindexInput? LastCompletionInput { get; private set; }
+        public ReindexOrchestrationInput? LastContinuationInput { get; private set; }
 
         public override Task<T> ScheduleTask<T>(string name, string version, params object[] parameters)
         {
@@ -248,7 +266,7 @@ public class ReindexOrchestrationTests
         public override void ContinueAsNew(object input)
         {
             ContinuationCount++;
-            throw new ContinueAsNewException((ReindexOrchestrationInput)input);
+            LastContinuationInput = (ReindexOrchestrationInput)input;
         }
 
         public override void ContinueAsNew(string newVersion, object input) => ContinueAsNew(input);

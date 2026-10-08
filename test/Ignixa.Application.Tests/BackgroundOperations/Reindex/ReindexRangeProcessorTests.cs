@@ -3,6 +3,7 @@ using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Workers;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
@@ -71,7 +72,11 @@ public class ReindexRangeProcessorTests
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetDefinitionsHandle(FhirVersion.R4, 1)
             .Returns(new DefinitionsHandle(indexer, FhirVersion.R4.GetSchemaProvider(), 42));
-        var processor = new ReindexRangeProcessor(repositories, tenants, versions);
+        var processor = new ReindexRangeProcessor(
+            repositories,
+            tenants,
+            versions,
+            new FhirRequestContextAccessor());
 
         var result = await processor.ProcessAsync(
             new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, 0),
@@ -102,7 +107,11 @@ public class ReindexRangeProcessorTests
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
                 41));
-        var processor = new ReindexRangeProcessor(repositories, tenants, versions);
+        var processor = new ReindexRangeProcessor(
+            repositories,
+            tenants,
+            versions,
+            new FhirRequestContextAccessor());
 
         await Should.ThrowAsync<ReindexDefinitionsNotReadyException>(() => processor.ProcessAsync(
             new ReindexRangeInput("job", 1, "Patient", 1, 100, 42, 1000, 0),

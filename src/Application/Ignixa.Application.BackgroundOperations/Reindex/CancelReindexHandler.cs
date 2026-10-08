@@ -70,6 +70,8 @@ public sealed class CancelReindexHandler(
                         .Select(target => (JsonNode?)new JsonObject
                         {
                             ["canonical"] = target.Canonical,
+                            ["resourceType"] = target.ResourceType,
+                            ["code"] = target.Code,
                             ["success"] = false,
                             ["resourcesIndexed"] = 0,
                             ["errorMessage"] = $"Cancelled: {request.Reason}"

@@ -1,14 +1,22 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Api.Endpoints;
 using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.BackgroundOperations.Reindex.Activities;
+using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Conformance.Events;
+using Ignixa.Conformance.Events.Abstractions;
+using Ignixa.Conformance.Events.Events;
+using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
@@ -20,6 +28,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
@@ -291,6 +300,117 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         Value(failures[0], "id").ShouldBe("first");
         Value(failures[0], "reason").ShouldBe("first failure");
         Value(failures[1], "id").ShouldBe("second");
+    }
+
+    [Fact]
+    public async Task GivenCompletionDecisionSurvivesRestart_WhenGettingStatus_ThenTerminalProgressRoundTrips()
+    {
+        const string canonical = "http://example.test/SearchParameter/patient-custom";
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        var repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "round-trip",
+            OrchestrationInstanceId = "round-trip",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = new ReindexJobDefinition
+            {
+                TargetEventId = 1,
+                TenantIds = [1],
+                ResourceTypes = ["Patient"],
+                SearchParameters =
+                [
+                    new ReindexParameterDefinition(
+                        target.Canonical,
+                        target.Code,
+                        target.ResourceType,
+                        target.SearchParamId,
+                        target.ActivationEventId,
+                        target.AffectedResourceTypes)
+                ],
+                MaximumNumberOfResourcesPerQuery = 10,
+                MaximumNumberOfResourcesPerWrite = 10,
+                MaximumConcurrency = 1,
+                QueryDelayIntervalInMilliseconds = 0,
+                Trigger = "Manual"
+            },
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        await lifecycle.StartAsync("round-trip", [target], CancellationToken.None);
+        var fhirRepository = Substitute.For<IFhirRepository, IReindexStore>();
+        ((IReindexStore)fhirRepository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+            .Returns(true);
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+            .Returns(fhirRepository);
+        using var jobLock = new TestJobLock();
+        var writer = new CompleteReindexActivity(
+            repositoryFactory,
+            lifecycle,
+            new ReindexJobUpdater(repository, jobLock, new ThrowingCompletionHook()),
+            TimeProvider.System);
+        var failedResource = new ReindexFailedResource("Patient", "p1", "index failure");
+
+        await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(() => writer.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "round-trip" }),
+            JsonSerializer.Serialize(new[]
+            {
+                new CompleteReindexInput(
+                    "round-trip",
+                    1,
+                    [target],
+                    [new ReindexTenantOutput(1, true, 10, 20, 1, 0, 0, 1, [failedResource], "index failure")],
+                    [])
+            })));
+
+        (await repository.GetAsync("round-trip", 1, CancellationToken.None))!
+            .Status.ShouldBe("Completing");
+
+        var runtime = Substitute.For<IOrchestrationServiceClient>();
+        runtime.GetOrchestrationStateAsync("round-trip", false).Returns([]);
+        var reconciler = new ReindexJobReconciler(
+            new TaskHubClient(runtime),
+            repository,
+            lifecycle,
+            new ReindexJobUpdater(repository, jobLock, new NullReindexCompletionHook()),
+            jobLock,
+            Options.Create(new ReindexOptions()),
+            TimeProvider.System,
+            NullLogger<ReindexJobReconciler>.Instance);
+        await reconciler.ReconcileAsync(CancellationToken.None);
+
+        var statusHandler = new GetReindexStatusHandler(
+            repository,
+            Options.Create(new ReindexOptions()),
+            TimeProvider.System,
+            NullLogger<GetReindexStatusHandler>.Instance);
+        _status = (await statusHandler.HandleAsync(
+            new GetReindexStatusQuery("round-trip"),
+            CancellationToken.None))!;
+
+        var response = await SendAsync("GetReindexForTenant", jobId: "round-trip");
+
+        response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+        Value(response.Body, "status").ShouldBe("Failed");
+        var tenant = Parts(response.Body, "tenant").ShouldHaveSingleItem();
+        Value(tenant, "tenantId").ShouldBe(1);
+        Value(tenant, "resourcesToReindex").ShouldBe(1);
+        Value(tenant, "resourcesReindexed").ShouldBe(0);
+        Value(tenant, "failedResources").ShouldBe(1);
+        var failure = Parts(response.Body, "failedResource").ShouldHaveSingleItem();
+        Value(failure, "resourceType").ShouldBe("Patient");
+        Value(failure, "id").ShouldBe("p1");
+        Value(failure, "reason").ShouldBe("index failure");
     }
 
     [Fact]
@@ -761,9 +881,85 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                 Trigger = "Manual"
             });
 
+    private static ISourceEventStore EventStore()
+    {
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(EmptyEvents());
+        long nextEventId = 2;
+        store.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
+                .Select(evt => new SourceEvent(
+                    nextEventId++,
+                    evt.StreamId,
+                    evt.EventType,
+                    evt.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray());
+        return store;
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    private static SourceEvent Activation(string canonical) => new(
+        1,
+        "search",
+        nameof(SearchParameterActivated),
+        new SearchParameterActivated(
+            canonical,
+            "custom",
+            "Patient",
+            "Patient.id",
+            SearchParamType.String,
+            "example@1.0.0",
+            null,
+            17,
+            null,
+            null,
+            null,
+            null),
+        DateTimeOffset.UtcNow);
+
     public Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync() => await _app.DisposeAsync();
 
     private sealed record Response(int StatusCode, JsonNode Body, IReadOnlyDictionary<string, string> Headers);
+
+    private sealed class ThrowingCompletionHook : IReindexCompletionHook
+    {
+        public Task OnCompletedAsync(
+            BackgroundJob<ReindexJobDefinition> job,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("simulated restart");
+    }
+
+    private sealed class TestJobLock : IReindexJobLock, IDisposable
+    {
+        private readonly SemaphoreSlim _semaphore = new(1, 1);
+
+        public async Task<T> ExecuteAsync<T>(
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken cancellationToken)
+        {
+            await _semaphore.WaitAsync(cancellationToken);
+            try
+            {
+                return await action(cancellationToken);
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+
+        public void Dispose() => _semaphore.Dispose();
+    }
 }

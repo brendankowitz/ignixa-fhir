@@ -1,4 +1,6 @@
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;

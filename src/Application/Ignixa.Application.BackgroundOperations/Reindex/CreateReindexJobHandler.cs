@@ -159,6 +159,19 @@ public sealed class CreateReindexJobHandler(
             var jobs = await _jobRepository.ListAsync(
                 (int)BackgroundJobType.Reindex,
                 ct);
+            var lastFailedOrCancelled = jobs
+                .Where(job => job.Status is "Failed" or "Cancelled")
+                .OrderByDescending(job => job.EndDate ?? job.CreateDate)
+                .FirstOrDefault();
+            if ((request.Trigger.Equals("Reconciliation", StringComparison.OrdinalIgnoreCase) ||
+                 request.Trigger.Equals("FollowUp", StringComparison.OrdinalIgnoreCase)) &&
+                lastFailedOrCancelled is not null &&
+                requestedGeneration <= lastFailedOrCancelled.Definition.ConsumedGeneration)
+            {
+                return new NoReindexWorkResult(
+                    $"Reindex restart after {lastFailedOrCancelled.Status} requires a new request generation.");
+            }
+
             var activeJobs = jobs.Where(job =>
                 job.JobId != request.ExcludedActiveJobId &&
                 (job.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) ||
