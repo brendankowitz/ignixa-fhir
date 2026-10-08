@@ -363,7 +363,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         ConformanceDefinitionsSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        _conformanceDefinitions.AddOrUpdate(
+        var slot = _conformanceDefinitions.AddOrUpdate(
             (fhirVersion, tenantId),
             _ => new ConformanceDefinitionsSnapshotSlot(snapshot),
             (_, slot) =>
@@ -371,6 +371,9 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
                 slot.Publish(snapshot);
                 return slot;
             });
+        _compositeProviderRegistry?.RegisterProvider(
+            tenantId,
+            slot.Current.Handle.SchemaProvider);
     }
 
     /// <inheritdoc/>

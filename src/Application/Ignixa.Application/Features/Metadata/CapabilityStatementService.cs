@@ -240,6 +240,10 @@ public class CapabilityStatementService
 
         // Clear capability statement cache
         await _cache.RemoveAsync(cacheKey, cancellationToken);
+        if (context.TenantId is { } tenantId)
+        {
+            await _cache.RemoveAsync($"profiles:{tenantId}", cancellationToken);
+        }
 
         _logger.LogInformation("Invalidated capability cache for {CacheKey}", cacheKey);
     }
