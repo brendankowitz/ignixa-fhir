@@ -38,7 +38,10 @@ public sealed class ReindexLifecycleEventWriter(
             completions.Select(completion => completion.Target).ToArray(),
             target =>
             {
-                var completion = completions.Single(item => item.Target.Canonical == target.Canonical);
+                var completion = completions.Single(item =>
+                    item.Target.Canonical == target.Canonical &&
+                    item.Target.ResourceType == target.ResourceType &&
+                    item.Target.Code == target.Code);
                 return completion.Success
                     ? new SearchParameterReindexCompleted(
                         target.Canonical,
@@ -79,7 +82,7 @@ public sealed class ReindexLifecycleEventWriter(
                     : targets;
                 var ignored = requireOwnership
                     ? targets.Where(target => !IsOwnedByJob(target, jobId))
-                        .Select(target => target.Canonical)
+                        .Select(TargetIdentity)
                         .ToArray()
                     : Array.Empty<string>();
                 if (currentTargets.Count == 0)
@@ -144,7 +147,7 @@ public sealed class ReindexLifecycleEventWriter(
                             _ => true
                         };
                     })
-                    .Select(item => item.Target.Canonical))
+                    .Select(item => TargetIdentity(item.Target)))
                     .Distinct(StringComparer.Ordinal)
                     .ToArray();
             }
@@ -162,6 +165,9 @@ public sealed class ReindexLifecycleEventWriter(
             current.Status == SearchParameterStatus.Reindexing &&
             current.ReindexJobId == jobId;
     }
+
+    private static string TargetIdentity(ReindexTarget target) =>
+        $"{target.Canonical}|{target.ResourceType}|{target.Code}";
 }
 
 public sealed record ReindexTargetCompletion(

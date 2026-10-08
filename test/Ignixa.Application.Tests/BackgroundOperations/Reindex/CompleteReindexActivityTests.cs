@@ -87,6 +87,9 @@ public class CompleteReindexActivityTests
         job.Progress!["tenants"]![0]!["failedResources"]!.GetValue<long>().ShouldBe(153);
         job.Progress!["terminalOutcomes"]![0]!["canonical"]!.GetValue<string>()
             .ShouldBe(overrideCanonical);
+        job.Progress!["terminalOutcomes"]![0]!["resourceType"]!.GetValue<string>()
+            .ShouldBe("Patient");
+        job.Progress!["terminalOutcomes"]![0]!["code"]!.GetValue<string>().ShouldBe("custom");
         job.Progress!["terminalOutcomes"]![0]!["success"]!.GetValue<bool>().ShouldBeTrue();
         job.Progress!["terminalOutcomes"]![0]!["resourcesIndexed"]!.GetValue<long>().ShouldBe(1);
         state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(

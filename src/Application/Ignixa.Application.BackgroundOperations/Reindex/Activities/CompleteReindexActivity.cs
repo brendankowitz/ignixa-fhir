@@ -125,6 +125,8 @@ public sealed class CompleteReindexActivity(
                         terminalOutcomes = completions.Select(completion => new
                         {
                             completion.Target.Canonical,
+                            completion.Target.ResourceType,
+                            completion.Target.Code,
                             completion.Success,
                             completion.ResourcesIndexed,
                             completion.ErrorMessage
