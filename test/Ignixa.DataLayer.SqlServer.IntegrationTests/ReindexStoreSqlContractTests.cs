@@ -73,6 +73,29 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenVisibilityAdvancedPastAHigherCompletedTransaction_WhenALowerTransactionIsIncomplete_ThenDrainFindsTheLowerTransaction()
+    {
+        await _database.ExecuteNonQueryAsync(
+            """
+            INSERT INTO dbo.Transactions
+                (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
+            VALUES (200, 200, 1, 0);
+
+            EXEC dbo.MergeResourcesAdvanceTransactionVisibility;
+
+            INSERT INTO dbo.Transactions
+                (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
+            VALUES (100, 100, 0, 0);
+            """);
+
+        (await _store.GetVisibleWatermarkAsync(CancellationToken.None)).ShouldBe(200);
+        var oldest = await _store.GetOldestIncompleteTransactionAsync(200, CancellationToken.None);
+
+        oldest.ShouldNotBeNull();
+        oldest.Value.TransactionId.ShouldBe(100);
+    }
+
+    [Fact]
     public async Task GivenSearchParameterCatalog_WhenPhysicalIdIsChecked_ThenPresenceIsReported()
     {
         const string provisionedCanonical = "http://example.org/SearchParameter/provisioned";

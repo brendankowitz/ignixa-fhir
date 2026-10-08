@@ -136,7 +136,7 @@ public sealed class SqlServerReindexStore(
             """
             SELECT TOP (1) SurrogateIdRangeFirstValue, CreateDate, HeartbeatDate
             FROM dbo.Transactions
-            WHERE IsVisible = 0
+            WHERE IsCompleted = 0
               AND SurrogateIdRangeFirstValue <= @CutoffTransactionId
             ORDER BY SurrogateIdRangeFirstValue;
             """);

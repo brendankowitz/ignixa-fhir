@@ -28,21 +28,21 @@ public sealed class AwaitDrainActivity(
         }
 
         var watermark = await store.GetVisibleWatermarkAsync(cancellationToken);
-        var isDrained = watermark >= input.CutoffTransactionId;
-        if (!isDrained &&
+        var oldest = await store.GetOldestIncompleteTransactionAsync(
+            input.CutoffTransactionId,
+            cancellationToken);
+        var isDrained = oldest is null;
+        if (oldest is not null &&
             timeProvider.GetUtcNow() - input.DrainStartedUtc >= input.DrainWarningAfter)
         {
-            var oldest = await store.GetOldestIncompleteTransactionAsync(
-                input.CutoffTransactionId,
-                cancellationToken);
             logger.LogWarning(
                 "Reindex: drain is still waiting for tenant {TenantId}; visible watermark {VisibleWatermark}, cutoff transaction {CutoffTransactionId}, oldest incomplete transaction {OldestTransactionId}, created {OldestCreateDate}, heartbeat {OldestHeartbeatDate}",
                 input.TenantId,
                 watermark,
                 input.CutoffTransactionId,
-                oldest?.TransactionId,
-                oldest?.CreateDate,
-                oldest?.HeartbeatDate);
+                oldest.Value.TransactionId,
+                oldest.Value.CreateDate,
+                oldest.Value.HeartbeatDate);
         }
 
         var output = new AwaitDrainOutput(input.TenantId, isDrained, watermark);
