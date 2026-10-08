@@ -65,7 +65,7 @@ public static class BackgroundServicesRegistration
             {
                 configuration.GetSection(ReindexOptions.SectionName).Bind(options);
                 options.BarrierDelay = configuration.GetValue<TimeSpan?>("Reindex:BarrierDelay")
-                    ?? TimeSpan.FromSeconds(2 * configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
+                    ?? TimeSpan.FromSeconds(3 * configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
             })
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<ReindexOptions>, ReindexOptionsValidator>();
@@ -76,7 +76,7 @@ public static class BackgroundServicesRegistration
                 configuration.GetSection(ConformanceTransitionOptions.SectionName).Bind(options);
                 options.SyncIntervalSeconds = configuration.GetValue("Conformance:SyncIntervalSeconds", 30);
                 options.MaxStaleness = configuration.GetValue<TimeSpan?>("Conformance:MaxStaleness")
-                    ?? TimeSpan.FromSeconds(2 * options.SyncIntervalSeconds);
+                    ?? TimeSpan.FromSeconds(3 * options.SyncIntervalSeconds);
                 options.TransitionGrace = configuration.GetValue<TimeSpan?>("Conformance:TransitionGrace")
                     ?? options.MaxStaleness + TimeSpan.FromSeconds(options.SyncIntervalSeconds);
             })
