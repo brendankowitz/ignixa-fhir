@@ -206,15 +206,19 @@ public static class DataLayerRegistration
         // CompositeRepositoryFactory/CompositeSearchServiceFactory -- which take the inner factory as a
         // plain interface -- need no change. Tenant storage types "SqlEntityFramework" and "SqlServer" are
         // a separate, unrelated vocabulary and both remain accepted.
-        builder.Register(c => new SqlServerTenantServiceFactory(
+        builder.Register(c =>
+        {
+            var versionContext = c.Resolve<IFhirVersionContext>();
+            return new SqlServerTenantServiceFactory(
                 c.Resolve<ITenantConfigurationStore>(),
                 c.Resolve<ILoggerFactory>(),
                 c.Resolve<RecyclableMemoryStreamManager>(),
                 c.Resolve<SqlServerTenantInitializer>(),
                 c.Resolve<ManagedIdentityConnectionStringValidator>(),
                 c.Resolve<ISqlExecutionService>(),
-                (fhirVersion, tenantId) => c.Resolve<IFhirVersionContext>()
-                    .GetSearchableSearchParameterDefinitionManager(fhirVersion, tenantId)))
+                (fhirVersion, tenantId) => versionContext
+                    .GetSearchableSearchParameterDefinitionManager(fhirVersion, tenantId));
+        })
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")
             .AsSelf()
