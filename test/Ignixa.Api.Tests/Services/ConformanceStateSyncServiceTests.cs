@@ -243,13 +243,8 @@ public class ConformanceStateSyncServiceTests
         IMediator mediator,
         bool autoStart)
     {
-        var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        repository.ListAsync(Arg.Any<int?>(), Arg.Any<CancellationToken>())
-            .Returns([]);
         return new ReindexStartupReconciler(
             mediator,
-            repository,
-            new ReindexAutomationStateStore(repository),
             Options.Create(new ReindexOptions { AutoStart = autoStart }),
             NullLogger<ReindexStartupReconciler>.Instance);
     }

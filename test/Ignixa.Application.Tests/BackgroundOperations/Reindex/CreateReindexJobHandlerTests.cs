@@ -97,6 +97,41 @@ public class CreateReindexJobHandlerTests
         (await fixture.Repository.ListAsync((int)BackgroundJobType.Reindex)).ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData("Failed")]
+    [InlineData("Cancelled")]
+    public async Task GivenJobEndsUnsuccessfullyBeforeReconciliationAcquiresLock_WhenReconciliationCreatesJob_ThenRestartIsSuppressed(
+        string status)
+    {
+        var fixture = CreateFixture();
+        fixture.JobLock.ExecuteAsync(
+                Arg.Any<Func<CancellationToken, Task<CreateReindexJobResult>>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await fixture.Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+                {
+                    JobId = "failed-during-race",
+                    JobType = (int)BackgroundJobType.Reindex,
+                    Status = status,
+                    Definition = fixture.Definition,
+                    CreateDate = fixture.Now,
+                    HeartbeatDate = fixture.Now,
+                    EndDate = fixture.Now
+                }, CancellationToken.None);
+                return await call.Arg<Func<CancellationToken, Task<CreateReindexJobResult>>>()(
+                    call.ArgAt<CancellationToken>(1));
+            });
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            CancellationToken.None);
+
+        result.ShouldBeOfType<NoReindexWorkResult>();
+        var jobs = await fixture.Repository.ListAsync((int)BackgroundJobType.Reindex);
+        jobs.ShouldHaveSingleItem().JobId.ShouldBe("failed-during-race");
+    }
+
     [Fact]
     public async Task GivenMixedProviderServer_WhenJobIsCreated_ThenSharedAvailabilityRejectsIt()
     {
@@ -624,6 +659,7 @@ public class CreateReindexJobHandlerTests
             repository,
             runtime,
             availability,
+            jobLock,
             lifecycle,
             state,
             target,
@@ -658,6 +694,7 @@ public class CreateReindexJobHandlerTests
         IBackgroundJobRepository<ReindexJobDefinition> Repository,
         IOrchestrationServiceClient Runtime,
         IReindexAvailability Availability,
+        IReindexJobLock JobLock,
         ReindexLifecycleEventWriter Lifecycle,
         ConformanceState State,
         ReindexTarget Target,
