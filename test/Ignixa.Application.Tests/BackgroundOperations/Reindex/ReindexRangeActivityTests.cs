@@ -6,6 +6,7 @@ using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Workers;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -89,7 +90,13 @@ public class ReindexRangeActivityTests
         var heartbeat = new ReindexActivityHeartbeat(
             progress, Options.Create(new ReindexOptions()), TimeProvider.System,
             NullLogger<ReindexActivityHeartbeat>.Instance);
-        return (new ReindexRangeActivity(new ReindexRangeProcessor(repositories, tenants, versions), heartbeat), jobLock);
+        return (new ReindexRangeActivity(
+            new ReindexRangeProcessor(
+                repositories,
+                tenants,
+                versions,
+                new FhirRequestContextAccessor()),
+            heartbeat), jobLock);
     }
 
     private sealed class CountingJobLock : IReindexJobLock

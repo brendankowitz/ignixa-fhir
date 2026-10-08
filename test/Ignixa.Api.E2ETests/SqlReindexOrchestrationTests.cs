@@ -136,6 +136,37 @@ public class SqlReindexOrchestrationTests
         await AssertSearchAsync(fixture.Client, code, marker, patientId);
     }
 
+    [SqlTheory]
+    [InlineData("https://example.test/fhir/Patient/{0}")]
+    [InlineData("https://example.test/fhir/tenant/1/Patient/{0}")]
+    public async Task GivenAbsoluteSelfReference_WhenResourceTypeIsReindexed_ThenAbsoluteReferenceSearchStillMatches(
+        string referenceFormat)
+    {
+        await using var fixture = new ReindexFixture();
+        await fixture.InitializeAsync();
+        var marker = Guid.NewGuid().ToString("N");
+        var patientId = $"reference-patient-{marker}";
+        var observationId = $"reference-observation-{marker}";
+        var reference = string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            referenceFormat,
+            patientId);
+
+        await PutPatientAsync(fixture.Client, patientId, marker);
+        await PutObservationAsync(fixture.Client, observationId, reference);
+        RenewLease(fixture.Services);
+        await AssertAbsoluteReferenceSearchAsync(fixture.Client, reference, observationId);
+
+        var created = await CreateReindexAsync(fixture.Client, "Observation");
+        using var createdResponse = created.Response;
+        created.Response.StatusCode.ShouldBe(HttpStatusCode.Created, created.Body.ToJsonString());
+        var completed = await WaitForStatusAsync(fixture.Client, created.JobId, "Completed");
+        ParameterValue(completed, "status").ShouldBe("Completed");
+
+        RenewLease(fixture.Services);
+        await AssertAbsoluteReferenceSearchAsync(fixture.Client, reference, observationId);
+    }
+
     [SqlFact]
     public async Task GivenCurrentDeletedAndUnknownResources_WhenReindexingOneResource_ThenPreservesVersionAndReportsStatus()
     {
@@ -271,9 +302,10 @@ public class SqlReindexOrchestrationTests
     }
 
     private static async Task<(HttpResponseMessage Response, JsonNode Body, string JobId)> CreateReindexAsync(
-        HttpClient client)
+        HttpClient client,
+        string resourceType = "Patient")
     {
-        var response = await client.PostAsync("/tenant/1/$reindex", ReindexRequestContent());
+        var response = await client.PostAsync("/tenant/1/$reindex", ReindexRequestContent(resourceType));
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
         var jobId = response.StatusCode == HttpStatusCode.Created
             ? ParameterValue(body, "id")
@@ -300,10 +332,10 @@ public class SqlReindexOrchestrationTests
         throw new TimeoutException($"Reindex job {jobId} did not reach {expectedStatus}.");
     }
 
-    private static StringContent ReindexRequestContent() =>
-        new("""
+    private static StringContent ReindexRequestContent(string resourceType = "Patient") =>
+        new($$"""
             {"resourceType":"Parameters","parameter":[
-              {"name":"targetResourceTypes","valueString":"Patient"},
+              {"name":"targetResourceTypes","valueString":"{{resourceType}}"},
               {"name":"maximumNumberOfResourcesPerQuery","valueInteger":10},
               {"name":"maximumNumberOfResourcesPerWrite","valueInteger":10},
               {"name":"maximumConcurrency","valueInteger":1}
@@ -361,6 +393,42 @@ public class SqlReindexOrchestrationTests
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
     }
 
+    private static async Task PutObservationAsync(
+        HttpClient client,
+        string id,
+        string subjectReference)
+    {
+        var observation = new JsonObject
+        {
+            ["resourceType"] = "Observation",
+            ["id"] = id,
+            ["status"] = "final",
+            ["code"] = new JsonObject { ["text"] = "test" },
+            ["subject"] = new JsonObject { ["reference"] = subjectReference }
+        };
+        using var content = new StringContent(
+            observation.ToJsonString(),
+            Encoding.UTF8,
+            "application/fhir+json");
+        using var response = await client.PutAsync($"/tenant/1/Observation/{id}", content);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task AssertAbsoluteReferenceSearchAsync(
+        HttpClient client,
+        string reference,
+        string expectedId)
+    {
+        using var response = await client.GetAsync(
+            $"/tenant/1/Observation?subject={Uri.EscapeDataString(reference)}");
+        var body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+        var ids = JsonNode.Parse(body)!["entry"]?.AsArray()
+            .Select(entry => entry!["resource"]!["id"]!.GetValue<string>())
+            .ToArray() ?? [];
+        ids.ShouldContain(expectedId);
+    }
+
     private static async Task<JsonNode> ReadPatientAsync(HttpClient client, string id)
     {
         using var response = await client.GetAsync($"/tenant/1/Patient/{id}");
@@ -414,6 +482,7 @@ public class SqlReindexOrchestrationTests
             builder.UseSetting("Reindex:BarrierDelay", "00:00:01");
             builder.UseSetting("Reindex:StartDebounce", "00:00:00.100");
             builder.UseSetting("Reindex:DrainWarningAfter", "00:00:01");
+            builder.UseSetting("Fhir:BaseUri", "https://example.test/fhir");
             base.ConfigureWebHost(builder);
         }
     }
@@ -426,6 +495,19 @@ public class SqlReindexOrchestrationTests
                 ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
             {
                 Skip = "Requires SQL-backed resources.";
+            }
+        }
+
+    }
+
+    private sealed class SqlTheoryAttribute : TheoryAttribute
+    {
+        public SqlTheoryAttribute()
+        {
+            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")
+                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                Skip = "Requires SQL Server.";
             }
         }
     }
