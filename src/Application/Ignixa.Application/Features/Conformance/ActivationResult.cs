@@ -41,6 +41,8 @@ public record ActivationResult
 
     public string? ReindexMessage { get; init; }
 
+    public bool ReindexTriggerDeferred { get; init; }
+
     /// <summary>
     /// Creates a successful activation result.
     /// </summary>
@@ -57,7 +59,8 @@ public record ActivationResult
             TransitionSchedulingDeferred = transitionSchedulingDeferred,
             ReindexJobId = reindex?.JobId,
             ReindexQueued = reindex?.Queued ?? false,
-            ReindexMessage = reindex?.Message
+            ReindexMessage = reindex?.Message,
+            ReindexTriggerDeferred = reindex?.Deferred ?? false
         };
 
     /// <summary>

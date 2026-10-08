@@ -68,6 +68,52 @@ public class PackageActivationPipelineTests
     }
 
     [Fact]
+    public async Task GivenAutomaticReindexTriggerFailsAfterDurableActivation_WhenActivated_ThenActivationSucceedsDegraded()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.custom",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateCustomResource()]);
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                0,
+                Arg.Any<CancellationToken>())
+            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
+                .Select((sourceEvent, index) => new SourceEvent(
+                    index + 1,
+                    sourceEvent.StreamId,
+                    sourceEvent.EventType,
+                    sourceEvent.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray());
+        using var state = new ConformanceState();
+        var trigger = Substitute.For<IReindexTrigger>();
+        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ReindexTriggerResult>>(_ =>
+                throw new InvalidOperationException("Injected trigger failure."));
+        var pipeline = CreatePipeline(
+            packageRepository,
+            eventStore,
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            Substitute.For<IConformanceCacheRefresher>(),
+            reindexTrigger: trigger);
+
+        var result = await pipeline.ActivateAsync(
+            "test.custom",
+            "1.0.0",
+            CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        result.PendingReindex.ShouldNotBeEmpty();
+        result.ReindexTriggerDeferred.ShouldBeTrue();
+        result.ReindexMessage.ShouldContain("periodic reconciliation");
+    }
+
+    [Fact]
     public async Task GivenUnexpectedRefreshFailureAfterDurableOverrideActivation_WhenActivated_ThenItSurfacesTheFailure()
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();

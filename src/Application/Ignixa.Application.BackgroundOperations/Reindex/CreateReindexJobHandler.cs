@@ -160,7 +160,8 @@ public sealed class CreateReindexJobHandler(
             foreach (var active in activeJobs)
             {
                 if (request.QueueRequest &&
-                    active.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase))
+                    active.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) &&
+                    active.Definition.Trigger.Equals("Activation", StringComparison.OrdinalIgnoreCase))
                 {
                     var queuedResolution = await ResolveAsync();
                     active.Definition = CopyWithResolution(

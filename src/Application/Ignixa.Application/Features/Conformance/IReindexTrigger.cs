@@ -14,4 +14,5 @@ public interface IReindexTrigger
 public sealed record ReindexTriggerResult(
     string? JobId,
     bool Queued,
-    string? Message);
+    string? Message,
+    bool Deferred = false);

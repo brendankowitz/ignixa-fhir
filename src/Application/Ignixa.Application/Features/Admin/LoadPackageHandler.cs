@@ -104,7 +104,8 @@ public class LoadPackageHandler(
                     ? null
                     : $"/tenant/{request.TenantId}/$reindex/{activationResult.ReindexJobId}",
                 ReindexQueued = activationResult.ReindexQueued,
-                ReindexMessage = activationResult.ReindexMessage
+                ReindexMessage = activationResult.ReindexMessage,
+                ReindexTriggerDeferred = activationResult.ReindexTriggerDeferred
             };
 
             if (!activationResult.Success)

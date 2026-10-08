@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Conformance.Events.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -20,6 +21,7 @@ public class ConformanceStateSyncService(
     IConformanceLease conformanceLease,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
+    ReindexStartupReconciler reindexReconciler,
     TimeProvider timeProvider,
     ILogger<ConformanceStateSyncService> logger,
     IConfiguration configuration) : BackgroundService
@@ -105,6 +107,7 @@ public class ConformanceStateSyncService(
         }
 
         await ScheduleOverdueTransitionsAsync(overdueTransitionIds, cancellationToken);
+        await reindexReconciler.ReconcileAsync(cancellationToken);
 
         if (afterEventId > beforeEventId)
         {

@@ -170,9 +170,26 @@ public class PackageActivationPipeline(
         ReindexTriggerResult? reindex = null;
         if (reindexNeeded.Count > 0)
         {
-            reindex = await _reindexTrigger.RequestReindexAsync(
-                $"Package {packageId}@{version} activation created Pending search parameters",
-                CancellationToken.None);
+            try
+            {
+                reindex = await _reindexTrigger.RequestReindexAsync(
+                    $"Package {packageId}@{version} activation created Pending search parameters",
+                    CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                ReindexTriggerMetrics.RecordFailure("Activation");
+                _logger.LogError(
+                    exception,
+                    "Package {PackageId}@{Version} activated durably, but the automatic reindex trigger failed; periodic reconciliation will retry",
+                    packageId,
+                    version);
+                reindex = new ReindexTriggerResult(
+                    null,
+                    false,
+                    "Automatic reindex trigger failed; periodic reconciliation will retry.",
+                    Deferred: true);
+            }
         }
 
         return ActivationResult.Succeeded(

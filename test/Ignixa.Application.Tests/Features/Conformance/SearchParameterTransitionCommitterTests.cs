@@ -4,6 +4,7 @@ using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Search.Definition;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
@@ -33,7 +34,8 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state));
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -41,6 +43,39 @@ public class SearchParameterTransitionCommitterTests
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe("http://example.org/SearchParameter/Patient-identifier");
         state.GetSearchParameter("Patient", "identifier")!.Status.ShouldBe(SearchParameterStatus.Pending);
         await trigger.Received(1).RequestReindexAsync("Search parameter transition 20 committed", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenReindexTriggerFailsAfterTransitionCommit_WhenCommitted_ThenTheDurableCommitStillSucceeds()
+    {
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
+        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 20, Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(
+                [new SourceEvent(
+                    30,
+                    "transition:20",
+                    nameof(SearchParameterTransitionCommitted),
+                    call.Arg<IEnumerable<NewSourceEvent>>().Single().Data,
+                    DateTimeOffset.UtcNow)]));
+        var trigger = Substitute.For<IReindexTrigger>();
+        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ReindexTriggerResult>>(_ =>
+                throw new InvalidOperationException("Injected trigger failure."));
+        var committer = new SearchParameterTransitionCommitter(
+            store,
+            state,
+            trigger,
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
+
+        var committed = await committer.CommitAsync(20, CancellationToken.None);
+
+        committed.ShouldBeTrue();
+        state.GetSearchParameter("Patient", "identifier")!.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
     [Fact]
@@ -62,7 +97,8 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state));
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -101,7 +137,8 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state));
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -133,7 +170,8 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state));
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -156,7 +194,8 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            CreateRefreshPublisher(state));
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         await Should.ThrowAsync<SourceEventConcurrencyException>(() => committer.CommitAsync(20, CancellationToken.None));
 

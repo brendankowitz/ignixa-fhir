@@ -1,4 +1,5 @@
 using Ignixa.Api.Services;
+using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
@@ -7,6 +8,7 @@ using Ignixa.Conformance.Events.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Medino;
 using NSubstitute;
 using Shouldly;
 using Xunit;
@@ -88,6 +90,57 @@ public class ConformanceStateSyncServiceTests
             CancellationToken.None);
     }
 
+    [Fact]
+    public async Task GivenPendingParameterAfterTriggerFailure_WhenSyncRuns_ThenPeriodicReconciliationRequestsAJob()
+    {
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(new SourceEvent(
+            10,
+            "package:custom@1.0.0",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://example.org/SearchParameter/Patient-custom",
+                "custom",
+                "Patient",
+                "Patient.name",
+                SearchParamType.String,
+                "custom@1.0.0",
+                null,
+                2,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow));
+        var mediator = Substitute.For<IMediator>();
+        mediator.SendAsync(
+                Arg.Any<CreateReindexJobCommand>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ReindexJobCreatedResult("reconciled"));
+        using var service = new TestSyncService(
+            store,
+            state,
+            CreateRefresher(),
+            Substitute.For<IConformanceLease>(),
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TimeProvider.System,
+            TimeSpan.FromMinutes(3),
+            new ReindexStartupReconciler(
+                mediator,
+                Options.Create(new ReindexOptions { AutoStart = true }),
+                NullLogger<ReindexStartupReconciler>.Instance));
+
+        await service.RunSyncAsync();
+
+        await mediator.Received(1).SendAsync(
+            Arg.Is<CreateReindexJobCommand>(command =>
+                command.Trigger == "Reconciliation" &&
+                !command.QueueRequest),
+            CancellationToken.None);
+    }
+
     private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
     {
         await Task.CompletedTask;
@@ -165,7 +218,8 @@ public class ConformanceStateSyncServiceTests
         IConformanceLease lease,
         ISearchParameterTransitionScheduler transitionScheduler,
         TimeProvider timeProvider,
-        TimeSpan transitionGrace)
+        TimeSpan transitionGrace,
+        ReindexStartupReconciler? reindexReconciler = null)
         : ConformanceStateSyncService(
             store,
             state,
@@ -176,6 +230,10 @@ public class ConformanceStateSyncServiceTests
             lease,
             transitionScheduler,
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = transitionGrace }),
+            reindexReconciler ?? new ReindexStartupReconciler(
+                Substitute.For<IMediator>(),
+                Options.Create(new ReindexOptions { AutoStart = false }),
+                NullLogger<ReindexStartupReconciler>.Instance),
             timeProvider,
             NullLogger<ConformanceStateSyncService>.Instance,
             new ConfigurationBuilder().Build())

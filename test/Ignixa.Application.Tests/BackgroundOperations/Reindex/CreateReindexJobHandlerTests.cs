@@ -186,6 +186,98 @@ public class CreateReindexJobHandlerTests
     }
 
     [Fact]
+    public async Task GivenScopedManualJobIsQueued_WhenActivationRequestsReindex_ThenManualJobIsPreservedAndFollowUpCoversActivation()
+    {
+        var fixture = CreateFixture();
+        var manualDefinition = new ReindexJobDefinition
+        {
+            TargetEventId = fixture.Definition.TargetEventId,
+            TenantIds = fixture.Definition.TenantIds,
+            ResourceTypes = ["Patient"],
+            SearchParameters = [fixture.Definition.SearchParameters.Single()],
+            MaximumNumberOfResourcesPerQuery = fixture.Definition.MaximumNumberOfResourcesPerQuery,
+            MaximumNumberOfResourcesPerWrite = fixture.Definition.MaximumNumberOfResourcesPerWrite,
+            MaximumConcurrency = fixture.Definition.MaximumConcurrency,
+            QueryDelayIntervalInMilliseconds = fixture.Definition.QueryDelayIntervalInMilliseconds,
+            Trigger = "Manual",
+            ConsumedGeneration = fixture.Definition.ConsumedGeneration
+        };
+        await fixture.Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "manual",
+            OrchestrationInstanceId = "manual",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Queued",
+            Definition = manualDefinition,
+            CreateDate = fixture.Now,
+            HeartbeatDate = fixture.Now
+        }, CancellationToken.None);
+        fixture.State.ApplyAndTrack(new SourceEvent(
+            43,
+            "search",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://example.org/SearchParameter/patient-second",
+                "second",
+                "Patient",
+                "Patient.name",
+                SearchParamType.String,
+                "example@2.0.0",
+                null,
+                18,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow));
+
+        var queued = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand
+            {
+                Trigger = "Activation",
+                QueueRequest = true
+            },
+            CancellationToken.None);
+
+        queued.ShouldBe(new ReindexRequestQueuedResult("manual", 1));
+        var preserved = await fixture.Repository.GetAsync("manual", 1, CancellationToken.None);
+        preserved.ShouldNotBeNull();
+        preserved.Definition.TargetEventId.ShouldBe(manualDefinition.TargetEventId);
+        preserved.Definition.ResourceTypes.ShouldBe(manualDefinition.ResourceTypes);
+        preserved.Definition.SearchParameters.Select(parameter => (
+                parameter.Canonical,
+                parameter.Code,
+                parameter.ResourceType,
+                parameter.SearchParamId,
+                parameter.ActivationEventId))
+            .ShouldBe(manualDefinition.SearchParameters.Select(parameter => (
+                parameter.Canonical,
+                parameter.Code,
+                parameter.ResourceType,
+                parameter.SearchParamId,
+                parameter.ActivationEventId)));
+        preserved.Definition.Trigger.ShouldBe("Manual");
+
+        preserved.Status = "Completed";
+        await fixture.Repository.UpdateAsync(preserved, 1, CancellationToken.None);
+        var followUp = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand
+            {
+                Trigger = "FollowUp",
+                LockAlreadyHeld = true,
+                ExcludedActiveJobId = "manual"
+            },
+            CancellationToken.None);
+
+        var created = followUp.ShouldBeOfType<ReindexJobCreatedResult>();
+        var followUpJob = await fixture.Repository.GetAsync(created.JobId, 1, CancellationToken.None);
+        followUpJob.ShouldNotBeNull();
+        followUpJob.Definition.SearchParameters.Select(parameter => parameter.Code)
+            .ShouldBe(["custom", "second"], ignoreOrder: true);
+        followUpJob.Definition.ConsumedGeneration.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task GivenActivationRacesTerminalJob_WhenFollowUpRunsUnderLock_ThenExactlyOneFollowUpStarts()
     {
         var fixture = CreateFixture();

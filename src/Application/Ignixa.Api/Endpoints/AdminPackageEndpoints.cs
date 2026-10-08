@@ -88,7 +88,8 @@ public static class AdminPackageEndpoints
                 ReindexJobId = result.ReindexJobId,
                 ReindexStatusUrl = result.ReindexStatusUrl,
                 ReindexQueued = result.ReindexQueued,
-                ReindexMessage = result.ReindexMessage
+                ReindexMessage = result.ReindexMessage,
+                ReindexTriggerDeferred = result.ReindexTriggerDeferred
             };
 
             return Results.Ok(response);
@@ -286,6 +287,8 @@ public static class AdminPackageEndpoints
         public bool ReindexQueued { get; init; }
 
         public string? ReindexMessage { get; init; }
+
+        public bool ReindexTriggerDeferred { get; init; }
     }
 
     /// <summary>

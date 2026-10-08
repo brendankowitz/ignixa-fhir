@@ -157,6 +157,7 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
                 : $"/tenant/{resolvedTenantId}/$reindex/{activationResult.ReindexJobId}",
             ReindexQueued = activationResult.ReindexQueued,
             ReindexMessage = activationResult.ReindexMessage,
+            ReindexTriggerDeferred = activationResult.ReindexTriggerDeferred,
             Message = $"Successfully installed {result.PackageId}@{result.PackageVersion} " +
                       $"({result.ImportedResources} new, {result.UpdatedResources} updated)" +
                       (activationResult.ReindexMessage is null

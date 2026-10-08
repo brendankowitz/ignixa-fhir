@@ -83,4 +83,6 @@ public record LoadPackageResult
     public bool ReindexQueued { get; init; }
 
     public string? ReindexMessage { get; init; }
+
+    public bool ReindexTriggerDeferred { get; init; }
 }

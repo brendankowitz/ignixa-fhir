@@ -86,4 +86,6 @@ public record InstallPackageResultDto
     public required bool ReindexQueued { get; init; }
 
     public string? ReindexMessage { get; init; }
+
+    public required bool ReindexTriggerDeferred { get; init; }
 }
