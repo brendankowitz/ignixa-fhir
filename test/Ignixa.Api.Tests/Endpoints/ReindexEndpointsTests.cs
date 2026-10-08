@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Security.Claims;
 using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Api.Endpoints;
@@ -8,6 +9,7 @@ using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Authorization;
+using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
 using Ignixa.Application.Features.Conformance;
@@ -542,8 +544,17 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands.ShouldBeEmpty();
     }
 
-    [Fact]
-    public async Task GivenDeniedAuthorization_WhenCreating_ThenEndpointReturnsForbiddenWithoutDispatching()
+    [Theory]
+    [InlineData("CreateReindexForTenant")]
+    [InlineData("ListReindexForTenant")]
+    [InlineData("GetReindexForTenant")]
+    [InlineData("CancelReindexForTenant")]
+    [InlineData("CreateReindex")]
+    [InlineData("ListReindex")]
+    [InlineData("GetReindex")]
+    [InlineData("CancelReindex")]
+    public async Task GivenDeniedAuthorization_WhenAccessingReindexRoute_ThenEndpointReturnsForbiddenWithoutDispatching(
+        string endpointName)
     {
         var mediator = Substitute.For<IMediator>();
         var authorization = Substitute.For<IFhirAuthorizationService>();
@@ -572,15 +583,134 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         await using var app = builder.Build();
         app.MapReindexEndpoints();
 
-        var response = await SendAsync(app, "CreateReindexForTenant", body: Parameters());
+        var response = await SendAsync(app, endpointName, body: Parameters());
 
         response.StatusCode.ShouldBe(StatusCodes.Status403Forbidden);
         response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
         captured.ShouldNotBeNull();
-        captured!.Interaction.ShouldBe(FhirInteraction.OperationSystem);
+        captured!.Interaction.ShouldBe(FhirInteraction.Update);
+        captured.ResourceType.ShouldBe("*");
         await mediator.DidNotReceive().SendAsync(
             Arg.Any<CreateReindexJobCommand>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("CreateReindexForTenant")]
+    [InlineData("ListReindexForTenant")]
+    [InlineData("GetReindexForTenant")]
+    [InlineData("CancelReindexForTenant")]
+    [InlineData("CreateReindex")]
+    [InlineData("ListReindex")]
+    [InlineData("GetReindex")]
+    [InlineData("CancelReindex")]
+    public async Task GivenReadOnlySmartScope_WhenAccessingReindexRoute_ThenReturnsForbidden(string endpointName)
+    {
+        await using var app = CreateAuthorizedApp([]);
+
+        var response = await SendAsync(
+            app,
+            endpointName,
+            body: Parameters(),
+            user: CreateUser(scope: "system/*.read"));
+
+        response.StatusCode.ShouldBe(StatusCodes.Status403Forbidden);
+    }
+
+    [Theory]
+    [InlineData("CreateReindexForTenant")]
+    [InlineData("ListReindexForTenant")]
+    [InlineData("GetReindexForTenant")]
+    [InlineData("CancelReindexForTenant")]
+    [InlineData("CreateReindex")]
+    [InlineData("ListReindex")]
+    [InlineData("GetReindex")]
+    [InlineData("CancelReindex")]
+    public async Task GivenWildcardWriteSmartScope_WhenAccessingReindexRoute_ThenRequestIsAllowed(string endpointName)
+    {
+        await using var app = CreateAuthorizedApp([]);
+
+        var response = await SendAsync(
+            app,
+            endpointName,
+            body: Parameters(),
+            user: CreateUser(scope: "system/*.write"));
+
+        response.StatusCode.ShouldNotBe(StatusCodes.Status403Forbidden);
+    }
+
+    [Theory]
+    [InlineData("CreateReindexForTenant")]
+    [InlineData("ListReindexForTenant")]
+    [InlineData("GetReindexForTenant")]
+    [InlineData("CancelReindexForTenant")]
+    [InlineData("CreateReindex")]
+    [InlineData("ListReindex")]
+    [InlineData("GetReindex")]
+    [InlineData("CancelReindex")]
+    public async Task GivenReadOnlyRbacPermission_WhenAccessingReindexRoute_ThenReturnsForbidden(string endpointName)
+    {
+        await using var app = CreateAuthorizedApp([new ResourceGrant("*", "read")]);
+
+        var response = await SendAsync(
+            app,
+            endpointName,
+            body: Parameters(),
+            user: CreateUser(role: "Reader"));
+
+        response.StatusCode.ShouldBe(StatusCodes.Status403Forbidden);
+    }
+
+    [Theory]
+    [InlineData("CreateReindexForTenant")]
+    [InlineData("ListReindexForTenant")]
+    [InlineData("GetReindexForTenant")]
+    [InlineData("CancelReindexForTenant")]
+    [InlineData("CreateReindex")]
+    [InlineData("ListReindex")]
+    [InlineData("GetReindex")]
+    [InlineData("CancelReindex")]
+    public async Task GivenWildcardWriteRbacPermission_WhenAccessingReindexRoute_ThenRequestIsAllowed(string endpointName)
+    {
+        await using var app = CreateAuthorizedApp([new ResourceGrant("*", "update")]);
+
+        var response = await SendAsync(
+            app,
+            endpointName,
+            body: Parameters(),
+            user: CreateUser(role: "Writer"));
+
+        response.StatusCode.ShouldNotBe(StatusCodes.Status403Forbidden);
+    }
+
+    [Theory]
+    [InlineData("GetReindexOperationDefinitionForTenant")]
+    [InlineData("GetReindexOperationDefinition")]
+    public async Task GivenReadOnlySmartScope_WhenGettingOperationDefinition_ThenRequestIsAllowed(
+        string endpointName)
+    {
+        await using var app = CreateAuthorizedApp([]);
+
+        var response = await SendAsync(
+            app,
+            endpointName,
+            user: CreateUser(scope: "system/*.read"));
+
+        response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+    }
+
+    [Fact]
+    public async Task GivenAuthorizationDisabled_WhenAccessingReindexRoute_ThenReadOnlyScopeDoesNotBlockRequest()
+    {
+        await using var app = CreateAuthorizedApp([], authorizationEnabled: false);
+
+        var response = await SendAsync(
+            app,
+            "CreateReindexForTenant",
+            body: Parameters(),
+            user: CreateUser(scope: "system/*.read"));
+
+        response.StatusCode.ShouldBe(StatusCodes.Status201Created);
     }
 
     [Fact]
@@ -610,6 +740,60 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         string fhirVersion = "4.0") =>
         await SendAsync(_app, endpointName, tenantId, jobId, body, prefer, setContentLength, fhirVersion);
 
+    private WebApplication CreateAuthorizedApp(
+        IReadOnlyList<ResourceGrant> rolePermissions,
+        bool authorizationEnabled = true)
+    {
+        var permissionStore = Substitute.For<IRolePermissionStore>();
+        permissionStore.GetPermissionsAsync(
+                Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(rolePermissions);
+
+        var authorization = new FhirAuthorizationService(
+            [
+                new RbacAuthorizationHandler(
+                    permissionStore,
+                    NullLogger<RbacAuthorizationHandler>.Instance),
+                new SmartScopeAuthorizationHandler(
+                    NullLogger<SmartScopeAuthorizationHandler>.Instance)
+            ],
+            NullLogger<FhirAuthorizationService>.Instance);
+        var requestContext = Substitute.For<IFhirRequestContextAccessor>();
+        requestContext.RequestContext.Returns(Substitute.For<IFhirRequestContext>());
+
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSingleton(_mediator);
+        builder.Services.AddSingleton(_availability);
+        builder.Services.AddSingleton<IFhirAuthorizationService>(authorization);
+        builder.Services.AddSingleton(requestContext);
+        builder.Services.AddSingleton(Substitute.For<IAuditLogger>());
+        builder.Services.AddSingleton(Substitute.For<IMetricsService>());
+        builder.Services.AddSingleton<IOptions<AuthorizationOptions>>(
+            Options.Create(new AuthorizationOptions { Enabled = authorizationEnabled }));
+
+        var app = builder.Build();
+        app.MapReindexEndpoints();
+        return app;
+    }
+
+    private static ClaimsPrincipal CreateUser(string? scope = null, string? role = null)
+    {
+        var claims = new List<Claim> { new(FhirClaimTypes.Subject, "user") };
+        if (scope is not null)
+        {
+            claims.Add(new Claim(FhirClaimTypes.Scope, scope));
+        }
+
+        if (role is not null)
+        {
+            claims.Add(new Claim(FhirClaimTypes.Role, role));
+        }
+
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+    }
+
     private static async Task<Response> SendAsync(
         WebApplication app,
         string endpointName,
@@ -618,12 +802,14 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         string? body = null,
         string? prefer = null,
         bool setContentLength = true,
-        string fhirVersion = "4.0")
+        string fhirVersion = "4.0",
+        ClaimsPrincipal? user = null)
     {
         var endpoint = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints)
             .Single(candidate => candidate.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == endpointName);
         await using var scope = app.Services.CreateAsyncScope();
         var context = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
+        context.SetEndpoint(endpoint);
         context.Items["TenantId"] = tenantId;
         context.Items["TenantConfiguration"] = new TenantConfiguration
         {
@@ -633,6 +819,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         };
         context.Request.RouteValues["tenantId"] = tenantId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         context.Request.RouteValues["jobId"] = jobId;
+        context.User = user ?? new ClaimsPrincipal();
         context.Request.Scheme = "http";
         context.Request.Host = new HostString("localhost");
         context.Request.Path = endpointName.Contains("OperationDefinition", StringComparison.Ordinal)

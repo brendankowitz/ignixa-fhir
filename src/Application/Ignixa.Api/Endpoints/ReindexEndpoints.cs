@@ -11,6 +11,7 @@ using Ignixa.Models;
 using Ignixa.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
 
@@ -20,6 +21,7 @@ public static class ReindexEndpoints
 
     public static IEndpointRouteBuilder MapReindexEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        var reindexAuthorization = new FhirAuthorizationMetadata(FhirInteraction.Update, "*");
         var tenantEndpoints = endpoints.MapGroup("/tenant/{tenantId:int}")
             .AddEndpointFilter<FhirAuthorizationFilter>()
             .AddEndpointFilter<FhirAuditFilter>()
@@ -36,14 +38,19 @@ public static class ReindexEndpoints
         systemEndpoints.MapGet("/OperationDefinition/reindex", GetOperationDefinition)
             .WithName("GetReindexOperationDefinition");
 
-        tenantEndpoints.MapPost("/$reindex", CreateForTenantAsync).WithName("CreateReindexForTenant");
-        tenantEndpoints.MapGet("/$reindex", ListForTenantAsync).WithName("ListReindexForTenant");
-        tenantEndpoints.MapGet("/$reindex/{jobId}", GetForTenantAsync).WithName("GetReindexForTenant");
-        tenantEndpoints.MapDelete("/$reindex/{jobId}", CancelForTenantAsync).WithName("CancelReindexForTenant");
-        systemEndpoints.MapPost("/$reindex", CreateSystemAsync).WithName("CreateReindex");
-        systemEndpoints.MapGet("/$reindex", ListSystemAsync).WithName("ListReindex");
-        systemEndpoints.MapGet("/$reindex/{jobId}", GetSystemAsync).WithName("GetReindex");
-        systemEndpoints.MapDelete("/$reindex/{jobId}", CancelSystemAsync).WithName("CancelReindex");
+        var tenantReindexEndpoints = tenantEndpoints.MapGroup(string.Empty)
+            .WithMetadata(reindexAuthorization);
+        tenantReindexEndpoints.MapPost("/$reindex", CreateForTenantAsync).WithName("CreateReindexForTenant");
+        tenantReindexEndpoints.MapGet("/$reindex", ListForTenantAsync).WithName("ListReindexForTenant");
+        tenantReindexEndpoints.MapGet("/$reindex/{jobId}", GetForTenantAsync).WithName("GetReindexForTenant");
+        tenantReindexEndpoints.MapDelete("/$reindex/{jobId}", CancelForTenantAsync).WithName("CancelReindexForTenant");
+
+        var systemReindexEndpoints = systemEndpoints.MapGroup(string.Empty)
+            .WithMetadata(reindexAuthorization);
+        systemReindexEndpoints.MapPost("/$reindex", CreateSystemAsync).WithName("CreateReindex");
+        systemReindexEndpoints.MapGet("/$reindex", ListSystemAsync).WithName("ListReindex");
+        systemReindexEndpoints.MapGet("/$reindex/{jobId}", GetSystemAsync).WithName("GetReindex");
+        systemReindexEndpoints.MapDelete("/$reindex/{jobId}", CancelSystemAsync).WithName("CancelReindex");
 
         return endpoints;
     }

@@ -244,6 +244,12 @@ public class FhirAuthorizationFilter : IEndpointFilter
 
         // Parse route to determine interaction
         var (interaction, resourceType, resourceId) = ParseRoute(httpContext);
+        var authorizationMetadata = httpContext.GetEndpoint()?.Metadata.GetMetadata<FhirAuthorizationMetadata>();
+        if (authorizationMetadata is not null)
+        {
+            interaction = authorizationMetadata.Interaction;
+            resourceType = authorizationMetadata.ResourceType;
+        }
 
         var authContext = new FhirAuthorizationContext
         {
