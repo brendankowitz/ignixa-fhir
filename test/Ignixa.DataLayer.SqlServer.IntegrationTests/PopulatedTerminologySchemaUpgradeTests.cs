@@ -6,7 +6,10 @@ using Ignixa.Domain.Models;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.SqlServer.Dac;
 using Shouldly;
 using Xunit;
@@ -108,34 +111,23 @@ public class PopulatedTerminologySchemaUpgradeTests
                 "SELECT COUNT(*) FROM sys.columns WHERE object_id IN (OBJECT_ID('dbo.TermValueSet'), OBJECT_ID('dbo.TermConceptMap')) AND name = 'Name' AND is_nullable = 0")).ShouldBe(2);
             var store = new UpgradeTenantStore(connectionString);
             var resolver = new SchemaVersionResolver(store, NullLogger<SchemaVersionResolver>.Instance);
+            var deployer = new SchemaDeployer(store, new UpgradeHostEnvironment(),
+                Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = true, AllowIncompatiblePlatform = true }),
+                resolver, NullLogger<SchemaDeployer>.Instance);
 
-            // Schema version 6 removes the legacy ReindexJob table, so automatic deployment
-            // correctly refuses this data-loss-classified diff. This fixture validates the
-            // operator-approved path preserves all unrelated terminology data.
-            using (var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream("Ignixa.DataLayer.SqlServer.Schema.dacpac")
-                ?? throw new InvalidOperationException("Embedded schema dacpac not found."))
-            using (var package = DacPackage.Load(dacpacStream))
-            {
-                var dacServices = new DacServices(connectionString);
-                var result = await SchemaDeployer.DeployAndStampAsync(
-                    dacServices,
-                    package,
-                    databaseName,
-                    connectionString,
-                    new DacDeployOptions
-                    {
-                        AllowIncompatiblePlatform = true,
-                        BlockOnPossibleDataLoss = false,
-                        DropObjectsNotInSource = true,
-                    },
-                    SchemaVersionConstants.CurrentVersion,
-                    CancellationToken.None);
-
-                result.Outcome.ShouldBe(SchemaDeployOutcome.Applied);
-            }
+            await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
 
             (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(SchemaVersionConstants.CurrentVersion);
             (await SnapshotAsync(connectionString)).ShouldBe(before);
+            (await ScalarAsync<int>(connectionString, """
+                SELECT COUNT(*) FROM sys.objects
+                WHERE name IN ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob',
+                    'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
+                """)).ShouldBe(0);
+            (await ScalarAsync<int>(connectionString, """
+                SELECT COUNT(*) FROM sys.table_types
+                WHERE name = 'BulkReindexResourceTableType_1'
+                """)).ShouldBe(0);
             (await ScalarAsync<int>(connectionString,
                 "SELECT COUNT(*) FROM sys.columns WHERE object_id IN (OBJECT_ID('dbo.TermValueSet'), OBJECT_ID('dbo.TermConceptMap')) AND name = 'Name' AND is_nullable = 1")).ShouldBe(2);
             (await ScalarAsync<int>(connectionString, """
@@ -247,4 +239,11 @@ public class PopulatedTerminologySchemaUpgradeTests
             => new((TenantConfiguration?)null);
     }
 
+    private sealed class UpgradeHostEnvironment : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = "Production";
+        public string ApplicationName { get; set; } = "TerminologySchemaUpgrade";
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
 }
