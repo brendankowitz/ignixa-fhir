@@ -12,6 +12,7 @@ using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.Admin;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Features.BulkDelete;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalCreate;
 using Ignixa.Application.Features.ConditionalOperations.ConditionalDelete;
@@ -493,6 +494,11 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<IncludesOperationFeature>()
             .As<IPackageFeature>()
             .SingleInstance();
+
+        // Package feature ($bulk-delete operation, system-level and on every resource type)
+        builder.RegisterType<BulkDeleteFeature>()
+            .As<IPackageFeature>()
+            .SingleInstance();
     }
 
     private static void RegisterEventHandlers(ContainerBuilder builder, IConfiguration configuration)
@@ -596,6 +602,11 @@ public static class ApplicationServicesRegistration
         // Authorization service
         builder.RegisterType<Ignixa.Application.Features.Authorization.Services.FhirAuthorizationService>()
             .As<Ignixa.Application.Features.Authorization.Services.IFhirAuthorizationService>()
+            .InstancePerLifetimeScope();
+
+        // $bulk-delete kickoff: authorizes the deletes/updates the job performs, not just the operation route
+        builder.RegisterType<Ignixa.Api.Endpoints.BulkDeleteKickoffAuthorizer>()
+            .AsSelf()
             .InstancePerLifetimeScope();
 
         // MCP authorization service

@@ -35,4 +35,9 @@ public enum BackgroundJobType
     /// Index rebuild operation (for future use).
     /// </summary>
     Reindex = 4,
+
+    /// <summary>
+    /// FHIR bulk data deletion operation ($bulk-delete).
+    /// </summary>
+    BulkDelete = 5,
 }

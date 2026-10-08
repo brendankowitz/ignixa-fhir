@@ -241,6 +241,7 @@ Content-Type: application/fhir+json
 |-----------|------|-------------|
 | `$export` | [Bulk Data](https://hl7.org/fhir/uv/bulkdata/export.html) | Async export to NDJSON or Parquet |
 | `$import` | [Bulk Data](https://hl7.org/fhir/uv/bulkdata/import.html) | Async bulk import from NDJSON |
+| `$bulk-delete` | Ignixa / fhir-server extension (not an HL7 spec) | Async bulk soft/hard delete or history purge, with optional `_include`/`_revinclude` cascade |
 
 ### $export
 
@@ -298,6 +299,53 @@ Content-Type: application/fhir+json
 ```
 
 Returns `202 Accepted` with `Content-Location` header to poll job status.
+
+### $bulk-delete
+
+Start an asynchronous bulk-delete operation. Not an HL7 FHIR specification operation; Ignixa
+implements fhir-server's/Azure Health Data Services' `$bulk-delete` contract (plus an optional
+request body) for compatibility with existing AHDS-compatible clients' deprovisioning flows.
+
+```bash
+# System-level bulk delete (auto-detect tenant)
+DELETE /$bulk-delete
+Prefer: respond-async
+
+# Tenant-scoped, type-restricted, hard delete with history purge
+DELETE /tenant/{tenantId}/$bulk-delete?_type=Patient,Observation&_hardDelete=true&_purgeHistory=true
+Prefer: respond-async
+
+# Type-level bulk delete
+DELETE /tenant/{tenantId}/Patient/$bulk-delete?identifier=http://example.org|12345
+Prefer: respond-async
+```
+
+Supported parameters:
+- `_hardDelete` / `hardDelete` - Physically remove every version of each matched resource, its search indexes, and its TTL entry instead of soft-deleting (query or `Parameters` body `valueBoolean`)
+- `_purgeHistory` - Physically remove historical versions only (ignored when hard delete is also set)
+- `excludedResourceTypes` - Comma-separated resource types never deleted, including from the include cascade
+- `_remove-references` / `removeReferences` - Rewrite referrers of each deleted resource; requires `_hardDelete` (query only)
+- `_type` - Resource types to target (system-level route only)
+- `_include` / `_revinclude` - Cascade-delete included/reverse-included resources (SQL Server storage only)
+- any other search parameter narrows which resources are deleted
+
+`Prefer: respond-async` is required (`400` if missing). Every unsupported or unrecognized search
+parameter is rejected with `400` rather than ignored, because bulk delete is destructive. With
+authorization enabled, the caller needs `delete` on every resource type the job can reach (`*` for a
+system-level delete without `_type` or any `_include`/`_revinclude`) and `update` on `*` for
+`_remove-references`; compartment- or search-constrained grants are refused (`403`). See
+[Bulk Operations: Authorization](/docs/server/features/bulk-operations#authorization).
+
+Returns `202 Accepted` with `Content-Location` header pointing to the status endpoint. Poll and
+cancel it the same way as export/import jobs:
+
+```bash
+GET /tenant/{tenantId}/_operations/bulk-delete/{jobId}
+DELETE /tenant/{tenantId}/_operations/bulk-delete/{jobId}
+```
+
+See [Bulk Operations: $bulk-delete](/docs/server/features/bulk-operations#bulk-delete) for the full
+parameter reference, request/response shapes, storage limits, configuration, and compatibility notes.
 
 See [Bulk Operations](/docs/server/features/bulk-operations) for detailed usage, parameters, and configuration.
 
