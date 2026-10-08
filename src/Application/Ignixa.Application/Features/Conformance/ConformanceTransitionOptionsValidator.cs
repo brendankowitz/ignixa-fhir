@@ -28,10 +28,10 @@ public sealed class ConformanceTransitionOptionsValidator(IOptions<ReindexOption
             failures.Add($"{ConformanceTransitionOptions.SectionName}:TransitionGrace must be greater than zero.");
         }
 
-        if (options.TransitionSafetyMargin < TimeSpan.Zero)
+        if (options.TransitionSafetyMargin <= TimeSpan.Zero)
         {
             failures.Add(
-                $"{ConformanceTransitionOptions.SectionName}:TransitionSafetyMargin must be greater than or equal to zero.");
+                $"{ConformanceTransitionOptions.SectionName}:TransitionSafetyMargin must be greater than zero.");
         }
 
         if (reindexOptions.BarrierDelay < TimeSpan.Zero)

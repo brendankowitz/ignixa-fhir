@@ -200,15 +200,17 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
   catch-up **and** consumer refresh both succeeded (`ConformanceStateSyncService`, `ConformanceCacheRefresher`).
   Initial state load counts as such a sync, and so does applying a local activation.
 - An instance holds the lease while `now − LeaseStartUtc ≤ Conformance:MaxStaleness`. The default is
-  `2 × SyncIntervalSeconds`.
+  `3 × SyncIntervalSeconds`.
+- `TransitionSafetyMargin` defaults to 2 minutes 30 seconds. It covers four 30-second SQL command attempts,
+  the three exponential retry delays, and 15 seconds of clock skew, rounded up to the next 30-second boundary.
 - **Without the lease**, every request that evaluates search parameters (F15) **fails closed**. It returns `503`
   with `Retry-After` and an `OperationOutcome` (*"Conformance state is stale; search is temporarily
   unavailable."*). Reads by id, history reads, and unconditional writes continue. Write extraction staleness is
   already fenced by the barrier (§5.3) and by the two-phase rule.
 - Losing and regaining the lease is logged at warning and information level. Metrics:
   `conformance.lease.lost` and `conformance.lease.age`.
-- Startup validates `TransitionGrace > MaxStaleness`, and also `BarrierDelay ≥ MaxStaleness` so barrier rejections
-  stay rare, and fails fast if either does not hold.
+- Startup validates `TransitionGrace ≥ MaxStaleness + TransitionSafetyMargin`, and also
+  `BarrierDelay ≥ MaxStaleness` so barrier rejections stay rare, and fails fast if either does not hold.
 
 ---
 
@@ -227,7 +229,7 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
 
 ### 5.2 Algorithm (per tenant, in parallel)
 
-1. **Delay.** Wait `Reindex:BarrierDelay` (default `2 × Conformance:SyncIntervalSeconds`) after E is appended.
+1. **Delay.** Wait `Reindex:BarrierDelay` (default `3 × Conformance:SyncIntervalSeconds`) after E is appended.
    This lets instances catch up by polling, so the barrier rejects almost nothing. It is advisory only; the
    barrier alone guarantees correctness.
 2. **Raise the barrier.** Set `Barrier_t = max(Barrier_t, E)`, **then** read B_t and S_t.
@@ -595,8 +597,9 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
 
 | Key | Default | Purpose |
 |---|---|---|
-| `MaxStaleness` | `2 × SyncIntervalSeconds` | Lease length for serving search (§4.5) |
-| `TransitionGrace` | `MaxStaleness + SyncIntervalSeconds` | Phase-2 delay; must be `> MaxStaleness`, checked at startup (§4.4) |
+| `MaxStaleness` | `3 × SyncIntervalSeconds` | Lease length for serving search (§4.5) |
+| `TransitionSafetyMargin` | `00:02:30` | Four default SQL command attempts plus retry backoff and 15 seconds of clock skew, rounded up to 30 seconds |
+| `TransitionGrace` | `MaxStaleness + TransitionSafetyMargin` | Phase-2 delay; must be at least this sum, checked at startup (§4.4) |
 
 **`Reindex` section:**
 
@@ -604,7 +607,7 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
 |---|---|---|
 | `Enabled` | `true` | Registers the endpoints and the orchestration |
 | `AutoStart` | `true` | Activation-triggered jobs (§7) |
-| `BarrierDelay` | `2 × Conformance:SyncIntervalSeconds` | Advisory catch-up time before the barrier (§5.2); must be `≥ MaxStaleness` |
+| `BarrierDelay` | `3 × Conformance:SyncIntervalSeconds` | Advisory catch-up time before the barrier (§5.2); must be `≥ MaxStaleness` |
 | `DefaultMaximumNumberOfResourcesPerQuery` | `10000` | §6.1 |
 | `DefaultMaximumNumberOfResourcesPerWrite` | `100` | §6.1 |
 | `DefaultMaximumConcurrency` | `4` | §6.1 |

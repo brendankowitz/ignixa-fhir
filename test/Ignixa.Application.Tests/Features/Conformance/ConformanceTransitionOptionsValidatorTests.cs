@@ -92,6 +92,21 @@ public class ConformanceTransitionOptionsValidatorTests
     }
 
     [Fact]
+    public void GivenZeroTransitionSafetyMargin_WhenValidated_ThenItFails()
+    {
+        var result = ConformanceTransitionOptionsValidator.Validate(
+            new ConformanceTransitionOptions
+            {
+                MaxStaleness = TimeSpan.FromSeconds(10),
+                TransitionGrace = TimeSpan.FromSeconds(11),
+                TransitionSafetyMargin = TimeSpan.Zero,
+            },
+            new ReindexOptions { BarrierDelay = TimeSpan.FromSeconds(10) });
+
+        result.Failed.ShouldBeTrue();
+    }
+
+    [Fact]
     public void GivenGraceBelowMaxStalenessPlusSafetyMargin_WhenValidated_ThenItFails()
     {
         var options = new ConformanceTransitionOptions

@@ -18,9 +18,24 @@ public sealed class ConformanceTransitionOptions
             SqlExecutionPolicyDefaults.MaximumExecutionBudget + DefaultClockSkewAllowance,
             SafetyMarginRoundingInterval);
 
+    /// <summary>
+    /// Gets or sets how often each instance polls the shared conformance event stream.
+    /// </summary>
     public int SyncIntervalSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Gets or sets the maximum age of the last successful conformance sync start while search remains available.
+    /// </summary>
     public TimeSpan MaxStaleness { get; set; }
+
+    /// <summary>
+    /// Gets or sets the delay between hiding a definition and committing its extraction change.
+    /// </summary>
     public TimeSpan TransitionGrace { get; set; }
+
+    /// <summary>
+    /// Gets or sets the execution allowance added above <see cref="MaxStaleness"/> before a transition may commit.
+    /// </summary>
     public TimeSpan TransitionSafetyMargin { get; set; } = DefaultTransitionSafetyMargin;
 
     private static TimeSpan RoundUp(TimeSpan duration, TimeSpan interval)

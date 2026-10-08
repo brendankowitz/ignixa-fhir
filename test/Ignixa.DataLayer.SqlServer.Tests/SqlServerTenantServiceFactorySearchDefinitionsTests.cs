@@ -25,10 +25,21 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
 
     public void Dispose() => _cacheRegistry.Dispose();
 
-    [Fact]
-    public async Task GivenAPendingCompartmentMembershipParameter_WhenCompilingACompartmentSearch_ThenItIsNotUsed()
+    [Theory]
+    [InlineData("Pending")]
+    [InlineData("Staged")]
+    [InlineData("Disabling")]
+    public async Task GivenANonSearchableCompartmentMembershipParameter_WhenCompilingACompartmentSearch_ThenTheSqlDoesNotUseIt(
+        string lifecycleState)
     {
-        var pendingSubject = new SearchParameterInfo(
+        var (isSupported, isHiddenByTransition) = lifecycleState switch
+        {
+            "Pending" => (true, false),
+            "Staged" => (false, true),
+            "Disabling" => (true, true),
+            _ => throw new ArgumentOutOfRangeException(nameof(lifecycleState)),
+        };
+        var subject = new SearchParameterInfo(
             "subject",
             "subject",
             SearchParamType.Reference,
@@ -36,8 +47,16 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
             baseResourceTypes: ["Observation"])
         {
             IsSearchable = false,
-            IsSupported = true,
+            IsSupported = isSupported,
+            IsHiddenByTransition = isHiddenByTransition,
         };
+        var sql = await CompileCompartmentSearchAsync(subject);
+
+        sql.ShouldNotContain("dbo.ReferenceSearchParam");
+    }
+
+    private async Task<string> CompileCompartmentSearchAsync(SearchParameterInfo subject)
+    {
         var allDefinitions = Substitute.For<ISearchParameterDefinitionManager>();
         allDefinitions.TryGetSearchParameter(
                 Arg.Any<string>(),
@@ -48,7 +67,7 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
                 if (callInfo.ArgAt<string>(0) == "Observation" &&
                     callInfo.ArgAt<string>(1) == "subject")
                 {
-                    callInfo[2] = pendingSubject;
+                    callInfo[2] = subject;
                     return true;
                 }
 
@@ -80,13 +99,13 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
                 new HashSet<string> { "Observation" }),
         };
 
-        var count = await service.CountAsync(options, CancellationToken.None);
+        _ = await service.CountAsync(options, CancellationToken.None);
 
-        count.ShouldBe(0);
         allDefinitions.Received().TryGetSearchParameter(
             "Observation",
             "subject",
             out Arg.Any<SearchParameterInfo>());
+        return _sql.LastCommandText.ShouldNotBeNull();
     }
 
     private sealed class SingleTenantStore : ITenantConfigurationStore
@@ -122,13 +141,18 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
 
     private sealed class EmptySqlExecutionService : ISqlExecutionService
     {
+        public string? LastCommandText { get; private set; }
+
         public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
             int tenantId,
             SqlCommand command,
             Func<SqlDataReader, TResult> readRow,
             CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent) =>
-            Task.FromResult<IReadOnlyList<TResult>>([]);
+            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
+        {
+            LastCommandText = command.CommandText;
+            return Task.FromResult<IReadOnlyList<TResult>>([]);
+        }
 
         public Task<int> ExecuteNonQueryAsync(
             int tenantId,
