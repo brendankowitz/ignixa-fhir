@@ -239,11 +239,19 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     {
         using (await AcquireActivationLockAsync(cancellationToken))
         {
-            await foreach (var evt in store.ReadAllAsync(cancellationToken))
+            if (_lastProcessedEventId == 0)
             {
-                Apply(evt);
-                _lastProcessedEventId = evt.EventId;
+                await foreach (var evt in store.ReadAllAsync(cancellationToken))
+                {
+                    Apply(evt);
+                    _lastProcessedEventId = evt.EventId;
+                }
             }
+            else
+            {
+                await CatchUpWhileActivationLockHeldAsync(store, cancellationToken);
+            }
+
             _isInitialized = true;
         }
     }
