@@ -46,6 +46,7 @@ public sealed class GetReindexStatusHandler(
             isStale,
             job.ErrorMessage,
             job.Progress,
-            job.Result);
+            job.Result,
+            job.Definition);
     }
 }

@@ -34,6 +34,7 @@ public static class EndpointRouteBuilderExtensions
         // This ensures /$import and /$export routes match before the generic /{resourceType} catch-all
         app.MapExportEndpoints();
         app.MapImportEndpoints();
+        app.MapReindexEndpoints();
 
         // Admin package management endpoints
         app.MapAdminPackageEndpoints();

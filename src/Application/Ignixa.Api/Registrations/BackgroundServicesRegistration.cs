@@ -113,6 +113,9 @@ public static class BackgroundServicesRegistration
         builder.RegisterType<GetReindexStatusHandler>()
             .As<IRequestHandler<GetReindexStatusQuery, ReindexStatusResult?>>()
             .InstancePerDependency();
+        builder.RegisterType<GetReindexJobsHandler>()
+            .As<IRequestHandler<GetReindexJobsQuery, IReadOnlyList<ReindexStatusResult>>>()
+            .InstancePerDependency();
         builder.RegisterType<CancelReindexHandler>()
             .As<IRequestHandler<CancelReindexCommand, CancelReindexResult>>()
             .InstancePerDependency();

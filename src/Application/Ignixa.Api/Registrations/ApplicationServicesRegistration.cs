@@ -26,6 +26,7 @@ using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
@@ -427,6 +428,10 @@ public static class ApplicationServicesRegistration
 
         // Package feature (bulk data export)
         builder.RegisterType<BulkDataExportFeature>()
+            .As<IPackageFeature>()
+            .SingleInstance();
+
+        builder.RegisterType<ReindexFeature>()
             .As<IPackageFeature>()
             .SingleInstance();
 

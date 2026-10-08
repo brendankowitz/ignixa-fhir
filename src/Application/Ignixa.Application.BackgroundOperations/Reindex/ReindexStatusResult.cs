@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
@@ -12,4 +13,5 @@ public sealed record ReindexStatusResult(
     bool IsStale,
     string? ErrorMessage,
     JsonNode? Progress,
-    JsonNode? Result);
+    JsonNode? Result,
+    ReindexJobDefinition? Definition = null);
