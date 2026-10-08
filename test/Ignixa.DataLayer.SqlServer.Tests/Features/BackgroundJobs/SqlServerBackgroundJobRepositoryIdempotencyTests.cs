@@ -50,6 +50,38 @@ public class SqlServerBackgroundJobRepositoryIdempotencyTests
     }
 
     [Fact]
+    public async Task GivenLatestStatusLookup_WhenQueried_ThenOnlyRequestedStatusesAreSelected()
+    {
+        var sql = Substitute.For<ISqlExecutionService>();
+        sql.ExecuteReaderAsync(
+                1,
+                Arg.Any<SqlCommand>(),
+                Arg.Any<Func<SqlDataReader, BackgroundJob<ExportJobDefinition>>>(),
+                Arg.Any<CancellationToken>())
+            .Returns([]);
+        var repository = new SqlServerBackgroundJobRepository<ExportJobDefinition>(
+            sql,
+            connectionTenantId: 1,
+            Substitute.For<ITenantConfigurationStore>(),
+            NullLogger<SqlServerBackgroundJobRepository<ExportJobDefinition>>.Instance);
+
+        _ = await repository.GetLatestAsync(
+            1,
+            ["Failed", "Cancelled"],
+            CancellationToken.None);
+
+        await sql.Received(1).ExecuteReaderAsync(
+            1,
+            Arg.Is<SqlCommand>(command =>
+                command.CommandText.Contains("TOP (1)", StringComparison.Ordinal) &&
+                command.CommandText.Contains("@status0, @status1", StringComparison.Ordinal) &&
+                command.Parameters["@status0"].Value.Equals("Failed") &&
+                command.Parameters["@status1"].Value.Equals("Cancelled")),
+            Arg.Any<Func<SqlDataReader, BackgroundJob<ExportJobDefinition>>>(),
+            CancellationToken.None);
+    }
+
+    [Fact]
     public async Task GivenANewJob_WhenCreated_ThenTheInsertDeclaresItselfNonIdempotent()
     {
         var sql = Substitute.For<ISqlExecutionService>();

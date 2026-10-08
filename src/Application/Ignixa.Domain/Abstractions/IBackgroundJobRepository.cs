@@ -72,6 +72,14 @@ public interface IBackgroundJobRepository<T> where T : class, IJobDefinition
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets the most recently created job of the requested type whose status is in <paramref name="statuses"/>.
+    /// </summary>
+    Task<BackgroundJob<T>?> GetLatestAsync(
+        int jobType,
+        IReadOnlyList<string> statuses,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes a background job with tenant validation.
     /// </summary>
     /// <param name="jobId">Job ID.</param>
