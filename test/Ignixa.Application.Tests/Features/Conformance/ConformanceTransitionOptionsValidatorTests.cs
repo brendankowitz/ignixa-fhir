@@ -5,6 +5,14 @@ namespace Ignixa.Application.Tests.Features.Conformance;
 
 public class ConformanceTransitionOptionsValidatorTests
 {
+    [Fact]
+    public void GivenDefaultTransitionOptions_WhenReadingTheSafetyMargin_ThenItCoversTheSqlExecutionBudget()
+    {
+        var options = new ConformanceTransitionOptions();
+
+        options.TransitionSafetyMargin.ShouldBe(TimeSpan.FromSeconds(150));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
@@ -90,6 +98,7 @@ public class ConformanceTransitionOptionsValidatorTests
         {
             MaxStaleness = TimeSpan.FromSeconds(10),
             TransitionGrace = TimeSpan.FromSeconds(39),
+            TransitionSafetyMargin = TimeSpan.FromSeconds(30),
         };
 
         var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions
@@ -124,6 +133,7 @@ public class ConformanceTransitionOptionsValidatorTests
         {
             MaxStaleness = TimeSpan.FromSeconds(10),
             TransitionGrace = TimeSpan.FromSeconds(40),
+            TransitionSafetyMargin = TimeSpan.FromSeconds(30),
         };
 
         var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions

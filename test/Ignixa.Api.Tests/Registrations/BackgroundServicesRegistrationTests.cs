@@ -22,7 +22,8 @@ public sealed class BackgroundServicesRegistrationTests
 
         conformance.SyncIntervalSeconds.ShouldBe(30);
         conformance.MaxStaleness.ShouldBe(TimeSpan.FromSeconds(90));
-        conformance.TransitionGrace.ShouldBe(TimeSpan.FromSeconds(120));
+        conformance.TransitionSafetyMargin.ShouldBe(TimeSpan.FromSeconds(150));
+        conformance.TransitionGrace.ShouldBe(TimeSpan.FromSeconds(240));
         reindex.BarrierDelay.ShouldBe(TimeSpan.FromSeconds(90));
     }
 
@@ -43,7 +44,8 @@ public sealed class BackgroundServicesRegistrationTests
         var conformance = provider.GetRequiredService<IOptions<ConformanceTransitionOptions>>().Value;
 
         conformance.MaxStaleness.ShouldBe(TimeSpan.FromSeconds(15));
-        conformance.TransitionGrace.ShouldBe(TimeSpan.FromSeconds(45));
+        conformance.TransitionSafetyMargin.ShouldBe(TimeSpan.FromSeconds(150));
+        conformance.TransitionGrace.ShouldBe(TimeSpan.FromSeconds(165));
     }
 
     [Fact]
