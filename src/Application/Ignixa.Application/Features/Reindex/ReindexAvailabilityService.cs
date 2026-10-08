@@ -68,18 +68,19 @@ public sealed class ReindexAvailabilityService(
         }
 
         var tenants = await _tenantConfigurationStore.GetAllTenantsAsync(CancellationToken.None);
+        int? unsupportedTenantId = null;
         foreach (var tenant in tenants
             .Where(tenant => tenant.IsActive && tenant.TenantId != SystemConstants.SystemPartitionId)
             .OrderBy(tenant => tenant.TenantId))
         {
-            if (!_providerCapabilities.SupportsReindex(tenant))
+            if (!_providerCapabilities.SupportsReindex(tenant) && unsupportedTenantId is null)
             {
-                return new ReindexAvailability(
-                    ReindexAvailabilityStatus.Unsupported,
-                    tenant.TenantId);
+                unsupportedTenantId = tenant.TenantId;
             }
         }
 
-        return ReindexAvailability.Available;
+        return unsupportedTenantId is int tenantId
+            ? new ReindexAvailability(ReindexAvailabilityStatus.Unsupported, tenantId)
+            : ReindexAvailability.Available;
     }
 }

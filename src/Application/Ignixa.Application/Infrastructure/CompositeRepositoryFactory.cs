@@ -15,6 +15,13 @@ namespace Ignixa.Application.Infrastructure;
 /// </summary>
 public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexProviderCapabilities
 {
+    private static readonly Dictionary<string, ProviderType> ProviderTypes = new(StringComparer.Ordinal)
+    {
+        ["FileSystem"] = ProviderType.FileSystem,
+        ["SqlEntityFramework"] = ProviderType.SqlEntityFramework,
+        ["SqlServer"] = ProviderType.SqlEntityFramework
+    };
+
     private readonly ITenantConfigurationStore _tenantStore;
     private readonly IFhirRepositoryFactory _fileSystemFactory;
     private readonly IFhirRepositoryFactory _sqlEfFactory;
@@ -45,12 +52,11 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexProvid
             throw new InvalidOperationException($"Tenant {tenantId} does not exist");
         }
 
-        // Route to appropriate factory based on storage type
-        return tenantConfig.Storage.Type switch
+        return ResolveProviderType(tenantConfig.Storage.Type) switch
         {
-            "FileSystem" => await _fileSystemFactory.GetRepositoryAsync(tenantId, ct),
-            "SqlEntityFramework" or "SqlServer" => await _sqlEfFactory.GetRepositoryAsync(tenantId, ct),
-            _ => throw new NotSupportedException($"Storage type '{tenantConfig.Storage.Type}' is not supported")
+            ProviderType.FileSystem => await _fileSystemFactory.GetRepositoryAsync(tenantId, ct),
+            ProviderType.SqlEntityFramework => await _sqlEfFactory.GetRepositoryAsync(tenantId, ct),
+            _ => throw new InvalidOperationException("Unrecognized provider type")
         };
     }
 
@@ -59,6 +65,22 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexProvid
     {
         ArgumentNullException.ThrowIfNull(tenantConfiguration);
 
-        return tenantConfiguration.Storage.Type is "SqlEntityFramework" or "SqlServer";
+        return ResolveProviderType(tenantConfiguration.Storage.Type) == ProviderType.SqlEntityFramework;
+    }
+
+    private static ProviderType ResolveProviderType(string storageType)
+    {
+        if (ProviderTypes.TryGetValue(storageType, out var providerType))
+        {
+            return providerType;
+        }
+
+        throw new NotSupportedException($"Storage type '{storageType}' is not supported");
+    }
+
+    private enum ProviderType
+    {
+        FileSystem,
+        SqlEntityFramework
     }
 }
