@@ -83,7 +83,12 @@ public static class AdminPackageEndpoints
                 TotalResources = result.TotalResources,
                 ImportedResources = result.ImportedResources,
                 DurationMilliseconds = result.DurationMilliseconds,
-                ResourcesByType = result.ResourcesByType
+                ResourcesByType = result.ResourcesByType,
+                PendingReindex = result.PendingReindex,
+                ReindexJobId = result.ReindexJobId,
+                ReindexStatusUrl = result.ReindexStatusUrl,
+                ReindexQueued = result.ReindexQueued,
+                ReindexMessage = result.ReindexMessage
             };
 
             return Results.Ok(response);
@@ -271,6 +276,16 @@ public static class AdminPackageEndpoints
         /// Breakdown by resource type.
         /// </summary>
         public Dictionary<string, int> ResourcesByType { get; init; } = new();
+
+        public IReadOnlyList<string> PendingReindex { get; init; } = [];
+
+        public string? ReindexJobId { get; init; }
+
+        public string? ReindexStatusUrl { get; init; }
+
+        public bool ReindexQueued { get; init; }
+
+        public string? ReindexMessage { get; init; }
     }
 
     /// <summary>

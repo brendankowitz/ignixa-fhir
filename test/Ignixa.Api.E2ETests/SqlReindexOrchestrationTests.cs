@@ -127,21 +127,49 @@ public class SqlReindexOrchestrationTests
         RenewLease(fixture.Services);
         await AssertPendingAsync(fixture.Client, code, marker);
 
-        var mediator = fixture.Services.GetRequiredService<IMediator>();
-        var created = await mediator.SendAsync(new CreateReindexJobCommand
-        {
-            TargetResourceTypes = ["Patient"],
-            MaximumNumberOfResourcesPerQuery = 10,
-            MaximumNumberOfResourcesPerWrite = 10,
-            MaximumConcurrency = 1
-        });
-        var jobId = created.ShouldBeOfType<ReindexJobCreatedResult>().JobId;
+        var jobId = activation.ReindexJobId.ShouldNotBeNull();
         var job = await WaitForTerminalJobAsync(fixture.Services, jobId);
 
         job.Status.ShouldBe("Completed", job.ErrorMessage);
         state.FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         RenewLease(fixture.Services);
         await AssertSearchAsync(fixture.Client, code, marker, patientId);
+    }
+
+    [SqlFact]
+    public async Task GivenSecondPackageIsActivatedMidJob_WhenFirstCompletes_ThenFollowUpEnablesSecondParameter()
+    {
+        await using var fixture = new ReindexFixture();
+        await fixture.InitializeAsync();
+        var marker = Guid.NewGuid().ToString("N");
+        var patientId = $"reindex-followup-{marker}";
+        var firstCode = $"first-{marker}";
+        var secondCode = $"second-{marker}";
+        var firstCanonical = $"http://example.org/SearchParameter/{firstCode}";
+        var secondCanonical = $"http://example.org/SearchParameter/{secondCode}";
+
+        await PutPatientAsync(fixture.Client, patientId, marker);
+        await StoreParameterAsync(fixture.Services, $"test.first.{marker}", firstCode, firstCanonical);
+        var firstActivation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
+            .ActivateAsync($"test.first.{marker}", "1.0.0", CancellationToken.None);
+        var firstJobId = firstActivation.ReindexJobId.ShouldNotBeNull();
+        await WaitForJobStatusAsync(fixture.Services, firstJobId, "Running");
+
+        await StoreParameterAsync(fixture.Services, $"test.second.{marker}", secondCode, secondCanonical);
+        var secondActivation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
+            .ActivateAsync($"test.second.{marker}", "1.0.0", CancellationToken.None);
+
+        secondActivation.ReindexJobId.ShouldBe(firstJobId);
+        secondActivation.ReindexQueued.ShouldBeTrue();
+        (await WaitForTerminalJobAsync(fixture.Services, firstJobId)).Status.ShouldBe("Completed");
+        var followUp = await WaitForFollowUpJobAsync(fixture.Services, firstJobId);
+        (await WaitForTerminalJobAsync(fixture.Services, followUp.JobId)).Status.ShouldBe("Completed");
+
+        var state = fixture.Services.GetRequiredService<ConformanceState>();
+        state.FindByCanonical(firstCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
+        state.FindByCanonical(secondCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
+        RenewLease(fixture.Services);
+        await AssertSearchAsync(fixture.Client, secondCode, marker, patientId);
     }
 
     private static async Task<BackgroundJob<ReindexJobDefinition>> WaitForTerminalJobAsync(
@@ -163,6 +191,51 @@ public class SqlReindexOrchestrationTests
 
         return await repository.GetAsync(jobId, 1, CancellationToken.None)
             ?? throw new InvalidOperationException($"Reindex job {jobId} was not persisted.");
+    }
+
+    private static async Task WaitForJobStatusAsync(
+        IServiceProvider services,
+        string jobId,
+        string expectedStatus)
+    {
+        var repository = services.GetRequiredService<IBackgroundJobRepository<ReindexJobDefinition>>();
+        var expires = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < expires)
+        {
+            if ((await repository.GetAsync(jobId, 1, CancellationToken.None))?.Status == expectedStatus)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        throw new TimeoutException($"Reindex job {jobId} did not reach {expectedStatus}.");
+    }
+
+    private static async Task<BackgroundJob<ReindexJobDefinition>> WaitForFollowUpJobAsync(
+        IServiceProvider services,
+        string firstJobId)
+    {
+        var repository = services.GetRequiredService<IBackgroundJobRepository<ReindexJobDefinition>>();
+        var expires = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < expires)
+        {
+            var followUp = (await repository.ListAsync(
+                    (int)BackgroundJobType.Reindex,
+                    CancellationToken.None))
+                .SingleOrDefault(job =>
+                    job.JobId != firstJobId &&
+                    job.Definition.Trigger == "FollowUp");
+            if (followUp is not null)
+            {
+                return followUp;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        throw new TimeoutException("A follow-up reindex job was not persisted.");
     }
 
     private static async Task<(HttpResponseMessage Response, JsonNode Body, string JobId)> CreateReindexAsync(
@@ -293,11 +366,14 @@ public class SqlReindexOrchestrationTests
 
     private sealed class ReindexFixture : IgnixaApiFixture
     {
+        protected override bool ReindexAutoStart => true;
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("Conformance:MaxStaleness", "00:00:01");
             builder.UseSetting("Conformance:TransitionGrace", "00:00:02");
             builder.UseSetting("Reindex:BarrierDelay", "00:00:01");
+            builder.UseSetting("Reindex:StartDebounce", "00:00:00.100");
             builder.UseSetting("Reindex:DrainWarningAfter", "00:00:01");
             base.ConfigureWebHost(builder);
         }

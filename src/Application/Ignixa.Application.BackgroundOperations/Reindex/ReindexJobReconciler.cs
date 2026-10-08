@@ -23,13 +23,29 @@ public sealed class ReindexJobReconciler(
         await jobLock.ExecuteAsync(
             async ct =>
             {
-                await ReconcileUnderLockAsync(ct);
+                await ReconcileUnderLockAsync(recoverFreshQueuedJobs: false, ct);
                 return true;
             },
             cancellationToken);
     }
 
-    internal async Task ReconcileUnderLockAsync(CancellationToken cancellationToken)
+    public async Task ReconcileStartupAsync(CancellationToken cancellationToken)
+    {
+        await jobLock.ExecuteAsync(
+            async ct =>
+            {
+                await ReconcileUnderLockAsync(recoverFreshQueuedJobs: true, ct);
+                return true;
+            },
+            cancellationToken);
+    }
+
+    internal Task ReconcileUnderLockAsync(CancellationToken cancellationToken) =>
+        ReconcileUnderLockAsync(recoverFreshQueuedJobs: false, cancellationToken);
+
+    private async Task ReconcileUnderLockAsync(
+        bool recoverFreshQueuedJobs,
+        CancellationToken cancellationToken)
     {
         var candidates = (await repository.ListAsync(
                 (int)BackgroundJobType.Reindex,
@@ -47,7 +63,12 @@ public sealed class ReindexJobReconciler(
             var lastObserved = job.HeartbeatDate > job.CreateDate
                 ? job.HeartbeatDate
                 : job.CreateDate;
-            if (timeProvider.GetUtcNow() - lastObserved < options.Value.OrphanGrace)
+            var isWithinOrphanGrace =
+                timeProvider.GetUtcNow() - lastObserved < options.Value.OrphanGrace;
+            var shouldRecoverFreshQueuedJob =
+                recoverFreshQueuedJobs &&
+                job.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase);
+            if (isWithinOrphanGrace && !shouldRecoverFreshQueuedJob)
             {
                 continue;
             }

@@ -23,6 +23,7 @@ public sealed class CreateReindexJobHandler(
     IReindexAvailability availability,
     IReindexJobLock jobLock,
     ReindexJobReconciler reconciler,
+    ReindexAutomationStateStore automationState,
     IOptions<ReindexOptions> options)
     : IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>
 {
@@ -42,6 +43,8 @@ public sealed class CreateReindexJobHandler(
         jobLock ?? throw new ArgumentNullException(nameof(jobLock));
     private readonly ReindexJobReconciler _reconciler =
         reconciler ?? throw new ArgumentNullException(nameof(reconciler));
+    private readonly ReindexAutomationStateStore _automationState =
+        automationState ?? throw new ArgumentNullException(nameof(automationState));
     private readonly ReindexOptions _options =
         options?.Value ?? throw new ArgumentNullException(nameof(options));
 
@@ -123,120 +126,197 @@ public sealed class CreateReindexJobHandler(
             }
         }
 
+        async Task<CreateReindexJobResult> StartUnderLockAsync(CancellationToken ct)
+        {
+            async Task<(long TargetEventId, ReindexTargetResolution Resolution)> ResolveAsync()
+            {
+                using (await _conformanceState.AcquireActivationLockAsync(ct))
+                {
+                    return (
+                        _conformanceState.LastProcessedEventId,
+                        ReindexTargetResolver.Resolve(
+                            _conformanceState.AllSearchParameters.Values.ToArray(),
+                            concreteResourceTypes,
+                            request.TargetResourceTypes,
+                            new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
+                            {
+                                ["Resource"] = concreteResourceTypes,
+                                ["DomainResource"] = domainResourceTypes
+                            }));
+                }
+            }
+
+            var requestedGeneration = request.QueueRequest
+                ? await _automationState.IncrementRequestedGenerationAsync(ct)
+                : await _automationState.GetRequestedGenerationAsync(ct);
+            var jobs = await _jobRepository.ListAsync(
+                (int)BackgroundJobType.Reindex,
+                ct);
+            var activeJobs = jobs.Where(job =>
+                job.JobId != request.ExcludedActiveJobId &&
+                (job.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) ||
+                 job.Status.Equals("Running", StringComparison.OrdinalIgnoreCase) ||
+                 job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase)));
+            foreach (var active in activeJobs)
+            {
+                if (request.QueueRequest &&
+                    active.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase))
+                {
+                    var queuedResolution = await ResolveAsync();
+                    active.Definition = CopyWithResolution(
+                        active.Definition,
+                        queuedResolution.TargetEventId,
+                        queuedResolution.Resolution,
+                        requestedGeneration);
+                    active.Progress ??= new JsonObject();
+                    active.Progress["notCovered"] = new JsonArray(
+                        queuedResolution.Resolution.Targets
+                            .Where(target => !target.IsFullyCovered)
+                            .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
+                            .ToArray());
+                    await _jobRepository.UpdateAsync(active, 1, ct);
+                    return new ReindexRequestQueuedResult(active.JobId, requestedGeneration);
+                }
+
+                if (request.QueueRequest)
+                {
+                    return new ReindexRequestQueuedResult(active.JobId, requestedGeneration);
+                }
+
+                return new ActiveReindexJobResult(active.JobId);
+            }
+
+            var (targetEventId, resolution) = await ResolveAsync();
+            if (!resolution.HasWork)
+            {
+                return new NoReindexWorkResult("No resources need reindexing.");
+            }
+
+            var jobId = Guid.NewGuid().ToString();
+            var definition = new ReindexJobDefinition
+            {
+                TargetEventId = targetEventId,
+                TenantIds = tenants.Select(tenant => tenant.TenantId).ToArray(),
+                ResourceTypes = resolution.ResourceTypes,
+                SearchParameters = resolution.Targets.Select(target => new ReindexParameterDefinition(
+                    target.Canonical,
+                    target.Code,
+                    target.ResourceType,
+                    target.SearchParamId,
+                    target.ActivationEventId,
+                    target.AffectedResourceTypes)
+                {
+                    ScheduledResourceTypes = target.ScheduledResourceTypes
+                }).ToArray(),
+                MaximumNumberOfResourcesPerQuery = parameters.MaximumNumberOfResourcesPerQuery,
+                MaximumNumberOfResourcesPerWrite = parameters.MaximumNumberOfResourcesPerWrite,
+                MaximumConcurrency = parameters.MaximumConcurrency,
+                QueryDelayIntervalInMilliseconds = parameters.QueryDelayIntervalInMilliseconds,
+                Trigger = request.Trigger,
+                ConsumedGeneration = requestedGeneration
+            };
+            var now = DateTimeOffset.UtcNow;
+            await _jobRepository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+            {
+                JobId = jobId,
+                OrchestrationInstanceId = jobId,
+                JobType = (int)BackgroundJobType.Reindex,
+                Status = "Queued",
+                Definition = definition,
+                Progress = new JsonObject
+                {
+                    ["phase"] = "BarrierDelay",
+                    ["ignoredLifecycleEvents"] = new JsonArray(),
+                    ["notCovered"] = new JsonArray(
+                        resolution.Targets
+                            .Where(target => !target.IsFullyCovered)
+                            .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
+                            .ToArray())
+                },
+                CreateDate = now,
+                HeartbeatDate = now
+            }, ct);
+
+            try
+            {
+                await _taskHubClient.CreateOrchestrationInstanceAsync(
+                    typeof(ReindexOrchestration),
+                    jobId,
+                    new ReindexOrchestrationInput(
+                        jobId,
+                        targetEventId,
+                        _options.BarrierDelay,
+                        definition.TenantIds,
+                        definition.ResourceTypes,
+                        resolution.Targets,
+                        parameters,
+                        _options.DrainWarningAfter,
+                        _options.ContinueAsNewThreshold)
+                    {
+                        HeartbeatInterval = ReindexActivityHeartbeat.GetInterval(_options.StaleJobTimeout),
+                        StartDebounce = request.QueueRequest &&
+                            request.Trigger.Equals("Activation", StringComparison.OrdinalIgnoreCase)
+                            ? _options.StartDebounce
+                            : TimeSpan.Zero
+                    });
+            }
+            catch (Exception ex)
+            {
+                var failed = await _jobRepository.GetAsync(jobId, 1, ct)
+                    ?? throw new InvalidOperationException(
+                        $"Reindex job {jobId} disappeared after its orchestration failed to start.",
+                        ex);
+                failed.Status = "Failed";
+                failed.EndDate = DateTimeOffset.UtcNow;
+                failed.ErrorMessage = $"Failed to start reindex orchestration: {ex.Message}";
+                failed.HeartbeatDate = DateTimeOffset.UtcNow;
+                await _jobRepository.UpdateAsync(failed, 1, ct);
+                throw;
+            }
+
+            return new ReindexJobCreatedResult(jobId);
+        }
+
+        if (request.LockAlreadyHeld)
+        {
+            return await StartUnderLockAsync(cancellationToken);
+        }
+
         return await _jobLock.ExecuteAsync<CreateReindexJobResult>(
             async ct =>
             {
                 await _reconciler.ReconcileUnderLockAsync(ct);
-                var jobs = await _jobRepository.ListAsync(
-                    (int)BackgroundJobType.Reindex,
-                    ct);
-                var activeJobs = jobs.Where(job =>
-                    job.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) ||
-                    job.Status.Equals("Running", StringComparison.OrdinalIgnoreCase) ||
-                    job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase));
-                foreach (var active in activeJobs)
-                {
-                    return new ActiveReindexJobResult(active.JobId);
-                }
-
-                long targetEventId;
-                ReindexTargetResolution resolution;
-                using (await _conformanceState.AcquireActivationLockAsync(ct))
-                {
-                    targetEventId = _conformanceState.LastProcessedEventId;
-                    resolution = ReindexTargetResolver.Resolve(
-                        _conformanceState.AllSearchParameters.Values.ToArray(),
-                        concreteResourceTypes,
-                        request.TargetResourceTypes,
-                        new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
-                        {
-                            ["Resource"] = concreteResourceTypes,
-                            ["DomainResource"] = domainResourceTypes
-                        });
-                }
-                if (!resolution.HasWork)
-                {
-                    return new NoReindexWorkResult("No resources need reindexing.");
-                }
-
-                var jobId = Guid.NewGuid().ToString();
-                var definition = new ReindexJobDefinition
-                {
-                    TargetEventId = targetEventId,
-                    TenantIds = tenants.Select(tenant => tenant.TenantId).ToArray(),
-                    ResourceTypes = resolution.ResourceTypes,
-                    SearchParameters = resolution.Targets.Select(target => new ReindexParameterDefinition(
-                        target.Canonical,
-                        target.Code,
-                        target.ResourceType,
-                        target.SearchParamId,
-                        target.ActivationEventId,
-                        target.AffectedResourceTypes)
-                    {
-                        ScheduledResourceTypes = target.ScheduledResourceTypes
-                    }).ToArray(),
-                    MaximumNumberOfResourcesPerQuery = parameters.MaximumNumberOfResourcesPerQuery,
-                    MaximumNumberOfResourcesPerWrite = parameters.MaximumNumberOfResourcesPerWrite,
-                    MaximumConcurrency = parameters.MaximumConcurrency,
-                    QueryDelayIntervalInMilliseconds = parameters.QueryDelayIntervalInMilliseconds,
-                    Trigger = request.Trigger
-                };
-                var now = DateTimeOffset.UtcNow;
-                await _jobRepository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
-                {
-                    JobId = jobId,
-                    OrchestrationInstanceId = jobId,
-                    JobType = (int)BackgroundJobType.Reindex,
-                    Status = "Queued",
-                    Definition = definition,
-                    Progress = new JsonObject
-                    {
-                        ["phase"] = "BarrierDelay",
-                        ["ignoredLifecycleEvents"] = new JsonArray(),
-                        ["notCovered"] = new JsonArray(
-                            resolution.Targets
-                                .Where(target => !target.IsFullyCovered)
-                                .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
-                                .ToArray())
-                    },
-                    CreateDate = now,
-                    HeartbeatDate = now
-                }, ct);
-
-                try
-                {
-                    await _taskHubClient.CreateOrchestrationInstanceAsync(
-                        typeof(ReindexOrchestration),
-                        jobId,
-                        new ReindexOrchestrationInput(
-                            jobId,
-                            targetEventId,
-                            _options.BarrierDelay,
-                            definition.TenantIds,
-                            definition.ResourceTypes,
-                            resolution.Targets,
-                            parameters,
-                            _options.DrainWarningAfter,
-                            _options.ContinueAsNewThreshold)
-                        {
-                            HeartbeatInterval = ReindexActivityHeartbeat.GetInterval(_options.StaleJobTimeout)
-                        });
-                }
-                catch (Exception ex)
-                {
-                    var failed = await _jobRepository.GetAsync(jobId, 1, ct)
-                        ?? throw new InvalidOperationException(
-                            $"Reindex job {jobId} disappeared after its orchestration failed to start.",
-                            ex);
-                    failed.Status = "Failed";
-                    failed.EndDate = DateTimeOffset.UtcNow;
-                    failed.ErrorMessage = $"Failed to start reindex orchestration: {ex.Message}";
-                    failed.HeartbeatDate = DateTimeOffset.UtcNow;
-                    await _jobRepository.UpdateAsync(failed, 1, ct);
-                    throw;
-                }
-                return new ReindexJobCreatedResult(jobId);
+                return await StartUnderLockAsync(ct);
             },
             cancellationToken);
     }
+
+    private static ReindexJobDefinition CopyWithResolution(
+        ReindexJobDefinition definition,
+        long targetEventId,
+        ReindexTargetResolution resolution,
+        long consumedGeneration) =>
+        new()
+        {
+            TenantId = definition.TenantId,
+            TargetEventId = targetEventId,
+            TenantIds = definition.TenantIds,
+            ResourceTypes = resolution.ResourceTypes,
+            SearchParameters = resolution.Targets.Select(target => new ReindexParameterDefinition(
+                target.Canonical,
+                target.Code,
+                target.ResourceType,
+                target.SearchParamId,
+                target.ActivationEventId,
+                target.AffectedResourceTypes)
+            {
+                ScheduledResourceTypes = target.ScheduledResourceTypes
+            }).ToArray(),
+            MaximumNumberOfResourcesPerQuery = definition.MaximumNumberOfResourcesPerQuery,
+            MaximumNumberOfResourcesPerWrite = definition.MaximumNumberOfResourcesPerWrite,
+            MaximumConcurrency = definition.MaximumConcurrency,
+            QueryDelayIntervalInMilliseconds = definition.QueryDelayIntervalInMilliseconds,
+            Trigger = definition.Trigger,
+            ConsumedGeneration = consumedGeneration
+        };
 }

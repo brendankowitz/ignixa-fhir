@@ -21,6 +21,53 @@ public class PackageActivationPipelineTests
     private const string OverrideCanonical = "http://example.org/SearchParameter/Patient-identifier";
 
     [Fact]
+    public async Task GivenActivationCreatesPendingParameter_WhenActivated_ThenAutomaticReindexOutcomeIsReturned()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                "test.custom",
+                "1.0.0",
+                Arg.Any<CancellationToken>())
+            .Returns([CreateCustomResource()]);
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                0,
+                Arg.Any<CancellationToken>())
+            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
+                .Select((sourceEvent, index) => new SourceEvent(
+                    index + 1,
+                    sourceEvent.StreamId,
+                    sourceEvent.EventType,
+                    sourceEvent.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray());
+        using var state = new ConformanceState();
+        var trigger = Substitute.For<IReindexTrigger>();
+        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ReindexTriggerResult("job-1", false, null));
+        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            eventStore,
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            cacheRefresher,
+            reindexTrigger: trigger);
+
+        var result = await pipeline.ActivateAsync(
+            "test.custom",
+            "1.0.0",
+            CancellationToken.None);
+
+        result.PendingReindex.ShouldNotBeEmpty();
+        result.ReindexJobId.ShouldBe("job-1");
+        await trigger.Received(1).RequestReindexAsync(
+            Arg.Is<string>(value => value.Contains("test.custom", StringComparison.Ordinal)),
+            CancellationToken.None);
+    }
+
+    [Fact]
     public async Task GivenUnexpectedRefreshFailureAfterDurableOverrideActivation_WhenActivated_ThenItSurfacesTheFailure()
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();
@@ -72,6 +119,7 @@ public class PackageActivationPipelineTests
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
+            new NullReindexTrigger(),
             logger);
 
         await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
@@ -185,6 +233,7 @@ public class PackageActivationPipelineTests
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
+            new NullReindexTrigger(),
             Substitute.For<ILogger<PackageActivationPipeline>>());
 
         var result = await pipeline.ActivateAsync(
@@ -254,7 +303,8 @@ public class PackageActivationPipelineTests
         ConformanceState state,
         ISearchParameterTransitionScheduler transitionScheduler,
         IConformanceCacheRefresher cacheRefresher,
-        bool configureSuccessfulRefresh = true)
+        bool configureSuccessfulRefresh = true,
+        IReindexTrigger? reindexTrigger = null)
     {
         var lease = Substitute.For<IConformanceLease>();
         lease.CaptureStart().Returns(new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1));
@@ -276,6 +326,7 @@ public class PackageActivationPipelineTests
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
+            reindexTrigger ?? new NullReindexTrigger(),
             Substitute.For<ILogger<PackageActivationPipeline>>());
     }
 
@@ -305,6 +356,28 @@ public class PackageActivationPipelineTests
                   "type": "token",
                   "expression": "Patient.identifier",
                   "derivedFrom": "{{BaseCanonical}}"
+                }
+                """
+        };
+
+    private static PackageResource CreateCustomResource() =>
+        new()
+        {
+            PackageId = "test.custom",
+            PackageVersion = "1.0.0",
+            ResourceType = "SearchParameter",
+            ResourceId = "patient-custom",
+            Canonical = "http://example.org/SearchParameter/patient-custom",
+            FhirVersion = "4.0.1",
+            ResourceJson = """
+                {
+                  "resourceType": "SearchParameter",
+                  "id": "patient-custom",
+                  "url": "http://example.org/SearchParameter/patient-custom",
+                  "code": "custom",
+                  "base": ["Patient"],
+                  "type": "string",
+                  "expression": "Patient.id"
                 }
                 """
         };

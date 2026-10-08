@@ -14,6 +14,7 @@ public sealed class ReindexJobDefinition : IJobDefinition
     public required int MaximumConcurrency { get; init; }
     public required int QueryDelayIntervalInMilliseconds { get; init; }
     public required string Trigger { get; init; }
+    public long ConsumedGeneration { get; init; }
 
     public static ReindexJobDefinition CreateForTest() => new()
     {
@@ -25,6 +26,7 @@ public sealed class ReindexJobDefinition : IJobDefinition
         MaximumNumberOfResourcesPerWrite = 1_000,
         MaximumConcurrency = 4,
         QueryDelayIntervalInMilliseconds = 0,
-        Trigger = "Manual"
+        Trigger = "Manual",
+        ConsumedGeneration = 0
     };
 }

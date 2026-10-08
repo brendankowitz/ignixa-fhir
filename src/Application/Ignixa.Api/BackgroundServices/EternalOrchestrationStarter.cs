@@ -27,6 +27,7 @@ public sealed class EternalOrchestrationStarter(
     ConformanceState conformanceState,
     SearchParameterTransitionReconciler transitionReconciler,
     ReindexJobReconciler reindexJobReconciler,
+    ReindexStartupReconciler reindexStartupReconciler,
     ILogger<EternalOrchestrationStarter> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -55,7 +56,8 @@ public sealed class EternalOrchestrationStarter(
             stoppingToken);
 
         await ReconcileTransitionsAsync(stoppingToken);
-        await reindexJobReconciler.ReconcileAsync(stoppingToken);
+        await reindexJobReconciler.ReconcileStartupAsync(stoppingToken);
+        await reindexStartupReconciler.ReconcileAsync(stoppingToken);
 
         logger.LogInformation("EternalOrchestrationStarter completed startup");
 

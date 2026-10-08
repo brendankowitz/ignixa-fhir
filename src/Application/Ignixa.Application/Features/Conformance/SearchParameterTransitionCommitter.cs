@@ -67,7 +67,7 @@ public sealed class SearchParameterTransitionCommitter(
 
         if (reindexRequired)
         {
-            await reindexTrigger.RequestReindexAsync(
+            _ = await reindexTrigger.RequestReindexAsync(
                 $"Search parameter transition {hideEventId} committed",
                 cancellationToken);
         }

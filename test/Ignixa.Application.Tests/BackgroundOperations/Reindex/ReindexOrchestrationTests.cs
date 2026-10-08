@@ -10,6 +10,33 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class ReindexOrchestrationTests
 {
     [Fact]
+    public async Task GivenActivationDebounce_WhenOrchestrated_ThenDurableTimerRunsBeforeLifecycleStart()
+    {
+        var withoutDebounce = new ExecutingContext();
+        await new ReindexOrchestration().RunTask(
+            withoutDebounce,
+            ReindexOrchestrationInput.CreateForTest(
+                "control",
+                targetEventId: 42,
+                barrierDelay: TimeSpan.Zero,
+                tenantIds: [1]));
+        var context = new ExecutingContext();
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job",
+            targetEventId: 42,
+            barrierDelay: TimeSpan.Zero,
+            tenantIds: [1]) with
+        {
+            StartDebounce = TimeSpan.FromSeconds(10)
+        };
+
+        await new ReindexOrchestration().RunTask(context, input);
+
+        context.TimerCalls.ShouldBe(withoutDebounce.TimerCalls + 1);
+        context.StartCalls.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task GivenProgressPersistenceFails_WhenRetried_ThenOnlyProgressIsRetriedNotRanges()
     {
         var context = new ExecutingContext(failProgressOnce: true);

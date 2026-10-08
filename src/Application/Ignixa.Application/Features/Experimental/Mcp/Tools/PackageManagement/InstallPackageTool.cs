@@ -150,8 +150,18 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
             ResourcesByType = resourcesByType,
             LocalRefreshDeferred = activationResult.LocalRefreshDeferred,
             TransitionSchedulingDeferred = activationResult.TransitionSchedulingDeferred,
+            PendingReindex = activationResult.PendingReindex,
+            ReindexJobId = activationResult.ReindexJobId,
+            ReindexStatusUrl = activationResult.ReindexJobId is null
+                ? null
+                : $"/tenant/{resolvedTenantId}/$reindex/{activationResult.ReindexJobId}",
+            ReindexQueued = activationResult.ReindexQueued,
+            ReindexMessage = activationResult.ReindexMessage,
             Message = $"Successfully installed {result.PackageId}@{result.PackageVersion} " +
-                      $"({result.ImportedResources} new, {result.UpdatedResources} updated)"
+                      $"({result.ImportedResources} new, {result.UpdatedResources} updated)" +
+                      (activationResult.ReindexMessage is null
+                          ? string.Empty
+                          : $" Reindex: {activationResult.ReindexMessage}")
         };
     }
 }

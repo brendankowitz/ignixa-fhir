@@ -35,19 +35,29 @@ public record ActivationResult
     /// </summary>
     public bool TransitionSchedulingDeferred { get; init; }
 
+    public string? ReindexJobId { get; init; }
+
+    public bool ReindexQueued { get; init; }
+
+    public string? ReindexMessage { get; init; }
+
     /// <summary>
     /// Creates a successful activation result.
     /// </summary>
     public static ActivationResult Succeeded(
         IReadOnlyList<string>? pendingReindex = null,
         bool localRefreshDeferred = false,
-        bool transitionSchedulingDeferred = false) =>
+        bool transitionSchedulingDeferred = false,
+        ReindexTriggerResult? reindex = null) =>
         new()
         {
             Success = true,
             PendingReindex = pendingReindex ?? [],
             LocalRefreshDeferred = localRefreshDeferred,
-            TransitionSchedulingDeferred = transitionSchedulingDeferred
+            TransitionSchedulingDeferred = transitionSchedulingDeferred,
+            ReindexJobId = reindex?.JobId,
+            ReindexQueued = reindex?.Queued ?? false,
+            ReindexMessage = reindex?.Message
         };
 
     /// <summary>

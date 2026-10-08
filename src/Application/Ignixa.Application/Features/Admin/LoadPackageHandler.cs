@@ -97,7 +97,14 @@ public class LoadPackageHandler(
             result = result with
             {
                 LocalRefreshDeferred = activationResult.LocalRefreshDeferred,
-                TransitionSchedulingDeferred = activationResult.TransitionSchedulingDeferred
+                TransitionSchedulingDeferred = activationResult.TransitionSchedulingDeferred,
+                PendingReindex = activationResult.PendingReindex,
+                ReindexJobId = activationResult.ReindexJobId,
+                ReindexStatusUrl = activationResult.ReindexJobId is null
+                    ? null
+                    : $"/tenant/{request.TenantId}/$reindex/{activationResult.ReindexJobId}",
+                ReindexQueued = activationResult.ReindexQueued,
+                ReindexMessage = activationResult.ReindexMessage
             };
 
             if (!activationResult.Success)
@@ -115,6 +122,14 @@ public class LoadPackageHandler(
                     request.PackageId,
                     request.Version,
                     string.Join(", ", activationResult.PendingReindex));
+                if (activationResult.ReindexMessage is not null)
+                {
+                    _logger.LogWarning(
+                        "Reindex: package {PackageId}@{Version} remains Pending: {Message}",
+                        request.PackageId,
+                        request.Version,
+                        activationResult.ReindexMessage);
+                }
             }
 
             if (activationResult.LocalRefreshDeferred)

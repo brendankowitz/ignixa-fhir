@@ -29,6 +29,7 @@ namespace Ignixa.Api.E2ETests._Infrastructure;
 /// </summary>
 public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    protected virtual bool ReindexAutoStart => false;
     private readonly string _testDataPath;
     private readonly string _sqlConnectionString;
     private bool _ownsSqlDatabase;
@@ -111,6 +112,7 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         // set there reaches only the later Autofac registrations, leaving GraphQL half-registered.
         // UseSetting feeds host configuration, which is visible from the start.
         builder.UseSetting("Experimental:Features:GraphQl:Enabled", "true");
+        builder.UseSetting("Reindex:AutoStart", ReindexAutoStart.ToString());
 
         builder.ConfigureAppConfiguration((context, config) =>
         {

@@ -35,4 +35,9 @@ public enum BackgroundJobType
     /// Index rebuild operation (for future use).
     /// </summary>
     Reindex = 4,
+
+    /// <summary>
+    /// Durable automation state for reindex request generations.
+    /// </summary>
+    ReindexAutomation = 5,
 }

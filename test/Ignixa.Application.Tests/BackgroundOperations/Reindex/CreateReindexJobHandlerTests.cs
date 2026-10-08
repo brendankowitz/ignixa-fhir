@@ -22,6 +22,42 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class CreateReindexJobHandlerTests
 {
     [Fact]
+    public async Task GivenReindexIsDisabled_WhenAutomationRequestsReindex_ThenDisabledResultIsReturned()
+    {
+        var fixture = CreateFixture();
+        fixture.Availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ReindexAvailability.Disabled));
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand
+            {
+                Trigger = "Activation",
+                QueueRequest = true
+            },
+            CancellationToken.None);
+
+        result.ShouldBeOfType<ReindexDisabledResult>();
+        (await fixture.Repository.ListAsync()).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenNoPendingParameters_WhenAutomationRequestsReindex_ThenNothingToDoIsReturned()
+    {
+        var fixture = CreateFixture(withPendingParameter: false);
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand
+            {
+                Trigger = "Activation",
+                QueueRequest = true
+            },
+            CancellationToken.None);
+
+        result.ShouldBeOfType<NoReindexWorkResult>();
+        (await fixture.Repository.ListAsync((int)BackgroundJobType.Reindex)).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenMixedProviderServer_WhenJobIsCreated_ThenSharedAvailabilityRejectsIt()
     {
         var fixture = CreateFixture();
@@ -76,6 +112,109 @@ public class CreateReindexJobHandlerTests
             CancellationToken.None);
 
         result.ShouldBeOfType<ActiveReindexJobResult>().ActiveJobId.ShouldBe("active");
+    }
+
+    [Fact]
+    public async Task GivenNoActiveJob_WhenActivationRequestsReindex_ThenJobConsumesDurableGeneration()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand
+            {
+                Trigger = "Activation",
+                QueueRequest = true
+            },
+            CancellationToken.None);
+
+        var created = result.ShouldBeOfType<ReindexJobCreatedResult>();
+        var jobs = await fixture.Repository.ListAsync();
+        var job = jobs.Single(candidate => candidate.JobId == created.JobId);
+        job.Definition.ConsumedGeneration.ShouldBe(1);
+        job.Definition.Trigger.ShouldBe("Activation");
+        jobs.Single(candidate => candidate.JobType == (int)BackgroundJobType.ReindexAutomation)
+            .Progress!["requestedGeneration"]!.GetValue<long>().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GivenQueuedJob_WhenActivationRequestsReindex_ThenBurstIsCollapsedIntoQueuedJob()
+    {
+        var fixture = CreateFixture();
+
+        var first = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand
+            {
+                Trigger = "Activation",
+                QueueRequest = true
+            },
+            CancellationToken.None);
+        fixture.State.ApplyAndTrack(new SourceEvent(
+            43,
+            "search",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://example.org/SearchParameter/patient-second",
+                "second",
+                "Patient",
+                "Patient.name",
+                SearchParamType.String,
+                "example@2.0.0",
+                null,
+                18,
+                null,
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow));
+        var second = await fixture.Handler.HandleAsync(
+            new CreateReindexJobCommand
+            {
+                Trigger = "Activation",
+                QueueRequest = true
+            },
+            CancellationToken.None);
+
+        var created = first.ShouldBeOfType<ReindexJobCreatedResult>();
+        second.ShouldBe(new ReindexRequestQueuedResult(created.JobId, 2));
+        var jobs = await fixture.Repository.ListAsync();
+        jobs.Count(candidate => candidate.JobType == (int)BackgroundJobType.Reindex).ShouldBe(1);
+        var queuedJob = jobs.Single(candidate => candidate.JobId == created.JobId);
+        queuedJob.Definition.ConsumedGeneration.ShouldBe(2);
+        queuedJob.Definition.TargetEventId.ShouldBe(43);
+        queuedJob.Definition.SearchParameters.Select(parameter => parameter.Code)
+            .ShouldBe(["custom", "second"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task GivenActivationRacesTerminalJob_WhenFollowUpRunsUnderLock_ThenExactlyOneFollowUpStarts()
+    {
+        var fixture = CreateFixture();
+        var automation = new ReindexAutomationStateStore(fixture.Repository);
+        await automation.IncrementRequestedGenerationAsync(CancellationToken.None);
+        await automation.IncrementRequestedGenerationAsync(CancellationToken.None);
+        await fixture.Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "ending",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Completing",
+            Definition = fixture.Definition,
+            CreateDate = fixture.Now,
+            HeartbeatDate = fixture.Now
+        }, CancellationToken.None);
+        var command = new CreateReindexJobCommand
+        {
+            Trigger = "FollowUp",
+            LockAlreadyHeld = true,
+            ExcludedActiveJobId = "ending"
+        };
+
+        var first = await fixture.Handler.HandleAsync(command, CancellationToken.None);
+        var second = await fixture.Handler.HandleAsync(command, CancellationToken.None);
+
+        first.ShouldBeOfType<ReindexJobCreatedResult>();
+        second.ShouldBeOfType<ActiveReindexJobResult>();
+        (await fixture.Repository.ListAsync((int)BackgroundJobType.Reindex))
+            .Count(job => job.JobId != "ending").ShouldBe(1);
     }
 
     [Fact]
@@ -230,7 +369,7 @@ public class CreateReindexJobHandlerTests
         job.ErrorMessage.ShouldContain("runtime unavailable");
     }
 
-    private static Fixture CreateFixture()
+    private static Fixture CreateFixture(bool withPendingParameter = true)
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.Mode.Returns(TenantMode.Isolated);
@@ -258,24 +397,27 @@ public class CreateReindexJobHandlerTests
         schema.GetTypeDefinition("Patient").Returns(patient);
         versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(schema);
         var state = new ConformanceState();
-        state.ApplyAndTrack(new SourceEvent(
-            42,
-            "search",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                "http://example.org/SearchParameter/patient-custom",
-                "custom",
-                "Patient",
-                "Patient.id",
-                SearchParamType.String,
-                "example@1.0.0",
-                null,
-                17,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow));
+        if (withPendingParameter)
+        {
+            state.ApplyAndTrack(new SourceEvent(
+                42,
+                "search",
+                nameof(SearchParameterActivated),
+                new SearchParameterActivated(
+                    "http://example.org/SearchParameter/patient-custom",
+                    "custom",
+                    "Patient",
+                    "Patient.id",
+                    SearchParamType.String,
+                    "example@1.0.0",
+                    null,
+                    17,
+                    null,
+                    null,
+                    null,
+                    null),
+                DateTimeOffset.UtcNow));
+        }
         var target = new ReindexTarget(
             "http://example.org/SearchParameter/patient-custom",
             "custom",
@@ -344,6 +486,7 @@ public class CreateReindexJobHandlerTests
                 availability,
                 jobLock,
                 reconciler,
+                new ReindexAutomationStateStore(repository),
                 Options.Create(new ReindexOptions { BarrierDelay = TimeSpan.Zero })),
             repository,
             runtime,

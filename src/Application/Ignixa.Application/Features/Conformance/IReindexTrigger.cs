@@ -6,5 +6,12 @@ namespace Ignixa.Application.Features.Conformance;
 /// </summary>
 public interface IReindexTrigger
 {
-    Task RequestReindexAsync(string reason, CancellationToken cancellationToken);
+    Task<ReindexTriggerResult> RequestReindexAsync(
+        string reason,
+        CancellationToken cancellationToken);
 }
+
+public sealed record ReindexTriggerResult(
+    string? JobId,
+    bool Queued,
+    string? Message);

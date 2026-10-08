@@ -5,6 +5,7 @@
 
 using Autofac;
 using Ignixa.Api.Services;
+using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
@@ -87,7 +88,7 @@ public static class ConformanceServicesRegistration
             .As<IConformanceLease>()
             .SingleInstance();
 
-        builder.RegisterType<NullReindexTrigger>()
+        builder.RegisterType<ReindexTrigger>()
             .As<IReindexTrigger>()
             .SingleInstance();
 

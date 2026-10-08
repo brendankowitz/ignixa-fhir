@@ -73,4 +73,14 @@ public record LoadPackageResult
     /// Whether a phase-two transition schedule was deferred after the durable activation.
     /// </summary>
     public bool TransitionSchedulingDeferred { get; init; }
+
+    public IReadOnlyList<string> PendingReindex { get; init; } = [];
+
+    public string? ReindexJobId { get; init; }
+
+    public string? ReindexStatusUrl { get; init; }
+
+    public bool ReindexQueued { get; init; }
+
+    public string? ReindexMessage { get; init; }
 }

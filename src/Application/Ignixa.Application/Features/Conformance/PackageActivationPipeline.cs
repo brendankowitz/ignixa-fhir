@@ -29,6 +29,7 @@ public class PackageActivationPipeline(
     IOptions<ConformanceTransitionOptions> transitionOptions,
     ConformanceRefreshPublisher refreshPublisher,
     IConformanceLease conformanceLease,
+    IReindexTrigger reindexTrigger,
     ILogger<PackageActivationPipeline> logger)
 {
     private const int TransitionSchedulingAttempts = 3;
@@ -42,6 +43,7 @@ public class PackageActivationPipeline(
     private readonly ConformanceTransitionOptions _transitionOptions = transitionOptions?.Value ?? throw new ArgumentNullException(nameof(transitionOptions));
     private readonly ConformanceRefreshPublisher _refreshPublisher = refreshPublisher ?? throw new ArgumentNullException(nameof(refreshPublisher));
     private readonly IConformanceLease _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
+    private readonly IReindexTrigger _reindexTrigger = reindexTrigger ?? throw new ArgumentNullException(nameof(reindexTrigger));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <summary>
@@ -164,10 +166,20 @@ public class PackageActivationPipeline(
         {
             _conformanceLease.Renew(leaseStart);
         }
+
+        ReindexTriggerResult? reindex = null;
+        if (reindexNeeded.Count > 0)
+        {
+            reindex = await _reindexTrigger.RequestReindexAsync(
+                $"Package {packageId}@{version} activation created Pending search parameters",
+                CancellationToken.None);
+        }
+
         return ActivationResult.Succeeded(
             reindexNeeded,
             localRefreshDeferred: !refreshed,
-            transitionSchedulingDeferred: transitionSchedulingDeferred);
+            transitionSchedulingDeferred: transitionSchedulingDeferred,
+            reindex: reindex);
     }
 
     private async Task<bool> TryScheduleTransitionAsync(long eventId)

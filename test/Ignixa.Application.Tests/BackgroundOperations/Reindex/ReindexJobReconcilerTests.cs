@@ -19,6 +19,53 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexJobReconcilerTests
 {
+    [Fact]
+    public async Task GivenCrashAfterDebouncedJobWasPersisted_WhenStartupReconciles_ThenQueuedJobIsReleasedForRecovery()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-custom";
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        var repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "debounced",
+            OrchestrationInstanceId = "debounced",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Queued",
+            Definition = Definition(target),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        var runtime = Substitute.For<IOrchestrationServiceClient>();
+        runtime.GetOrchestrationStateAsync("debounced", false).Returns([], []);
+        using var jobLock = new TestJobLock();
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var updater = new ReindexJobUpdater(
+            repository,
+            jobLock,
+            Substitute.For<IReindexCompletionHook>());
+        var reconciler = new ReindexJobReconciler(
+            new TaskHubClient(runtime),
+            repository,
+            lifecycle,
+            updater,
+            jobLock,
+            Options.Create(new ReindexOptions { OrphanGrace = TimeSpan.FromMinutes(2) }),
+            TimeProvider.System,
+            NullLogger<ReindexJobReconciler>.Instance);
+
+        await reconciler.ReconcileStartupAsync(CancellationToken.None);
+
+        (await repository.GetAsync("debounced", 1, CancellationToken.None))!
+            .Status.ShouldBe("Failed");
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+    }
+
     [Theory]
     [InlineData("Completed", true, SearchParameterStatus.Enabled)]
     [InlineData("Failed", false, SearchParameterStatus.Pending)]

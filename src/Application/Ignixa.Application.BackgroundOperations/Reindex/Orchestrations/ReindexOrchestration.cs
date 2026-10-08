@@ -14,6 +14,18 @@ public sealed class ReindexOrchestration
         var state = input.State ?? ReindexOrchestrationState.Create(input.TenantIds);
         var scheduledActivities = 0;
 
+        if (!state.DebounceCompleted)
+        {
+            if (input.StartDebounce > TimeSpan.Zero)
+            {
+                await context.CreateTimer(
+                    context.CurrentUtcDateTime.Add(input.StartDebounce),
+                    true);
+            }
+
+            state = state with { DebounceCompleted = true };
+        }
+
         if (!state.Started)
         {
             var retry = CreateRetryOptions();
@@ -36,6 +48,17 @@ public sealed class ReindexOrchestration
                 Started = true,
                 IgnoredLifecycleEvents = started.IgnoredLifecycleEvents
             };
+            if (started.TargetEventId.HasValue &&
+                started.ResourceTypes is not null &&
+                started.Targets is not null)
+            {
+                input = input with
+                {
+                    TargetEventId = started.TargetEventId.Value,
+                    ResourceTypes = started.ResourceTypes,
+                    Targets = started.Targets
+                };
+            }
             ContinueIfNeeded(context, input, state, scheduledActivities);
         }
 
@@ -43,7 +66,9 @@ public sealed class ReindexOrchestration
         {
             try
             {
-                var remaining = input.BarrierDelay;
+                var remaining = input.BarrierDelay > input.StartDebounce
+                    ? input.BarrierDelay - input.StartDebounce
+                    : TimeSpan.Zero;
                 do
                 {
                     var delay = remaining > input.HeartbeatInterval ? input.HeartbeatInterval : remaining;

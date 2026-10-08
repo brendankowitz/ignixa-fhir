@@ -3,7 +3,7 @@ using Ignixa.Application.BackgroundOperations.Reindex.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
-internal static class ReindexMetrics
+public static class ReindexMetrics
 {
     private static readonly Meter Meter = new("Ignixa.Reindex");
     private static readonly Counter<long> ResourcesProcessed =
@@ -20,8 +20,22 @@ internal static class ReindexMetrics
         Meter.CreateHistogram<double>("reindex.job.duration", "s");
     private static readonly Counter<long> ProgressFailures =
         Meter.CreateCounter<long>("reindex.progress.persistence_failures");
+    private static readonly Counter<long> Triggers =
+        Meter.CreateCounter<long>("reindex.triggers");
+    private static readonly Counter<long> QueuedGenerations =
+        Meter.CreateCounter<long>("reindex.queued_generations");
+    private static readonly Counter<long> FollowUps =
+        Meter.CreateCounter<long>("reindex.followup.starts");
 
     public static void ProgressPersistenceFailed() => ProgressFailures.Add(1);
+
+    public static void TriggerStarted(string trigger) =>
+        Triggers.Add(1, new KeyValuePair<string, object?>("trigger", trigger));
+
+    public static void GenerationQueued(long generation) =>
+        QueuedGenerations.Add(1, new KeyValuePair<string, object?>("generation", generation));
+
+    public static void FollowUpStarted() => FollowUps.Add(1);
 
     public static void RangeStarted() => ActiveRanges.Add(1);
 
