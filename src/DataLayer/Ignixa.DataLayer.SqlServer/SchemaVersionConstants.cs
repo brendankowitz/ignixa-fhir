@@ -39,13 +39,25 @@ public static class SchemaVersionConstants
     // identity comparisons and indexes. Existing procedure callers may omit the new optional ContentHash
     // parameter. No core resource tables or TVPs change.
     // Version 4 (expand) -- INCLUDE (ResourceId) on IX_Resource_ResourceTypeId_ResourceSurrgateId --
-    // removes a clustered-index key lookup from chained search and _include. DacFx applies this as a
-    // drop-and-recreate of that nonclustered index; no column or table is dropped and no data is
-    // discarded. The rebuild has no ONLINE = ON option in the DDL, so UpgradeIfNeededAsync's automatic
-    // upgrade path rebuilds the index OFFLINE, holding a schema-modification (Sch-M) lock on
-    // dbo.Resource -- the largest table in the schema -- for the rebuild's entire duration, blocking
-    // all reads and writes against it for every tenant sharing that database. Schedule the automatic
-    // upgrade of large tenants accordingly (e.g. during a maintenance window).
+    // removes a clustered-index key lookup from chained search and _include. No column or table is dropped
+    // and no data is discarded. DacFx can only express the change as DROP INDEX + CREATE INDEX (it drops
+    // first even with ONLINE = ON declared, and ignores DROP_EXISTING), so both upgrade paths --
+    // UpgradeIfNeededAsync and Ignixa.SchemaUpgrade.Cli -- first run ResourceSurrogateIdIndexOnlineMigration,
+    // which converts the index in place with CREATE ... WITH (DROP_EXISTING = ON, ONLINE = ON) when the engine
+    // supports online index operations (Azure SQL Database, Managed Instance, SQL database in Fabric,
+    // Enterprise/Developer), after which the deploy finds nothing to do for it; a populated dbo.Resource
+    // missing the index altogether gets it created ONLINE the same way. The build runs under an exclusive
+    // sp_getapplock, so concurrent upgrades of one tenant wait for it instead of failing with error 1912.
+    // It is not resumable (RESUMABLE is rejected for filtered indexes, error 10671): any interruption rolls it
+    // back and the next attempt restarts from scratch. Its final Sch-M lock waits for open transactions on
+    // dbo.Resource, at low priority for 5 minutes where supported (Azure SQL, SQL Server 2022+). For a large
+    // dbo.Resource run the CLI before rolling out: the Web host builds before serving, and a startup probe
+    // can kill it mid-build. Elsewhere (Standard/Web/Express/Edge) it logs a Warning naming the tenant, index
+    // and reason, and the deploy builds the index offline: no index or uniqueness check between the DROP and
+    // the CREATE, and writes to dbo.Resource blocked while it builds. Also writes
+    // CH_Resource_RawResource_Length's literal as 0x00, the form SQL Server stores, ending the perpetual
+    // drift that made every upgrade re-add that constraint and re-validate it WITH CHECK -- a full scan of
+    // dbo.Resource under a Sch-M lock. No stored definition changes.
     // Version 5 (expand) -- semantic vector search, slice 1. Adds dbo.EmbeddingModel and
     // dbo.VectorSearchParam (Embedding vector(1536), native SQL Database Engine type -- requires Azure SQL
     // Database or SQL Server 2025+; SchemaDeployer refuses to deploy or upgrade onto an engine without it,

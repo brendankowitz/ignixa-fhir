@@ -1,3 +1,6 @@
+-- CH_Resource_RawResource_Length is written 0x00, not 0x0: SQL Server stores the definition as
+-- ([RawResource]>0x00) and DacFx compares the literal textually, so 0x0 made every upgrade drop and re-add the
+-- constraint and then validate it WITH CHECK -- a scan of the whole table under a Sch-M lock.
 CREATE TABLE dbo.Resource (
     ResourceTypeId       SMALLINT        NOT NULL,
     ResourceId           VARCHAR (64)    COLLATE Latin1_General_100_CS_AS NOT NULL,
@@ -11,7 +14,7 @@ CREATE TABLE dbo.Resource (
     SearchParamHash      VARCHAR (64)    NULL,
     TransactionId        BIGINT          NULL,
     HistoryTransactionId BIGINT          NULL CONSTRAINT PKC_Resource PRIMARY KEY CLUSTERED (ResourceTypeId, ResourceSurrogateId) WITH (DATA_COMPRESSION = PAGE) ON PartitionScheme_ResourceTypeId (ResourceTypeId),
-    CONSTRAINT CH_Resource_RawResource_Length CHECK (RawResource > 0x0)
+    CONSTRAINT CH_Resource_RawResource_Length CHECK (RawResource > 0x00)
 );
 
 GO

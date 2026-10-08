@@ -334,17 +334,69 @@ Delivered as a change to the decomposed DDL only
 schema source of truth and the input `Ignixa.Search.Sql.csproj` source-generates `SqlCatalog`
 from. It ships as schema **v4** (`SchemaVersionConstants.CurrentVersion`).
 
-**Rollout risk.** Applying an `INCLUDE` column to an existing nonclustered index is a
-drop-and-recreate, not an in-place alter, and the index has no `ONLINE = ON` option in the DDL.
-`DeployReportClassifier` classifies this change `AutoSafe` (no `DataIssue` columns are reported
-for an index rebuild), so `UpgradeIfNeededAsync` applies it automatically during an existing
-tenant's automatic schema upgrade with no operator gate. On SQL Server, dropping and recreating a
-nonclustered index takes a schema-modification (**Sch-M**) lock on `dbo.Resource` for the
-rebuild's duration — the largest table in the schema — blocking reads and writes against it for
-every tenant sharing that database, not only the one being upgraded. This is a genuine operational
-trade against Option E's independent benefit, and is worth watching on first deployment to a
-database whose `dbo.Resource` is large enough for the rebuild to take noticeable wall-clock time;
-`ONLINE = ON` (Enterprise/Azure SQL) would remove the lock but is not applied today.
+**Rollout.** DacFx can only express an added `INCLUDE` column on an existing index as `DROP INDEX`
+followed by `CREATE INDEX` (verified against this project's dacpac: declaring `WITH (ONLINE = ON)`
+in `Resource.sql` is carried into the `CREATE` but the `DROP` still comes first, and a declared
+`DROP_EXISTING = ON` is ignored). That leaves `dbo.Resource` without the index — and without its
+uniqueness check — between the two statements, and builds the replacement offline, blocking writes
+to `dbo.Resource` for the whole build. So both upgrade paths (`SchemaDeployer.UpgradeIfNeededAsync`
+and `tools/Ignixa.SchemaUpgrade.Cli`) run `ResourceSurrogateIdIndexOnlineMigration` first, before
+the deploy report is generated:
+
+- **Engine supports online index operations** (`SERVERPROPERTY('EngineEdition')` 3 =
+  Enterprise/Developer/Evaluation, 5 = Azure SQL Database — the production target, 8 = Managed
+  Instance, 12 = SQL database in Fabric; 9 = Azure SQL Edge is treated as not capable): the index is
+  converted in place with
+  `CREATE UNIQUE NONCLUSTERED INDEX … INCLUDE (ResourceId) … WITH (DROP_EXISTING = ON, ONLINE = ON)`
+  on the same keys, filter and partition scheme. There is no window without the index, and
+  `dbo.Resource` stays readable and writable while it builds. DacFx then finds nothing to do for the
+  index; `DeployReportClassifier` still classifies the remaining diff `AutoSafe`. If the index is
+  missing altogether from a populated `dbo.Resource`, it is created `ONLINE` the same way (no
+  `DROP_EXISTING`) rather than left to DacFx's offline `CREATE`.
+- **Otherwise** (Standard, Web, Express, Azure SQL Edge, unknown editions): nothing is done early, a
+  Warning naming the tenant, index and reason is logged (printed, in the CLI) before the deploy, and
+  DacFx's offline drop-and-recreate (or offline create, if the index is missing) applies the change.
+
+The step is gated on the stamped version (< 4) and on the index's shape, and the DDL re-checks that
+shape in the same batch, so re-runs and stale plans are no-ops. Fresh databases need nothing: DacFx
+creates the index with the `INCLUDE` directly. In the CLI the build runs only after the operator
+confirms, and its progress (start, the warning that it may take long, finish or "already converted")
+is printed. Its command timeout is unbounded, matching DacFx's own `LongRunningCommandTimeout`, and it
+honours cancellation.
+
+**Concurrent upgrades.** Every Web replica upgrades every SQL tenant at startup, and a second online
+build of the same index fails at once with error 1912 while the first is in progress — so without
+serialisation every replica but one would crash-loop for the duration of the build. The build
+therefore runs under an exclusive, session-owned `sp_getapplock` (no timeout, cancellable, released in
+`finally`, on an unpooled connection so a failed release still ends with the session): the first
+instance builds, the others wait, then find the index already converted and log so. Only this step is
+serialised; the rest of `UpgradeIfNeededAsync` (the DacFx deploy and stamp) still runs concurrently
+across replicas, as it did before this change — see Follow-ups.
+
+**What an operator must plan for.**
+
+- **No resume.** `RESUMABLE = ON` is impossible: SQL Server rejects it for filtered indexes (error
+  10671), and this index is filtered. Any interruption — cancellation, failover, a killed process —
+  rolls the build back (the original index stays) and the next attempt restarts from scratch.
+- **The final Sch-M lock** waits for every open transaction on `dbo.Resource`. Where the engine
+  accepts it (Azure SQL Database, Managed Instance, Fabric, and SQL Server 2022+ —
+  `ProductMajorVersion` ≥ 16) the build uses
+  `ONLINE = ON (WAIT_AT_LOW_PRIORITY (MAX_DURATION = 5 MINUTES, ABORT_AFTER_WAIT = NONE))`: for five
+  minutes the pending Sch-M does not queue new requests behind it (no lock convoy), and after that it
+  continues at normal priority rather than discarding the finished build (`SELF`) or killing
+  application transactions (`BLOCKERS`). Five minutes far outlasts ordinary transactions on
+  `dbo.Resource` and is noise next to the build itself. Older box versions use plain `ONLINE = ON`.
+- **Large tables: run the CLI first.** The Web host runs upgrades before `app.RunAsync`, so the
+  replica serves nothing while the build runs, and a startup/liveness probe can kill it mid-build —
+  which, with no resume, restarts the build from scratch on the next start. For a large
+  `dbo.Resource`, run `tools/Ignixa.SchemaUpgrade.Cli` against each tenant before rolling out the new
+  version; the Web host then finds the tenant at v4 and does nothing. v4 is expand-only, so the
+  build still running in production is unaffected by the converted index.
+
+Schema v4 also writes `CH_Resource_RawResource_Length`'s literal as `0x00`, the form SQL Server
+stores. With `0x0`, DacFx saw a difference on every upgrade and re-added the constraint followed by
+`WITH CHECK CHECK CONSTRAINT` — a scan of all of `dbo.Resource` under a Sch-M lock — so without
+that fix the upgrade would still have blocked `dbo.Resource` regardless of the index.
 
 ## Decision
 
@@ -506,6 +558,16 @@ the same backfill every other data layer does — see
 - **`Ignixa.RepoGuards.Tests.GitIgnoreSourcePathsTests` worktree failure** — `FindRepoRoot()`
   requires a `.git` directory, but `.git` is a file in a git worktree; fix by accepting both
   `File.Exists(".git")` and `Directory.Exists(".git")`, or by using `git rev-parse --show-toplevel`.
+- **Schema upgrades are not serialised across replicas** — pre-existing. Only the v4 online index
+  build takes an application lock; the rest of `SchemaDeployer.UpgradeIfNeededAsync` (deploy report,
+  DacFx deploy, version stamp) runs concurrently on every Web replica that starts against a tenant
+  behind the current version. Wrapping the whole upgrade in a per-database `sp_getapplock` (and
+  re-reading the stamped version once it is held) would make concurrent startups converge on one
+  deploy.
+- **Perpetual `dbo.ResourceChangeData` rebuild and partition drift** — pre-existing. Every upgrade's
+  deploy report includes a `TableRebuild` of `dbo.ResourceChangeData` and changes to the partition
+  function/scheme, because the deployed state never matches the project's declaration. Each upgrade
+  therefore rebuilds that table. Unrelated to v4; needs its own drift fix.
 
 ## References
 

@@ -99,6 +99,42 @@ tenant connection string supplied as
 classification that is printed, and the classification never suppresses the prompt.
 :::
 
+## Schema v4: the `ResourceId` index conversion
+
+Schema v4 adds `INCLUDE (ResourceId)` to `IX_Resource_ResourceTypeId_ResourceSurrgateId` on
+`dbo.Resource`. DacFx can only express that as `DROP INDEX` followed by `CREATE INDEX`, which would
+leave `dbo.Resource` without the index — and its uniqueness check — between the two statements, and
+rebuild the replacement offline. So before the deploy report above is generated, both upgrade paths
+(`SchemaDeployer.UpgradeIfNeededAsync` and this CLI) run a pre-deploy step that converts the index
+itself:
+
+- **Online-capable editions** — Azure SQL Database, Azure SQL Managed Instance, SQL database in
+  Microsoft Fabric, and box SQL Server Enterprise/Developer/Evaluation — convert the index in place
+  with `CREATE INDEX ... WITH (DROP_EXISTING = ON, ONLINE = ON)`. There is no window without the
+  index, and `dbo.Resource` stays readable and writable while it builds. On SQL Server 2022+ and the
+  Azure engines, the build's final Sch-M lock additionally waits `WAIT_AT_LOW_PRIORITY` for up to 5
+  minutes, so it does not queue new requests behind it for the duration of the wait.
+- **Other editions** (Standard, Web, Express, Azure SQL Edge, or an edition this check does not
+  recognize) cannot do the conversion online. The step logs a Warning — printed to this CLI's output
+  before you confirm, and again when the plan is applied — and leaves DacFx to rebuild the index
+  **offline**: writes to `dbo.Resource` are blocked for the whole build.
+
+**Concurrent replicas.** Every Web replica upgrades every tenant at startup, and a second online build
+of the same index fails at once (error 1912) while one is already running. The step serializes itself
+with an application lock scoped to the tenant database: the first instance builds, the rest wait, then
+find the index already converted and do nothing.
+
+**No resume.** The build is not resumable — SQL Server rejects `RESUMABLE = ON` for filtered indexes,
+and this index is filtered. If it is interrupted (cancellation, a failover, a killed process), the
+original index is left in place and the next attempt restarts the build from scratch.
+
+:::warning
+For a large `dbo.Resource`, run this CLI against each tenant **before** rolling out the new
+application version, rather than relying on the automatic upgrade at startup. The Web host runs the
+upgrade before it serves requests, so a startup or liveness probe can kill the replica mid-build —
+and with no resume, that restarts the build from scratch on the next start.
+:::
+
 ## Exit codes
 
 | Code | Meaning |

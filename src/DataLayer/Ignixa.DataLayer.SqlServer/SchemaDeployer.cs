@@ -134,7 +134,18 @@ public sealed class SchemaDeployer : ISchemaDeployer
                 "Apply the upgrade manually using the schema-upgrade CLI tool, or enable automatic deployment.");
         }
 
+        // Before the online index pre-migration below: on an engine without the vector type the deploy
+        // cannot succeed, so it must fail here, before anything in the tenant database has been changed.
         await EnsureVectorTypeSupportedAsync(connectionString, cancellationToken);
+
+        // Before the deploy report, so the report -- and the classification and deploy that follow it --
+        // describe the diff that actually remains once the index has been converted online. The
+        // conversion produces exactly the dacpac's own shape for that index, so it stays in place even if
+        // the classification below then refuses the rest of the diff.
+        var indexMigrationPlan = await ResourceSurrogateIdIndexOnlineMigration.PlanAsync(
+            connectionString, currentVersion, cancellationToken);
+        await ResourceSurrogateIdIndexOnlineMigration.ApplyAsync(
+            connectionString, indexMigrationPlan, tenantId, _logger, cancellationToken);
 
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream(DacpacResourceName)
             ?? throw new InvalidOperationException($"Embedded resource '{DacpacResourceName}' not found in {typeof(SchemaDeployer).Assembly.FullName}.");
