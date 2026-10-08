@@ -198,7 +198,7 @@ public class SchemaDeployerUpgradeTests
     private const string OldDacpacFixtureFileName = "phase-b-pre-task9-schema.dacpac";
 
     [SkippableFact]
-    public async Task GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenUpgradesToCurrentAndStampsTheVersion()
+    public async Task GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenRequiresManualUpgrade()
     {
         // Arrange -- a real, empty, freshly-created database.
         var databaseName = $"SchemaDeployerUpgradeTest_{Guid.NewGuid():N}";
@@ -232,20 +232,20 @@ public class SchemaDeployerUpgradeTests
 
             var deployer = CreateDeployer(connectionString);
 
-            // Act -- the pending diff is pure net-new tables/columns (TermCodeSystem etc.), no
-            // drops, so it must classify as auto-safe and apply without throwing.
-            await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
+            // The current model retires dbo.ReindexJob, so this legacy database has a
+            // data-loss-classified drop pending. Automatic deployment must direct operators to
+            // the CLI rather than deleting the table.
+            var ex = await Should.ThrowAsync<InvalidOperationException>(
+                () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
 
-            // Assert
-            var tableNamesAfterUpgrade = await GetTableNamesAsync(connectionString, CancellationToken.None);
-            tableNamesAfterUpgrade.ShouldContain("TermCodeSystem");
-            tableNamesAfterUpgrade.ShouldContain("SchemaVersion");
+            ex.Message.ShouldContain("tools/Ignixa.SchemaUpgrade.Cli");
 
-            var schemaVersionRowCount = await GetSchemaVersionRowCountAsync(connectionString, CancellationToken.None);
-            schemaVersionRowCount.ShouldBe(1);
+            var tableNamesAfterAttempt = await GetTableNamesAsync(connectionString, CancellationToken.None);
+            tableNamesAfterAttempt.ShouldNotContain("TermCodeSystem");
+            tableNamesAfterAttempt.ShouldNotContain("SchemaVersion");
 
-            var versionAfterUpgrade = await resolver.GetCurrentVersionAsync(1, CancellationToken.None);
-            versionAfterUpgrade.ShouldBe(SchemaVersionConstants.CurrentVersion);
+            var versionAfterAttempt = await resolver.GetCurrentVersionAsync(1, CancellationToken.None);
+            versionAfterAttempt.ShouldBe(0);
         }
         finally
         {

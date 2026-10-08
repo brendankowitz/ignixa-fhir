@@ -167,6 +167,45 @@ public class SchemaDeployerDeploymentTests
     }
 
     [SkippableFact]
+    public async Task GivenAnEmptyDatabase_WhenDeployIfEmptyAsyncCalled_ThenDoesNotCreateLegacyReindexObjects()
+    {
+        var databaseName = $"SchemaDeployerTest_{Guid.NewGuid():N}";
+        var connectionString = BuildConnectionStringForDatabase(databaseName);
+        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
+
+        try
+        {
+            var deployer = CreateDeployer(connectionString, automaticSchemaDeploymentEnabled: true);
+            await deployer.DeployIfEmptyAsync(1, CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync(CancellationToken.None);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT name
+                FROM sys.objects
+                WHERE schema_id = SCHEMA_ID('dbo')
+                  AND name IN
+                      ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob',
+                       'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
+                """;
+            await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+
+            var names = new List<string>();
+            while (await reader.ReadAsync(CancellationToken.None))
+            {
+                names.Add(reader.GetString(0));
+            }
+
+            names.ShouldBeEmpty();
+        }
+        finally
+        {
+            await DropDatabaseAsync(databaseName, CancellationToken.None);
+        }
+    }
+
+    [SkippableFact]
     public async Task GivenANonEmptyDatabase_WhenDeployIfEmptyAsyncCalled_ThenDoesNotAttemptDeploy()
     {
         // Arrange -- a database that already has the Resource table (deploy once, then call again).

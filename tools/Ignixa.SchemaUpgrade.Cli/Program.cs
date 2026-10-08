@@ -92,6 +92,7 @@ internal static class Program
         var deployOptions = new DacDeployOptions
         {
             BlockOnPossibleDataLoss = !allowDataLoss,
+            DropObjectsNotInSource = true,
             AllowIncompatiblePlatform = allowIncompatiblePlatform,
         };
 

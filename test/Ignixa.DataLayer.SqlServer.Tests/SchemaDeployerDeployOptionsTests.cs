@@ -89,4 +89,13 @@ public class SchemaDeployerDeployOptionsTests
     {
         CreateDeployer(environmentName).CreateDeployOptions().BlockOnPossibleDataLoss.ShouldBeTrue();
     }
+
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Test")]
+    [InlineData("Production")]
+    public void GivenAnyEnvironment_WhenBuildingDeployOptions_ThenObjectsAbsentFromTheDacpacAreDropped(string environmentName)
+    {
+        CreateDeployer(environmentName).CreateDeployOptions().DropObjectsNotInSource.ShouldBeTrue();
+    }
 }

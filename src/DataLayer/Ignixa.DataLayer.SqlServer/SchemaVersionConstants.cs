@@ -9,7 +9,7 @@ namespace Ignixa.DataLayer.SqlServer;
 public static class SchemaVersionConstants
 {
     /// <summary>The schema version this build's dacpac represents.</summary>
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
 
     /// <summary>
     /// The oldest tenant schema version this build still tolerates reading an
@@ -42,4 +42,8 @@ public static class SchemaVersionConstants
     // claim and typed-index inserts after its current-resource update rejects a superseded surrogate.
     // Version 5 (expand, unreleased) -- BackgroundJobs.RowVersion fences optimistic progress and
     // heartbeat updates without serializing range workers through the singleton reindex lock.
+    // Version 6 (contract, unreleased) -- retires the unused legacy reindex table, its five
+    // procedures, and the unused bulk reindex TVP. DacFx drops these model-absent objects;
+    // because dropping the table may discard legacy job records, automatic deployment refuses the
+    // diff and operators must use the schema-upgrade CLI with --allow-data-loss.
 }

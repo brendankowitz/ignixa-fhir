@@ -9,9 +9,10 @@ When a SearchParameter is added, changed, or removed (for example by installing 
 `SearchParameter`), resources that already exist keep the index rows extracted under the old definitions.
 Ignixa has no way to bring those rows up to date:
 
-- **There is no reindex runner.** `ReindexJob.sql`, its five stored procedures, `UpdateResourceSearchParams.sql`,
-  and the `SearchParameterReindex{Started,Completed,Failed}` events all exist, but no C# code uses them.
-  `EternalOrchestrationStarter.cs:55` contains a commented-out `ReindexOrchestration`.
+- **Legacy job storage is retired.** Reindex work is tracked as `BackgroundJob` entries with
+  `BackgroundJobType.Reindex` and executed by DurableTask. Schema version 6 removes the unused
+  `ReindexJob` table, its five stored procedures, and its unused bulk TVP. `UpdateResourceSearchParams`
+  remains the index-only writer.
 - **Partially indexed parameters give wrong results without warning.** `ConformanceState` sets package parameters
   to `Pending`, but `CompositeSearchParameterDefinitionManager` admits `Enabled` *and* `Pending`. Also, the
   "searchable" resolver in `SearchServicesRegistration.cs:211` returns the full manager, so
