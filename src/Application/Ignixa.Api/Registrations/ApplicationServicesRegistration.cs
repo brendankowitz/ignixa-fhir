@@ -193,10 +193,6 @@ public static class ApplicationServicesRegistration
             .As<IRequestHandler<GetResourceQuery, SearchEntryResult?>>()
             .InstancePerDependency();
 
-        builder.RegisterType<ReindexSingleResourceHandler>()
-            .As<IRequestHandler<ReindexSingleResourceCommand, ReindexSingleResourceResult>>()
-            .InstancePerDependency();
-
         builder.RegisterType<CreateOrUpdateResourceHandler>()
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()
             .InstancePerDependency();

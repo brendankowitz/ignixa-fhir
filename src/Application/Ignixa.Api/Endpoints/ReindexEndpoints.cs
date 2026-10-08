@@ -8,8 +8,6 @@ using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Reindex;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
-using Ignixa.Search.Indexing;
-using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
@@ -46,16 +44,6 @@ public static class ReindexEndpoints
         systemEndpoints.MapGet("/$reindex", ListSystemAsync).WithName("ListReindex");
         systemEndpoints.MapGet("/$reindex/{jobId}", GetSystemAsync).WithName("GetReindex");
         systemEndpoints.MapDelete("/$reindex/{jobId}", CancelSystemAsync).WithName("CancelReindex");
-        tenantEndpoints.MapGet("/{resourceType}/{id}/$reindex", GetSingleForTenantAsync)
-            .WithMetadata(RequireReadAuthorizationMetadata.Instance)
-            .WithName("GetSingleResourceReindexForTenant");
-        tenantEndpoints.MapPost("/{resourceType}/{id}/$reindex", PostSingleForTenantAsync)
-            .WithName("PostSingleResourceReindexForTenant");
-        systemEndpoints.MapGet("/{resourceType}/{id}/$reindex", GetSingleSystemAsync)
-            .WithMetadata(RequireReadAuthorizationMetadata.Instance)
-            .WithName("GetSingleResourceReindex");
-        systemEndpoints.MapPost("/{resourceType}/{id}/$reindex", PostSingleSystemAsync)
-            .WithName("PostSingleResourceReindex");
 
         return endpoints;
     }
@@ -102,34 +90,6 @@ public static class ReindexEndpoints
             () => ResolveTenantAsync(context, _ => CancelAsync(context, jobId, mediator, cancellationToken)),
             cancellationToken);
 
-    private static Task<IResult> GetSingleSystemAsync(
-        HttpContext context,
-        string resourceType,
-        string id,
-        [FromServices] IMediator mediator,
-        [FromServices] IReindexAvailability availability,
-        CancellationToken cancellationToken) =>
-        ExecuteWhenAvailableAsync(
-            availability,
-            () => ResolveTenantAsync(
-                context,
-                _ => ReindexSingleAsync(context, resourceType, id, persist: false, mediator, cancellationToken)),
-            cancellationToken);
-
-    private static Task<IResult> PostSingleSystemAsync(
-        HttpContext context,
-        string resourceType,
-        string id,
-        [FromServices] IMediator mediator,
-        [FromServices] IReindexAvailability availability,
-        CancellationToken cancellationToken) =>
-        ExecuteWhenAvailableAsync(
-            availability,
-            () => ResolveTenantAsync(
-                context,
-                _ => ReindexSingleAsync(context, resourceType, id, persist: true, mediator, cancellationToken)),
-            cancellationToken);
-
     private static Task<IResult> CreateForTenantAsync(
         HttpContext context,
         int tenantId,
@@ -174,36 +134,6 @@ public static class ReindexEndpoints
         ExecuteWhenAvailableAsync(
             availability,
             () => ValidateTenantAsync(tenantId, () => CancelAsync(context, jobId, mediator, cancellationToken)),
-            cancellationToken);
-
-    private static Task<IResult> GetSingleForTenantAsync(
-        HttpContext context,
-        int tenantId,
-        string resourceType,
-        string id,
-        [FromServices] IMediator mediator,
-        [FromServices] IReindexAvailability availability,
-        CancellationToken cancellationToken) =>
-        ExecuteWhenAvailableAsync(
-            availability,
-            () => ValidateTenantAsync(
-                tenantId,
-                () => ReindexSingleAsync(context, resourceType, id, persist: false, mediator, cancellationToken)),
-            cancellationToken);
-
-    private static Task<IResult> PostSingleForTenantAsync(
-        HttpContext context,
-        int tenantId,
-        string resourceType,
-        string id,
-        [FromServices] IMediator mediator,
-        [FromServices] IReindexAvailability availability,
-        CancellationToken cancellationToken) =>
-        ExecuteWhenAvailableAsync(
-            availability,
-            () => ValidateTenantAsync(
-                tenantId,
-                () => ReindexSingleAsync(context, resourceType, id, persist: true, mediator, cancellationToken)),
             cancellationToken);
 
     private static async Task<IResult> CreateAsync(
@@ -317,32 +247,6 @@ public static class ReindexEndpoints
                 StatusCodes.Status409Conflict,
                 $"Reindex job '{terminal.JobId}' is already terminal with status '{terminal.Status}'."),
             _ => throw new InvalidOperationException($"Unhandled cancellation result {result.GetType().Name}.")
-        };
-    }
-
-    private static async Task<IResult> ReindexSingleAsync(
-        HttpContext context,
-        string resourceType,
-        string id,
-        bool persist,
-        IMediator mediator,
-        CancellationToken cancellationToken)
-    {
-        var result = await mediator.SendAsync(
-            new ReindexSingleResourceCommand(resourceType, id, persist),
-            cancellationToken);
-        return result switch
-        {
-            ReindexSingleResourceCompletedResult completed when completed.Conflicted =>
-                Error(StatusCodes.Status409Conflict, "The resource changed while its search indices were being reindexed."),
-            ReindexSingleResourceCompletedResult completed =>
-                FhirResponse(StatusCodes.Status200OK, BuildSingleResourceParameters(completed.Indices)),
-            ReindexSingleResourceNotFoundResult =>
-                Error(StatusCodes.Status404NotFound, $"Resource '{resourceType}/{id}' was not found."),
-            ReindexSingleResourceDeletedResult =>
-                Error(StatusCodes.Status410Gone, $"Resource '{resourceType}/{id}' has been deleted."),
-            ReindexSingleResourceProviderUnavailableResult => Unsupported(),
-            _ => throw new InvalidOperationException($"Unhandled single-resource reindex result {result.GetType().Name}.")
         };
     }
 
@@ -573,47 +477,6 @@ public static class ReindexEndpoints
         AddValue(parameters["parameter"]!.AsArray(), "status", "valueString", "Cancelled");
         return parameters;
     }
-
-    private static JsonObject BuildSingleResourceParameters(
-        IReadOnlyList<SearchIndexEntry> indices)
-    {
-        var parameters = new JsonObject
-        {
-            ["resourceType"] = "Parameters",
-            ["parameter"] = new JsonArray()
-        };
-        var values = parameters["parameter"]!.AsArray();
-        foreach (var index in indices)
-        {
-            var parts = new JsonArray();
-            AddValue(parts, "code", "valueCode", index.SearchParameter.Code);
-            AddValue(parts, "type", "valueCode", index.SearchParameter.Type.ToString());
-            AddValue(parts, "value", "valueString", FormatIndexValue(index.Value));
-            values.Add(new JsonObject { ["name"] = "index", ["part"] = parts });
-        }
-
-        return parameters;
-    }
-
-    private static string FormatIndexValue(ISearchValue value) =>
-        value switch
-        {
-            TokenSearchValue token => $"{token.System ?? string.Empty}|{token.Code ?? token.Text ?? string.Empty}",
-            QuantitySearchValue quantity =>
-                $"{FormatRange(quantity.Low, quantity.High)}|{quantity.System ?? string.Empty}|{quantity.Code ?? string.Empty}",
-            DateTimeSearchValue date => $"{date.Start:O}/{date.End:O}",
-            NumberSearchValue number => FormatRange(number.Low, number.High),
-            ReferenceSearchValue reference => reference.ToString(),
-            CompositeIndexSearchValue composite => System.Text.Json.JsonSerializer.Serialize(
-                composite.Components.Select(component => component.Select(FormatIndexValue))),
-            _ => value.ToString() ?? string.Empty
-        };
-
-    private static string FormatRange<T>(T? low, T? high)
-        where T : struct, IFormattable =>
-        Nullable.Equals(low, high)
-            ? low?.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty
-            : $"{low?.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty}..{high?.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty}";
 
     private static JsonObject BuildJobPart(ReindexStatusResult status, FhirVersion fhirVersion)
     {

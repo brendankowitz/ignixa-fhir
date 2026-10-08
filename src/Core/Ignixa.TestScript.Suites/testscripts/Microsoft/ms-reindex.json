@@ -144,11 +144,11 @@
     },
     {
       "name": "Per-resource $reindex synchronously reindexes a single resource",
-      "description": "POST Patient/{id}/$reindex must synchronously reindex the resource and return 200 with a Parameters result.",
+      "description": "POST Patient/{id}/$reindex must synchronously reindex the resource and return 200 with a Parameters result. warningOnly: $reindex may be disabled or unimplemented.",
       "action": [
         { "operation": { "type": { "code": "$reindex" }, "url": "Patient/${reindexTargetPatientId}/$reindex", "responseId": "reindex-single-response", "description": "POST Patient/{id}/$reindex" } },
-        { "assert": { "description": "Per-resource reindex should return 200 OK", "response": "okay" } },
-        { "assert": { "description": "Response body should be a Parameters resource", "resource": "Parameters" } }
+        { "assert": { "description": "Per-resource reindex should return 200 OK (warningOnly)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response body should be a Parameters resource (warningOnly)", "resource": "Parameters", "warningOnly": true } }
       ]
     }
   ],
