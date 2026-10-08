@@ -38,7 +38,19 @@ public class PackageUnloadedNotificationHandler : INotificationHandler<IPackageU
             "Handling PackageUnloaded event: {PackageId}@{Version} (tenant {TenantId})",
             evt.PackageId, evt.PackageVersion, evt.TenantId);
 
-        await _refreshPublisher.RefreshCurrentAsync(cancellationToken);
+        try
+        {
+            await _refreshPublisher.RefreshCurrentAsync(cancellationToken);
+        }
+        catch (ConformanceConsumerRefreshException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Package {PackageId}@{Version} unloaded durably, but local conformance refresh is deferred",
+                evt.PackageId,
+                evt.PackageVersion);
+            return;
+        }
 
         _logger.LogInformation(
             "Conformance snapshot refreshed for unloaded {PackageId} (tenant {TenantId})",

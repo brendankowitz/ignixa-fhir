@@ -12,6 +12,7 @@ public sealed class ConformanceRefreshPublisher(
 {
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private long _publishedGeneration = -1;
+    private bool _forcePending;
 
     public Task<long> RefreshUntilCurrentAsync(CancellationToken cancellationToken) =>
         RefreshAsync(forceRefresh: false, cancellationToken);
@@ -31,7 +32,9 @@ public sealed class ConformanceRefreshPublisher(
                 using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
                 {
                     generation = conformanceState.LastProcessedEventId;
-                    if (!forceRefresh && generation <= Interlocked.Read(ref _publishedGeneration))
+                    if (!forceRefresh &&
+                        !_forcePending &&
+                        generation <= Interlocked.Read(ref _publishedGeneration))
                     {
                         return generation;
                     }
@@ -39,10 +42,19 @@ public sealed class ConformanceRefreshPublisher(
                     stateSnapshot = conformanceState.CreateSnapshot();
                 }
 
-                var consumerSnapshot = await cacheRefresher.BuildSnapshotAsync(
-                    stateSnapshot,
-                    generation,
-                    cancellationToken);
+                IConformanceConsumerSnapshot consumerSnapshot;
+                try
+                {
+                    consumerSnapshot = await cacheRefresher.BuildSnapshotAsync(
+                        stateSnapshot,
+                        generation,
+                        cancellationToken);
+                }
+                catch (ConformanceConsumerRefreshException) when (forceRefresh)
+                {
+                    _forcePending = true;
+                    throw;
+                }
 
                 using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
                 {
@@ -57,11 +69,12 @@ public sealed class ConformanceRefreshPublisher(
 
                     cacheRefresher.PublishSnapshot(consumerSnapshot);
                     Interlocked.Exchange(ref _publishedGeneration, generation);
+                    _forcePending = false;
                 }
 
                 await cacheRefresher.InvalidatePublishedSnapshotCachesAsync(
                     consumerSnapshot,
-                    cancellationToken);
+                    CancellationToken.None);
                 return generation;
             }
         }

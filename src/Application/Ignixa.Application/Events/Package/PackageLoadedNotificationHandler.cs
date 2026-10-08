@@ -37,7 +37,26 @@ public class PackageLoadedNotificationHandler : INotificationHandler<IPackageLoa
         _logger.LogInformation(
             "Handling PackageLoaded event: {PackageId}@{Version} (tenant {TenantId})",
             evt.PackageId, evt.PackageVersion, evt.TenantId);
-        await _refreshPublisher.RefreshCurrentAsync(cancellationToken);
+        try
+        {
+            if (evt.RequiresConformanceRefresh)
+            {
+                await _refreshPublisher.RefreshCurrentAsync(cancellationToken);
+            }
+            else
+            {
+                await _refreshPublisher.RefreshUntilCurrentAsync(cancellationToken);
+            }
+        }
+        catch (ConformanceConsumerRefreshException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Package {PackageId}@{Version} loaded durably, but local conformance refresh is deferred",
+                evt.PackageId,
+                evt.PackageVersion);
+            return;
+        }
 
         _logger.LogInformation(
             "Conformance snapshot refreshed for {PackageId} (tenant {TenantId})",

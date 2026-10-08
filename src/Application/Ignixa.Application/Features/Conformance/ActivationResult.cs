@@ -31,6 +31,11 @@ public record ActivationResult
     public bool LocalRefreshDeferred { get; init; }
 
     /// <summary>
+    /// Whether activation published its conformance consumers locally.
+    /// </summary>
+    public bool ConformancePublished { get; init; }
+
+    /// <summary>
     /// Whether activation is durable but at least one phase-two transition schedule will be retried by the watchdog.
     /// </summary>
     public bool TransitionSchedulingDeferred { get; init; }
@@ -50,12 +55,14 @@ public record ActivationResult
         IReadOnlyList<string>? pendingReindex = null,
         bool localRefreshDeferred = false,
         bool transitionSchedulingDeferred = false,
-        ReindexTriggerResult? reindex = null) =>
+        ReindexTriggerResult? reindex = null,
+        bool conformancePublished = false) =>
         new()
         {
             Success = true,
             PendingReindex = pendingReindex ?? [],
             LocalRefreshDeferred = localRefreshDeferred,
+            ConformancePublished = conformancePublished,
             TransitionSchedulingDeferred = transitionSchedulingDeferred,
             ReindexJobId = reindex?.JobId,
             ReindexQueued = reindex?.Queued ?? false,

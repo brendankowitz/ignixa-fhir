@@ -26,13 +26,15 @@ public class CapabilityStatementServiceTests
             new CapabilityStatementJsonNode(),
             "profiles",
             DateTimeOffset.UtcNow);
-        await cache.SetAsync("profiles:1", profileEntry, TimeSpan.FromMinutes(5), CancellationToken.None);
+        await cache.SetAsync("profiles:1:11:37", profileEntry, TimeSpan.FromMinutes(5), CancellationToken.None);
+        await cache.SetAsync("profiles:1:11:38", profileEntry, TimeSpan.FromMinutes(5), CancellationToken.None);
         var versionContext = Substitute.For<IFhirVersionContext>();
         versionContext.GetDefinitionsHandle(FhirVersion.R4, 1)
             .Returns(new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
-                DefinitionsEventId: 11));
+                DefinitionsEventId: 11,
+                PublicationSequence: 37));
         var service = new CapabilityStatementService(
             [],
             cache,
@@ -45,7 +47,8 @@ public class CapabilityStatementServiceTests
             new CapabilityContext(FhirVersion.R4, TenantId: 1),
             CancellationToken.None);
 
-        (await cache.GetAsync("profiles:1", CancellationToken.None)).ShouldBeNull();
+        (await cache.GetAsync("profiles:1:11:37", CancellationToken.None)).ShouldBeNull();
+        (await cache.GetAsync("profiles:1:11:38", CancellationToken.None)).ShouldNotBeNull();
     }
 
     [Fact]

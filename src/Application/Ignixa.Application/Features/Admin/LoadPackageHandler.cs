@@ -155,7 +155,8 @@ public class LoadPackageHandler(
                     PackageId: result.PackageId,
                     PackageVersion: result.PackageVersion,
                     TenantId: int.Parse(request.TenantId),
-                    LoadedAt: DateTimeOffset.UtcNow),
+                    LoadedAt: DateTimeOffset.UtcNow,
+                    RequiresConformanceRefresh: !activationResult.ConformancePublished),
                 cancellationToken);
 
             _logger.LogDebug("Published PackageLoaded event for {PackageId}@{Version}", result.PackageId, result.PackageVersion);
