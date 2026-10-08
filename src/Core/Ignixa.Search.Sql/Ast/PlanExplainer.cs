@@ -323,7 +323,11 @@ public static class PlanExplainer
 
     private static string PrintIncludeStage(IncludeStage stage)
     {
-        var refParam = stage.ReferenceSearchParamId is { } id ? $"{id}" : "*";
+        var refParam = stage.ReferenceSearchParamId is { } id
+            ? $"{id}"
+            : stage.WildcardReferenceSearchParamIds is { } wildcardIds
+                ? $"[{string.Join(",", wildcardIds)}]"
+                : "*";
         var seedTypes = stage.SeedTypeIds is null ? "*" : $"[{string.Join(",", stage.SeedTypeIds)}]";
         var outputTypes = stage.OutputTypeIds is null ? "*" : $"[{string.Join(",", stage.OutputTypeIds)}]";
         var seedStageLabels = stage.SeedStages.Select(IncludeLabel);

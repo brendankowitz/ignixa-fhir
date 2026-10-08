@@ -78,8 +78,11 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
             targetResourceType = resourceTypes[0];
         }
 
+        ImmutableArray<SearchParameterInfo> wildcardReferenceSearchParameters = syntax.Wildcard
+            ? ResolveWildcardReferenceSearchParameters(resourceTypes, syntax.SourceResourceType, isReversed)
+            : [];
         ImmutableArray<string> referencedTypes = syntax.Wildcard
-            ? ResolveWildcardReferencedTypes(resourceTypes)
+            ? ResolveWildcardReferencedTypes(wildcardReferenceSearchParameters)
             : ImmutableArray<string>.Empty;
 
         return new BoundIncludeKey(
@@ -87,6 +90,7 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
             syntax.SourceResourceType,
             targetResourceType,
             referencedTypes,
+            wildcardReferenceSearchParameters,
             syntax.Wildcard);
     }
 
@@ -315,13 +319,34 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
         }
     }
 
-    private ImmutableArray<string> ResolveWildcardReferencedTypes(string[] resourceTypes)
+    private ImmutableArray<SearchParameterInfo> ResolveWildcardReferenceSearchParameters(
+        string[] resourceTypes,
+        string sourceResourceType,
+        bool isReversed)
+    {
+        IEnumerable<SearchParameterInfo> candidates = sourceResourceType switch
+        {
+            "*" when isReversed => definitionManager.AllSearchParameters,
+            "*" => resourceTypes.SelectMany(definitionManager.GetSearchParameters),
+            _ => definitionManager.GetSearchParameters(sourceResourceType),
+        };
+
+        return candidates
+            .Where(parameter =>
+                parameter.Type == SearchParamType.Reference &&
+                parameter.IsSearchable &&
+                !parameter.IsHiddenByTransition &&
+                parameter.Url is not null)
+            .DistinctBy(parameter => parameter.Url)
+            .ToImmutableArray();
+    }
+
+    private static ImmutableArray<string> ResolveWildcardReferencedTypes(
+        ImmutableArray<SearchParameterInfo> searchParameters)
     {
         var referencedTypes = new List<string>();
 
-        foreach (SearchParameterInfo searchParameter in resourceTypes
-                     .SelectMany(resourceType => definitionManager.GetSearchParameters(resourceType))
-                     .Where(searchParameter => searchParameter.Type == SearchParamType.Reference))
+        foreach (SearchParameterInfo searchParameter in searchParameters)
         {
             foreach (string targetResourceType in searchParameter.TargetResourceTypes)
             {
