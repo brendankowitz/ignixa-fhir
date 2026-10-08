@@ -44,6 +44,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ConformanceState? _conformanceState;
     private readonly IFhirBaseUriProvider _baseUriProvider;
     private readonly ILogger<FhirVersionContext> _logger;
+    private long _conformancePublicationSequence;
     private bool _disposed;
 
     /// <param name="baseUriProvider">
@@ -353,7 +354,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         return new ConformanceDefinitionsSnapshot(
             extractionDefinitions,
             searchableDefinitions,
-            new DefinitionsHandle(indexer, schemaProvider, generation));
+            new DefinitionsHandle(indexer, schemaProvider, generation),
+            Interlocked.Increment(ref _conformancePublicationSequence));
     }
 
     /// <inheritdoc/>
@@ -363,7 +365,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         ConformanceDefinitionsSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        var slot = _conformanceDefinitions.AddOrUpdate(
+        _conformanceDefinitions.AddOrUpdate(
             (fhirVersion, tenantId),
             _ => new ConformanceDefinitionsSnapshotSlot(snapshot),
             (_, slot) =>
@@ -371,9 +373,6 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
                 slot.Publish(snapshot);
                 return slot;
             });
-        _compositeProviderRegistry?.RegisterProvider(
-            tenantId,
-            slot.Current.Handle.SchemaProvider);
     }
 
     /// <inheritdoc/>

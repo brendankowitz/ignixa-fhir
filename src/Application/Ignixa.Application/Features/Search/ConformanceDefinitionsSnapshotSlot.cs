@@ -25,7 +25,9 @@ internal sealed class ConformanceDefinitionsSnapshotSlot
         while (true)
         {
             var current = Volatile.Read(ref _current);
-            if (snapshot.Generation <= current.Generation)
+            if (snapshot.Generation < current.Generation ||
+                (snapshot.Generation == current.Generation &&
+                 snapshot.PublicationSequence <= current.PublicationSequence))
             {
                 return;
             }

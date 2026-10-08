@@ -16,7 +16,7 @@ namespace Ignixa.Application.Tests.Features.Specification;
 public class ConformanceSchemaRefreshTests
 {
     [Fact]
-    public async Task GivenPublishedSnapshotWithWarmPackageModel_WhenPackageInvalidates_ThenModelIsImmediatelyRemoved()
+    public void GivenHandleAcquiredBeforePackageUnload_WhenSameGenerationSnapshotPublishes_ThenOldHandleIsImmutableAndCurrentSnapshotReflectsUnload()
     {
         var repository = Substitute.For<IPackageResourceRepository>();
         repository.GetAllStructureDefinitionsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
@@ -27,32 +27,36 @@ public class ConformanceSchemaRefreshTests
                 Canonical = "https://sql-on-fhir.org/ig/StructureDefinition/ViewDefinition",
                 ResourceJson = ViewDefinitionAdapterConversionTests.LoadEmbeddedDefinition()
             }]);
-        using var registry = new CompositeSchemaProviderRegistry(
-            NullLogger<CompositeSchemaProviderRegistry>.Instance, TimeSpan.FromMinutes(1));
         using var context = new FhirVersionContext(
             NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions(),
             NullFhirBaseUriProvider.Instance,
             repository,
-            new PackageResourceProvider(NullLogger<PackageResourceProvider>.Instance),
-            registry);
+            new PackageResourceProvider(NullLogger<PackageResourceProvider>.Instance));
         using var state = new ConformanceState();
-        var snapshot = context.CreateConformanceDefinitionsSnapshot(
+        var publishedSnapshot = context.CreateConformanceDefinitionsSnapshot(
             FhirVersion.R4,
             tenantId: 1,
             state.CreateSnapshot(),
             generation: 11);
-        context.PublishConformanceDefinitionsSnapshot(FhirVersion.R4, tenantId: 1, snapshot);
-        snapshot.Handle.SchemaProvider.ResourceTypeNames.ShouldContain("ViewDefinition");
+        context.PublishConformanceDefinitionsSnapshot(FhirVersion.R4, tenantId: 1, publishedSnapshot);
+        var preUnloadHandle = context.GetDefinitionsHandle(FhirVersion.R4, tenantId: 1);
+        preUnloadHandle.SchemaProvider.ResourceTypeNames.ShouldContain("ViewDefinition");
         repository.GetAllStructureDefinitionsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<PackageResource>)[]);
 
-        await registry.InvalidateCacheForPackageAsync(
-            "local.ignixa.sqlonfhir",
+        var postUnloadSnapshot = context.CreateConformanceDefinitionsSnapshot(
+            FhirVersion.R4,
             tenantId: 1,
-            CancellationToken.None);
+            state.CreateSnapshot(),
+            generation: 11);
+        context.PublishConformanceDefinitionsSnapshot(FhirVersion.R4, tenantId: 1, postUnloadSnapshot);
 
-        snapshot.Handle.SchemaProvider.ResourceTypeNames.ShouldNotContain("ViewDefinition");
+        preUnloadHandle.SchemaProvider.ResourceTypeNames.ShouldContain("ViewDefinition");
+        context.GetDefinitionsHandle(FhirVersion.R4, tenantId: 1)
+            .SchemaProvider.ResourceTypeNames.ShouldNotContain("ViewDefinition");
+        context.GetDefinitionsHandle(FhirVersion.R4, tenantId: 1)
+            .SchemaProvider.ShouldBeSameAs(postUnloadSnapshot.Handle.SchemaProvider);
     }
 
     [Fact]

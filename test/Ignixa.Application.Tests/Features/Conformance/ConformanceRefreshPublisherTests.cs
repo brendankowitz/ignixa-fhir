@@ -35,6 +35,24 @@ public class ConformanceRefreshPublisherTests
         refresher.PublishedGenerations.ShouldBe([2]);
     }
 
+    [Fact]
+    public async Task GivenCurrentGenerationAlreadyPublished_WhenRepositoryRefreshIsForced_ThenSameGenerationIsRebuiltAndPublished()
+    {
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(CreatePackageEvent(1, "first"));
+        var refresher = new BlockingCacheRefresher(blockFirstBuild: false);
+        using var publisher = new ConformanceRefreshPublisher(
+            state,
+            refresher,
+            NullLogger<ConformanceRefreshPublisher>.Instance);
+
+        await publisher.RefreshUntilCurrentAsync(CancellationToken.None);
+        await publisher.RefreshCurrentAsync(CancellationToken.None);
+
+        refresher.BuiltGenerations.ShouldBe([1, 1]);
+        refresher.PublishedGenerations.ShouldBe([1, 1]);
+    }
+
     private static SourceEvent CreatePackageEvent(long eventId, string packageId) =>
         new(
             eventId,
@@ -45,6 +63,13 @@ public class ConformanceRefreshPublisherTests
 
     private sealed class BlockingCacheRefresher : IConformanceCacheRefresher
     {
+        private readonly bool _blockFirstBuild;
+
+        public BlockingCacheRefresher(bool blockFirstBuild = true)
+        {
+            _blockFirstBuild = blockFirstBuild;
+        }
+
         public TaskCompletionSource FirstBuildStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -60,7 +85,7 @@ public class ConformanceRefreshPublisherTests
             CancellationToken cancellationToken)
         {
             BuiltGenerations.Add(generation);
-            if (BuiltGenerations.Count == 1)
+            if (_blockFirstBuild && BuiltGenerations.Count == 1)
             {
                 FirstBuildStarted.TrySetResult();
                 await ReleaseFirstBuild.Task.WaitAsync(cancellationToken);

@@ -190,4 +190,31 @@ public class DefinitionsHandleTests
         slot.ExtractionDefinitions.ShouldNotBeSameAs(olderDefinitions);
         slot.SearchableDefinitions.ShouldNotBeSameAs(olderDefinitions);
     }
+
+    [Fact]
+    public void GivenSameEventIdRepositoryRebuild_WhenPublished_ThenPublicationSequenceBreaksTheTie()
+    {
+        var definitions = Substitute.For<ISearchParameterDefinitionManager>();
+        var first = new ConformanceDefinitionsSnapshot(
+            definitions,
+            definitions,
+            new DefinitionsHandle(
+                Substitute.For<ISearchIndexer>(),
+                Substitute.For<IFhirSchemaProvider>(),
+                29),
+            PublicationSequence: 3);
+        var replacement = new ConformanceDefinitionsSnapshot(
+            definitions,
+            definitions,
+            new DefinitionsHandle(
+                Substitute.For<ISearchIndexer>(),
+                Substitute.For<IFhirSchemaProvider>(),
+                29),
+            PublicationSequence: 4);
+        var slot = new ConformanceDefinitionsSnapshotSlot(first);
+
+        slot.Publish(replacement);
+
+        slot.Current.ShouldBeSameAs(replacement);
+    }
 }

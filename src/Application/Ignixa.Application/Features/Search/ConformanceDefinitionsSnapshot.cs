@@ -8,7 +8,8 @@ namespace Ignixa.Application.Features.Search;
 public sealed record ConformanceDefinitionsSnapshot(
     ISearchParameterDefinitionManager ExtractionDefinitions,
     ISearchParameterDefinitionManager SearchableDefinitions,
-    DefinitionsHandle Handle)
+    DefinitionsHandle Handle,
+    long PublicationSequence = 0)
 {
     public long Generation => Handle.DefinitionsEventId;
 }
