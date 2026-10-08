@@ -8,7 +8,11 @@ public sealed class ReindexOptions
     public bool AutoStart { get; set; } = true;
     public TimeSpan BarrierDelay { get; set; }
     public int DefaultMaximumNumberOfResourcesPerQuery { get; set; } = 10_000;
-    public int DefaultMaximumNumberOfResourcesPerWrite { get; set; } = 1_000;
+    /// <summary>
+    /// Gets or sets the number of resources in each reindex index-write batch. The conservative default
+    /// avoids lock escalation while the index-only procedure updates multiple search-index tables.
+    /// </summary>
+    public int DefaultMaximumNumberOfResourcesPerWrite { get; set; } = 100;
     public int DefaultMaximumConcurrency { get; set; } = 4;
     public TimeSpan StartDebounce { get; set; } = TimeSpan.FromSeconds(10);
     public TimeSpan OrphanGrace { get; set; } = TimeSpan.FromMinutes(2);
