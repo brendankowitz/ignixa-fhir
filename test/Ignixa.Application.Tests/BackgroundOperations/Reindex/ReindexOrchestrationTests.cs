@@ -194,6 +194,24 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
+    public async Task GivenStartActivityFindsClosedJob_WhenOrchestrated_ThenNoTenantOrCompletionWorkRuns()
+    {
+        var context = new ExecutingContext(startShouldContinue: false);
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job",
+            targetEventId: 42,
+            barrierDelay: TimeSpan.Zero,
+            tenantIds: [1]);
+
+        var output = await new ReindexOrchestration().RunTask(context, input);
+
+        output.Success.ShouldBeFalse();
+        context.BarrierCalls.ShouldBe(0);
+        context.RangeCalls.ShouldBe(0);
+        context.CompletionCalls.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task GivenDrainNeverCompletes_WhenStaleJobTimeoutElapses_ThenTenantFails()
     {
         var context = new ExecutingContext(drainNeverCompletes: true);
@@ -260,7 +278,8 @@ public class ReindexOrchestrationTests
         bool failProgressOnce = false,
         bool drainNeverCompletes = false,
         bool failBarrierOnce = false,
-        int definitionsNotReadyAttempts = 0) : OrchestrationContext
+        int definitionsNotReadyAttempts = 0,
+        bool startShouldContinue = true) : OrchestrationContext
     {
         private DateTime _currentUtcDateTime = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
 
@@ -356,7 +375,10 @@ public class ReindexOrchestrationTests
                 throw new InvalidOperationException("start failed");
             }
 
-            return new StartReindexOutput([]);
+            return new StartReindexOutput([])
+            {
+                ShouldContinue = startShouldContinue
+            };
         }
 
         private RaiseBarrierOutput Barrier()

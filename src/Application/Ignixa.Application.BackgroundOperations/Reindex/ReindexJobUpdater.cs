@@ -39,7 +39,7 @@ public sealed class ReindexJobUpdater(
         }
     }
 
-    public Task UpdateAsync(
+    public Task<bool> UpdateAsync(
         string jobId,
         Func<BackgroundJob<ReindexJobDefinition>, CancellationToken, Task> update,
         CancellationToken cancellationToken) =>

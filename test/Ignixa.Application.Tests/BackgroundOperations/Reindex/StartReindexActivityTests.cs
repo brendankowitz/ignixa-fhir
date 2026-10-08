@@ -117,10 +117,10 @@ public class StartReindexActivityTests
         }
 
         (await completing).ShouldBeTrue();
-        var error = await Record.ExceptionAsync(() => starting);
+        var output = JsonSerializer.Deserialize<StartReindexOutput>(await starting)!;
 
         fixture.State.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(expectedStatus);
-        error.ShouldBeNull();
+        output.ShouldContinue.ShouldBeFalse();
         (await fixture.Repository.GetAsync("job", 1, CancellationToken.None))!.Status.ShouldBe(decision);
         fixture.Events.Count(evt => evt.Data is SearchParameterReindexStarted).ShouldBe(1);
     }

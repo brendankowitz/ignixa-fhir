@@ -44,6 +44,14 @@ public sealed class ReindexOrchestration
             }
 
             scheduledActivities++;
+            if (!started.ShouldContinue)
+            {
+                return new ReindexOrchestrationOutput(
+                    false,
+                    state.Tenants.Select(tenant => tenant.ToOutput()).ToArray(),
+                    state.IgnoredLifecycleEvents);
+            }
+
             state = state with
             {
                 Started = true,
