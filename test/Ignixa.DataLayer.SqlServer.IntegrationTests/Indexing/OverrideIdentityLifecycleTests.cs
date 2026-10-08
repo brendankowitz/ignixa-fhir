@@ -124,7 +124,8 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
             new TenantStore(_database.ConnectionString), NullLoggerFactory.Instance, new RecyclableMemoryStreamManager(),
             new SqlServerTenantInitializer(new ExistingSchemaDeployer(), registry, NullLogger<SqlServerTenantInitializer>.Instance),
             new ManagedIdentityConnectionStringValidator("Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
-            _database.SqlExecutionService);
+            _database.SqlExecutionService,
+            (_, _) => Definitions);
         await factory.GetRepositoryAsync(_database.TenantId);
         var oldCache = await registry.GetOrCreateAsync(_database.TenantId, CancellationToken.None);
         await oldCache.SyncSearchParametersToDatabaseAsync([OverrideUrl], Definitions, CancellationToken.None);

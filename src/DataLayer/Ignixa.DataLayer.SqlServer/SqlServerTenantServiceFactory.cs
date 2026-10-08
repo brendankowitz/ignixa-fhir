@@ -49,6 +49,7 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
     private readonly SqlServerTenantInitializer _tenantInitializer;
     private readonly ManagedIdentityConnectionStringValidator _managedIdentityValidator;
     private readonly ISqlExecutionService _sqlExecutionService;
+    private readonly Func<FhirVersion, int, ISearchParameterDefinitionManager> _searchableDefinitionManagerResolver;
     private readonly ILogger<SqlServerTenantServiceFactory> _logger;
 
     private readonly ConcurrentDictionary<int, Lazy<Task<TenantServices>>> _tenantServices = new();
@@ -63,13 +64,15 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
     /// <param name="tenantInitializer">Deploys/upgrades the tenant's schema, seeds its search-parameter catalog and preloads its reference data, in that order, before any repository is handed out.</param>
     /// <param name="managedIdentityValidator">Rejects password-bearing connection strings in Production.</param>
     /// <param name="sqlExecutionService">Tenant-scoped raw ADO.NET execution service backing both the write and read paths.</param>
+    /// <param name="searchableDefinitionManagerResolver">Resolves the current immutable searchable definitions for a tenant.</param>
     public SqlServerTenantServiceFactory(
         ITenantConfigurationStore tenantStore,
         ILoggerFactory loggerFactory,
         RecyclableMemoryStreamManager memoryStreamManager,
         SqlServerTenantInitializer tenantInitializer,
         ManagedIdentityConnectionStringValidator managedIdentityValidator,
-        ISqlExecutionService sqlExecutionService)
+        ISqlExecutionService sqlExecutionService,
+        Func<FhirVersion, int, ISearchParameterDefinitionManager> searchableDefinitionManagerResolver)
     {
         ArgumentNullException.ThrowIfNull(tenantStore);
         ArgumentNullException.ThrowIfNull(loggerFactory);
@@ -77,6 +80,7 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
         ArgumentNullException.ThrowIfNull(tenantInitializer);
         ArgumentNullException.ThrowIfNull(managedIdentityValidator);
         ArgumentNullException.ThrowIfNull(sqlExecutionService);
+        ArgumentNullException.ThrowIfNull(searchableDefinitionManagerResolver);
 
         _tenantStore = tenantStore;
         _loggerFactory = loggerFactory;
@@ -84,6 +88,7 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
         _tenantInitializer = tenantInitializer;
         _managedIdentityValidator = managedIdentityValidator;
         _sqlExecutionService = sqlExecutionService;
+        _searchableDefinitionManagerResolver = searchableDefinitionManagerResolver;
         _logger = loggerFactory.CreateLogger<SqlServerTenantServiceFactory>();
     }
 
@@ -114,13 +119,14 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
     {
         var services = await GetOrInitializeTenantAsync(tenantId, ct);
         var cache = await _tenantInitializer.GetReferenceDataCacheAsync(tenantId, ct);
+        var searchableDefinitions = _searchableDefinitionManagerResolver(services.FhirVersion, tenantId);
 
         return SqlServerRepositoryFactory.CreateSearchService(
             _sqlExecutionService,
             tenantId,
             cache,
             services.Definitions.CompartmentManager,
-            services.Definitions.ParameterManager,
+            searchableDefinitions,
             _memoryStreamManager,
             _loggerFactory);
     }
@@ -200,7 +206,7 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
 
         _logger.LogInformation("SQL Server services initialized for tenant {TenantId}", tenantId);
 
-        return new TenantServices(definitions);
+        return new TenantServices(fhirVersion, definitions);
     }
 
     private DefinitionManagers GetOrCreateDefinitionManagers(FhirVersion fhirVersion)
@@ -217,5 +223,6 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
         ISearchParameterDefinitionManager ParameterManager);
 
     private sealed record TenantServices(
+        FhirVersion FhirVersion,
         DefinitionManagers Definitions);
 }

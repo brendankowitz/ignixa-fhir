@@ -212,7 +212,9 @@ public static class DataLayerRegistration
                 c.Resolve<RecyclableMemoryStreamManager>(),
                 c.Resolve<SqlServerTenantInitializer>(),
                 c.Resolve<ManagedIdentityConnectionStringValidator>(),
-                c.Resolve<ISqlExecutionService>()))
+                c.Resolve<ISqlExecutionService>(),
+                (fhirVersion, tenantId) => c.Resolve<IFhirVersionContext>()
+                    .GetSearchableSearchParameterDefinitionManager(fhirVersion, tenantId)))
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")
             .AsSelf()
