@@ -137,6 +137,38 @@ public class SqlReindexOrchestrationTests
     }
 
     [SqlFact]
+    public async Task GivenCurrentDeletedAndUnknownResources_WhenReindexingOneResource_ThenPreservesVersionAndReportsStatus()
+    {
+        await using var fixture = new ReindexFixture();
+        await fixture.InitializeAsync();
+        var id = $"single-reindex-{Guid.NewGuid():N}";
+        await PutPatientAsync(fixture.Client, id, "single-resource");
+
+        var before = await ReadPatientAsync(fixture.Client, id);
+        using var dryRun = await fixture.Client.GetAsync($"/tenant/1/Patient/{id}/$reindex");
+        dryRun.StatusCode.ShouldBe(HttpStatusCode.OK, await dryRun.Content.ReadAsStringAsync());
+        var dryRunBody = JsonNode.Parse(await dryRun.Content.ReadAsStringAsync())!;
+        dryRunBody["resourceType"]!.GetValue<string>().ShouldBe("Parameters");
+
+        using var persisted = await fixture.Client.PostAsync($"/tenant/1/Patient/{id}/$reindex", content: null);
+        persisted.StatusCode.ShouldBe(HttpStatusCode.OK, await persisted.Content.ReadAsStringAsync());
+
+        var after = await ReadPatientAsync(fixture.Client, id);
+        after["meta"]!["versionId"]!.GetValue<string>()
+            .ShouldBe(before["meta"]!["versionId"]!.GetValue<string>());
+        after["meta"]!["lastUpdated"]!.GetValue<string>()
+            .ShouldBe(before["meta"]!["lastUpdated"]!.GetValue<string>());
+
+        using var missing = await fixture.Client.GetAsync("/tenant/1/Patient/does-not-exist/$reindex");
+        missing.StatusCode.ShouldBe(HttpStatusCode.NotFound, await missing.Content.ReadAsStringAsync());
+
+        using var deleted = await fixture.Client.DeleteAsync($"/tenant/1/Patient/{id}");
+        deleted.StatusCode.ShouldBe(HttpStatusCode.NoContent, await deleted.Content.ReadAsStringAsync());
+        using var gone = await fixture.Client.PostAsync($"/tenant/1/Patient/{id}/$reindex", content: null);
+        gone.StatusCode.ShouldBe(HttpStatusCode.Gone, await gone.Content.ReadAsStringAsync());
+    }
+
+    [SqlFact]
     public async Task GivenSecondPackageIsActivatedMidJob_WhenFirstCompletes_ThenFollowUpEnablesSecondParameter()
     {
         await using var fixture = new ReindexFixture();
@@ -327,6 +359,13 @@ public class SqlReindexOrchestrationTests
             "application/fhir+json");
         using var response = await client.PutAsync($"/tenant/1/Patient/{id}", content);
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task<JsonNode> ReadPatientAsync(HttpClient client, string id)
+    {
+        using var response = await client.GetAsync($"/tenant/1/Patient/{id}");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        return JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
     }
 
     private static async Task AssertPendingAsync(HttpClient client, string code, string marker)

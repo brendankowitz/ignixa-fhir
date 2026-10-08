@@ -36,6 +36,11 @@ public interface IReindexStore
         long? afterSurrogateId,
         CancellationToken cancellationToken);
 
+    Task<ReindexCurrentResource> ReadCurrentResourceAsync(
+        string resourceType,
+        string resourceId,
+        CancellationToken cancellationToken);
+
     Task<(int Updated, int Conflicts)> UpdateSearchIndicesAsync(
         IReadOnlyList<ReindexResource> resources,
         CancellationToken cancellationToken);

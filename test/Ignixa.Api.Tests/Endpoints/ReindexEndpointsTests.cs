@@ -11,6 +11,10 @@ using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 using Medino;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -32,6 +36,8 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     private ReindexStatusResult _status = CreateStatus();
     private IReadOnlyList<ReindexStatusResult> _jobs = [];
     private CancelReindexResult _cancelResult = new ReindexCancelledResult("created-job");
+    private ReindexSingleResourceResult _singleResourceResult =
+        new ReindexSingleResourceCompletedResult([], false);
 
     public ReindexEndpointsTests()
     {
@@ -49,6 +55,8 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             .Returns(_ => Task.FromResult(_jobs));
         _mediator.SendAsync(Arg.Any<CancelReindexCommand>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(_cancelResult));
+        _mediator.SendAsync(Arg.Any<ReindexSingleResourceCommand>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(_singleResourceResult));
 
         var authorization = Substitute.For<IFhirAuthorizationService>();
         var requestContext = Substitute.For<IFhirRequestContextAccessor>();
@@ -100,6 +108,10 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     [InlineData("ListReindex")]
     [InlineData("GetReindex")]
     [InlineData("CancelReindex")]
+    [InlineData("GetSingleResourceReindexForTenant")]
+    [InlineData("PostSingleResourceReindexForTenant")]
+    [InlineData("GetSingleResourceReindex")]
+    [InlineData("PostSingleResourceReindex")]
     public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOperationalRoutesRemainMapped(
         string operationEndpointName)
     {
@@ -397,6 +409,10 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     [InlineData("ListReindex")]
     [InlineData("GetReindex")]
     [InlineData("CancelReindex")]
+    [InlineData("GetSingleResourceReindexForTenant")]
+    [InlineData("PostSingleResourceReindexForTenant")]
+    [InlineData("GetSingleResourceReindex")]
+    [InlineData("PostSingleResourceReindex")]
     public async Task GivenMixedProviderServer_WhenUsingOperationalRoute_ThenReturnsNotImplementedOutcome(
         string operationEndpointName)
     {
@@ -419,6 +435,72 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         response.StatusCode.ShouldBe(StatusCodes.Status404NotFound);
         response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
         _createCommands.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenExtractedCompositeIndices_WhenDryRunningSingleResource_ThenMapsEveryValue()
+    {
+        var composite = new CompositeIndexSearchValue(
+        [
+            [new TokenSearchValue("http://loinc.org", "1234-5", null)],
+            [new QuantitySearchValue("http://unitsofmeasure.org", "mg", 1.5m)]
+        ]);
+        _singleResourceResult = new ReindexSingleResourceCompletedResult(
+        [
+            new SearchIndexEntry(
+                new Ignixa.Search.Models.SearchParameterInfo("Component", "component", SearchParamType.Composite),
+                composite),
+            new SearchIndexEntry(
+                new Ignixa.Search.Models.SearchParameterInfo("Date", "date", SearchParamType.Date),
+                DateTimeSearchValue.Parse("2026-01-01", "2026-01-31"))
+        ],
+            false);
+
+        var response = await SendAsync("GetSingleResourceReindexForTenant");
+
+        response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+        response.Body["resourceType"]!.GetValue<string>().ShouldBe("Parameters");
+        var indices = Parts(response.Body, "index");
+        indices.Count.ShouldBe(2);
+        Value(indices[0], "code").ShouldBe("component");
+        Value(indices[0], "type").ShouldBe("Composite");
+        Value(indices[0], "value").ShouldBe(
+            """[["http://loinc.org|1234-5"],["1.5|http://unitsofmeasure.org|mg"]]""");
+        Value(indices[1], "type").ShouldBe("Date");
+        Value(indices[1], "value").ShouldBe("2026-01-01T00:00:00.0000000+00:00/2026-01-31T23:59:59.9999999+00:00");
+
+        await _mediator.Received().SendAsync(
+            new ReindexSingleResourceCommand("Patient", "resource", false),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(typeof(ReindexSingleResourceNotFoundResult), StatusCodes.Status404NotFound)]
+    [InlineData(typeof(ReindexSingleResourceDeletedResult), StatusCodes.Status410Gone)]
+    [InlineData(typeof(ReindexSingleResourceProviderUnavailableResult), StatusCodes.Status501NotImplemented)]
+    public async Task GivenSingleResourceFailure_WhenReindexing_ThenReturnsExpectedStatus(
+        Type resultType,
+        int expectedStatus)
+    {
+        _singleResourceResult = (ReindexSingleResourceResult)Activator.CreateInstance(resultType)!;
+
+        var response = await SendAsync("PostSingleResourceReindexForTenant");
+
+        response.StatusCode.ShouldBe(expectedStatus);
+        response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+    }
+
+    [Fact]
+    public async Task GivenConcurrentSingleResourceUpdate_WhenPersisting_ThenReturnsConflict()
+    {
+        _singleResourceResult = new ReindexSingleResourceCompletedResult([], true);
+
+        var response = await SendAsync("PostSingleResourceReindexForTenant");
+
+        response.StatusCode.ShouldBe(StatusCodes.Status409Conflict);
+        await _mediator.Received().SendAsync(
+            new ReindexSingleResourceCommand("Patient", "resource", true),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -483,17 +565,21 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         string endpointName,
         int tenantId = 1,
         string jobId = "job",
+        string resourceType = "Patient",
+        string resourceId = "resource",
         string? body = null,
         string? prefer = null,
         bool setContentLength = true,
         string fhirVersion = "4.0") =>
-        await SendAsync(_app, endpointName, tenantId, jobId, body, prefer, setContentLength, fhirVersion);
+        await SendAsync(_app, endpointName, tenantId, jobId, resourceType, resourceId, body, prefer, setContentLength, fhirVersion);
 
     private static async Task<Response> SendAsync(
         WebApplication app,
         string endpointName,
         int tenantId = 1,
         string jobId = "job",
+        string resourceType = "Patient",
+        string resourceId = "resource",
         string? body = null,
         string? prefer = null,
         bool setContentLength = true,
@@ -510,15 +596,29 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             DisplayName = "Test tenant",
             FhirVersion = fhirVersion
         };
-        context.Request.RouteValues["tenantId"] = tenantId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var isTenantRoute = endpointName.Contains("ForTenant", StringComparison.Ordinal);
+        if (isTenantRoute)
+        {
+            context.Request.RouteValues["tenantId"] = tenantId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         context.Request.RouteValues["jobId"] = jobId;
+        if (endpointName.Contains("SingleResource", StringComparison.Ordinal))
+        {
+            context.Request.RouteValues["resourceType"] = resourceType;
+            context.Request.RouteValues["id"] = resourceId;
+        }
         context.Request.Scheme = "http";
         context.Request.Host = new HostString("localhost");
         context.Request.Path = endpointName.Contains("OperationDefinition", StringComparison.Ordinal)
             ? $"/tenant/{tenantId}/OperationDefinition/reindex"
+            : endpointName.Contains("SingleResource", StringComparison.Ordinal)
+                ? (isTenantRoute
+                    ? $"/tenant/{tenantId}/{resourceType}/{resourceId}/$reindex"
+                    : $"/{resourceType}/{resourceId}/$reindex")
             : $"/tenant/{tenantId}/$reindex" + (endpointName.Contains("ForTenant", StringComparison.Ordinal) &&
                 endpointName is "GetReindexForTenant" or "CancelReindexForTenant" ? $"/{jobId}" : string.Empty);
-        context.Request.Method = endpointName.StartsWith("Create", StringComparison.Ordinal) ? HttpMethods.Post :
+        context.Request.Method = endpointName.StartsWith("Create", StringComparison.Ordinal) ||
+            endpointName.StartsWith("PostSingle", StringComparison.Ordinal) ? HttpMethods.Post :
             endpointName.StartsWith("Cancel", StringComparison.Ordinal) ? HttpMethods.Delete : HttpMethods.Get;
         if (body is not null)
         {

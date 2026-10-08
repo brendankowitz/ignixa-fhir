@@ -89,6 +89,16 @@ public class FhirAuthorizationFilter : IEndpointFilter
                 return CreateForbiddenResponse(result.DenialReason ?? "Access denied");
             }
 
+            if (httpContext.GetEndpoint()?.Metadata.GetMetadata<RequireReadAuthorizationMetadata>() is not null)
+            {
+                result = await _authzService.AuthorizeAsync(
+                    authContext with { Interaction = FhirInteraction.Read });
+                if (!result.Allowed)
+                {
+                    return CreateForbiddenResponse(result.DenialReason ?? "Access denied");
+                }
+            }
+
             // Store filter in HttpContext for query layer (patient compartment filtering)
             if (result.Filter != null)
             {

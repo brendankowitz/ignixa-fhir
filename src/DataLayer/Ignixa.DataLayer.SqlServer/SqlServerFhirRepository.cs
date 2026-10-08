@@ -104,6 +104,16 @@ public class SqlServerFhirRepository(
             cancellationToken);
 
     /// <inheritdoc/>
+    public Task<ReindexCurrentResource> ReadCurrentResourceAsync(
+        string resourceType,
+        string resourceId,
+        CancellationToken cancellationToken) =>
+        _reindexStore.ReadCurrentResourceAsync(
+            resourceType,
+            resourceId,
+            cancellationToken);
+
+    /// <inheritdoc/>
     public Task<(int Updated, int Conflicts)> UpdateSearchIndicesAsync(
         IReadOnlyList<ReindexResource> resources,
         CancellationToken cancellationToken) =>
