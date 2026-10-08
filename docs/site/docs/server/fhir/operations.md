@@ -301,6 +301,77 @@ Returns `202 Accepted` with `Content-Location` header to poll job status.
 
 See [Bulk Operations](/docs/server/features/bulk-operations) for detailed usage, parameters, and configuration.
 
+### $reindex
+
+Rebuild search indexes after a SearchParameter is added, changed or removed (for example by
+installing an IG package). Until a reindex has covered the existing resources, a new parameter is not
+searchable; see [search parameter lifecycle](/docs/server/fhir/search-parameters#reindexing-and-search-parameter-lifecycle).
+
+By default a job starts automatically after a package activation (`Reindex:AutoStart`). You can also
+start one yourself, observe it, and cancel it:
+
+```bash
+# Start a job (the same routes work under /tenant/{tenantId} in multi-tenant mode)
+POST /$reindex
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    { "name": "maximumConcurrency", "valueInteger": 8 }
+  ]
+}
+
+# Poll the job named in the Content-Location header of the 201 response
+GET /$reindex/{jobId}
+
+# List the active job and recent finished jobs
+GET /$reindex
+
+# Cancel
+DELETE /$reindex/{jobId}
+```
+
+| Request parameter | Range | Default | Meaning |
+|---|---|---|---|
+| `maximumNumberOfResourcesPerQuery` | 1–10000 | 10000 | Size of one range of work. |
+| `maximumNumberOfResourcesPerWrite` | 1–10000 | 1000 | Resources indexed per batch. Lower it if normal writes slow down while a job runs. |
+| `maximumConcurrency` | 1–16 | 4 | Ranges processed at once per tenant. |
+| `queryDelayIntervalInMilliseconds` | 0–60000 | 0 | Pause between batches, to leave headroom for normal traffic. |
+
+Any other parameter name, or a value that is not an integer in range, returns `400`. In particular,
+`targetResourceTypes`, `targetSearchParameterTypes` and `targetDataStoreUsagePercentage` are not
+supported and are rejected, not silently ignored.
+
+**Behaviour**
+
+- `POST` returns `201 Created` with a `Parameters` body and a `Content-Location` job URL. If a job
+  is already running it returns `409 Conflict` with the active job in `Content-Location`; use that
+  job. With nothing to reindex it returns `400`.
+- A package activation that arrives while a job runs is queued and handled by a follow-up job. It
+  never cancels or restarts the running one.
+- `status` is `Queued`, `Running`, `Completed`, `Failed` or `Cancelled`. A `Parameters` job body
+  reports progress, per-tenant counts, resource ids that failed (at most 100), and the target event
+  and trigger.
+- A job covers **every tenant**: a parameter becomes searchable only when all of them finish with no
+  failed resources. Status therefore resolves from any tenant route.
+- `DELETE` returns `202 Accepted`, `404` for an unknown job, or `409` if the job already finished.
+  Cancelling returns the job's parameters to `Pending`; it does not undo index rows already written.
+- A job does not change a resource's `version`, `lastUpdated`, content or history, and it does not
+  block normal writes. A resource updated while its range is processed is counted as a *conflict*, not
+  a failure, because its new version is indexed with the current definitions.
+
+**Requirements**
+
+- The caller needs a write permission on the wildcard resource type for every `$reindex` route (for
+  example the SMART scope `system/*.write`).
+- The tenant's storage provider must support reindexing (SQL Server does). Others return `501`.
+- Set `Fhir:BaseUri` so absolute references that point back at this server are indexed the same way
+  as when they were written; see [Service Base URI](/docs/server/configuration#service-base-uri).
+
+See [Conformance Freshness and Reindexing](/docs/server/configuration#conformance-freshness-and-reindexing)
+for the tuning and safety settings.
+
 ## Search Operations
 
 ### $includes

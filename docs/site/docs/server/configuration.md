@@ -580,6 +580,62 @@ Configure import performance for high-volume ingestion:
 Higher concurrency values improve throughput but use more system resources and threads. Start with defaults and increase conservatively based on monitoring. Each concurrent file spawn 1 producer + ConsumerCount worker threads, so total threads = MaxConcurrentFiles * (1 + ConsumerCount).
 :::
 
+## Conformance Freshness and Reindexing
+
+Servers that share a conformance event store poll it for search-parameter changes. These settings
+control how stale a server may become before it stops answering searches, and how the
+[`$reindex`](/docs/server/fhir/operations#reindex) job behaves. The defaults suit most deployments,
+and every duration derives from `Conformance:SyncIntervalSeconds`.
+
+```json
+{
+  "Conformance": {
+    "SyncIntervalSeconds": 30,
+    "MaxStaleness": "00:01:00",
+    "TransitionGrace": "00:01:30"
+  },
+  "Reindex": {
+    "Enabled": true,
+    "AutoStart": true,
+    "BarrierDelay": "00:01:00"
+  }
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Conformance:SyncIntervalSeconds` | `30` | How often each server polls for conformance changes. |
+| `Conformance:MaxStaleness` | `2 × SyncIntervalSeconds` | A server whose last successful sync *started* longer ago than this returns `503` for requests that evaluate search parameters. See [search parameters](/docs/server/fhir/search-parameters#reindexing-and-search-parameter-lifecycle). |
+| `Conformance:TransitionGrace` | `MaxStaleness + SyncIntervalSeconds` | Delay between hiding a replaced or removed parameter and changing how it is extracted. |
+| `Reindex:Enabled` | `true` | Registers the `$reindex` endpoints and the job. |
+| `Reindex:AutoStart` | `true` | Start a reindex job automatically after a package activation creates parameters that need one. When `false`, start jobs with `POST $reindex`. |
+| `Reindex:BarrierDelay` | `2 × SyncIntervalSeconds` | Wait after a change before a job fences out writers with older definitions, giving other servers time to catch up. |
+| `Reindex:DefaultMaximumNumberOfResourcesPerQuery` | `10000` | Default size of one range of work. |
+| `Reindex:DefaultMaximumNumberOfResourcesPerWrite` | `1000` | Default batch size for index writes. |
+| `Reindex:DefaultMaximumConcurrency` | `4` | Default concurrent ranges per tenant. |
+| `Reindex:StartDebounce` | `00:00:10` | Merges activations that arrive close together into one job. |
+| `Reindex:StaleJobTimeout` | `00:30:00` | A running job with no heartbeat for this long is flagged in its status and logged as an error. |
+| `Reindex:DrainWarningAfter` | `00:05:00` | A job waiting for in-flight writes longer than this logs the oldest incomplete transaction. |
+
+The server **fails to start** if these do not hold, so a misconfiguration is caught before it can
+serve wrong results:
+
+- `SyncIntervalSeconds`, `MaxStaleness` and `TransitionGrace` must be positive.
+- `TransitionGrace` must be strictly greater than `MaxStaleness`.
+- `BarrierDelay` must be at least `MaxStaleness`.
+- `Reindex:DefaultMaximumNumberOfResourcesPerQuery` and `...PerWrite` must be `1`–`10000`, and
+  `Reindex:DefaultMaximumConcurrency` must be `1`–`16`, the same ranges the `$reindex` request
+  parameters accept.
+- `Reindex:StartDebounce` must not be negative. `StaleJobTimeout` and `DrainWarningAfter` must be
+  positive.
+
+:::note
+Search availability depends on reaching the shared conformance store. If an instance cannot sync for
+longer than `MaxStaleness`, its searches return `503` with `Retry-After` until it syncs again. Raise
+`MaxStaleness` (and `TransitionGrace` with it) if your deployment has slow or flaky links to the
+conformance database.
+:::
+
 ## Transaction Watcher
 
 Automatically commits stalled transactions:
