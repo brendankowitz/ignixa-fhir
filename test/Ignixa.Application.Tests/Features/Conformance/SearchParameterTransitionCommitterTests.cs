@@ -46,6 +46,45 @@ public class SearchParameterTransitionCommitterTests
     }
 
     [Fact]
+    public async Task GivenAStagedOverrideIsRemovedBeforeCommit_WhenTheNewHideEventIsCommitted_ThenTheBaseIsRestored()
+    {
+        using var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(
+            10,
+            "http://hl7.org/fhir/SearchParameter/Patient-identifier",
+            null,
+            "hl7.fhir.r4.core@4.0.1"));
+        state.ApplyAndTrack(Activation(
+            20,
+            "http://example.org/SearchParameter/Patient-identifier",
+            "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        state.ApplyAndTrack(Deactivation(30, "http://example.org/SearchParameter/Patient-identifier"));
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 30, Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(
+                [new SourceEvent(
+                    40,
+                    "transition:30",
+                    nameof(SearchParameterTransitionCommitted),
+                    call.Arg<IEnumerable<NewSourceEvent>>().Single().Data,
+                    DateTimeOffset.UtcNow)]));
+        var committer = new SearchParameterTransitionCommitter(
+            store,
+            state,
+            Substitute.For<IReindexTrigger>(),
+            CreateRefreshPublisher(state),
+            NullLogger<SearchParameterTransitionCommitter>.Instance);
+
+        var committed = await committer.CommitAsync(30, CancellationToken.None);
+
+        committed.ShouldBeTrue();
+        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(
+            "http://hl7.org/fhir/SearchParameter/Patient-identifier");
+        state.GetSearchParameter("Patient", "identifier")!.Status.ShouldBe(SearchParameterStatus.Pending);
+    }
+
+    [Fact]
     public async Task GivenReindexTriggerFailsAfterTransitionCommit_WhenCommitted_ThenTheDurableCommitStillSucceeds()
     {
         using var state = new ConformanceState();
@@ -291,6 +330,14 @@ public class SearchParameterTransitionCommitterTests
                 null,
                 null,
                 null),
+            DateTimeOffset.UtcNow);
+
+    private static SourceEvent Deactivation(long eventId, string canonical) =>
+        new(
+            eventId,
+            "transition-test",
+            nameof(SearchParameterDeactivated),
+            new SearchParameterDeactivated(canonical, "identifier", "Patient", "test"),
             DateTimeOffset.UtcNow);
 
     private static async IAsyncEnumerable<SourceEvent> EmptyEvents()

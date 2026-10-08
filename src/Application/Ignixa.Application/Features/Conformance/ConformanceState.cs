@@ -762,6 +762,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
             return;
         }
 
+        outgoing.DeactivationEventId = eventId;
         _searchParameterActivations.Add(CloneForRestoration(previous, eventId));
     }
 

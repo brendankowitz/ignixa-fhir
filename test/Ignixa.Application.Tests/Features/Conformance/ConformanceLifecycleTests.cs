@@ -143,17 +143,17 @@ public class ConformanceLifecycleTests
     }
 
     [Fact]
-    public void GivenStagedOverride_WhenItIsDeactivatedBeforeCommit_ThenBaseIsRestagedAndOldTransitionIsIgnored()
+    public void GivenStagedOverride_WhenItIsDeactivatedBeforeCommit_ThenTheNewHideEventRestoresTheBase()
     {
         using var state = CreateStateWithStagedOverride();
 
         state.Apply(Deactivation(30, OverrideCanonical));
-        state.Apply(Transition(40, 7, [20], [20]));
+        state.Apply(Transition(40, 7, [30], [30]));
 
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
+        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
         state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(30);
-        state.GetSearchParameter("Patient", "identifier")!.Status.ShouldBe(SearchParameterStatus.Disabling);
+        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
     }
 
     [Fact]
