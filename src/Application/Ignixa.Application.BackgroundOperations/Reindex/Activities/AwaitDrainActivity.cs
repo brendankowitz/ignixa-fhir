@@ -45,6 +45,17 @@ public sealed class AwaitDrainActivity(
                 oldest.Value.HeartbeatDate);
         }
 
+        if (oldest is not null &&
+            input.StaleJobTimeout > TimeSpan.Zero &&
+            input.DrainElapsed >= input.StaleJobTimeout)
+        {
+            logger.LogError(
+                "Reindex: drain timed out for tenant {TenantId}; cutoff transaction {CutoffTransactionId}, oldest incomplete transaction {OldestTransactionId}",
+                input.TenantId,
+                input.CutoffTransactionId,
+                oldest.Value.TransactionId);
+        }
+
         var output = new AwaitDrainOutput(input.TenantId, isDrained, watermark);
         if (isDrained)
         {

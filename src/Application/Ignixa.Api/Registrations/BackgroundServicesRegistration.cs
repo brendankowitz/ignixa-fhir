@@ -52,7 +52,13 @@ public static class BackgroundServicesRegistration
         services.Configure<TtlCleanupOptions>(configuration.GetSection(TtlCleanupOptions.SectionName));
 
         // Transaction watcher options (used by eternal orchestration)
-        services.Configure<TransactionWatcherOptions>(configuration.GetSection(TransactionWatcherOptions.SectionName));
+        services.AddOptions<TransactionWatcherOptions>()
+            .Configure(options => configuration.GetSection(TransactionWatcherOptions.SectionName).Bind(options))
+            .Validate<IOptions<ReindexOptions>>(
+                (transactionWatcher, reindexOptions) =>
+                    !reindexOptions.Value.Enabled || transactionWatcher.Enabled,
+                "TransactionWatcher:Enabled must be true when Reindex:Enabled is true.")
+            .ValidateOnStart();
 
         services.AddOptions<ReindexOptions>()
             .Configure(options =>

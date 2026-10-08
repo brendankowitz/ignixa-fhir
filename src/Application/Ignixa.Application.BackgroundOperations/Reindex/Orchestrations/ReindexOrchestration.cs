@@ -221,6 +221,7 @@ public sealed class ReindexOrchestration
 
             if (state.Phase == "Draining")
             {
+                var drainElapsed = context.CurrentUtcDateTime - state.DrainStartedUtc;
                 var drain = await context.ScheduleTask<AwaitDrainOutput>(
                     typeof(AwaitDrainActivity),
                     new AwaitDrainInput(
@@ -228,9 +229,17 @@ public sealed class ReindexOrchestration
                         state.TenantId,
                         state.CutoffTransactionId,
                         state.DrainStartedUtc,
-                        input.DrainWarningAfter ?? TimeSpan.FromMinutes(5)));
+                        input.DrainWarningAfter ?? TimeSpan.FromMinutes(5),
+                        drainElapsed,
+                        input.StaleJobTimeout));
                 if (!drain.IsDrained)
                 {
+                    if (drainElapsed >= input.StaleJobTimeout)
+                    {
+                        throw new InvalidOperationException(
+                            $"Reindex drain exceeded the stale job timeout of {input.StaleJobTimeout}.");
+                    }
+
                     await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(1), true);
                     return new TenantAdvance(state with { VisibleWatermark = drain.VisibleWatermark }, 1);
                 }

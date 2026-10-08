@@ -113,6 +113,7 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         // UseSetting feeds host configuration, which is visible from the start.
         builder.UseSetting("Experimental:Features:GraphQl:Enabled", "true");
         builder.UseSetting("Reindex:AutoStart", ReindexAutoStart.ToString());
+        builder.UseSetting("TransactionWatcher:Enabled", "true");
 
         builder.ConfigureAppConfiguration((context, config) =>
         {
@@ -180,9 +181,6 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
                 // Disable terminology auto-import for faster test startup
                 ["Experimental:Features:Terminology:EnableAutoImport"] = "false",
-
-                // Disable transaction watcher for tests
-                ["TransactionWatcher:Enabled"] = "false",
 
                 // Disable eager loading of package search parameters (avoids SQL connection)
                 ["SearchParameters:ConflictResolution:EagerLoadPackageSearchParameters"] = "false",

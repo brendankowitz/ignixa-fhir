@@ -164,6 +164,41 @@ public class ReindexOrchestrationTests
         context.LastCompletionInput!.FailureMessage.ShouldContain("start failed");
     }
 
+    [Fact]
+    public async Task GivenDrainNeverCompletes_WhenStaleJobTimeoutElapses_ThenTenantFails()
+    {
+        var context = new ExecutingContext(drainNeverCompletes: true);
+        var state = ReindexOrchestrationState.Create([1]) with
+        {
+            Started = true,
+            BarrierDelayCompleted = true,
+            Tenants =
+            [
+                ReindexTenantState.Create(1) with
+                {
+                    Phase = "Draining",
+                    CutoffTransactionId = 30,
+                    CutoffSurrogateId = 10,
+                    DrainStartedUtc = context.CurrentUtcDateTime
+                }
+            ]
+        };
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]) with
+        {
+            State = state,
+            StaleJobTimeout = TimeSpan.FromSeconds(2),
+            ContinueAsNewThreshold = 100
+        };
+
+        var output = await new ReindexOrchestration().RunTask(context, input);
+
+        output.Success.ShouldBeFalse();
+        output.Tenants.Single().Success.ShouldBeFalse();
+        output.Tenants.Single().ErrorMessage.ShouldContain("drain");
+        context.TimerCalls.ShouldBe(2);
+    }
+
     private static async Task<(ReindexOrchestrationOutput Output, ExecutingContext Context)> RunToCompletionAsync(
         int continueAsNewThreshold)
     {
@@ -193,8 +228,11 @@ public class ReindexOrchestrationTests
     private sealed class ExecutingContext(
         bool includeResourceFailures = false,
         bool failStart = false,
-        bool failProgressOnce = false) : OrchestrationContext
+        bool failProgressOnce = false,
+        bool drainNeverCompletes = false) : OrchestrationContext
     {
+        private DateTime _currentUtcDateTime = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
+
         public int StartCalls { get; private set; }
         public int BarrierCalls { get; private set; }
         public int TimerCalls { get; private set; }
@@ -207,6 +245,8 @@ public class ReindexOrchestrationTests
         public CompleteReindexInput? LastCompletionInput { get; private set; }
         public ReindexOrchestrationInput? LastContinuationInput { get; private set; }
 
+        public override DateTime CurrentUtcDateTime => _currentUtcDateTime;
+
         public override Task<T> ScheduleTask<T>(string name, string version, params object[] parameters)
         {
             object result = name switch
@@ -214,7 +254,7 @@ public class ReindexOrchestrationTests
                 var value when value == typeof(StartReindexActivity).FullName => Start(),
                 var value when value == typeof(RaiseBarrierActivity).FullName => Barrier(),
                 var value when value == typeof(AwaitDrainActivity).FullName =>
-                    new AwaitDrainOutput(1, true, 10),
+                    new AwaitDrainOutput(1, !drainNeverCompletes, 10),
                 var value when value == typeof(PlanReindexActivity).FullName =>
                     Plan((PlanReindexInput)parameters.Single()),
                 var value when value == typeof(ReindexRangeActivity).FullName =>
@@ -232,6 +272,12 @@ public class ReindexOrchestrationTests
         public override Task<T> CreateTimer<T>(DateTime fireAt, T state)
         {
             TimerCalls++;
+            if (drainNeverCompletes && TimerCalls > 10)
+            {
+                throw new InvalidOperationException("The drain did not complete.");
+            }
+
+            _currentUtcDateTime = fireAt;
             return Task.FromResult(state);
         }
 
@@ -335,6 +381,13 @@ public class ReindexOrchestrationTests
             LastCompletionInput = input;
             if (input.FailureMessage is not null)
             {
+                return new CompleteReindexOutput(false, []);
+            }
+
+            if (drainNeverCompletes)
+            {
+                input.Tenants.Single().Success.ShouldBeFalse();
+                input.Tenants.Single().ErrorMessage.ShouldContain("drain");
                 return new CompleteReindexOutput(false, []);
             }
 

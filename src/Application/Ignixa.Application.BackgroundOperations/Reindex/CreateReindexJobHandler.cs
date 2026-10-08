@@ -275,6 +275,7 @@ public sealed class CreateReindexJobHandler(
                         _options.ContinueAsNewThreshold)
                     {
                         HeartbeatInterval = ReindexActivityHeartbeat.GetInterval(_options.StaleJobTimeout),
+                        StaleJobTimeout = _options.StaleJobTimeout,
                         StartDebounce = request.QueueRequest &&
                             request.Trigger.Equals("Activation", StringComparison.OrdinalIgnoreCase)
                             ? _options.StartDebounce
