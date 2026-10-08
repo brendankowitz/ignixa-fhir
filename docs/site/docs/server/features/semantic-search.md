@@ -21,10 +21,10 @@ reported as `Bundle.entry.search.score`.
 ## Requirements
 
 - **Azure SQL Database, or SQL Server 2025 or later.** The feature depends on the native SQL `vector`
-  type. Schema version 5 (which adds `dbo.VectorSearchParam` and `dbo.EmbeddingModel`) cannot deploy to an
+  type. Schema version 4 (which adds `dbo.VectorSearchParam` and `dbo.EmbeddingModel`) cannot deploy to an
   older engine: `SchemaDeployer` probes `sys.types` for `vector` before applying any DDL and fails with
-  _"Ignixa schema version 5 requires a SQL engine with the native vector type (Azure SQL Database or SQL
-  Server 2025+)."_ This probe runs even when `VectorSearch:Enabled` is `false` -- schema version 5 is a
+  _"Ignixa schema version 4 requires a SQL engine with the native vector type (Azure SQL Database or SQL
+  Server 2025+)."_ This probe runs even when `VectorSearch:Enabled` is `false` -- schema version 4 is a
   hard requirement for every tenant on the SQL Server data layer, feature flag aside.
 - **The SQL Server data layer, for every active tenant.** `VectorSearch:Enabled = true` fails startup if
   any active tenant is not configured for `SqlServer` or `SqlEntityFramework` storage. The FileSystem data

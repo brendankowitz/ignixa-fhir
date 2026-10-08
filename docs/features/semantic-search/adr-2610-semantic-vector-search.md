@@ -24,7 +24,7 @@ Clinical free text (notes, narratives, `valueString`) is poorly served by token 
 - Embeddings use `Microsoft.Extensions.AI` `IEmbeddingGenerator<string, Embedding<float>>`; Azure OpenAI/Foundry is the shipped provider. Dimensions are fixed at 1536; other dimensions fail startup.
 - Text comes from the existing `ISearchIndexer` extraction, is chunked by model tokenizer (`Microsoft.ML.Tokenizers`), and is embedded in the Application layer, not the DataLayer.
 - `VectorSearchConfig` is parsed into `SearchParameterInfo`; `VectorSearchExpression` uses a default-throwing visitor method so unaware visitors fail loudly.
-- SQL schema version 5 adds `EmbeddingModel` and `VectorSearchParam` keyed `(ResourceTypeId, ResourceSurrogateId, SearchParamId, EmbeddingModelId, ChunkOrdinal)` with compressed passage, SHA-256 and native `vector(1536)`. Rows are written by a separate procedure after `MergeResources`; delete, hard-delete and history cleanup remove them. Queries use exact `VECTOR_DISTANCE` with offset paging re-run against a process-local, TTL/size-bounded cached query embedding (`Query.EmbeddingCacheMinutes` / `EmbeddingCacheMaxEntries`), so every page of one query ranks by the same vector; keyset continuation is rejected for a ranked search because its seek predicate cannot express distance order.
+- SQL schema version 4 adds `EmbeddingModel` and `VectorSearchParam` keyed `(ResourceTypeId, ResourceSurrogateId, SearchParamId, EmbeddingModelId, ChunkOrdinal)` with compressed passage, SHA-256 and native `vector(1536)`. Rows are written by a separate procedure after `MergeResources`; delete, hard-delete and history cleanup remove them. Queries use exact `VECTOR_DISTANCE` with offset paging re-run against a process-local, TTL/size-bounded cached query embedding (`Query.EmbeddingCacheMinutes` / `EmbeddingCacheMaxEntries`), so every page of one query ranks by the same vector; keyset continuation is rejected for a ranked search because its seek predicate cannot express distance order.
 - `Indexing.Mode` is `Synchronous` or `Asynchronous`. Synchronous embeds before merge, so provider failure fails the write with nothing committed. Asynchronous records pending vector work after merge and a background job embeds it; the same job backfills when a semantic parameter is activated, because Ignixa has no general reindex executor.
 - The FileSystem provider persists sidecar vector files on write and ranks by brute-force cosine.
 
@@ -44,7 +44,7 @@ flowchart LR
 - Structured filtering, tenancy and authorization keep a single owner; ranking only orders their result.
 
 **Negative:**
-- Schema version 5 requires a native-vector engine (Azure SQL Database or SQL Server 2025+) even when the feature is disabled. Tenants on older engines stay at version 4; deployment probes `sys.types` and fails before DDL.
+- Schema version 4 requires a native-vector engine (Azure SQL Database or SQL Server 2025+) even when the feature is disabled. Tenants on older engines stay at version 3; deployment probes `sys.types` and fails before DDL.
 - Vector persistence is not atomic with the resource write. A post-merge failure is logged and leaves the resource absent from semantic results until backfill repairs it.
 - Synchronous mode makes the embedding provider part of write and query availability.
 - Exact search scans the filtered candidate set; approximate (DiskANN) search, linked-resource or Binary text, evidence/snippets and multi-model migration are out of scope.

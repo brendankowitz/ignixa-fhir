@@ -101,7 +101,7 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
         var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion, context.TenantId);
 
         var allSearchParams = manager.AllSearchParameters
-            .Where(sp => sp.IsSupported && !sp.IsDerived)
+            .Where(sp => sp.IsSupported)
             .Select(sp => sp.Url?.ToString() ?? sp.Code)
             .OrderBy(url => url, StringComparer.Ordinal)
             .ToList();
@@ -116,7 +116,7 @@ public class SearchParameterCapabilitySegment : ICapabilitySegment
     {
         var result = new List<SearchParamJsonNode>();
 
-        foreach (var sp in searchParams.Where(p => p.IsSupported && !p.IsDerived))
+        foreach (var sp in searchParams.Where(p => p.IsSupported))
         {
             result.Add(new SearchParamJsonNode
             {

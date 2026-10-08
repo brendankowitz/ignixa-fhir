@@ -81,14 +81,7 @@ internal static class Program
 
         var connectionString = await TenantConnectionStringResolver.ResolveForSchemaDeploymentAsync(tenantConfigurationStore, tenantId, cancellationToken);
 
-        // First, before anything else touches the tenant: on an engine without the vector type the deploy
-        // below cannot succeed, so fail with the actionable message rather than plan or apply anything.
         await SchemaDeployer.EnsureVectorTypeSupportedAsync(connectionString, cancellationToken);
-
-        // Planned now, applied only after the operator confirms: declining must leave the database untouched.
-        var currentVersion = await new SchemaVersionResolver(tenantConfigurationStore, NullLogger<SchemaVersionResolver>.Instance)
-            .GetCurrentVersionAsync(tenantId, cancellationToken);
-        var indexMigrationPlan = await ResourceSurrogateIdIndexOnlineMigration.PlanAsync(connectionString, currentVersion, cancellationToken);
 
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream("Ignixa.DataLayer.SqlServer.Schema.dacpac")
             ?? throw new InvalidOperationException("Embedded schema dacpac not found.");
@@ -126,20 +119,11 @@ internal static class Program
                 "Review the XML above especially carefully -- the usual data-loss signal could not be verified.",
         });
 
-        WriteIndexMigrationPlan(indexMigrationPlan, output);
-
         if (!ConfirmApply(autoConfirm, input, output))
         {
             output.WriteLine("Aborted, nothing was applied.");
             return 1;
         }
-
-        // Same pre-deploy step, and the same placement before the deploy, as SchemaDeployer's automatic
-        // path. The deploy below compares against the database as it is after this step, so it does not
-        // perform the index Drop/Create the diff above still lists. Its progress goes to the output: the
-        // online build can run for hours, and the operator must see it start and finish.
-        await ResourceSurrogateIdIndexOnlineMigration.ApplyAsync(
-            connectionString, indexMigrationPlan, tenantId, new TextWriterLogger(output), cancellationToken);
 
         // Deploy and stamp go through the same paired SchemaDeployer method its own automatic
         // paths use, so this deploy can never be left unstamped by a call this method forgot to
@@ -165,43 +149,6 @@ internal static class Program
 
         output.WriteLine($"Applied. Tenant {tenantId}'s database is now on the current schema.");
         return 0;
-    }
-
-    /// <summary>
-    /// Printed before the confirmation prompt so the operator sees the consequence -- an online
-    /// conversion, or an offline-fallback Warning -- before deciding whether to proceed; <see
-    /// cref="ResourceSurrogateIdIndexOnlineMigration.ApplyAsync"/> logs the same Warning again,
-    /// via the <see cref="TextWriterLogger"/> wrapping this same <paramref name="output"/>, once
-    /// the plan is actually applied.
-    /// </summary>
-    private static void WriteIndexMigrationPlan(ResourceSurrogateIdIndexMigrationPlan plan, TextWriter output)
-    {
-        switch (plan.Action)
-        {
-            case ResourceSurrogateIdIndexMigrationAction.ConvertOnline:
-                output.WriteLine(
-                    $"Before the deploy, {ResourceSurrogateIdIndexOnlineMigration.IndexName} on dbo.Resource will be converted in place " +
-                    $"ONLINE (CREATE INDEX ... WITH (DROP_EXISTING = ON, ONLINE = ON)) because {plan.Reason}; the deploy will then NOT " +
-                    "perform the Drop/Create of that index listed in the diff above.");
-                break;
-            case ResourceSurrogateIdIndexMigrationAction.CreateOnline:
-                output.WriteLine(
-                    $"Before the deploy, the missing {ResourceSurrogateIdIndexOnlineMigration.IndexName} will be created ONLINE on " +
-                    $"dbo.Resource because {plan.Reason}; the deploy will then NOT perform the Create of that index listed in the diff above.");
-                break;
-            case ResourceSurrogateIdIndexMigrationAction.DeferConversionToOfflineDeploy:
-                output.WriteLine(
-                    $"WARNING: {ResourceSurrogateIdIndexOnlineMigration.IndexName} on dbo.Resource cannot be converted online because " +
-                    $"{plan.Reason}. {plan.OfflineDeployConsequence}");
-                break;
-            case ResourceSurrogateIdIndexMigrationAction.DeferCreationToOfflineDeploy:
-                output.WriteLine(
-                    $"WARNING: {ResourceSurrogateIdIndexOnlineMigration.IndexName} is missing from dbo.Resource and cannot be created " +
-                    $"online because {plan.Reason}. {plan.OfflineDeployConsequence}");
-                break;
-            case ResourceSurrogateIdIndexMigrationAction.None:
-                break;
-        }
     }
 
     /// <summary>

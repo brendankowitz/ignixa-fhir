@@ -134,18 +134,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
                 "Apply the upgrade manually using the schema-upgrade CLI tool, or enable automatic deployment.");
         }
 
-        // Before the online index pre-migration below: on an engine without the vector type the deploy
-        // cannot succeed, so it must fail here, before anything in the tenant database has been changed.
         await EnsureVectorTypeSupportedAsync(connectionString, cancellationToken);
-
-        // Before the deploy report, so the report -- and the classification and deploy that follow it --
-        // describe the diff that actually remains once the index has been converted online. The
-        // conversion produces exactly the dacpac's own shape for that index, so it stays in place even if
-        // the classification below then refuses the rest of the diff.
-        var indexMigrationPlan = await ResourceSurrogateIdIndexOnlineMigration.PlanAsync(
-            connectionString, currentVersion, cancellationToken);
-        await ResourceSurrogateIdIndexOnlineMigration.ApplyAsync(
-            connectionString, indexMigrationPlan, tenantId, _logger, cancellationToken);
 
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream(DacpacResourceName)
             ?? throw new InvalidOperationException($"Embedded resource '{DacpacResourceName}' not found in {typeof(SchemaDeployer).Assembly.FullName}.");
@@ -218,7 +207,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
     private const string VectorTypeProbeQuery = "SELECT COUNT(*) FROM sys.types WHERE name = 'vector' AND is_user_defined = 0";
 
     /// <summary>
-    /// Schema version 5 introduces dbo.VectorSearchParam, whose Embedding column is the native SQL
+    /// Schema version 4 introduces dbo.VectorSearchParam, whose Embedding column is the native SQL
     /// Database Engine <c>vector</c> type -- a type that does not exist on a box SQL Server older than
     /// 2025. Deploying or upgrading onto such an engine anyway fails deep inside DacFx's own publish with
     /// an opaque "Invalid data type 'vector'", which names no version and no remedy. This probe runs
@@ -258,7 +247,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
         if (vectorTypeCount == 0)
         {
             throw new InvalidOperationException(
-                "Ignixa schema version 5 requires a SQL engine with the native vector type (Azure SQL Database or SQL Server 2025+).");
+                "Ignixa schema version 4 requires a SQL engine with the native vector type (Azure SQL Database or SQL Server 2025+).");
         }
     }
 

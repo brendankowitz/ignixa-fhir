@@ -154,11 +154,6 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     public bool IsSupported { get; set; } = true;
 
     /// <summary>
-    /// Returns true when this parameter is an internal derivative of a declared FHIR search parameter.
-    /// </summary>
-    public bool IsDerived { get; set; }
-
-    /// <summary>
     /// Returns true if the search parameter resolves to more than one type (FhirString, FhirUri, etc...)
     /// but not all types are able to be indexed / searched
     /// </summary>
@@ -203,16 +198,15 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     {
         if (other == null) return false;
 
-        if (Url is not null || other.Url is not null)
-        {
-            return Url is not null &&
-                other.Url is not null &&
-                SearchParameterUriComparer.Instance.Equals(Url, other.Url);
-        }
+        if (Url != other.Url) return false;
 
-        return Code.Equals(other.Code, StringComparison.OrdinalIgnoreCase) &&
-            Type == other.Type &&
-            Expression == other.Expression;
+        if (Url == null)
+            if (!Code.Equals(other.Code, StringComparison.OrdinalIgnoreCase) ||
+                Type != other.Type ||
+                Expression != other.Expression)
+                return false;
+
+        return true;
     }
 
     public override bool Equals(object obj)
@@ -226,7 +220,7 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     /// different buckets, so a HashSet would retain both and a later ToDictionary on Code would throw.</summary>
     public override int GetHashCode()
     {
-        if (Url != null) return SearchParameterUriComparer.Instance.GetHashCode(Url);
+        if (Url != null) return Url.GetHashCode();
 
         return HashCode.Combine(
             Code?.GetHashCode(StringComparison.OrdinalIgnoreCase),

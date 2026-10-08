@@ -10,9 +10,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Search.Definition;
-using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
-using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 
 using SearchParamInfo = Ignixa.Search.Models.SearchParameterInfo;
@@ -32,8 +30,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     private readonly ILogger<CompositeSearchParameterDefinitionManager> _logger;
     private readonly SearchParameterResolutionOptions _options;
 
-    private readonly ConcurrentDictionary<Uri, SearchParamInfo> _packageSearchParameterCache =
-        new(SearchParameterUriComparer.Instance);
+    private readonly ConcurrentDictionary<Uri, SearchParamInfo> _packageSearchParameterCache = new();
     private readonly ConcurrentDictionary<string, IEnumerable<SearchParamInfo>> _packageSearchParametersByResourceType = new();
     private readonly ConcurrentDictionary<(string, string), SearchParamInfo?> _parameterByCodeCache = new();
 
@@ -57,7 +54,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _schemaProvider = schemaProvider;
 
         _searchParameterHashMapCache = new Lazy<IReadOnlyDictionary<string, string>>(
-            CalculateSearchParameterHashMap,
+            () => _baseManager.SearchParameterHashMap,
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         _logger.LogInformation(
@@ -166,24 +163,21 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 continue;
             }
 
+            var searchParamInfo = ConvertToSearchParameterInfo(asp);
             packageCount++;
             resourceTypeSet.Add(asp.ResourceType);
+
+            if (searchParamInfo.Url is not null)
+            {
+                _packageSearchParameterCache.TryAdd(searchParamInfo.Url, searchParamInfo);
+            }
 
             if (!packageParamsByResourceType.TryGetValue(asp.ResourceType, out var list))
             {
                 list = [];
                 packageParamsByResourceType[asp.ResourceType] = list;
             }
-
-            foreach (SearchParamInfo searchParamInfo in IncludeDerivedParameter(ConvertToSearchParameterInfo(asp)))
-            {
-                if (searchParamInfo.Url is not null)
-                {
-                    _packageSearchParameterCache.TryAdd(searchParamInfo.Url, searchParamInfo);
-                }
-
-                list.Add(searchParamInfo);
-            }
+            list.Add(searchParamInfo);
         }
 
         var allResourceTypes = baseParameters
@@ -211,8 +205,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
             _packageSearchParametersByResourceType[resourceType] = merged.Values.ToList();
         }
-
-        ResetSearchParameterHashMapCache();
 
         _logger.LogInformation(
             "Loaded {PackageCount} package search parameters covering {ResourceTypeCount} resource types from ConformanceState",
@@ -270,16 +262,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         return searchParamInfo;
     }
 
-    private static IEnumerable<SearchParamInfo> IncludeDerivedParameter(SearchParamInfo searchParameter)
-    {
-        yield return searchParameter;
-
-        if (searchParameter.Type == SearchParamType.Reference)
-        {
-            yield return ReferenceIdentifierSearchParameterFactory.Create(searchParameter);
-        }
-    }
-
     /// <inheritdoc/>
     public IEnumerable<SearchParamInfo> AllSearchParameters
     {
@@ -292,17 +274,16 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
             return _conformanceState.AllSearchParameters.Values
                 .Where(asp => asp.Status is SearchParameterStatus.Enabled or SearchParameterStatus.Pending)
-                .SelectMany(asp => IncludeDerivedParameter(ConvertToSearchParameterInfo(asp)))
+                .Select(ConvertToSearchParameterInfo)
                 .Concat(_baseManager.AllSearchParameters)
-                .GroupBy(p => p.OverridesUrl ?? p.Url, SearchParameterUriComparer.Instance)
+                .GroupBy(p => p.OverridesUrl ?? p.Url)
                 .Select(g => g.First())
                 .ToList();
         }
     }
 
     /// <inheritdoc/>
-    public IReadOnlyDictionary<string, string> SearchParameterHashMap =>
-        Volatile.Read(ref _searchParameterHashMapCache).Value;
+    public IReadOnlyDictionary<string, string> SearchParameterHashMap => _searchParameterHashMapCache.Value;
 
     /// <inheritdoc/>
     public IEnumerable<SearchParamInfo> GetSearchParameters(string resourceType)
@@ -331,27 +312,17 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         foreach (var asp in packageParameters)
         {
-            foreach (SearchParamInfo searchParamInfo in IncludeDerivedParameter(ConvertToSearchParameterInfo(asp)))
-            {
-                merged[searchParamInfo.Code] = searchParamInfo;
+            var searchParamInfo = ConvertToSearchParameterInfo(asp);
+            merged[searchParamInfo.Code] = searchParamInfo;
 
-                if (searchParamInfo.Url is not null)
-                {
-                    _packageSearchParameterCache.TryAdd(searchParamInfo.Url, searchParamInfo);
-                }
+            if (searchParamInfo.Url is not null)
+            {
+                _packageSearchParameterCache.TryAdd(searchParamInfo.Url, searchParamInfo);
             }
         }
 
         var result = merged.Values.ToList();
         _packageSearchParametersByResourceType[resourceType] = result;
-
-        // The hash map is lazily computed and cached; without invalidating it here, a hash read that
-        // happened to run before this resource type's first warm-up would permanently stick, even though
-        // GetSearchParameterHashForResourceType now resolves the hash on demand rather than trusting this
-        // cache (see below). Invalidating keeps the aggregate SearchParameterHashMap property, which other
-        // callers read directly, from going stale the same way.
-        ResetSearchParameterHashMapCache();
-
         return result;
     }
 
@@ -412,18 +383,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         throw new InvalidOperationException($"Search parameter '{code}' not found for resource type '{resourceType}'");
     }
 
-    /// <summary>
-    /// Resolves a search parameter by its canonical URL, including a package-sourced derived identifier
-    /// URL (<c>{url}#identifier</c>) that was never itself warmed into <see cref="_packageSearchParameterCache"/>.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="ConformanceState.FindByCanonical"/> only knows the original (non-fragment) canonicals that
-    /// package events declared; it never matches a fragment-bearing derived URL. When every other lookup
-    /// misses, this strips the derived fragment, resolves the source reference parameter through this same
-    /// method (covering both package and base-spec sources), and derives the identifier parameter from it -
-    /// mirroring what <see cref="IncludeDerivedParameter"/> would have produced had the resource type
-    /// already been warmed up.
-    /// </remarks>
     /// <inheritdoc/>
     public bool TryGetSearchParameter(Uri definitionUri, out SearchParamInfo value)
     {
@@ -442,21 +401,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             return true;
         }
 
-        if (_baseManager.TryGetSearchParameter(definitionUri, out value!))
-        {
-            return true;
-        }
-
-        if (ReferenceIdentifierSearchParameterFactory.TryGetSourceUrl(definitionUri, out Uri sourceUrl) &&
-            TryGetSearchParameter(sourceUrl, out SearchParamInfo sourceParameter) &&
-            sourceParameter.Type == SearchParamType.Reference)
-        {
-            value = ReferenceIdentifierSearchParameterFactory.Create(sourceParameter);
-            _packageSearchParameterCache.TryAdd(definitionUri, value);
-            return true;
-        }
-
-        return false;
+        return _baseManager.TryGetSearchParameter(definitionUri, out value!);
     }
 
     /// <inheritdoc/>
@@ -487,31 +432,12 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap)
     {
         _baseManager.UpdateSearchParameterHashMap(updatedSearchParamHashMap);
-        ResetSearchParameterHashMapCache();
     }
 
-    /// <summary>
-    /// Computes the hash for a resource type from what <see cref="GetSearchParameters"/> would resolve
-    /// for it, rather than from whatever happens to already be in <see cref="SearchParameterHashMap"/>.
-    /// </summary>
-    /// <remarks>
-    /// The alternative - reading the cached <see cref="SearchParameterHashMap"/> - makes the answer depend
-    /// on whether this resource type had already been warmed up (lazy-load mode warms a type's package
-    /// parameters on first <see cref="GetSearchParameters"/> call). Resolving on demand here means the
-    /// same question gets the same answer regardless of what else has run first.
-    /// </remarks>
     /// <inheritdoc/>
     public string GetSearchParameterHashForResourceType(string resourceType)
     {
-        if (!TryGetSearchParameters(resourceType, out var searchParameters))
-        {
-            return _baseManager.GetSearchParameterHashForResourceType(resourceType);
-        }
-
-        var parameters = searchParameters as ICollection<SearchParamInfo> ?? searchParameters.ToList();
-        return parameters.Count > 0
-            ? parameters.CalculateSearchParameterHash()
-            : _baseManager.GetSearchParameterHashForResourceType(resourceType);
+        return _baseManager.GetSearchParameterHashForResourceType(resourceType);
     }
 
     /// <inheritdoc/>
@@ -540,7 +466,9 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _packageSearchParametersByResourceType.Clear();
         _parameterByCodeCache.Clear();
 
-        ResetSearchParameterHashMapCache();
+        _searchParameterHashMapCache = new Lazy<IReadOnlyDictionary<string, string>>(
+            () => _baseManager.SearchParameterHashMap,
+            LazyThreadSafetyMode.ExecutionAndPublication);
 
         _logger.LogInformation(
             "Cleared CompositeSearchParameterDefinitionManager cache (FHIR version: {FhirVersion})",
@@ -558,26 +486,5 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         {
             LoadFromConformanceState();
         }
-    }
-
-    private IReadOnlyDictionary<string, string> CalculateSearchParameterHashMap()
-    {
-        if (_packageSearchParametersByResourceType.IsEmpty)
-        {
-            return _baseManager.SearchParameterHashMap;
-        }
-
-        return _packageSearchParametersByResourceType.ToDictionary(
-            entry => entry.Key,
-            entry => entry.Value.CalculateSearchParameterHash(),
-            StringComparer.OrdinalIgnoreCase);
-    }
-
-    private void ResetSearchParameterHashMapCache()
-    {
-        var cache = new Lazy<IReadOnlyDictionary<string, string>>(
-            CalculateSearchParameterHashMap,
-            LazyThreadSafetyMode.ExecutionAndPublication);
-        Volatile.Write(ref _searchParameterHashMapCache, cache);
     }
 }

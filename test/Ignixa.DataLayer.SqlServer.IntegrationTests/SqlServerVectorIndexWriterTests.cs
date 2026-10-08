@@ -359,25 +359,15 @@ public class SqlServerVectorIndexWriterTests : IAsyncLifetime
 
         await WaitForBlockedWriteAsync(blocker.ServerProcessId);
 
-        // This must lock the exact same physical index row MergeVectorSearchParams' own UPDLOCK, HOLDLOCK
-        // SELECT locks, or the two sessions never contend and no deadlock forms. Matching the proc's
-        // predicate text is not enough to guarantee that on its own: proven by running this with sys.dm_tran_locks
-        // capture on both sessions (see PR discussion) -- even with an identical WHERE clause, this ad hoc,
-        // single-row equality query gets cost-based-planned straight to a Clustered Index Seek on PKC_Resource,
-        // while the proc's version -- a join driven by its @Evaluated TVP, not a literal/parameter equality --
-        // gets planned onto the filtered, covering IX_Resource_ResourceTypeId_ResourceSurrgateId (schema v4's
-        // INCLUDE (ResourceId) makes it coverable). Two different physical structures for the "same" row never
-        // collide, so the INDEX hint below pins this query to the proc's actual index rather than relying on
-        // the optimizer to independently reach the same plan from a differently-shaped query. ResourceTypeId
-        // and ResourceSurrogateId are passed as real parameters (not interpolated literals) so no CA2100
-        // suppression is needed here.
+        // CA2100 suppressed: resourceTypeId/surrogateId are server-generated values from this test's own
+        // setup, never external input -- matching the suppression rationale used throughout this fixture
+        // and DeadlockAllocationRecoveryTests.cs for test-controlled SQL text.
+#pragma warning disable CA2100
         using (var cycle = new SqlCommand(
-            "SELECT COUNT(ResourceId) FROM dbo.Resource WITH (UPDLOCK, HOLDLOCK, INDEX(IX_Resource_ResourceTypeId_ResourceSurrgateId)) " +
-            "WHERE ResourceTypeId = @rt AND ResourceSurrogateId = @rsid AND IsHistory = 0 AND IsDeleted = 0;",
+            $"SELECT COUNT(*) FROM dbo.Resource WITH (UPDLOCK, HOLDLOCK) WHERE ResourceTypeId = {resourceTypeId} AND ResourceSurrogateId = {surrogateId};",
             blocker, transaction))
+#pragma warning restore CA2100
         {
-            cycle.Parameters.AddWithValue("@rt", resourceTypeId);
-            cycle.Parameters.AddWithValue("@rsid", surrogateId);
             cycle.CommandTimeout = 30;
             await cycle.ExecuteScalarAsync();
         }

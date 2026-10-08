@@ -319,15 +319,6 @@ namespace Ignixa.Search {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to Search parameter with Uri: {0} is derived from a reference search parameter and cannot be deleted directly. Delete its source reference search parameter instead..
-        /// </summary>
-        internal static string DerivedSearchParameterCannotBeDeleted {
-            get {
-                return ResourceManager.GetString("DerivedSearchParameterCannotBeDeleted", resourceCulture);
-            }
-        }
-
-        /// <summary>
         ///   Looks up a localized string similar to An error occurred updating the custom search parameter.  The issue must be resolved and the update resubmitted to be applied..
         /// </summary>
         internal static string CustomSearchUpdateError {

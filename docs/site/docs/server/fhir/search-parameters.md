@@ -161,34 +161,6 @@ GET /Observation?subject.name=Smith
 GET /Observation?subject:identifier=http://hospital.org|MRN123
 ```
 
-The `:identifier` modifier is not the same query as chaining, even though they read similarly:
-
-| Query | Reads |
-|-------|-------|
-| `?subject.identifier=http://hospital.org\|MRN123` | **Chained** — resolves the reference, then tests the *target* Patient's `identifier` |
-| `?subject:identifier=http://hospital.org\|MRN123` | **Modifier** — tests `Reference.identifier` inline on the *source* resource, never resolving the target |
-
-`:identifier` matches a logical reference too — a `Reference` that carries only an `identifier`
-and no `reference` URL, which is legal FHIR and otherwise unsearchable by any other means.
-
-```bash
-GET /Encounter?patient:identifier=http://example.org/facilityA|1234
-```
-
-Some reference parameters narrow a polymorphic field to one target type, for example `patient`
-(`Encounter.subject.where(resolve() is Patient)`) excludes an `Encounter.subject` that is a
-`Group`. A logical reference has no `reference` URL, so it has nothing for that type check to
-resolve — unless its `Reference.type` names the expected type (`"Patient"` or
-`"http://hl7.org/fhir/StructureDefinition/Patient"`), in which case `:identifier` honors it and
-the reference still matches. A logical reference with no `type` at all, or a `type` naming a
-different resource, does not match a type-narrowed parameter.
-
-:::caution No backfill for resources stored before upgrading
-Resources stored before upgrading to a server version with this feature are not indexed for
-`:identifier` and will not match until they are updated; there is currently no reindex operation
-to backfill them.
-:::
-
 ### Date/DateTime
 
 Temporal comparisons:

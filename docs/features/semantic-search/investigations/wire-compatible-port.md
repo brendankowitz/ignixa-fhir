@@ -15,7 +15,7 @@ Adopt microsoft/fhir-server's **external contract** from [#5803](https://github.
 | Embedding | Bespoke `IEmbeddingClient`, Azure Foundry only | `Microsoft.Extensions.AI` `IEmbeddingGenerator`; Azure OpenAI shipped, deterministic generator in tests |
 | Chunking | tiktoken windows, Unicode-safe | Same algorithm via `Microsoft.ML.Tokenizers` |
 | Write timing | Synchronous; vectors in the `MergeResources` TVP (atomic) | Synchronous embed **before** merge (provider failure fails the write cleanly); vectors written by a separate `MergeVectorSearchParams` **after** merge (failure logged, resource committed) |
-| Storage | `VectorSearchParam` + `EmbeddingModel`, 5-column PK | Same tables, as schema version 5 in the DacFx sqlproj |
+| Storage | `VectorSearchParam` + `EmbeddingModel`, 5-column PK | Same tables, as schema version 4 in the DacFx sqlproj |
 | Query | `CROSS APPLY TOP(1)` in hand-built SQL; custom distance continuation token | A gating `VectorMatchSource` CTE (composes with filters and authorization through the plan graph) plus a `VectorRankSpec` `CROSS APPLY MIN(distance)` on the match page; existing OFFSET continuation |
 | Score | `Bundle.entry.search.score` | Same; `SearchEntryResult.Score` written by `StreamingBundleSerializer` |
 | Backfill | Existing reindex lifecycle | Open: Ignixa's reindex is not implemented (see Verdict) |
@@ -25,7 +25,7 @@ Adopt microsoft/fhir-server's **external contract** from [#5803](https://github.
 | Pros | Cons |
 |------|------|
 | SearchParameters and client queries are portable between servers | Vectors are not atomic with the resource write; a post-merge failure leaves the resource missing from semantic results until repaired |
-| Reuses existing extraction, merge-repository post-merge hook, plan compiler, and serializer seams | Schema v5 requires a native-vector engine even when the feature is off (SQL 2019/2022 tenants stop at v4) |
+| Reuses existing extraction, merge-repository post-merge hook, plan compiler, and serializer seams | Schema v4 requires a native-vector engine even when the feature is off (SQL 2019/2022 tenants stop at v3) |
 | Provider-neutral; local dev needs no Azure | Synchronous mode puts the embedding provider in the write and query availability path |
 | Gating through the CTE graph keeps filters and authorization ahead of ranking, with correct counts | Exact search computes distance twice (gate + rank) and scans the filtered candidate set; no ANN |
 | No custom schema-model workaround (DacFx builds `vector(1536)` natively) | Import and pre-existing resources get no vectors until a backfill mechanism exists |
