@@ -339,6 +339,13 @@ job that deletes matching resources in batches. It is **not an HL7 FHIR specific
 Ignixa implements it to satisfy AHDS-compatible clients (such as deprovisioning flows) built against
 fhir-server's `$bulk-delete` contract.
 
+For runnable requests, open
+[`docs/rest/operation-bulk-delete.http`](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/rest/operation-bulk-delete.http).
+It seeds tagged sample resources and covers soft delete, hard delete, history purge,
+system-level Parameters-body requests, exclusions, polling, cancellation, and no-match results.
+Run one scenario at a time in a disposable tenant; every delete is restricted to the sample IDs
+and tag.
+
 ### Kickoff Routes
 
 ```bash
