@@ -441,37 +441,47 @@ public sealed class SqlServerReindexStore(
 
         try
         {
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
+            var updatedResourceSurrogateIds = await _sqlExecutionService.ExecuteReaderAsync(
+                _tenantId,
+                command,
+                static reader => reader.GetInt64(0),
+                cancellationToken,
+                SqlCommandIdempotency.Idempotent);
+
+            var updatedResourceSurrogateIdSet = updatedResourceSurrogateIds.ToHashSet();
+            var conflicts = Convert.ToInt32(failedResources.Value, CultureInfo.InvariantCulture);
+            var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
+                    resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger)
+                .Where(extension => updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
+                .ToArray();
+            var uriExtensions = _uriRowGenerator.ExtractExtensionData(
+                    resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger)
+                .Where(extension => updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
+                .ToArray();
+            if (tokenExtensions.Length > 0 || uriExtensions.Length > 0)
+            {
+                try
+                {
+                    await _extensionUpdater.UpdateAllExtensionsAsync(tokenExtensions, uriExtensions, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Failed to update extension columns after reindex (TenantId={TenantId}, ResourceCount={ResourceCount}, TokenExtensionCount={TokenExtensionCount}, UriExtensionCount={UriExtensionCount}). Core search indices were successfully updated; extension columns remain NULL.",
+                        _tenantId,
+                        resources.Count,
+                        tokenExtensions.Length,
+                        uriExtensions.Length);
+                }
+            }
+
+            return (resources.Count - conflicts, conflicts);
         }
         catch (SqlException ex) when (ex.Number == -2)
         {
             throw new TimeoutException("The SQL reindex write timed out.", ex);
         }
-
-        var conflicts = Convert.ToInt32(failedResources.Value, CultureInfo.InvariantCulture);
-        var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
-            resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToArray();
-        var uriExtensions = _uriRowGenerator.ExtractExtensionData(
-            resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToArray();
-        if (tokenExtensions.Length > 0 || uriExtensions.Length > 0)
-        {
-            try
-            {
-                await _extensionUpdater.UpdateAllExtensionsAsync(tokenExtensions, uriExtensions, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Failed to update extension columns after reindex (TenantId={TenantId}, ResourceCount={ResourceCount}, TokenExtensionCount={TokenExtensionCount}, UriExtensionCount={UriExtensionCount}). Core search indices were successfully updated; extension columns remain NULL.",
-                    _tenantId,
-                    resources.Count,
-                    tokenExtensions.Length,
-                    uriExtensions.Length);
-            }
-        }
-
-        return (resources.Count - conflicts, conflicts);
     }
 
     public async Task<bool> HasSearchParameterAsync(

@@ -9,7 +9,7 @@ namespace Ignixa.DataLayer.SqlServer;
 public static class SchemaVersionConstants
 {
     /// <summary>The schema version this build's dacpac represents.</summary>
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
 
     /// <summary>
     /// The oldest tenant schema version this build still tolerates reading an
@@ -48,4 +48,6 @@ public static class SchemaVersionConstants
     // and preserves the legacy records. DacFx leaves all other target-only objects untouched.
     // Version 7 (expand, unreleased) -- adds the transaction-range-last-value index used by the
     // reindex barrier to read its surrogate cutoff without scanning dbo.Transactions.
+    // Version 8 (expand, unreleased) -- UpdateResourceSearchParams returns the surrogate ids whose
+    // index rows it updated so reindex can skip post-write extension updates for version conflicts.
 }
