@@ -784,27 +784,19 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     private bool IsLatestActivation(ActiveSearchParameter parameter) =>
         ReferenceEquals(parameter, GetLatestActivation(parameter.ResourceType, parameter.Code));
 
-    private bool CanStartReindex(ActiveSearchParameter owner, long? activationEventId)
-    {
-        if (activationEventId is null)
-        {
-            return true;
-        }
-
-        return owner.Status == SearchParameterStatus.Pending &&
+    private bool CanStartReindex(ActiveSearchParameter owner, long? activationEventId) =>
+        owner.Status == SearchParameterStatus.Pending &&
             IsLatestActivation(owner) &&
-            owner.ActivationEventId == activationEventId;
-    }
+            (activationEventId is null || owner.ActivationEventId == activationEventId);
 
     private bool CanFinishReindex(
         ActiveSearchParameter parameter,
         long? activationEventId,
         string jobId) =>
-        activationEventId is null ||
         parameter.Status == SearchParameterStatus.Reindexing &&
         IsLatestActivation(parameter) &&
-        parameter.ActivationEventId == activationEventId &&
-        parameter.ReindexJobId == jobId;
+        parameter.ReindexJobId == jobId &&
+        (activationEventId is null || parameter.ActivationEventId == activationEventId);
 
     private static ActiveSearchParameter CloneForRestoration(ActiveSearchParameter previous, long eventId) =>
         new()

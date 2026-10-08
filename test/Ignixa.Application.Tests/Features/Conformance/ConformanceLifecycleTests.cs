@@ -338,7 +338,21 @@ public class ConformanceLifecycleTests
     }
 
     [Fact]
-    public void GivenLegacyReindexEventWithoutActivationId_WhenApplied_ThenItRetainsLegacyUnguardedBehavior()
+    public void GivenLegacyReindexStartedForAJobAlreadyRunning_WhenApplied_ThenItDoesNotReplaceTheJob()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
+        state.Apply(ReindexStarted(20, activationEventId: null, jobId: "current"));
+
+        state.Apply(ReindexStarted(30, activationEventId: null, jobId: "legacy-other-job"));
+
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
+        parameter.ReindexJobId.ShouldBe("current");
+    }
+
+    [Fact]
+    public void GivenLegacyReindexCompletedForAnotherJob_WhenApplied_ThenItDoesNotEnableTheParameter()
     {
         using var state = new ConformanceState();
         state.Apply(Activation(10, OverrideCanonical, "custom", 7));
@@ -346,7 +360,23 @@ public class ConformanceLifecycleTests
 
         state.Apply(ReindexCompleted(30, activationEventId: null, jobId: "legacy-other-job"));
 
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Enabled);
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
+        parameter.ReindexJobId.ShouldBe("current");
+    }
+
+    [Fact]
+    public void GivenLegacyReindexFailedForAnotherJob_WhenApplied_ThenItDoesNotResetTheParameter()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
+        state.Apply(ReindexStarted(20, activationEventId: 10, jobId: "current"));
+
+        state.Apply(ReindexFailed(30, activationEventId: null, jobId: "legacy-other-job"));
+
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
+        parameter.ReindexJobId.ShouldBe("current");
     }
 
     [Fact]
