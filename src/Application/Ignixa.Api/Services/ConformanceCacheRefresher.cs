@@ -59,11 +59,6 @@ public sealed class ConformanceCacheRefresher(
                     cancellationToken);
             }
 
-            foreach (var tenant in tenants)
-            {
-                await capabilityCacheInvalidator.InvalidateForTenantAsync(tenant.TenantId, cancellationToken);
-            }
-
             cancellationToken.ThrowIfCancellationRequested();
             return new ConsumerSnapshot(generation, definitions);
         }
@@ -100,6 +95,23 @@ public sealed class ConformanceCacheRefresher(
                 definitions.Version,
                 definitions.TenantId,
                 definitions.Snapshot);
+        }
+    }
+
+    public async ValueTask InvalidatePublishedSnapshotCachesAsync(
+        IConformanceConsumerSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        var consumerSnapshot = snapshot as ConsumerSnapshot
+            ?? throw new ArgumentException(
+                $"Expected a {nameof(ConsumerSnapshot)}.",
+                nameof(snapshot));
+
+        foreach (var definitions in consumerSnapshot.Definitions)
+        {
+            await capabilityCacheInvalidator.InvalidateForTenantAsync(
+                definitions.TenantId,
+                cancellationToken);
         }
     }
 

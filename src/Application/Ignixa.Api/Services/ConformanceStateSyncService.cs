@@ -87,7 +87,7 @@ public class ConformanceStateSyncService(
             overdueTransitionIds = GetOverdueTransitionIds();
         }
 
-        if (afterEventId > _lastRefreshedEventId)
+        if (afterEventId > _lastRefreshedEventId || refreshPublisher.HasPendingRefresh)
         {
             try
             {

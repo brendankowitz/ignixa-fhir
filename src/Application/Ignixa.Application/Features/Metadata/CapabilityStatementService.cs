@@ -56,6 +56,7 @@ public class CapabilityStatementService
         CancellationToken cancellationToken = default)
     {
         var cacheKey = GetCacheKey(context);
+        var versionHashCacheKey = context.ToCacheKey();
 
         _logger.LogDebug(
             "Getting capability statement for context: FhirVersion={FhirVersion}, TenantId={TenantId}, CacheKey={CacheKey}",
@@ -71,7 +72,7 @@ public class CapabilityStatementService
             // 2. Validate cached entry using version hash
             // Try to get cached version hash first to avoid expensive recomputation
             string currentHash;
-            if (_versionHashCache.TryGetValue(cacheKey, out var cachedHash))
+            if (_versionHashCache.TryGetValue(versionHashCacheKey, out var cachedHash))
             {
                 currentHash = cachedHash;
                 _logger.LogTrace("Using cached version hash for {CacheKey}", cacheKey);
@@ -79,7 +80,7 @@ public class CapabilityStatementService
             else
             {
                 currentHash = await ComputeVersionHashAsync(context, cancellationToken);
-                _versionHashCache[cacheKey] = currentHash;
+                _versionHashCache[versionHashCacheKey] = currentHash;
                 _logger.LogTrace("Computed and cached version hash for {CacheKey}", cacheKey);
             }
 
@@ -109,7 +110,7 @@ public class CapabilityStatementService
 
         // 4. Compute version hash for caching (or use cached value if available)
         string versionHash;
-        if (_versionHashCache.TryGetValue(cacheKey, out var cachedVersionHash))
+        if (_versionHashCache.TryGetValue(versionHashCacheKey, out var cachedVersionHash))
         {
             versionHash = cachedVersionHash;
             _logger.LogTrace("Using cached version hash for new capability statement {CacheKey}", cacheKey);
@@ -117,7 +118,7 @@ public class CapabilityStatementService
         else
         {
             versionHash = await ComputeVersionHashAsync(context, cancellationToken);
-            _versionHashCache[cacheKey] = versionHash;
+            _versionHashCache[versionHashCacheKey] = versionHash;
             _logger.LogTrace("Computed and cached version hash for new capability statement {CacheKey}", cacheKey);
         }
 
@@ -232,25 +233,44 @@ public class CapabilityStatementService
         CapabilityContext context,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = GetCacheKey(context);
+        var definitionsHandle = _versionContext.GetDefinitionsHandle(
+            context.FhirVersion,
+            context.TenantId);
+        var cacheKey = GetCacheKey(context, definitionsHandle);
 
         // Clear version hash cache for this context
-        _versionHashCache.TryRemove(cacheKey, out _);
+        _versionHashCache.TryRemove(context.ToCacheKey(), out _);
         _logger.LogDebug("Cleared version hash cache for {CacheKey}", cacheKey);
 
         // Clear capability statement cache
         await _cache.RemoveAsync(cacheKey, cancellationToken);
+        if (context.TenantId is { } tenantId)
+        {
+            await _cache.RemoveAsync(
+                GetProfileCacheKey(tenantId, definitionsHandle),
+                cancellationToken);
+        }
 
         _logger.LogInformation("Invalidated capability cache for {CacheKey}", cacheKey);
     }
 
     private string GetCacheKey(CapabilityContext context)
     {
-        var definitionsEventId = _versionContext
-            .GetDefinitionsHandle(context.FhirVersion, context.TenantId)
-            ?.DefinitionsEventId ?? 0;
-        return $"{context.ToCacheKey()}:{definitionsEventId}";
+        var definitionsHandle = _versionContext.GetDefinitionsHandle(
+            context.FhirVersion,
+            context.TenantId);
+        return GetCacheKey(context, definitionsHandle);
     }
+
+    private static string GetCacheKey(
+        CapabilityContext context,
+        DefinitionsHandle? definitionsHandle) =>
+        $"{context.ToCacheKey()}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
+
+    private static string GetProfileCacheKey(
+        int tenantId,
+        DefinitionsHandle? definitionsHandle) =>
+        $"profiles:{tenantId}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
 
     /// <summary>
     /// Clears all cached capability statements.

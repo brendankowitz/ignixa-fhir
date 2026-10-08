@@ -11,4 +11,8 @@ public interface IConformanceCacheRefresher
         CancellationToken cancellationToken);
 
     void PublishSnapshot(IConformanceConsumerSnapshot snapshot);
+
+    ValueTask InvalidatePublishedSnapshotCachesAsync(
+        IConformanceConsumerSnapshot snapshot,
+        CancellationToken cancellationToken) => ValueTask.CompletedTask;
 }

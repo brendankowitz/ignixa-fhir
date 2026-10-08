@@ -9,4 +9,5 @@ namespace Ignixa.Application.Features.Search;
 public sealed record DefinitionsHandle(
     ISearchIndexer Indexer,
     IFhirSchemaProvider SchemaProvider,
-    long DefinitionsEventId);
+    long DefinitionsEventId,
+    long PublicationSequence = 0);

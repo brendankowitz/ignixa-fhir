@@ -69,6 +69,7 @@ public class PackageActivationPipeline(
 
         IReadOnlyList<long> transitionEventIds;
         List<string> reindexNeeded;
+        var conformanceStateChanged = false;
         using (await _state.AcquireActivationLockAsync(cancellationToken))
         {
             // Check if package is already activated (idempotency)
@@ -119,6 +120,7 @@ public class PackageActivationPipeline(
             {
                 _state.ApplyAndTrack(evt);
             }
+            conformanceStateChanged = persistedEvents.Count > 0;
 
             transitionEventIds = persistedEvents
                 .Where(evt => evt.Data is SearchParameterActivated)
@@ -196,7 +198,8 @@ public class PackageActivationPipeline(
             reindexNeeded,
             localRefreshDeferred: !refreshed,
             transitionSchedulingDeferred: transitionSchedulingDeferred,
-            reindex: reindex);
+            reindex: reindex,
+            conformancePublished: conformanceStateChanged && refreshed);
     }
 
     private async Task<bool> TryScheduleTransitionAsync(long eventId)

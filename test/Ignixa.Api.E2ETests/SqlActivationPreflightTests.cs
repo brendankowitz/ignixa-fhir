@@ -217,7 +217,6 @@ public class SqlActivationPreflightTests
             services.GetRequiredService<IFhirVersionContext>(),
             services.GetRequiredService<SqlServerSearchIndexCacheRegistry>(),
             services.GetRequiredService<ITenantConfigurationStore>(),
-            services.GetRequiredService<ICapabilityCacheInvalidator>(),
             services.GetRequiredService<ILogger<PackageLoadedSearchParameterSyncHandler>>());
         await handler.HandleAsync(new PackageLoadedEvent(PackageId, version, 1, DateTimeOffset.UtcNow), CancellationToken.None);
     }

@@ -44,6 +44,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ConformanceState? _conformanceState;
     private readonly IFhirBaseUriProvider _baseUriProvider;
     private readonly ILogger<FhirVersionContext> _logger;
+    private long _conformancePublicationSequence;
     private bool _disposed;
 
     /// <param name="baseUriProvider">
@@ -350,10 +351,12 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             extractionDefinitions,
             _baseUriProvider);
 
+        var publicationSequence = Interlocked.Increment(ref _conformancePublicationSequence);
         return new ConformanceDefinitionsSnapshot(
             extractionDefinitions,
             searchableDefinitions,
-            new DefinitionsHandle(indexer, schemaProvider, generation));
+            new DefinitionsHandle(indexer, schemaProvider, generation, publicationSequence),
+            publicationSequence);
     }
 
     /// <inheritdoc/>
