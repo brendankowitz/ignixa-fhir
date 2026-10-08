@@ -21,8 +21,17 @@ public sealed class CompleteReindexActivity(
         CompleteReindexInput input)
     {
         var completedAt = timeProvider.GetUtcNow();
+        var ownedTargets = (await lifecycle.GetOwnedTargetsAsync(CancellationToken.None))
+            .Where(owned => owned.JobId == input.JobId)
+            .Select(owned => input.Targets.FirstOrDefault(target =>
+                    target.Canonical == owned.Target.Canonical &&
+                    target.ResourceType == owned.Target.ResourceType &&
+                    target.Code == owned.Target.Code &&
+                    target.ActivationEventId == owned.Target.ActivationEventId)
+                ?? owned.Target)
+            .ToArray();
         var completions = new List<ReindexTargetCompletion>();
-        foreach (var target in input.Targets.Where(target => target.IsFullyCovered))
+        foreach (var target in ownedTargets)
         {
             var errors = new List<string>();
             long resourcesIndexed = 0;

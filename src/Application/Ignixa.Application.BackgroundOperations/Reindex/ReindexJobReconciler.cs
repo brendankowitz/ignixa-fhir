@@ -88,6 +88,37 @@ public sealed class ReindexJobReconciler(
 
             await FinalizeOrphanAsync(job, second ?? first, cancellationToken);
         }
+
+        await ResetParametersOwnedByTerminalJobsAsync(cancellationToken);
+    }
+
+    private async Task ResetParametersOwnedByTerminalJobsAsync(
+        CancellationToken cancellationToken)
+    {
+        var ownedTargets = await lifecycle.GetOwnedTargetsAsync(cancellationToken);
+        foreach (var group in ownedTargets.GroupBy(target => target.JobId, StringComparer.Ordinal))
+        {
+            var job = await repository.GetAsync(group.Key, 1, cancellationToken);
+            if (job is null || !IsTerminal(job.Status))
+            {
+                continue;
+            }
+
+            var reason =
+                $"Reindex parameter remained owned by terminal {job.Status} job {job.JobId}.";
+            var completions = group.Select(owned => new ReindexTargetCompletion(
+                owned.Target,
+                false,
+                0,
+                TimeSpan.Zero,
+                reason)).ToArray();
+            await lifecycle.CompleteAsync(job.JobId, completions, cancellationToken);
+            logger.LogWarning(
+                "Reindex: reset {ParameterCount} parameters still owned by terminal {Status} job {JobId}",
+                completions.Length,
+                job.Status,
+                job.JobId);
+        }
     }
 
     private async Task ResumePersistedDecisionAsync(

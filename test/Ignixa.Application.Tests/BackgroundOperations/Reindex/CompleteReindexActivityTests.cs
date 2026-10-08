@@ -21,6 +21,57 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class CompleteReindexActivityTests
 {
     [Fact]
+    public async Task GivenJobOwnsTargetMissingFromInput_WhenCompletionRuns_ThenOwnedTargetIsEnabled()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-added-during-debounce";
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        await jobs.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        var repository = Substitute.For<IFhirRepository, IReindexStore>();
+        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+            .Returns(true);
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+            .Returns(repository);
+        using var jobLock = new TestJobLock();
+        var activity = new CompleteReindexActivity(
+            repositoryFactory,
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, Substitute.For<IReindexCompletionHook>()),
+            TimeProvider.System);
+
+        await activity.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
+            JsonSerializer.Serialize(new[]
+            {
+                new CompleteReindexInput(
+                    "job",
+                    1,
+                    [],
+                    [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                    [])
+            }));
+
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Enabled);
+    }
+
+    [Fact]
     public async Task GivenOverrideUsesExistingPhysicalId_WhenReindexCompletes_ThenOverrideIsEnabled()
     {
         const string overrideCanonical = "http://example.org/SearchParameter/patient-override";
