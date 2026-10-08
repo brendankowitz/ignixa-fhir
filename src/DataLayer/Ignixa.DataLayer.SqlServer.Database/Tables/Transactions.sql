@@ -20,3 +20,8 @@ GO
 
 CREATE INDEX IX_IsVisible
     ON dbo.Transactions(IsVisible);
+
+GO
+
+CREATE INDEX IX_Transactions_SurrogateIdRangeLastValue
+    ON dbo.Transactions(SurrogateIdRangeLastValue DESC);

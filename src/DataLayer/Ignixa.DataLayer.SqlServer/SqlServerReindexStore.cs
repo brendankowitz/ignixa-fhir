@@ -69,7 +69,7 @@ public sealed class SqlServerReindexStore(
         // IGNORE_DUP_KEY makes a concurrent insert a warning. The second monotonic update ensures a
         // higher target still wins that race before the cutoff is read.
         using var command = new SqlCommand(
-            """
+            $"""
             UPDATE dbo.Parameters
             SET Bigint = @TargetEventId
             WHERE Id = @BarrierId
@@ -85,14 +85,29 @@ public sealed class SqlServerReindexStore(
             WHERE Id = @BarrierId
               AND (Bigint IS NULL OR Bigint < @TargetEventId);
 
+            ;WITH ResourceCutoffCandidates AS (
+                SELECT MAX(resource.ResourceSurrogateId) AS CutoffValue
+                FROM dbo.ResourceType AS resourceTypes
+                OUTER APPLY (
+                    SELECT TOP (1) ResourceSurrogateId
+                    FROM dbo.Resource
+                    WHERE ResourceTypeId = resourceTypes.ResourceTypeId
+                    ORDER BY ResourceSurrogateId DESC
+                ) AS resource
+            )
             SELECT
-                ISNULL((SELECT MAX(SurrogateIdRangeFirstValue) FROM dbo.Transactions), -1),
+                ISNULL((
+                    SELECT TOP (1) SurrogateIdRangeFirstValue
+                    FROM dbo.Transactions
+                    ORDER BY SurrogateIdRangeFirstValue DESC), -1),
                 ISNULL((
                     SELECT MAX(CutoffValue)
                     FROM (
-                        SELECT MAX(SurrogateIdRangeLastValue) AS CutoffValue FROM dbo.Transactions
+                        SELECT TOP (1) SurrogateIdRangeLastValue AS CutoffValue
+                        FROM dbo.Transactions
+                        ORDER BY SurrogateIdRangeLastValue DESC
                         UNION ALL
-                        SELECT MAX(ResourceSurrogateId) AS CutoffValue FROM dbo.Resource
+                        SELECT CutoffValue FROM ResourceCutoffCandidates
                     ) AS CutoffCandidates), -1);
             """);
         command.Parameters.Add("@TargetEventId", SqlDbType.BigInt).Value = targetEventId;
