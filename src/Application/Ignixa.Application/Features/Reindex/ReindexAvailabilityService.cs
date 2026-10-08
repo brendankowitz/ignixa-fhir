@@ -16,58 +16,15 @@ public sealed class ReindexAvailabilityService(
         tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
     private readonly IReindexProviderCapabilities _providerCapabilities =
         providerCapabilities ?? throw new ArgumentNullException(nameof(providerCapabilities));
-    private readonly object _availabilityLock = new();
-    private Task<ReindexAvailability>? _availabilityTask;
 
-    public Task<ReindexAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        lock (_availabilityLock)
-        {
-            var availabilityTask = _availabilityTask;
-            if (availabilityTask is null)
-            {
-                var completionSource = new TaskCompletionSource<ReindexAvailability>(
-                    TaskCreationOptions.RunContinuationsAsynchronously);
-                availabilityTask = completionSource.Task;
-                _availabilityTask = availabilityTask;
-                _ = CompleteAvailabilityProbeAsync(completionSource);
-            }
-
-            return availabilityTask.WaitAsync(cancellationToken);
-        }
-    }
-
-    private async Task CompleteAvailabilityProbeAsync(
-        TaskCompletionSource<ReindexAvailability> completionSource)
-    {
-        try
-        {
-            completionSource.SetResult(await ProbeAvailabilityAsync());
-        }
-        catch (Exception exception)
-        {
-            lock (_availabilityLock)
-            {
-                if (ReferenceEquals(_availabilityTask, completionSource.Task))
-                {
-                    _availabilityTask = null;
-                }
-            }
-
-            completionSource.SetException(exception);
-        }
-    }
-
-    private async Task<ReindexAvailability> ProbeAvailabilityAsync()
+    public async Task<ReindexAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
     {
         if (!_options.Enabled)
         {
             return ReindexAvailability.Disabled;
         }
 
-        var tenants = await _tenantConfigurationStore.GetAllTenantsAsync(CancellationToken.None);
+        var tenants = await _tenantConfigurationStore.GetAllTenantsAsync(cancellationToken);
         int? unsupportedTenantId = null;
         foreach (var tenant in tenants
             .Where(tenant => tenant.IsActive && tenant.TenantId != SystemConstants.SystemPartitionId)

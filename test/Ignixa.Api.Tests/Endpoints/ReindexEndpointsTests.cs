@@ -297,6 +297,16 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         const string canonical = "http://example.test/SearchParameter/patient-custom";
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.Mode.Returns(TenantMode.Isolated);
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns([
+                new TenantConfiguration
+                {
+                    TenantId = 1,
+                    DisplayName = "Tenant 1",
+                    FhirVersion = "4.0",
+                    IsActive = true
+                }
+            ]);
         var repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
             tenants,
             NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
@@ -347,6 +357,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             repositoryFactory,
             lifecycle,
             new ReindexJobUpdater(repository, jobLock, new ThrowingCompletionHook()),
+            tenants,
             TimeProvider.System);
         var failedResource = new ReindexFailedResource("Patient", "p1", "index failure");
 

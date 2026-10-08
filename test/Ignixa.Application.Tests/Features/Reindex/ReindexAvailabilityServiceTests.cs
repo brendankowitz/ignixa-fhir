@@ -115,7 +115,7 @@ public sealed class ReindexAvailabilityServiceTests
     }
 
     [Fact]
-    public async Task GivenConcurrentFirstCalls_WhenCheckingAvailability_ThenRunsOneProbe()
+    public async Task GivenConcurrentCalls_WhenCheckingAvailability_ThenEachCallProbesCurrentTenants()
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         var probe = new TaskCompletionSource<IReadOnlyList<TenantConfiguration>>(
@@ -132,7 +132,7 @@ public sealed class ReindexAvailabilityServiceTests
         var first = service.GetAvailabilityAsync(CancellationToken.None);
         var second = service.GetAvailabilityAsync(CancellationToken.None);
 
-        _ = await tenants.Received(1).GetAllTenantsAsync(Arg.Any<CancellationToken>());
+        _ = await tenants.Received(2).GetAllTenantsAsync(Arg.Any<CancellationToken>());
         probe.SetResult([Tenant(1)]);
 
         (await first).ShouldBe(ReindexAvailability.Available);
@@ -192,7 +192,7 @@ public sealed class ReindexAvailabilityServiceTests
     }
 
     [Fact]
-    public async Task GivenSuccessfulProbe_WhenCheckingAvailabilityAgain_ThenDoesNotRepeatTenantWork()
+    public async Task GivenSuccessfulProbe_WhenCheckingAvailabilityAgain_ThenRepeatsTenantWork()
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([Tenant(1)]);
@@ -209,8 +209,30 @@ public sealed class ReindexAvailabilityServiceTests
 
         (await service.GetAvailabilityAsync(CancellationToken.None)).ShouldBe(ReindexAvailability.Available);
 
-        _ = await tenants.DidNotReceive().GetAllTenantsAsync(Arg.Any<CancellationToken>());
-        capabilities.DidNotReceive().SupportsReindex(Arg.Any<TenantConfiguration>());
+        _ = await tenants.Received(1).GetAllTenantsAsync(Arg.Any<CancellationToken>());
+        capabilities.Received(1).SupportsReindex(Arg.Any<TenantConfiguration>());
+    }
+
+    [Fact]
+    public async Task GivenTenantProvidersChange_WhenCheckingAvailabilityAgain_ThenAvailabilityIsRecomputed()
+    {
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(
+                [Tenant(1, "SqlServer")],
+                [Tenant(1, "SqlServer"), Tenant(2, "FileSystem")]);
+        var capabilities = CreateCompositeRepositoryFactory(tenants);
+        var service = new ReindexAvailabilityService(
+            Options.Create(new ReindexOptions { Enabled = true }),
+            tenants,
+            capabilities);
+
+        (await service.GetAvailabilityAsync(CancellationToken.None))
+            .ShouldBe(ReindexAvailability.Available);
+        var changed = await service.GetAvailabilityAsync(CancellationToken.None);
+
+        changed.Status.ShouldBe(ReindexAvailabilityStatus.Unsupported);
+        changed.UnsupportedTenantId.ShouldBe(2);
     }
 
     private static TenantConfiguration Tenant(int tenantId, string storageType = "FileSystem") =>

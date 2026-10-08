@@ -76,6 +76,27 @@ public sealed class ReindexJobUpdater(
                 ct),
             cancellationToken);
 
+    public Task<bool> TryCompleteAsync(
+        string jobId,
+        Func<BackgroundJob<ReindexJobDefinition>, CancellationToken, Task<string>> selectTerminalStatus,
+        Func<BackgroundJob<ReindexJobDefinition>, CancellationToken, Task> beforeCommit,
+        Action<BackgroundJob<ReindexJobDefinition>> update,
+        CancellationToken cancellationToken) =>
+        jobLock.ExecuteAsync(
+            async ct =>
+            {
+                var job = await repository.GetAsync(jobId, GlobalTenantId, ct)
+                    ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
+                var terminalStatus = await selectTerminalStatus(job, ct);
+                return await TryCompleteUnderLockAsync(
+                    job,
+                    terminalStatus,
+                    beforeCommit,
+                    update,
+                    ct);
+            },
+            cancellationToken);
+
     internal async Task<bool> TryCompleteUnderLockAsync(
         string jobId,
         string terminalStatus,
@@ -85,6 +106,21 @@ public sealed class ReindexJobUpdater(
     {
         var job = await repository.GetAsync(jobId, GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
+        return await TryCompleteUnderLockAsync(
+            job,
+            terminalStatus,
+            beforeCommit,
+            update,
+            cancellationToken);
+    }
+
+    private async Task<bool> TryCompleteUnderLockAsync(
+        BackgroundJob<ReindexJobDefinition> job,
+        string terminalStatus,
+        Func<BackgroundJob<ReindexJobDefinition>, CancellationToken, Task> beforeCommit,
+        Action<BackgroundJob<ReindexJobDefinition>> update,
+        CancellationToken cancellationToken)
+    {
         if (IsTerminal(job.Status))
         {
             return false;
