@@ -8,7 +8,6 @@ public sealed record CreateReindexJobCommand : IRequest<CreateReindexJobResult>
     public int? MaximumNumberOfResourcesPerWrite { get; init; }
     public int? MaximumConcurrency { get; init; }
     public int? QueryDelayIntervalInMilliseconds { get; init; }
-    public IReadOnlyCollection<string>? TargetResourceTypes { get; init; }
     public string Trigger { get; init; } = "Manual";
     public bool QueueRequest { get; init; }
     public bool LockAlreadyHeld { get; init; }

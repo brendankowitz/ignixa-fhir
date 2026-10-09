@@ -92,8 +92,7 @@ public static class ReindexEndpoints
             MaximumNumberOfResourcesPerQuery = request!.MaximumNumberOfResourcesPerQuery,
             MaximumNumberOfResourcesPerWrite = request.MaximumNumberOfResourcesPerWrite,
             MaximumConcurrency = request.MaximumConcurrency,
-            QueryDelayIntervalInMilliseconds = request.QueryDelayIntervalInMilliseconds,
-            TargetResourceTypes = request.TargetResourceTypes
+            QueryDelayIntervalInMilliseconds = request.QueryDelayIntervalInMilliseconds
         }, cancellationToken);
         switch (result)
         {
@@ -253,9 +252,7 @@ public static class ReindexEndpoints
                 OperationParameter("maximumConcurrency", "integer",
                     "Maximum concurrent range workers per tenant."),
                 OperationParameter("queryDelayIntervalInMilliseconds", "integer",
-                    "Delay between worker pages."),
-                OperationParameter("targetResourceTypes", "string",
-                    "Comma-separated concrete resource types to reindex.")
+                    "Delay between worker pages.")
             }
         }.ToJsonString()));
 
@@ -312,7 +309,6 @@ public static class ReindexEndpoints
             }
         }
 
-        AddStringArray(values, "notCovered", progress?["notCovered"] as JsonArray);
         AddStringArray(values, "ignoredLifecycleEvents", progress?["ignoredLifecycleEvents"] as JsonArray);
         AddTenantParts(values, progress?["tenants"] as JsonArray, fhirVersion);
         AddFailedResources(values, progress?["failedResources"] as JsonArray);

@@ -14,7 +14,7 @@ namespace Ignixa.Api.E2ETests;
 public class VersionReadTenantIsolationTests(IgnixaApiFixture fixture)
 {
     private static readonly int[] Tenants = [1, 2];
-    [Fact]
+    [SqlFact]
     public async Task GivenTwoTenantsWithTheSameResourceId_WhenVread_ThenHistoryIsIsolatedAndUnqualifiedRoutesAreRejected()
     {
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
@@ -84,4 +84,15 @@ public class VersionReadTenantIsolationTests(IgnixaApiFixture fixture)
         }
     }
 
+    private sealed class SqlFactAttribute : FactAttribute
+    {
+        public SqlFactAttribute()
+        {
+            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")
+                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                Skip = "Requires SQL-backed resources.";
+            }
+        }
+    }
 }

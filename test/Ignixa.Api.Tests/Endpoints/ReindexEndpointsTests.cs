@@ -88,8 +88,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             ("maximumNumberOfResourcesPerQuery", "valueInteger", 50),
             ("maximumNumberOfResourcesPerWrite", "valueInteger", 25),
             ("maximumConcurrency", "valueInteger", 2),
-            ("queryDelayIntervalInMilliseconds", "valueInteger", 5),
-            ("targetResourceTypes", "valueString", "Patient, Observation")));
+            ("queryDelayIntervalInMilliseconds", "valueInteger", 5)));
 
         response.StatusCode.ShouldBe(StatusCodes.Status201Created);
         response.Headers["Content-Location"].ShouldBe("/tenant/1/$reindex/created-job");
@@ -100,7 +99,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands[0].MaximumNumberOfResourcesPerWrite.ShouldBe(25);
         _createCommands[0].MaximumConcurrency.ShouldBe(2);
         _createCommands[0].QueryDelayIntervalInMilliseconds.ShouldBe(5);
-        _createCommands[0].TargetResourceTypes.ShouldBe(["Patient", "Observation"]);
     }
 
     [Theory]
@@ -158,7 +156,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     [InlineData("maximumNumberOfResourcesPerWrite", "valueInteger", 10)]
     [InlineData("maximumConcurrency", "valueInteger", 2)]
     [InlineData("queryDelayIntervalInMilliseconds", "valueInteger", 5)]
-    [InlineData("targetResourceTypes", "valueString", "Patient")]
     public async Task GivenDuplicateSingletonParameter_WhenCreating_ThenReturnsBadRequestWithoutDispatching(
         string name,
         string valueName,
@@ -169,6 +166,22 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             (name, valueName, value)));
 
         response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        _createCommands.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("CreateReindex")]
+    [InlineData("CreateReindexForTenant")]
+    public async Task GivenTargetResourceTypes_WhenCreating_ThenReturnsUnsupportedParameterOutcomeWithoutDispatching(
+        string endpointName)
+    {
+        var response = await SendAsync(endpointName, body: Parameters(
+            ("targetResourceTypes", "valueString", "Patient")));
+
+        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        response.Body["issue"]![0]!["diagnostics"]!.GetValue<string>()
+            .ShouldBe("Parameter 'targetResourceTypes' is not supported.");
         _createCommands.ShouldBeEmpty();
     }
 
@@ -278,7 +291,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         Value(response.Body, "targetEventId").ShouldBe("42");
         Values(response.Body, "resources").ShouldBe(["Patient", "Observation"]);
         Values(response.Body, "searchParams").ShouldBe(["http://example.test/SearchParameter/name"]);
-        Values(response.Body, "notCovered").ShouldBe(["http://example.test/SearchParameter/not-covered"]);
+        Values(response.Body, "notCovered").ShouldBeEmpty();
         Values(response.Body, "ignoredLifecycleEvents").ShouldBe(["http://example.test/SearchParameter/ignored"]);
 
         var tenants = Parts(response.Body, "tenant");
@@ -498,22 +511,25 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("maximumNumberOfResourcesPerQuery", 0)]
-    [InlineData("maximumNumberOfResourcesPerQuery", 10001)]
-    [InlineData("maximumNumberOfResourcesPerWrite", 0)]
-    [InlineData("maximumNumberOfResourcesPerWrite", 10001)]
-    [InlineData("maximumConcurrency", 0)]
-    [InlineData("maximumConcurrency", 17)]
-    [InlineData("queryDelayIntervalInMilliseconds", -1)]
-    [InlineData("queryDelayIntervalInMilliseconds", 60001)]
-    public async Task GivenOutOfRangeParameter_WhenCreating_ThenReturnsBadRequest(string parameter, int value)
+    [InlineData("maximumNumberOfResourcesPerQuery", 0, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumNumberOfResourcesPerQuery", 10001, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumNumberOfResourcesPerWrite", 0, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumNumberOfResourcesPerWrite", 10001, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumConcurrency", 0, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumConcurrency", 17, StatusCodes.Status400BadRequest)]
+    [InlineData("queryDelayIntervalInMilliseconds", -1, StatusCodes.Status400BadRequest)]
+    [InlineData("queryDelayIntervalInMilliseconds", 60001, StatusCodes.Status400BadRequest)]
+    public async Task GivenOutOfRangeParameter_WhenCreating_ThenReturnsExpectedStatusCode(
+        string parameter,
+        int value,
+        int expectedStatusCode)
     {
         _createResult = new InvalidReindexRequestResult($"{parameter} is out of range.");
 
         var response = await SendAsync("CreateReindexForTenant", body: Parameters(
             (parameter, "valueInteger", value)));
 
-        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        response.StatusCode.ShouldBe(expectedStatusCode);
         _createCommands.ShouldHaveSingleItem();
     }
 
@@ -741,8 +757,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                 "maximumNumberOfResourcesPerQuery",
                 "maximumNumberOfResourcesPerWrite",
                 "maximumConcurrency",
-                "queryDelayIntervalInMilliseconds",
-                "targetResourceTypes"
+                "queryDelayIntervalInMilliseconds"
             ]);
     }
 

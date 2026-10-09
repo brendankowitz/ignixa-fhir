@@ -53,7 +53,6 @@ public class ReindexProgressReporterTests
         job.Progress!["totalResourcesToReindex"]!.GetValue<long>().ShouldBe(15);
         job.Progress["resourcesSuccessfullyReindexed"]!.GetValue<long>().ShouldBe(15);
         job.Progress["progress"]!.GetValue<double>().ShouldBe(99.9);
-        job.Progress["notCovered"]![0]!.GetValue<string>().ShouldBe("http://example.org/not-covered");
     }
 
     [Fact]
@@ -146,7 +145,7 @@ public class ReindexProgressReporterTests
         new()
         {
             JobId = "job", JobType = 4, Status = "Running", Definition = ReindexTestHelper.CreateJobDefinition(),
-            Progress = new JsonObject { ["notCovered"] = new JsonArray("http://example.org/not-covered") }
+            Progress = new JsonObject()
         };
 
     private static InMemoryBackgroundJobRepository<ReindexJobDefinition> CreateRepository() =>

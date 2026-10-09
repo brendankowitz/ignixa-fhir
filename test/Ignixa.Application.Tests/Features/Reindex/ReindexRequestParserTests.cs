@@ -15,8 +15,7 @@ public class ReindexRequestParserTests
                 { "name": "maximumNumberOfResourcesPerQuery", "valueInteger": 50 },
                 { "name": "maximumNumberOfResourcesPerWrite", "valueInteger": 25 },
                 { "name": "maximumConcurrency", "valueInteger": 2 },
-                { "name": "queryDelayIntervalInMilliseconds", "valueInteger": 5 },
-                { "name": "targetResourceTypes", "valueString": "Patient, Observation" }
+                { "name": "queryDelayIntervalInMilliseconds", "valueInteger": 5 }
               ]
             }
             """;
@@ -30,11 +29,11 @@ public class ReindexRequestParserTests
         request.MaximumNumberOfResourcesPerWrite.ShouldBe(25);
         request.MaximumConcurrency.ShouldBe(2);
         request.QueryDelayIntervalInMilliseconds.ShouldBe(5);
-        request.TargetResourceTypes.ShouldBe(["Patient", "Observation"]);
     }
 
     [Theory]
     [InlineData("unexpected", "Unknown reindex parameter 'unexpected'.")]
+    [InlineData("targetResourceTypes", "Parameter 'targetResourceTypes' is not supported.")]
     [InlineData("targetSearchParameterTypes", "Parameter 'targetSearchParameterTypes' is not supported.")]
     public void GivenUnsupportedParameter_WhenParsing_ThenReturnsError(string name, string expectedError)
     {

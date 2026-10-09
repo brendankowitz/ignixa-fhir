@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DurableTask.Core;
+using DurableTask.Core.Serializing;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
@@ -121,6 +122,51 @@ public class ReindexOrchestrationTests
         context.BarrierCalls.ShouldBe(0);
         context.ProgressCalls.ShouldBe(0);
         context.CompletionCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GivenBarrierCutoffs_WhenOrchestrated_ThenPlanningRangesAndDrainingUseTheCorrectWatermarks()
+    {
+        var context = new ExecutingContext(useBarrierCutoffForRanges: true);
+        var input = ReindexTestHelper.CreateOrchestrationInput(
+            "job",
+            targetEventId: 42,
+            barrierDelay: TimeSpan.Zero,
+            tenantIds: [1]);
+
+        await new ReindexOrchestration().RunTask(context, input);
+
+        context.PlanInputs.ShouldAllBe(plan => plan.CutoffSurrogateId == 30);
+        context.RangeInputs.ShouldAllBe(range => range.EndSurrogateId <= 30);
+        context.RangeInputs.Select(range => range.EndSurrogateId).ShouldContain(30);
+        context.DrainInputs.ShouldHaveSingleItem().CutoffTransactionId.ShouldBe(10);
+    }
+
+    [Fact]
+    public async Task GivenContinuationAfterBarrier_WhenSerialized_ThenBarrierCutoffsRoundTrip()
+    {
+        var context = new ExecutingContext();
+        var input = ReindexTestHelper.CreateOrchestrationInput(
+            "job",
+            targetEventId: 42,
+            barrierDelay: TimeSpan.Zero,
+            tenantIds: [1]) with
+        {
+            ContinueAsNewThreshold = 3
+        };
+
+        await new ReindexOrchestration().RunTask(context, input);
+
+        var roundTripped = JsonDataConverter.Default.Deserialize<ReindexOrchestrationInput>(
+            JsonDataConverter.Default.Serialize(context.LastContinuationInput))!;
+        var tenant = roundTripped.State!.Tenants.Single();
+        tenant.CutoffSurrogateId.ShouldBe(30);
+        tenant.CutoffTransactionId.ShouldBe(10);
+
+        await new ReindexOrchestration().RunTask(context, roundTripped);
+
+        context.PlanInputs.ShouldHaveSingleItem().CutoffSurrogateId.ShouldBe(30);
+        context.DrainInputs.ShouldHaveSingleItem().CutoffTransactionId.ShouldBe(10);
     }
 
     [Fact]
@@ -279,7 +325,8 @@ public class ReindexOrchestrationTests
         bool drainNeverCompletes = false,
         bool failBarrierOnce = false,
         int definitionsNotReadyAttempts = 0,
-        bool startShouldContinue = true) : OrchestrationContext
+        bool startShouldContinue = true,
+        bool useBarrierCutoffForRanges = false) : OrchestrationContext
     {
         private DateTime _currentUtcDateTime = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
 
@@ -292,6 +339,9 @@ public class ReindexOrchestrationTests
         public int ProgressFailures { get; private set; }
         public int RangeCalls { get; private set; }
         public List<PersistReindexProgressInput> Snapshots { get; } = [];
+        public List<PlanReindexInput> PlanInputs { get; } = [];
+        public List<ReindexRangeInput> RangeInputs { get; } = [];
+        public List<AwaitDrainInput> DrainInputs { get; } = [];
         public CompleteReindexInput? LastCompletionInput { get; private set; }
         public ReindexOrchestrationInput? LastContinuationInput { get; private set; }
 
@@ -304,7 +354,7 @@ public class ReindexOrchestrationTests
                 var value when value == typeof(StartReindexActivity).FullName => Start(),
                 var value when value == typeof(RaiseBarrierActivity).FullName => Barrier(),
                 var value when value == typeof(AwaitDrainActivity).FullName =>
-                    new AwaitDrainOutput(1, !drainNeverCompletes, 10),
+                    Drain((AwaitDrainInput)parameters.Single()),
                 var value when value == typeof(PlanReindexActivity).FullName =>
                     Plan((PlanReindexInput)parameters.Single()),
                 var value when value == typeof(ReindexRangeActivity).FullName =>
@@ -392,15 +442,32 @@ public class ReindexOrchestrationTests
             return new RaiseBarrierOutput(1, 10, 30);
         }
 
-        private static PlanReindexOutput Plan(PlanReindexInput input) =>
-            input.StartAfterSurrogateId < 0
+        private PlanReindexOutput Plan(PlanReindexInput input)
+        {
+            PlanInputs.Add(input);
+            if (useBarrierCutoffForRanges)
+            {
+                return input.StartAfterSurrogateId < input.CutoffSurrogateId
+                    ? input.StartAfterSurrogateId < 0
+                        ? new PlanReindexOutput(
+                            [new ReindexRange(1, 10, 10), new ReindexRange(11, 20, 10)],
+                            20)
+                        : new PlanReindexOutput(
+                            [new ReindexRange(21, input.CutoffSurrogateId, 10)],
+                            null)
+                    : new PlanReindexOutput([], null);
+            }
+
+            return input.StartAfterSurrogateId < 0
                 ? new PlanReindexOutput(
                     [new ReindexRange(1, 10, 10), new ReindexRange(11, 20, 10)],
                     20)
                 : new PlanReindexOutput([new ReindexRange(21, 30, 10)], null);
+        }
 
         private ReindexRangeOutput Range(ReindexRangeInput input)
         {
+            RangeInputs.Add(input);
             RangeCalls++;
             if (RangeCalls <= definitionsNotReadyAttempts)
             {
@@ -423,6 +490,12 @@ public class ReindexOrchestrationTests
                         $"{input.ResourceType}-{index}",
                         "extraction failed"))
                     .ToArray());
+        }
+
+        private AwaitDrainOutput Drain(AwaitDrainInput input)
+        {
+            DrainInputs.Add(input);
+            return new AwaitDrainOutput(1, !drainNeverCompletes, 10);
         }
 
         private bool Progress(PersistReindexProgressInput input)

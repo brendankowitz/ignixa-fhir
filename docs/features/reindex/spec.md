@@ -180,9 +180,9 @@ puts every such search before *t_c*, while extraction is still unchanged.
 **Cases.**
 
 - **Plain deactivation** (no other definition shares the id): Hide, then Commit. No reindex. Orphaned rows are
-  never queried, because ids are never reassigned across canonicals (`GetOrAllocateSearchParamId`). They are
-  removed when the type is next reindexed or the resource is next written. Operators can reclaim storage early
-  with a manual `targetResourceTypes` job.
+  never queried, because ids are never reassigned across canonicals (`GetOrAllocateSearchParamId`). They are removed
+  opportunistically when a resource is rewritten or the affected type is reindexed later. Explicit maintenance
+  reindexing and `targetResourceTypes` are deferred.
 - **Override added on an extracted id:** the base moves to `Disabling` and the override to `Staged`. After Commit,
   the override is `Pending` and gets reindexed.
 - **Override removed:** the override moves to `Disabling` and the restored definition to `Staged`. After Commit,
@@ -221,7 +221,7 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
 | Term | Meaning |
 |---|---|
 | **E** | Target position: the global `SourceEvents.EventId` when the job starts. The job targets every param `Pending` at E. |
-| **Affected types** | The base resource types of the targeted params, expanded to concrete types, plus the restored types for override removals. `targetResourceTypes` narrows the set. |
+| **Affected types** | The base resource types of the targeted params, expanded to concrete types, plus the restored types for override removals. |
 | **D(w)** | The `DefinitionsEventId` of the handle that extracted write *w*'s indexes (§5.4). |
 | **Barrier_t** | `dbo.Parameters['Conformance.MinAcceptedDefinitionsEventId']` in tenant *t*'s database. It only increases. |
 | **B_t** | `MAX(SurrogateIdRangeFirstValue)` in tenant *t*'s `dbo.Transactions`, read **after** raising Barrier_t to E. |
@@ -313,7 +313,7 @@ as for `$export` (`EndpointRouteBuilderExtensions.cs:34`).
   This matches MS and `ms-reindex.json`.
 - **Active job exists:** `409 Conflict` with an `OperationOutcome` and a `Content-Location` header pointing to the
   active job (Q3).
-- **Nothing to do** (no `Pending` params and no `targetResourceTypes`): `400` with the existing "no resources
+- **Nothing to do** (no `Pending` params): `400` with the existing "no resources
   need reindexing" message.
 
 | Parameter | Type | Range | Default | Effect |
@@ -322,8 +322,7 @@ as for `$export` (`EndpointRouteBuilderExtensions.cs:34`).
 | `maximumNumberOfResourcesPerWrite` | integer | 1..10000 | 100 | Worker page and TVP batch size (§8.4) |
 | `maximumConcurrency` | integer | 1..16 | 4 | Concurrent range workers **per tenant** |
 | `queryDelayIntervalInMilliseconds` | integer | 0..60000 | 0 | Delay between worker pages |
-| `targetResourceTypes` | string (comma list) | Known, concrete types | Affected types (§5.1) | Narrows the scope. With nothing `Pending`, it runs a maintenance reindex that enables nothing. |
-| `targetSearchParameterTypes`, `targetDataStoreUsagePercentage` | n/a | n/a | n/a | **400 Not supported** (F12) |
+| `targetResourceTypes`, `targetSearchParameterTypes`, `targetDataStoreUsagePercentage` | n/a | n/a | n/a | **400 Not supported** (F12). `targetResourceTypes` is deferred to a follow-up. |
 | Any other name, or a non-numeric value for an integer | n/a | n/a | n/a | **400** |
 
 The published `OperationDefinition/reindex` lists exactly these accepted parameters.
@@ -655,7 +654,7 @@ fails.
 | **0: Correctness and plumbing** | §4.2 visibility and partial-index header; `Reindexing` added to the extraction set; CapabilityStatement filter; two-phase transitions (`Staged`/`Disabling`, the transition orchestration); staleness lease; `DefinitionsHandle`; the barrier check in `BeginTransactionAsync` (barrier stays at 0 until the first job); lifecycle guards | It stops today's silent wrong results, on a single instance and in a web farm. Once a job raises the barrier, the write path is already correct. |
 | **1: Job** | `IReindexStore`, the orchestration (delay, barrier, drain, ranges), `POST`/`GET`/`DELETE $reindex`, retiring `ReindexJob` | Parameters actually reach `Enabled`. |
 | **2: Automation** | Activation trigger and debounce, durable follow-up hand-off, startup reconciliation | Hands-off package installs. |
-| **3: Tools and polish** | Single-resource `$reindex`, `targetResourceTypes` and maintenance jobs, query delay, dashboards, user docs (`docs/site/docs/server/fhir/search-parameters.md`, `configuration.md`), the hash cleanup PR | Operability. |
+| **3: Tools and polish** | Single-resource `$reindex`, deferred `targetResourceTypes` and maintenance jobs, query delay, dashboards, user docs (`docs/site/docs/server/fhir/search-parameters.md`, `configuration.md`), the hash cleanup PR | Operability. |
 
 ---
 

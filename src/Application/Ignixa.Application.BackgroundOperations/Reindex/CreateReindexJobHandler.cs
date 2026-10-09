@@ -150,20 +150,6 @@ public sealed class CreateReindexJobHandler(
             }
         }
 
-        if (request.TargetResourceTypes is { Count: > 0 })
-        {
-            var unknown = request.TargetResourceTypes
-                .Where(type => !concreteResourceTypes.Contains(type))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Order(StringComparer.Ordinal)
-                .ToArray();
-            if (unknown.Length > 0)
-            {
-                return new InvalidReindexRequestResult(
-                    $"targetResourceTypes contains unknown or abstract resource types: {string.Join(", ", unknown)}.");
-            }
-        }
-
         async Task<CreateReindexJobResult> StartUnderLockAsync(CancellationToken ct)
         {
             async Task<(long TargetEventId, ReindexTargetResolution Resolution)> ResolveAsync()
@@ -178,7 +164,6 @@ public sealed class CreateReindexJobHandler(
                         ReindexTargetResolver.Resolve(
                             _conformanceState.AllSearchParameters.Values.ToArray(),
                             concreteResourceTypes,
-                            request.TargetResourceTypes,
                             new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
                             {
                                 ["Resource"] = concreteResourceTypes,
@@ -219,11 +204,6 @@ public sealed class CreateReindexJobHandler(
                         queuedResolution.Resolution,
                         requestedGeneration);
                     active.Progress ??= new JsonObject();
-                    active.Progress["notCovered"] = new JsonArray(
-                        queuedResolution.Resolution.Targets
-                            .Where(target => !target.IsFullyCovered)
-                            .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
-                            .ToArray());
                     await _jobRepository.UpdateAsync(active, 1, ct);
                     return new ReindexRequestQueuedResult(active.JobId, requestedGeneration);
                 }
@@ -267,12 +247,7 @@ public sealed class CreateReindexJobHandler(
                 Progress = new JsonObject
                 {
                     ["phase"] = "BarrierDelay",
-                    ["ignoredLifecycleEvents"] = new JsonArray(),
-                    ["notCovered"] = new JsonArray(
-                        resolution.Targets
-                            .Where(target => !target.IsFullyCovered)
-                            .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
-                            .ToArray())
+                    ["ignoredLifecycleEvents"] = new JsonArray()
                 },
                 CreateDate = now,
                 HeartbeatDate = now

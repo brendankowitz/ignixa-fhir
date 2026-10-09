@@ -38,7 +38,7 @@ public sealed class CompleteReindexActivity(
             var target = plannedTarget ?? owned.Target;
             var errors = new List<string>();
             long resourcesIndexed = 0;
-            if (plannedTarget is not { IsFullyCovered: true })
+            if (plannedTarget is null)
             {
                 errors.Add($"Search parameter {target.Canonical} was not planned by this job.");
             }
@@ -195,11 +195,6 @@ public sealed class CompleteReindexActivity(
                         }).ToArray(),
                         failedResources,
                         ignoredLifecycleEvents = input.IgnoredLifecycleEvents.Concat(ignored).Distinct()
-                            .ToArray(),
-                        notCovered = input.Targets
-                            .Where(target => !target.IsFullyCovered)
-                            .Select(target => target.Canonical)
-                            .Distinct(StringComparer.Ordinal)
                             .ToArray(),
                         terminalOutcomes = completions.Select(completion => new
                         {
