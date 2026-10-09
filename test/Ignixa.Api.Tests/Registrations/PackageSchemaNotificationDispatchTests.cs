@@ -56,7 +56,8 @@ public class PackageSchemaNotificationDispatchTests
                     new DefinitionsHandle(
                         Substitute.For<ISearchIndexer>(),
                         Substitute.For<IFhirSchemaProvider>(),
-                        call.ArgAt<long>(3)));
+                        call.ArgAt<long>(3)),
+                    call.ArgAt<ConformanceStateSnapshot>(2));
             });
         versions.When(context => context.PublishConformanceDefinitionsSnapshot(
                 Arg.Any<FhirVersion>(), Arg.Any<int>(), Arg.Any<ConformanceDefinitionsSnapshot>()))

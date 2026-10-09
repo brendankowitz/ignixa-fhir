@@ -5,7 +5,6 @@
 
 using Autofac;
 using Ignixa.Abstractions;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
 using Ignixa.Application.Infrastructure;
@@ -68,8 +67,7 @@ public static class SearchServicesRegistration
                 c.Resolve<IFhirBaseUriProvider>(),
                 c.Resolve<IPackageResourceRepository>(),
                 c.Resolve<IPackageResourceProvider>(),
-                c.Resolve<ICompositeSchemaProviderRegistry>(),
-                c.Resolve<ConformanceState>());
+                c.Resolve<ICompositeSchemaProviderRegistry>());
         }).SingleInstance();
 
         // The single authority for a tenant's service base URIs. "Fhir:BaseUri" is the deployment's public

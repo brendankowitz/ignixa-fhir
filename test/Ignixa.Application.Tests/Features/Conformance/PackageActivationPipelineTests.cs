@@ -465,7 +465,7 @@ public class PackageActivationPipelineTests
             TestConformanceRefresher.Create(state, tenants: refreshTenants),
             lease,
             CreateReindexTrigger(),
-            CreateFhirVersionContext(state),
+            CreateFhirVersionContext(),
             logger);
 
         await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
@@ -561,7 +561,7 @@ public class PackageActivationPipelineTests
             TestConformanceRefresher.Create(state, tenants: refreshTenants),
             lease,
             CreateReindexTrigger(),
-            CreateFhirVersionContext(state),
+            CreateFhirVersionContext(),
             Substitute.For<ILogger<PackageActivationPipeline>>());
 
         var result = await pipeline.ActivateAsync(
@@ -644,16 +644,15 @@ public class PackageActivationPipelineTests
             TestConformanceRefresher.Create(state, tenants: refreshTenants),
             lease,
             reindexTrigger ?? CreateReindexTrigger(),
-            CreateFhirVersionContext(state),
+            CreateFhirVersionContext(),
             Substitute.For<ILogger<PackageActivationPipeline>>());
     }
 
-    private static IFhirVersionContext CreateFhirVersionContext(ConformanceState state) =>
+    private static IFhirVersionContext CreateFhirVersionContext() =>
         new FhirVersionContext(
             Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions(),
-            NullFhirBaseUriProvider.Instance,
-            conformanceState: state);
+            NullFhirBaseUriProvider.Instance);
 
     private static IReindexTrigger CreateReindexTrigger()
     {

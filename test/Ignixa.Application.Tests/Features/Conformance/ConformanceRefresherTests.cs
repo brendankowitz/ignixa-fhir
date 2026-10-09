@@ -418,7 +418,8 @@ public class ConformanceRefresherTests
                         new DefinitionsHandle(
                             Substitute.For<ISearchIndexer>(),
                             Substitute.For<IFhirSchemaProvider>(),
-                            generation));
+                            generation),
+                        call.ArgAt<ConformanceStateSnapshot>(2));
                 });
             Context
                 .When(context => context.PublishConformanceDefinitionsSnapshot(

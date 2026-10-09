@@ -174,8 +174,8 @@ public class PackageSearchParameterInheritanceTests
         using var context = new FhirVersionContext(
             NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
-            NullFhirBaseUriProvider.Instance,
-            conformanceState: state);
+            NullFhirBaseUriProvider.Instance);
+        PublishTenantDefinitions(context, state);
 
         var defaultDefinitions = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
         var partialDefinitions = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1, () => true);
@@ -196,8 +196,8 @@ public class PackageSearchParameterInheritanceTests
         using var context = new FhirVersionContext(
             NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
-            NullFhirBaseUriProvider.Instance,
-            conformanceState: state);
+            NullFhirBaseUriProvider.Instance);
+        PublishTenantDefinitions(context, state);
 
         var partialDefinitions = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1, () => true);
 
@@ -216,8 +216,8 @@ public class PackageSearchParameterInheritanceTests
         using var context = new FhirVersionContext(
             NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
-            NullFhirBaseUriProvider.Instance,
-            conformanceState: state);
+            NullFhirBaseUriProvider.Instance);
+        PublishTenantDefinitions(context, state);
 
         var extractionDefinitions = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
         var searchDefinitions = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
@@ -236,8 +236,8 @@ public class PackageSearchParameterInheritanceTests
         using var context = new FhirVersionContext(
             NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
-            NullFhirBaseUriProvider.Instance,
-            conformanceState: state);
+            NullFhirBaseUriProvider.Instance);
+        PublishTenantDefinitions(context, state);
 
         var extractionDefinitions = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
         var searchDefinitions = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
@@ -366,8 +366,8 @@ public class PackageSearchParameterInheritanceTests
             using var context = new FhirVersionContext(
                 NullLoggerFactory.Instance,
                 new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
-                NullFhirBaseUriProvider.Instance,
-                conformanceState: state);
+                NullFhirBaseUriProvider.Instance);
+            PublishTenantDefinitions(context, state);
             var extraction = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
             var search = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
 
@@ -676,4 +676,14 @@ public class PackageSearchParameterInheritanceTests
                 null),
             DateTimeOffset.UtcNow);
     }
+
+    private static void PublishTenantDefinitions(FhirVersionContext context, ConformanceState state) =>
+        context.PublishConformanceDefinitionsSnapshot(
+            FhirVersion.R4,
+            1,
+            context.CreateConformanceDefinitionsSnapshot(
+                FhirVersion.R4,
+                1,
+                state.CreateSnapshot(),
+                state.LastProcessedEventId));
 }

@@ -52,8 +52,7 @@ public class ViewDefinitionPipelineTests(ITestOutputHelper output)
         using var versions = new FhirVersionContext(NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance,
             repository, new Ignixa.PackageManagement.Infrastructure.PackageResourceProvider(
-                NullLogger<Ignixa.PackageManagement.Infrastructure.PackageResourceProvider>.Instance),
-            conformanceState: state);
+                NullLogger<Ignixa.PackageManagement.Infrastructure.PackageResourceProvider>.Instance));
         var baseSchema = versions.GetBaseSchemaProvider(version);
         var embedded = new SqlOnFhirEmbeddedPackage();
         var name = embedded.Assembly.GetManifestResourceNames().Single(n =>
@@ -69,6 +68,10 @@ public class ViewDefinitionPipelineTests(ITestOutputHelper output)
         };
         repository.GetAllStructureDefinitionsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<PackageResource>)[resource]);
+        versions.PublishConformanceDefinitionsSnapshot(
+            version,
+            1,
+            versions.CreateConformanceDefinitionsSnapshot(version, 1, state.CreateSnapshot(), state.LastProcessedEventId));
         var schema = versions.GetSchemaProvider(version, 1);
         int writes = 0;
         var storage = Substitute.For<IFhirRepository>();

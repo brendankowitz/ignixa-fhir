@@ -13,6 +13,8 @@ namespace Ignixa.Application.Tests.Features.Search;
 
 public class DefinitionsHandleTests
 {
+    private static readonly ConformanceStateSnapshot EmptyProjection = CreateEmptyProjection();
+
     [Fact]
     public void GivenPublishedTenantSnapshot_WhenFutureSnapshotBuilds_ThenItUsesADetachedSchemaProvider()
     {
@@ -60,14 +62,16 @@ public class DefinitionsHandleTests
             new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
-                11));
+                11),
+            EmptyProjection);
         var newer = new ConformanceDefinitionsSnapshot(
             newerDefinitions,
             newerDefinitions,
             new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
-                29));
+                29),
+            EmptyProjection);
         var slot = new ConformanceDefinitionsSnapshotSlot(older);
 
         slot.Publish(newer);
@@ -77,13 +81,12 @@ public class DefinitionsHandleTests
             new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
-                17)));
+                17),
+            EmptyProjection));
 
         slot.Current.Generation.ShouldBe(29);
         slot.Current.ExtractionDefinitions.ShouldBeSameAs(newerDefinitions);
         slot.Current.SearchableDefinitions.ShouldBeSameAs(newerDefinitions);
-        slot.ExtractionDefinitions.ShouldNotBeSameAs(olderDefinitions);
-        slot.SearchableDefinitions.ShouldNotBeSameAs(olderDefinitions);
     }
 
     [Fact]
@@ -97,6 +100,7 @@ public class DefinitionsHandleTests
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
                 29),
+            EmptyProjection,
             PublicationSequence: 3);
         var replacement = new ConformanceDefinitionsSnapshot(
             definitions,
@@ -105,11 +109,18 @@ public class DefinitionsHandleTests
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
                 29),
+            EmptyProjection,
             PublicationSequence: 4);
         var slot = new ConformanceDefinitionsSnapshotSlot(first);
 
         slot.Publish(replacement);
 
         slot.Current.ShouldBeSameAs(replacement);
+    }
+
+    private static ConformanceStateSnapshot CreateEmptyProjection()
+    {
+        using var state = new ConformanceState();
+        return state.CreateSnapshot();
     }
 }
