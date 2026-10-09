@@ -434,7 +434,8 @@ resource type `*`: SMART `system/*.write` or RBAC write on `*`. `OperationDefini
 | **Manual** | `POST $reindex` (§6.1). |
 | **Transition commit** | When `SearchParameterTransitionCommitted` produces `Pending` params (an override added or removed, §4.4), the orchestration calls `StartOrQueueReindex(Activation)`. |
 | **Follow-up** | Hand-off at job end (below). |
-| **Startup reconciliation** | `EternalOrchestrationStarter` runs the transition reconciler, `ReindexJobReconciler`, then `ReindexTrigger.ReconcileAsync`; the trigger creates a job for pending work when `AutoStart` is enabled. |
+| **Periodic reconciliation** | Every `ConformanceStateSyncService.SyncAsync` tick calls `ReindexTrigger.ReconcileAsync`, which sends `CreateReindexJobCommand { Trigger = "Reconciliation" }`. The handler's cheap pre-check returns without the singleton lock when an active job is neither `Completing` nor past `OrphanGrace`, or when there is no active job and neither `Pending` nor owned `Reindexing` parameters exist. Otherwise it takes the lock, calls `ReindexJobReconciler.ReconcileUnderLockAsync`, and creates work if needed. |
+| **Startup reconciliation** | `EternalOrchestrationStarter` runs the transition reconciler, `ReindexJobReconciler`, then `ReindexTrigger.ReconcileAsync`; this uses the same reconciliation command and pending-work rule as the periodic path. |
 
 **Durable hand-off** (prevents the lost-follow-up race between job end and a concurrent activation):
 
@@ -565,9 +566,11 @@ per-target outcomes. A delayed activity cannot reopen a finalized job or its par
   older than `Reindex:StaleJobTimeout` is flagged in status and logged at error level. A drain still waiting
   beyond `Reindex:DrainWarningAfter` logs the oldest incomplete transaction. `TransactionWatcher` already
   recovers stalled transactions, so the drain does not wait forever.
-- **Periodic reconciliation:** `ReindexJobReconciler.ReconcileAsync` currently takes the singleton lock for each
-  sweep. Under it, it resumes a `Completing` job's persisted decision, finalizes an orphaned active job after two
-  non-active DurableTask reads, and sweeps `Reindexing` parameters owned by terminal jobs back to `Pending`.
+- **Periodic reconciliation:** after its cheap pre-check (§7), `CreateReindexJobHandler` takes the singleton lock
+  only for a stale active job, a `Completing` job, owned `Reindexing` parameters, or pending work with no active job.
+  Under the lock, `ReindexJobReconciler` resumes a `Completing` job's persisted decision, finalizes an orphaned
+  active job after two non-active DurableTask reads, and sweeps `Reindexing` parameters owned by terminal jobs back
+  to `Pending`.
 - Barrier, drain, and planning activities use `ScheduleWithRetry`.
 
 ### 8.7 Data layer changes
@@ -697,7 +700,7 @@ All tests follow the `GivenContext_WhenAction_ThenResult` naming convention.
 | Layer | Scenarios |
 |---|---|
 | Unit (`Ignixa.Application.Tests`) | Pending and Reindexing are hidden by default; the partial-index header admits them with a warning; strict vs lenient handling; CapabilityStatement shows `Enabled` only; the §4.3 guards (a `Started`/`Completed`/`Failed`/`TransitionCommitted` event for an older activation or another job is ignored); the two-phase states (`Staged` is not extracted, `Disabling` is extracted, neither is searchable; Commit moves them to `Pending`/`Disabled`); override add and remove go through `Staged`; the lease (search, includes, and conditional matching return 503 once `MaxStaleness` passes without a successful sync; reads by id and plain writes still succeed; the lease is measured from sync *start*); startup validation rejects `TransitionGrace ≤ MaxStaleness`; F12 validation; singleton, 409, durable generation hand-off, and debounce; the handle's `DefinitionsEventId` is atomic with its indexer; bundles use the minimum. |
-| Orchestration (DurableTask test host) | delay → barrier → drain → plan → ranges → complete; definitions guard retries; `ContinueAsNew` carries B_t and S_t; one tenant's failure is isolated; cancel compensation; follow-up starts when an activation races job end; the transition orchestration commits after `TransitionGrace` and triggers reindex for `Pending`; startup reconciliation commits a transition that is overdue. |
+| Orchestration (DurableTask test host) | delay → barrier → drain → plan → ranges → complete; definitions guard retries; `ContinueAsNew` carries B_t and S_t; one tenant's failure is isolated; cancel compensation; follow-up starts when an activation races job end; the transition orchestration commits after `TransitionGrace` and triggers reindex for `Pending`; periodic and startup reconciliation commit an overdue transition and recover pending work. |
 | SQL integration (`TestTenantDatabase`) | Barrier raised monotonically; B_t and S_t are read after it. **Barrier race:** a stale writer that allocates concurrently with the raise is either ≤ B_t or rejected, in a loop of interleavings including under RCSI. The rejected transaction is marked failed and visibility advances. The cutoff set is exactly current, non-deleted rows with surrogate id ≤ S_t, including an import reservation that straddles B_t. `UpdateResourceSearchParams` rewrites every typed table and changes no version, transaction, or history (F9). `IsHistory` conflicts (F10). Extension columns are populated. Every write path allocates through `BeginTransactionAsync` (invariant). |
 | E2E (`Ignixa.Api.E2ETests`, SQL) | Install a package: the search warns and ignores the new param, the job completes, and the search returns the pre-existing resources. A write extracted with a stale handle after the barrier is rejected, refreshed, retried, and indexed correctly. Multi-tenant: completion waits for both tenants. A second package installed mid-job gets a follow-up job. Override add then remove (two-phase, with a reindex after each Commit). **Two instances** (two `IgnixaApiFixture` hosts on one database with a long sync interval on B): deactivating on A keeps B's search results complete until Commit; B's searches return 503 once its sync is forced to fail beyond `MaxStaleness`. |
 | TestScript | `ms-reindex.json` passes, and its asserts become required. |
@@ -715,7 +718,7 @@ removing the stale-writer guard must fail
 |---|---|---|
 | **0: Correctness and plumbing** | §4.2 visibility and partial-index header; `Reindexing` added to the extraction set; CapabilityStatement filter; two-phase transitions (`Staged`/`Disabling`, the transition orchestration); staleness lease; `DefinitionsHandle`; the barrier check in `BeginTransactionAsync` (barrier stays at 0 until the first job); lifecycle guards | It stops today's silent wrong results, on a single instance and in a web farm. Once a job raises the barrier, the write path is already correct. |
 | **1: Job** | `IReindexStore`, the orchestration (delay, barrier, drain, ranges), `POST`/`GET`/`DELETE $reindex`, retiring `ReindexJob` | Parameters actually reach `Enabled`. |
-| **2: Automation** | Activation trigger and debounce, durable follow-up hand-off, startup reconciliation | Hands-off package installs. |
+| **2: Automation** | Activation trigger and debounce, durable follow-up hand-off, periodic and startup reconciliation | Hands-off package installs. |
 | **3: Tools and polish** | Deferred single-resource `$reindex` (issue #485), deferred `targetResourceTypes` and maintenance jobs, query delay, dashboards, user docs (`docs/site/docs/server/fhir/search-parameters.md`, `configuration.md`), the hash cleanup PR | Operability. |
 
 ---
