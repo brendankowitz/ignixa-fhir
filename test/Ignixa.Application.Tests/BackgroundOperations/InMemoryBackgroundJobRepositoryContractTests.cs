@@ -55,6 +55,23 @@ public class InMemoryBackgroundJobRepositoryContractTests
         current.RowVersion.ShouldNotBe(progress.RowVersion);
     }
 
+    [Theory]
+    [InlineData(TenantMode.Isolated, 1, 1, true)]
+    [InlineData(TenantMode.Isolated, 1, 2, false)]
+    [InlineData(TenantMode.Isolated, 2, 1, false)]
+    [InlineData(TenantMode.Distributed, 1, 2, true)]
+    public async Task GivenAStoredJob_WhenLookedUpByType_ThenOnlyItsOwnTypeAndAnAuthorizedTenantSeeIt(
+        TenantMode mode, int requestedType, int requester, bool visible)
+    {
+        var repository = CreateRepository<ExportJobDefinition>(mode);
+        var job = ExportJob();
+        await repository.CreateAsync(job, CancellationToken.None);
+
+        var found = await repository.GetAsync(job.JobId, requester, requestedType, CancellationToken.None);
+
+        (found is not null).ShouldBe(visible);
+    }
+
     [Fact]
     public async Task GivenCompletionAfterTheStoredEntryIsRead_WhenTheStaleUpdateResumes_ThenItConflicts()
     {

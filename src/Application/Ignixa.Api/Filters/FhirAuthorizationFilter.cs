@@ -124,9 +124,11 @@ public class FhirAuthorizationFilter : IEndpointFilter
     }
 
     /// <summary>
-    /// Creates a 403 Forbidden response with FHIR OperationOutcome.
+    /// Creates a 403 Forbidden response with FHIR OperationOutcome. Shared with endpoints that perform an
+    /// additional, operation-specific authorization step (for example <c>$bulk-delete</c>) so every
+    /// authorization denial has the same shape.
     /// </summary>
-    private static IResult CreateForbiddenResponse(string diagnostics)
+    internal static IResult CreateForbiddenResponse(string diagnostics)
     {
         var outcome = new OperationOutcome();
         outcome.Issue.Add(new FhirOperationOutcomeIssue
@@ -190,6 +192,34 @@ public class FhirAuthorizationFilter : IEndpointFilter
             ?? throw new InvalidOperationException(
                 "FhirRequestContext not set. Ensure TenantResolutionMiddleware runs before authorization.");
 
+        // Parse route to determine interaction
+        var (interaction, resourceType, resourceId) = ParseRoute(httpContext);
+        var authorizationMetadata = httpContext.GetEndpoint()?.Metadata.GetMetadata<FhirAuthorizationMetadata>();
+        if (authorizationMetadata is not null)
+        {
+            interaction = authorizationMetadata.Interaction;
+            resourceType = authorizationMetadata.ResourceType;
+        }
+
+        return Task.FromResult(CreateAuthorizationContext(httpContext, fhirContext, interaction, resourceType, resourceId));
+    }
+
+    /// <summary>
+    /// Builds the authorization context for an explicit interaction from the caller's claims (user ID,
+    /// roles, SMART scopes and launch context). The filter derives the interaction from the route; an
+    /// endpoint that must authorize interactions the route does not express (for example the per-type
+    /// deletes a <c>$bulk-delete</c> performs) passes them here so both use the same identity mapping.
+    /// </summary>
+    internal static FhirAuthorizationContext CreateAuthorizationContext(
+        HttpContext httpContext,
+        IFhirRequestContext fhirContext,
+        FhirInteraction interaction,
+        string? resourceType,
+        string? resourceId)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(fhirContext);
+
         // Extract user/tenant from claims
         var userId = httpContext.User.FindFirst(FhirClaimTypes.Subject)?.Value ??
                     httpContext.User.FindFirst(FhirClaimTypes.ObjectId)?.Value ??
@@ -242,16 +272,7 @@ public class FhirAuthorizationFilter : IEndpointFilter
             }
         }
 
-        // Parse route to determine interaction
-        var (interaction, resourceType, resourceId) = ParseRoute(httpContext);
-        var authorizationMetadata = httpContext.GetEndpoint()?.Metadata.GetMetadata<FhirAuthorizationMetadata>();
-        if (authorizationMetadata is not null)
-        {
-            interaction = authorizationMetadata.Interaction;
-            resourceType = authorizationMetadata.ResourceType;
-        }
-
-        var authContext = new FhirAuthorizationContext
+        return new FhirAuthorizationContext
         {
             RequestContext = fhirContext,
             UserId = userId,
@@ -263,8 +284,6 @@ public class FhirAuthorizationFilter : IEndpointFilter
             HttpContext = httpContext,
             Timestamp = DateTimeOffset.UtcNow
         };
-
-        return Task.FromResult(authContext);
     }
 
     /// <summary>

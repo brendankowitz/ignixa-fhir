@@ -19,6 +19,12 @@ namespace Ignixa.Application.Features.Metadata.Segments;
 /// </summary>
 public class OperationsSegment : ICapabilitySegment
 {
+    /// <summary>
+    /// The <see cref="IPackageFeature.ResourceOperations"/> key a feature uses to declare an operation on
+    /// every resource type the capability statement advertises, rather than naming types individually.
+    /// </summary>
+    public const string AllResourceTypesWildcard = "*";
+
     private readonly IEnumerable<IPackageFeature> _features;
     private readonly IPackageResourceRepository _packageResourceRepository;
     private readonly ILogger<OperationsSegment> _logger;
@@ -100,6 +106,8 @@ public class OperationsSegment : ICapabilitySegment
             }
         }
 
+        ExpandAllResourceTypesWildcard(statement, resourceOperations);
+
         if (systemOperations.Count == 0 && resourceOperations.Count == 0)
         {
             _logger.LogDebug("No operations to add (no registered features)");
@@ -144,6 +152,15 @@ public class OperationsSegment : ICapabilitySegment
         {
             foreach (var opName in operations)
             {
+                if (ResourceAlreadyHasOperation(statement, resourceType, opName))
+                {
+                    _logger.LogDebug(
+                        "Skipping duplicate resource operation {OperationName} for {ResourceType}: already present",
+                        opName,
+                        resourceType);
+                    continue;
+                }
+
                 if (opDefsByName.TryGetValue(opName, out var opDef))
                 {
                     statement.AddResourceOperation(resourceType, opName, opDef.Canonical, GetDocumentation(opDef));
@@ -160,6 +177,67 @@ public class OperationsSegment : ICapabilitySegment
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Expands the <see cref="AllResourceTypesWildcard"/> key (<c>"*"</c>) in <paramref name="resourceOperations"/>
+    /// into every concrete resource type already advertised in <c>statement.Rest[0].Resource</c> (populated
+    /// by <c>ResourceInteractionCapabilitySegment</c>, priority 20, which runs before this segment's
+    /// priority 35), unioning the wildcard's operations into each type's existing set. The literal key is
+    /// always removed, so a resource component typed <c>"*"</c> is never created -- it is not a valid FHIR
+    /// resource type and would be invisible to a client looking up its own resource's declared operations.
+    /// </summary>
+    private void ExpandAllResourceTypesWildcard(
+        CapabilityStatementJsonNode statement,
+        Dictionary<string, HashSet<string>> resourceOperations)
+    {
+        if (!resourceOperations.Remove(AllResourceTypesWildcard, out var wildcardOperations))
+        {
+            return;
+        }
+
+        var advertisedResourceTypes = statement.Rest.Count > 0
+            ? statement.Rest[0].Resource.Select(r => r.Type).Where(type => !string.IsNullOrEmpty(type)).ToList()
+            : [];
+
+        if (advertisedResourceTypes.Count == 0)
+        {
+            _logger.LogDebug(
+                "Skipping '*' resource operation expansion for {OperationCount} operation(s): capability statement has no resources yet",
+                wildcardOperations.Count);
+            return;
+        }
+
+        foreach (var resourceType in advertisedResourceTypes)
+        {
+            if (!resourceOperations.TryGetValue(resourceType!, out var existingOperations))
+            {
+                existingOperations = new HashSet<string>();
+                resourceOperations[resourceType!] = existingOperations;
+            }
+
+            foreach (var op in wildcardOperations)
+            {
+                existingOperations.Add(op);
+            }
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="statement"/> already has an operation named <paramref name="operationName"/>
+    /// on the resource component for <paramref name="resourceType"/> -- e.g. declared explicitly by one
+    /// feature and also reachable via another feature's <c>"*"</c> wildcard, or added by a segment that ran
+    /// before this one.
+    /// </summary>
+    private static bool ResourceAlreadyHasOperation(CapabilityStatementJsonNode statement, string resourceType, string operationName)
+    {
+        if (statement.Rest.Count == 0)
+        {
+            return false;
+        }
+
+        var resourceComponent = statement.Rest[0].Resource.FirstOrDefault(r => r.Type == resourceType);
+        return resourceComponent?.Operation.Any(op => op.Name == operationName) ?? false;
     }
 
     public async ValueTask<string> GetVersionHashAsync(

@@ -1250,6 +1250,21 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         throw new NotSupportedException("TTL cleanup is not supported by FileBasedFhirRepository.");
     }
 
+    /// <inheritdoc/>
+    public bool SupportsPhysicalDeletion => false;
+
+    /// <inheritdoc/>
+    public Task<bool> HardDeleteAsync(ResourceKey key, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException("Hard delete is not supported by FileBasedFhirRepository.");
+    }
+
+    /// <inheritdoc/>
+    public Task<int> PurgeHistoryAsync(ResourceKey key, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException("Purge history is not supported by FileBasedFhirRepository.");
+    }
+
     private class ResourceMetadata
     {
         public string TransactionId { get; set; } = string.Empty;

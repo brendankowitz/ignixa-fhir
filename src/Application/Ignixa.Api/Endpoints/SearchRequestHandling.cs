@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Api.Infrastructure;
-using Ignixa.Api.Extensions;
+using static Ignixa.Application.Infrastructure.LogSanitizationExtensions;
 using Ignixa.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;

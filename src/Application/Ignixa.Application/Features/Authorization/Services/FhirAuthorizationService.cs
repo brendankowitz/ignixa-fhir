@@ -5,6 +5,7 @@
 
 using Ignixa.Application.Features.Authorization.Handlers;
 using Ignixa.Application.Features.Authorization.Models;
+using Ignixa.Application.Infrastructure;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Authorization.Services;
@@ -37,9 +38,9 @@ public class FhirAuthorizationService : IFhirAuthorizationService
         _logger.LogDebug(
             "Starting authorization for {Interaction} on {ResourceType}/{ResourceId} (User: {UserId}, Tenant: {TenantId})",
             context.Interaction,
-            context.ResourceType ?? "system",
-            context.ResourceId ?? "none",
-            context.UserId ?? "anonymous",
+            context.ResourceType.SanitizeForLog() ?? "system",
+            context.ResourceId.SanitizeForLog() ?? "none",
+            context.UserId.SanitizeForLog() ?? "anonymous",
             context.TenantId ?? "default");
 
         FhirAuthorizationFilter? accumulatedFilter = null;
@@ -54,10 +55,10 @@ public class FhirAuthorizationService : IFhirAuthorizationService
                 _logger.LogWarning(
                     "Authorization denied by {Handler}: {Reason} (User: {UserId}, Resource: {ResourceType}/{ResourceId})",
                     handler.GetType().Name,
-                    result.DenialReason,
-                    context.UserId ?? "anonymous",
-                    context.ResourceType ?? "system",
-                    context.ResourceId ?? "none");
+                    result.DenialReason.SanitizeForLog(),
+                    context.UserId.SanitizeForLog() ?? "anonymous",
+                    context.ResourceType.SanitizeForLog() ?? "system",
+                    context.ResourceId.SanitizeForLog() ?? "none");
 
                 return result; // Fail-fast
             }
@@ -77,8 +78,8 @@ public class FhirAuthorizationService : IFhirAuthorizationService
         _logger.LogDebug(
             "Authorization granted for {Interaction} on {ResourceType}/{ResourceId}",
             context.Interaction,
-            context.ResourceType ?? "system",
-            context.ResourceId ?? "none");
+            context.ResourceType.SanitizeForLog() ?? "system",
+            context.ResourceId.SanitizeForLog() ?? "none");
 
         return accumulatedFilter != null
             ? AuthorizationResult.SuccessWithFilter(accumulatedFilter)

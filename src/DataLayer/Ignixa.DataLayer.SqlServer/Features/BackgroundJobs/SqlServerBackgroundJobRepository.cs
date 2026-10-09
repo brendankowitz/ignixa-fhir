@@ -72,20 +72,15 @@ public sealed class SqlServerBackgroundJobRepository<T>(
     public async Task<BackgroundJob<T>?> GetAsync(string jobId, int tenantId, CancellationToken cancellationToken = default)
     {
         var job = await FindByJobIdAsync(jobId, cancellationToken);
-        if (job is null)
-        {
-            return null;
-        }
+        return AuthorizeRead(job, jobId, tenantId);
+    }
 
-        if (ShouldValidateTenant() && job.Definition.TenantId != tenantId)
-        {
-            // Returning null rather than throwing hides the job's existence from an unauthorised tenant.
-            // Update and Delete deliberately throw instead -- the caller there already named a specific job.
-            logger.LogWarning("Job {JobId} access denied for tenant {TenantId}", jobId, tenantId);
-            return null;
-        }
-
-        return job;
+    public async Task<BackgroundJob<T>?> GetAsync(string jobId, int tenantId, int jobType, CancellationToken cancellationToken = default)
+    {
+        // The type is filtered in SQL, before ReadJob deserializes Definition: a row of another job type
+        // would not deserialize into T.
+        var job = await FindByJobIdAsync(jobId, cancellationToken, jobType: jobType);
+        return AuthorizeRead(job, jobId, tenantId);
     }
 
     public async Task UpdateAsync(BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken = default)
@@ -301,16 +296,40 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         return jobs.Count == 0 ? null : jobs[0];
     }
 
+    private BackgroundJob<T>? AuthorizeRead(BackgroundJob<T>? job, string jobId, int tenantId)
+    {
+        if (job is null)
+        {
+            return null;
+        }
+
+        if (ShouldValidateTenant() && job.Definition.TenantId != tenantId)
+        {
+            // Returning null rather than throwing hides the job's existence from an unauthorised tenant.
+            // Update and Delete deliberately throw instead -- the caller there already named a specific job.
+            logger.LogWarning("Job {JobId} access denied for tenant {TenantId}", jobId, tenantId);
+            return null;
+        }
+
+        return job;
+    }
+
     private async Task<BackgroundJob<T>?> FindByJobIdAsync(
-        string jobId, CancellationToken cancellationToken, int? rowTenantId = null)
+        string jobId, CancellationToken cancellationToken, int? rowTenantId = null, int? jobType = null)
     {
         var ownerFilter = rowTenantId.HasValue ? $" AND {Jobs.Column("TenantId").Name} = @rowTenantId" : string.Empty;
+        var typeFilter = jobType.HasValue ? $" AND {Jobs.Column("JobType").Name} = @jobType" : string.Empty;
         using var command = CreateCommand(
-            $"SELECT {AllColumns} FROM {QualifiedTable} WHERE {Jobs.Column("JobId").Name} = @jobId{ownerFilter}");
+            $"SELECT {AllColumns} FROM {QualifiedTable} WHERE {Jobs.Column("JobId").Name} = @jobId{ownerFilter}{typeFilter}");
         command.Parameters.AddWithValue("@jobId", jobId);
         if (rowTenantId.HasValue)
         {
             command.Parameters.AddWithValue("@rowTenantId", rowTenantId.Value);
+        }
+
+        if (jobType.HasValue)
+        {
+            command.Parameters.AddWithValue("@jobType", jobType.Value);
         }
 
         var rows = await sqlExecutionService.ExecuteReaderAsync(connectionTenantId, command, ReadJob, cancellationToken);
