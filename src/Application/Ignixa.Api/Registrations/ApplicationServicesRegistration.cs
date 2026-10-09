@@ -109,7 +109,7 @@ public static class ApplicationServicesRegistration
         RegisterBundleServices(builder, maxRequestBodySize, maxTransactionEntries);
 
         // Package management handlers
-        RegisterPackageManagementHandlers(builder);
+        RegisterPackageManagementHandlers(builder, configuration);
 
         // Event handlers
         RegisterEventHandlers(builder, configuration);
@@ -197,11 +197,6 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<CreateOrUpdateResourceHandler>()
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()
             .InstancePerDependency();
-
-        builder.RegisterType<NullConformanceDefinitionsSynchronizer>()
-            .As<IConformanceDefinitionsSynchronizer>()
-            .SingleInstance()
-            .PreserveExistingDefaults();
 
         builder.Register(c => new ConformanceBarrierRetryPolicy(
                 c.Resolve<IConformanceDefinitionsSynchronizer>(),
@@ -485,7 +480,9 @@ public static class ApplicationServicesRegistration
         .SingleInstance();
     }
 
-    private static void RegisterPackageManagementHandlers(ContainerBuilder builder)
+    private static void RegisterPackageManagementHandlers(
+        ContainerBuilder builder,
+        IConfiguration configuration)
     {
         builder.RegisterType<LoadPackageHandler>()
             .As<IRequestHandler<LoadPackageCommand, LoadPackageResult>>()
@@ -508,9 +505,12 @@ public static class ApplicationServicesRegistration
             .As<IReindexAvailability>()
             .SingleInstance();
 
-        builder.RegisterType<ReindexFeature>()
-            .As<IPackageFeature>()
-            .SingleInstance();
+        if (configuration.GetValue<bool?>($"{ReindexOptions.SectionName}:Enabled") ?? true)
+        {
+            builder.RegisterType<ReindexFeature>()
+                .As<IPackageFeature>()
+                .SingleInstance();
+        }
 
         // Package feature ($includes operation for independent pagination of _include/_revinclude results)
         builder.RegisterType<IncludesOperationFeature>()

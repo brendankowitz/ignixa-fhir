@@ -55,7 +55,7 @@ public class PackageLoadedNotificationHandler : INotificationHandler<IPackageLoa
                 "Package {PackageId}@{Version} loaded durably, but local conformance refresh is deferred",
                 evt.PackageId,
                 evt.PackageVersion);
-            ConformanceConsumerRefreshMetrics.RecordFailure("package-load");
+            ConformanceMetrics.RecordConsumerRefreshFailure("package-load");
             return;
         }
 

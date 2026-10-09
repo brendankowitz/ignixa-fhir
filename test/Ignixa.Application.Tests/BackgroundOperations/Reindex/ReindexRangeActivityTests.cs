@@ -76,7 +76,7 @@ public class ReindexRangeActivityTests
         var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         repository.GetAsync("job", 1, Arg.Any<CancellationToken>()).Returns(new BackgroundJob<ReindexJobDefinition>
         {
-            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexJobDefinition.CreateForTest()
+            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexTestHelper.CreateJobDefinition()
         });
         if (failProgress)
         {

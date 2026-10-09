@@ -316,7 +316,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         var repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
             tenants,
             NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
         {
             JobId = "round-trip",
@@ -388,7 +388,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             new TaskHubClient(runtime),
             repository,
             lifecycle,
-            new ReindexJobUpdater(repository, jobLock, new NullReindexCompletionHook()),
+            new ReindexJobUpdater(repository, jobLock, Substitute.For<IReindexCompletionHook>()),
             jobLock,
             Options.Create(new ReindexOptions()),
             TimeProvider.System,

@@ -25,23 +25,15 @@ public sealed class ReindexTrigger(
                 "Automatic reindex is disabled; parameters remain Pending.");
         }
 
-        CreateReindexJobResult result;
-        try
-        {
-            result = await mediator.SendAsync(
-                new CreateReindexJobCommand
-                {
-                    Trigger = "Activation",
-                    QueueRequest = true
-                },
-                cancellationToken);
-        }
-        catch (Exception exception) when (ReindexTriggerUnavailableException.IsOperational(exception))
-        {
-            throw new ReindexTriggerUnavailableException(
-                "The automatic reindex trigger is temporarily unavailable.",
-                exception);
-        }
+        var result = await SendAsync(
+            new CreateReindexJobCommand
+            {
+                Trigger = "Activation",
+                QueueRequest = true
+            },
+            "The automatic reindex trigger is temporarily unavailable.",
+            cancellationToken);
+
         return result switch
         {
             ReindexJobCreatedResult created => RecordStarted(created.JobId, reason),
@@ -60,6 +52,57 @@ public sealed class ReindexTrigger(
             _ => throw new InvalidOperationException(
                 $"Unsupported automatic reindex result {result.GetType().Name}.")
         };
+    }
+
+    public async Task ReconcileAsync(CancellationToken cancellationToken)
+    {
+        if (!options.Value.AutoStart)
+        {
+            logger.LogInformation(
+                "Reindex: startup reconciliation skipped because AutoStart is false");
+            return;
+        }
+
+        var result = await SendAsync(
+            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            "Reindex reconciliation is temporarily unavailable.",
+            cancellationToken);
+        switch (result)
+        {
+            case ReindexJobCreatedResult created:
+                ReindexMetrics.TriggerStarted("Reconciliation");
+                logger.LogInformation(
+                    "Reindex: startup reconciliation started job {JobId}",
+                    created.JobId);
+                break;
+            case ActiveReindexJobResult:
+            case NoReindexWorkResult:
+            case ReindexDisabledResult:
+            case ReindexProviderUnavailableResult:
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Reindex startup reconciliation returned unexpected result {result.GetType().Name}.");
+        }
+    }
+
+    private async Task<CreateReindexJobResult> SendAsync(
+        CreateReindexJobCommand command,
+        string unavailableMessage,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await mediator.SendAsync(command, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new ReindexTriggerUnavailableException(unavailableMessage, exception);
+        }
     }
 
     private ReindexTriggerResult RecordStarted(string jobId, string reason)

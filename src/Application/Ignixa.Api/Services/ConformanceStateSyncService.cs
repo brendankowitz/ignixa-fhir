@@ -21,7 +21,7 @@ public class ConformanceStateSyncService(
     IConformanceLease conformanceLease,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
-    ReindexStartupReconciler reindexReconciler,
+    ReindexTrigger reindexTrigger,
     TimeProvider timeProvider,
     ILogger<ConformanceStateSyncService> logger,
     IConfiguration configuration) : BackgroundService
@@ -95,7 +95,7 @@ public class ConformanceStateSyncService(
             }
             catch (ConformanceConsumerRefreshException)
             {
-                ConformanceConsumerRefreshMetrics.RecordFailure("sync");
+                ConformanceMetrics.RecordConsumerRefreshFailure("sync");
                 throw;
             }
 
@@ -111,12 +111,11 @@ public class ConformanceStateSyncService(
         await ScheduleOverdueTransitionsAsync(overdueTransitionIds, cancellationToken);
         try
         {
-            await reindexReconciler.ReconcileAsync(cancellationToken);
+            await reindexTrigger.ReconcileAsync(cancellationToken);
         }
         catch (ReindexTriggerUnavailableException exception)
-            when (ReindexTriggerUnavailableException.IsOperational(exception))
         {
-            ReindexReconciliationMetrics.RecordFailure();
+            ReindexMetrics.RecordReconciliationFailure();
             logger.LogError(
                 exception,
                 "Reindex reconciliation failed operationally; the next conformance sync will retry");
@@ -184,7 +183,7 @@ public class ConformanceStateSyncService(
             catch (Exception exception)
             {
                 _uncommittedTransitionFirstObserved[eventId] = _timeProvider.GetTimestamp();
-                ConformanceTransitionMetrics.RecordScheduleFailure();
+                ConformanceMetrics.RecordTransitionScheduleFailure();
                 logger.LogError(
                     exception,
                     "Transition watchdog could not schedule hide EventId {EventId}; it will retry on the next sync",

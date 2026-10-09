@@ -26,7 +26,7 @@ public class ReindexActivityHeartbeatTests
         var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         repository.GetAsync("job", 1, Arg.Any<CancellationToken>()).Returns(_ => new BackgroundJob<ReindexJobDefinition>
         {
-            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexJobDefinition.CreateForTest()
+            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexTestHelper.CreateJobDefinition()
         });
         var attempts = 0;
         var failureObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -92,7 +92,7 @@ public class ReindexActivityHeartbeatTests
         var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         var current = new BackgroundJob<ReindexJobDefinition>
         {
-            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexJobDefinition.CreateForTest()
+            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexTestHelper.CreateJobDefinition()
         };
         repository.GetAsync("job", 1, Arg.Any<CancellationToken>())
             .Returns(_ => JsonSerializer.Deserialize<BackgroundJob<ReindexJobDefinition>>(JsonSerializer.Serialize(current)));

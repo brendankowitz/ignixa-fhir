@@ -1,4 +1,5 @@
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Microsoft.Extensions.Options;
@@ -8,14 +9,14 @@ namespace Ignixa.Application.Features.Reindex;
 public sealed class ReindexAvailabilityService(
     IOptions<ReindexOptions> options,
     ITenantConfigurationStore tenantConfigurationStore,
-    IReindexProviderCapabilities providerCapabilities) : IReindexAvailability
+    CompositeRepositoryFactory repositoryFactory) : IReindexAvailability
 {
     private readonly ReindexOptions _options =
         options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly ITenantConfigurationStore _tenantConfigurationStore =
         tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
-    private readonly IReindexProviderCapabilities _providerCapabilities =
-        providerCapabilities ?? throw new ArgumentNullException(nameof(providerCapabilities));
+    private readonly CompositeRepositoryFactory _repositoryFactory =
+        repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
 
     public async Task<ReindexAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
     {
@@ -30,7 +31,7 @@ public sealed class ReindexAvailabilityService(
             .Where(tenant => tenant.IsActive && tenant.TenantId != SystemConstants.SystemPartitionId)
             .OrderBy(tenant => tenant.TenantId))
         {
-            if (!_providerCapabilities.SupportsReindex(tenant) && unsupportedTenantId is null)
+            if (!_repositoryFactory.SupportsReindex(tenant) && unsupportedTenantId is null)
             {
                 unsupportedTenantId = tenant.TenantId;
             }

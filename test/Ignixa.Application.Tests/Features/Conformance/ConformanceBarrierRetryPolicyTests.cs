@@ -40,7 +40,7 @@ public class ConformanceBarrierRetryPolicyTests
         var policy = CreatePolicy(synchronizer);
         using var listener = ListenForOutcomes(out var outcomes);
 
-        var exception = await Should.ThrowAsync<ConformanceDefinitionsUnavailableException>(() =>
+        var exception = await Should.ThrowAsync<ConformanceStaleException>(() =>
             policy.ExecuteAsync<int>(
                 _ => Task.FromException<int>(Stale()),
                 CancellationToken.None));

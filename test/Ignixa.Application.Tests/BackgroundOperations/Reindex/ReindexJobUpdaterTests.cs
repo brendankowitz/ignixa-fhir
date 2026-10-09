@@ -173,7 +173,7 @@ public class ReindexJobUpdaterTests
             JobId = "job",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest()
+            Definition = ReindexTestHelper.CreateJobDefinition()
         };
 
     private sealed class TestJobLock : IReindexJobLock, IDisposable

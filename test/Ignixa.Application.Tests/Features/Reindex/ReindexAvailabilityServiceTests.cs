@@ -102,11 +102,10 @@ public sealed class ReindexAvailabilityServiceTests
     public async Task GivenDisabledReindex_WhenCheckingAvailability_ThenDoesNotInspectTenantProviders()
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
-        var capabilities = Substitute.For<IReindexProviderCapabilities>();
         var service = new ReindexAvailabilityService(
             Options.Create(new ReindexOptions { Enabled = false }),
             tenants,
-            capabilities);
+            CreateCompositeRepositoryFactory(tenants));
 
         var availability = await service.GetAvailabilityAsync(CancellationToken.None);
 
@@ -122,18 +121,16 @@ public sealed class ReindexAvailabilityServiceTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
             .Returns(_ => new ValueTask<IReadOnlyList<TenantConfiguration>>(probe.Task));
-        var capabilities = Substitute.For<IReindexProviderCapabilities>();
-        capabilities.SupportsReindex(Arg.Any<TenantConfiguration>()).Returns(true);
         var service = new ReindexAvailabilityService(
             Options.Create(new ReindexOptions { Enabled = true }),
             tenants,
-            capabilities);
+            CreateCompositeRepositoryFactory(tenants));
 
         var first = service.GetAvailabilityAsync(CancellationToken.None);
         var second = service.GetAvailabilityAsync(CancellationToken.None);
 
         _ = await tenants.Received(2).GetAllTenantsAsync(Arg.Any<CancellationToken>());
-        probe.SetResult([Tenant(1)]);
+        probe.SetResult([Tenant(1, "SqlServer")]);
 
         (await first).ShouldBe(ReindexAvailability.Available);
         (await second).ShouldBe(ReindexAvailability.Available);
@@ -151,14 +148,12 @@ public sealed class ReindexAvailabilityServiceTests
                 return attempts == 1
                     ? ValueTask.FromException<IReadOnlyList<TenantConfiguration>>(
                         new InvalidOperationException("tenant configuration is unavailable"))
-                    : ValueTask.FromResult<IReadOnlyList<TenantConfiguration>>([Tenant(1)]);
+                    : ValueTask.FromResult<IReadOnlyList<TenantConfiguration>>([Tenant(1, "SqlServer")]);
             });
-        var capabilities = Substitute.For<IReindexProviderCapabilities>();
-        capabilities.SupportsReindex(Arg.Any<TenantConfiguration>()).Returns(true);
         var service = new ReindexAvailabilityService(
             Options.Create(new ReindexOptions { Enabled = true }),
             tenants,
-            capabilities);
+            CreateCompositeRepositoryFactory(tenants));
 
         Func<Task> first = () => service.GetAvailabilityAsync(CancellationToken.None);
 
@@ -195,22 +190,18 @@ public sealed class ReindexAvailabilityServiceTests
     public async Task GivenSuccessfulProbe_WhenCheckingAvailabilityAgain_ThenRepeatsTenantWork()
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([Tenant(1)]);
-        var capabilities = Substitute.For<IReindexProviderCapabilities>();
-        capabilities.SupportsReindex(Arg.Any<TenantConfiguration>()).Returns(true);
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([Tenant(1, "SqlServer")]);
         var service = new ReindexAvailabilityService(
             Options.Create(new ReindexOptions { Enabled = true }),
             tenants,
-            capabilities);
+            CreateCompositeRepositoryFactory(tenants));
 
         (await service.GetAvailabilityAsync(CancellationToken.None)).ShouldBe(ReindexAvailability.Available);
         tenants.ClearReceivedCalls();
-        capabilities.ClearReceivedCalls();
 
         (await service.GetAvailabilityAsync(CancellationToken.None)).ShouldBe(ReindexAvailability.Available);
 
         _ = await tenants.Received(1).GetAllTenantsAsync(Arg.Any<CancellationToken>());
-        capabilities.Received(1).SupportsReindex(Arg.Any<TenantConfiguration>());
     }
 
     [Fact]

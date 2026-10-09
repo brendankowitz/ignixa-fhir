@@ -129,7 +129,7 @@ public class DeferredWriteCoordinator
                 operation.CompletionSource.TrySetCanceled(cancellationToken);
                 throw;
             }
-            catch (ConformanceDefinitionsUnavailableException ex)
+            catch (ConformanceStaleException ex)
             {
                 operation.CompletionSource.TrySetException(ex);
                 CompleteWrites(ex);

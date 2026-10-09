@@ -3,6 +3,7 @@ using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
+using Ignixa.Domain.Models;
 using Ignixa.Specification.ValueSets.Normative;
 using NSubstitute;
 using Shouldly;
@@ -33,7 +34,7 @@ public class ReindexLifecycleEventWriterTests
                     DateTimeOffset.UtcNow))
                 .ToArray());
         var writer = new ReindexLifecycleEventWriter(store, state);
-        var target = new ReindexTarget(
+        var target = new ReindexParameterDefinition(
             "http://example.org/SearchParameter/patient-custom",
             "custom",
             "Patient",
@@ -76,8 +77,8 @@ public class ReindexLifecycleEventWriterTests
                     DateTimeOffset.UtcNow))
                 .ToArray());
         var writer = new ReindexLifecycleEventWriter(store, state);
-        var patient = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
-        var observation = new ReindexTarget(canonical, "custom", "Observation", 18, 2, ["Observation"]);
+        var patient = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var observation = new ReindexParameterDefinition(canonical, "custom", "Observation", 18, 2, ["Observation"]);
         await writer.StartAsync("job", [patient, observation], CancellationToken.None);
 
         var ignored = await writer.CompleteAsync(

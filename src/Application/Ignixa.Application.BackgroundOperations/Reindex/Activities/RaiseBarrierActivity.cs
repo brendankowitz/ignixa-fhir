@@ -16,13 +16,9 @@ public sealed class RaiseBarrierActivity(
 
     private async Task<RaiseBarrierOutput> RaiseAsync(RaiseBarrierInput input, CancellationToken cancellationToken)
     {
-        var repository = await repositoryFactory.GetRepositoryAsync(
+        var store = await repositoryFactory.GetReindexStoreAsync(
             input.TenantId,
             cancellationToken);
-        if (repository is not IReindexStore store)
-        {
-            throw new ReindexProviderNotSupportedException(input.TenantId);
-        }
 
         var cutoff = await store.RaiseBarrierAsync(
             input.TargetEventId,

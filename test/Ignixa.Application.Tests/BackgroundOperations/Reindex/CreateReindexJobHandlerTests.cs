@@ -80,7 +80,7 @@ public class CreateReindexJobHandlerTests
             JobId = "active",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = fixture.Now,
             HeartbeatDate = fixture.Now
         }, CancellationToken.None);
@@ -103,7 +103,7 @@ public class CreateReindexJobHandlerTests
             JobId = "stale",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = fixture.Now - TimeSpan.FromMinutes(3),
             HeartbeatDate = fixture.Now - TimeSpan.FromMinutes(3)
         }, CancellationToken.None);
@@ -126,7 +126,7 @@ public class CreateReindexJobHandlerTests
             JobId = "completing",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Completing",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = fixture.Now,
             HeartbeatDate = fixture.Now
         }, CancellationToken.None);
@@ -281,7 +281,7 @@ public class CreateReindexJobHandlerTests
             JobId = "active",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
@@ -506,7 +506,7 @@ public class CreateReindexJobHandlerTests
             OrchestrationInstanceId = "fresh",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Queued",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = fixture.Now,
             HeartbeatDate = fixture.Now
         }, CancellationToken.None);
@@ -697,7 +697,7 @@ public class CreateReindexJobHandlerTests
                     null),
                 DateTimeOffset.UtcNow));
         }
-        var target = new ReindexTarget(
+        var target = new ReindexParameterDefinition(
             "http://example.org/SearchParameter/patient-custom",
             "custom",
             "Patient",
@@ -814,7 +814,7 @@ public class CreateReindexJobHandlerTests
         IReindexJobLock JobLock,
         ReindexLifecycleEventWriter Lifecycle,
         ConformanceState State,
-        ReindexTarget Target,
+        ReindexParameterDefinition Target,
         ReindexJobDefinition Definition,
         DateTimeOffset Now,
         ISourceEventStore EventStore);

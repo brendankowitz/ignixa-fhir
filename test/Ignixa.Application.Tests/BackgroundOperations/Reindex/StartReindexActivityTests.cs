@@ -26,7 +26,7 @@ public class StartReindexActivityTests
     {
         using var fixture = new Fixture();
         await fixture.InitializeAsync();
-        var second = new ReindexTarget(
+        var second = new ReindexParameterDefinition(
             "http://example.org/SearchParameter/patient-second",
             "second",
             "Patient",
@@ -203,7 +203,7 @@ public class StartReindexActivityTests
         fixture.State.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
-    private static ReindexParameterDefinition Definition(ReindexTarget target) =>
+    private static ReindexParameterDefinition Definition(ReindexParameterDefinition target) =>
         new(
             target.Canonical,
             target.Code,
@@ -253,14 +253,14 @@ public class StartReindexActivityTests
                     return (IReadOnlyList<SourceEvent>)committed;
                 });
             Lifecycle = new ReindexLifecycleEventWriter(eventStore, State);
-            Updater = new ReindexJobUpdater(Repository, _jobLock, new NullReindexCompletionHook());
+            Updater = new ReindexJobUpdater(Repository, _jobLock, Substitute.For<IReindexCompletionHook>());
         }
 
         public InMemoryBackgroundJobRepository<ReindexJobDefinition> Repository { get; }
         public ConformanceState State { get; } = new();
         public List<SourceEvent> Events { get; } = [];
         public Func<Task>? BeforeAppend { get; set; }
-        public ReindexTarget Target { get; } =
+        public ReindexParameterDefinition Target { get; } =
             new("http://example.org/SearchParameter/patient-custom", "custom", "Patient", 17, 1, ["Patient"]);
         public ReindexLifecycleEventWriter Lifecycle { get; }
         public ReindexJobUpdater Updater { get; }
@@ -271,7 +271,7 @@ public class StartReindexActivityTests
                 JobId = "job",
                 JobType = (int)BackgroundJobType.Reindex,
                 Status = "Queued",
-                Definition = ReindexJobDefinition.CreateForTest(),
+                Definition = ReindexTestHelper.CreateJobDefinition(),
                 CreateDate = DateTimeOffset.UtcNow,
                 HeartbeatDate = DateTimeOffset.UtcNow
             }, CancellationToken.None);

@@ -248,16 +248,7 @@ public sealed class CreateReindexJobHandler(
                 TargetEventId = targetEventId,
                 TenantIds = tenants.Select(tenant => tenant.TenantId).ToArray(),
                 ResourceTypes = resolution.ResourceTypes,
-                SearchParameters = resolution.Targets.Select(target => new ReindexParameterDefinition(
-                    target.Canonical,
-                    target.Code,
-                    target.ResourceType,
-                    target.SearchParamId,
-                    target.ActivationEventId,
-                    target.AffectedResourceTypes)
-                {
-                    ScheduledResourceTypes = target.ScheduledResourceTypes
-                }).ToArray(),
+                SearchParameters = resolution.Targets,
                 MaximumNumberOfResourcesPerQuery = parameters.MaximumNumberOfResourcesPerQuery,
                 MaximumNumberOfResourcesPerWrite = parameters.MaximumNumberOfResourcesPerWrite,
                 MaximumConcurrency = parameters.MaximumConcurrency,
@@ -353,16 +344,7 @@ public sealed class CreateReindexJobHandler(
             TargetEventId = targetEventId,
             TenantIds = definition.TenantIds,
             ResourceTypes = resolution.ResourceTypes,
-            SearchParameters = resolution.Targets.Select(target => new ReindexParameterDefinition(
-                target.Canonical,
-                target.Code,
-                target.ResourceType,
-                target.SearchParamId,
-                target.ActivationEventId,
-                target.AffectedResourceTypes)
-            {
-                ScheduledResourceTypes = target.ScheduledResourceTypes
-            }).ToArray(),
+            SearchParameters = resolution.Targets,
             MaximumNumberOfResourcesPerQuery = definition.MaximumNumberOfResourcesPerQuery,
             MaximumNumberOfResourcesPerWrite = definition.MaximumNumberOfResourcesPerWrite,
             MaximumConcurrency = definition.MaximumConcurrency,

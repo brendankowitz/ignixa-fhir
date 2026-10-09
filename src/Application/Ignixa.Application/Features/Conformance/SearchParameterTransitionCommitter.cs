@@ -96,7 +96,7 @@ public sealed class SearchParameterTransitionCommitter(
             }
             catch (ReindexTriggerUnavailableException exception)
             {
-                ReindexTriggerMetrics.RecordFailure("TransitionCommit");
+                ReindexMetrics.RecordTriggerFailure("TransitionCommit");
                 logger.LogError(
                     exception,
                     "Search parameter transition {HideEventId} committed durably, but the automatic reindex trigger failed; periodic reconciliation will retry",

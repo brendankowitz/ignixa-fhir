@@ -24,7 +24,7 @@ public class CancelReindexHandlerTests
                 OrchestrationInstanceId = "job",
                 JobType = (int)BackgroundJobType.Reindex,
                 Status = "Completing",
-                Definition = ReindexJobDefinition.CreateForTest(),
+                Definition = ReindexTestHelper.CreateJobDefinition(),
                 Progress = new JsonObject { ["terminalDecision"] = "Completed" }
             });
         var jobLock = Substitute.For<IReindexJobLock>();

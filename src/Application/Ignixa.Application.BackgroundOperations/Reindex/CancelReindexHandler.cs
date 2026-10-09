@@ -34,16 +34,7 @@ public sealed class CancelReindexHandler(
         await taskHubClient.TerminateInstanceAsync(
             new OrchestrationInstance { InstanceId = job.OrchestrationInstanceId ?? job.JobId },
             request.Reason);
-        var targets = job.Definition.SearchParameters.Select(target => new ReindexTarget(
-            target.Canonical,
-            target.Code,
-            target.ResourceType,
-            target.SearchParamId,
-            target.ActivationEventId,
-            target.AffectedResourceTypes)
-        {
-            ScheduledResourceTypes = target.ScheduledResourceTypes
-        }).ToArray();
+        var targets = job.Definition.SearchParameters;
         var won = await jobs.TryCompleteAsync(
             job.JobId,
             "Cancelled",

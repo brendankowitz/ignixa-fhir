@@ -8,7 +8,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
-public sealed class ReindexStartupReconcilerTests
+public sealed class ReindexTriggerReconciliationTests
 {
     [Fact]
     public async Task GivenAutoStartIsFalse_WhenStartupReconciles_ThenNoJobIsRequested()
@@ -42,13 +42,13 @@ public sealed class ReindexStartupReconcilerTests
             CancellationToken.None);
     }
 
-    private static ReindexStartupReconciler CreateReconciler(
+    private static ReindexTrigger CreateReconciler(
         IMediator mediator,
         bool autoStart)
     {
-        return new ReindexStartupReconciler(
+        return new ReindexTrigger(
             mediator,
             Options.Create(new ReindexOptions { AutoStart = autoStart }),
-            NullLogger<ReindexStartupReconciler>.Instance);
+            NullLogger<ReindexTrigger>.Instance);
     }
 }

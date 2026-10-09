@@ -25,4 +25,48 @@ public class ActiveSearchParameter
     public bool IsAvailable { get; set; } = true;
     public SearchParameterStatus Status { get; set; }
     public string? ReindexJobId { get; set; }
+
+    internal ActiveSearchParameter Clone() =>
+        CreateClone(
+            ActivationEventId,
+            DeactivationEventId,
+            IsAvailable,
+            Status,
+            ReindexJobId);
+
+    internal ActiveSearchParameter CloneForRestoration(long eventId) =>
+        CreateClone(
+            eventId,
+            deactivationEventId: null,
+            isAvailable: true,
+            SearchParameterStatus.Staged,
+            reindexJobId: null);
+
+    private ActiveSearchParameter CreateClone(
+        long activationEventId,
+        long? deactivationEventId,
+        bool isAvailable,
+        SearchParameterStatus status,
+        string? reindexJobId) =>
+        new()
+        {
+            SearchParamId = SearchParamId,
+            Canonical = Canonical,
+            Code = Code,
+            ResourceType = ResourceType,
+            Expression = Expression,
+            ParamType = ParamType,
+            SourcePackage = SourcePackage,
+            OverridesCanonical = OverridesCanonical,
+            TargetResourceTypes = TargetResourceTypes?.ToArray(),
+            Components = Components?.ToArray(),
+            Name = Name,
+            Description = Description,
+            ActivationEventId = activationEventId,
+            DeactivationEventId = deactivationEventId,
+            PreviousActivationEventId = PreviousActivationEventId,
+            IsAvailable = isAvailable,
+            Status = status,
+            ReindexJobId = reindexJobId
+        };
 }

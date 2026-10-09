@@ -102,6 +102,8 @@ public class ViewDefinitionPipelineTests(ITestOutputHelper output)
             Substitute.For<IApplicationVersionInfo>(), NullLogger<CapabilityStatementService>.Instance);
         var builder = new ContainerBuilder();
         builder.RegisterApplicationServices(new ConfigurationBuilder().Build());
+        builder.RegisterInstance(Substitute.For<IConformanceDefinitionsSynchronizer>())
+            .As<IConformanceDefinitionsSynchronizer>();
         builder.RegisterValidationServices();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>));
         builder.RegisterInstance(NullLoggerFactory.Instance).As<ILoggerFactory>();

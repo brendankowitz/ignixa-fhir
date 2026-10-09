@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 
@@ -61,11 +62,10 @@ public sealed class CompleteReindexActivity(
                         $"Tenant {tenant.TenantId}: {tenant.ErrorMessage ?? "resource failures occurred"}");
                 }
 
-                var repository = await repositoryFactory.GetRepositoryAsync(
+                var store = await repositoryFactory.GetReindexStoreAsync(
                     tenant.TenantId,
                     CancellationToken.None);
-                if (repository is not IReindexStore store ||
-                    !await store.HasSearchParameterAsync(target.SearchParamId, CancellationToken.None))
+                if (!await store.HasSearchParameterAsync(target.SearchParamId, CancellationToken.None))
                 {
                     errors.Add(
                         $"Tenant {tenant.TenantId}: no physical dbo.SearchParam catalog id {target.SearchParamId} exists for {target.Canonical}.");

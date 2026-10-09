@@ -177,7 +177,7 @@ public class ConformanceStateSyncServiceTests
             Substitute.For<ISearchParameterTransitionScheduler>(),
             TimeProvider.System,
             TimeSpan.FromMinutes(3),
-            CreateReindexReconciler(mediator, autoStart: true));
+            CreateReindexTrigger(mediator, autoStart: true));
 
         await service.RunSyncAsync();
 
@@ -210,7 +210,7 @@ public class ConformanceStateSyncServiceTests
             Substitute.For<ISearchParameterTransitionScheduler>(),
             TimeProvider.System,
             TimeSpan.FromMinutes(3),
-            CreateReindexReconciler(mediator, autoStart: true));
+            CreateReindexTrigger(mediator, autoStart: true));
 
         await service.RunSyncAsync();
 
@@ -287,14 +287,14 @@ public class ConformanceStateSyncServiceTests
         return refresher;
     }
 
-    private static ReindexStartupReconciler CreateReindexReconciler(
+    private static ReindexTrigger CreateReindexTrigger(
         IMediator mediator,
         bool autoStart)
     {
-        return new ReindexStartupReconciler(
+        return new ReindexTrigger(
             mediator,
             Options.Create(new ReindexOptions { AutoStart = autoStart }),
-            NullLogger<ReindexStartupReconciler>.Instance);
+            NullLogger<ReindexTrigger>.Instance);
     }
 
     private sealed class TestSyncService(
@@ -305,7 +305,7 @@ public class ConformanceStateSyncServiceTests
         ISearchParameterTransitionScheduler transitionScheduler,
         TimeProvider timeProvider,
         TimeSpan transitionGrace,
-        ReindexStartupReconciler? reindexReconciler = null,
+        ReindexTrigger? reindexTrigger = null,
         ConformanceRefreshPublisher? refreshPublisher = null)
         : ConformanceStateSyncService(
             store,
@@ -317,7 +317,7 @@ public class ConformanceStateSyncServiceTests
             lease,
             transitionScheduler,
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = transitionGrace }),
-            reindexReconciler ?? CreateReindexReconciler(
+            reindexTrigger ?? CreateReindexTrigger(
                 Substitute.For<IMediator>(),
                 autoStart: false),
             timeProvider,

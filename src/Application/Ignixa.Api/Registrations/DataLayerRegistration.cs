@@ -234,7 +234,7 @@ public static class DataLayerRegistration
                 c.ResolveNamed<IFhirRepositoryFactory>("FileSystem"),
                 c.ResolveNamed<IFhirRepositoryFactory>("SqlEf")))
             .As<IFhirRepositoryFactory>()
-            .As<IReindexProviderCapabilities>()
+            .AsSelf()
             .SingleInstance();
 
         // Composite search service factory

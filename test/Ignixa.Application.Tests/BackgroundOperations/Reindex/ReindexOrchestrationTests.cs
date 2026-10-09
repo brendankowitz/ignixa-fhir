@@ -16,13 +16,13 @@ public class ReindexOrchestrationTests
         var withoutDebounce = new ExecutingContext();
         await new ReindexOrchestration().RunTask(
             withoutDebounce,
-            ReindexOrchestrationInput.CreateForTest(
+            ReindexTestHelper.CreateOrchestrationInput(
                 "control",
                 targetEventId: 42,
                 barrierDelay: TimeSpan.Zero,
                 tenantIds: [1]));
         var context = new ExecutingContext();
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job",
             targetEventId: 42,
             barrierDelay: TimeSpan.Zero,
@@ -41,7 +41,7 @@ public class ReindexOrchestrationTests
     public async Task GivenProgressPersistenceFails_WhenRetried_ThenOnlyProgressIsRetriedNotRanges()
     {
         var context = new ExecutingContext(failProgressOnce: true);
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
 
         var result = await new ReindexOrchestration().RunTask(context, input);
@@ -57,7 +57,7 @@ public class ReindexOrchestrationTests
     public async Task GivenBarrierActivityThrowsTransiently_WhenRetried_ThenTenantCompletes()
     {
         var context = new ExecutingContext(failBarrierOnce: true);
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
 
         var result = await new ReindexOrchestration().RunTask(context, input);
@@ -71,7 +71,7 @@ public class ReindexOrchestrationTests
     public async Task GivenDefinitionsRemainBehindForFiveAttempts_WhenRangeIsRetried_ThenTenantCompletes()
     {
         var context = new ExecutingContext(definitionsNotReadyAttempts: 6);
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
 
         var result = await new ReindexOrchestration().RunTask(context, input);
@@ -104,7 +104,7 @@ public class ReindexOrchestrationTests
     public async Task GivenContinueAsNew_WhenRequested_ThenCurrentStateIsCarriedAndNoMoreWorkIsScheduled()
     {
         var context = new ExecutingContext();
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job",
             targetEventId: 42,
             barrierDelay: TimeSpan.Zero,
@@ -127,7 +127,7 @@ public class ReindexOrchestrationTests
     public async Task GivenLongBarrierDelay_WhenOrchestrated_ThenProgressHeartbeatsSplitTheDurableWait()
     {
         var context = new ExecutingContext();
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job", targetEventId: 42, barrierDelay: TimeSpan.FromSeconds(95), tenantIds: [1]);
 
         await new ReindexOrchestration().RunTask(context, input);
@@ -142,7 +142,7 @@ public class ReindexOrchestrationTests
     {
         var context = new ExecutingContext();
 
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job",
             targetEventId: 42,
             barrierDelay: TimeSpan.FromSeconds(30),
@@ -161,7 +161,7 @@ public class ReindexOrchestrationTests
     public async Task GivenFailureSampleIsFull_WhenLaterResourceTypeFails_ThenEveryFailedTypeReachesCompletion()
     {
         var context = new ExecutingContext(includeResourceFailures: true);
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job",
             targetEventId: 42,
             barrierDelay: TimeSpan.Zero,
@@ -180,7 +180,7 @@ public class ReindexOrchestrationTests
     public async Task GivenStartActivityFailsAfterRetries_WhenOrchestrated_ThenJobIsFinalizedFailed()
     {
         var context = new ExecutingContext(failStart: true);
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job",
             targetEventId: 42,
             barrierDelay: TimeSpan.Zero,
@@ -197,7 +197,7 @@ public class ReindexOrchestrationTests
     public async Task GivenStartActivityFindsClosedJob_WhenOrchestrated_ThenNoTenantOrCompletionWorkRuns()
     {
         var context = new ExecutingContext(startShouldContinue: false);
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job",
             targetEventId: 42,
             barrierDelay: TimeSpan.Zero,
@@ -230,7 +230,7 @@ public class ReindexOrchestrationTests
                 }
             ]
         };
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]) with
         {
             State = state,
@@ -250,7 +250,7 @@ public class ReindexOrchestrationTests
         int continueAsNewThreshold)
     {
         var context = new ExecutingContext();
-        var input = ReindexOrchestrationInput.CreateForTest(
+        var input = ReindexTestHelper.CreateOrchestrationInput(
             "job",
             targetEventId: 42,
             barrierDelay: TimeSpan.Zero,
