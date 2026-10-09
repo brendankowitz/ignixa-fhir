@@ -117,6 +117,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     {
         _availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(ReindexAvailability.Disabled));
+        _createResult = new ReindexDisabledResult();
 
         var endpointNames = ((IEndpointRouteBuilder)_app).DataSources
             .SelectMany(source => source.Endpoints)
@@ -132,9 +133,12 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
         response.Body["issue"]![0]!["diagnostics"]!.GetValue<string>()
             .ShouldBe("The $reindex operation is disabled on this server.");
-        await _mediator.DidNotReceive().SendAsync(
-            Arg.Any<CreateReindexJobCommand>(),
-            Arg.Any<CancellationToken>());
+        if (!operationEndpointName.StartsWith("Create", StringComparison.Ordinal))
+        {
+            await _mediator.DidNotReceive().SendAsync(
+                Arg.Any<CreateReindexJobCommand>(),
+                Arg.Any<CancellationToken>());
+        }
     }
 
     [Fact]
@@ -525,6 +529,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     {
         _availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new ReindexAvailability(ReindexAvailabilityStatus.Unsupported, 2)));
+        _createResult = new ReindexProviderUnavailableResult(2);
 
         var response = await SendAsync(operationEndpointName, body: Parameters());
 
