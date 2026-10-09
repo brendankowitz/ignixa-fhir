@@ -13,7 +13,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class ReindexLifecycleEventWriterTests
 {
     [Fact]
-    public async Task GivenAppliedFailure_WhenLifecycleIsWritten_ThenItIsNotReportedAsIgnored()
+    public async Task GivenCancelledReindex_WhenLifecycleIsCompleted_ThenParameterReturnsToPendingAndJobIdIsCleared()
     {
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation());
@@ -42,15 +42,17 @@ public class ReindexLifecycleEventWriterTests
             1,
             ["Patient"]);
         await writer.StartAsync("job", [target], CancellationToken.None);
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.ReindexJobId.ShouldBe("job");
 
         var ignored = await writer.CompleteAsync(
             "job",
-            [new ReindexTargetCompletion(target, false, 0, TimeSpan.Zero, "failed")],
+            [new ReindexTargetCompletion(target, false, 0, TimeSpan.Zero, "Cancelled: operator request")],
             CancellationToken.None);
 
         ignored.ShouldBeEmpty();
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(
-            Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending);
+        parameter.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending);
+        parameter.ReindexJobId.ShouldBeNull();
     }
 
     [Fact]

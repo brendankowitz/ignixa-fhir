@@ -511,22 +511,25 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("maximumNumberOfResourcesPerQuery", 0)]
-    [InlineData("maximumNumberOfResourcesPerQuery", 10001)]
-    [InlineData("maximumNumberOfResourcesPerWrite", 0)]
-    [InlineData("maximumNumberOfResourcesPerWrite", 10001)]
-    [InlineData("maximumConcurrency", 0)]
-    [InlineData("maximumConcurrency", 17)]
-    [InlineData("queryDelayIntervalInMilliseconds", -1)]
-    [InlineData("queryDelayIntervalInMilliseconds", 60001)]
-    public async Task GivenOutOfRangeParameter_WhenCreating_ThenReturnsBadRequest(string parameter, int value)
+    [InlineData("maximumNumberOfResourcesPerQuery", 0, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumNumberOfResourcesPerQuery", 10001, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumNumberOfResourcesPerWrite", 0, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumNumberOfResourcesPerWrite", 10001, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumConcurrency", 0, StatusCodes.Status400BadRequest)]
+    [InlineData("maximumConcurrency", 17, StatusCodes.Status400BadRequest)]
+    [InlineData("queryDelayIntervalInMilliseconds", -1, StatusCodes.Status400BadRequest)]
+    [InlineData("queryDelayIntervalInMilliseconds", 60001, StatusCodes.Status400BadRequest)]
+    public async Task GivenOutOfRangeParameter_WhenCreating_ThenReturnsExpectedStatusCode(
+        string parameter,
+        int value,
+        int expectedStatusCode)
     {
         _createResult = new InvalidReindexRequestResult($"{parameter} is out of range.");
 
         var response = await SendAsync("CreateReindexForTenant", body: Parameters(
             (parameter, "valueInteger", value)));
 
-        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        response.StatusCode.ShouldBe(expectedStatusCode);
         _createCommands.ShouldHaveSingleItem();
     }
 

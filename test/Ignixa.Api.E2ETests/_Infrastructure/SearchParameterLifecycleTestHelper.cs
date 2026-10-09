@@ -98,6 +98,8 @@ internal static class SearchParameterLifecycleTestHelper
             await Task.Delay(TimeSpan.FromMilliseconds(10));
         }
 
-        state.FindByCanonical(canonical)?.Status.ShouldBe(expectedStatus);
+        var parameter = state.FindByCanonical(canonical)
+            ?? throw new InvalidOperationException($"Search parameter {canonical} was not found.");
+        parameter.Status.ShouldBe(expectedStatus);
     }
 }

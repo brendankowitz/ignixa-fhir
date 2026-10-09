@@ -72,16 +72,21 @@ public class SqlReindexOrchestrationTests
     {
         await using var fixture = new ReindexFixture();
         await fixture.InitializeAsync();
+        var marker = Guid.NewGuid().ToString("N");
+        var code = $"cancel-{marker}";
+        var canonical = $"http://example.org/SearchParameter/{code}";
 
-        var created = await CreateReindexAsync(fixture.Client);
-        using var createdResponse = created.Response;
-        created.Response.StatusCode.ShouldBe(HttpStatusCode.Created, created.Body.ToJsonString());
-        using var cancellation = await fixture.Client.DeleteAsync($"/tenant/1/$reindex/{created.JobId}");
+        await StoreParameterAsync(fixture.Services, $"test.cancel.{marker}", code, canonical);
+        var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
+            .ActivateAsync($"test.cancel.{marker}", "1.0.0", CancellationToken.None);
+        var jobId = activation.ReindexJobId.ShouldNotBeNull();
+        await WaitForJobStatusAsync(fixture.Services, jobId, "Running");
+        using var cancellation = await fixture.Client.DeleteAsync($"/tenant/1/$reindex/{jobId}");
 
         cancellation.StatusCode.ShouldBe(HttpStatusCode.Accepted, await cancellation.Content.ReadAsStringAsync());
         var cancellationBody = JsonNode.Parse(await cancellation.Content.ReadAsStringAsync())!;
         ParameterValue(cancellationBody, "status").ShouldBe("Cancelled");
-        var cancelled = await WaitForStatusAsync(fixture.Client, created.JobId, "Cancelled");
+        var cancelled = await WaitForStatusAsync(fixture.Client, jobId, "Cancelled");
         ParameterValue(cancelled, "status").ShouldBe("Cancelled");
     }
 
@@ -158,7 +163,7 @@ public class SqlReindexOrchestrationTests
         RenewLease(fixture.Services);
         await AssertAbsoluteReferenceSearchAsync(fixture.Client, reference, observationId);
 
-        var created = await CreateReindexAsync(fixture.Client, "Observation");
+        var created = await CreateReindexAsync(fixture.Client);
         using var createdResponse = created.Response;
         created.Response.StatusCode.ShouldBe(HttpStatusCode.Created, created.Body.ToJsonString());
         var completed = await WaitForStatusAsync(fixture.Client, created.JobId, "Completed");
@@ -275,11 +280,9 @@ public class SqlReindexOrchestrationTests
         throw new TimeoutException("A follow-up reindex job was not persisted.");
     }
 
-    private static async Task<(HttpResponseMessage Response, JsonNode Body, string JobId)> CreateReindexAsync(
-        HttpClient client,
-        string resourceType = "Patient")
+    private static async Task<(HttpResponseMessage Response, JsonNode Body, string JobId)> CreateReindexAsync(HttpClient client)
     {
-        var response = await client.PostAsync("/tenant/1/$reindex", ReindexRequestContent(resourceType));
+        var response = await client.PostAsync("/tenant/1/$reindex", ReindexRequestContent());
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
         var jobId = response.StatusCode == HttpStatusCode.Created
             ? ParameterValue(body, "id")
@@ -306,10 +309,9 @@ public class SqlReindexOrchestrationTests
         throw new TimeoutException($"Reindex job {jobId} did not reach {expectedStatus}.");
     }
 
-    private static StringContent ReindexRequestContent(string resourceType = "Patient") =>
+    private static StringContent ReindexRequestContent() =>
         new($$"""
             {"resourceType":"Parameters","parameter":[
-              {"name":"targetResourceTypes","valueString":"{{resourceType}}"},
               {"name":"maximumNumberOfResourcesPerQuery","valueInteger":10},
               {"name":"maximumNumberOfResourcesPerWrite","valueInteger":10},
               {"name":"maximumConcurrency","valueInteger":1}
