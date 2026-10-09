@@ -7,8 +7,7 @@ public sealed record ReindexRequestParameters(
     int? MaximumNumberOfResourcesPerQuery,
     int? MaximumNumberOfResourcesPerWrite,
     int? MaximumConcurrency,
-    int? QueryDelayIntervalInMilliseconds,
-    IReadOnlyList<string>? TargetResourceTypes);
+    int? QueryDelayIntervalInMilliseconds);
 
 public static class ReindexRequestParser
 {
@@ -61,7 +60,6 @@ public static class ReindexRequestParser
         int? maximumNumberOfResourcesPerWrite = null;
         int? maximumConcurrency = null;
         int? queryDelayIntervalInMilliseconds = null;
-        var targetResourceTypes = new List<string>();
         var parameterNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var parameter in body["parameter"]?.AsArray() ?? [])
         {
@@ -110,16 +108,6 @@ public static class ReindexRequestParser
                     }
                     break;
                 case "targetResourceTypes":
-                    if (value["valueString"] is not JsonValue resourceTypeValue ||
-                        !resourceTypeValue.TryGetValue<string>(out var resourceTypes))
-                    {
-                        error = "targetResourceTypes must be a string.";
-                        return false;
-                    }
-                    targetResourceTypes.AddRange(resourceTypes.Split(
-                        ',',
-                        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-                    break;
                 case "targetSearchParameterTypes":
                 case "targetDataStoreUsagePercentage":
                     error = $"Parameter '{name}' is not supported.";
@@ -134,13 +122,12 @@ public static class ReindexRequestParser
             maximumNumberOfResourcesPerQuery,
             maximumNumberOfResourcesPerWrite,
             maximumConcurrency,
-            queryDelayIntervalInMilliseconds,
-            targetResourceTypes.Count == 0 ? null : targetResourceTypes);
+            queryDelayIntervalInMilliseconds);
         return true;
     }
 
     private static ReindexRequestParameters EmptyRequest() =>
-        new(null, null, null, null, null);
+        new(null, null, null, null);
 
     private static bool TryGetInteger(JsonObject parameter, out int? value)
     {

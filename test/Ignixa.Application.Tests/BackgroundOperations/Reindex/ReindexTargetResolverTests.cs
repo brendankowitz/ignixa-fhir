@@ -14,30 +14,10 @@ public class ReindexTargetResolverTests
 
         var result = ReindexTargetResolver.Resolve(
             [pending],
-            ["Patient", "Observation"],
-            targetResourceTypes: null);
+            ["Patient", "Observation"]);
 
         result.Targets.Single().AffectedResourceTypes.ShouldBe(["Observation", "Patient"], ignoreOrder: false);
         result.ResourceTypes.ShouldBe(["Observation", "Patient"], ignoreOrder: false);
-    }
-
-    [Fact]
-    public void GivenTargetResourceTypes_WhenTargetsAreResolved_ThenScopeIsNarrowed()
-    {
-        var pending = Parameter(
-            "http://example.org/SearchParameter/resource-custom",
-            "Resource",
-            ["Patient", "Observation"]);
-
-        var result = ReindexTargetResolver.Resolve(
-            [pending],
-            ["Patient", "Observation", "Encounter"],
-            ["Patient"]);
-
-        result.Targets.Single().AffectedResourceTypes.ShouldBe(["Encounter", "Observation", "Patient"]);
-        result.Targets.Single().ScheduledResourceTypes.ShouldBe(["Patient"]);
-        result.Targets.Single().IsFullyCovered.ShouldBeFalse();
-        result.ResourceTypes.ShouldBe(["Patient"]);
     }
 
     [Fact]
@@ -50,7 +30,6 @@ public class ReindexTargetResolverTests
         var result = ReindexTargetResolver.Resolve(
             [pending],
             ["Binary", "Observation", "Patient"],
-            targetResourceTypes: null,
             new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
             {
                 ["DomainResource"] = ["Observation", "Patient"]
@@ -70,8 +49,7 @@ public class ReindexTargetResolverTests
 
         var result = ReindexTargetResolver.Resolve(
             [pending],
-            ["Patient", "Practitioner"],
-            targetResourceTypes: null);
+            ["Patient", "Practitioner"]);
 
         result.Targets.Single().AffectedResourceTypes.ShouldBe(["Patient"]);
         result.ResourceTypes.ShouldBe(["Patient"]);
@@ -80,7 +58,7 @@ public class ReindexTargetResolverTests
     [Fact]
     public void GivenNoPendingParametersAndNoMaintenanceTypes_WhenTargetsAreResolved_ThenNothingToDoIsReturned()
     {
-        var result = ReindexTargetResolver.Resolve([], ["Patient"], targetResourceTypes: null);
+        var result = ReindexTargetResolver.Resolve([], ["Patient"]);
 
         result.HasWork.ShouldBeFalse();
     }

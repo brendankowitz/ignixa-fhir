@@ -19,13 +19,7 @@ public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
             ["ignoredLifecycleEvents"] = new JsonArray(
                 ignoredLifecycleEvents
                     .Select(value => (JsonNode?)JsonValue.Create(value))
-                    .ToArray()),
-            ["notCovered"] = job.Progress?["notCovered"]?.DeepClone() ??
-                new JsonArray(
-                    job.Definition.SearchParameters
-                        .Where(target => !IsFullyCovered(target))
-                        .Select(target => (JsonNode?)JsonValue.Create(target.Canonical))
-                        .ToArray())
+                    .ToArray())
         };
         foreach (var tenantId in tenantIds)
         {
@@ -149,11 +143,6 @@ public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
             progress["phase"] = phase;
         }
     }
-
-    private static bool IsFullyCovered(ReindexParameterDefinition target) =>
-        target.AffectedResourceTypes.Count == target.ScheduledResourceTypes.Count &&
-        target.AffectedResourceTypes.All(type =>
-            target.ScheduledResourceTypes.Contains(type, StringComparer.OrdinalIgnoreCase));
 
     private static int GetPhaseOrder(string phase) =>
         phase switch

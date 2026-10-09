@@ -28,7 +28,7 @@ public sealed class StartReindexActivity(
 
                 ignored = await lifecycle.StartAsync(
                     input.JobId,
-                    targets.Where(target => target.IsFullyCovered).ToArray(),
+                    targets,
                     cancellationToken);
                 ReindexProgressReporter.InitializeBarrierDelay(job, input.TenantIds, ignored);
             },

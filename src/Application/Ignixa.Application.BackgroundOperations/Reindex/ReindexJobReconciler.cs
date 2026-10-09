@@ -135,7 +135,6 @@ public sealed class ReindexJobReconciler(
 
         var outcomes = ReadPersistedOutcomes(job.Progress);
         var completions = ReconstructTargets(job)
-            .Where(target => target.IsFullyCovered)
             .Where(target =>
                 outcomes.ContainsKey(TargetIdentity(target)) ||
                 outcomes.ContainsKey(target.Canonical))
@@ -178,7 +177,6 @@ public sealed class ReindexJobReconciler(
             ? "Reindex orchestration instance is missing."
             : $"Reindex orchestration ended as {state.OrchestrationStatus} before the job was finalized.";
         var targets = ReconstructTargets(job)
-            .Where(target => target.IsFullyCovered)
             .ToArray();
         var completions = targets.Select(target => new ReindexTargetCompletion(
             target,

@@ -57,7 +57,6 @@ public sealed class CancelReindexHandler(
                 current.Progress["cancellationReason"] = request.Reason;
                 current.Progress["terminalOutcomes"] = new JsonArray(
                     targets
-                        .Where(target => target.IsFullyCovered)
                         .Select(target => (JsonNode?)new JsonObject
                         {
                             ["canonical"] = target.Canonical,
