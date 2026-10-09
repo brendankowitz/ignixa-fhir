@@ -90,80 +90,42 @@ public class LoadPackageHandler(
                     string.Join(", ", skipped));
             }
 
-            var activationResult = await _activationPipeline.ActivateAsync(
+            var activation = await _activationPipeline.ActivateAsync(
                 request.PackageId,
                 request.Version,
                 cancellationToken);
-            result = result with
-            {
-                LocalRefreshDeferred = activationResult.LocalRefreshDeferred,
-                TransitionSchedulingDeferred = activationResult.TransitionSchedulingDeferred,
-                PendingReindex = activationResult.PendingReindex,
-                ReindexJobId = activationResult.ReindexJobId,
-                ReindexStatusUrl = activationResult.ReindexJobId is null
-                    ? null
-                    : $"/tenant/{request.TenantId}/$reindex/{activationResult.ReindexJobId}",
-                ReindexQueued = activationResult.ReindexQueued,
-                ReindexMessage = activationResult.ReindexMessage,
-                ReindexTriggerDeferred = activationResult.ReindexTriggerDeferred
-            };
 
-            if (!activationResult.Success)
-            {
-                _logger.LogWarning(
-                    "Package {PackageId}@{Version} loaded but activation failed: {Issues}",
-                    request.PackageId,
-                    request.Version,
-                    string.Join(", ", activationResult.Issues.Select(i => i.Message)));
-            }
-            else if (activationResult.PendingReindex.Count > 0)
-            {
-                _logger.LogInformation(
-                    "Package {PackageId}@{Version} activated. Pending reindex: {ResourceTypes}",
-                    request.PackageId,
-                    request.Version,
-                    string.Join(", ", activationResult.PendingReindex));
-                if (activationResult.ReindexMessage is not null)
-                {
-                    _logger.LogWarning(
-                        "Reindex: package {PackageId}@{Version} remains Pending: {Message}",
-                        request.PackageId,
-                        request.Version,
-                        activationResult.ReindexMessage);
-                }
-            }
-
-            if (activationResult.LocalRefreshDeferred)
-            {
-                _logger.LogWarning(
-                    "Package {PackageId}@{Version} activated durably, but local conformance refresh is deferred",
-                    request.PackageId,
-                    request.Version);
-            }
-
-            if (activationResult.TransitionSchedulingDeferred)
-            {
-                _logger.LogError(
-                    "Package {PackageId}@{Version} activated durably, but phase-two transition scheduling is deferred",
-                    request.PackageId,
-                    request.Version);
-            }
-
-            // Publish PackageLoaded event for cache invalidation
+            // The resources are stored even when activation is rejected; their caches are refreshed either way.
+            // A successful activation already republished conformance definitions.
             await _mediator.PublishAsync(
                 new PackageLoadedEvent(
                     PackageId: result.PackageId,
                     PackageVersion: result.PackageVersion,
                     TenantId: int.Parse(request.TenantId),
                     LoadedAt: DateTimeOffset.UtcNow,
-                    RequiresConformanceRefresh: !activationResult.ConformancePublished),
+                    RequiresConformanceRefresh: !activation.Success),
                 cancellationToken);
+
+            if (!activation.Success)
+            {
+                throw new PackageActivationRejectedException(request.PackageId, request.Version, activation.Issues);
+            }
+
+            result = result with
+            {
+                Issues = activation.Issues,
+                PendingReindex = activation.PendingReindex,
+                ReindexJobId = activation.ReindexJobId,
+                ReindexStatusUrl = activation.ReindexJobId is null
+                    ? null
+                    : $"/tenant/{request.TenantId}/$reindex/{activation.ReindexJobId}",
+            };
 
             _logger.LogDebug("Published PackageLoaded event for {PackageId}@{Version}", result.PackageId, result.PackageVersion);
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PackageActivationRejectedException)
         {
             _logger.LogError(
                 ex,

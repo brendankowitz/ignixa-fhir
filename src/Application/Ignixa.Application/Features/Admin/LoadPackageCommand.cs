@@ -1,3 +1,4 @@
+using Ignixa.Application.Features.Conformance;
 using Medino;
 
 namespace Ignixa.Application.Features.Admin;
@@ -65,24 +66,14 @@ public record LoadPackageResult
     public IReadOnlyList<string>? SkippedPackages { get; init; }
 
     /// <summary>
-    /// Whether local conformance consumer refresh was deferred after the durable activation.
+    /// Warning and information issues of the durable activation, such as codes hidden until their transition
+    /// commits or follow-up work that is deferred.
     /// </summary>
-    public bool LocalRefreshDeferred { get; init; }
-
-    /// <summary>
-    /// Whether a phase-two transition schedule was deferred after the durable activation.
-    /// </summary>
-    public bool TransitionSchedulingDeferred { get; init; }
+    public IReadOnlyList<ValidationIssue> Issues { get; init; } = [];
 
     public IReadOnlyList<string> PendingReindex { get; init; } = [];
 
     public string? ReindexJobId { get; init; }
 
     public string? ReindexStatusUrl { get; init; }
-
-    public bool ReindexQueued { get; init; }
-
-    public string? ReindexMessage { get; init; }
-
-    public bool ReindexTriggerDeferred { get; init; }
 }

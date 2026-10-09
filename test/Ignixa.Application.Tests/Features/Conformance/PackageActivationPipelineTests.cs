@@ -374,8 +374,10 @@ public class PackageActivationPipelineTests
 
         result.Success.ShouldBeTrue();
         result.PendingReindex.ShouldNotBeEmpty();
-        result.ReindexTriggerDeferred.ShouldBeTrue();
-        result.ReindexMessage.ShouldContain("periodic reconciliation");
+        result.Issues.ShouldContain(issue =>
+            issue.Code == PackageActivationPipeline.ReindexTriggerDeferredCode &&
+            issue.Severity == ActivationIssueSeverity.Warning &&
+            issue.Message.Contains("periodic reconciliation", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -454,19 +456,13 @@ public class PackageActivationPipelineTests
         var refreshTenants = TestConformanceRefresher.FailingTenants(
             new InvalidOperationException("Injected refresh failure."));
         var lease = TestConformanceLease.NotHeld();
-        var logger = Substitute.For<ILogger<PackageActivationPipeline>>();
-        var pipeline = new PackageActivationPipeline(
+        var pipeline = TestPackageActivationPipeline.Create(
             packageRepository,
             eventStore,
             state,
-            Options.Create(new SearchParameterResolutionOptions()),
             transitionScheduler,
-            Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            TestConformanceRefresher.Create(state, tenants: refreshTenants),
-            lease,
-            CreateReindexTrigger(),
-            CreateFhirVersionContext(),
-            logger);
+            refreshTenants,
+            lease: lease);
 
         await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
             "test.override",
@@ -551,18 +547,12 @@ public class PackageActivationPipelineTests
         state.ApplyAndTrack(CreateBaseActivation());
         var refreshTenants = TestConformanceRefresher.FailingTenants(new IOException("Database unavailable."));
         var lease = TestConformanceLease.NotHeld();
-        var pipeline = new PackageActivationPipeline(
+        var pipeline = TestPackageActivationPipeline.Create(
             packageRepository,
             eventStore,
             state,
-            Options.Create(new SearchParameterResolutionOptions()),
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            TestConformanceRefresher.Create(state, tenants: refreshTenants),
-            lease,
-            CreateReindexTrigger(),
-            CreateFhirVersionContext(),
-            Substitute.For<ILogger<PackageActivationPipeline>>());
+            refreshTenants: refreshTenants,
+            lease: lease);
 
         var result = await pipeline.ActivateAsync(
             "test.override",
@@ -570,7 +560,9 @@ public class PackageActivationPipelineTests
             CancellationToken.None);
 
         result.Success.ShouldBeTrue();
-        result.LocalRefreshDeferred.ShouldBeTrue();
+        result.Issues.ShouldContain(issue =>
+            issue.Code == PackageActivationPipeline.RefreshDeferredCode &&
+            issue.Severity == ActivationIssueSeverity.Warning);
         lease.LeaseStartUtc.ShouldBeNull();
     }
 
@@ -618,7 +610,9 @@ public class PackageActivationPipelineTests
             CancellationToken.None);
 
         result.Success.ShouldBeTrue();
-        result.TransitionSchedulingDeferred.ShouldBeTrue();
+        result.Issues.ShouldContain(issue =>
+            issue.Code == PackageActivationPipeline.TransitionScheduleDeferredCode &&
+            issue.Severity == ActivationIssueSeverity.Warning);
         await transitionScheduler.Received(1).ScheduleAsync(
             3,
             TimeSpan.FromSeconds(1),
@@ -757,44 +751,129 @@ public class PackageActivationPipelineTests
         state.GetTransitionCandidates(packageEventId).Count.ShouldBe(shadowCount);
     }
 
+    [Fact]
+    public async Task GivenShadowOnlyPackage_WhenActivated_ThenItReportsTheHiddenCodesAndTheirExpectedDelay()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync("test.override", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource()]);
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore([]),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TestConformanceRefresher.Tenants());
+
+        var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        result.PendingReindex.ShouldBeEmpty();
+        var hidden = result.Issues.ShouldHaveSingleItem();
+        hidden.Code.ShouldBe(PackageActivationPipeline.TransitionPendingCode);
+        hidden.Severity.ShouldBe(ActivationIssueSeverity.Warning);
+        hidden.Message.ShouldContain("Patient.identifier");
+        hidden.Message.ShouldContain(TestPackageActivationPipeline.TransitionGrace.ToString());
+        hidden.Message.ShouldContain("reindex");
+    }
+
+    [Fact]
+    public async Task GivenReindexTriggerWrapsAProgrammerError_WhenActivated_ThenTheFailurePropagates()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync("test.custom", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns([CreateCustomResource()]);
+        using var state = new ConformanceState();
+        var trigger = Substitute.For<IReindexTrigger>();
+        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ReindexTriggerResult>>(_ =>
+                throw new ReindexTriggerUnavailableException(
+                    "The automatic reindex trigger is temporarily unavailable.",
+                    new NullReferenceException("Bug in the trigger.")));
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore([]),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TestConformanceRefresher.Tenants(),
+            reindexTrigger: trigger);
+
+        var exception = await Should.ThrowAsync<ReindexTriggerUnavailableException>(() =>
+            pipeline.ActivateAsync("test.custom", "1.0.0", CancellationToken.None));
+
+        exception.InnerException.ShouldBeOfType<NullReferenceException>();
+    }
+
+    [Fact]
+    public async Task GivenSchedulerHasAProgrammerError_WhenActivated_ThenTheFailurePropagates()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync("test.override", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns([CreateOverrideResource()]);
+        using var state = new ConformanceState();
+        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
+        transitionScheduler.ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(_ => throw new ArgumentOutOfRangeException("transitionGrace"));
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore([]),
+            state,
+            transitionScheduler,
+            TestConformanceRefresher.Tenants());
+
+        await Should.ThrowAsync<ArgumentOutOfRangeException>(() =>
+            pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(true, "REINDEX_QUEUED", ActivationIssueSeverity.Information)]
+    [InlineData(false, "REINDEX_NOT_STARTED", ActivationIssueSeverity.Warning)]
+    public async Task GivenTheTriggerDoesNotStartAJob_WhenActivated_ThenTheOutcomeIsAnIssueNotAFlag(
+        bool queuedBehindActiveJob,
+        string expectedCode,
+        ActivationIssueSeverity expectedSeverity)
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync("test.custom", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns([CreateCustomResource()]);
+        using var state = new ConformanceState();
+        var trigger = Substitute.For<IReindexTrigger>();
+        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(queuedBehindActiveJob
+                ? new ReindexTriggerResult("active-job", true, null)
+                : new ReindexTriggerResult(null, false, "Automatic reindex is disabled; parameters remain Pending."));
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore([]),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TestConformanceRefresher.Tenants(),
+            reindexTrigger: trigger);
+
+        var result = await pipeline.ActivateAsync("test.custom", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        result.PendingReindex.ShouldBe(["Patient"]);
+        result.ReindexJobId.ShouldBe(queuedBehindActiveJob ? "active-job" : null);
+        var issue = result.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe(expectedCode);
+        issue.Severity.ShouldBe(expectedSeverity);
+    }
+
     private static PackageActivationPipeline CreatePipeline(
         IPackageResourceRepository packageRepository,
         ISourceEventStore eventStore,
         ConformanceState state,
         ISearchParameterTransitionScheduler transitionScheduler,
         ITenantConfigurationStore refreshTenants,
-        IReindexTrigger? reindexTrigger = null)
-    {
-        var lease = TestConformanceLease.NotHeld();
-        return new PackageActivationPipeline(
+        IReindexTrigger? reindexTrigger = null) =>
+        TestPackageActivationPipeline.Create(
             packageRepository,
             eventStore,
             state,
-            Options.Create(new SearchParameterResolutionOptions()),
             transitionScheduler,
-            Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            TestConformanceRefresher.Create(state, tenants: refreshTenants),
-            lease,
-            reindexTrigger ?? CreateReindexTrigger(),
-            CreateFhirVersionContext(),
-            Substitute.For<ILogger<PackageActivationPipeline>>());
-    }
-
-    private static IFhirVersionContext CreateFhirVersionContext() =>
-        new FhirVersionContext(
-            Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
-            new SearchParameterResolutionOptions(),
-            NullFhirBaseUriProvider.Instance);
-
-    private static IReindexTrigger CreateReindexTrigger()
-    {
-        var trigger = Substitute.For<IReindexTrigger>();
-        trigger.RequestReindexAsync(
-                Arg.Any<string>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new ReindexTriggerResult(null, false, null)));
-        return trigger;
-    }
+            refreshTenants,
+            reindexTrigger);
 
     private static ISourceEventStore CreateEventStore(List<SourceEvent> persistedEvents)
     {

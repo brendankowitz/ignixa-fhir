@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Api.Endpoints;
 using Ignixa.Api.Middleware;
 using Ignixa.Application.Features.Admin;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Medino;
@@ -142,6 +143,55 @@ public sealed class AdminPackageEndpointRoutingTests : IAsyncLifetime
         context.GetEndpoint()?.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName.ShouldBe("GenericFhirRead");
         body["resource"]!.GetValue<string>().ShouldBe("Patient/admin");
         _requests.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("SP_MIXED_BASE_SHADOW", StatusCodes.Status422UnprocessableEntity, "business-rule")]
+    [InlineData("CONFORMANCE_CONFLICT", StatusCodes.Status409Conflict, "conflict")]
+    public async Task GivenActivationRejectsTheStoredPackage_WhenLoading_ThenItReturnsAnOperationOutcomeNamingTheIssue(
+        string issueCode, int expectedStatus, string expectedIssueType)
+    {
+        var mediator = _app.Services.GetRequiredService<IMediator>();
+        mediator.SendAsync(Arg.Any<LoadPackageCommand>(), Arg.Any<CancellationToken>())
+            .Returns<LoadPackageResult>(_ => throw new PackageActivationRejectedException(
+                "example.ig",
+                "1.2.3",
+                [new ValidationIssue(issueCode, "SearchParameter 'identifier' resolves to different storage roots.")]));
+
+        var (context, body) = await SendAsync(true, "POST", "/tenant/1/admin/packages/load");
+
+        context.Response.StatusCode.ShouldBe(expectedStatus);
+        context.Response.ContentType.ShouldBe("application/fhir+json");
+        body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        var issue = body["issue"]!.AsArray().ShouldHaveSingleItem()!;
+        issue["severity"]!.GetValue<string>().ShouldBe("error");
+        issue["code"]!.GetValue<string>().ShouldBe(expectedIssueType);
+        issue["details"]!["coding"]![0]!["system"]!.GetValue<string>()
+            .ShouldBe(PackageActivationRejectedException.IssueCodeSystem);
+        issue["details"]!["coding"]![0]!["code"]!.GetValue<string>().ShouldBe(issueCode);
+        issue["details"]!["text"]!.GetValue<string>().ShouldBe("Package example.ig@1.2.3 was stored but not activated.");
+        issue["diagnostics"]!.GetValue<string>().ShouldBe("SearchParameter 'identifier' resolves to different storage roots.");
+    }
+
+    [Fact]
+    public async Task GivenDurableActivationWithWarnings_WhenLoading_ThenItReturnsOkWithTheIssues()
+    {
+        var mediator = _app.Services.GetRequiredService<IMediator>();
+        mediator.SendAsync(Arg.Any<LoadPackageCommand>(), Arg.Any<CancellationToken>())
+            .Returns(new LoadPackageResult
+            {
+                PackageId = "example.ig",
+                PackageVersion = "1.2.3",
+                Issues = [ValidationIssue.Warning("SP_TRANSITION_PENDING", "1 search parameter code(s) are hidden: Patient.identifier.")],
+            });
+
+        var (context, body) = await SendAsync(true, "POST", "/tenant/1/admin/packages/load");
+
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+        var issue = body["issues"]!.AsArray().ShouldHaveSingleItem()!;
+        issue["severity"]!.GetValue<string>().ShouldBe("warning");
+        issue["code"]!.GetValue<string>().ShouldBe("SP_TRANSITION_PENDING");
+        issue["message"]!.GetValue<string>().ShouldContain("Patient.identifier");
     }
 
     private async Task<(HttpContext Context, JsonNode Body)> SendAsync(bool adminFirst, string method, string path)

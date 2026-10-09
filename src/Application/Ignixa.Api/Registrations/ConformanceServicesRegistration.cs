@@ -104,7 +104,10 @@ public static class ConformanceServicesRegistration
             .As<ISearchParameterTransitionScheduler>()
             .SingleInstance();
 
-        // PackageActivationPipeline
+        builder.RegisterType<PackageActivationPlanner>()
+            .AsSelf()
+            .SingleInstance();
+
         builder.RegisterType<PackageActivationPipeline>()
             .AsSelf()
             .InstancePerDependency();

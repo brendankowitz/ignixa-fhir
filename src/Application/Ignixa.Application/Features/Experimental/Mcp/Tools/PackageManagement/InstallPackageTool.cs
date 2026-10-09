@@ -10,7 +10,6 @@ using Ignixa.Application.Features.Experimental.Mcp.Dtos;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.PackageManagement.Abstractions;
-using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Experimental.Mcp.Tools.PackageManagement;
 
@@ -24,14 +23,12 @@ public class InstallPackageTool(
     ITenantConfigurationStore tenantStore,
     IImplementationGuideProvider packageProvider,
     INpmPackageSearchService searchService,
-    PackageActivationPipeline activationPipeline,
-    ILogger<InstallPackageTool> logger)
+    PackageActivationPipeline activationPipeline)
     : TenantAwareMcpTool(fhirRequestContextAccessor, tenantStore)
 {
     private readonly IImplementationGuideProvider _packageProvider = packageProvider ?? throw new ArgumentNullException(nameof(packageProvider));
     private readonly INpmPackageSearchService _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
     private readonly PackageActivationPipeline _activationPipeline = activationPipeline ?? throw new ArgumentNullException(nameof(activationPipeline));
-    private readonly ILogger<InstallPackageTool> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     [McpServerTool(Name = "install_fhir_package")]
     [Description(@"Install a FHIR package from the NPM registry into the tenant's database.
@@ -39,6 +36,7 @@ Downloads the package, extracts conformance resources, and imports them.
 Use search_fhir_packages first to find the exact package ID and version.
 Example: packageId='hl7.fhir.us.core', version='6.1.0'
 Returns statistics about imported resources (counts, types, duration).
+Success is false when the package was stored but not activated; Issues names each activation issue code.
 NOTE: This operation may take 30-60 seconds for large packages.")]
     public async Task<InstallPackageResultDto> InstallPackageAsync(
         [Description("Package ID (e.g., 'hl7.fhir.us.core')")]
@@ -92,53 +90,21 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
 
         var duration = DateTime.UtcNow - startTime;
 
-        // Activate package and emit events
-        var activationResult = await _activationPipeline.ActivateAsync(
+        var activation = await _activationPipeline.ActivateAsync(
             packageId,
             resolvedVersion,
             cancellationToken);
 
-        if (!activationResult.Success)
-        {
-            _logger.LogWarning(
-                "Package {PackageId}@{Version} loaded but activation failed: {Issues}",
-                packageId,
-                resolvedVersion,
-                string.Join(", ", activationResult.Issues.Select(i => i.Message)));
-        }
-        else if (activationResult.PendingReindex.Count > 0)
-        {
-            _logger.LogInformation(
-                "Package {PackageId}@{Version} activated. Pending reindex: {ResourceTypes}",
-                packageId,
-                resolvedVersion,
-                string.Join(", ", activationResult.PendingReindex));
-        }
-
-        if (activationResult.LocalRefreshDeferred)
-        {
-            _logger.LogWarning(
-                "Package {PackageId}@{Version} activated durably, but local conformance refresh is deferred",
-                packageId,
-                resolvedVersion);
-        }
-
-        if (activationResult.TransitionSchedulingDeferred)
-        {
-            _logger.LogError(
-                "Package {PackageId}@{Version} activated durably, but phase-two transition scheduling is deferred",
-                packageId,
-                resolvedVersion);
-        }
-
-        // Map to DTO
         var resourcesByType = result.ResourcesByType
             .OrderByDescending(kvp => kvp.Value)
             .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        var issues = activation.Issues
+            .Select(issue => $"{issue.SeverityCode} {issue.Code}: {issue.Message}")
+            .ToArray();
 
         return new InstallPackageResultDto
         {
-            Success = true,
+            Success = activation.Success,
             TenantId = resolvedTenantId,
             TenantName = tenantConfig.DisplayName,
             PackageId = result.PackageId,
@@ -148,21 +114,17 @@ NOTE: This operation may take 30-60 seconds for large packages.")]
             UpdatedResources = result.UpdatedResources,
             DurationSeconds = (int)duration.TotalSeconds,
             ResourcesByType = resourcesByType,
-            LocalRefreshDeferred = activationResult.LocalRefreshDeferred,
-            TransitionSchedulingDeferred = activationResult.TransitionSchedulingDeferred,
-            PendingReindex = activationResult.PendingReindex,
-            ReindexJobId = activationResult.ReindexJobId,
-            ReindexStatusUrl = activationResult.ReindexJobId is null
+            Issues = issues,
+            PendingReindex = activation.PendingReindex,
+            ReindexJobId = activation.ReindexJobId,
+            ReindexStatusUrl = activation.ReindexJobId is null
                 ? null
-                : $"/tenant/{resolvedTenantId}/$reindex/{activationResult.ReindexJobId}",
-            ReindexQueued = activationResult.ReindexQueued,
-            ReindexMessage = activationResult.ReindexMessage,
-            ReindexTriggerDeferred = activationResult.ReindexTriggerDeferred,
-            Message = $"Successfully installed {result.PackageId}@{result.PackageVersion} " +
-                      $"({result.ImportedResources} new, {result.UpdatedResources} updated)" +
-                      (activationResult.ReindexMessage is null
-                          ? string.Empty
-                          : $" Reindex: {activationResult.ReindexMessage}")
+                : $"/tenant/{resolvedTenantId}/$reindex/{activation.ReindexJobId}",
+            Message = activation.Success
+                ? $"Installed {result.PackageId}@{result.PackageVersion} " +
+                  $"({result.ImportedResources} new, {result.UpdatedResources} updated)" +
+                  (issues.Length == 0 ? "." : $" with {issues.Length} issue(s): {string.Join(" ", issues)}")
+                : $"Stored {result.PackageId}@{result.PackageVersion} but did not activate it: {string.Join(" ", issues)}"
         };
     }
 }

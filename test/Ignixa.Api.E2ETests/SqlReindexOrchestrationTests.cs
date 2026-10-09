@@ -250,7 +250,7 @@ public class SqlReindexOrchestrationTests
             .ActivateAsync($"test.second.{marker}", "1.0.0", CancellationToken.None);
 
         secondActivation.ReindexJobId.ShouldBe(firstJobId);
-        secondActivation.ReindexQueued.ShouldBeTrue();
+        secondActivation.Issues.ShouldContain(issue => issue.Code == PackageActivationPipeline.ReindexQueuedCode);
         (await WaitForTerminalJobAsync(fixture.Services, firstJobId)).Status.ShouldBe("Completed");
         var followUp = await WaitForFollowUpJobAsync(fixture.Services, firstJobId);
         (await WaitForTerminalJobAsync(fixture.Services, followUp.JobId)).Status.ShouldBe("Completed");

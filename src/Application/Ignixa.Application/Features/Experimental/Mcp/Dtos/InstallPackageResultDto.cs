@@ -13,7 +13,7 @@ namespace Ignixa.Application.Features.Experimental.Mcp.Dtos;
 public record InstallPackageResultDto
 {
     /// <summary>
-    /// Whether the installation was successful.
+    /// Whether the package was activated. False when it was stored but activation was rejected.
     /// </summary>
     public required bool Success { get; init; }
 
@@ -68,24 +68,14 @@ public record InstallPackageResultDto
     public required string Message { get; init; }
 
     /// <summary>
-    /// Whether local conformance consumer refresh was deferred after the durable activation.
+    /// Activation issues as "severity CODE: message". Errors mean the package was stored but not activated;
+    /// warnings describe a durable activation whose definitions are not searchable yet or whose follow-up is deferred.
     /// </summary>
-    public required bool LocalRefreshDeferred { get; init; }
-
-    /// <summary>
-    /// Whether a phase-two transition schedule was deferred after the durable activation.
-    /// </summary>
-    public required bool TransitionSchedulingDeferred { get; init; }
+    public required IReadOnlyList<string> Issues { get; init; }
 
     public required IReadOnlyList<string> PendingReindex { get; init; }
 
     public string? ReindexJobId { get; init; }
 
     public string? ReindexStatusUrl { get; init; }
-
-    public required bool ReindexQueued { get; init; }
-
-    public string? ReindexMessage { get; init; }
-
-    public required bool ReindexTriggerDeferred { get; init; }
 }

@@ -6,82 +6,59 @@
 namespace Ignixa.Application.Features.Conformance;
 
 /// <summary>
-/// Result of package activation, indicating success or validation failures.
+/// Outcome of a package activation.
 /// </summary>
-public record ActivationResult
+/// <remarks>
+/// A failed activation carries only error issues and activated nothing. A successful activation is durable;
+/// its warning issues describe follow-up work that is deferred (and logged and metered once by the pipeline)
+/// or definitions that are not searchable yet.
+/// </remarks>
+public sealed record ActivationResult
 {
-    /// <summary>
-    /// Whether activation succeeded.
-    /// </summary>
-    public bool Success { get; init; }
+    private ActivationResult(
+        IReadOnlyList<ValidationIssue> issues,
+        IReadOnlyList<string> pendingReindex,
+        string? reindexJobId)
+    {
+        Issues = issues;
+        PendingReindex = pendingReindex;
+        ReindexJobId = reindexJobId;
+    }
+
+    public IReadOnlyList<ValidationIssue> Issues { get; }
 
     /// <summary>
-    /// Validation issues encountered during activation (if Success = false).
+    /// Resource types with Pending search parameters from this activation.
     /// </summary>
-    public IReadOnlyList<ValidationIssue> Issues { get; init; } = [];
+    public IReadOnlyList<string> PendingReindex { get; }
 
     /// <summary>
-    /// Resource types that require reindexing after activation (if Success = true).
+    /// The reindex job started for, or already running ahead of, the Pending search parameters.
     /// </summary>
-    public IReadOnlyList<string> PendingReindex { get; init; } = [];
+    public string? ReindexJobId { get; }
 
-    /// <summary>
-    /// Whether activation is durable but local conformance consumers will refresh on a later synchronization.
-    /// </summary>
-    public bool LocalRefreshDeferred { get; init; }
+    public bool Success => Issues.All(issue => issue.Severity != ActivationIssueSeverity.Error);
 
-    /// <summary>
-    /// Whether activation published its conformance consumers locally.
-    /// </summary>
-    public bool ConformancePublished { get; init; }
-
-    /// <summary>
-    /// Whether activation is durable but at least one phase-two transition schedule will be retried by the watchdog.
-    /// </summary>
-    public bool TransitionSchedulingDeferred { get; init; }
-
-    public string? ReindexJobId { get; init; }
-
-    public bool ReindexQueued { get; init; }
-
-    public string? ReindexMessage { get; init; }
-
-    public bool ReindexTriggerDeferred { get; init; }
-
-    /// <summary>
-    /// Creates a successful activation result.
-    /// </summary>
-    public static ActivationResult Succeeded(
-        IReadOnlyList<string>? pendingReindex = null,
-        bool localRefreshDeferred = false,
-        bool transitionSchedulingDeferred = false,
-        ReindexTriggerResult? reindex = null,
-        bool conformancePublished = false) =>
-        new()
+    public static ActivationResult Activated(
+        IReadOnlyList<string> pendingReindex,
+        string? reindexJobId,
+        IReadOnlyList<ValidationIssue> issues)
+    {
+        if (issues.Any(issue => issue.Severity == ActivationIssueSeverity.Error))
         {
-            Success = true,
-            PendingReindex = pendingReindex ?? [],
-            LocalRefreshDeferred = localRefreshDeferred,
-            ConformancePublished = conformancePublished,
-            TransitionSchedulingDeferred = transitionSchedulingDeferred,
-            ReindexJobId = reindex?.JobId,
-            ReindexQueued = reindex?.Queued ?? false,
-            ReindexMessage = reindex?.Message,
-            ReindexTriggerDeferred = reindex?.Deferred ?? false
-        };
+            throw new ArgumentException("A durable activation cannot carry error issues.", nameof(issues));
+        }
 
-    /// <summary>
-    /// Creates a failed activation result with validation issues.
-    /// </summary>
-    public static ActivationResult Failed(IReadOnlyList<ValidationIssue> issues) =>
-        new() { Success = false, Issues = issues };
+        return new(issues, pendingReindex, reindexJobId);
+    }
+
+    public static ActivationResult Failed(IReadOnlyList<ValidationIssue> issues)
+    {
+        if (issues.Count == 0 || issues.Any(issue => issue.Severity != ActivationIssueSeverity.Error))
+        {
+            throw new ArgumentException("A failed activation carries only error issues, at least one.", nameof(issues));
+        }
+
+        return new(issues, [], null);
+    }
 }
-
-/// <summary>
-/// Represents a validation issue encountered during package activation.
-/// </summary>
-public record ValidationIssue(
-    string Code,
-    string Message,
-    string? ResourceType = null,
-    string? ParameterCode = null);
