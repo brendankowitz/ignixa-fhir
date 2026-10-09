@@ -20,6 +20,48 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class ReindexJobReconcilerTests
 {
     [Fact]
+    public async Task GivenTerminalJobStillOwnsReindexingParameter_WhenReconciled_ThenParameterReturnsToPending()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-orphan";
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        var repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            OrchestrationInstanceId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Completed",
+            Definition = Definition(target),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow,
+            EndDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        using var jobLock = new TestJobLock();
+        var reconciler = new ReindexJobReconciler(
+            new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()),
+            repository,
+            lifecycle,
+            new ReindexJobUpdater(repository, jobLock, Substitute.For<IReindexCompletionHook>()),
+            jobLock,
+            Options.Create(new ReindexOptions()),
+            TimeProvider.System,
+            NullLogger<ReindexJobReconciler>.Instance);
+
+        await reconciler.ReconcileAsync(CancellationToken.None);
+
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+        state.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task GivenCrashAfterDebouncedJobWasPersisted_WhenStartupReconciles_ThenQueuedJobIsReleasedForRecovery()
     {
         const string canonical = "http://example.org/SearchParameter/patient-custom";

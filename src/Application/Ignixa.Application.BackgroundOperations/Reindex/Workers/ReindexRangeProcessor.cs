@@ -1,5 +1,6 @@
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
@@ -13,6 +14,7 @@ public sealed class ReindexRangeProcessor(
     IFhirRepositoryFactory repositoryFactory,
     ITenantConfigurationStore tenantConfigurationStore,
     IFhirVersionContext fhirVersionContext,
+    IConformanceDefinitionsSynchronizer definitionsSynchronizer,
     IFhirRequestContextAccessor fhirContextAccessor)
 {
     private const int MinimumWriteBatchSize = 10;
@@ -23,6 +25,8 @@ public sealed class ReindexRangeProcessor(
         tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
     private readonly IFhirVersionContext _fhirVersionContext =
         fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
+    private readonly IConformanceDefinitionsSynchronizer _definitionsSynchronizer =
+        definitionsSynchronizer ?? throw new ArgumentNullException(nameof(definitionsSynchronizer));
     private readonly IFhirRequestContextAccessor _fhirContextAccessor =
         fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
 
@@ -46,9 +50,14 @@ public sealed class ReindexRangeProcessor(
             var handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
             if (handle.DefinitionsEventId < input.TargetEventId)
             {
-                throw new ReindexDefinitionsNotReadyException(
-                    handle.DefinitionsEventId,
-                    input.TargetEventId);
+                await _definitionsSynchronizer.SynchronizeAsync(cancellationToken);
+                handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
+                if (handle.DefinitionsEventId < input.TargetEventId)
+                {
+                    throw new ReindexDefinitionsNotReadyException(
+                        handle.DefinitionsEventId,
+                        input.TargetEventId);
+                }
             }
 
             var repository = await _repositoryFactory.GetRepositoryAsync(

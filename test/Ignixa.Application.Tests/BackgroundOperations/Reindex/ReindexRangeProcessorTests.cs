@@ -2,6 +2,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Workers;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
@@ -76,6 +77,7 @@ public class ReindexRangeProcessorTests
             repositories,
             tenants,
             versions,
+            Substitute.For<IConformanceDefinitionsSynchronizer>(),
             new FhirRequestContextAccessor());
 
         var result = await processor.ProcessAsync(
@@ -87,7 +89,7 @@ public class ReindexRangeProcessorTests
     }
 
     [Fact]
-    public async Task GivenDefinitionsBehindTargetEvent_WhenRangeIsProcessed_ThenRetryableFailureIsThrown()
+    public async Task GivenDefinitionsBehindTargetEvent_WhenRangeIsProcessed_ThenDefinitionsAreRefreshed()
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
@@ -103,18 +105,29 @@ public class ReindexRangeProcessorTests
             .Returns((IFhirRepository)repository);
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetDefinitionsHandle(Arg.Any<FhirVersion>(), 1)
-            .Returns(new DefinitionsHandle(
-                Substitute.For<ISearchIndexer>(),
-                Substitute.For<IFhirSchemaProvider>(),
-                41));
+            .Returns(
+                new DefinitionsHandle(
+                    Substitute.For<ISearchIndexer>(),
+                    Substitute.For<IFhirSchemaProvider>(),
+                    41),
+                new DefinitionsHandle(
+                    Substitute.For<ISearchIndexer>(),
+                    Substitute.For<IFhirSchemaProvider>(),
+                    42));
+        var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
         var processor = new ReindexRangeProcessor(
             repositories,
             tenants,
             versions,
+            synchronizer,
             new FhirRequestContextAccessor());
 
-        await Should.ThrowAsync<ReindexDefinitionsNotReadyException>(() => processor.ProcessAsync(
+        var result = await processor.ProcessAsync(
             new ReindexRangeInput("job", 1, "Patient", 1, 100, 42, 1000, 0),
-            CancellationToken.None));
+            CancellationToken.None);
+
+        result.ResourcesRead.ShouldBe(0);
+        await synchronizer.Received(1).SynchronizeAsync(Arg.Any<CancellationToken>());
+        versions.Received(2).GetDefinitionsHandle(FhirVersion.R4, 1);
     }
 }

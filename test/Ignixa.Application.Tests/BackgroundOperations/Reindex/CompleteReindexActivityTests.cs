@@ -21,11 +21,322 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class CompleteReindexActivityTests
 {
     [Fact]
+    public async Task GivenFailedDecisionPersistsBeforeCompletionHookFails_WhenRetryConditionsRecover_ThenJobCompletesAsFailed()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-retry-decision";
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        IReadOnlyList<TenantConfiguration> activeTenants = [Tenant(1), Tenant(2)];
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => activeTenants);
+        var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        await jobs.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        var repository = Substitute.For<IFhirRepository, IReindexStore>();
+        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+            .Returns(true);
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+            .Returns(repository);
+        var completionHook = Substitute.For<IReindexCompletionHook>();
+        var failCompletion = true;
+        completionHook.OnCompletedAsync(
+                Arg.Any<BackgroundJob<ReindexJobDefinition>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => failCompletion
+                ? Task.FromException(new InvalidOperationException("completion hook unavailable"))
+                : Task.CompletedTask);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(
+            repositoryFactory,
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, completionHook),
+            tenants);
+        var input = JsonSerializer.Serialize(new[]
+        {
+            new CompleteReindexInput(
+                "job",
+                1,
+                [target],
+                [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                [])
+        });
+        var context = new TaskContext(new OrchestrationInstance { InstanceId = "job" });
+
+        await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(
+            () => activity.RunAsync(context, input));
+
+        var persisted = await jobs.GetAsync("job", 1, CancellationToken.None);
+        persisted!.Status.ShouldBe("Completing");
+        persisted.Progress!["terminalDecision"]!.GetValue<string>().ShouldBe("Failed");
+
+        activeTenants = [Tenant(1)];
+        failCompletion = false;
+
+        await activity.RunAsync(context, input);
+
+        var completed = await jobs.GetAsync("job", 1, CancellationToken.None);
+        completed!.Status.ShouldBe("Failed");
+    }
+
+    [Fact]
+    public async Task GivenActiveTenantWasNotInJob_WhenCompletionRuns_ThenJobFailsWithoutEnablingTarget()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-new-tenant";
+        var tenantStore = Substitute.For<ITenantConfigurationStore>();
+        tenantStore.Mode.Returns(TenantMode.Isolated);
+        tenantStore.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns([
+                Tenant(1),
+                Tenant(2)
+            ]);
+        var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenantStore,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        var definition = ReindexJobDefinition.CreateForTest();
+        await jobs.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = definition,
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        var repository = Substitute.For<IFhirRepository, IReindexStore>();
+        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+            .Returns(true);
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+            .Returns(repository);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(
+            repositoryFactory,
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, Substitute.For<IReindexCompletionHook>()),
+            tenantStore);
+
+        await activity.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
+            JsonSerializer.Serialize(new[]
+            {
+                new CompleteReindexInput(
+                    "job",
+                    1,
+                    [target],
+                    [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                    [])
+            }));
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        job!.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("manual $reindex");
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+    }
+
+    [Fact]
+    public async Task GivenActiveTenantWasAddedAndJobOwnsUnplannedTarget_WhenCompletionRuns_ThenJobAndTargetRetainUnplannedFailure()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-unplanned-new-tenant";
+        var tenantStore = Substitute.For<ITenantConfigurationStore>();
+        tenantStore.Mode.Returns(TenantMode.Isolated);
+        tenantStore.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns([
+                Tenant(1),
+                Tenant(2)
+            ]);
+        var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenantStore,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        await jobs.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        var repository = Substitute.For<IFhirRepository, IReindexStore>();
+        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+            .Returns(true);
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+            .Returns(repository);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(
+            repositoryFactory,
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, Substitute.For<IReindexCompletionHook>()),
+            tenantStore);
+
+        await activity.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
+            JsonSerializer.Serialize(new[]
+            {
+                new CompleteReindexInput(
+                    "job",
+                    1,
+                    [],
+                    [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                    [])
+            }));
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        job!.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("not planned by this job");
+        job.ErrorMessage.ShouldContain("manual $reindex");
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
+        parameter.ReindexJobId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenJobOwnsTargetMissingFromInput_WhenCompletionRuns_ThenJobFailsAndOwnedTargetReturnsToPending()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-added-during-debounce";
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([Tenant(1)]);
+        var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        await jobs.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        var repository = Substitute.For<IFhirRepository, IReindexStore>();
+        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+            .Returns(true);
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+            .Returns(repository);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(
+            repositoryFactory,
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, Substitute.For<IReindexCompletionHook>()),
+            tenants);
+
+        await activity.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
+            JsonSerializer.Serialize(new[]
+            {
+                new CompleteReindexInput(
+                    "job",
+                    1,
+                    [],
+                    [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                    [])
+            }));
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        job!.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("not planned by this job");
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
+        parameter.ReindexJobId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenJobOwnsTargetNotFullyCoveredByInput_WhenCompletionRuns_ThenJobFailsAndOwnedTargetReturnsToPending()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-not-fully-covered";
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([Tenant(1)]);
+        var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        await jobs.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        var repository = Substitute.For<IFhirRepository, IReindexStore>();
+        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+            .Returns(true);
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+            .Returns(repository);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(
+            repositoryFactory,
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, Substitute.For<IReindexCompletionHook>()),
+            tenants);
+        var notFullyCovered = target with { ScheduledResourceTypes = [] };
+
+        await activity.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
+            JsonSerializer.Serialize(new[]
+            {
+                new CompleteReindexInput(
+                    "job",
+                    1,
+                    [notFullyCovered],
+                    [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                    [])
+            }));
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        job!.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("not planned by this job");
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
+        parameter.ReindexJobId.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task GivenOverrideUsesExistingPhysicalId_WhenReindexCompletes_ThenOverrideIsEnabled()
     {
         const string overrideCanonical = "http://example.org/SearchParameter/patient-override";
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.Mode.Returns(TenantMode.Isolated);
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([Tenant(1)]);
         var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
             tenants,
             NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
@@ -63,11 +374,11 @@ public class CompleteReindexActivityTests
             jobs,
             jobLock,
             Substitute.For<IReindexCompletionHook>());
-        var activity = new CompleteReindexActivity(
+        var activity = CreateActivity(
             repositoryFactory,
             lifecycle,
             updater,
-            TimeProvider.System);
+            tenants);
 
         await activity.RunAsync(
             new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
@@ -135,6 +446,27 @@ public class CompleteReindexActivityTests
             null,
             null),
         DateTimeOffset.UtcNow);
+
+    private static CompleteReindexActivity CreateActivity(
+        IFhirRepositoryFactory repositoryFactory,
+        ReindexLifecycleEventWriter lifecycle,
+        ReindexJobUpdater updater,
+        ITenantConfigurationStore tenantStore)
+    {
+        var constructor = typeof(CompleteReindexActivity).GetConstructors().Single();
+        var arguments = constructor.GetParameters().Length == 5
+            ? new object[] { repositoryFactory, lifecycle, updater, tenantStore, TimeProvider.System }
+            : [repositoryFactory, lifecycle, updater, TimeProvider.System];
+        return (CompleteReindexActivity)constructor.Invoke(arguments);
+    }
+
+    private static TenantConfiguration Tenant(int tenantId) => new()
+    {
+        TenantId = tenantId,
+        DisplayName = $"Tenant {tenantId}",
+        FhirVersion = "4.0",
+        IsActive = true
+    };
 
     private sealed class TestJobLock : IReindexJobLock, IDisposable
     {

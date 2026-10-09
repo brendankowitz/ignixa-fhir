@@ -1,4 +1,5 @@
 using DurableTask.Core;
+using DurableTask.Core.Exceptions;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 
@@ -43,6 +44,14 @@ public sealed class ReindexOrchestration
             }
 
             scheduledActivities++;
+            if (!started.ShouldContinue)
+            {
+                return new ReindexOrchestrationOutput(
+                    false,
+                    state.Tenants.Select(tenant => tenant.ToOutput()).ToArray(),
+                    state.IgnoredLifecycleEvents);
+            }
+
             state = state with
             {
                 Started = true,
@@ -205,8 +214,9 @@ public sealed class ReindexOrchestration
         {
             if (state.Phase == "Barrier")
             {
-                var cutoff = await context.ScheduleTask<RaiseBarrierOutput>(
+                var cutoff = await context.ScheduleWithRetry<RaiseBarrierOutput>(
                     typeof(RaiseBarrierActivity),
+                    CreateRetryOptions(),
                     new RaiseBarrierInput(input.JobId, state.TenantId, input.TargetEventId));
                 return new TenantAdvance(
                     state with
@@ -222,8 +232,9 @@ public sealed class ReindexOrchestration
             if (state.Phase == "Draining")
             {
                 var drainElapsed = context.CurrentUtcDateTime - state.DrainStartedUtc;
-                var drain = await context.ScheduleTask<AwaitDrainOutput>(
+                var drain = await context.ScheduleWithRetry<AwaitDrainOutput>(
                     typeof(AwaitDrainActivity),
+                    CreateRetryOptions(),
                     new AwaitDrainInput(
                         input.JobId,
                         state.TenantId,
@@ -256,8 +267,9 @@ public sealed class ReindexOrchestration
             var resourceType = input.ResourceTypes[state.ResourceTypeIndex];
             if (state.PendingRanges.Count == 0)
             {
-                var plan = await context.ScheduleTask<PlanReindexOutput>(
+                var plan = await context.ScheduleWithRetry<PlanReindexOutput>(
                     typeof(PlanReindexActivity),
+                    CreateRetryOptions(),
                     new PlanReindexInput(
                         input.JobId,
                         state.TenantId,
@@ -284,7 +296,6 @@ public sealed class ReindexOrchestration
             var wave = state.PendingRanges
                 .Take(input.Parameters.MaximumConcurrency)
                 .ToArray();
-            var retry = CreateRetryOptions();
             var tasks = wave.Select(
                 async range =>
                 {
@@ -292,7 +303,7 @@ public sealed class ReindexOrchestration
                     {
                         var output = await context.ScheduleWithRetry<ReindexRangeOutput>(
                             typeof(ReindexRangeActivity),
-                            retry,
+                            CreateRangeRetryOptions(input.StaleJobTimeout),
                             new ReindexRangeInput(
                                 input.JobId,
                                 state.TenantId,
@@ -397,6 +408,24 @@ public sealed class ReindexOrchestration
                 PlannerCursor = -1,
                 NextPlannerCursor = null
             };
+
+    private static RetryOptions CreateRangeRetryOptions(TimeSpan retryTimeout)
+    {
+        var standardFailureCount = 0;
+        return new RetryOptions(TimeSpan.FromSeconds(1), int.MaxValue)
+        {
+            BackoffCoefficient = 2,
+            MaxRetryInterval = TimeSpan.FromSeconds(30),
+            RetryTimeout = retryTimeout,
+            Handle = error => IsDefinitionsNotReady(error) || ++standardFailureCount < 5
+        };
+    }
+
+    private static bool IsDefinitionsNotReady(Exception error) =>
+        error is ReindexDefinitionsNotReadyException ||
+        error.InnerException is ReindexDefinitionsNotReadyException ||
+        error is TaskFailedException { FailureDetails: { } details } &&
+        details.IsCausedBy<ReindexDefinitionsNotReadyException>();
 
     private static bool ContinueIfNeeded(
         OrchestrationContext context,

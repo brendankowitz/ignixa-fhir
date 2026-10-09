@@ -16,7 +16,7 @@ public sealed class StartReindexActivity(
         IReadOnlyList<string> ignored = [];
         IReadOnlyList<ReindexTarget> targets = input.Targets;
         ReindexJobDefinition? definition = null;
-        await jobs.UpdateAsync(
+        var shouldContinue = await jobs.UpdateAsync(
             input.JobId,
             async (job, cancellationToken) =>
             {
@@ -38,6 +38,7 @@ public sealed class StartReindexActivity(
             definition is { SearchParameters.Count: > 0 } || input.Targets.Count == 0;
         return new StartReindexOutput(ignored)
         {
+            ShouldContinue = shouldContinue,
             TargetEventId = usesPersistedDefinition
                 ? definition?.TargetEventId ?? input.TargetEventId
                 : input.TargetEventId,

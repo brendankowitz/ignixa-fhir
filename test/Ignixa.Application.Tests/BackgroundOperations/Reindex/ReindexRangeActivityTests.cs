@@ -95,6 +95,7 @@ public class ReindexRangeActivityTests
                 repositories,
                 tenants,
                 versions,
+                Substitute.For<IConformanceDefinitionsSynchronizer>(),
                 new FhirRequestContextAccessor()),
             heartbeat), jobLock);
     }

@@ -26,7 +26,8 @@ public sealed class CreateReindexJobHandler(
     ReindexJobReconciler reconciler,
     ReindexAutomationStateStore automationState,
     ISourceEventStore eventStore,
-    IOptions<ReindexOptions> options)
+    IOptions<ReindexOptions> options,
+    TimeProvider timeProvider)
     : IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>
 {
     private readonly TaskHubClient _taskHubClient =
@@ -51,11 +52,44 @@ public sealed class CreateReindexJobHandler(
         eventStore ?? throw new ArgumentNullException(nameof(eventStore));
     private readonly ReindexOptions _options =
         options?.Value ?? throw new ArgumentNullException(nameof(options));
+    private readonly TimeProvider _timeProvider =
+        timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     public async Task<CreateReindexJobResult> HandleAsync(
         CreateReindexJobCommand request,
         CancellationToken cancellationToken)
     {
+        if (request.Trigger.Equals("Reconciliation", StringComparison.OrdinalIgnoreCase))
+        {
+            var activeJob = await _jobRepository.GetActiveAsync(
+                (int)BackgroundJobType.Reindex,
+                cancellationToken);
+            if (activeJob is not null)
+            {
+                var lastObserved = activeJob.HeartbeatDate > activeJob.CreateDate
+                    ? activeJob.HeartbeatDate
+                    : activeJob.CreateDate;
+                var isFresh = !activeJob.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase) &&
+                    _timeProvider.GetUtcNow() - lastObserved < _options.OrphanGrace;
+                if (isFresh)
+                {
+                    return new ActiveReindexJobResult(activeJob.JobId);
+                }
+            }
+            else
+            {
+                var hasPendingParameters = _conformanceState.AllSearchParameters.Values.Any(
+                    parameter => parameter.Status == Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending);
+                var hasOwnedReindexingParameters = _conformanceState.AllSearchParameters.Values.Any(
+                    parameter => parameter.Status == Ignixa.Conformance.Events.Models.SearchParameterStatus.Reindexing &&
+                        parameter.ReindexJobId is not null);
+                if (!hasPendingParameters && !hasOwnedReindexingParameters)
+                {
+                    return new NoReindexWorkResult("No resources need reindexing.");
+                }
+            }
+        }
+
         var availability = await _availability.GetAvailabilityAsync(cancellationToken);
         if (availability.Status == ReindexAvailabilityStatus.Disabled)
         {
@@ -156,13 +190,10 @@ public sealed class CreateReindexJobHandler(
             var requestedGeneration = request.QueueRequest
                 ? await _automationState.IncrementRequestedGenerationAsync(ct)
                 : await _automationState.GetRequestedGenerationAsync(ct);
-            var jobs = await _jobRepository.ListAsync(
+            var lastFailedOrCancelled = await _jobRepository.GetLatestAsync(
                 (int)BackgroundJobType.Reindex,
+                ["Failed", "Cancelled"],
                 ct);
-            var lastFailedOrCancelled = jobs
-                .Where(job => job.Status is "Failed" or "Cancelled")
-                .OrderByDescending(job => job.EndDate ?? job.CreateDate)
-                .FirstOrDefault();
             if ((request.Trigger.Equals("Reconciliation", StringComparison.OrdinalIgnoreCase) ||
                  request.Trigger.Equals("FollowUp", StringComparison.OrdinalIgnoreCase)) &&
                 lastFailedOrCancelled is not null &&
@@ -172,12 +203,10 @@ public sealed class CreateReindexJobHandler(
                     $"Reindex restart after {lastFailedOrCancelled.Status} requires a new request generation.");
             }
 
-            var activeJobs = jobs.Where(job =>
-                job.JobId != request.ExcludedActiveJobId &&
-                (job.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) ||
-                 job.Status.Equals("Running", StringComparison.OrdinalIgnoreCase) ||
-                 job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase)));
-            foreach (var active in activeJobs)
+            var active = await _jobRepository.GetActiveAsync(
+                (int)BackgroundJobType.Reindex,
+                ct);
+            if (active is not null && active.JobId != request.ExcludedActiveJobId)
             {
                 if (request.QueueRequest &&
                     active.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) &&

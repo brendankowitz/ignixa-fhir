@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
@@ -10,6 +11,7 @@ public sealed class CompleteReindexActivity(
     IFhirRepositoryFactory repositoryFactory,
     ReindexLifecycleEventWriter lifecycle,
     ReindexJobUpdater jobs,
+    ITenantConfigurationStore tenantConfigurationStore,
     TimeProvider timeProvider)
     : AsyncTaskActivity<CompleteReindexInput, CompleteReindexOutput>
 {
@@ -21,11 +23,25 @@ public sealed class CompleteReindexActivity(
         CompleteReindexInput input)
     {
         var completedAt = timeProvider.GetUtcNow();
+        var ownedTargets = (await lifecycle.GetOwnedTargetsAsync(CancellationToken.None))
+            .Where(owned => owned.JobId == input.JobId)
+            .ToArray();
         var completions = new List<ReindexTargetCompletion>();
-        foreach (var target in input.Targets.Where(target => target.IsFullyCovered))
+        foreach (var owned in ownedTargets)
         {
+            var plannedTarget = input.Targets.FirstOrDefault(target =>
+                target.Canonical == owned.Target.Canonical &&
+                target.ResourceType == owned.Target.ResourceType &&
+                target.Code == owned.Target.Code &&
+                target.ActivationEventId == owned.Target.ActivationEventId);
+            var target = plannedTarget ?? owned.Target;
             var errors = new List<string>();
             long resourcesIndexed = 0;
+            if (plannedTarget is not { IsFullyCovered: true })
+            {
+                errors.Add($"Search parameter {target.Canonical} was not planned by this job.");
+            }
+
             if (input.FailureMessage is not null)
             {
                 errors.Add(input.FailureMessage);
@@ -74,7 +90,43 @@ public sealed class CompleteReindexActivity(
         IReadOnlyList<string> ignored = [];
         var won = await jobs.TryCompleteAsync(
             input.JobId,
-            success ? "Completed" : "Failed",
+            async (job, cancellationToken) =>
+            {
+                if (job.Status == "Completing")
+                {
+                    var terminalStatus = job.Progress?["terminalDecision"]?.GetValue<string>()
+                        ?? throw new InvalidOperationException(
+                            $"Reindex job {job.JobId} is Completing without a persisted terminal decision.");
+                    success = terminalStatus == "Completed";
+                    return terminalStatus;
+                }
+
+                var activeTenantIds = (await tenantConfigurationStore.GetAllTenantsAsync(cancellationToken))
+                    .Where(tenant =>
+                        tenant.IsActive &&
+                        tenant.TenantId != SystemConstants.SystemPartitionId)
+                    .Select(tenant => tenant.TenantId)
+                    .Order()
+                    .ToArray();
+                var missingTenantIds = activeTenantIds.Except(job.Definition.TenantIds).ToArray();
+                if (missingTenantIds.Length > 0)
+                {
+                    success = false;
+                    var manualReindexMessage =
+                        $"Active tenants {string.Join(", ", missingTenantIds)} were added after this job started; a manual $reindex is needed.";
+                    completions = completions.Select(completion => completion with
+                    {
+                        Success = false,
+                        ErrorMessage = string.Join(
+                            " ",
+                            new[] { completion.ErrorMessage, manualReindexMessage }
+                                .Where(message => message is not null))
+                    })
+                        .ToList();
+                }
+
+                return success ? "Completed" : "Failed";
+            },
             async (_, cancellationToken) =>
             {
                 ignored = await lifecycle.CompleteAsync(
@@ -91,7 +143,8 @@ public sealed class CompleteReindexActivity(
                     : string.Join(
                         " ",
                         completions.Where(completion => !completion.Success)
-                            .Select(completion => completion.ErrorMessage));
+                            .Select(completion => completion.ErrorMessage)
+                            .Where(message => message is not null));
                 job.Progress = JsonSerializer.SerializeToNode(
                     new
                     {

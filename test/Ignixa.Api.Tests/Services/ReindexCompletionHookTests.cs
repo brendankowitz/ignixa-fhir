@@ -16,6 +16,41 @@ namespace Ignixa.Api.Tests.Services;
 
 public sealed class ReindexCompletionHookTests
 {
+    [Fact]
+    public async Task GivenLocalRefreshFails_WhenCompletionRuns_ThenTerminalDecisionDoesNotDependOnRefresh()
+    {
+        using var state = new ConformanceState();
+        var refresher = Substitute.For<IConformanceCacheRefresher>();
+        refresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
+                new InvalidOperationException("local refresh failed")));
+        using var publisher = new ConformanceRefreshPublisher(
+            state,
+            refresher,
+            NullLogger<ConformanceRefreshPublisher>.Instance);
+        var hook = new ReindexCompletionHook(
+            new ReindexAutomationStateStore(
+                Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>()),
+            Substitute.For<IMediator>(),
+            Options.Create(new ReindexOptions { AutoStart = false }),
+            NullLogger<ReindexCompletionHook>.Instance);
+
+        await hook.OnCompletedAsync(
+            new BackgroundJob<ReindexJobDefinition>
+            {
+                JobId = "job",
+                JobType = (int)BackgroundJobType.Reindex,
+                Status = "Completed",
+                Definition = ReindexJobDefinition.CreateForTest(),
+                CreateDate = DateTimeOffset.UtcNow,
+                HeartbeatDate = DateTimeOffset.UtcNow
+            },
+            CancellationToken.None);
+    }
+
     [Theory]
     [InlineData("Failed", 1L, 1L, true)]
     [InlineData("Completed", 2L, 1L, false)]
@@ -72,7 +107,6 @@ public sealed class ReindexCompletionHookTests
             });
         var mediator = Substitute.For<IMediator>();
         var hook = new ReindexCompletionHook(
-            publisher,
             new ReindexAutomationStateStore(repository),
             mediator,
             Options.Create(new ReindexOptions { AutoStart = autoStart }),

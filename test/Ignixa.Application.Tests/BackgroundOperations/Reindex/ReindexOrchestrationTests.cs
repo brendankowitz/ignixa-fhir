@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DurableTask.Core;
+using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
@@ -50,6 +51,34 @@ public class ReindexOrchestrationTests
         context.ProgressCalls.ShouldBeGreaterThan(1);
         context.RangeCalls.ShouldBe(3);
         context.Snapshots.Last().Tenants.Single().ResourcesReindexed.ShouldBe(30);
+    }
+
+    [Fact]
+    public async Task GivenBarrierActivityThrowsTransiently_WhenRetried_ThenTenantCompletes()
+    {
+        var context = new ExecutingContext(failBarrierOnce: true);
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
+
+        var result = await new ReindexOrchestration().RunTask(context, input);
+
+        result.Success.ShouldBeTrue();
+        context.BarrierCalls.ShouldBe(2);
+        result.Tenants.Single().Success.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenDefinitionsRemainBehindForFiveAttempts_WhenRangeIsRetried_ThenTenantCompletes()
+    {
+        var context = new ExecutingContext(definitionsNotReadyAttempts: 6);
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
+
+        var result = await new ReindexOrchestration().RunTask(context, input);
+
+        result.Success.ShouldBeTrue();
+        context.RangeCalls.ShouldBe(9);
+        result.Tenants.Single().Success.ShouldBeTrue();
     }
 
     [Fact]
@@ -165,6 +194,24 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
+    public async Task GivenStartActivityFindsClosedJob_WhenOrchestrated_ThenNoTenantOrCompletionWorkRuns()
+    {
+        var context = new ExecutingContext(startShouldContinue: false);
+        var input = ReindexOrchestrationInput.CreateForTest(
+            "job",
+            targetEventId: 42,
+            barrierDelay: TimeSpan.Zero,
+            tenantIds: [1]);
+
+        var output = await new ReindexOrchestration().RunTask(context, input);
+
+        output.Success.ShouldBeFalse();
+        context.BarrierCalls.ShouldBe(0);
+        context.RangeCalls.ShouldBe(0);
+        context.CompletionCalls.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task GivenDrainNeverCompletes_WhenStaleJobTimeoutElapses_ThenTenantFails()
     {
         var context = new ExecutingContext(drainNeverCompletes: true);
@@ -229,7 +276,10 @@ public class ReindexOrchestrationTests
         bool includeResourceFailures = false,
         bool failStart = false,
         bool failProgressOnce = false,
-        bool drainNeverCompletes = false) : OrchestrationContext
+        bool drainNeverCompletes = false,
+        bool failBarrierOnce = false,
+        int definitionsNotReadyAttempts = 0,
+        bool startShouldContinue = true) : OrchestrationContext
     {
         private DateTime _currentUtcDateTime = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
 
@@ -325,12 +375,20 @@ public class ReindexOrchestrationTests
                 throw new InvalidOperationException("start failed");
             }
 
-            return new StartReindexOutput([]);
+            return new StartReindexOutput([])
+            {
+                ShouldContinue = startShouldContinue
+            };
         }
 
         private RaiseBarrierOutput Barrier()
         {
             BarrierCalls++;
+            if (failBarrierOnce && BarrierCalls == 1)
+            {
+                throw new InvalidOperationException("transient barrier failure");
+            }
+
             return new RaiseBarrierOutput(1, 10, 30);
         }
 
@@ -344,6 +402,11 @@ public class ReindexOrchestrationTests
         private ReindexRangeOutput Range(ReindexRangeInput input)
         {
             RangeCalls++;
+            if (RangeCalls <= definitionsNotReadyAttempts)
+            {
+                throw new ReindexDefinitionsNotReadyException(41, 42);
+            }
+
             if (!includeResourceFailures)
             {
                 return new(10, 10, input.StartSurrogateId == 11 ? 1 : 0, []);
@@ -398,6 +461,11 @@ public class ReindexOrchestrationTests
                     ignoreOrder: true);
                 input.Tenants.Single().FailedResources.Count.ShouldBe(100);
                 input.Tenants.Single().FailedResourceCount.ShouldBe(306);
+                return new CompleteReindexOutput(false, []);
+            }
+
+            if (definitionsNotReadyAttempts > 0 && input.Tenants.Single().Success is false)
+            {
                 return new CompleteReindexOutput(false, []);
             }
 

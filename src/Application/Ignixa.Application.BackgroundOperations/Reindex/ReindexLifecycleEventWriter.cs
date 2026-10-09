@@ -63,6 +63,31 @@ public sealed class ReindexLifecycleEventWriter(
             requireOwnership: true,
             cancellationToken);
 
+    public async Task<IReadOnlyList<OwnedReindexTarget>> GetOwnedTargetsAsync(
+        CancellationToken cancellationToken)
+    {
+        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
+        {
+            await conformanceState.CatchUpWhileActivationLockHeldAsync(
+                eventStore,
+                cancellationToken);
+            return conformanceState.AllSearchParameters.Values
+                .Where(parameter =>
+                    parameter.Status == SearchParameterStatus.Reindexing &&
+                    parameter.ReindexJobId is not null)
+                .Select(parameter => new OwnedReindexTarget(
+                    parameter.ReindexJobId!,
+                    new ReindexTarget(
+                        parameter.Canonical,
+                        parameter.Code,
+                        parameter.ResourceType,
+                        parameter.SearchParamId,
+                        parameter.ActivationEventId,
+                        [parameter.ResourceType])))
+                .ToArray();
+        }
+    }
+
     private async Task<IReadOnlyList<string>> AppendAsync(
         IReadOnlyList<ReindexTarget> targets,
         Func<ReindexTarget, object> createEvent,
@@ -176,3 +201,5 @@ public sealed record ReindexTargetCompletion(
     long ResourcesIndexed,
     TimeSpan Duration,
     string? ErrorMessage);
+
+public sealed record OwnedReindexTarget(string JobId, ReindexTarget Target);

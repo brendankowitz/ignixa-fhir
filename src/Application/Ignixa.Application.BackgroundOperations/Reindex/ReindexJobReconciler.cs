@@ -47,11 +47,10 @@ public sealed class ReindexJobReconciler(
         bool recoverFreshQueuedJobs,
         CancellationToken cancellationToken)
     {
-        var candidates = (await repository.ListAsync(
-                (int)BackgroundJobType.Reindex,
-                cancellationToken))
-            .Where(job => !IsTerminal(job.Status))
-            .ToArray();
+        var active = await repository.GetActiveAsync(
+            (int)BackgroundJobType.Reindex,
+            cancellationToken);
+        var candidates = active is null ? [] : new[] { active };
         foreach (var job in candidates)
         {
             if (job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase))
@@ -87,6 +86,37 @@ public sealed class ReindexJobReconciler(
             }
 
             await FinalizeOrphanAsync(job, second ?? first, cancellationToken);
+        }
+
+        await ResetParametersOwnedByTerminalJobsAsync(cancellationToken);
+    }
+
+    private async Task ResetParametersOwnedByTerminalJobsAsync(
+        CancellationToken cancellationToken)
+    {
+        var ownedTargets = await lifecycle.GetOwnedTargetsAsync(cancellationToken);
+        foreach (var group in ownedTargets.GroupBy(target => target.JobId, StringComparer.Ordinal))
+        {
+            var job = await repository.GetAsync(group.Key, 1, cancellationToken);
+            if (job is null || !IsTerminal(job.Status))
+            {
+                continue;
+            }
+
+            var reason =
+                $"Reindex parameter remained owned by terminal {job.Status} job {job.JobId}.";
+            var completions = group.Select(owned => new ReindexTargetCompletion(
+                owned.Target,
+                false,
+                0,
+                TimeSpan.Zero,
+                reason)).ToArray();
+            await lifecycle.CompleteAsync(job.JobId, completions, cancellationToken);
+            logger.LogWarning(
+                "Reindex: reset {ParameterCount} parameters still owned by terminal {Status} job {JobId}",
+                completions.Length,
+                job.Status,
+                job.JobId);
         }
     }
 

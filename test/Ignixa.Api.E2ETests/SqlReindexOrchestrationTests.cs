@@ -132,6 +132,7 @@ public class SqlReindexOrchestrationTests
 
         job.Status.ShouldBe("Completed", job.ErrorMessage);
         state.FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
+        await RefreshConformanceConsumersAsync(fixture.Services);
         RenewLease(fixture.Services);
         await AssertSearchAsync(fixture.Client, code, marker, patientId);
     }
@@ -199,6 +200,7 @@ public class SqlReindexOrchestrationTests
         var state = fixture.Services.GetRequiredService<ConformanceState>();
         state.FindByCanonical(firstCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         state.FindByCanonical(secondCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
+        await RefreshConformanceConsumersAsync(fixture.Services);
         RenewLease(fixture.Services);
         await AssertSearchAsync(fixture.Client, secondCode, marker, patientId);
     }
@@ -223,6 +225,10 @@ public class SqlReindexOrchestrationTests
         return await repository.GetAsync(jobId, 1, CancellationToken.None)
             ?? throw new InvalidOperationException($"Reindex job {jobId} was not persisted.");
     }
+
+    private static Task RefreshConformanceConsumersAsync(IServiceProvider services) =>
+        services.GetRequiredService<ConformanceRefreshPublisher>()
+            .RefreshUntilCurrentAsync(CancellationToken.None);
 
     private static async Task WaitForJobStatusAsync(
         IServiceProvider services,
