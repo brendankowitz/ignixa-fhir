@@ -383,7 +383,7 @@ DELETE /$reindex/{jobId}
 | Request parameter | Range | Default | Meaning |
 |---|---|---|---|
 | `maximumNumberOfResourcesPerQuery` | 1–10000 | 10000 | Size of one range of work. |
-| `maximumNumberOfResourcesPerWrite` | 1–10000 | 1000 | Resources indexed per batch. Lower it if normal writes slow down while a job runs. |
+| `maximumNumberOfResourcesPerWrite` | 1–10000 | 100 | Resources indexed per batch. Lower it if normal writes slow down while a job runs. |
 | `maximumConcurrency` | 1–16 | 4 | Ranges processed at once per tenant. |
 | `queryDelayIntervalInMilliseconds` | 0–60000 | 0 | Pause between batches, to leave headroom for normal traffic. |
 
@@ -407,8 +407,9 @@ supported and are rejected, not silently ignored.
   Cancelling returns the job's parameters to `Pending`; it does not undo index rows already written.
   A failed or cancelled job is **not** retried automatically. Start a new one with `POST $reindex`
   (a later package activation also starts one).
-- A job does not change a resource's `version`, `lastUpdated`, content or history, and it does not
-  block normal writes. A resource updated while its range is processed is counted as a *conflict*, not
+- A job does not change a resource's `version`, `lastUpdated`, content or history. It does not take
+  a lock that normal writes wait on, but very large write batches can briefly slow writes to the same
+  resource type, so keep `maximumNumberOfResourcesPerWrite` modest. A resource updated while its range is processed is counted as a *conflict*, not
   a failure, because its new version is indexed with the current definitions.
 
 **Requirements**
@@ -416,6 +417,7 @@ supported and are rejected, not silently ignored.
 - The caller needs a write permission on the wildcard resource type for every `$reindex` route (for
   example the SMART scope `system/*.write`).
 - The tenant's storage provider must support reindexing (SQL Server does). Others return `501`.
+  With `Reindex:Enabled` set to `false` the routes return `404`.
 - Set `Fhir:BaseUri` so absolute references that point back at this server are indexed the same way
   as when they were written; see [Service Base URI](/docs/server/configuration#service-base-uri).
 
