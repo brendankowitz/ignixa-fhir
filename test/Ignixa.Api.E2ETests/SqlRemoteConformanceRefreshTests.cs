@@ -148,7 +148,11 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
             await AssertEventuallyPendingAsync(clientB, identifier);
             ReferenceEquals(versionsB.GetSearchIndexer(FhirVersion.R4, 1), warmIndexer).ShouldBeFalse();
             ReferenceEquals(await registryB.GetOrCreateAsync(1, CancellationToken.None), warmCache).ShouldBeTrue();
-            warmDefinitions.GetSearchParameter("Patient", SearchCode).Url.ShouldBe(new Uri(Canonical));
+            // Managers are immutable per published generation: the warm one keeps the old definitions.
+            var refreshedDefinitions = versionsB.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+            refreshedDefinitions.ShouldNotBeSameAs(warmDefinitions);
+            refreshedDefinitions.GetSearchParameter("Patient", SearchCode).Url.ShouldBe(new Uri(Canonical));
+            warmDefinitions.TryGetSearchParameter("Patient", SearchCode, out _).ShouldBeFalse();
             (await warmCache.GetSearchParamIdAsync(Canonical, CancellationToken.None)).ShouldNotBeNull();
             await AssertCapabilityAsync(clientB, expected: false, waitForRefresh: true);
             var searchBuilderFactory = hostB.Services.GetRequiredService<ISearchOptionsBuilderFactory>();
