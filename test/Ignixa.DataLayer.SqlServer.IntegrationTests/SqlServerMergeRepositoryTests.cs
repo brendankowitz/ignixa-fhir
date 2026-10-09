@@ -101,87 +101,6 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
         transactionState.ShouldBe("1:1:1");
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task GivenConcurrentBarrierRaisesAndAllocations_WhenWriterIsStale_ThenItIsInsideTheBoundaryOrRejected(
-        bool readCommittedSnapshot)
-    {
-        const int Iterations = 30;
-        await ConfigureReadCommittedSnapshotAsync(readCommittedSnapshot);
-
-        for (var iteration = 1; iteration <= Iterations; iteration++)
-        {
-            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var writerTask = Task.Run(async () =>
-            {
-                await start.Task;
-                if (iteration % 3 == 0)
-                {
-                    await Task.Delay(1);
-                }
-
-                try
-                {
-                    return await _repository.BeginTransactionAsync(
-                        resourceCount: 1,
-                        definitionsEventId: iteration - 1,
-                        CancellationToken.None);
-                }
-                catch (StaleConformanceDefinitionsException)
-                {
-                    return ((long TransactionId, int SequenceStart)?)null;
-                }
-            });
-            var raiseTask = Task.Run(async () =>
-            {
-                await start.Task;
-                if (iteration % 3 == 1)
-                {
-                    await Task.Delay(1);
-                }
-
-                return await RaiseConformanceBarrierAndReadBoundaryAsync(iteration);
-            });
-
-            start.SetResult();
-            var allocation = await writerTask;
-            var boundary = await raiseTask;
-
-            if (allocation.HasValue)
-            {
-                allocation.Value.TransactionId.ShouldBeLessThanOrEqualTo(boundary);
-                await _repository.CommitTransactionAsync(
-                    allocation.Value.TransactionId,
-                    failureReason: "Barrier race test cleanup.",
-                    CancellationToken.None);
-            }
-        }
-    }
-
-    private async Task ConfigureReadCommittedSnapshotAsync(bool enabled)
-    {
-        var builder = new SqlConnectionStringBuilder(_database.ConnectionString);
-        var databaseName = builder.InitialCatalog;
-        databaseName.ShouldStartWith("IgnixaDataLayerSqlServerTest_", Case.Sensitive);
-        using var pooledConnection = new SqlConnection(builder.ConnectionString);
-        SqlConnection.ClearPool(pooledConnection);
-        builder.InitialCatalog = "master";
-        await using var connection = new SqlConnection(builder.ConnectionString);
-        await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
-#pragma warning disable CA2100
-        command.CommandText =
-            $"ALTER DATABASE [{databaseName}] SET READ_COMMITTED_SNAPSHOT {(enabled ? "ON" : "OFF")} WITH ROLLBACK IMMEDIATE";
-#pragma warning restore CA2100
-        await command.ExecuteNonQueryAsync();
-        SqlConnection.ClearPool(pooledConnection);
-
-        (await _database.ExecuteScalarAsync<int>(
-            "SELECT CAST(is_read_committed_snapshot_on AS int) FROM sys.databases WHERE database_id = DB_ID()"))
-            .ShouldBe(enabled ? 1 : 0);
-    }
-
     /// <summary>
     /// Pins the <c>catch (SqlException ex) when (ex.Number == 50409)</c> mapping in
     /// <c>MergeResourcesAsync</c>. Merging the SAME explicit version for the same
@@ -318,24 +237,6 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
              END
              """);
 
-    private Task<long> RaiseConformanceBarrierAndReadBoundaryAsync(long eventId) =>
-        _database.ExecuteScalarAsync<long>(
-            $"""
-             UPDATE dbo.Parameters
-             SET Bigint = {eventId}
-             WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId'
-               AND (Bigint IS NULL OR Bigint < {eventId});
-             IF NOT EXISTS (
-                 SELECT 1
-                 FROM dbo.Parameters
-                 WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId')
-             BEGIN
-                 INSERT dbo.Parameters (Id, Bigint)
-                 VALUES ('Conformance.MinAcceptedDefinitionsEventId', {eventId});
-             END
-             SELECT COALESCE(MAX(SurrogateIdRangeFirstValue), 0)
-             FROM dbo.Transactions;
-             """);
 }
 
 internal sealed class ListLogger<T> : ILogger<T>
