@@ -239,11 +239,19 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     {
         using (await AcquireActivationLockAsync(cancellationToken))
         {
-            await foreach (var evt in store.ReadAllAsync(cancellationToken))
+            if (_lastProcessedEventId == 0)
             {
-                Apply(evt);
-                _lastProcessedEventId = evt.EventId;
+                await foreach (var evt in store.ReadAllAsync(cancellationToken))
+                {
+                    Apply(evt);
+                    _lastProcessedEventId = evt.EventId;
+                }
             }
+            else
+            {
+                await CatchUpWhileActivationLockHeldAsync(store, cancellationToken);
+            }
+
             _isInitialized = true;
         }
     }
@@ -741,9 +749,12 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
             parameter.Status = SearchParameterStatus.Disabled;
         }
 
-        outgoing.Status = SearchParameterStatus.Disabling;
-        outgoing.DeactivationEventId = eventId;
-        outgoing.ReindexJobId = null;
+        if (outgoing.Status != SearchParameterStatus.Disabling)
+        {
+            outgoing.Status = SearchParameterStatus.Disabling;
+            outgoing.DeactivationEventId = eventId;
+            outgoing.ReindexJobId = null;
+        }
 
         var previous = FindAvailablePredecessor(parameter);
         if (previous is null)
@@ -751,6 +762,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
             return;
         }
 
+        outgoing.DeactivationEventId = eventId;
         _searchParameterActivations.Add(CloneForRestoration(previous, eventId));
     }
 
@@ -760,7 +772,10 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         while (previousActivationEventId is { } activationEventId)
         {
             var previous = _searchParameterActivations.LastOrDefault(
-                candidate => candidate.ActivationEventId == activationEventId);
+                candidate =>
+                    candidate.ResourceType == parameter.ResourceType &&
+                    candidate.Code == parameter.Code &&
+                    candidate.ActivationEventId == activationEventId);
             if (previous is null)
             {
                 return null;
@@ -784,27 +799,19 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     private bool IsLatestActivation(ActiveSearchParameter parameter) =>
         ReferenceEquals(parameter, GetLatestActivation(parameter.ResourceType, parameter.Code));
 
-    private bool CanStartReindex(ActiveSearchParameter owner, long? activationEventId)
-    {
-        if (activationEventId is null)
-        {
-            return true;
-        }
-
-        return owner.Status == SearchParameterStatus.Pending &&
+    private bool CanStartReindex(ActiveSearchParameter owner, long? activationEventId) =>
+        owner.Status == SearchParameterStatus.Pending &&
             IsLatestActivation(owner) &&
-            owner.ActivationEventId == activationEventId;
-    }
+            (activationEventId is null || owner.ActivationEventId == activationEventId);
 
     private bool CanFinishReindex(
         ActiveSearchParameter parameter,
         long? activationEventId,
         string jobId) =>
-        activationEventId is null ||
         parameter.Status == SearchParameterStatus.Reindexing &&
         IsLatestActivation(parameter) &&
-        parameter.ActivationEventId == activationEventId &&
-        parameter.ReindexJobId == jobId;
+        parameter.ReindexJobId == jobId &&
+        (activationEventId is null || parameter.ActivationEventId == activationEventId);
 
     private static ActiveSearchParameter CloneForRestoration(ActiveSearchParameter previous, long eventId) =>
         new()

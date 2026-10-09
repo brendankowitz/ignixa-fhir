@@ -143,17 +143,17 @@ public class ConformanceLifecycleTests
     }
 
     [Fact]
-    public void GivenStagedOverride_WhenItIsDeactivatedBeforeCommit_ThenBaseIsRestagedAndOldTransitionIsIgnored()
+    public void GivenStagedOverride_WhenItIsDeactivatedBeforeCommit_ThenTheNewHideEventRestoresTheBase()
     {
         using var state = CreateStateWithStagedOverride();
 
         state.Apply(Deactivation(30, OverrideCanonical));
-        state.Apply(Transition(40, 7, [20], [20]));
+        state.Apply(Transition(40, 7, [30], [30]));
 
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
+        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
         state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(30);
-        state.GetSearchParameter("Patient", "identifier")!.Status.ShouldBe(SearchParameterStatus.Disabling);
+        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
     }
 
     [Fact]
@@ -230,6 +230,63 @@ public class ConformanceLifecycleTests
         state.Apply(Transition(30, 7, [], [20]));
 
         state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabled);
+    }
+
+    [Fact]
+    public void GivenAnOwnerAlreadyDisabling_WhenItIsDeactivatedAgain_ThenTheOriginalHideEventIsPreserved()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
+        state.Apply(Deactivation(20, OverrideCanonical, "custom"));
+
+        state.Apply(Deactivation(30, OverrideCanonical, "custom"));
+
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.DeactivationEventId.ShouldBe(20);
+        state.GetTransitionCandidates(20).Count.ShouldBe(1);
+        state.GetTransitionCandidates(30).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenAnotherParameterSharesThePredecessorEventId_WhenAnOverrideIsRemoved_ThenTheMatchingCodeIsRestored()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Activation(10, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.1"));
+        state.Apply(new SourceEvent(
+            10,
+            "lifecycle-test",
+            nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://hl7.org/fhir/SearchParameter/Observation-subject",
+                "subject",
+                "Observation",
+                "Observation.subject",
+                SearchParamType.Reference,
+                "hl7.fhir.r4.core@4.0.1",
+                null,
+                8,
+                ["Patient"],
+                null,
+                null,
+                null),
+            DateTimeOffset.UtcNow));
+        state.Apply(Activation(
+            20,
+            OverrideCanonical,
+            "identifier",
+            7,
+            new OverrideInfo(BaseCanonical, 7)));
+        state.Apply(Transition(30, 7, [20], [20]));
+        state.Apply(ReindexStarted(31, activationEventId: 20, jobId: "job"));
+        state.Apply(ReindexCompleted(32, activationEventId: 20, jobId: "job"));
+
+        state.Apply(Deactivation(40, OverrideCanonical));
+
+        var restored = state.FindByCanonical(BaseCanonical)!;
+        restored.ResourceType.ShouldBe("Patient");
+        restored.Code.ShouldBe("identifier");
+        restored.Status.ShouldBe(SearchParameterStatus.Staged);
+        restored.ActivationEventId.ShouldBe(40);
     }
 
     [Fact]
@@ -338,7 +395,21 @@ public class ConformanceLifecycleTests
     }
 
     [Fact]
-    public void GivenLegacyReindexEventWithoutActivationId_WhenApplied_ThenItRetainsLegacyUnguardedBehavior()
+    public void GivenLegacyReindexStartedForAJobAlreadyRunning_WhenApplied_ThenItDoesNotReplaceTheJob()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
+        state.Apply(ReindexStarted(20, activationEventId: null, jobId: "current"));
+
+        state.Apply(ReindexStarted(30, activationEventId: null, jobId: "legacy-other-job"));
+
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
+        parameter.ReindexJobId.ShouldBe("current");
+    }
+
+    [Fact]
+    public void GivenLegacyReindexCompletedForAnotherJob_WhenApplied_ThenItDoesNotEnableTheParameter()
     {
         using var state = new ConformanceState();
         state.Apply(Activation(10, OverrideCanonical, "custom", 7));
@@ -346,7 +417,23 @@ public class ConformanceLifecycleTests
 
         state.Apply(ReindexCompleted(30, activationEventId: null, jobId: "legacy-other-job"));
 
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Enabled);
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
+        parameter.ReindexJobId.ShouldBe("current");
+    }
+
+    [Fact]
+    public void GivenLegacyReindexFailedForAnotherJob_WhenApplied_ThenItDoesNotResetTheParameter()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
+        state.Apply(ReindexStarted(20, activationEventId: 10, jobId: "current"));
+
+        state.Apply(ReindexFailed(30, activationEventId: null, jobId: "legacy-other-job"));
+
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
+        parameter.ReindexJobId.ShouldBe("current");
     }
 
     [Fact]

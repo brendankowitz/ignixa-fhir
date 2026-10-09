@@ -108,7 +108,29 @@ public class SearchResourcesToolPagingTests
             tool.SearchResourcesAsync("Patient", [], count: 2, tenantId: 1, cancellationToken: CancellationToken.None));
     }
 
+    [Fact]
+    public async Task GivenAnExplicitTenant_WhenMcpSearches_ThenItBuildsOptionsFromThatTenantsDefinitions()
+    {
+        var tool = CreateTool(Stream([]), out var factory);
+
+        var result = await tool.SearchResourcesAsync(
+            "Patient",
+            [],
+            count: 2,
+            tenantId: 1,
+            cancellationToken: CancellationToken.None);
+
+        result.Entries.ShouldBeEmpty();
+        factory.Received(1).Create(FhirVersion.R4, 1);
+    }
+
     private static SearchResourcesTool CreateTool(IAsyncEnumerable<SearchEntryResult> entries, string? continuationToken = null)
+        => CreateTool(entries, out _, continuationToken);
+
+    private static SearchResourcesTool CreateTool(
+        IAsyncEnumerable<SearchEntryResult> entries,
+        out ISearchOptionsBuilderFactory factory,
+        string? continuationToken = null)
     {
         var mediator = Substitute.For<IMediator>();
         mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())
@@ -128,8 +150,9 @@ public class SearchResourcesToolPagingTests
                 MaxItemCount = 2,
                 ContinuationToken = ContinuationToken.Encode(4, 2),
             });
-        var factory = Substitute.For<ISearchOptionsBuilderFactory>();
+        factory = Substitute.For<ISearchOptionsBuilderFactory>();
         factory.Create(Arg.Any<FhirVersion>()).Returns(builder);
+        factory.Create(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(builder);
         return new SearchResourcesTool(accessor, store, mediator, factory, versionContext, accessor);
     }
 

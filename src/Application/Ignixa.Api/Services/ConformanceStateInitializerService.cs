@@ -83,7 +83,7 @@ public class ConformanceStateInitializerService(
 
                     try
                     {
-                        await Task.Delay(delays[attempt], stoppingToken);
+                        await DelayBeforeRetryAsync(delays[attempt], stoppingToken);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                     {
@@ -103,6 +103,10 @@ public class ConformanceStateInitializerService(
                     // ConformanceState.IsInitialized will remain false, which can be checked by dependent services
                 }
             }
+
         }
     }
+
+    protected virtual Task DelayBeforeRetryAsync(TimeSpan delay, CancellationToken cancellationToken) =>
+        Task.Delay(delay, cancellationToken);
 }

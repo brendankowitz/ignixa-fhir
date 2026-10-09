@@ -2,6 +2,7 @@ using Ignixa.Api.Services;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
+using Ignixa.Conformance.Events.Events;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -65,10 +66,64 @@ public class ConformanceStateInitializerTests
         });
     }
 
+    [Fact]
+    public async Task GivenReplayFailsAfterApplyingAnEvent_WhenInitializationRetries_ThenItCatchesUpFromTheLastAppliedEvent()
+    {
+        var first = new SourceEvent(
+            1,
+            "package:first@1.0.0",
+            nameof(PackageActivated),
+            new PackageActivated("first", "1.0.0", []),
+            DateTimeOffset.UtcNow);
+        var second = new SourceEvent(
+            2,
+            "package:second@1.0.0",
+            nameof(PackageActivated),
+            new PackageActivated("second", "1.0.0", []),
+            DateTimeOffset.UtcNow);
+        var store = Substitute.For<ISourceEventStore>();
+        var readAllCalls = 0;
+        store.ReadAllAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => ++readAllCalls == 1
+                ? EventsThenFailure(first)
+                : Events(first, second));
+        store.ReadFromAsync(1, Arg.Any<CancellationToken>()).Returns(Events(second));
+        using var state = new ConformanceState();
+        using var service = new TestInitializer(store, state, CreateRefresher(), CreateLease());
+
+        await service.RunAsync();
+
+        state.IsInitialized.ShouldBeTrue();
+        state.LastProcessedEventId.ShouldBe(2);
+        _ = store.Received(1).ReadAllAsync(Arg.Any<CancellationToken>());
+        _ = store.Received(1).ReadFromAsync(1, Arg.Any<CancellationToken>());
+    }
+
     private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
     {
         await Task.CompletedTask;
         yield break;
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
+    {
+        foreach (var sourceEvent in events)
+        {
+            yield return sourceEvent;
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> EventsThenFailure(params SourceEvent[] events)
+    {
+        foreach (var sourceEvent in events)
+        {
+            yield return sourceEvent;
+        }
+
+        await Task.Yield();
+        throw new IOException("event store failed");
     }
 
     private static IConformanceLease CreateLease() =>
@@ -105,6 +160,11 @@ public class ConformanceStateInitializerTests
             NullLogger<ConformanceStateInitializerService>.Instance)
     {
         public Task RunAsync() => ExecuteAsync(CancellationToken.None);
+
+        protected override Task DelayBeforeRetryAsync(
+            TimeSpan delay,
+            CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     private sealed record TestSnapshot(long Generation) : IConformanceConsumerSnapshot;

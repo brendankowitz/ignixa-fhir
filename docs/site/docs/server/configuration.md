@@ -591,13 +591,14 @@ and every duration derives from `Conformance:SyncIntervalSeconds`.
 {
   "Conformance": {
     "SyncIntervalSeconds": 30,
-    "MaxStaleness": "00:01:00",
-    "TransitionGrace": "00:01:30"
+    "MaxStaleness": "00:01:30",
+    "TransitionGrace": "00:02:00",
+    "TransitionSafetyMargin": "00:00:30"
   },
   "Reindex": {
     "Enabled": true,
     "AutoStart": true,
-    "BarrierDelay": "00:01:00"
+    "BarrierDelay": "00:01:30"
   }
 }
 ```
@@ -605,11 +606,12 @@ and every duration derives from `Conformance:SyncIntervalSeconds`.
 | Key | Default | Meaning |
 |---|---|---|
 | `Conformance:SyncIntervalSeconds` | `30` | How often each server polls for conformance changes. |
-| `Conformance:MaxStaleness` | `2 × SyncIntervalSeconds` | A server whose last successful sync *started* longer ago than this returns `503` for requests that evaluate search parameters. See [search parameters](/docs/server/fhir/search-parameters#reindexing-and-search-parameter-lifecycle). |
-| `Conformance:TransitionGrace` | `MaxStaleness + SyncIntervalSeconds` | Delay between hiding a replaced or removed parameter and changing how it is extracted. |
+| `Conformance:MaxStaleness` | `3 × SyncIntervalSeconds` | A server whose last successful sync *started* longer ago than this returns `503` for requests that evaluate search parameters. The default tolerates one missed poll. See [search parameters](/docs/server/fhir/search-parameters#reindexing-and-search-parameter-lifecycle). |
+| `Conformance:TransitionGrace` | `MaxStaleness + max(SyncIntervalSeconds, TransitionSafetyMargin)` | Delay between hiding a replaced or removed parameter and changing how it is extracted. |
+| `Conformance:TransitionSafetyMargin` | `00:00:30` | Minimum time added above `MaxStaleness` before a transition may commit, covering one in-flight search plus clock skew. |
 | `Reindex:Enabled` | `true` | Registers the `$reindex` endpoints and the job. |
 | `Reindex:AutoStart` | `true` | Start a reindex job automatically after a package activation creates parameters that need one. When `false`, start jobs with `POST $reindex`. |
-| `Reindex:BarrierDelay` | `2 × SyncIntervalSeconds` | Wait after a change before a job fences out writers with older definitions, giving other servers time to catch up. |
+| `Reindex:BarrierDelay` | `3 × SyncIntervalSeconds` | Wait after a change before a job fences out writers with older definitions, giving other servers time to catch up. |
 | `Reindex:DefaultMaximumNumberOfResourcesPerQuery` | `10000` | Default size of one range of work. |
 | `Reindex:DefaultMaximumNumberOfResourcesPerWrite` | `1000` | Default batch size for index writes. |
 | `Reindex:DefaultMaximumConcurrency` | `4` | Default concurrent ranges per tenant. |
@@ -620,8 +622,9 @@ and every duration derives from `Conformance:SyncIntervalSeconds`.
 The server **fails to start** if these do not hold, so a misconfiguration is caught before it can
 serve wrong results:
 
-- `SyncIntervalSeconds`, `MaxStaleness` and `TransitionGrace` must be positive.
-- `TransitionGrace` must be strictly greater than `MaxStaleness`.
+- `SyncIntervalSeconds`, `MaxStaleness` and `TransitionGrace` must be positive, and
+  `TransitionSafetyMargin` must not be negative.
+- `TransitionGrace` must be at least `MaxStaleness + TransitionSafetyMargin`.
 - `BarrierDelay` must be at least `MaxStaleness`.
 - `Reindex:DefaultMaximumNumberOfResourcesPerQuery` and `...PerWrite` must be `1`–`10000`, and
   `Reindex:DefaultMaximumConcurrency` must be `1`–`16`, the same ranges the `$reindex` request

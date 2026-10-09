@@ -440,6 +440,7 @@ public class SqlReindexOrchestrationTests
         {
             builder.UseSetting("Conformance:MaxStaleness", "00:00:01");
             builder.UseSetting("Conformance:TransitionGrace", "00:00:02");
+            builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:01");
             builder.UseSetting("Reindex:BarrierDelay", "00:00:01");
             builder.UseSetting("Reindex:StartDebounce", "00:00:00.100");
             builder.UseSetting("Reindex:DrainWarningAfter", "00:00:01");

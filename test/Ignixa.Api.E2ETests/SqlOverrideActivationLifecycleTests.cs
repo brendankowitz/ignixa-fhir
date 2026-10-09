@@ -448,12 +448,14 @@ public class SqlOverrideActivationLifecycleTests
             {
                 builder.UseSetting("Conformance:MaxStaleness", "00:00:00.050");
                 builder.UseSetting("Conformance:TransitionGrace", "00:00:00.100");
+                builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:00.050");
                 builder.UseSetting("Reindex:BarrierDelay", "00:00:00.050");
             }
             else if (fastReindex)
             {
                 builder.UseSetting("Conformance:MaxStaleness", "00:00:10");
                 builder.UseSetting("Conformance:TransitionGrace", "00:00:15");
+                builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:05");
                 builder.UseSetting("Reindex:BarrierDelay", "00:00:10");
             }
 
