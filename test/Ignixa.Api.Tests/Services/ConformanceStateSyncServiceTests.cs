@@ -7,7 +7,6 @@ using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Medino;
@@ -46,10 +45,7 @@ public class ConformanceStateSyncServiceTests
             store,
             state,
             cacheRefresher,
-            lease,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TimeProvider.System,
-            TimeSpan.FromMinutes(3));
+            lease);
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.RunSyncAsync());
 
@@ -91,9 +87,6 @@ public class ConformanceStateSyncServiceTests
             state,
             refresher,
             TestConformanceLease.NotHeld(),
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TimeProvider.System,
-            TimeSpan.FromMinutes(3),
             refreshPublisher: publisher);
 
         await service.RunSyncAsync();
@@ -102,39 +95,6 @@ public class ConformanceStateSyncServiceTests
         await service.RunSyncAsync();
 
         builds.ShouldBe(3);
-    }
-
-    [Fact]
-    public async Task GivenUncommittedTransitionObservedPastTwiceGrace_WhenSyncRuns_ThenTheWatchdogSchedulesAFullGraceReconciliation()
-    {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        using var state = CreateUncommittedTransitionState();
-        var scheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        var clock = new ManualTimeProvider();
-        var grace = TimeSpan.FromMinutes(3);
-        using var service = new TestSyncService(
-            store,
-            state,
-            CreateRefresher(),
-            TestConformanceLease.NotHeld(),
-            scheduler,
-            clock,
-            grace);
-
-        await service.RunSyncAsync();
-        await scheduler.DidNotReceive().ScheduleReconciliationAsync(
-            Arg.Any<long>(),
-            Arg.Any<TimeSpan>(),
-            Arg.Any<CancellationToken>());
-
-        clock.Advance(grace + grace);
-        await service.RunSyncAsync();
-
-        await scheduler.Received(1).ScheduleReconciliationAsync(
-            20,
-            grace,
-            CancellationToken.None);
     }
 
     [Fact]
@@ -171,9 +131,6 @@ public class ConformanceStateSyncServiceTests
             state,
             CreateRefresher(),
             TestConformanceLease.NotHeld(),
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TimeProvider.System,
-            TimeSpan.FromMinutes(3),
             CreateReindexTrigger(mediator, autoStart: true));
 
         await service.RunSyncAsync();
@@ -202,9 +159,6 @@ public class ConformanceStateSyncServiceTests
             state,
             CreateRefresher(),
             lease,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TimeProvider.System,
-            TimeSpan.FromMinutes(3),
             CreateReindexTrigger(mediator, autoStart: true));
 
         await service.RunSyncAsync();
@@ -226,48 +180,6 @@ public class ConformanceStateSyncServiceTests
         }
 
         await Task.CompletedTask;
-    }
-
-    private static ConformanceState CreateUncommittedTransitionState()
-    {
-        var state = new ConformanceState();
-        state.ApplyAndTrack(new SourceEvent(
-            10,
-            "package:hl7.fhir.r4.core@4.0.1",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                "http://hl7.org/fhir/SearchParameter/Patient-identifier",
-                "identifier",
-                "Patient",
-                "Patient.identifier",
-                SearchParamType.Token,
-                "hl7.fhir.r4.core@4.0.1",
-                null,
-                1,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow));
-        state.ApplyAndTrack(new SourceEvent(
-            20,
-            "package:custom@1.0.0",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                "http://example.org/SearchParameter/Patient-identifier",
-                "identifier",
-                "Patient",
-                "Patient.identifier",
-                SearchParamType.Token,
-                "custom@1.0.0",
-                new OverrideInfo("http://hl7.org/fhir/SearchParameter/Patient-identifier", 1),
-                1,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow));
-        return state;
     }
 
     private static IConformanceCacheRefresher CreateRefresher()
@@ -297,9 +209,6 @@ public class ConformanceStateSyncServiceTests
         ConformanceState state,
         IConformanceCacheRefresher cacheRefresher,
         ConformanceLease lease,
-        ISearchParameterTransitionScheduler transitionScheduler,
-        TimeProvider timeProvider,
-        TimeSpan transitionGrace,
         ReindexTrigger? reindexTrigger = null,
         ConformanceRefreshPublisher? refreshPublisher = null)
         : ConformanceStateSyncService(
@@ -310,27 +219,13 @@ public class ConformanceStateSyncServiceTests
                 cacheRefresher,
                 NullLogger<ConformanceRefreshPublisher>.Instance),
             lease,
-            transitionScheduler,
-            Options.Create(new ConformanceTransitionOptions { TransitionGrace = transitionGrace }),
+            Options.Create(new ConformanceTransitionOptions()),
             reindexTrigger ?? CreateReindexTrigger(
                 Substitute.For<IMediator>(),
                 autoStart: false),
-            timeProvider,
-            NullLogger<ConformanceStateSyncService>.Instance,
-            new ConfigurationBuilder().Build())
+            NullLogger<ConformanceStateSyncService>.Instance)
     {
         public Task RunSyncAsync() => SyncAsync(CancellationToken.None);
-    }
-
-    private sealed class ManualTimeProvider : TimeProvider
-    {
-        private long _timestamp;
-
-        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-
-        public override long GetTimestamp() => _timestamp;
-
-        public void Advance(TimeSpan duration) => _timestamp += duration.Ticks;
     }
 
     private sealed record TestSnapshot(long Generation) : IConformanceConsumerSnapshot;

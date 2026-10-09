@@ -19,20 +19,13 @@ public class ConformanceStateSyncService(
     ConformanceState conformanceState,
     ConformanceRefreshPublisher refreshPublisher,
     ConformanceLease conformanceLease,
-    ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
     ReindexTrigger reindexTrigger,
-    TimeProvider timeProvider,
-    ILogger<ConformanceStateSyncService> logger,
-    IConfiguration configuration) : BackgroundService
+    ILogger<ConformanceStateSyncService> logger) : BackgroundService
 {
     private long _lastRefreshedEventId;
-    private readonly Dictionary<long, long> _uncommittedTransitionFirstObserved = [];
-    private readonly TimeSpan _transitionGrace = transitionOptions.Value.TransitionGrace;
-    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
-    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(
-        configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
+    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(transitionOptions.Value.SyncIntervalSeconds);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -78,13 +71,11 @@ public class ConformanceStateSyncService(
         var syncStart = conformanceLease.CaptureStart();
         var beforeEventId = conformanceState.LastProcessedEventId;
         long afterEventId;
-        IReadOnlyList<long> overdueTransitionIds;
 
         using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
         {
             await conformanceState.CatchUpWhileActivationLockHeldAsync(eventStore, cancellationToken);
             afterEventId = conformanceState.LastProcessedEventId;
-            overdueTransitionIds = GetOverdueTransitionIds();
         }
 
         if (afterEventId > _lastRefreshedEventId || refreshPublisher.HasPendingRefresh)
@@ -108,7 +99,6 @@ public class ConformanceStateSyncService(
 
         conformanceLease.Renew(syncStart);
 
-        await ScheduleOverdueTransitionsAsync(overdueTransitionIds, cancellationToken);
         try
         {
             await reindexTrigger.ReconcileAsync(cancellationToken);
@@ -133,62 +123,6 @@ public class ConformanceStateSyncService(
         else
         {
             logger.LogDebug("ConformanceStateSyncService: no new events (at EventId {EventId})", afterEventId);
-        }
-
-    }
-
-    private IReadOnlyList<long> GetOverdueTransitionIds()
-    {
-        var uncommittedTransitionIds = conformanceState.GetTransitionHideEventIds();
-        _uncommittedTransitionFirstObserved.Keys
-            .Except(uncommittedTransitionIds)
-            .ToList()
-            .ForEach(eventId => _uncommittedTransitionFirstObserved.Remove(eventId));
-
-        var overdue = new List<long>();
-        foreach (var eventId in uncommittedTransitionIds)
-        {
-            var now = _timeProvider.GetTimestamp();
-            if (!_uncommittedTransitionFirstObserved.TryGetValue(eventId, out var firstObserved))
-            {
-                _uncommittedTransitionFirstObserved[eventId] = now;
-                continue;
-            }
-
-            if (_timeProvider.GetElapsedTime(firstObserved) < _transitionGrace + _transitionGrace)
-            {
-                continue;
-            }
-
-            overdue.Add(eventId);
-            _uncommittedTransitionFirstObserved[eventId] = _timeProvider.GetTimestamp();
-        }
-
-        return overdue;
-    }
-
-    private async Task ScheduleOverdueTransitionsAsync(
-        IReadOnlyList<long> overdueTransitionIds,
-        CancellationToken cancellationToken)
-    {
-        foreach (var eventId in overdueTransitionIds)
-        {
-            try
-            {
-                await transitionScheduler.ScheduleReconciliationAsync(
-                    eventId,
-                    _transitionGrace,
-                    cancellationToken);
-            }
-            catch (Exception exception)
-            {
-                _uncommittedTransitionFirstObserved[eventId] = _timeProvider.GetTimestamp();
-                ConformanceMetrics.RecordTransitionScheduleFailure();
-                logger.LogError(
-                    exception,
-                    "Transition watchdog could not schedule hide EventId {EventId}; it will retry on the next sync",
-                    eventId);
-            }
         }
     }
 }
