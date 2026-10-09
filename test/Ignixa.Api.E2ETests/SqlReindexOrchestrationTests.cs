@@ -49,8 +49,22 @@ public class SqlReindexOrchestrationTests
     [SqlFact]
     public async Task GivenActiveReindexJob_WhenCreatingAnother_ThenReturnsConflictForActiveJob()
     {
-        await using var fixture = new ReindexFixture();
+        await using var fixture = new ReindexFixture(reindexAutoStart: false);
         await fixture.InitializeAsync();
+        var marker = Guid.NewGuid().ToString("N");
+        var code = $"active-{marker}";
+        var canonical = $"http://example.org/SearchParameter/{code}";
+        var packageId = $"test.active.{marker}";
+
+        await PutPatientAsync(fixture.Client, $"reindex-{marker}", marker);
+        await StoreParameterAsync(fixture.Services, packageId, code, canonical);
+        var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
+            .ActivateAsync(packageId, "1.0.0", CancellationToken.None);
+
+        activation.Success.ShouldBeTrue();
+        activation.ReindexJobId.ShouldBeNull();
+        fixture.Services.GetRequiredService<ConformanceState>()
+            .FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
 
         var first = await CreateReindexAsync(fixture.Client);
         using var firstResponse = first.Response;
@@ -443,7 +457,14 @@ public class SqlReindexOrchestrationTests
 
     private sealed class ReindexFixture : IgnixaApiFixture
     {
-        protected override bool ReindexAutoStart => true;
+        private readonly bool _reindexAutoStart;
+
+        public ReindexFixture(bool reindexAutoStart = true)
+        {
+            _reindexAutoStart = reindexAutoStart;
+        }
+
+        protected override bool ReindexAutoStart => _reindexAutoStart;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
