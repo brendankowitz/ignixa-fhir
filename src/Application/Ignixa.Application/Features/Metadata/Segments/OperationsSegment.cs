@@ -69,6 +69,16 @@ public class OperationsSegment : ICapabilitySegment
                 continue;
             }
 
+            if (feature is ICapabilityContextAwarePackageFeature contextAwareFeature &&
+                !await contextAwareFeature.IsAvailableAsync(context, cancellationToken))
+            {
+                _logger.LogDebug(
+                    "Feature {PackageId} is unavailable for tenant {TenantId}",
+                    feature.PackageId,
+                    context.TenantId?.ToString() ?? "default");
+                continue;
+            }
+
             // Collect system operations
             foreach (var op in feature.SystemOperations)
             {
@@ -250,6 +260,13 @@ public class OperationsSegment : ICapabilitySegment
 
             featureDeclarations.Append(feature.PackageId);
             featureDeclarations.Append(':');
+
+            if (feature is ICapabilityContextAwarePackageFeature contextAwareFeature &&
+                !await contextAwareFeature.IsAvailableAsync(context, cancellationToken))
+            {
+                featureDeclarations.Append("unavailable;");
+                continue;
+            }
 
             foreach (var op in feature.SystemOperations.OrderBy(x => x, StringComparer.Ordinal))
             {

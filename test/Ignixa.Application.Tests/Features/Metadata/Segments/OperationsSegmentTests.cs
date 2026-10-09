@@ -272,6 +272,22 @@ public class OperationsSegmentTests
     }
 
     [Fact]
+    public async Task GivenUnavailableReindexProvider_WhenApplyingSegment_ThenOmitsReindexOperation()
+    {
+        var availability = Substitute.For<IReindexAvailability>();
+        availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new ReindexAvailability(ReindexAvailabilityStatus.Unsupported, 2)));
+        _features.Add(new ReindexFeature(availability));
+        var statement = new CapabilityStatementJsonNode();
+
+        await _segment.ApplyAsync(
+            statement,
+            new CapabilityContext(FhirVersion.R4, TenantId: 1),
+            CancellationToken.None);
+
+        statement.Rest.ShouldBeEmpty();
+    }
+    [Fact]
     public void GivenGraphQlFeature_WhenCheckingSystemOperations_ThenIncludesGraphQl()
     {
         // Arrange

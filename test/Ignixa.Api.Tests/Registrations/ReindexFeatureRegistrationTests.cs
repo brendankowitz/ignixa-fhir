@@ -1,6 +1,6 @@
 using Autofac;
 using Ignixa.Api.Registrations;
-using Ignixa.Domain.Abstractions;
+using Ignixa.Application.Features.Reindex;
 using Microsoft.Extensions.Configuration;
 using Shouldly;
 
@@ -25,8 +25,8 @@ public sealed class ReindexFeatureRegistrationTests
         builder.RegisterApplicationServices(configuration);
         using var container = builder.Build();
 
-        var registered = container.Resolve<IEnumerable<IPackageFeature>>()
-            .Any(feature => feature.PackageId == "ignixa.reindex");
+        var registered = container.ComponentRegistry.Registrations
+            .Any(registration => registration.Activator.LimitType == typeof(ReindexFeature));
 
         registered.ShouldBe(expected);
     }
