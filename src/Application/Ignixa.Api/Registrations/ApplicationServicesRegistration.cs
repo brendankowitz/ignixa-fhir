@@ -197,11 +197,6 @@ public static class ApplicationServicesRegistration
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()
             .InstancePerDependency();
 
-        builder.RegisterType<NullConformanceDefinitionsSynchronizer>()
-            .As<IConformanceDefinitionsSynchronizer>()
-            .SingleInstance()
-            .PreserveExistingDefaults();
-
         builder.Register(c => new ConformanceBarrierRetryPolicy(
                 c.Resolve<IConformanceDefinitionsSynchronizer>(),
                 TimeSpan.FromSeconds(configuration.GetValue("Conformance:SyncIntervalSeconds", 30)),

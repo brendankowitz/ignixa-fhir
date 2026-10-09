@@ -253,7 +253,7 @@ public class StartReindexActivityTests
                     return (IReadOnlyList<SourceEvent>)committed;
                 });
             Lifecycle = new ReindexLifecycleEventWriter(eventStore, State);
-            Updater = new ReindexJobUpdater(Repository, _jobLock, new NullReindexCompletionHook());
+            Updater = new ReindexJobUpdater(Repository, _jobLock, Substitute.For<IReindexCompletionHook>());
         }
 
         public InMemoryBackgroundJobRepository<ReindexJobDefinition> Repository { get; }

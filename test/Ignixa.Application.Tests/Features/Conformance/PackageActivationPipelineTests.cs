@@ -471,7 +471,7 @@ public class PackageActivationPipelineTests
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
-            new NullReindexTrigger(),
+            CreateReindexTrigger(),
             CreateFhirVersionContext(state),
             logger);
 
@@ -586,7 +586,7 @@ public class PackageActivationPipelineTests
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
-            new NullReindexTrigger(),
+            CreateReindexTrigger(),
             CreateFhirVersionContext(state),
             Substitute.For<ILogger<PackageActivationPipeline>>());
 
@@ -680,7 +680,7 @@ public class PackageActivationPipelineTests
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
             CreateRefreshPublisher(state, cacheRefresher),
             lease,
-            reindexTrigger ?? new NullReindexTrigger(),
+            reindexTrigger ?? CreateReindexTrigger(),
             CreateFhirVersionContext(state),
             Substitute.For<ILogger<PackageActivationPipeline>>());
     }
@@ -691,6 +691,16 @@ public class PackageActivationPipelineTests
             new SearchParameterResolutionOptions(),
             NullFhirBaseUriProvider.Instance,
             conformanceState: state);
+
+    private static IReindexTrigger CreateReindexTrigger()
+    {
+        var trigger = Substitute.For<IReindexTrigger>();
+        trigger.RequestReindexAsync(
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new ReindexTriggerResult(null, false, null)));
+        return trigger;
+    }
 
     private static ConformanceRefreshPublisher CreateRefreshPublisher(
         ConformanceState state,

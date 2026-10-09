@@ -388,7 +388,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             new TaskHubClient(runtime),
             repository,
             lifecycle,
-            new ReindexJobUpdater(repository, jobLock, new NullReindexCompletionHook()),
+            new ReindexJobUpdater(repository, jobLock, Substitute.For<IReindexCompletionHook>()),
             jobLock,
             Options.Create(new ReindexOptions()),
             TimeProvider.System,
