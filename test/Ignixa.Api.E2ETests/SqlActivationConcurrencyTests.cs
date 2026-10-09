@@ -7,7 +7,6 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.Services;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
-using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -106,15 +105,16 @@ public class SqlActivationConcurrencyTests
                 gateB.Release.TrySetResult();
                 var rejected = await second;
 
+                // B lost the append race, caught up to A's events under its activation lock and
+                // revalidated against them instead of reporting the race itself.
                 rejected.Success.ShouldBeFalse();
-                rejected.Issues.ShouldContain(issue => issue.Code == "CONFORMANCE_CONFLICT");
-                stateB.LastProcessedEventId.ShouldBe(snapshotPosition);
-                stateB.FindByCanonical(ContendedCanonical).ShouldBeNull();
+                rejected.Issues.ShouldContain(issue => issue.Code == "SP_STORAGE_IDENTITY");
+                stateB.LastProcessedEventId.ShouldBe(stateA.LastProcessedEventId);
+                stateB.FindByCanonical(ContendedCanonical)!.OverridesCanonical.ShouldBe(FirstRoot);
                 stateB.Packages.ShouldNotContainKey("race.loser@1");
                 finalCount = await CountAsync(connectionString);
                 finalCount.ShouldBe(beforeCount + 2);
 
-                await stateB.CatchUpAsync(hostB.Services.GetRequiredService<ISourceEventStore>(), cancellationToken);
                 var retry = await pipelineB.ActivateAsync("race.loser", "1", cancellationToken);
                 retry.Success.ShouldBeFalse();
                 retry.Issues.ShouldContain(issue => issue.Code == "SP_STORAGE_IDENTITY");

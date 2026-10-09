@@ -11,6 +11,8 @@ namespace Ignixa.Application.Features.Conformance;
 
 public sealed class ConformanceState : IConformanceStateView, IDisposable
 {
+    private const int MaxAppendAttempts = 3;
+
     private readonly Dictionary<(string ResourceType, string Code), ActiveSearchParameter> _searchParameters = [];
     private readonly List<ActiveSearchParameter> _searchParameterActivations = [];
     private readonly Dictionary<string, ActiveStructureDefinition> _structureDefinitions = [];
@@ -297,6 +299,50 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         {
             Apply(evt);
             _lastProcessedEventId = evt.EventId;
+        }
+    }
+
+    /// <summary>
+    /// Catches up, builds events against the caught-up projection and appends them at its position while the
+    /// caller holds the activation lock. When another writer appended first, the projection catches up and the
+    /// events are rebuilt, so each attempt validates against the state it is appended after.
+    /// </summary>
+    /// <param name="store">The durable event store.</param>
+    /// <param name="buildEvents">
+    /// Builds the events from the current projection; it runs once per attempt and returns no events when
+    /// there is nothing (left) to append.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the catch-up and the append.</param>
+    /// <returns>The committed events, already applied to this projection; empty when nothing was appended.</returns>
+    /// <exception cref="SourceEventConcurrencyException">Another writer won every attempt.</exception>
+    public async Task<IReadOnlyList<SourceEvent>> AppendWhileActivationLockHeldAsync(
+        ISourceEventStore store,
+        Func<IReadOnlyList<NewSourceEvent>> buildEvents,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            await CatchUpWhileActivationLockHeldAsync(store, cancellationToken);
+            var events = buildEvents();
+            if (events.Count == 0)
+            {
+                return [];
+            }
+
+            try
+            {
+                var committed = await store.AppendAsync(events, _lastProcessedEventId, cancellationToken);
+                foreach (var evt in committed)
+                {
+                    ApplyAndTrack(evt);
+                }
+
+                return committed;
+            }
+            catch (SourceEventConcurrencyException) when (attempt < MaxAppendAttempts)
+            {
+                // The next attempt catches up to the winning writer's events and rebuilds against them.
+            }
         }
     }
 

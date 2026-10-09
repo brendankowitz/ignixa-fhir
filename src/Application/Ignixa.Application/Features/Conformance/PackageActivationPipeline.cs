@@ -36,9 +36,6 @@ public class PackageActivationPipeline(
     IFhirVersionContext fhirVersionContext,
     ILogger<PackageActivationPipeline> logger)
 {
-    private const int TransitionSchedulingAttempts = 3;
-    private static readonly TimeSpan TransitionSchedulingRetryDelay = TimeSpan.FromMilliseconds(100);
-
     private readonly IPackageResourceRepository _packageRepo = packageRepo ?? throw new ArgumentNullException(nameof(packageRepo));
     private readonly ISourceEventStore _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
     private readonly ConformanceState _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -66,71 +63,49 @@ public class PackageActivationPipeline(
 
         var packageResources = await _packageRepo.GetResourcesForActivationAsync(packageId, version, cancellationToken);
         var resources = PackageResourceMapper.MapToPackageResources(packageResources);
+        var fhirVersion = packageResources.Length > 0 ? packageResources[0].FhirVersion : null;
 
         _logger.LogDebug(
             "Loaded {SearchParamCount} SearchParameters and {StructureDefCount} StructureDefinitions",
             resources.SearchParameters.Count,
             resources.StructureDefinitions.Count);
 
+        _logger.LogInformation("Activating package {PackageId}@{Version}", packageId, version);
+        var packageKey = $"{packageId}@{version}";
         IReadOnlyList<long> transitionEventIds;
         List<string> reindexNeeded;
-        var conformanceStateChanged = false;
+        IReadOnlyList<SourceEvent> persistedEvents;
         using (await _state.AcquireActivationLockAsync(cancellationToken))
         {
-            // Check if package is already activated (idempotency)
-            var packageKey = $"{packageId}@{version}";
-            if (_state.Packages.ContainsKey(packageKey))
-            {
-                _logger.LogDebug(
-                    "Package {PackageId}@{Version} already activated, skipping",
-                    packageId,
-                    version);
-                return ActivationResult.Succeeded([]);
-            }
-
-            _logger.LogInformation("Activating package {PackageId}@{Version}", packageId, version);
-
-            // 2. Validate against current state
-            var validation = ValidateCompositeComponents(resources, _state);
-            if (!validation.Success)
-            {
-                return RejectActivation(validation.Issues);
-            }
-
-            // Build and apply every proposed event to detached state before anything is durable.
-            var expectedLastEventId = _state.LastProcessedEventId;
-            using var staged = _state.CreateStagingCopy();
-            var (events, issue) = BuildAndValidateActivationEvents(
-                packageId,
-                version,
-                packageResources.FirstOrDefault()?.FhirVersion,
-                resources,
-                staged);
-            if (issue is not null)
-            {
-                return RejectActivation([issue]);
-            }
-
-            _logger.LogDebug("Built {EventCount} activation events", events.Count);
-
-            // The process-local lock cannot protect this snapshot from another host's activation.
-            // Compare its durable event position under the store's existing append lock.
-            IReadOnlyList<SourceEvent> persistedEvents;
+            // Validation runs against the caught-up projection on every attempt: the process-local lock
+            // cannot protect it from another host's activation, so the append is conditioned on its position.
+            IReadOnlyList<ValidationIssue> rejection = [];
             try
             {
-                persistedEvents = await _eventStore.AppendAsync(events, expectedLastEventId, cancellationToken);
+                persistedEvents = await _state.AppendWhileActivationLockHeldAsync(
+                    _eventStore,
+                    () =>
+                    {
+                        (var events, rejection) = BuildActivationEvents(packageId, version, fhirVersion, resources);
+                        return events;
+                    },
+                    cancellationToken);
             }
             catch (SourceEventConcurrencyException exception)
             {
                 return RejectActivation([new ValidationIssue("CONFORMANCE_CONFLICT", exception.Message)]);
             }
 
-            // 5. Apply events with correct EventIds to in-memory state
-            foreach (var evt in persistedEvents)
+            if (rejection.Count > 0)
             {
-                _state.ApplyAndTrack(evt);
+                return RejectActivation(rejection);
             }
-            conformanceStateChanged = persistedEvents.Count > 0;
+
+            if (persistedEvents.Count == 0)
+            {
+                _logger.LogDebug("Package {PackageId}@{Version} already activated, skipping", packageId, version);
+                return ActivationResult.Succeeded([]);
+            }
 
             transitionEventIds = persistedEvents
                 .Where(evt => evt.Data is SearchParameterActivated)
@@ -140,7 +115,7 @@ public class PackageActivationPipeline(
             reindexNeeded = DetectReindexRequirements(packageKey);
         }
 
-        // 7. Schedule phase two only after the phase-one event is durable.
+        // Schedule phase two only after the phase-one event is durable.
         var transitionSchedulingDeferred = false;
         foreach (var eventId in transitionEventIds)
         {
@@ -209,46 +184,57 @@ public class PackageActivationPipeline(
             localRefreshDeferred: !refreshed,
             transitionSchedulingDeferred: transitionSchedulingDeferred,
             reindex: reindex,
-            conformancePublished: conformanceStateChanged && refreshed);
+            conformancePublished: refreshed);
     }
 
     private async Task<bool> TryScheduleTransitionAsync(long eventId)
     {
-        Exception? lastException = null;
-        for (var attempt = 1; attempt <= TransitionSchedulingAttempts; attempt++)
+        try
         {
-            try
-            {
-                await _transitionScheduler.ScheduleAsync(
-                    eventId,
-                    _transitionOptions.TransitionGrace,
-                    CancellationToken.None);
-                return true;
-            }
-            catch (Exception exception)
-            {
-                lastException = exception;
-                if (attempt < TransitionSchedulingAttempts)
-                {
-                    _logger.LogWarning(
-                        exception,
-                        "Scheduling transition for hide EventId {EventId} failed on attempt {Attempt}; retrying",
-                        eventId,
-                        attempt);
-                    await Task.Delay(TransitionSchedulingRetryDelay, CancellationToken.None);
-                }
-            }
+            await _transitionScheduler.ScheduleAsync(
+                eventId,
+                _transitionOptions.TransitionGrace,
+                CancellationToken.None);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            // The activation event is already durable; startup reconciliation schedules the transition again.
+            ConformanceMetrics.RecordTransitionScheduleFailure();
+            _logger.LogError(
+                exception,
+                "Package activation persisted hide EventId {EventId}, but transition scheduling failed; startup reconciliation will retry",
+                eventId);
+            return false;
+        }
+    }
+
+    // Builds against the caught-up projection; no events and no issues means the package is already active.
+    private (IReadOnlyList<NewSourceEvent> Events, IReadOnlyList<ValidationIssue> Issues) BuildActivationEvents(
+        string packageId,
+        string version,
+        string? fhirVersionString,
+        PackageResources resources)
+    {
+        if (_state.Packages.ContainsKey($"{packageId}@{version}"))
+        {
+            return ([], []);
         }
 
-        // The activation event is already durable. Do not report a false activation failure, but make
-        // the degraded condition explicit; the sync watchdog will make a fresh, full-grace attempt.
-        ConformanceMetrics.RecordTransitionScheduleFailure();
-        _logger.LogError(
-            lastException,
-            "Package activation persisted hide EventId {EventId}, but transition scheduling failed after {AttemptCount} attempts; the watchdog will retry",
-            eventId,
-            TransitionSchedulingAttempts);
-        return false;
+        var validation = ValidateCompositeComponents(resources, _state);
+        if (!validation.Success)
+        {
+            return ([], validation.Issues);
+        }
+
+        using var staged = _state.CreateStagingCopy();
+        var (events, issue) = BuildAndValidateActivationEvents(
+            packageId,
+            version,
+            fhirVersionString,
+            resources,
+            staged);
+        return issue is null ? (events, []) : ([], [issue]);
     }
 
     private static ValidationResult ValidateCompositeComponents(PackageResources resources, ConformanceState state)

@@ -619,10 +619,82 @@ public class PackageActivationPipelineTests
 
         result.Success.ShouldBeTrue();
         result.TransitionSchedulingDeferred.ShouldBeTrue();
-        await transitionScheduler.Received(3).ScheduleAsync(
+        await transitionScheduler.Received(1).ScheduleAsync(
             2,
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task GivenAnotherWriterAppendsFirst_WhenActivated_ThenItCatchesUpAndActivatesAfterTheWinner()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync("test.custom", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns([CreateCustomResource()]);
+        var winner = new SourceEvent(
+            1,
+            "package:other@1.0.0",
+            nameof(PackageActivated),
+            new PackageActivated("other", "1.0.0", []),
+            DateTimeOffset.UtcNow);
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(EmptyEvents(), Events(winner), EmptyEvents());
+        eventStore.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 0, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<SourceEvent>>(new SourceEventConcurrencyException(0, 1)));
+        eventStore.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 1, Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(call.Arg<IEnumerable<NewSourceEvent>>()
+                .Select((sourceEvent, index) => new SourceEvent(
+                    index + 2,
+                    sourceEvent.StreamId,
+                    sourceEvent.EventType,
+                    sourceEvent.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray()));
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            eventStore,
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TestConformanceRefresher.Tenants());
+
+        var result = await pipeline.ActivateAsync("test.custom", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue(string.Join("; ", result.Issues.Select(issue => $"{issue.Code}: {issue.Message}")));
+        state.Packages.ShouldContainKey("other@1.0.0");
+        state.Packages.ShouldContainKey("test.custom@1.0.0");
+        await eventStore.Received(1).AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 1, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenEveryAppendLosesTheRace_WhenActivated_ThenItFailsWithAConformanceConflictAfterBoundedRetries()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync("test.custom", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns([CreateCustomResource()]);
+        var eventStore = Substitute.For<ISourceEventStore>();
+        eventStore.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(_ => EmptyEvents());
+        eventStore.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<SourceEvent>>(new SourceEventConcurrencyException(0, 1)));
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            eventStore,
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TestConformanceRefresher.Tenants());
+
+        var result = await pipeline.ActivateAsync("test.custom", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeFalse();
+        result.Issues.ShouldContain(issue => issue.Code == "CONFORMANCE_CONFLICT");
+        state.Packages.ShouldNotContainKey("test.custom@1.0.0");
+        await eventStore.Received(3).AppendAsync(
+            Arg.Any<IEnumerable<NewSourceEvent>>(),
+            Arg.Any<long>(),
+            Arg.Any<CancellationToken>());
     }
 
     private static PackageActivationPipeline CreatePipeline(
@@ -1001,4 +1073,18 @@ public class PackageActivationPipelineTests
                 null,
                 null),
             DateTimeOffset.UtcNow);
+    private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
+    {
+        await Task.CompletedTask;
+        foreach (var evt in events)
+        {
+            yield return evt;
+        }
+    }
 }

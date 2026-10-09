@@ -17,76 +17,25 @@ public sealed class SearchParameterTransitionCommitter(
     ConformanceRefresher conformanceRefresher,
     ILogger<SearchParameterTransitionCommitter> logger)
 {
-    private const int MaxConcurrencyAttempts = 3;
-
     public async Task<bool> CommitAsync(long hideEventId, CancellationToken cancellationToken)
     {
-        var committedTransition = false;
+        IReadOnlyList<SourceEvent> committed;
         var reindexRequired = false;
         using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
         {
-            for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
-            {
-                await conformanceState.CatchUpWhileActivationLockHeldAsync(eventStore, cancellationToken);
-                var candidates = conformanceState.GetTransitionCandidates(hideEventId);
-                if (candidates.Count == 0)
+            committed = await conformanceState.AppendWhileActivationLockHeldAsync(
+                eventStore,
+                () =>
                 {
-                    break;
-                }
-
-                using var staging = conformanceState.CreateStagingCopy();
-                var applicable = new List<(SearchParameterTransitionCandidate Candidate, NewSourceEvent Event)>();
-                foreach (var candidate in candidates)
-                {
-                    var proposed = new NewSourceEvent(
-                        $"transition:{hideEventId}",
-                        nameof(SearchParameterTransitionCommitted),
-                        new SearchParameterTransitionCommitted(
-                            candidate.SearchParamId,
-                            candidate.ActivationEventIds,
-                            candidate.DeactivationEventIds));
-                    _ = staging.ApplyProposedEvent(proposed);
-                    if (staging.GetTransitionCandidates(hideEventId)
-                        .All(current => current.SearchParamId != candidate.SearchParamId))
-                    {
-                        applicable.Add((candidate, proposed));
-                    }
-                }
-
-                if (applicable.Count == 0)
-                {
-                    break;
-                }
-
-                var expectedLastEventId = conformanceState.LastProcessedEventId;
-                IReadOnlyList<SourceEvent> committed;
-                try
-                {
-                    committed = await eventStore.AppendAsync(
-                        applicable.Select(item => item.Event),
-                        expectedLastEventId,
-                        cancellationToken);
-                }
-                catch (SourceEventConcurrencyException) when (attempt < MaxConcurrencyAttempts - 1)
-                {
-                    // A different writer advanced the event stream. Catch up while holding the
-                    // activation lock, then commit the still-current candidates on the next attempt.
-                    continue;
-                }
-
-                foreach (var evt in committed)
-                {
-                    conformanceState.ApplyAndTrack(evt);
-                }
-
-                committedTransition = committed.Count > 0;
-                reindexRequired = committedTransition &&
-                    applicable.Any(item => item.Candidate.ActivationEventIds.Count > 0);
-                break;
-            }
+                    var applicable = GetApplicableCandidates(hideEventId);
+                    reindexRequired = applicable.Any(item => item.Candidate.ActivationEventIds.Count > 0);
+                    return applicable.Select(item => item.Event).ToArray();
+                },
+                cancellationToken);
         }
 
-        if (reindexRequired)
+        var committedTransition = committed.Count > 0;
+        if (committedTransition && reindexRequired)
         {
             try
             {
@@ -107,5 +56,38 @@ public sealed class SearchParameterTransitionCommitter(
         await conformanceRefresher.RefreshAsync(force: false, cancellationToken);
 
         return committedTransition;
+    }
+
+    // A candidate is applicable only when its event would change the projection; appending one the
+    // state guards ignore would only add a stale event.
+    private IReadOnlyList<(SearchParameterTransitionCandidate Candidate, NewSourceEvent Event)> GetApplicableCandidates(
+        long hideEventId)
+    {
+        var candidates = conformanceState.GetTransitionCandidates(hideEventId);
+        if (candidates.Count == 0)
+        {
+            return [];
+        }
+
+        using var staging = conformanceState.CreateStagingCopy();
+        var applicable = new List<(SearchParameterTransitionCandidate Candidate, NewSourceEvent Event)>();
+        foreach (var candidate in candidates)
+        {
+            var proposed = new NewSourceEvent(
+                $"transition:{hideEventId}",
+                nameof(SearchParameterTransitionCommitted),
+                new SearchParameterTransitionCommitted(
+                    candidate.SearchParamId,
+                    candidate.ActivationEventIds,
+                    candidate.DeactivationEventIds));
+            _ = staging.ApplyProposedEvent(proposed);
+            if (staging.GetTransitionCandidates(hideEventId)
+                .All(current => current.SearchParamId != candidate.SearchParamId))
+            {
+                applicable.Add((candidate, proposed));
+            }
+        }
+
+        return applicable;
     }
 }

@@ -12,8 +12,6 @@ public sealed class ReindexLifecycleEventWriter(
     ISourceEventStore eventStore,
     ConformanceState conformanceState)
 {
-    private const int MaxConcurrencyAttempts = 3;
-
     public Task<IReadOnlyList<string>> StartAsync(
         string jobId,
         IReadOnlyList<ReindexParameterDefinition> targets,
@@ -98,90 +96,55 @@ public sealed class ReindexLifecycleEventWriter(
     {
         using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
         {
-            for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
-            {
-                await conformanceState.CatchUpWhileActivationLockHeldAsync(
-                    eventStore,
-                    cancellationToken);
-                var currentTargets = requireOwnership
-                    ? targets.Where(target => IsOwnedByJob(target, jobId)).ToArray()
-                    : targets;
-                var ignored = requireOwnership
-                    ? targets.Where(target => !IsOwnedByJob(target, jobId))
-                        .Select(TargetIdentity)
-                        .ToArray()
-                    : Array.Empty<string>();
-                if (currentTargets.Count == 0)
+            IReadOnlyList<string> ignored = [];
+            IReadOnlyList<(ReindexParameterDefinition Target, object Data)> appended = [];
+            await conformanceState.AppendWhileActivationLockHeldAsync(
+                eventStore,
+                () =>
                 {
-                    return ignored.Distinct(StringComparer.Ordinal).ToArray();
-                }
+                    var currentTargets = requireOwnership
+                        ? targets.Where(target => IsOwnedByJob(target, jobId)).ToArray()
+                        : targets;
+                    ignored = requireOwnership
+                        ? targets.Where(target => !IsOwnedByJob(target, jobId)).Select(TargetIdentity).ToArray()
+                        : [];
+                    appended = currentTargets.Select(target => (target, createEvent(target))).ToArray();
+                    return appended
+                        .Select(item => new NewSourceEvent(
+                            $"reindex:{item.Target.Canonical}",
+                            item.Data.GetType().Name,
+                            item.Data))
+                        .ToArray();
+                },
+                cancellationToken);
 
-                var expectedPosition = conformanceState.LastProcessedEventId;
-                var events = currentTargets.Select(target =>
-                {
-                    var data = createEvent(target);
-                    return new
-                    {
-                        Target = target,
-                        Data = data,
-                        Event = new NewSourceEvent(
-                            $"reindex:{target.Canonical}",
-                            data.GetType().Name,
-                            data)
-                    };
-                }).ToArray();
-                IReadOnlyList<SourceEvent> committed;
-                try
-                {
-                    committed = await eventStore.AppendAsync(
-                        events.Select(item => item.Event),
-                        expectedPosition,
-                        cancellationToken);
-                }
-                catch (SourceEventConcurrencyException) when (attempt < MaxConcurrencyAttempts - 1)
-                {
-                    continue;
-                }
-
-                foreach (var evt in committed)
-                {
-                    conformanceState.ApplyAndTrack(evt);
-                }
-
-                return ignored.Concat(events
-                    .Where(item =>
-                    {
-                        var current = conformanceState.GetSearchParameter(
-                            item.Target.ResourceType,
-                            item.Target.Code);
-                        if (current?.ActivationEventId != item.Target.ActivationEventId)
-                        {
-                            return true;
-                        }
-
-                        return item.Data switch
-                        {
-                            SearchParameterReindexStarted =>
-                                current.Status != SearchParameterStatus.Reindexing ||
-                                current.ReindexJobId != jobId,
-                            SearchParameterReindexCompleted =>
-                                current.Status != SearchParameterStatus.Enabled ||
-                                current.ReindexJobId is not null,
-                            SearchParameterReindexFailed =>
-                                current.Status != SearchParameterStatus.Pending ||
-                                current.ReindexJobId is not null,
-                            _ => true
-                        };
-                    })
+            return ignored
+                .Concat(appended
+                    .Where(item => !WasApplied(item.Target, item.Data, jobId))
                     .Select(item => TargetIdentity(item.Target)))
-                    .Distinct(StringComparer.Ordinal)
-                    .ToArray();
-            }
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
+    private bool WasApplied(ReindexParameterDefinition target, object data, string jobId)
+    {
+        var current = conformanceState.GetSearchParameter(target.ResourceType, target.Code);
+        if (current?.ActivationEventId != target.ActivationEventId)
+        {
+            return false;
         }
 
-        throw new SourceEventConcurrencyException(
-            conformanceState.LastProcessedEventId,
-            conformanceState.LastProcessedEventId);
+        return data switch
+        {
+            SearchParameterReindexStarted =>
+                current.Status == SearchParameterStatus.Reindexing && current.ReindexJobId == jobId,
+            SearchParameterReindexCompleted =>
+                current.Status == SearchParameterStatus.Enabled && current.ReindexJobId is null,
+            SearchParameterReindexFailed =>
+                current.Status == SearchParameterStatus.Pending && current.ReindexJobId is null,
+            _ => false
+        };
     }
 
     private bool IsOwnedByJob(ReindexParameterDefinition target, string jobId)
