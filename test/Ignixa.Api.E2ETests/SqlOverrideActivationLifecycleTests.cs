@@ -170,6 +170,9 @@ public class SqlOverrideActivationLifecycleTests
                 .Single(parameter => parameter!["name"]!.GetValue<string>() == "id")!["valueString"]!
                 .GetValue<string>();
             await WaitForReindexAsync(client, jobId);
+            // Completion no longer refreshes local consumers synchronously (M9); the sync tick does it.
+            await host.Services.GetRequiredService<ConformanceRefreshPublisher>()
+                .RefreshUntilCurrentAsync(CancellationToken.None);
             RenewLease(host.Services);
             var searchableDefinitions = host.Services.GetRequiredService<IFhirVersionContext>()
                 .GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
