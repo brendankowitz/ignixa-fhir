@@ -94,6 +94,78 @@ public class CompleteReindexActivityTests
     }
 
     [Fact]
+    public async Task GivenFailedDecisionPersistsBeforeLifecycleAppendFails_WhenActivityRetries_ThenTargetIsNotEnabled()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-retry-lifecycle";
+        var (jobs, tenants) = await CreateRunningJobAsync([Tenant(1), Tenant(2)]);
+        var failAppend = false;
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(() => failAppend), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(
+            RepositoryFactoryWithCatalogId(17),
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, Substitute.For<IReindexCompletionHook>()),
+            tenants);
+        var input = SingleTenantInput(target);
+        var context = new TaskContext(new OrchestrationInstance { InstanceId = "job" });
+
+        failAppend = true;
+        await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(
+            () => activity.RunAsync(context, input));
+        (await jobs.GetAsync("job", 1, CancellationToken.None))!.Status.ShouldBe("Completing");
+
+        failAppend = false;
+        await activity.RunAsync(context, input);
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+        job!.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("manual $reindex");
+    }
+
+    [Fact]
+    public async Task GivenLifecycleCommittedBeforeHookFails_WhenActivityRetries_ThenPersistedFailureReasonIsKept()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-retry-reason";
+        var (jobs, tenants) = await CreateRunningJobAsync([Tenant(1), Tenant(2)]);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        var completionHook = Substitute.For<IReindexCompletionHook>();
+        var failHook = true;
+        completionHook.OnCompletedAsync(
+                Arg.Any<BackgroundJob<ReindexJobDefinition>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => failHook
+                ? Task.FromException(new InvalidOperationException("completion hook unavailable"))
+                : Task.CompletedTask);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(
+            RepositoryFactoryWithCatalogId(17),
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, completionHook),
+            tenants);
+        var input = SingleTenantInput(target);
+        var context = new TaskContext(new OrchestrationInstance { InstanceId = "job" });
+
+        await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(
+            () => activity.RunAsync(context, input));
+        failHook = false;
+        await activity.RunAsync(context, input);
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        job!.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("manual $reindex");
+        job.Progress!["terminalOutcomes"]!.AsArray().Count.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task GivenActiveTenantWasNotInJob_WhenCompletionRuns_ThenJobFailsWithoutEnablingTarget()
     {
         const string canonical = "http://example.org/SearchParameter/patient-new-tenant";
@@ -405,6 +477,69 @@ public class CompleteReindexActivityTests
         job.Progress!["terminalOutcomes"]![0]!["resourcesIndexed"]!.GetValue<long>().ShouldBe(1);
         state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(
             Ignixa.Conformance.Events.Models.SearchParameterStatus.Enabled);
+    }
+
+    private static async Task<(InMemoryBackgroundJobRepository<ReindexJobDefinition> Jobs, ITenantConfigurationStore Tenants)>
+        CreateRunningJobAsync(IReadOnlyList<TenantConfiguration> activeTenants)
+    {
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.Mode.Returns(TenantMode.Isolated);
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns(activeTenants);
+        var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
+            tenants,
+            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+        await jobs.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = "job",
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Running",
+            Definition = ReindexJobDefinition.CreateForTest(),
+            CreateDate = DateTimeOffset.UtcNow,
+            HeartbeatDate = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+        return (jobs, tenants);
+    }
+
+    private static IFhirRepositoryFactory RepositoryFactoryWithCatalogId(int searchParamId)
+    {
+        var repository = Substitute.For<IFhirRepository, IReindexStore>();
+        ((IReindexStore)repository).HasSearchParameterAsync(searchParamId, Arg.Any<CancellationToken>())
+            .Returns(true);
+        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
+        return repositoryFactory;
+    }
+
+    private static string SingleTenantInput(ReindexTarget target) =>
+        JsonSerializer.Serialize(new[]
+        {
+            new CompleteReindexInput(
+                "job",
+                1,
+                [target],
+                [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                [])
+        });
+
+    private static ISourceEventStore EventStore(Func<bool> failAppend)
+    {
+        var store = EventStore();
+        long nextEventId = 100;
+        store.AppendAsync(
+                Arg.Any<IEnumerable<NewSourceEvent>>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call => failAppend()
+                ? throw new InvalidOperationException("event store unavailable")
+                : call.Arg<IEnumerable<NewSourceEvent>>()
+                    .Select(evt => new SourceEvent(
+                        nextEventId++,
+                        evt.StreamId,
+                        evt.EventType,
+                        evt.Data,
+                        DateTimeOffset.UtcNow))
+                    .ToArray());
+        return store;
     }
 
     private static ISourceEventStore EventStore()

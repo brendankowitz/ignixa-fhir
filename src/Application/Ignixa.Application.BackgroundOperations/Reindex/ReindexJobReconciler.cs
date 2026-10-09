@@ -233,7 +233,7 @@ public sealed class ReindexJobReconciler(
             ScheduledResourceTypes = target.ScheduledResourceTypes
         }).ToArray();
 
-    private static IReadOnlyDictionary<string, PersistedOutcome> ReadPersistedOutcomes(
+    internal static IReadOnlyDictionary<string, PersistedOutcome> ReadPersistedOutcomes(
         JsonNode? progress) =>
         (progress?["terminalOutcomes"] as JsonArray)?
             .OfType<JsonObject>()
@@ -259,7 +259,7 @@ public sealed class ReindexJobReconciler(
                 StringComparer.Ordinal)
         ?? new Dictionary<string, PersistedOutcome>(StringComparer.Ordinal);
 
-    private static string TargetIdentity(ReindexTarget target) =>
+    internal static string TargetIdentity(ReindexTarget target) =>
         TargetIdentity(target.Canonical, target.ResourceType, target.Code);
 
     private static string TargetIdentity(string canonical, string resourceType, string code) =>
@@ -273,7 +273,7 @@ public sealed class ReindexJobReconciler(
     private static bool IsTerminal(string status) =>
         status is "Completed" or "Failed" or "Cancelled";
 
-    private sealed record PersistedOutcome(
+    internal sealed record PersistedOutcome(
         bool Success,
         long ResourcesIndexed,
         string? ErrorMessage);
