@@ -6,6 +6,7 @@
 
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
+using System.Text.RegularExpressions;
 
 namespace Ignixa.FhirMappingLanguage.Registry;
 
@@ -79,10 +80,13 @@ internal class ImportResolver
         // Then check imports
         foreach (var import in map.Imports)
         {
-            group = GetImportedGroup(import.Url, groupName);
-            if (group is not null)
+            foreach (var imported in GetMatchingMaps(import.Url))
             {
-                return group;
+                group = GetImportedGroup(imported.Url, groupName);
+                if (group is not null)
+                {
+                    return group;
+                }
             }
         }
 
@@ -97,6 +101,19 @@ internal class ImportResolver
     public MapExpression? GetImportedMap(string url)
     {
         return _registry.GetByUrl(url);
+    }
+
+    public MapExpression FindOwningMap(GroupExpression group) =>
+        _registry.GetAllUrls().Select(url => _registry.GetByUrl(url)!)
+            .Single(map => map.Groups.Contains(group));
+
+    private IEnumerable<MapExpression> GetMatchingMaps(string pattern)
+    {
+        var regex = "\\A" + Regex.Escape(pattern).Replace("\\*", ".*", StringComparison.Ordinal) + "\\z";
+        return _registry.GetAllUrls()
+            .Where(url => Regex.IsMatch(url, regex, RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)))
+            .OrderBy(url => url, StringComparer.Ordinal)
+            .Select(url => _registry.GetByUrl(url)!);
     }
 
     private async Task ResolveImportsRecursiveAsync(MapExpression map, HashSet<string> visitedUrls)
@@ -117,6 +134,18 @@ internal class ImportResolver
         // Resolve each import
         foreach (var import in map.Imports)
         {
+            if (import.Url.Contains('*', StringComparison.Ordinal))
+            {
+                var matches = GetMatchingMaps(import.Url).ToList();
+                if (matches.Count == 0)
+                    throw new InvalidOperationException($"No registered maps match import '{import.Url}'.");
+                foreach (var match in matches)
+                {
+                    await ResolveImportsRecursiveAsync(match, visitedUrls);
+                }
+                continue;
+            }
+
             // Skip if already resolved
             if (_registry.Contains(import.Url))
             {

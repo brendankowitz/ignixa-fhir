@@ -19,12 +19,45 @@ public class MappingContext : ITransformContext
     private readonly Dictionary<string, IElement> _sources = new();
     private readonly Dictionary<string, IElement> _targets = new();
     private readonly Dictionary<string, object> _targetResources = new();
+    private readonly Dictionary<string, Lazy<IReadOnlyList<IElement>>> _constants = new(StringComparer.Ordinal);
+
+    internal IElement? Focus { get; set; }
+    internal IEnumerable<KeyValuePair<string, IElement>> Sources => _sources;
+    internal IEnumerable<KeyValuePair<string, IElement>> Targets => _targets;
+
+    internal void SetConstant(string name, Func<IReadOnlyList<IElement>> evaluate) =>
+        _constants[name] = new Lazy<IReadOnlyList<IElement>>(evaluate);
+
+    internal void ClearConstants() => _constants.Clear();
+    internal Dictionary<string, object> CaptureVariables() => new(_variables);
+    internal void RestoreVariables(Dictionary<string, object> variables)
+    {
+        _variables.Clear();
+        foreach (var variable in variables)
+        {
+            _variables.Add(variable.Key, variable.Value);
+        }
+    }
+
+    internal IReadOnlyList<IElement>? ResolveElements(string name)
+    {
+        var value = GetVariable(name);
+        return value switch
+        {
+            IElement element => [element],
+            IReadOnlyList<IElement> elements => elements,
+            _ when _sources.TryGetValue(name, out var source) => [source],
+            _ when _targets.TryGetValue(name, out var target) => [target],
+            _ => null
+        };
+    }
 
     /// <summary>
     /// Gets or sets a variable in the context.
     /// </summary>
     public object? GetVariable(string name) =>
-        _variables.TryGetValue(name, out var value) ? value : null;
+        _variables.TryGetValue(name, out var value) ? value :
+        _constants.TryGetValue(name, out var constant) ? constant.Value : null;
 
     public void SetVariable(string name, object value) =>
         _variables[name] = value;
@@ -40,6 +73,9 @@ public class MappingContext : ITransformContext
 
     public void SetSource(string name, IElement element) =>
         _sources[name] = element;
+
+    internal void RemoveSource(string name) => _sources.Remove(name);
+    internal void RemoveTarget(string name) => _targets.Remove(name);
 
     /// <summary>
     /// Gets or sets a target element in the context.
@@ -79,6 +115,8 @@ public class MappingContext : ITransformContext
     /// ConceptMap resolver for terminology translation.
     /// </summary>
     public Func<string, string, string, string?>? ConceptMapResolver { get; set; }
+
+    public Func<object, string, string, object?>? TranslationResolver { get; set; }
 
     /// <summary>
     /// Logger for log statements in mapping execution.

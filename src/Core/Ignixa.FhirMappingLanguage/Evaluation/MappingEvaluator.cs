@@ -5,6 +5,8 @@
  * Executes parsed mapping AST to transform FHIR resources.
  */
 
+using System.Collections;
+using System.Text.Json.Nodes;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirMappingLanguage.Transforms;
@@ -34,6 +36,11 @@ public class MappingEvaluator
     // Security limit tracking
     private int _recursionDepth;
     private int _elementsCreated;
+    private Dictionary<string, IElement> _sharedTargets = new(StringComparer.Ordinal);
+    private Dictionary<(object Parent, string Property), IElement> _intermediateTargets = new();
+    private HashSet<(object Parent, TargetExpression Target)> _singleTargets = new();
+    private readonly Dictionary<(object Parent, string Property),
+        (TargetExpression? First, TargetExpression? Last, int FirstCount, List<IElement> LastItems)> _targetOrder = new();
 
     /// <summary>
     /// Creates a new MappingEvaluator instance.
@@ -134,30 +141,12 @@ public class MappingEvaluator
     /// <param name="context">The evaluation context with sources and targets</param>
     public void Execute(MapExpression map, MappingContext context)
     {
-        _currentMap = map;
-
-        // Wire up standard transforms if not already configured
-        context.TransformResolver ??= (name, args) =>
+        ArgumentNullException.ThrowIfNull(map);
+        if (map.Groups.Count == 0)
         {
-            var transform = StandardTransforms.Get(name);
-            if (transform == null)
-            {
-                throw new InvalidOperationException($"Transform function '{name}' not found");
-            }
-            return transform.Execute(args.ToList(), context);
-        };
-
-        // Wire up FhirPath evaluator if enabled and not already configured
-        if (_fhirPathIntegration != null && context.FhirPathEvaluator == null)
-        {
-            context.FhirPathEvaluator = (expression, element) => _fhirPathIntegration.Evaluate(expression, element);
+            throw new InvalidOperationException("The map has no entry group.");
         }
-
-        // Execute each group in the map
-        foreach (var group in map.Groups)
-        {
-            VisitGroup(group, map, context);
-        }
+        ExecuteGroup(map, map.Groups[0].Name, context);
     }
 
     /// <summary>
@@ -166,6 +155,11 @@ public class MappingEvaluator
     public void ExecuteGroup(MapExpression map, string groupName, MappingContext context)
     {
         _currentMap = map;
+        Reset();
+        _sharedTargets.Clear();
+        _intermediateTargets.Clear();
+        _singleTargets.Clear();
+        _targetOrder.Clear();
 
         // Wire up standard transforms if not already configured
         context.TransformResolver ??= (name, args) =>
@@ -181,7 +175,13 @@ public class MappingEvaluator
         // Wire up FhirPath evaluator if enabled and not already configured
         if (_fhirPathIntegration != null && context.FhirPathEvaluator == null)
         {
-            context.FhirPathEvaluator = (expression, element) => _fhirPathIntegration.Evaluate(expression, element);
+            context.FhirPathEvaluator = (expression, element) => _fhirPathIntegration.Evaluate(expression, element, context);
+        }
+
+        context.ClearConstants();
+        foreach (var constant in map.Constants)
+        {
+            context.SetConstant(constant.Name, () => VisitExpression(constant.Value, context).ToList());
         }
 
         var group = map.Groups.FirstOrDefault(g => g.Name == groupName);
@@ -299,69 +299,7 @@ public class MappingEvaluator
             // Set current rule for error tracking
             _currentRuleName = ruleName;
 
-            // Visit sources
-            var sourceValues = new Dictionary<string, IEnumerable<IElement>>();
-            var anonymousSourceIndex = 0;
-            foreach (var source in rule.Sources)
-            {
-                try
-                {
-                    var values = VisitSource(source, context, location);
-
-                    // Store source values with either the variable name or an anonymous key
-                    var key = source.Variable ?? $"__anonymous_{anonymousSourceIndex++}";
-                    sourceValues[key] = values;
-                }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
-                {
-                    CheckErrorLimit(context);
-                    context.AddError(
-                        $"Error evaluating source: {ex.Message}",
-                        location,
-                        "SOURCE_ERROR",
-                        ex,
-                        ruleName: ruleName,
-                        groupName: _currentGroupName,
-                        ruleIndex: _currentRuleIndex);
-                    // Continue with other sources
-                    var key = source.Variable ?? $"__anonymous_{anonymousSourceIndex++}";
-                    sourceValues[key] = [];
-                }
-            }
-
-            // If any source has no values and there's no condition allowing empty, skip this rule
-            if (sourceValues.Any(kvp => !kvp.Value.Any()))
-            {
-                return;
-            }
-
-            // Visit targets with list mode filtering
-            foreach (var target in rule.Targets)
-            {
-                try
-                {
-                    VisitTarget(target, context, sourceValues, location);
-                }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
-                {
-                    CheckErrorLimit(context);
-                    context.AddError(
-                        $"Error evaluating target: {ex.Message}",
-                        location,
-                        "TARGET_ERROR",
-                        ex,
-                        ruleName: ruleName,
-                        groupName: _currentGroupName,
-                        ruleIndex: _currentRuleIndex);
-                    // Continue with other targets
-                }
-            }
-
-            // Visit dependent expression (either group invocation or nested rules)
-            if (rule.Dependent != null)
-            {
-                VisitDependentExpression(rule.Dependent, context, groupName, location);
-            }
+            ExecuteRuleSources(rule, context, 0, new Dictionary<string, IEnumerable<IElement>>(), groupName, location);
         }
         catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
@@ -382,6 +320,58 @@ public class MappingEvaluator
         }
     }
 
+    private void ExecuteRuleSources(
+        RuleExpression rule, MappingContext context, int index,
+        Dictionary<string, IEnumerable<IElement>> sources, string? groupName, string location)
+    {
+        if (index < rule.Sources.Count)
+        {
+            var source = rule.Sources[index];
+            var values = VisitSource(source, context, location).ToList();
+            if (values.Count > 0 && rule.Targets.Any(t => t.ListMode == ListMode.OnlyOne))
+            {
+                values = ValidateOnlyOne(values).ToList();
+            }
+            foreach (var value in values)
+            {
+                if (source.Variable is not null)
+                {
+                    context.SetVariable(source.Variable, value);
+                }
+                sources[source.Variable ?? $"__anonymous_{index}"] = [value];
+                var previousFocus = context.Focus;
+                context.Focus = value;
+                try
+                {
+                    ExecuteRuleSources(rule, context, index + 1, sources, groupName, location);
+                }
+                finally
+                {
+                    context.Focus = previousFocus;
+                }
+            }
+            return;
+        }
+
+        var previousIntermediates = _intermediateTargets;
+        _intermediateTargets = new();
+        try
+        {
+            foreach (var target in rule.Targets)
+            {
+                VisitTarget(target, context, sources, location);
+            }
+            if (rule.Dependent is not null)
+            {
+                VisitDependentExpression(rule.Dependent, context, groupName, location);
+            }
+        }
+        finally
+        {
+            _intermediateTargets = previousIntermediates;
+        }
+    }
+
     private void VisitDependentExpression(Expression dependent, MappingContext context, string? groupName, string? location)
     {
         try
@@ -389,11 +379,7 @@ public class MappingEvaluator
             switch (dependent)
             {
                 case RuleSetExpression ruleSet:
-                    // Execute nested rules
-                    foreach (var nestedRule in ruleSet.Rules)
-                    {
-                        VisitRule(nestedRule, context, groupName);
-                    }
+                    VisitRuleSet(ruleSet, context, groupName);
                     break;
 
                 case GroupInvocationExpression groupInvocation:
@@ -401,6 +387,16 @@ public class MappingEvaluator
                     VisitGroupInvocation(groupInvocation, context, location);
                     break;
 
+                case DependentExpression clauses:
+                    foreach (var invocation in clauses.Invocations)
+                    {
+                        VisitGroupInvocation(invocation, context, location);
+                    }
+                    if (clauses.Rules is not null)
+                    {
+                        VisitDependentExpression(clauses.Rules, context, groupName, location);
+                    }
+                    break;
                 default:
                     throw new NotSupportedException($"Dependent expression type {dependent.GetType().Name} not supported");
             }
@@ -415,6 +411,24 @@ public class MappingEvaluator
                 ruleName: _currentRuleName,
                 groupName: _currentGroupName,
                 ruleIndex: _currentRuleIndex);
+        }
+    }
+
+    private void VisitRuleSet(RuleSetExpression ruleSet, MappingContext context, string? groupName)
+    {
+        var parentScope = _sharedTargets;
+        // Inherit existing target identities, but keep newly declared child bindings local.
+        _sharedTargets = new(parentScope, StringComparer.Ordinal);
+        try
+        {
+            foreach (var rule in ruleSet.Rules)
+            {
+                VisitRule(rule, context, groupName);
+            }
+        }
+        finally
+        {
+            _sharedTargets = parentScope;
         }
     }
 
@@ -454,9 +468,21 @@ public class MappingEvaluator
             // We need to map arguments to parameter names
             var originalSources = new Dictionary<string, IElement?>();
             var originalTargets = new Dictionary<string, IElement?>();
+            var originalVariables = context.CaptureVariables();
+            var originalShared = _sharedTargets;
+            var originalSingle = _singleTargets;
+            var arguments = invocation.Arguments.Select(a => VisitExpression(a, context, location).Single()).ToArray();
+            var originalMap = _currentMap;
 
+            _sharedTargets = new(StringComparer.Ordinal);
+            _singleTargets = new();
             try
             {
+                if (!_currentMap.Groups.Contains(targetGroup))
+                {
+                    _currentMap = _importResolver!.FindOwningMap(targetGroup);
+                }
+
                 // Save current parameter values and set new ones from arguments
                 for (int i = 0; i < targetGroup.Parameters.Count; i++)
                 {
@@ -464,7 +490,7 @@ public class MappingEvaluator
                     var arg = invocation.Arguments[i];
 
                     // Evaluate the argument
-                    var argValue = VisitExpression(arg, context, location).FirstOrDefault();
+                    var argValue = arguments[i];
 
                     if (argValue == null)
                     {
@@ -490,12 +516,20 @@ public class MappingEvaluator
             }
             finally
             {
+                _currentMap = originalMap;
+                context.RestoreVariables(originalVariables);
+                _sharedTargets = originalShared;
+                _singleTargets = originalSingle;
                 // Restore original parameter values
                 foreach (var kvp in originalSources)
                 {
                     if (kvp.Value != null)
                     {
                         context.SetSource(kvp.Key, kvp.Value);
+                    }
+                    else
+                    {
+                        context.RemoveSource(kvp.Key);
                     }
                 }
 
@@ -504,6 +538,10 @@ public class MappingEvaluator
                     if (kvp.Value != null)
                     {
                         context.SetTarget(kvp.Key, kvp.Value);
+                    }
+                    else
+                    {
+                        context.RemoveTarget(kvp.Key);
                     }
                 }
             }
@@ -528,6 +566,12 @@ public class MappingEvaluator
             // Visit the source context expression (materialize to avoid double enumeration)
             IEnumerable<IElement> contextValues = VisitExpression(source.Context, context, location).ToList();
 
+            if (source.Type is not null)
+            {
+                var type = ResolveTypeName(source.Type);
+                contextValues = contextValues.Where(e => e.InstanceType == type).ToList();
+            }
+
             // Apply default value if source is empty and default is specified
             if (!contextValues.Any() && source.Default != null)
             {
@@ -538,69 +582,21 @@ public class MappingEvaluator
             // Apply where condition if present
             if (source.Condition != null && source.Condition is FhirPathExpression fhirPathCondition)
             {
-                // Check if the where condition references mapping variables (contains function calls or mapping variable names)
-                var whereExpr = fhirPathCondition.PathExpression.Trim();
-                bool isContextualWhere = whereExpr.Contains('(', StringComparison.Ordinal) ||
-                                        whereExpr.StartsWith("src.", StringComparison.Ordinal) ||
-                                        whereExpr.StartsWith("tgt.", StringComparison.Ordinal);
-
-                if (isContextualWhere)
+                contextValues = contextValues.Where(element =>
                 {
-                    // Evaluate once against mapping context
                     try
                     {
-                        var whereResult = VisitFhirPath(fhirPathCondition, context);
-                        bool conditionMet = whereResult.Any() && whereResult.First().Value is bool b && b;
-
-                        if (!conditionMet)
-                        {
-                            // Filter out all elements
-                            contextValues = [];
-                        }
-                        // Otherwise keep all elements
+                        var result = EvaluateSourceExpression(fhirPathCondition, source, element, context).ToList();
+                        return result.Count == 1 && result[0].Value is true;
                     }
                     catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                     {
-                        context.AddError(
-                            $"Error evaluating where condition: {ex.Message}",
-                            location,
-                            "WHERE_ERROR",
-                            ex,
-                            ruleName: _currentRuleName,
-                            groupName: _currentGroupName,
-                            ruleIndex: _currentRuleIndex);
-                        contextValues = []; // Exclude all on error
+                        context.AddError($"Error evaluating where condition: {ex.Message}",
+                            location, "WHERE_ERROR", ex, ruleName: _currentRuleName,
+                            groupName: _currentGroupName, ruleIndex: _currentRuleIndex);
+                        return false;
                     }
-                }
-                else
-                {
-                    // Evaluate against each element (for element-specific conditions like "use='official'")
-                    contextValues = contextValues.Where(element =>
-                    {
-                        try
-                        {
-                            if (context.FhirPathEvaluator == null)
-                            {
-                                throw new InvalidOperationException("FhirPathEvaluator not configured in context");
-                            }
-
-                            var result = context.FhirPathEvaluator(fhirPathCondition.PathExpression, element);
-                            return result.Any() && result.First().Value is bool b && b;
-                        }
-                        catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
-                        {
-                            context.AddError(
-                                $"Error evaluating where condition: {ex.Message}",
-                                location,
-                                "WHERE_ERROR",
-                                ex,
-                                ruleName: _currentRuleName,
-                                groupName: _currentGroupName,
-                                ruleIndex: _currentRuleIndex);
-                            return false; // Exclude element on error
-                        }
-                    });
-                }
+                }).ToList();
             }
 
             // Check cardinality constraint if present
@@ -662,7 +658,7 @@ public class MappingEvaluator
 
             // Materialize contextValues to a list to prevent multiple enumerations
             // If already a List (most common case), this is a no-op cast
-            var contextValuesList = contextValues.ToList();
+            var contextValuesList = ApplyListModeFiltering(contextValues.ToList(), source.ListMode).ToList();
 
             // Apply check condition if present
             if (source.Check != null && source.Check is FhirPathExpression fhirPathCheck)
@@ -676,46 +672,13 @@ public class MappingEvaluator
                         throw new InvalidOperationException("FhirPathEvaluator not configured in context");
                     }
 
-                    // If we have context values (including from defaults), create a wrapper that provides access to them
-                    // This allows check expressions like "src.active = true" to work even when active came from a default
-                    MappingContext checkContext = context;
-                    IElement? tempWrapper = null;
-
-                    if (contextValuesList.Any() && source.Context is QualifiedIdentifierExpression qual)
+                    foreach (var element in contextValuesList)
                     {
-                        // Extract the root and property from the qualified identifier
-                        var rootExpr = qual.Context;
-                        var propertyName = qual.Property;
-
-                        if (rootExpr is IdentifierExpression rootId)
+                        var checkResult = EvaluateSourceExpression(fhirPathCheck, source, element, context).ToList();
+                        if (checkResult.Count != 1 || checkResult[0].Value is not true)
                         {
-                            var originalRoot = context.GetSource(rootId.Name) ?? context.GetTarget(rootId.Name);
-                            if (originalRoot != null)
-                            {
-                                // Create a wrapper that adds the context values as a child property
-                                tempWrapper = new TempPropertyWrapper(originalRoot, propertyName, contextValuesList as IReadOnlyList<IElement> ?? contextValuesList.ToList());
-                                checkContext = new MappingContext();
-                                checkContext.SetSource(rootId.Name, tempWrapper);
-
-                                // Copy other sources/targets
-                                foreach (var (name, element) in GetAllContextElements(context))
-                                {
-                                    if (name != rootId.Name)
-                                    {
-                                        checkContext.SetSource(name, element);
-                                    }
-                                }
-
-                                checkContext.FhirPathEvaluator = context.FhirPathEvaluator;
-                            }
+                            throw new InvalidOperationException($"Check condition failed: {fhirPathCheck.PathExpression}");
                         }
-                    }
-
-                    // Evaluate the check expression in the mapping context
-                    var checkResult = VisitFhirPath(fhirPathCheck, checkContext);
-                    if (!checkResult.Any() || checkResult.First().Value is not bool b || !b)
-                    {
-                        throw new InvalidOperationException($"Check condition failed: {fhirPathCheck.PathExpression}");
                     }
                 }
                 catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
@@ -785,7 +748,7 @@ public class MappingEvaluator
                             if (source.Log is FhirPathExpression logExpr)
                             {
                                 // Evaluate as a mapping expression first (handles variables like "src")
-                                logResult = VisitFhirPath(logExpr, context);
+                                logResult = EvaluateSourceExpression(logExpr, source, element, context);
                             }
                             else
                             {
@@ -842,93 +805,111 @@ public class MappingEvaluator
         }
     }
 
+    private IEnumerable<IElement> EvaluateSourceExpression(
+        FhirPathExpression expression, SourceExpression source, IElement element, MappingContext context)
+    {
+        var previousFocus = context.Focus;
+        context.Focus = element;
+        if (source.Variable is not null)
+        {
+            context.SetVariable(source.Variable, element);
+        }
+        IElement? original = null;
+        string? rootName = null;
+        if (source.Default is not null &&
+            source.Context is QualifiedIdentifierExpression { Context: IdentifierExpression root } property)
+        {
+            original = context.GetSource(root.Name);
+            if (original is not null)
+            {
+                rootName = root.Name;
+                context.SetSource(rootName, new TempPropertyWrapper(original, property.Property, [element]));
+            }
+        }
+        try
+        {
+            return VisitFhirPath(expression, context).ToList();
+        }
+        finally
+        {
+            context.Focus = previousFocus;
+            if (rootName is not null && original is not null)
+            {
+                context.SetSource(rootName, original);
+            }
+        }
+    }
+
 #pragma warning disable CA1303 // Do not pass literals as localized parameters (debug logging)
     private void VisitTarget(TargetExpression target, MappingContext context, Dictionary<string, IEnumerable<IElement>> sourceValues, string? location = null)
     {
         try
         {
-            // Determine the collection to iterate over (typically comes from source values)
-            // For now, we use all source values combined as the basis for list mode filtering
-            var allSourceElements = sourceValues.Values.SelectMany(v => v).ToList();
-
-            // Apply list mode filtering
-            var filteredElements = ApplyListModeFiltering(allSourceElements, target.ListMode);
-
-            // Process each filtered element
-            foreach (var sourceElement in filteredElements)
+            var sourceElement = sourceValues.Values.First().Single();
+            IEnumerable<IElement> values;
+            if (target.Transform is TransformExpression transform)
             {
-                try
+                values = NormalizeTransformResult(VisitTransform(transform, context, location), transform);
+            }
+            else if (target.Transform is not null)
+            {
+                values = VisitExpression(target.Transform, context, location);
+            }
+            else
+            {
+                values = [sourceElement];
+            }
+
+            foreach (var value in values)
+            {
+                IElement result = value;
+                if (_mutator is IMappingTargetMutator mutation && target.Context is QualifiedIdentifierExpression property)
                 {
-                    // If there's a transform expression, visit it
-                    if (target.Transform is TransformExpression transform)
+                    var parent = ResolveTargetParent(property.Context, context, mutation);
+                    var sharedId = target.ListRuleId ?? property.Property;
+                    if (target.ListMode == ListMode.Single && !_singleTargets.Add(((object?)parent.Meta<JsonNode>() ?? parent, target)))
                     {
-                        var transformResult = VisitTransform(transform, context, location);
-
-                        // Set the result to the target context if specified
-                        if (target.Context != null && transformResult is IElement element)
-                        {
-                            // Set variable if specified (for rules with "as varname" on target)
-                            if (target.Variable != null)
-                            {
-                                context.SetVariable(target.Variable, element);
-                            }
-
-                            // Always mutate the target resource (variable is optional)
-                            if (_mutator != null)
-                            {
-                                MutateTargetResource(target, element, context, location);
-                            }
-                        }
+                        throw new InvalidOperationException("Target list mode 'single' requires exactly one target instance.");
                     }
-                    else if (target.Transform != null)
+                    if (target.ListMode == ListMode.Share && _sharedTargets.TryGetValue(sharedId, out var shared))
                     {
-                        // Handle literal value assignment (e.g., tgt.type = 'collection' or tgt.name = vn)
-                        var expressionResult = VisitExpression(target.Transform, context, location);
-                        if (target.Context != null && expressionResult.Any())
-                        {
-                            // Set variable if specified (for rules with "as varname" on target)
-                            if (target.Variable != null)
-                            {
-                                context.SetVariable(target.Variable, expressionResult.First());
-                            }
-
-                            // Always mutate the target resource (variable is optional)
-                            if (_mutator != null)
-                            {
-                                MutateTargetResource(target, expressionResult.First(), context, location);
-                            }
-                        }
+                        result = mutation.Refresh(shared);
                     }
-                    else if (target.Context != null)
+                    else
                     {
-                        // Simple assignment without transform - use sourceElement from loop
-                        // For "src.id -> tgt.id": target.Context=QualifiedIdentifierExpression(tgt.id), target.Variable=null
-                        // For "src.name as vn -> tgt.name = vn": this goes through the transform case above
-
-                        // Set variable if specified (for rules with "as varname")
-                        if (target.Variable != null)
+                        var defaultGroup = target.Transform is null && target.Variable is null
+                            ? FindDefaultGroup(value, mutation.GetTargetDefinition(parent, property.Property))
+                            : null;
+                        IElement? assigned = target.Transform is null && target.Variable is not null ? null : value;
+                        if (defaultGroup is not null)
                         {
-                            context.SetVariable(target.Variable, sourceElement);
+                            var targetType = defaultGroup.Parameters.Single(p => p.Mode == ParameterMode.Target).Type!;
+                            assigned = mutation.CreateElement(ResolveTypeName(targetType));
                         }
-
-                        // Always mutate the target resource (variable is optional)
-                        if (_mutator != null)
+                        TrackElementCreation();
+                        result = mutation.SetTarget(parent, property.Property, assigned);
+                        OrderTarget(parent, property.Property, target, result, mutation);
+                        if (target.ListMode == ListMode.Share)
                         {
-                            MutateTargetResource(target, sourceElement, context, location);
+                            _sharedTargets[sharedId] = result;
+                        }
+                        if (defaultGroup is not null)
+                        {
+                            InvokeBoundGroup(defaultGroup, [value, result], context);
                         }
                     }
                 }
-                catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
+                else if (_mutator is not null && target.Context is QualifiedIdentifierExpression)
                 {
-                    context.AddError(
-                        $"Error processing target element: {ex.Message}",
-                        location,
-                        "TARGET_ELEMENT_ERROR",
-                        ex,
-                        ruleName: _currentRuleName,
-                        groupName: _currentGroupName,
-                        ruleIndex: _currentRuleIndex);
-                    // Continue with next element
+                    MutateTargetResource(target, value, context, location);
+                }
+                else if (target.Context is IdentifierExpression id && target.Transform is null)
+                {
+                    result = context.GetTarget(id.Name) ?? value;
+                }
+                if (target.Variable is not null)
+                {
+                    context.SetVariable(target.Variable, result);
                 }
             }
         }
@@ -945,6 +926,140 @@ public class MappingEvaluator
         }
     }
 #pragma warning restore CA1303
+
+    private void OrderTarget(IElement parent, string property, TargetExpression target, IElement result, IMappingTargetMutator mutation)
+    {
+        if (!mutation.GetTargetDefinition(parent, property).IsCollection)
+            return;
+        var key = ((object?)parent.Meta<JsonNode>() ?? parent, property);
+        if (!_targetOrder.TryGetValue(key, out var order))
+            order = (null, null, 0, []);
+        if (target.ListMode == ListMode.First)
+        {
+            if (order.First is not null && !ReferenceEquals(order.First, target))
+                throw new InvalidOperationException($"Multiple rules specify 'first' for target '{property}'.");
+            order.First = target;
+            mutation.MoveTarget(result, order.FirstCount++);
+        }
+        if (target.ListMode == ListMode.Last)
+        {
+            if (order.Last is not null && !ReferenceEquals(order.Last, target))
+                throw new InvalidOperationException($"Multiple rules specify 'last' for target '{property}'.");
+            order.Last = target;
+            order.LastItems.Add(result);
+        }
+        foreach (var last in order.LastItems)
+        {
+            mutation.MoveTarget(last);
+        }
+        _targetOrder[key] = order;
+    }
+
+    private IElement ResolveTargetParent(Expression expression, MappingContext context, IMappingTargetMutator mutation)
+    {
+        if (expression is QualifiedIdentifierExpression property)
+        {
+            var parent = ResolveTargetParent(property.Context, context, mutation);
+            var key = ((object?)parent.Meta<JsonNode>() ?? parent, property.Property);
+            if (!_intermediateTargets.TryGetValue(key, out var intermediate))
+            {
+                TrackElementCreation();
+                intermediate = mutation.SetTarget(parent, property.Property, null);
+                _intermediateTargets.Add(key, intermediate);
+            }
+            return mutation.Refresh(intermediate);
+        }
+        var matches = VisitExpression(expression, context).ToList();
+        if (matches.Count == 1)
+        {
+            return mutation.Refresh(matches[0]);
+        }
+        throw new MappingExecutionException($"Target context '{expression}' resolved to {matches.Count} elements; expected one.",
+            code: "TARGET_RESOURCE_NOT_FOUND");
+    }
+
+    private string ResolveTypeName(string name) =>
+        _currentMap?.Uses.FirstOrDefault(u => u.Alias == name)?.Url.Split('/').Last() ?? name;
+
+    private GroupExpression? FindDefaultGroup(IElement source, IType target)
+    {
+        if (target is not ITypeExtended definition)
+            return null;
+        var matches = _currentMap?.Groups.Where(g =>
+            g.TypeMode != GroupTypeMode.None && g.Parameters.Count == 2 &&
+            g.Parameters[0].Mode == ParameterMode.Source &&
+            ResolveTypeName(g.Parameters[0].Type ?? string.Empty) == source.InstanceType &&
+            g.Parameters[1].Mode == ParameterMode.Target &&
+            definition.Types.Any(t => t.Code == ResolveTypeName(g.Parameters[1].Type ?? string.Empty) ||
+                (g.TypeMode == GroupTypeMode.TypeAndTypes && t.Code is "Resource" or "DomainResource"))).ToList() ?? [];
+        return matches.Count switch
+        {
+            0 => null,
+            1 => matches[0],
+            _ => throw new InvalidOperationException($"Multiple default groups match '{source.InstanceType}' and target '{target.Info.Name}'.")
+        };
+    }
+
+    private void InvokeBoundGroup(GroupExpression group, IReadOnlyList<IElement> arguments, MappingContext context)
+    {
+        var savedSources = group.Parameters.Select(p => context.GetSource(p.Name)).ToArray();
+        var savedTargets = group.Parameters.Select(p => context.GetTarget(p.Name)).ToArray();
+        var savedVariables = context.CaptureVariables();
+        var savedShared = _sharedTargets;
+        var savedSingle = _singleTargets;
+        _sharedTargets = new(StringComparer.Ordinal);
+        _singleTargets = new();
+        try
+        {
+            for (var i = 0; i < group.Parameters.Count; i++)
+            {
+                var parameter = group.Parameters[i];
+                if (parameter.Mode == ParameterMode.Source)
+                    context.SetSource(parameter.Name, arguments[i]);
+                else
+                    context.SetTarget(parameter.Name, arguments[i]);
+            }
+            VisitGroup(group, _currentMap!, context);
+        }
+        finally
+        {
+            context.RestoreVariables(savedVariables);
+            _sharedTargets = savedShared;
+            _singleTargets = savedSingle;
+            for (var i = 0; i < group.Parameters.Count; i++)
+            {
+                var name = group.Parameters[i].Name;
+                if (savedSources[i] is { } source) context.SetSource(name, source);
+                else context.RemoveSource(name);
+                if (savedTargets[i] is { } target) context.SetTarget(name, target);
+                else context.RemoveTarget(name);
+            }
+        }
+    }
+
+    private IEnumerable<IElement> NormalizeTransformResult(object? value, TransformExpression transform)
+    {
+        if (value is null) return [];
+        if (value is IElement element) return [element];
+        if (value is IEnumerable<IElement> elements) return elements;
+        if (value is IDictionary or JsonNode)
+        {
+            var type = transform.FunctionName switch
+            {
+                "cc" => "CodeableConcept",
+                "c" => "Coding",
+                "qty" => "Quantity",
+                "id" => "Identifier",
+                "cp" => "ContactPoint",
+                "translate" when transform.Arguments.Count > 0 => (transform.Arguments[^1] as LiteralExpression)?.Value as string,
+                _ => null
+            };
+            if (_mutator is not IMappingTargetMutator mutation || type is null)
+                throw new InvalidOperationException($"A schema-aware mutator is required for '{transform.FunctionName}' results.");
+            return [mutation.CreateElement(type, value)];
+        }
+        return [CreatePrimitive(value)];
+    }
 
     private IEnumerable<IElement> ApplyListModeFiltering(IReadOnlyList<IElement> elements, ListMode? listMode)
     {
@@ -986,17 +1101,40 @@ public class MappingEvaluator
                 throw new InvalidOperationException("TransformResolver not configured in context");
             }
 
+            if (transform.FunctionName == "evaluate")
+            {
+                if (transform.Arguments.Count != 2)
+                    throw new ArgumentException("evaluate() requires source and expression arguments.");
+                var results = new List<IElement>();
+                foreach (var focus in VisitExpression(transform.Arguments[0], context, location).ToList())
+                {
+                    var previousFocus = context.Focus;
+                    context.Focus = focus;
+                    try
+                    {
+                        results.AddRange(VisitExpression(transform.Arguments[1], context, location));
+                    }
+                    finally
+                    {
+                        context.Focus = previousFocus;
+                    }
+                }
+                return results;
+            }
+
             // Visit arguments
             List<object> args = [];
             foreach (var arg in transform.Arguments)
             {
                 try
                 {
-                    var argValue = VisitExpression(arg, context, location).FirstOrDefault();
-                    if (argValue != null)
-                    {
-                        args.Add(argValue.Value ?? argValue);
-                    }
+                    var argValues = VisitExpression(arg, context, location).ToList();
+                    if (argValues.Count == 0)
+                        return null;
+                    if (argValues.Count != 1)
+                        throw new InvalidOperationException($"Transform '{transform.FunctionName}' requires singleton arguments.");
+                    var argValue = argValues[0];
+                    args.Add(transform.FunctionName is "reference" or "pointer" or "cast" ? argValue : argValue.Value ?? argValue);
                 }
                 catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
                 {
@@ -1012,8 +1150,33 @@ public class MappingEvaluator
                 }
             }
 
+            if (transform.FunctionName == "translate" && args.Count == 3 &&
+                _currentMap?.ConceptMaps.FirstOrDefault(c => c.Identifier.TrimStart('#') == args[1].ToString()!.TrimStart('#')) is { } conceptMap)
+            {
+                return TranslateInline(conceptMap, args[0], args[2].ToString()!);
+            }
+
             // Call the transform function
-            return context.TransformResolver(transform.FunctionName, args);
+            var result = context.TransformResolver(transform.FunctionName, args);
+            if (transform.FunctionName == "cast" && result is not null && args.Count == 2 &&
+                CastTransform.GetFhirTypeName(TransformValue.String(args[1])) is { } targetType)
+            {
+                if (TransformValue.String(args[1]).StartsWith("System.", StringComparison.OrdinalIgnoreCase))
+                {
+                    var systemValue = result is IElement element
+                        ? element.Value ?? throw new InvalidOperationException("A System cast must produce a value.")
+                        : result;
+                    TrackElementCreation();
+                    return systemValue is FhirQuantity systemQuantity
+                        ? FhirPathIntegration.CreateSystemQuantity(systemQuantity)
+                        : new PrimitiveElement(systemValue, targetType == "integer64" ? "long" : targetType);
+                }
+                if (_mutator is not IMappingTargetMutator mutation)
+                    throw new InvalidOperationException("Casting to a FHIR type requires a schema-aware mapping mutator.");
+
+                return mutation.CreateElement(targetType, result is FhirQuantity quantity ? CastTransform.ToFhirQuantity(quantity) : result);
+            }
+            return result;
         }
         catch (Exception ex) when (context.ErrorMode == ErrorMode.Lenient)
         {
@@ -1027,6 +1190,28 @@ public class MappingEvaluator
                 ruleIndex: _currentRuleIndex);
             return null;
         }
+    }
+
+    private static object? TranslateInline(ConceptMapDeclarationExpression map, object source, string output)
+    {
+        var code = source is IElement element
+            ? element.Value?.ToString() ?? element.Children("code").SingleOrDefault()?.Value?.ToString()
+            : source.ToString();
+        var translation = map.Groups.SelectMany(g => g.CodeMaps)
+            .SingleOrDefault(m => m.SourceCode == code && m.Equivalence != ConceptMapEquivalence.NotRelatedTo);
+        if (translation is null)
+            return null;
+        var system = map.Prefixes.Single(p => p.PrefixName == translation.TargetPrefix).Url;
+        var coding = new Dictionary<string, object> { ["system"] = system, ["code"] = translation.TargetCode };
+        return output switch
+        {
+            "code" => translation.TargetCode,
+            "system" => system,
+            "display" => null,
+            "Coding" => coding,
+            "CodeableConcept" => new Dictionary<string, object> { ["coding"] = new[] { coding } },
+            _ => throw new ArgumentException($"Unsupported translate() output '{output}'.")
+        };
     }
 
     private IEnumerable<IElement> VisitExpression(Expression expr, MappingContext context, string? location = null)
@@ -1063,21 +1248,26 @@ public class MappingEvaluator
         var source = context.GetSource(id.Name);
         if (source != null)
         {
-            return new[] { source };
+            return new[] { RefreshElement(source) };
         }
 
         // Check if it's a target
         var target = context.GetTarget(id.Name);
         if (target != null)
         {
-            return new[] { target };
+            return new[] { RefreshElement(target) };
         }
 
         // Check if it's a variable
         var variable = context.GetVariable(id.Name);
         if (variable is IElement element)
         {
-            return new[] { element };
+            return new[] { RefreshElement(element) };
+        }
+
+        if (variable is IEnumerable<IElement> elements)
+        {
+            return elements.Select(RefreshElement).ToList();
         }
 
         return [];
@@ -1129,140 +1319,19 @@ public class MappingEvaluator
             throw new InvalidOperationException("FhirPathEvaluator not configured in context");
         }
 
-        // Try to parse and evaluate as a Mapping Language expression first
-        // This handles cases like "src.gender" which refer to mapping variables
-        var pathExpr = fhirPath.PathExpression.Trim();
-
-        // Try to parse as a mapping language qualified identifier (e.g., "src.gender")
-        if (TryParseAsMappingExpression(pathExpr, context, out var mappingResult))
-        {
-            return mappingResult;
-        }
-
-        // Fall back to FHIRPath evaluation for FHIRPath expressions with function calls
-        // (e.g., "src.id.exists()", "src.name.count()>0", "'hello'", "0")
-        // Create a context root element that provides access to mapping variables
-        var contextRoot = new MappingContextElement(context);
-        return context.FhirPathEvaluator(fhirPath.PathExpression, contextRoot);
+        MappingContextElement contextRoot = context.Focus is ISystemValueElement
+            ? new SystemMappingContextElement(context, RefreshElement)
+            : new MappingContextElement(context, RefreshElement);
+        return context.FhirPathEvaluator(fhirPath.PathExpression, contextRoot)
+            .Select(element => ReferenceEquals(element, contextRoot) && contextRoot.Focus is { } focus
+                ? RefreshElement(focus)
+                : element);
     }
 
-    private bool TryParseAsMappingExpression(string expression, MappingContext context, out IEnumerable<IElement> result)
-    {
-        result = Enumerable.Empty<IElement>();
-
-        // Check for simple identifier or qualified identifier patterns
-        // Simple identifier: "src", "tgt"
-        // Qualified identifier: "src.gender", "src.name.given"
-        // Indexed: "src.name[0]"
-
-        // If expression contains function calls (parentheses), operators, or comparisons,
-        // it's a FhirPath expression and should not be parsed as a mapping expression
-        if (expression.Contains('(', StringComparison.Ordinal) || expression.Contains('>', StringComparison.Ordinal) || expression.Contains('<', StringComparison.Ordinal) ||
-            expression.Contains('=', StringComparison.Ordinal) || expression.Contains('+', StringComparison.Ordinal) || expression.Contains('-', StringComparison.Ordinal) ||
-            expression.Contains('*', StringComparison.Ordinal) || expression.Contains('/', StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        List<string> parts = [];
-        var currentPart = new System.Text.StringBuilder();
-        var depth = 0;
-
-        foreach (var ch in expression)
-        {
-            if (ch == '[')
-            {
-                depth++;
-            }
-            else if (ch == ']')
-            {
-                depth--;
-            }
-            else if (ch == '.' && depth == 0)
-            {
-                if (currentPart.Length > 0)
-                {
-                    parts.Add(currentPart.ToString());
-                    currentPart.Clear();
-                }
-                continue;
-            }
-
-            currentPart.Append(ch);
-        }
-
-        if (currentPart.Length > 0)
-        {
-            parts.Add(currentPart.ToString());
-        }
-
-        if (parts.Count == 0)
-        {
-            return false;
-        }
-
-        // Check if the first part is a known variable
-        var rootName = parts[0].Split('[')[0]; // Handle indexed access like "src[0]"
-        var rootElement = context.GetSource(rootName) ?? context.GetTarget(rootName);
-
-        if (rootElement == null)
-        {
-            var variable = context.GetVariable(rootName);
-            if (variable is IElement element)
-            {
-                rootElement = element;
-            }
-        }
-
-        if (rootElement == null)
-        {
-            return false; // Not a mapping variable
-        }
-
-        // Navigate through the path
-        var current = new[] { rootElement }.AsEnumerable();
-
-        for (int i = 0; i < parts.Count; i++)
-        {
-            var part = parts[i];
-
-            // Handle array indexing
-            if (part.Contains('[', StringComparison.Ordinal) && part.Contains(']', StringComparison.Ordinal))
-            {
-                var propertyName = part.Substring(0, part.IndexOf('[', StringComparison.Ordinal));
-                var indexStr = part.Substring(part.IndexOf('[', StringComparison.Ordinal) + 1, part.IndexOf(']', StringComparison.Ordinal) - part.IndexOf('[', StringComparison.Ordinal) - 1);
-
-                if (i == 0)
-                {
-                    // Indexing on the root variable (e.g., "src[0]")
-                    if (int.TryParse(indexStr, out var index))
-                    {
-                        var list = current.ToList();
-                        current = index >= 0 && index < list.Count ? new[] { list[index] } : [];
-                    }
-                }
-                else
-                {
-                    // Navigate to property first, then index
-                    current = current.SelectMany(e => e.Children(propertyName));
-
-                    if (int.TryParse(indexStr, out var index))
-                    {
-                        var list = current.ToList();
-                        current = index >= 0 && index < list.Count ? new[] { list[index] } : [];
-                    }
-                }
-            }
-            else if (i > 0) // Skip the root, we already have it
-            {
-                // Navigate to property
-                current = current.SelectMany(e => e.Children(part));
-            }
-        }
-
-        result = current;
-        return true;
-    }
+    private IElement RefreshElement(IElement element) =>
+        _mutator is IMappingTargetMutator mutation && element.Meta<JsonNode>() is not null
+            ? mutation.Refresh(element)
+            : element;
 
     private IElement CreatePrimitive(object value)
     {
@@ -1272,7 +1341,9 @@ public class MappingEvaluator
         {
             string => "string",
             int => "integer",
+            long => "integer64",
             decimal => "decimal",
+            double => "decimal",
             bool => "boolean",
             _ => "object"
         };
@@ -1333,18 +1404,22 @@ public class MappingEvaluator
     private class MappingContextElement : IElement
     {
         private readonly MappingContext _context;
+        private readonly Func<IElement, IElement> _refresh;
 
-        public MappingContextElement(MappingContext context)
+        public MappingContextElement(MappingContext context, Func<IElement, IElement> refresh)
         {
             _context = context;
+            _refresh = refresh;
+            Focus = context.Focus;
         }
 
-        public string Name => string.Empty;
-        public string InstanceType => "MappingContext";
-        public object? Value => null;
+        public IElement? Focus { get; }
+        public string Name => Focus?.Name ?? string.Empty;
+        public string InstanceType => Focus?.InstanceType ?? "MappingContext";
+        public object? Value => Focus?.Value;
         public string Location => string.Empty;
-        public IType? Type => null;
-        public bool HasPrimitiveValue => false;
+        public IType? Type => Focus?.Type;
+        public bool HasPrimitiveValue => Focus?.HasPrimitiveValue ?? false;
 
         public IReadOnlyList<IElement> Children(string? name)
         {
@@ -1353,8 +1428,9 @@ public class MappingEvaluator
             if (name == null)
             {
                 // Return all sources and targets as children
-                result.AddRange(GetAllSources());
-                result.AddRange(GetAllTargets());
+                result.AddRange(Focus is { } focus ? _refresh(focus).Children() : []);
+                result.AddRange(_context.Sources.Select(s => _refresh(s.Value)));
+                result.AddRange(_context.Targets.Select(t => _refresh(t.Value)));
             }
             else
             {
@@ -1362,7 +1438,7 @@ public class MappingEvaluator
                 var source = _context.GetSource(name);
                 if (source != null)
                 {
-                    result.Add(source);
+                    result.Add(_refresh(source));
                     return result;
                 }
 
@@ -1370,15 +1446,18 @@ public class MappingEvaluator
                 var target = _context.GetTarget(name);
                 if (target != null)
                 {
-                    result.Add(target);
+                    result.Add(_refresh(target));
                     return result;
                 }
 
                 // Try to resolve as a general variable
-                var variable = _context.GetVariable(name);
-                if (variable is IElement element)
+                if (_context.ResolveElements(name) is { } values)
                 {
-                    result.Add(element);
+                    result.AddRange(values.Select(_refresh));
+                }
+                else if (Focus is { } focus)
+                {
+                    result.AddRange(_refresh(focus).Children(name));
                 }
             }
 
@@ -1387,30 +1466,13 @@ public class MappingEvaluator
 
         public T? Meta<T>() where T : class => null;
 
-        private IEnumerable<IElement> GetAllSources()
-        {
-            // Use reflection to access the private _sources dictionary
-            var contextType = _context.GetType();
-            var sourcesField = contextType.GetField("_sources", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (sourcesField?.GetValue(_context) is Dictionary<string, IElement> sources)
-            {
-                return sources.Values;
-            }
-            return Enumerable.Empty<IElement>();
-        }
-
-        private IEnumerable<IElement> GetAllTargets()
-        {
-            // Use reflection to access the private _targets dictionary
-            var contextType = _context.GetType();
-            var targetsField = contextType.GetField("_targets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (targetsField?.GetValue(_context) is Dictionary<string, IElement> targets)
-            {
-                return targets.Values;
-            }
-            return Enumerable.Empty<IElement>();
-        }
     }
+
+    /// <summary>
+    /// Preserves a System-valued focus when mapping variables are exposed alongside it.
+    /// </summary>
+    private sealed class SystemMappingContextElement(MappingContext context, Func<IElement, IElement> refresh)
+        : MappingContextElement(context, refresh), ISystemValueElement;
 
     /// <summary>
     /// Builds a string representation of an expression for matching against log expressions.
@@ -1424,33 +1486,6 @@ public class MappingEvaluator
             IndexExpression idx => $"{BuildExpressionString(idx.Context)}[{idx.Index}]",
             _ => string.Empty
         };
-    }
-
-    /// <summary>
-    /// Gets all context elements (sources and targets) from the mapping context.
-    /// </summary>
-    private IEnumerable<(string name, IElement element)> GetAllContextElements(MappingContext context)
-    {
-        // Use reflection to access private fields
-        var contextType = context.GetType();
-        var sourcesField = contextType.GetField("_sources", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var targetsField = contextType.GetField("_targets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        if (sourcesField?.GetValue(context) is Dictionary<string, IElement> sources)
-        {
-            foreach (var kvp in sources)
-            {
-                yield return (kvp.Key, kvp.Value);
-            }
-        }
-
-        if (targetsField?.GetValue(context) is Dictionary<string, IElement> targets)
-        {
-            foreach (var kvp in targets)
-            {
-                yield return (kvp.Key, kvp.Value);
-            }
-        }
     }
 
     /// <summary>
@@ -1604,25 +1639,6 @@ public class MappingEvaluator
         }
 
         return string.Join('.', parts);
-    }
-
-    /// <summary>
-    /// Builds a FHIRPath expression from FML variable name.
-    /// Converts "tgt.name.family" to "Patient.name.family" using resource type.
-    /// </summary>
-    private static string BuildFhirPath(ResourceJsonNode resource, string fmlVariable)
-    {
-        // Remove context prefix: "tgt.name" → "name"
-        var parts = fmlVariable.Split('.');
-        if (parts.Length < 2)
-        {
-            throw new ArgumentException($"Invalid FML variable '{fmlVariable}' - expected format 'context.property'");
-        }
-
-        var pathWithoutContext = string.Join('.', parts.Skip(1));
-
-        // Build FHIRPath: "Patient.name"
-        return $"{resource.ResourceType}.{pathWithoutContext}";
     }
 
     /// <summary>

@@ -13,18 +13,21 @@ public class TargetExpression : Expression
         string? variable,
         Expression? transform,
         ListMode? listMode,
-        ISourcePositionInfo? location = null) : base(location)
+        ISourcePositionInfo? location = null,
+        string? listRuleId = null) : base(location)
     {
         Context = context;
         Variable = variable;
         Transform = transform;
         ListMode = listMode;
+        ListRuleId = listRuleId;
     }
 
     public Expression? Context { get; }
     public string? Variable { get; }
     public Expression? Transform { get; }
     public ListMode? ListMode { get; }
+    public string? ListRuleId { get; }
 
     public override string ToString()
     {

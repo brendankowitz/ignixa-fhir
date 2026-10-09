@@ -4,11 +4,12 @@
  * Unit tests for standard transform functions.
  */
 
+using System.Globalization;
+using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Transforms;
 using Ignixa.Abstractions;
-using System.Text.Json.Nodes;
 using Xunit;
 
 #pragma warning disable CS8602 // Dereference of a possibly null reference - Test assertions handle nulls
@@ -21,11 +22,18 @@ public class StandardTransformsTests
 
     private class TestTypedElement : IElement
     {
-        public TestTypedElement(string name, object? value = null, string instanceType = "string")
+        private readonly IReadOnlyList<IElement> _children;
+
+        public TestTypedElement(
+            string name,
+            object? value = null,
+            string instanceType = "string",
+            IReadOnlyList<IElement>? children = null)
         {
             Name = name;
             Value = value;
             InstanceType = instanceType;
+            _children = children ?? [];
         }
 
         public string Name { get; }
@@ -36,7 +44,8 @@ public class StandardTransformsTests
         public IType? Definition => null;
         public bool HasPrimitiveValue => Value != null;
 
-        public IReadOnlyList<IElement> Children(string? name) => new List<IElement>();
+        public IReadOnlyList<IElement> Children(string? name) =>
+            name is null ? _children : _children.Where(child => child.Name == name).ToList();
 
         public T? Meta<T>() where T : class => null;
     }
@@ -55,6 +64,7 @@ public class StandardTransformsTests
         public Func<string, IElement>? ResourceCreator { get; set; }
         public Func<string, IElement, IEnumerable<IElement>>? FhirPathEvaluator { get; set; }
         public Func<string, string, string, string?>? ConceptMapResolver { get; set; }
+        public Func<object, string, string, object?>? TranslationResolver { get; set; }
 
         public void SetSource(string name, IElement element) => _sources[name] = element;
         public void SetTarget(string name, IElement element) => _targets[name] = element;
@@ -232,13 +242,34 @@ public class StandardTransformsTests
         result.ShouldBe("Hello World");
     }
 
+    [Fact]
+    public void GivenAppendTransform_WhenConcatenatingSeveralValues_ThenPreservesWhitespaceAndEveryArgument()
+    {
+        var transform = StandardTransforms.Get("append")!;
+
+        var result = transform.Execute(
+            [new TestTypedElement("family", "Append"), " ", 5, "blog"],
+            new TestContext());
+
+        result.ShouldBe("Append 5blog");
+    }
+
+    [Fact]
+    public void GivenAppendTransform_WhenExecutingWithOneValue_ThenReturnsItsPrimitiveText()
+    {
+        var result = StandardTransforms.Get("append")!.Execute(
+            [new TestTypedElement("active", true, "boolean")],
+            new TestContext());
+
+        result.ShouldBe("true");
+    }
+
     #endregion
 
     #region Type Conversion Tests
 
     [Theory]
     [InlineData("123", "integer", 123)]
-    [InlineData("45.67", "decimal", 45.67)]
     [InlineData("true", "boolean", true)]
     [InlineData("test", "string", "test")]
     public void GivenCastTransform_WhenExecuting_ThenConvertsType(object input, string targetType, object expected)
@@ -252,6 +283,30 @@ public class StandardTransformsTests
 
         // Assert
         result.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void GivenNonEnglishCulture_WhenConvertingTransformValues_ThenUsesInvariantFhirLexicalForms()
+    {
+        CultureInfo previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var context = new TestContext();
+
+            var cast = StandardTransforms.Get("cast")!.Execute(
+                [new TestTypedElement("value", "45.67"), "FHIR.decimal"], context);
+            var append = StandardTransforms.Get("append")!.Execute([45.67m, " ", false], context);
+            var quantity = StandardTransforms.Get("qty")!.Execute(["45.67", "mg"], context);
+
+            cast.ShouldBeOfType<decimal>().ShouldBe(45.67m);
+            append.ShouldBe("45.67 false");
+            quantity.ShouldBeOfType<JsonObject>()["value"]!.GetValue<decimal>().ShouldBe(45.67m);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
     }
 
     [Fact]
@@ -322,6 +377,28 @@ public class StandardTransformsTests
     }
 
     [Fact]
+    public void GivenCodeableConceptTransform_WhenExecutingWithTextOnly_ThenCreatesOnlyText()
+    {
+        var result = StandardTransforms.Get("cc")!.Execute(
+            [new TestTypedElement("text", "Non coded text")], new TestContext());
+
+        JsonNode.DeepEquals(
+            result.ShouldBeOfType<JsonObject>(),
+            JsonNode.Parse("""{"text":"Non coded text"}""")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenCodeableConceptTransform_WhenNoDisplayIsProvided_ThenOmitsDisplayProperty()
+    {
+        var result = StandardTransforms.Get("cc")!.Execute(
+            ["http://example.org/cs", "example"], new TestContext());
+
+        JsonNode.DeepEquals(
+            result.ShouldBeOfType<JsonObject>(),
+            JsonNode.Parse("""{"coding":[{"system":"http://example.org/cs","code":"example"}]}""")).ShouldBeTrue();
+    }
+
+    [Fact]
     public void GivenCodingTransform_WhenExecuting_ThenCreatesCorrectStructure()
     {
         // Arrange
@@ -356,6 +433,46 @@ public class StandardTransformsTests
     }
 
     [Fact]
+    public void GivenQuantityTransform_WhenCodeDiffersFromDisplayUnit_ThenPreservesExplicitCode()
+    {
+        var result = StandardTransforms.Get("qty")!.Execute(
+            [12.5m, "milligrams", "http://unitsofmeasure.org", "mg"], new TestContext());
+
+        JsonNode.DeepEquals(
+            result.ShouldBeOfType<JsonObject>(),
+            JsonNode.Parse("""{"value":12.5,"unit":"milligrams","system":"http://unitsofmeasure.org","code":"mg"}"""))
+            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenQuantityTransform_WhenOnlyDisplayUnitIsProvided_ThenDoesNotInventCoding()
+    {
+        var result = StandardTransforms.Get("qty")!.Execute([12.5m, "tablets"], new TestContext());
+
+        JsonNode.DeepEquals(
+            result.ShouldBeOfType<JsonObject>(),
+            JsonNode.Parse("""{"value":12.5,"unit":"tablets"}""")).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("< 5.5 mg", """{"comparator":"<","value":5.5,"unit":"mg"}""")]
+    [InlineData(">=-2.5 kg", """{"comparator":">=","value":-2.5,"unit":"kg"}""")]
+    [InlineData("1.2e2 mm Hg", """{"value":120,"unit":"mm Hg"}""")]
+    [InlineData("42", """{"value":42}""")]
+    public void GivenQuantityTransform_WhenParsingNaturalText_ThenPreservesQuantityComponents(string text, string expected)
+    {
+        var result = StandardTransforms.Get("qty")!.Execute([text], new TestContext());
+
+        JsonNode.DeepEquals(result.ShouldBeOfType<JsonObject>(), JsonNode.Parse(expected)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenQuantityTransform_WhenTextHasNoNumericValue_ThenThrowsFormatException()
+    {
+        Should.Throw<FormatException>(() => StandardTransforms.Get("qty")!.Execute(["unknown mg"], new TestContext()));
+    }
+
+    [Fact]
     public void GivenIdentifierTransform_WhenExecuting_ThenCreatesCorrectStructure()
     {
         // Arrange
@@ -363,13 +480,27 @@ public class StandardTransformsTests
         var transform = StandardTransforms.Get("id");
 
         // Act
-        var result = transform.Execute(new List<object> { "12345", "http://example.org/ids" }, context);
+        var result = transform.Execute(new List<object> { "http://example.org/ids", "12345" }, context);
 
         // Assert
         result.ShouldBeOfType<JsonObject>();
         var obj = (JsonObject)result;
         obj["system"]!.GetValue<string>().ShouldBe("http://example.org/ids");
         obj["value"]!.GetValue<string>().ShouldBe("12345");
+    }
+
+    [Fact]
+    public void GivenIdentifierTransform_WhenTypeIsProvided_ThenAddsStandardIdentifierTypeCoding()
+    {
+        var result = StandardTransforms.Get("id")!.Execute(
+            ["http://example.org/mrn", "12345", "MR"], new TestContext());
+
+        JsonNode.DeepEquals(
+            result.ShouldBeOfType<JsonObject>(),
+            JsonNode.Parse("""
+                {"system":"http://example.org/mrn","value":"12345",
+                 "type":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/v2-0203","code":"MR"}]}}
+                """)).ShouldBeTrue();
     }
 
     [Fact]
@@ -389,6 +520,20 @@ public class StandardTransformsTests
         obj["value"]!.GetValue<string>().ShouldBe("555-1234");
     }
 
+    [Theory]
+    [InlineData("person@example.org", "email")]
+    [InlineData("+1 (555) 0100", "phone")]
+    [InlineData("https://example.org/contact", "url")]
+    public void GivenContactPointTransform_WhenOnlyValueIsProvided_ThenInfersSystem(string value, string system)
+    {
+        var result = StandardTransforms.Get("cp")!.Execute([value], new TestContext());
+        var contactPoint = result.ShouldBeOfType<JsonObject>();
+
+        contactPoint.Count.ShouldBe(2);
+        contactPoint["system"]!.GetValue<string>().ShouldBe(system);
+        contactPoint["value"]!.GetValue<string>().ShouldBe(value);
+    }
+
     [Fact]
     public void GivenReferenceTransform_WhenExecutingWithTypedElement_ThenCreatesCorrectStructure()
     {
@@ -401,9 +546,7 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { element }, context);
 
         // Assert
-        result.ShouldBeOfType<JsonObject>();
-        var obj = (JsonObject)result;
-        obj["reference"]!.GetValue<string>().ShouldBe("Patient/patient-123");
+        result.ShouldBe("Patient/patient-123");
     }
 
     [Fact]
@@ -417,9 +560,28 @@ public class StandardTransformsTests
         var result = transform.Execute(new List<object> { "Observation/obs-456" }, context);
 
         // Assert
-        result.ShouldBeOfType<JsonObject>();
-        var obj = (JsonObject)result;
-        obj["reference"]!.GetValue<string>().ShouldBe("Observation/obs-456");
+        result.ShouldBe("Observation/obs-456");
+    }
+
+    [Fact]
+    public void GivenReferenceTransform_WhenResourceHasIdChild_ThenReturnsRelativeReferenceString()
+    {
+        var resource = new TestTypedElement(
+            "Patient",
+            instanceType: "Patient",
+            children: [new TestTypedElement("id", "referenced-patient", "id")]);
+
+        var result = StandardTransforms.Get("reference")!.Execute([resource], new TestContext());
+
+        result.ShouldBe("Patient/referenced-patient");
+    }
+
+    [Fact]
+    public void GivenReferenceTransform_WhenResourceHasNoId_ThenThrowsInsteadOfReturningTypeName()
+    {
+        Should.Throw<InvalidOperationException>(() => StandardTransforms.Get("reference")!.Execute(
+            [new TestTypedElement("Patient", instanceType: "Patient")], new TestContext()))
+            .Message.ShouldContain("id");
     }
 
     #endregion
@@ -432,23 +594,23 @@ public class StandardTransformsTests
         // Arrange
         var context = new TestContext
         {
-            ConceptMapResolver = (conceptMapUrl, sourceSystem, sourceCode) =>
+            ConceptMapResolver = (conceptMapUrl, sourceCode, targetSystem) =>
             {
                 conceptMapUrl.ShouldBe("http://example.org/ConceptMap/test");
-                sourceSystem.ShouldBe("http://loinc.org");
                 sourceCode.ShouldBe("1234-5");
-                return "http://snomed.info/sct|98765";
+                targetSystem.ShouldBe(string.Empty);
+                return "98765";
             }
         };
         var transform = StandardTransforms.Get("translate");
 
         // Act
         var result = transform.Execute(
-            new List<object> { "http://example.org/ConceptMap/test", "http://loinc.org", "1234-5" },
+            new List<object> { new TestTypedElement("code", "1234-5", "code"), "http://example.org/ConceptMap/test", "code" },
             context);
 
         // Assert
-        result.ShouldBe("http://snomed.info/sct|98765");
+        result.ShouldBe("98765");
     }
 
     [Fact]
@@ -463,11 +625,119 @@ public class StandardTransformsTests
 
         // Act
         var result = transform.Execute(
-            new List<object> { "http://example.org/ConceptMap/test", "http://loinc.org", "1234-5" },
+            new List<object> { "1234-5", "http://example.org/ConceptMap/test", "code" },
             context);
 
         // Assert
         result.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("Coding", """{"system":"http://example.org/target","code":"F"}""")]
+    [InlineData("CodeableConcept", """{"coding":[{"system":"http://example.org/target","code":"F"}]}""")]
+    public void GivenTranslateTransform_WhenStructuredOutputIsRequested_ThenPreservesResolverResult(string output, string expectedJson)
+    {
+        var source = new TestTypedElement("gender", "female", "code");
+        var expected = JsonNode.Parse(expectedJson)!.AsObject();
+        var context = new TestContext
+        {
+            TranslationResolver = (value, mapUri, requestedOutput) =>
+            {
+                value.ShouldBeSameAs(source);
+                mapUri.ShouldBe("#GenderMap");
+                requestedOutput.ShouldBe(output);
+                return expected;
+            }
+        };
+
+        var result = StandardTransforms.Get("translate")!.Execute([source, "#GenderMap", output], context);
+
+        result.ShouldBeSameAs(expected);
+    }
+
+    [Theory]
+    [InlineData("code", "F")]
+    [InlineData("system", "http://example.org/target")]
+    [InlineData("display", "Female")]
+    public void GivenTranslateTransform_WhenScalarOutputIsRequested_ThenUsesModernResolver(string output, string expected)
+    {
+        var source = new TestTypedElement("gender", "female", "code");
+        var context = new TestContext
+        {
+            TranslationResolver = (value, mapUri, requestedOutput) =>
+            {
+                value.ShouldBeSameAs(source);
+                mapUri.ShouldBe("#GenderMap");
+                requestedOutput.ShouldBe(output);
+                return expected;
+            },
+            ConceptMapResolver = (_, _, _) => throw new InvalidOperationException("The legacy resolver must not be called.")
+        };
+
+        var result = StandardTransforms.Get("translate")!.Execute([source, "#GenderMap", output], context);
+
+        result.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void GivenTranslateTransform_WhenModernResolverReturnsNoMapping_ThenDoesNotFallBack()
+    {
+        var context = new TestContext
+        {
+            TranslationResolver = (_, _, _) => null,
+            ConceptMapResolver = (_, _, _) => throw new InvalidOperationException("The legacy resolver must not be called.")
+        };
+
+        var result = StandardTransforms.Get("translate")!.Execute(["missing", "#GenderMap", "code"], context);
+
+        result.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("Coding")]
+    [InlineData("CodeableConcept")]
+    [InlineData("system")]
+    [InlineData("display")]
+    public void GivenTranslateTransform_WhenLegacyResolverCannotProduceRequestedOutput_ThenFailsExplicitly(string output)
+    {
+        var context = new TestContext { ConceptMapResolver = (_, _, _) => "F" };
+
+        Should.Throw<NotSupportedException>(() => StandardTransforms.Get("translate")!.Execute(
+            ["female", "#GenderMap", output], context)).Message.ShouldContain("TranslationResolver");
+    }
+
+    [Fact]
+    public void GivenTranslateTransform_WhenOutputIsUnknown_ThenRejectsItBeforeCallingResolver()
+    {
+        var context = new TestContext
+        {
+            TranslationResolver = (_, _, _) => throw new InvalidOperationException("An unsupported output must not reach the resolver.")
+        };
+
+        Should.Throw<ArgumentException>(() => StandardTransforms.Get("translate")!.Execute(
+            ["female", "#GenderMap", "unknown"], context)).Message.ShouldContain("unknown");
+    }
+
+    [Fact]
+    public void GivenTranslateTransform_WhenLegacyResolverReceivesStructuredSource_ThenFailsExplicitly()
+    {
+        var context = new TestContext { ConceptMapResolver = (_, _, _) => "F" };
+
+        Should.Throw<NotSupportedException>(() => StandardTransforms.Get("translate")!.Execute(
+            [new TestTypedElement("code", instanceType: "Coding"), "#GenderMap", "code"], context))
+            .Message.ShouldContain("structured sources");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void GivenTranslateTransform_WhenArgumentCountIsNotThree_ThenThrowsArgumentException(int argumentCount)
+    {
+        object[] arguments = Enumerable.Repeat<object>("argument", argumentCount).ToArray();
+
+        Should.Throw<ArgumentException>(() => StandardTransforms.Get("translate")!.Execute(arguments, new TestContext()))
+            .Message.ShouldContain("source, map_uri, and output");
     }
 
     #endregion
@@ -553,7 +823,7 @@ public class StandardTransformsTests
 
         // Act
         var act = () => transform.Execute(
-            new List<object> { "http://example.org/ConceptMap/test", "http://loinc.org", "1234-5" },
+            new List<object> { "1234-5", "http://example.org/ConceptMap/test", "code" },
             context);
 
         // Assert

@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 namespace Ignixa.FhirMappingLanguage.Transforms;
 
 /// <summary>
-/// cp(system, value, [use]) - Creates a ContactPoint.
+/// cp(value) or cp(system, value, [use]) - Creates a ContactPoint.
 /// </summary>
 internal class ContactPointTransform : ITransformFunction
 {
@@ -18,12 +18,14 @@ internal class ContactPointTransform : ITransformFunction
 
     public object Execute(IReadOnlyList<object> arguments, ITransformContext context)
     {
-        if (arguments.Count < 2)
-            throw new ArgumentException("cp() requires system and value arguments");
+        if (arguments.Count is < 1 or > 3)
+        {
+            throw new ArgumentException("cp() requires a value, or system and value with an optional use");
+        }
 
-        var system = arguments[0].ToString()!;
-        var value = arguments[1].ToString()!;
-        var use = arguments.Count > 2 ? arguments[2].ToString() : null;
+        var value = TransformValue.String(arguments[arguments.Count == 1 ? 0 : 1]);
+        var system = arguments.Count == 1 ? InferSystem(value) : TransformValue.String(arguments[0]);
+        var use = arguments.Count > 2 ? TransformValue.String(arguments[2]) : null;
 
         var contactPoint = new JsonObject
         {
@@ -37,5 +39,16 @@ internal class ContactPointTransform : ITransformFunction
         }
 
         return contactPoint;
+    }
+
+    private static string InferSystem(string value)
+    {
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            return "url";
+        }
+
+        return value.Contains('@', StringComparison.Ordinal) ? "email" : "phone";
     }
 }

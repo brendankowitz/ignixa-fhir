@@ -5,13 +5,12 @@
  * Implements the built-in transforms defined in the FHIR specification.
  */
 
-using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 
 namespace Ignixa.FhirMappingLanguage.Transforms;
 
 /// <summary>
-/// reference(source) - Creates a Reference to the source.
+/// reference(source) - Returns a reference string for the source resource.
 /// </summary>
 internal class ReferenceTransform : ITransformFunction
 {
@@ -24,30 +23,34 @@ internal class ReferenceTransform : ITransformFunction
 
         var source = arguments[0];
 
-        // If source is an IElement with an id, create a reference
         if (source is IElement element)
         {
-            var resourceType = element.InstanceType;
+            if (element.InstanceType == "Reference")
+            {
+                var references = element.Children("reference");
+                return (references.Count > 0 ? references[0].Value?.ToString() : null)
+                    ?? throw new InvalidOperationException("reference() requires a reference value.");
+            }
 
-            // Try to get id from children first, then from element value
+            if (element.Value is string primitive &&
+                !string.IsNullOrEmpty(element.InstanceType) &&
+                !char.IsUpper(element.InstanceType[0]))
+            {
+                return primitive;
+            }
+
+            var resourceType = element.InstanceType;
             var idChildren = element.Children("id");
             var id = idChildren.Count > 0 ? idChildren[0].Value?.ToString() : element.Value?.ToString();
 
-            if (resourceType != null && id != null)
+            if (!string.IsNullOrEmpty(resourceType) && !string.IsNullOrEmpty(id))
             {
-                var reference = new JsonObject
-                {
-                    ["reference"] = $"{resourceType}/{id}"
-                };
-                return reference;
+                return $"{resourceType}/{id}";
             }
+
+            throw new InvalidOperationException("reference() requires a resource with an id.");
         }
 
-        // Otherwise, treat as a reference string
-        var referenceString = source.ToString()!;
-        return new JsonObject
-        {
-            ["reference"] = referenceString
-        };
+        return TransformValue.String(source);
     }
 }

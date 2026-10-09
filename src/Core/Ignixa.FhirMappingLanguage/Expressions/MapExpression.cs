@@ -21,7 +21,8 @@ public class MapExpression : Expression
         IEnumerable<ConceptMapDeclarationExpression>? conceptMaps = null,
         IEnumerable<ConstantDeclarationExpression>? constants = null,
         IReadOnlyDictionary<string, string>? metadata = null,
-        ISourcePositionInfo? location = null) : base(location)
+        ISourcePositionInfo? location = null,
+        IEnumerable<KeyValuePair<string, string>>? metadataDeclarations = null) : base(location)
     {
         Url = url ?? throw new ArgumentNullException(nameof(url));
         Identifier = identifier ?? throw new ArgumentNullException(nameof(identifier));
@@ -31,6 +32,7 @@ public class MapExpression : Expression
         ConceptMaps = conceptMaps?.ToList() ?? [];
         Constants = constants?.ToList() ?? [];
         Metadata = metadata ?? new Dictionary<string, string>(StringComparer.Ordinal);
+        MetadataDeclarations = metadataDeclarations?.ToList() ?? [];
     }
 
     public string Url { get; }
@@ -44,6 +46,11 @@ public class MapExpression : Expression
     /// Empty when the map used the classic <c>map "url" = "name"</c> header form.
     /// </summary>
     public IReadOnlyDictionary<string, string> Metadata { get; }
+
+    /// <summary>
+    /// Ordered metadata declarations with their original literal syntax, including repeated paths.
+    /// </summary>
+    public IReadOnlyList<KeyValuePair<string, string>> MetadataDeclarations { get; }
 
     /// <summary>
     /// Inline ConceptMap declarations.
