@@ -193,14 +193,31 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
                     result.Key.ResourceType,
                     result.Key.Id);
 
-                await ProcessProvenanceAsync(
-                    command.ProvenanceResource,
-                    result,
-                    fhirVersionEnum,
-                    schemaProvider,
-                    tenantId,
-                    repository,
-                    cancellationToken);
+                try
+                {
+                    await ProcessProvenanceAsync(
+                        command.ProvenanceResource,
+                        result,
+                        fhirVersionEnum,
+                        schemaProvider,
+                        tenantId,
+                        repository,
+                        cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    ProvenanceWriteMetrics.RecordFailure();
+                    _logger.LogError(
+                        ex,
+                        "Primary write {ResourceType}/{Id}/_history/{VersionId} succeeded but its X-Provenance resource could not be persisted",
+                        result.Key.ResourceType,
+                        result.Key.Id,
+                        result.Key.VersionId);
+                    result = result with
+                    {
+                        OperationOutcomeBytes = CreateProvenanceFailureOutcome().SerializeToBytes()
+                    };
+                }
             }
         }
 
@@ -212,6 +229,18 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             result.Key.VersionId);
 
         return result;
+    }
+
+    private static OperationOutcome CreateProvenanceFailureOutcome()
+    {
+        var outcome = new OperationOutcome();
+        outcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
+        {
+            SeverityCode = Ignixa.Models.OperationOutcomeIssue.IssueSeverityCode.Warning,
+            IssueTypeCode = Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.Processing,
+            Diagnostics = "The resource was saved, but the X-Provenance resource could not be persisted."
+        });
+        return outcome;
     }
 
     /// <summary>
