@@ -1,16 +1,16 @@
 using Ignixa.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Application.Features.Conformance;
 
 public sealed class ConformanceBarrierRetryPolicy(
     IConformanceDefinitionsSynchronizer synchronizer,
-    TimeSpan retryAfter,
+    IOptions<ConformanceTransitionOptions> transitionOptions,
     ILogger<ConformanceBarrierRetryPolicy> logger)
 {
-    private readonly TimeSpan _retryAfter = retryAfter > TimeSpan.Zero
-        ? retryAfter
-        : throw new ArgumentOutOfRangeException(nameof(retryAfter));
+    // ConformanceTransitionOptionsValidator guarantees a positive sync interval.
+    private readonly TimeSpan _retryAfter = TimeSpan.FromSeconds(transitionOptions.Value.SyncIntervalSeconds);
 
     public async Task<TResult> ExecuteAsync<TResult>(
         Func<CancellationToken, Task<TResult>> operation,

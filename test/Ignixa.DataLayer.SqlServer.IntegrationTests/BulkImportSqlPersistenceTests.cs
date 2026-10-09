@@ -28,6 +28,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IO;
 using Shouldly;
 using ConformanceBarrierRetryPolicy = Ignixa.Application.Features.Conformance.ConformanceBarrierRetryPolicy;
+using ConformanceTransitionOptions = Ignixa.Application.Features.Conformance.ConformanceTransitionOptions;
 using IConformanceDefinitionsSynchronizer = Ignixa.Application.Features.Conformance.IConformanceDefinitionsSynchronizer;
 using SearchComparator = Ignixa.Specification.ValueSets.Normative.SearchComparator;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
@@ -80,7 +81,7 @@ public class BulkImportSqlPersistenceTests
                 new FhirRequestContextAccessor(),
                 new ConformanceBarrierRetryPolicy(
                     new NoOpConformanceDefinitionsSynchronizer(),
-                    TimeSpan.FromSeconds(30),
+                    Options.Create(new ConformanceTransitionOptions()),
                     NullLogger<ConformanceBarrierRetryPolicy>.Instance),
                 NullLogger<StreamingImportFileActivity>.Instance);
 

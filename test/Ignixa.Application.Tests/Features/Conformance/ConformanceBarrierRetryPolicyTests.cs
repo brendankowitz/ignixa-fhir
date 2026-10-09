@@ -2,6 +2,7 @@ using System.Diagnostics.Metrics;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Exceptions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -79,7 +80,7 @@ public class ConformanceBarrierRetryPolicyTests
     private static ConformanceBarrierRetryPolicy CreatePolicy(IConformanceDefinitionsSynchronizer synchronizer) =>
         new(
             synchronizer,
-            TimeSpan.FromSeconds(17),
+            Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
             NullLogger<ConformanceBarrierRetryPolicy>.Instance);
 
     private static StaleConformanceDefinitionsException Stale() => new(101, 11, 29);

@@ -83,7 +83,7 @@ public static class ApplicationServicesRegistration
         RegisterMedinoServices(builder);
 
         // Resource CRUD handlers
-        RegisterResourceHandlers(builder, configuration);
+        RegisterResourceHandlers(builder);
 
         // Conditional operations handlers
         RegisterConditionalOperationHandlers(builder);
@@ -188,7 +188,7 @@ public static class ApplicationServicesRegistration
             .InstancePerLifetimeScope();
     }
 
-    private static void RegisterResourceHandlers(ContainerBuilder builder, IConfiguration configuration)
+    private static void RegisterResourceHandlers(ContainerBuilder builder)
     {
         builder.RegisterType<GetResourceHandler>()
             .As<IRequestHandler<GetResourceQuery, SearchEntryResult?>>()
@@ -198,10 +198,7 @@ public static class ApplicationServicesRegistration
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()
             .InstancePerDependency();
 
-        builder.Register(c => new ConformanceBarrierRetryPolicy(
-                c.Resolve<IConformanceDefinitionsSynchronizer>(),
-                TimeSpan.FromSeconds(configuration.GetValue("Conformance:SyncIntervalSeconds", 30)),
-                c.Resolve<ILogger<ConformanceBarrierRetryPolicy>>()))
+        builder.RegisterType<ConformanceBarrierRetryPolicy>()
             .AsSelf()
             .SingleInstance();
 

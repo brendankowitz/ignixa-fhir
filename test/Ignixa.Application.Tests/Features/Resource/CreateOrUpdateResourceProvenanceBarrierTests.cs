@@ -14,6 +14,7 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -71,7 +72,7 @@ public class CreateOrUpdateResourceProvenanceBarrierTests
         var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
         var retryPolicy = new ConformanceBarrierRetryPolicy(
             synchronizer,
-            TimeSpan.FromSeconds(17),
+            Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
             NullLogger<ConformanceBarrierRetryPolicy>.Instance);
         var handler = new CreateOrUpdateResourceHandler(
             partitions,

@@ -446,6 +446,9 @@ public class ValidationPipelineRegistrationTests
             builder.RegisterApplicationServices(new ConfigurationBuilder().Build());
             builder.RegisterInstance(Substitute.For<IConformanceDefinitionsSynchronizer>())
                 .As<IConformanceDefinitionsSynchronizer>();
+            builder.RegisterInstance(Microsoft.Extensions.Options.Options.Create(
+                    new Ignixa.Application.Features.Conformance.ConformanceTransitionOptions()))
+                .As<Microsoft.Extensions.Options.IOptions<Ignixa.Application.Features.Conformance.ConformanceTransitionOptions>>();
             builder.RegisterValidationServices();
             builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>));
             builder.RegisterInstance(NullLoggerFactory.Instance).As<ILoggerFactory>();

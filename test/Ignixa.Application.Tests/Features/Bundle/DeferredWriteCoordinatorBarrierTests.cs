@@ -10,6 +10,7 @@ using Ignixa.Search.Indexing;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -118,7 +119,7 @@ public class DeferredWriteCoordinatorBarrierTests
         var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
         var retryPolicy = new ConformanceBarrierRetryPolicy(
             synchronizer,
-            TimeSpan.FromSeconds(17),
+            Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
             NullLogger<ConformanceBarrierRetryPolicy>.Instance);
 
         return await DeferredWriteCoordinator.CreateAsync(
