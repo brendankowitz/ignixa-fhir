@@ -8,8 +8,7 @@ namespace Ignixa.Application.Features.Search;
 /// </summary>
 /// <param name="Source">The detached projection the set was built from.</param>
 public sealed record ConformanceDefinitionsSnapshot(
-    ISearchParameterDefinitionManager ExtractionDefinitions,
-    ISearchParameterDefinitionManager SearchableDefinitions,
+    ISearchParameterDefinitionManager Definitions,
     DefinitionsHandle Handle,
     ConformanceStateSnapshot Source,
     long PublicationSequence = 0)

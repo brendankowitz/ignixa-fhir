@@ -29,7 +29,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     private readonly string? _fhirVersion;
     private readonly ILogger<CompositeSearchParameterDefinitionManager> _logger;
     private readonly SearchParameterResolutionOptions _options;
-    private readonly bool _useSearchVisibility;
 
     private readonly ConcurrentDictionary<Uri, SearchParamInfo> _packageSearchParameterCache = new();
     private readonly ConcurrentDictionary<string, IEnumerable<SearchParamInfo>> _packageSearchParametersByResourceType = new();
@@ -45,8 +44,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         string? fhirVersion,
         ILogger<CompositeSearchParameterDefinitionManager> logger,
         SearchParameterResolutionOptions options,
-        IFhirSchemaProvider? schemaProvider = null,
-        bool useSearchVisibility = false)
+        IFhirSchemaProvider? schemaProvider = null)
     {
         _baseManager = baseManager ?? throw new ArgumentNullException(nameof(baseManager));
         _conformanceState = conformanceState ?? throw new ArgumentNullException(nameof(conformanceState));
@@ -54,7 +52,6 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _schemaProvider = schemaProvider;
-        _useSearchVisibility = useSearchVisibility;
 
         _searchParameterHashMapCache = new Lazy<IReadOnlyDictionary<string, string>>(
             () => _baseManager.SearchParameterHashMap,
@@ -161,7 +158,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         {
             var asp = kvp.Value;
 
-            if (!IsIncludedInThisView(asp))
+            if (!IsListed(asp))
             {
                 continue;
             }
@@ -270,7 +267,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             }
 
             var packageParameters = _conformanceState.AllSearchParameters.Values
-                .Where(IsIncludedInThisView)
+                .Where(IsListed)
                 .Select(ConvertToSearchParameterInfo);
             return DeduplicateByIdentityAndBaseType(packageParameters.Concat(_baseManager.AllSearchParameters));
         }
@@ -320,7 +317,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         var packageParameters = _conformanceState.AllSearchParameters.Values
             .Where(asp => string.Equals(asp.ResourceType, resourceType, StringComparison.OrdinalIgnoreCase) &&
-                IsIncludedInThisView(asp))
+                IsListed(asp))
             .ToList();
         var baseParameters = GetBaseParameters(resourceType, packageParameters.Count > 0);
         var merged = new Dictionary<string, SearchParamInfo>(StringComparer.OrdinalIgnoreCase);
@@ -454,10 +451,11 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             or SearchParameterStatus.Reindexing
             or SearchParameterStatus.Disabling;
 
-    private bool IsIncludedInThisView(ActiveSearchParameter parameter) =>
-        _useSearchVisibility
-            ? parameter.Status is not SearchParameterStatus.Disabled
-            : IsExtracted(parameter.Status);
+    // One manager serves extraction and search; the SearchParameterInfo flags carry the difference.
+    // Pending/Reindexing are extracted but not searchable, Disabling is extracted but hidden by the
+    // transition, and Staged activations are never projection owners, so they are not listed here.
+    private static bool IsListed(ActiveSearchParameter parameter) =>
+        IsExtracted(parameter.Status);
 
     /// <inheritdoc/>
     public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap)

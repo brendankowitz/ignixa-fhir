@@ -261,7 +261,7 @@ public class ConformanceRefresherTests
     }
 
     [Fact]
-    public async Task GivenMultipleTenants_WhenRefreshed_ThenEachTenantsExtractionDefinitionsAreCatalogedBeforePublication()
+    public async Task GivenMultipleTenants_WhenRefreshed_ThenEachTenantsDefinitionsAreCatalogedBeforePublication()
     {
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreatePackageEvent(1, "first"));
@@ -413,7 +413,6 @@ public class ConformanceRefresherTests
                     var generation = call.ArgAt<long>(3);
                     Built.Add(generation);
                     return new ConformanceDefinitionsSnapshot(
-                        Definitions,
                         Definitions,
                         new DefinitionsHandle(
                             Substitute.For<ISearchIndexer>(),

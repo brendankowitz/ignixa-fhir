@@ -226,36 +226,26 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             ? CreateCompositeSchemaProvider(fhirVersion)
             : GetBaseSchemaProvider(fhirVersion);
         var baseManager = GetSearchParameterDefinitionManager(fhirVersion);
-        var extractionDefinitions = new CompositeSearchParameterDefinitionManager(
+        var definitions = new CompositeSearchParameterDefinitionManager(
             baseManager,
             stateSnapshot,
             fhirVersion.ToVersionString(),
             _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
             _searchParameterResolutionOptions,
-            schemaProvider,
-            useSearchVisibility: false);
-        extractionDefinitions.ReloadFromConformanceState();
+            schemaProvider);
+        definitions.ReloadFromConformanceState();
 
-        var searchableDefinitions = new CompositeSearchParameterDefinitionManager(
-            baseManager,
-            stateSnapshot,
-            fhirVersion.ToVersionString(),
-            _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
-            _searchParameterResolutionOptions,
-            schemaProvider,
-            useSearchVisibility: true);
-        searchableDefinitions.ReloadFromConformanceState();
-
+        // The indexer extracts through SupportedSearchParameterDefinitionManager (IsSupported);
+        // queries resolve through SearchableSearchParameterDefinitionManager (IsSearchable/visibility).
         var indexer = SearchIndexerFactory.CreateInstance(
             schemaProvider,
             _loggerFactory,
-            extractionDefinitions,
+            definitions,
             _baseUriProvider);
 
         var publicationSequence = Interlocked.Increment(ref _conformancePublicationSequence);
         return new ConformanceDefinitionsSnapshot(
-            extractionDefinitions,
-            searchableDefinitions,
+            definitions,
             new DefinitionsHandle(indexer, schemaProvider, generation, publicationSequence),
             stateSnapshot,
             publicationSequence);
@@ -367,7 +357,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         }
 
         return TryGetDefinitions(fhirVersion, tenantId.Value, out var definitions)
-            ? definitions.ExtractionDefinitions
+            ? definitions.Definitions
             : GetSearchParameterDefinitionManager(fhirVersion);
     }
 
@@ -378,7 +368,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         Func<bool>? includePartiallyIndexedSearchParameters = null)
     {
         var manager = tenantId is { } tenant && TryGetDefinitions(fhirVersion, tenant, out var definitions)
-            ? definitions.SearchableDefinitions
+            ? definitions.Definitions
             : GetSearchParameterDefinitionManager(fhirVersion);
 
         return new SearchableSearchParameterDefinitionManager(manager, includePartiallyIndexedSearchParameters);

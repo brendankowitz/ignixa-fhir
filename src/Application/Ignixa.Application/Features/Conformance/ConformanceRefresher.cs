@@ -159,7 +159,7 @@ public sealed class ConformanceRefresher(
                     generation);
                 await searchParameterCatalog.SynchronizeAsync(
                     tenant,
-                    snapshot.ExtractionDefinitions,
+                    snapshot.Definitions,
                     cancellationToken);
                 definitions.Add(new TenantDefinitions(version, tenant.TenantId, snapshot));
             }

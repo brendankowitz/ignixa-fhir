@@ -52,7 +52,6 @@ public class PackageSchemaNotificationDispatchTests
                 builtGenerations.Add(call.ArgAt<long>(3));
                 return new ConformanceDefinitionsSnapshot(
                     definitions,
-                    definitions,
                     new DefinitionsHandle(
                         Substitute.For<ISearchIndexer>(),
                         Substitute.For<IFhirSchemaProvider>(),

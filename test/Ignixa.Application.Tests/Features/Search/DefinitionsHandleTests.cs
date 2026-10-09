@@ -58,14 +58,12 @@ public class DefinitionsHandleTests
         var newerDefinitions = Substitute.For<ISearchParameterDefinitionManager>();
         var older = new ConformanceDefinitionsSnapshot(
             olderDefinitions,
-            olderDefinitions,
             new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
                 11),
             EmptyProjection);
         var newer = new ConformanceDefinitionsSnapshot(
-            newerDefinitions,
             newerDefinitions,
             new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
@@ -77,7 +75,6 @@ public class DefinitionsHandleTests
         slot.Publish(newer);
         slot.Publish(new ConformanceDefinitionsSnapshot(
             olderDefinitions,
-            olderDefinitions,
             new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
@@ -85,8 +82,7 @@ public class DefinitionsHandleTests
             EmptyProjection));
 
         slot.Current.Generation.ShouldBe(29);
-        slot.Current.ExtractionDefinitions.ShouldBeSameAs(newerDefinitions);
-        slot.Current.SearchableDefinitions.ShouldBeSameAs(newerDefinitions);
+        slot.Current.Definitions.ShouldBeSameAs(newerDefinitions);
     }
 
     [Fact]
@@ -95,7 +91,6 @@ public class DefinitionsHandleTests
         var definitions = Substitute.For<ISearchParameterDefinitionManager>();
         var first = new ConformanceDefinitionsSnapshot(
             definitions,
-            definitions,
             new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
                 Substitute.For<IFhirSchemaProvider>(),
@@ -103,7 +98,6 @@ public class DefinitionsHandleTests
             EmptyProjection,
             PublicationSequence: 3);
         var replacement = new ConformanceDefinitionsSnapshot(
-            definitions,
             definitions,
             new DefinitionsHandle(
                 Substitute.For<ISearchIndexer>(),
