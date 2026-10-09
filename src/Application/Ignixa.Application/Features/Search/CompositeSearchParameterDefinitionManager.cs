@@ -269,15 +269,37 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 return _baseManager.AllSearchParameters;
             }
 
-            var baseParameters = _baseManager.AllSearchParameters.ToList();
-            return _conformanceState.AllSearchParameters.Values
+            var packageParameters = _conformanceState.AllSearchParameters.Values
                 .Where(IsIncludedInThisView)
-                .Select(ConvertToSearchParameterInfo)
-                .Concat(baseParameters)
-                .GroupBy(p => p.OverridesUrl ?? p.Url)
-                .Select(g => g.First())
-                .ToList();
+                .Select(ConvertToSearchParameterInfo);
+            return DeduplicateByIdentityAndBaseType(packageParameters.Concat(_baseManager.AllSearchParameters));
         }
+    }
+
+    // A package parameter is one (identity, base type) pair; a base parameter can span many base types.
+    // Shadowing is per type: a base parameter is dropped only when every one of its base types is already
+    // represented, so an override for Observation.patient leaves clinical-patient listed for the other types.
+    private static List<SearchParamInfo> DeduplicateByIdentityAndBaseType(IEnumerable<SearchParamInfo> parameters)
+    {
+        var represented = new HashSet<(Uri? Identity, string BaseType)>();
+        var result = new List<SearchParamInfo>();
+        foreach (var parameter in parameters)
+        {
+            var identity = parameter.OverridesUrl ?? parameter.Url;
+            var baseTypes = parameter.BaseResourceTypes is { Count: > 0 } types ? types : [string.Empty];
+            var claimsUnrepresentedType = false;
+            foreach (var baseType in baseTypes)
+            {
+                claimsUnrepresentedType |= represented.Add((identity, baseType));
+            }
+
+            if (claimsUnrepresentedType)
+            {
+                result.Add(parameter);
+            }
+        }
+
+        return result;
     }
 
     /// <inheritdoc/>
