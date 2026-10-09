@@ -90,6 +90,7 @@ public static class ConformanceServicesRegistration
 
         builder.RegisterType<ReindexTrigger>()
             .As<IReindexTrigger>()
+            .AsSelf()
             .SingleInstance();
 
         builder.RegisterType<ReindexJobLock>()

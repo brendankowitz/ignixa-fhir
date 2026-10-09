@@ -27,7 +27,7 @@ public sealed class EternalOrchestrationStarter(
     ConformanceState conformanceState,
     SearchParameterTransitionReconciler transitionReconciler,
     ReindexJobReconciler reindexJobReconciler,
-    ReindexStartupReconciler reindexStartupReconciler,
+    ReindexTrigger reindexTrigger,
     ILogger<EternalOrchestrationStarter> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -57,7 +57,17 @@ public sealed class EternalOrchestrationStarter(
 
         await ReconcileTransitionsAsync(stoppingToken);
         await reindexJobReconciler.ReconcileStartupAsync(stoppingToken);
-        await reindexStartupReconciler.ReconcileAsync(stoppingToken);
+        try
+        {
+            await reindexTrigger.ReconcileAsync(stoppingToken);
+        }
+        catch (ReindexTriggerUnavailableException exception)
+        {
+            ReindexMetrics.RecordReconciliationFailure();
+            logger.LogError(
+                exception,
+                "Reindex reconciliation failed operationally; conformance synchronization will retry");
+        }
 
         logger.LogInformation("EternalOrchestrationStarter completed startup");
 

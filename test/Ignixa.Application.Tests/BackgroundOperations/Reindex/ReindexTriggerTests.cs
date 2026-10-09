@@ -53,13 +53,14 @@ public sealed class ReindexTriggerTests
     }
 
     [Fact]
-    public async Task GivenOperationalFailure_WhenActivationTriggers_ThenUnavailableExceptionIsThrown()
+    public async Task GivenUnknownProviderFailure_WhenActivationTriggers_ThenUnavailableExceptionIsThrown()
     {
         var mediator = Substitute.For<IMediator>();
+        var providerFailure = new Exception("Unknown provider failure.");
         mediator.SendAsync(
                 Arg.Any<CreateReindexJobCommand>(),
                 Arg.Any<CancellationToken>())
-            .Returns<Task<CreateReindexJobResult>>(_ => throw new IOException("Database unavailable."));
+            .Returns<Task<CreateReindexJobResult>>(_ => throw providerFailure);
         var trigger = new ReindexTrigger(
             mediator,
             Options.Create(new ReindexOptions()),
@@ -68,7 +69,26 @@ public sealed class ReindexTriggerTests
         var exception = await Should.ThrowAsync<ReindexTriggerUnavailableException>(() =>
             trigger.RequestReindexAsync("activation", CancellationToken.None));
 
-        exception.InnerException.ShouldBeOfType<IOException>();
+        exception.InnerException.ShouldBeSameAs(providerFailure);
+    }
+
+    [Fact]
+    public async Task GivenCancellation_WhenActivationTriggers_ThenCancellationPropagates()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var mediator = Substitute.For<IMediator>();
+        mediator.SendAsync(
+                Arg.Any<CreateReindexJobCommand>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<CreateReindexJobResult>>(_ => throw new OperationCanceledException(cancellation.Token));
+        var trigger = new ReindexTrigger(
+            mediator,
+            Options.Create(new ReindexOptions()),
+            NullLogger<ReindexTrigger>.Instance);
+
+        await Should.ThrowAsync<OperationCanceledException>(() =>
+            trigger.RequestReindexAsync("activation", cancellation.Token));
     }
 
     [Fact]

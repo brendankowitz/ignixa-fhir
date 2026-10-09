@@ -21,7 +21,7 @@ public class ConformanceStateSyncService(
     IConformanceLease conformanceLease,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
-    ReindexStartupReconciler reindexReconciler,
+    ReindexTrigger reindexTrigger,
     TimeProvider timeProvider,
     ILogger<ConformanceStateSyncService> logger,
     IConfiguration configuration) : BackgroundService
@@ -111,10 +111,9 @@ public class ConformanceStateSyncService(
         await ScheduleOverdueTransitionsAsync(overdueTransitionIds, cancellationToken);
         try
         {
-            await reindexReconciler.ReconcileAsync(cancellationToken);
+            await reindexTrigger.ReconcileAsync(cancellationToken);
         }
         catch (ReindexTriggerUnavailableException exception)
-            when (ReindexTriggerUnavailableException.IsOperational(exception))
         {
             ReindexMetrics.RecordReconciliationFailure();
             logger.LogError(
