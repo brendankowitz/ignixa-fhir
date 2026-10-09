@@ -225,6 +225,47 @@ public class CompleteReindexActivityTests
         state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
+    [Theory]
+    [InlineData("canonical")]
+    [InlineData("resourceType")]
+    [InlineData("code")]
+    [InlineData("activationEventId")]
+    public async Task GivenPlannedTargetDiffersFromOwnedTargetInOneIdentityField_WhenCompletionRuns_ThenOwnedTargetReturnsToPending(
+        string differingField)
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-identity-mismatch";
+        var (jobs, tenants) = await CreateRunningJobAsync([Tenant(1)]);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var owned = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [owned], CancellationToken.None);
+        var planned = differingField switch
+        {
+            "canonical" => owned with { Canonical = canonical + "-other" },
+            "resourceType" => owned with { ResourceType = "Observation" },
+            "code" => owned with { Code = "other" },
+            _ => owned with { ActivationEventId = owned.ActivationEventId + 1 }
+        };
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(
+            RepositoryFactoryWithCatalogId(17),
+            lifecycle,
+            new ReindexJobUpdater(jobs, jobLock, Substitute.For<IReindexCompletionHook>()),
+            tenants);
+
+        await activity.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
+            SingleTenantInput(planned));
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        job!.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("not planned by this job");
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
+        parameter.ReindexJobId.ShouldBeNull();
+    }
+
     [Fact]
     public async Task GivenActiveTenantWasAddedAndJobOwnsUnplannedTarget_WhenCompletionRuns_ThenJobAndTargetRetainUnplannedFailure()
     {
