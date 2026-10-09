@@ -477,7 +477,7 @@ public class PackageActivationPipelineTests
         state.LastProcessedEventId.ShouldBe(persistedEvents[^1].EventId);
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
         await transitionScheduler.Received(1).ScheduleAsync(
-            persistedEvents[0].EventId,
+            persistedEvents[^1].EventId,
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
         await refreshTenants.Received(1).GetAllTenantsAsync(CancellationToken.None);
@@ -620,7 +620,7 @@ public class PackageActivationPipelineTests
         result.Success.ShouldBeTrue();
         result.TransitionSchedulingDeferred.ShouldBeTrue();
         await transitionScheduler.Received(1).ScheduleAsync(
-            2,
+            3,
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
     }
@@ -695,6 +695,66 @@ public class PackageActivationPipelineTests
             Arg.Any<IEnumerable<NewSourceEvent>>(),
             Arg.Any<long>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenPackageShadowsSeventyCodes_WhenActivated_ThenOneTransitionIsScheduledForThePackageEvent()
+    {
+        const int shadowCount = 70;
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        for (var index = 1; index <= shadowCount; index++)
+        {
+            var seeded = new SourceEvent(
+                index,
+                "package:seed@1.0.0",
+                nameof(SearchParameterActivated),
+                new SearchParameterActivated(
+                    $"http://example.org/SearchParameter/seed-{index}",
+                    $"code-{index}",
+                    "Patient",
+                    "Patient.identifier",
+                    SearchParamType.Token,
+                    "seed@1.0.0",
+                    null,
+                    index,
+                    null,
+                    null,
+                    null,
+                    null),
+                DateTimeOffset.UtcNow);
+            persistedEvents.Add(seeded);
+            state.ApplyAndTrack(seeded);
+        }
+
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync("test.shadows", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns(Enumerable.Range(1, shadowCount)
+                .Select(index => CreateOverrideResource(
+                    packageId: "test.shadows",
+                    canonical: $"http://example.org/SearchParameter/shadow-{index}",
+                    code: $"code-{index}",
+                    expression: "Patient.identifier",
+                    derivedFrom: $"http://example.org/SearchParameter/seed-{index}"))
+                .ToArray());
+        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            transitionScheduler,
+            TestConformanceRefresher.Tenants());
+
+        var result = await pipeline.ActivateAsync("test.shadows", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue(string.Join("; ", result.Issues.Select(issue => $"{issue.Code}: {issue.Message}")));
+        var packageEventId = persistedEvents.Single(row => row.Data is PackageActivated { PackageId: "test.shadows" }).EventId;
+        transitionScheduler.ReceivedCalls().ShouldHaveSingleItem();
+        await transitionScheduler.Received(1).ScheduleAsync(
+            packageEventId,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+        state.GetTransitionCandidates(packageEventId).Count.ShouldBe(shadowCount);
     }
 
     private static PackageActivationPipeline CreatePipeline(

@@ -107,11 +107,9 @@ public class PackageActivationPipeline(
                 return ActivationResult.Succeeded([]);
             }
 
-            transitionEventIds = persistedEvents
-                .Where(evt => evt.Data is SearchParameterActivated)
-                .Select(evt => evt.EventId)
-                .Where(eventId => _state.GetTransitionCandidates(eventId).Count > 0)
-                .ToArray();
+            // Every code this activation hid transitions together under its PackageActivated event id.
+            var transitionId = persistedEvents.Single(evt => evt.Data is PackageActivated).EventId;
+            transitionEventIds = _state.GetTransitionCandidates(transitionId).Count > 0 ? [transitionId] : [];
             reindexNeeded = DetectReindexRequirements(packageKey);
         }
 

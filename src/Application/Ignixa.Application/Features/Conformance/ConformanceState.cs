@@ -19,6 +19,10 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     private readonly Dictionary<string, ActivePackage> _packages = [];
     private readonly ConcurrentDictionary<string, string> _storageCanonicals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _canonicalToParamId = [];
+
+    // Hide event id -> the PackageActivated event id of the activation that emitted it. One activation is
+    // one transition, so a large IG commits in one orchestration and one append instead of one per code.
+    private readonly Dictionary<long, long> _transitionIds = [];
     private readonly SemaphoreSlim _activationLock = new(1, 1);
     private readonly ILogger<ConformanceState>? _logger;
 
@@ -129,13 +133,15 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     public ActiveSearchParameter? FindExtractedByCanonical(string canonical) =>
         _searchParameters.Values.LastOrDefault(sp => sp.Canonical == canonical);
 
-    public IReadOnlyList<SearchParameterTransitionCandidate> GetTransitionCandidates(long hideEventId) =>
-        _searchParameterActivations
-            .Where(parameter =>
-                parameter.Status == SearchParameterStatus.Staged &&
-                parameter.ActivationEventId == hideEventId ||
-                parameter.Status == SearchParameterStatus.Disabling &&
-                parameter.DeactivationEventId == hideEventId)
+    /// <summary>
+    /// Gets the Staged and Disabling definitions that one transition commits, grouped by storage identity.
+    /// </summary>
+    /// <param name="transitionId">
+    /// The hide event id: a package activation's <see cref="PackageActivated"/> event id for every definition
+    /// that activation hid, otherwise the deactivation event that hid the definitions.
+    /// </param>
+    public IReadOnlyList<SearchParameterTransitionCandidate> GetTransitionCandidates(long transitionId) =>
+        GetTransitionParameters(transitionId)
             .GroupBy(parameter => parameter.SearchParamId)
             .Select(group => new SearchParameterTransitionCandidate(
                 group.Key,
@@ -149,11 +155,25 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
                     .ToArray()))
             .ToArray();
 
+    /// <summary>
+    /// Gets the Staged and Disabling definitions hidden from search until <paramref name="transitionId"/> commits.
+    /// </summary>
+    public IReadOnlyList<ActiveSearchParameter> GetTransitionParameters(long transitionId) =>
+        _searchParameterActivations
+            .Where(parameter =>
+                parameter.Status == SearchParameterStatus.Staged &&
+                GetTransitionId(parameter.ActivationEventId) == transitionId ||
+                parameter.Status == SearchParameterStatus.Disabling &&
+                GetTransitionId(parameter.DeactivationEventId!.Value) == transitionId)
+            .ToArray();
+
     public IReadOnlyList<long> GetTransitionHideEventIds() =>
         _searchParameterActivations
             .Where(parameter => parameter.Status is SearchParameterStatus.Staged or SearchParameterStatus.Disabling)
-            .SelectMany(parameter => new[] { parameter.ActivationEventId, parameter.DeactivationEventId })
-            .OfType<long>()
+            .Select(parameter => GetTransitionId(
+                parameter.Status == SearchParameterStatus.Staged
+                    ? parameter.ActivationEventId
+                    : parameter.DeactivationEventId!.Value))
             .Distinct()
             .ToArray();
 
@@ -216,6 +236,10 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         foreach (var (canonical, id) in _canonicalToParamId)
         {
             staged._canonicalToParamId.Add(canonical, id);
+        }
+        foreach (var (hideEventId, transitionId) in _transitionIds)
+        {
+            staged._transitionIds.Add(hideEventId, transitionId);
         }
         return staged;
     }
@@ -383,7 +407,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
                     ApplyStructureDefinitionDeactivated(sdDeactivated);
                     break;
                 case PackageActivated pa:
-                    ApplyPackageActivated(pa, evt.Timestamp);
+                    ApplyPackageActivated(pa, evt.EventId, evt.Timestamp);
                     break;
                 case PackageDeactivated pd:
                     ApplyPackageDeactivated(pd, evt.EventId);
@@ -732,15 +756,25 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         _structureDefinitions.Remove(sdDeactivated.Canonical);
     }
 
-    private void ApplyPackageActivated(PackageActivated pa, DateTimeOffset timestamp)
+    private void ApplyPackageActivated(PackageActivated pa, long eventId, DateTimeOffset timestamp)
     {
-        _packages[$"{pa.PackageId}@{pa.Version}"] = new ActivePackage
+        var packageKey = $"{pa.PackageId}@{pa.Version}";
+        _packages[packageKey] = new ActivePackage
         {
             PackageId = pa.PackageId,
             Version = pa.Version,
             ResourceCount = pa.Resources.Count,
             ActivatedAt = timestamp
         };
+
+        // The outgoing owners are Disabling under the same hide event ids, so they join the transition too.
+        foreach (var parameter in _searchParameterActivations.Where(parameter =>
+            parameter.Status == SearchParameterStatus.Staged &&
+            parameter.SourcePackage == packageKey &&
+            parameter.ActivationEventId < eventId))
+        {
+            _transitionIds.TryAdd(parameter.ActivationEventId, eventId);
+        }
     }
 
     private void ApplyPackageDeactivated(PackageDeactivated pd, long eventId)
@@ -837,6 +871,8 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
 
         return null;
     }
+
+    private long GetTransitionId(long hideEventId) => _transitionIds.GetValueOrDefault(hideEventId, hideEventId);
 
     private ActiveSearchParameter? GetLatestActivation(string resourceType, string code) =>
         _searchParameterActivations.LastOrDefault(
