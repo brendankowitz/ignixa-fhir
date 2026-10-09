@@ -36,19 +36,19 @@ public sealed class ConformanceBarrierRetryPolicy(
         }
         catch
         {
-            ConformanceBarrierMetrics.RecordRejection("failed");
+            ConformanceMetrics.RecordBarrierRejection("failed");
             throw;
         }
 
         try
         {
             var result = await operation(cancellationToken);
-            ConformanceBarrierMetrics.RecordRejection("retried_ok");
+            ConformanceMetrics.RecordBarrierRejection("retried_ok");
             return result;
         }
         catch (StaleConformanceDefinitionsException secondRejection)
         {
-            ConformanceBarrierMetrics.RecordRejection("failed");
+            ConformanceMetrics.RecordBarrierRejection("failed");
             logger.LogWarning(
                 secondRejection,
                 "Write transaction {TransactionId} remained behind the conformance barrier after one refresh",
@@ -57,7 +57,7 @@ public sealed class ConformanceBarrierRetryPolicy(
         }
         catch
         {
-            ConformanceBarrierMetrics.RecordRejection("failed");
+            ConformanceMetrics.RecordBarrierRejection("failed");
             throw;
         }
     }

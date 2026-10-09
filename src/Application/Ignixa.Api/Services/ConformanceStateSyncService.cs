@@ -95,7 +95,7 @@ public class ConformanceStateSyncService(
             }
             catch (ConformanceConsumerRefreshException)
             {
-                ConformanceConsumerRefreshMetrics.RecordFailure("sync");
+                ConformanceMetrics.RecordConsumerRefreshFailure("sync");
                 throw;
             }
 
@@ -116,7 +116,7 @@ public class ConformanceStateSyncService(
         catch (ReindexTriggerUnavailableException exception)
             when (ReindexTriggerUnavailableException.IsOperational(exception))
         {
-            ReindexReconciliationMetrics.RecordFailure();
+            ReindexMetrics.RecordReconciliationFailure();
             logger.LogError(
                 exception,
                 "Reindex reconciliation failed operationally; the next conformance sync will retry");
@@ -184,7 +184,7 @@ public class ConformanceStateSyncService(
             catch (Exception exception)
             {
                 _uncommittedTransitionFirstObserved[eventId] = _timeProvider.GetTimestamp();
-                ConformanceTransitionMetrics.RecordScheduleFailure();
+                ConformanceMetrics.RecordTransitionScheduleFailure();
                 logger.LogError(
                     exception,
                     "Transition watchdog could not schedule hide EventId {EventId}; it will retry on the next sync",

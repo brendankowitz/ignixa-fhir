@@ -9,9 +9,6 @@ namespace Ignixa.Application.Features.Conformance;
 /// </summary>
 public sealed class ConformanceLease : IConformanceLease
 {
-    private static readonly Meter Meter = new("Ignixa.Conformance");
-    private static readonly Counter<long> LeaseLostCounter = Meter.CreateCounter<long>("conformance.lease.lost");
-
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _maxStaleness;
     private readonly TimeSpan _retryAfter;
@@ -34,10 +31,8 @@ public sealed class ConformanceLease : IConformanceLease
         var configuredOptions = options.Value;
         _maxStaleness = configuredOptions.MaxStaleness;
         _retryAfter = TimeSpan.FromSeconds(configuredOptions.SyncIntervalSeconds);
-        _ageGauge = Meter.CreateObservableGauge(
-            "conformance.lease.age",
-            () => IsStarted ? Age.TotalSeconds : 0d,
-            unit: "s");
+        _ageGauge = ConformanceMetrics.CreateLeaseAgeGauge(
+            () => IsStarted ? Age.TotalSeconds : 0d);
     }
 
     /// <inheritdoc />
@@ -106,7 +101,7 @@ public sealed class ConformanceLease : IConformanceLease
 
         if (Interlocked.CompareExchange(ref _leaseState, 2, 1) == 1)
         {
-            LeaseLostCounter.Add(1);
+            ConformanceMetrics.RecordLeaseLost();
             _logger.LogWarning(
                 "Conformance staleness lease lost after {LeaseAge}; search requests will fail until synchronization succeeds",
                 Age);

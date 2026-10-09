@@ -160,7 +160,7 @@ public class PackageActivationPipeline(
         catch (ConformanceConsumerRefreshException exception)
         {
             refreshed = false;
-            ConformanceConsumerRefreshMetrics.RecordFailure("activation");
+            ConformanceMetrics.RecordConsumerRefreshFailure("activation");
             _logger.LogWarning(
                 exception,
                 "Package {PackageId}@{Version} activated durably, but local conformance consumer refresh failed; synchronization will retry",
@@ -190,7 +190,7 @@ public class PackageActivationPipeline(
             }
             catch (ReindexTriggerUnavailableException exception)
             {
-                ReindexTriggerMetrics.RecordFailure("Activation");
+                ReindexMetrics.RecordTriggerFailure("Activation");
                 _logger.LogError(
                     exception,
                     "Package {PackageId}@{Version} activated durably, but the automatic reindex trigger failed; periodic reconciliation will retry",
@@ -242,7 +242,7 @@ public class PackageActivationPipeline(
 
         // The activation event is already durable. Do not report a false activation failure, but make
         // the degraded condition explicit; the sync watchdog will make a fresh, full-grace attempt.
-        ConformanceTransitionMetrics.RecordScheduleFailure();
+        ConformanceMetrics.RecordTransitionScheduleFailure();
         _logger.LogError(
             lastException,
             "Package activation persisted hide EventId {EventId}, but transition scheduling failed after {AttemptCount} attempts; the watchdog will retry",

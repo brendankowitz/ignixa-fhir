@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 

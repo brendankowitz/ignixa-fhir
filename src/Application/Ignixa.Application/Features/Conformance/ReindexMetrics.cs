@@ -1,7 +1,6 @@
 using System.Diagnostics.Metrics;
-using Ignixa.Application.BackgroundOperations.Reindex.Models;
 
-namespace Ignixa.Application.BackgroundOperations.Reindex;
+namespace Ignixa.Application.Features.Conformance;
 
 public static class ReindexMetrics
 {
@@ -26,6 +25,10 @@ public static class ReindexMetrics
         Meter.CreateCounter<long>("reindex.queued_generations");
     private static readonly Counter<long> FollowUps =
         Meter.CreateCounter<long>("reindex.followup.starts");
+    private static readonly Counter<long> ReconciliationFailures =
+        Meter.CreateCounter<long>("reindex.reconciliation.failures");
+    private static readonly Counter<long> TriggerFailures =
+        Meter.CreateCounter<long>("reindex.trigger.failures");
 
     public static void ProgressPersistenceFailed() => ProgressFailures.Add(1);
 
@@ -39,12 +42,12 @@ public static class ReindexMetrics
 
     public static void RangeStarted() => ActiveRanges.Add(1);
 
-    public static void RangeCompleted(ReindexRangeOutput output)
+    public static void RangeCompleted(long resourcesReindexed, long conflicts, long failedResources)
     {
         ActiveRanges.Add(-1);
-        ResourcesProcessed.Add(output.ResourcesReindexed);
-        Conflicts.Add(output.Conflicts);
-        Failed.Add(output.FailedResources.Count);
+        ResourcesProcessed.Add(resourcesReindexed);
+        Conflicts.Add(conflicts);
+        Failed.Add(failedResources);
     }
 
     public static void RangeFailed() => ActiveRanges.Add(-1);
@@ -54,4 +57,9 @@ public static class ReindexMetrics
 
     public static void RecordJobDuration(TimeSpan elapsed) =>
         JobDuration.Record(elapsed.TotalSeconds);
+
+    public static void RecordReconciliationFailure() => ReconciliationFailures.Add(1);
+
+    public static void RecordTriggerFailure(string trigger) =>
+        TriggerFailures.Add(1, new KeyValuePair<string, object?>("trigger", trigger));
 }

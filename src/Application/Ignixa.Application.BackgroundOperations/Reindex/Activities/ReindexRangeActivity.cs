@@ -1,6 +1,7 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Workers;
+using Ignixa.Application.Features.Conformance;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
@@ -18,7 +19,7 @@ public sealed class ReindexRangeActivity(
         {
             var output = await heartbeat.RunAsync(
                 input.JobId, cancellationToken => processor.ProcessAsync(input, cancellationToken), CancellationToken.None);
-            ReindexMetrics.RangeCompleted(output);
+            ReindexMetrics.RangeCompleted(output.ResourcesReindexed, output.Conflicts, output.FailedResources.Count);
             return output;
         }
         catch

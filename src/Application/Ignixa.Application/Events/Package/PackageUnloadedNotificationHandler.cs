@@ -49,7 +49,7 @@ public class PackageUnloadedNotificationHandler : INotificationHandler<IPackageU
                 "Package {PackageId}@{Version} unloaded durably, but local conformance refresh is deferred",
                 evt.PackageId,
                 evt.PackageVersion);
-            ConformanceConsumerRefreshMetrics.RecordFailure("package-unload");
+            ConformanceMetrics.RecordConsumerRefreshFailure("package-unload");
             return;
         }
 

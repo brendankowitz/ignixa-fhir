@@ -1,5 +1,6 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Microsoft.Extensions.Logging;
 
