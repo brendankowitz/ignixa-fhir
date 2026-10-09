@@ -46,10 +46,15 @@ public class ConformanceStateInitializerService(
 
                 stopwatch.Stop();
 
-                var spCount = conformanceState.AllSearchParameters.Count;
-                var sdCount = conformanceState.StructureDefinitions.Count;
-                var pkgCount = conformanceState.Packages.Count;
-                var lastEventId = conformanceState.LastProcessedEventId;
+                int spCount, sdCount, pkgCount;
+                long lastEventId;
+                using (await conformanceState.AcquireActivationLockAsync(stoppingToken))
+                {
+                    spCount = conformanceState.AllSearchParameters.Count;
+                    sdCount = conformanceState.StructureDefinitions.Count;
+                    pkgCount = conformanceState.Packages.Count;
+                    lastEventId = conformanceState.LastProcessedEventId;
+                }
 
                 logger.LogInformation(
                     "ConformanceStateInitializerService completed in {ElapsedMs:N0}ms. " +

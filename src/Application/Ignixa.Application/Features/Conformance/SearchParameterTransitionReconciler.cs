@@ -12,7 +12,13 @@ public sealed class SearchParameterTransitionReconciler(
 {
     public async Task ReconcileAsync(CancellationToken cancellationToken)
     {
-        foreach (var hideEventId in conformanceState.GetTransitionHideEventIds())
+        IReadOnlyList<long> hideEventIds;
+        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
+        {
+            hideEventIds = conformanceState.GetTransitionHideEventIds();
+        }
+
+        foreach (var hideEventId in hideEventIds)
         {
             // Do not derive elapsed grace from the source-event timestamp: it is not the
             // database commit time. A reconciliation instance always waits full grace.
