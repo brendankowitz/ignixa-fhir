@@ -55,6 +55,7 @@ public class SqlReindexOrchestrationTests
         var first = await CreateReindexAsync(fixture.Client);
         using var firstResponse = first.Response;
         first.Response.StatusCode.ShouldBe(HttpStatusCode.Created, first.Body.ToJsonString());
+        await WaitForJobStatusAsync(fixture.Services, first.JobId, "Running");
         using var secondResponse = await fixture.Client.PostAsync("/tenant/1/$reindex", ReindexRequestContent());
 
         secondResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict, await secondResponse.Content.ReadAsStringAsync());
