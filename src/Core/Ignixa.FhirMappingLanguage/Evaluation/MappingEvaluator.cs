@@ -39,6 +39,8 @@ public class MappingEvaluator
     private Dictionary<string, IElement> _sharedTargets = new(StringComparer.Ordinal);
     private Dictionary<(object Parent, string Property), IElement> _intermediateTargets = new();
     private HashSet<(object Parent, TargetExpression Target)> _singleTargets = new();
+    private readonly HashSet<JsonNode> _sourceRoots = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<IElement, IElement> _sourceSnapshots = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(object Parent, string Property),
         (TargetExpression? First, TargetExpression? Last, int FirstCount, List<IElement> LastItems)> _targetOrder = new();
 
@@ -132,6 +134,8 @@ public class MappingEvaluator
         _currentGroupName = null;
         _currentRuleIndex = null;
         _currentRuleName = null;
+        _sourceRoots.Clear();
+        _sourceSnapshots.Clear();
     }
 
     /// <summary>
@@ -160,6 +164,16 @@ public class MappingEvaluator
         _intermediateTargets.Clear();
         _singleTargets.Clear();
         _targetOrder.Clear();
+        foreach (var source in context.Sources)
+        {
+            if (source.Value.Meta<JsonNode>() is { } node)
+                _sourceRoots.Add(JsonRoot(node));
+        }
+        foreach (var target in context.Targets)
+        {
+            if (target.Value.Meta<JsonNode>() is { } node)
+                _sourceRoots.Remove(JsonRoot(node));
+        }
 
         // Wire up standard transforms if not already configured
         context.TransformResolver ??= (name, args) =>
@@ -966,13 +980,21 @@ public class MappingEvaluator
                 TrackElementCreation();
                 intermediate = mutation.SetTarget(parent, property.Property, null);
                 _intermediateTargets.Add(key, intermediate);
+                return intermediate;
             }
             return mutation.Refresh(intermediate);
         }
         var matches = VisitExpression(expression, context).ToList();
         if (matches.Count == 1)
         {
-            return mutation.Refresh(matches[0]);
+            var match = matches[0];
+            // A source can be passed as a target to a dependent group; from that point it is mutable.
+            if (match.Meta<JsonNode>() is { } node && _sourceRoots.Remove(JsonRoot(node)))
+            {
+                _sourceSnapshots.Clear();
+                return mutation.Refresh(match);
+            }
+            return expression is IdentifierExpression ? match : mutation.Refresh(match);
         }
         throw new MappingExecutionException($"Target context '{expression}' resolved to {matches.Count} elements; expected one.",
             code: "TARGET_RESOURCE_NOT_FOUND");
@@ -1328,10 +1350,28 @@ public class MappingEvaluator
                 : element);
     }
 
-    private IElement RefreshElement(IElement element) =>
-        _mutator is IMappingTargetMutator mutation && element.Meta<JsonNode>() is not null
-            ? mutation.Refresh(element)
-            : element;
+    private IElement RefreshElement(IElement element)
+    {
+        if (_mutator is not IMappingTargetMutator mutation || element.Meta<JsonNode>() is not { } node)
+            return element;
+        if (!_sourceRoots.Contains(JsonRoot(node)))
+            return mutation.Refresh(element);
+        if (_sourceSnapshots.TryGetValue(element, out var snapshot))
+            return snapshot;
+
+        // Preserve the mutator's schema interpretation, but reuse it while the source is unchanged.
+        snapshot = mutation.Refresh(element);
+        _sourceSnapshots.Add(element, snapshot);
+        _sourceSnapshots.TryAdd(snapshot, snapshot);
+        return snapshot;
+    }
+
+    private static JsonNode JsonRoot(JsonNode node)
+    {
+        while (node.Parent is { } parent)
+            node = parent;
+        return node;
+    }
 
     private IElement CreatePrimitive(object value)
     {

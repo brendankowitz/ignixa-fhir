@@ -555,7 +555,7 @@ public partial class JsonNodeMutator
         IType definition,
         string instanceType)
     {
-        var source = JsonNodeSourceNode.Create(owner).Children(name).ElementAt(index);
+        var source = JsonNodeSourceNode.FromProperty(owner, name, index);
         return new SchemaAwareElement(source, schema, definition, instanceType);
     }
 }
