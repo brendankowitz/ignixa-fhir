@@ -8,7 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Application.Features.Conformance;
 
 /// <summary>
-/// Commits the phase-two state transition for the definitions hidden by one event.
+/// Commits the phase-two state transition for every definition one transition hid: all codes of a package
+/// activation (keyed by its PackageActivated event id, appended in the same transaction as its hide events),
+/// or the definitions of one deactivation event. One append, one refresh and one reindex request per transition.
 /// </summary>
 public sealed class SearchParameterTransitionCommitter(
     ISourceEventStore eventStore,
@@ -17,6 +19,7 @@ public sealed class SearchParameterTransitionCommitter(
     ConformanceRefresher conformanceRefresher,
     ILogger<SearchParameterTransitionCommitter> logger)
 {
+    /// <returns>Whether a transition event was appended; false when nothing it hid is still pending.</returns>
     public async Task<bool> CommitAsync(long hideEventId, CancellationToken cancellationToken)
     {
         IReadOnlyList<SourceEvent> committed;
