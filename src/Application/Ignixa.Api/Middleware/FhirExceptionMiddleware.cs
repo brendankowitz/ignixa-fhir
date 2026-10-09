@@ -71,10 +71,6 @@ public class FhirExceptionMiddleware
             {
                 context.Response.Headers.RetryAfter = Math.Max(1, Math.Ceiling(conformanceStale.RetryAfter.TotalSeconds)).ToString();
             }
-            else if (fhirException is ConformanceDefinitionsUnavailableException definitionsUnavailable)
-            {
-                context.Response.Headers.RetryAfter = Math.Max(1, Math.Ceiling(definitionsUnavailable.RetryAfter.TotalSeconds)).ToString();
-            }
 
             return context.Response.Body.WriteAsync(fhirException.OperationOutcome.SerializeToBytes()).AsTask();
         }

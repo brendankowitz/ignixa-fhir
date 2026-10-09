@@ -220,18 +220,9 @@ public sealed class ReindexJobReconciler(
             reason);
     }
 
-    private static IReadOnlyList<ReindexTarget> ReconstructTargets(
+    private static IReadOnlyList<ReindexParameterDefinition> ReconstructTargets(
         BackgroundJob<ReindexJobDefinition> job) =>
-        job.Definition.SearchParameters.Select(target => new ReindexTarget(
-            target.Canonical,
-            target.Code,
-            target.ResourceType,
-            target.SearchParamId,
-            target.ActivationEventId,
-            target.AffectedResourceTypes)
-        {
-            ScheduledResourceTypes = target.ScheduledResourceTypes
-        }).ToArray();
+        job.Definition.SearchParameters;
 
     internal static IReadOnlyDictionary<string, PersistedOutcome> ReadPersistedOutcomes(
         JsonNode? progress) =>
@@ -259,7 +250,7 @@ public sealed class ReindexJobReconciler(
                 StringComparer.Ordinal)
         ?? new Dictionary<string, PersistedOutcome>(StringComparer.Ordinal);
 
-    internal static string TargetIdentity(ReindexTarget target) =>
+    internal static string TargetIdentity(ReindexParameterDefinition target) =>
         TargetIdentity(target.Canonical, target.ResourceType, target.Code);
 
     private static string TargetIdentity(string canonical, string resourceType, string code) =>

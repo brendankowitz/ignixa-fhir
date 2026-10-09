@@ -44,7 +44,7 @@ public class CompleteReindexActivityTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IFhirRepository, IReindexStore>();
         ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
@@ -102,7 +102,7 @@ public class CompleteReindexActivityTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(() => failAppend), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
@@ -135,7 +135,7 @@ public class CompleteReindexActivityTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var completionHook = Substitute.For<IReindexCompletionHook>();
         var failHook = true;
@@ -192,7 +192,7 @@ public class CompleteReindexActivityTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IFhirRepository, IReindexStore>();
         ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
@@ -251,7 +251,7 @@ public class CompleteReindexActivityTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IFhirRepository, IReindexStore>();
         ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
@@ -309,7 +309,7 @@ public class CompleteReindexActivityTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IFhirRepository, IReindexStore>();
         ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
@@ -366,7 +366,7 @@ public class CompleteReindexActivityTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IFhirRepository, IReindexStore>();
         ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
@@ -425,7 +425,7 @@ public class CompleteReindexActivityTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(overrideCanonical));
         var lifecycle = new ReindexLifecycleEventWriter(eventStore, state);
-        var target = new ReindexTarget(
+        var target = new ReindexParameterDefinition(
             overrideCanonical,
             "custom",
             "Patient",
@@ -510,7 +510,7 @@ public class CompleteReindexActivityTests
         return repositoryFactory;
     }
 
-    private static string SingleTenantInput(ReindexTarget target) =>
+    private static string SingleTenantInput(ReindexParameterDefinition target) =>
         JsonSerializer.Serialize(new[]
         {
             new CompleteReindexInput(

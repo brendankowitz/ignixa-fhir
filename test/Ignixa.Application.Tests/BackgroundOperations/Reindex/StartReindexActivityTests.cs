@@ -26,7 +26,7 @@ public class StartReindexActivityTests
     {
         using var fixture = new Fixture();
         await fixture.InitializeAsync();
-        var second = new ReindexTarget(
+        var second = new ReindexParameterDefinition(
             "http://example.org/SearchParameter/patient-second",
             "second",
             "Patient",
@@ -203,7 +203,7 @@ public class StartReindexActivityTests
         fixture.State.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
-    private static ReindexParameterDefinition Definition(ReindexTarget target) =>
+    private static ReindexParameterDefinition Definition(ReindexParameterDefinition target) =>
         new(
             target.Canonical,
             target.Code,
@@ -260,7 +260,7 @@ public class StartReindexActivityTests
         public ConformanceState State { get; } = new();
         public List<SourceEvent> Events { get; } = [];
         public Func<Task>? BeforeAppend { get; set; }
-        public ReindexTarget Target { get; } =
+        public ReindexParameterDefinition Target { get; } =
             new("http://example.org/SearchParameter/patient-custom", "custom", "Patient", 17, 1, ["Patient"]);
         public ReindexLifecycleEventWriter Lifecycle { get; }
         public ReindexJobUpdater Updater { get; }

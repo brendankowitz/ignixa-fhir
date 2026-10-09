@@ -697,7 +697,7 @@ public class CreateReindexJobHandlerTests
                     null),
                 DateTimeOffset.UtcNow));
         }
-        var target = new ReindexTarget(
+        var target = new ReindexParameterDefinition(
             "http://example.org/SearchParameter/patient-custom",
             "custom",
             "Patient",
@@ -814,7 +814,7 @@ public class CreateReindexJobHandlerTests
         IReindexJobLock JobLock,
         ReindexLifecycleEventWriter Lifecycle,
         ConformanceState State,
-        ReindexTarget Target,
+        ReindexParameterDefinition Target,
         ReindexJobDefinition Definition,
         DateTimeOffset Now,
         ISourceEventStore EventStore);

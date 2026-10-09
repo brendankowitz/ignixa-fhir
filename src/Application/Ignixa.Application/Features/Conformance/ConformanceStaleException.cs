@@ -10,9 +10,19 @@ namespace Ignixa.Application.Features.Conformance;
 public sealed class ConformanceStaleException : FhirException
 {
     public const string MessageText = "Conformance state is stale; search is temporarily unavailable.";
+    public const string DefinitionsChangedMessageText =
+        "Conformance definitions changed while the resource was being written; retry the request.";
 
     public ConformanceStaleException(TimeSpan retryAfter)
-        : base(MessageText, CreateIssue())
+        : base(MessageText, CreateIssue(MessageText))
+    {
+        RetryAfter = retryAfter;
+    }
+
+    public ConformanceStaleException(
+        TimeSpan retryAfter,
+        Exception innerException)
+        : base(DefinitionsChangedMessageText, innerException, CreateIssue(DefinitionsChangedMessageText))
     {
         RetryAfter = retryAfter;
     }
@@ -21,11 +31,11 @@ public sealed class ConformanceStaleException : FhirException
 
     public TimeSpan RetryAfter { get; }
 
-    private static OperationOutcomeIssue CreateIssue() =>
+    private static OperationOutcomeIssue CreateIssue(string diagnostics) =>
         new()
         {
             SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
             IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.Transient,
-            Diagnostics = MessageText,
+            Diagnostics = diagnostics,
         };
 }

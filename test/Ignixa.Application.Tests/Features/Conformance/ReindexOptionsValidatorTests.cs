@@ -24,8 +24,7 @@ public class ReindexOptionsValidatorTests
             OrphanGrace = TimeSpan.Zero,
             StaleJobTimeout = TimeSpan.Zero,
             DrainWarningAfter = TimeSpan.Zero,
-            ContinueAsNewThreshold = 0,
-            RecentTerminalJobsListed = -1
+            ContinueAsNewThreshold = 0
         });
 
         result.Failed.ShouldBeTrue();
@@ -37,6 +36,5 @@ public class ReindexOptionsValidatorTests
         result.Failures.ShouldContain(message => message.Contains("StaleJobTimeout", StringComparison.Ordinal));
         result.Failures.ShouldContain(message => message.Contains("DrainWarningAfter", StringComparison.Ordinal));
         result.Failures.ShouldContain(message => message.Contains("ContinueAsNewThreshold", StringComparison.Ordinal));
-        result.Failures.ShouldContain(message => message.Contains("RecentTerminalJobsListed", StringComparison.Ordinal));
     }
 }

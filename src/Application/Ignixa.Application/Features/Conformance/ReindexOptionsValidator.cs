@@ -39,13 +39,6 @@ public sealed class ReindexOptionsValidator : IValidateOptions<ReindexOptions>
             int.MaxValue,
             nameof(options.ContinueAsNewThreshold),
             failures);
-        ValidateRange(
-            options.RecentTerminalJobsListed,
-            0,
-            int.MaxValue,
-            nameof(options.RecentTerminalJobsListed),
-            failures);
-
         return failures.Count == 0
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);

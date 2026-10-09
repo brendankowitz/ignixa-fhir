@@ -53,7 +53,7 @@ public sealed class ConformanceBarrierRetryPolicy(
                 secondRejection,
                 "Write transaction {TransactionId} remained behind the conformance barrier after one refresh",
                 secondRejection.TransactionId);
-            throw new ConformanceDefinitionsUnavailableException(_retryAfter, secondRejection);
+            throw new ConformanceStaleException(_retryAfter, secondRejection);
         }
         catch
         {

@@ -64,9 +64,9 @@ public class DeferredWriteCoordinatorBarrierTests
         var queued = coordinator.QueueWriteAsync(Patient("stale") with { DefinitionsEventId = 11 });
         await coordinator.WaitToReadAsync();
 
-        await Should.ThrowAsync<ConformanceDefinitionsUnavailableException>(() =>
+        await Should.ThrowAsync<ConformanceStaleException>(() =>
             coordinator.ProcessBatchAsync(batchSize: 1, CancellationToken.None));
-        await Should.ThrowAsync<ConformanceDefinitionsUnavailableException>(() => queued);
+        await Should.ThrowAsync<ConformanceStaleException>(() => queued);
     }
 
     [Fact]
@@ -87,10 +87,10 @@ public class DeferredWriteCoordinatorBarrierTests
         var second = coordinator.QueueWriteAsync(Patient("second") with { DefinitionsEventId = 11 });
         await coordinator.WaitToReadAsync();
 
-        await Should.ThrowAsync<ConformanceDefinitionsUnavailableException>(() =>
+        await Should.ThrowAsync<ConformanceStaleException>(() =>
             coordinator.ProcessBatchAsync(batchSize: 2, CancellationToken.None));
-        await Should.ThrowAsync<ConformanceDefinitionsUnavailableException>(() => first);
-        await Should.ThrowAsync<ConformanceDefinitionsUnavailableException>(() => second);
+        await Should.ThrowAsync<ConformanceStaleException>(() => first);
+        await Should.ThrowAsync<ConformanceStaleException>(() => second);
     }
 
     private static async Task<DeferredWriteCoordinator> CreateCoordinatorAsync(

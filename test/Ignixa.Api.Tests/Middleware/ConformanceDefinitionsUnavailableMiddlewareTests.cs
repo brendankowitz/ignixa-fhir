@@ -15,7 +15,7 @@ public class ConformanceDefinitionsUnavailableMiddlewareTests
         var context = new DefaultHttpContext();
         context.Response.Body = new MemoryStream();
         var middleware = new FhirExceptionMiddleware(
-            _ => throw new ConformanceDefinitionsUnavailableException(
+            _ => throw new ConformanceStaleException(
                 TimeSpan.FromSeconds(17),
                 new StaleConformanceDefinitionsException(101, 11, 29)),
             NullLogger<FhirExceptionMiddleware>.Instance);

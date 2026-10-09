@@ -31,7 +31,7 @@ public class ReindexJobReconcilerTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
         {
@@ -72,7 +72,7 @@ public class ReindexJobReconcilerTests
             NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
         {
             JobId = "debounced",
@@ -141,7 +141,7 @@ public class ReindexJobReconcilerTests
         };
         var eventStore = EventStore(events);
         var lifecycle = new ReindexLifecycleEventWriter(eventStore, state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
         {
             JobId = "job",
@@ -200,7 +200,7 @@ public class ReindexJobReconcilerTests
         var state = new ConformanceState();
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
         {
@@ -249,7 +249,7 @@ public class ReindexJobReconcilerTests
             Arg.Any<CancellationToken>());
     }
 
-    private static ReindexJobDefinition Definition(ReindexTarget target) => new()
+    private static ReindexJobDefinition Definition(ReindexParameterDefinition target) => new()
     {
         TargetEventId = 1,
         TenantIds = [1],

@@ -316,7 +316,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         var repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
             tenants,
             NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
-        var target = new ReindexTarget(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
         {
             JobId = "round-trip",

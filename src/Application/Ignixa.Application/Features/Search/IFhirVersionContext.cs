@@ -57,24 +57,6 @@ public interface IFhirVersionContext
     DefinitionsHandle GetDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId);
 
     /// <summary>
-    /// Builds a handle without making it visible to writers.
-    /// </summary>
-    DefinitionsHandle CreateDefinitionsHandle(
-        FhirVersion fhirVersion,
-        Nullable<int> tenantId,
-        long definitionsEventId);
-
-    /// <summary>
-    /// Publishes a newly refreshed write-extraction handle atomically.
-    /// </summary>
-    void PublishDefinitionsHandle(
-        FhirVersion fhirVersion,
-        Nullable<int> tenantId,
-        DefinitionsHandle handle);
-
-    void PublishDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId, long definitionsEventId);
-
-    /// <summary>
     /// Builds a complete tenant definition set from a detached conformance projection.
     /// </summary>
     ConformanceDefinitionsSnapshot CreateConformanceDefinitionsSnapshot(

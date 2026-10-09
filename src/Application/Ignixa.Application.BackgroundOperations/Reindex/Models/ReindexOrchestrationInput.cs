@@ -1,3 +1,5 @@
+using Ignixa.Domain.Models;
+
 namespace Ignixa.Application.BackgroundOperations.Reindex.Models;
 
 public sealed record ReindexOrchestrationInput(
@@ -6,7 +8,7 @@ public sealed record ReindexOrchestrationInput(
     TimeSpan BarrierDelay,
     IReadOnlyList<int> TenantIds,
     IReadOnlyList<string> ResourceTypes,
-    IReadOnlyList<ReindexTarget> Targets,
+    IReadOnlyList<ReindexParameterDefinition> Targets,
     ReindexJobParameters Parameters,
     TimeSpan? DrainWarningAfter = null,
     int ContinueAsNewThreshold = 2_000,

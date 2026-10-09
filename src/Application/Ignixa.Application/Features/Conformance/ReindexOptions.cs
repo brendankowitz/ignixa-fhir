@@ -19,5 +19,4 @@ public sealed class ReindexOptions
     public TimeSpan StaleJobTimeout { get; set; } = TimeSpan.FromMinutes(30);
     public TimeSpan DrainWarningAfter { get; set; } = TimeSpan.FromMinutes(5);
     public int ContinueAsNewThreshold { get; set; } = 2_000;
-    public int RecentTerminalJobsListed { get; set; } = 10;
 }

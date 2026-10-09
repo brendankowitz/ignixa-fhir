@@ -4,6 +4,7 @@ using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
@@ -15,7 +16,7 @@ public sealed class ReindexLifecycleEventWriter(
 
     public Task<IReadOnlyList<string>> StartAsync(
         string jobId,
-        IReadOnlyList<ReindexTarget> targets,
+        IReadOnlyList<ReindexParameterDefinition> targets,
         CancellationToken cancellationToken) =>
         AppendAsync(
             targets,
@@ -77,7 +78,7 @@ public sealed class ReindexLifecycleEventWriter(
                     parameter.ReindexJobId is not null)
                 .Select(parameter => new OwnedReindexTarget(
                     parameter.ReindexJobId!,
-                    new ReindexTarget(
+                    new ReindexParameterDefinition(
                         parameter.Canonical,
                         parameter.Code,
                         parameter.ResourceType,
@@ -89,8 +90,8 @@ public sealed class ReindexLifecycleEventWriter(
     }
 
     private async Task<IReadOnlyList<string>> AppendAsync(
-        IReadOnlyList<ReindexTarget> targets,
-        Func<ReindexTarget, object> createEvent,
+        IReadOnlyList<ReindexParameterDefinition> targets,
+        Func<ReindexParameterDefinition, object> createEvent,
         string jobId,
         bool requireOwnership,
         CancellationToken cancellationToken)
@@ -183,7 +184,7 @@ public sealed class ReindexLifecycleEventWriter(
             conformanceState.LastProcessedEventId);
     }
 
-    private bool IsOwnedByJob(ReindexTarget target, string jobId)
+    private bool IsOwnedByJob(ReindexParameterDefinition target, string jobId)
     {
         var current = conformanceState.GetSearchParameter(target.ResourceType, target.Code);
         return current?.ActivationEventId == target.ActivationEventId &&
@@ -191,15 +192,15 @@ public sealed class ReindexLifecycleEventWriter(
             current.ReindexJobId == jobId;
     }
 
-    private static string TargetIdentity(ReindexTarget target) =>
+    private static string TargetIdentity(ReindexParameterDefinition target) =>
         $"{target.Canonical}|{target.ResourceType}|{target.Code}";
 }
 
 public sealed record ReindexTargetCompletion(
-    ReindexTarget Target,
+    ReindexParameterDefinition Target,
     bool Success,
     long ResourcesIndexed,
     TimeSpan Duration,
     string? ErrorMessage);
 
-public sealed record OwnedReindexTarget(string JobId, ReindexTarget Target);
+public sealed record OwnedReindexTarget(string JobId, ReindexParameterDefinition Target);

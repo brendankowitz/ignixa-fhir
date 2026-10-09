@@ -1,4 +1,5 @@
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Domain.Models;
 using Ignixa.Conformance.Events.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
@@ -41,7 +42,7 @@ public static class ReindexTargetResolver
                 var scheduledTypes = requested is null
                     ? affectedTypes
                     : affectedTypes.Where(requested.Contains).ToArray();
-                return new ReindexTarget(
+                return new ReindexParameterDefinition(
                         parameter.Canonical,
                         parameter.Code,
                         parameter.ResourceType,

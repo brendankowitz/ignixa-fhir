@@ -14,7 +14,7 @@ public sealed class StartReindexActivity(
         StartReindexInput input)
     {
         IReadOnlyList<string> ignored = [];
-        IReadOnlyList<ReindexTarget> targets = input.Targets;
+        IReadOnlyList<ReindexParameterDefinition> targets = input.Targets;
         ReindexJobDefinition? definition = null;
         var shouldContinue = await jobs.UpdateAsync(
             input.JobId,
@@ -23,7 +23,7 @@ public sealed class StartReindexActivity(
                 definition = job.Definition;
                 if (job.Definition.SearchParameters.Count > 0 || input.Targets.Count == 0)
                 {
-                    targets = ReconstructTargets(job.Definition);
+                    targets = job.Definition.SearchParameters;
                 }
 
                 ignored = await lifecycle.StartAsync(
@@ -46,17 +46,4 @@ public sealed class StartReindexActivity(
             Targets = targets
         };
     }
-
-    private static IReadOnlyList<ReindexTarget> ReconstructTargets(
-        ReindexJobDefinition definition) =>
-        definition.SearchParameters.Select(target => new ReindexTarget(
-            target.Canonical,
-            target.Code,
-            target.ResourceType,
-            target.SearchParamId,
-            target.ActivationEventId,
-            target.AffectedResourceTypes)
-        {
-            ScheduledResourceTypes = target.ScheduledResourceTypes
-        }).ToArray();
 }
