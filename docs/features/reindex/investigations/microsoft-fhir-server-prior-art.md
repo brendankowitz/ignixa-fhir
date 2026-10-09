@@ -10,30 +10,32 @@ This investigation studies how [microsoft/fhir-server](https://github.com/micros
 `$reindex`, so Ignixa can reuse what has proven itself in production and avoid known problems. The source was
 `main` at commit `035d5460`, read on 2026-10-06. All paths below are relative to that repository.
 
-### API surface (`Shared.Api/Controllers/ReindexController.cs`)
+### API surface (`Shared.Api/Controllers/ReindexController.cs`: `CreateReindexJob`, `ListReindexJobs`,
+`GetReindexJob`, and `CancelReindex`)
 
 | Route | Behaviour |
 |---|---|
 | `POST [base]/$reindex` | Creates a job. Returns **201 Created** with a `Parameters` body, `Content-Location`, ETag, and Last-Modified. |
-| `GET [base]/$reindex` | Lists active jobs. |
-| `GET [base]/$reindex/{id}` | Returns job status as `Parameters`. |
-| `DELETE [base]/$reindex/{id}` | Cancels the whole job group. Returns **202 Accepted**. |
+| `GET [base]/$reindex` | Returns only the active job, or 501 when none exists. |
+| `GET [base]/_operations/reindex/{id}` | Returns job status as `Parameters`. |
+| `DELETE [base]/_operations/reindex/{id}` | Cancels the whole job group. Returns **202 Accepted**. |
 | `GET [type]/[id]/$reindex` | **Dry run.** Extracts the index entries for one resource and returns them. Nothing is persisted. |
-| `POST [type]/[id]/$reindex` | Extracts and **persists** the index for one resource with the same `Version`, `RawResource`, and `LastUpdated` (`ReindexSingleResourceRequestHandler.cs:63-117`). |
+| `POST [type]/[id]/$reindex` | Extracts and **persists** the index for one resource with the same `Version`, `RawResource`, and `LastUpdated` (`Core/Features/Operations/Reindex/ReindexSingleResourceRequestHandler.cs`, `HandleAsync`). |
 
 - **Request parameters:** `maximumNumberOfResourcesPerQuery` and `maximumNumberOfResourcesPerWrite` (each bounded
   to 1..10000; defaults 10000 and 1000). The controller also parses `targetResourceTypes`,
   `targetSearchParameterTypes`, `queryDelayIntervalInMilliseconds`, and `targetDataStoreUsagePercentage`, but
   **`CreateReindexRequestHandler` never forwards them to the job**, so they have no effect
-  (`CreateReindexRequestHandler.cs:41-66`, `ReindexJobRecord.cs:26-100`). `OperationDefinition/reindex.json`
+  (`Core/Features/Operations/Reindex/CreateReindexRequestHandler.cs`, `HandleAsync`).
+  `OperationDefinition/reindex.json`
   declares no parameters at all.
 - **Duplicate POST:** when a job is already active, the server returns the *existing* job with 201 instead of
-  409 Conflict (`CreateReindexRequestHandler.cs:46-55`).
+  409 Conflict (`Core/Features/Operations/Reindex/CreateReindexRequestHandler.cs`, `HandleAsync`).
 - **Status `Parameters` fields:** `id`, `startTime`, `endTime`, `lastModified`, `queuedTime`,
   `totalResourcesToReindex`, `resourcesSuccessfullyReindexed`, `progress` (capped at 99.9 until done),
   `status`, `resources`, `resourceReindexProgressByResource (resource count)`, `searchParams`,
   `failureDetails`, `maximumNumberOfResourcesPerQuery`, and `maximumNumberOfResourcesPerWrite`
-  (`ReindexJobRecordExtensions.cs:19-109`).
+  (`Shared.Api/Controllers/ReindexController.cs`, `GetReindexJob`).
 
 ### Job architecture (`Core/Features/Operations/Reindex/`)
 
@@ -41,7 +43,7 @@ The job runs on the generic SQL `JobQueue` (`QueueType.Reindex`). One `ReindexOr
 `ReindexProcessingJob`s that share a `GroupId`. The legacy `ReindexJobTask` has been removed
 (microsoft/fhir-server#5711).
 
-The orchestrator (`ReindexOrchestratorJob.cs`) runs these steps:
+The orchestrator (`Core/Features/Operations/Reindex/ReindexOrchestratorJob.cs`, `ExecuteAsync`) runs these steps:
 
 1. `DeleteOrphans()` marks status rows whose `SearchParameter` resource no longer exists as `Deleted`.
 2. **It waits until every instance's search-parameter cache has converged** (`WaitForAllInstancesCacheSyncAsync`
@@ -58,7 +60,8 @@ The orchestrator (`ReindexOrchestratorJob.cs`) runs these steps:
    `Deleted`. **A single failed child fails the whole orchestrator.**
 6. It waits for cache convergence again before returning.
 
-The processing job (`ReindexProcessingJob.cs`) works as follows:
+The processing job (`Core/Features/Operations/Reindex/ReindexProcessingJob.cs`, `ExecuteAsync`,
+`CheckSearchParamHash`, and `ComputeAndWrite`) works as follows:
 
 - It **compares the expected hash with the current hash**. A mismatch means a second parameter change landed
   mid-job, so it raises a soft failure instead of writing stale indexes.
@@ -74,10 +77,11 @@ The processing job (`ReindexProcessingJob.cs`) works as follows:
 - `dbo.UpdateResourceSearchParams` updates `SearchParamHash` and diffs every typed index table. It joins on
   `(ResourceTypeId, ResourceSurrogateId)` **with `IsHistory = 0`**. Any resource updated concurrently has already
   become history, so it is skipped and counted in `@FailedResources`. The server logs these conflicts and does not
-  retry them (`SqlServerFhirDataStore.cs:971-1013`). Ignixa's `UpdateResourceSearchParams.sql` is a port of this
+  retry them (`Core/Features/Persistence/SqlServerFhirDataStore.cs`, `BulkUpdateSearchParameterIndicesAsync`).
+  Ignixa's `UpdateResourceSearchParams.sql` is a port of this
   procedure.
 
-### Status lifecycle (`Search/Registry/SearchParameterStatus.cs`)
+### Status lifecycle (`Core/Features/Search/Registry/SearchParameterStatus.cs`, `SearchParameterStatus`)
 
 The enum values are `Disabled`, `Supported`, `Enabled`, `Deleted`, `PendingDelete`, `PendingDisable`,
 `Unsupported`, `Initialized`, and `PendingHardDelete`.
@@ -113,11 +117,11 @@ The enum values are `Disabled`, `Supported`, `Enabled`, `Deleted`, `PendingDelet
 
 | Adopt | Rationale |
 |---|---|
-| Orchestrator plus surrogate-id range fan-out | Same shape as Ignixa `$export`. Proven at 10^8+ rows. |
+| Orchestrator plus surrogate-id range fan-out | Same shape as Ignixa `$export`. |
 | Worker check that the definitions are not older than the target | Adapted from the MS expected-hash check. Ignixa compares definitions positions (conformance `EventId`) instead of hashes. |
 | Index-only write via `UpdateResourceSearchParams` with an `IsHistory = 0` guard | Does not create a version. Concurrent writers win without a lock. |
 | Cache convergence before completing | Adapted: Ignixa uses polling only as an advisory delay. Correctness comes from a database-enforced barrier that rejects transaction allocations from writers with stale definitions. |
-| Wire-compatible API (`Parameters` body, 201 + `Content-Location`, `DELETE` to cancel, per-resource GET dry run / POST persist) | `ms-reindex.json` and existing MS-oriented clients keep working. |
+| Compatible API (`Parameters` body, 201 + `Content-Location`, `DELETE` to cancel) | `ms-reindex.json` and existing MS-oriented clients keep working. Ignixa deliberately keeps job routes at `$reindex/{id}`, adds job listing and `maximumConcurrency`, and defers single-resource `$reindex` to issue #485. |
 | Partial-index opt-in header | Operators can still query during long runs, and they have to ask for it explicitly. |
 
 | Adapt / Avoid | Rationale |
@@ -128,7 +132,7 @@ The enum values are `Disabled`, `Supported`, `Enabled`, `Deleted`, `PendingDelet
 | **Adapt:** use DurableTask instead of a custom JobQueue | ADR-2510. Gives replay, retries, and `TerminateInstanceAsync` without a heartbeat thread. |
 | **Adapt:** fan out per tenant database, with a cutoff per tenant | MS uses one database. Ignixa stores status globally and data per tenant. |
 | **Adapt:** *queue* a follow-up job on concurrent parameter changes, instead of returning 409 or superseding | Package activation can run at any time. Without a per-row marker, superseding would throw away completed ranges. |
-| **Avoid** the `PendingDisable` and `PendingDelete` states | Deactivation makes a parameter unsearchable immediately, which is safe. Orphan rows are harmless because ids are never reused across canonicals. Only removing an override needs a reindex. |
+| **Adapt** lifecycle transitions | Ignixa uses `Staged` and `Disabling` for a two-phase hide/commit transition. Deactivation, override addition, and override removal all preserve extraction until the grace period completes; incoming definitions become `Pending` and are reindexed before they are searchable. |
 | **Avoid** letting one failed range fail everything with no diagnostics | Ignixa records per-resource failures and isolates the failure to that tenant. |
 
 ## Alignment
@@ -150,10 +154,11 @@ The enum values are `Disabled`, `Supported`, `Enabled`, `Deleted`, `PendingDelet
     ranges) and `MergeResourcesAdvanceTransactionVisibility.sql` (contiguous visibility)
   - `Tables/SourceEvents.sql` (`TransactionId`) and `EventStore/SqlServerSourceEventStore.cs`
     (`ReadVisibleTransactionCutoffAsync`)
-  - `src/DataLayer/Ignixa.DataLayer.SqlServer/SqlServerFhirRepository.cs:216` (the transaction id is allocated
-    after the indexes are extracted)
-  - `src/Application/Ignixa.Application/Features/Conformance/ConformanceState.cs:42-56` (overrides reuse the
-    `SearchParamId`) and `:365-389`
+  - `src/DataLayer/Ignixa.DataLayer.SqlServer/SqlServerFhirRepository.cs`,
+    `SqlServerFhirRepository.MergeResourcesAsync` (the transaction id is allocated after indexes are extracted)
+  - `src/Application/Ignixa.Application/Features/Conformance/ConformanceState.cs`,
+    `ConformanceState.ApplyActivated` and `ConformanceState.ApplyTransitionCommitted` (shared `SearchParamId`
+    ownership and transitions)
   - `src/Application/Ignixa.Conformance.Events/Events/SearchParameterEvents.cs`
   - `src/Application/Ignixa.Application.BackgroundOperations/Export/**`
   - `src/Core/Ignixa.TestScript.Suites/testscripts/Microsoft/ms-reindex.json`

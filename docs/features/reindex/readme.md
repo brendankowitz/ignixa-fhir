@@ -1,6 +1,6 @@
 # Feature: Reindex
 
-**Status**: Exploring
+**Status**: Implemented (spec v5)
 **Created**: 2026-10-06
 
 ## Problem Statement
@@ -13,11 +13,11 @@ Ignixa has no way to bring those rows up to date:
   `BackgroundJobType.Reindex` and executed by DurableTask. Schema version 6 removes the unused
   `ReindexJob` table, its five stored procedures, and its unused bulk TVP. `UpdateResourceSearchParams`
   remains the index-only writer.
-- **Partially indexed parameters give wrong results without warning.** `ConformanceState` sets package parameters
-  to `Pending`, but `CompositeSearchParameterDefinitionManager` admits `Enabled` *and* `Pending`. Also, the
-  "searchable" resolver in `SearchServicesRegistration.cs:211` returns the full manager, so
-  `SearchableSearchParameterDefinitionManager` is never used. A search on a parameter that was never reindexed
-  misses older resources. With `:not` or `:missing`, it also returns resources that should not match.
+- **Partially indexed parameters must not give wrong results without warning.**
+  `CompositeSearchParameterDefinitionManager` now marks `Pending` and `Reindexing` as non-searchable by default
+  while retaining partial-index opt-in; `Staged` is unsupported and `Disabling` is hidden until its transition
+  commits. `SearchOptionsBuilderFactory` uses the tenant's searchable definitions, so a package parameter becomes
+  searchable only after its reindex completes.
 - **The raw data for exact scoping already exists.** Transaction ids are time-ordered, and each one is the base
   of a disjoint range of `ResourceSurrogateId`s. Visibility advances only past contiguous completed
   transactions. `SourceEvents` records the visible watermark at each append, and activation events name the
