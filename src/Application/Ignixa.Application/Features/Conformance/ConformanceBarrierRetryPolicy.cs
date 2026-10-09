@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace Ignixa.Application.Features.Conformance;
 
 public sealed class ConformanceBarrierRetryPolicy(
-    IConformanceDefinitionsSynchronizer synchronizer,
+    ConformanceRefresher conformanceRefresher,
     IOptions<ConformanceTransitionOptions> transitionOptions,
     ILogger<ConformanceBarrierRetryPolicy> logger)
 {
@@ -32,7 +32,7 @@ public sealed class ConformanceBarrierRetryPolicy(
 
         try
         {
-            await synchronizer.SynchronizeAsync(cancellationToken);
+            await conformanceRefresher.SynchronizeAsync(cancellationToken);
         }
         catch
         {

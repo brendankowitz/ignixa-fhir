@@ -10,19 +10,19 @@ namespace Ignixa.Application.Events.Package;
 /// </summary>
 public class PackageLoadedNotificationHandler : INotificationHandler<IPackageLoaded>, INotificationHandler<PackageLoadedEvent>
 {
-    private readonly ConformanceRefreshPublisher _refreshPublisher;
+    private readonly ConformanceRefresher _conformanceRefresher;
     private readonly ILogger<PackageLoadedNotificationHandler> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PackageLoadedNotificationHandler"/> class.
     /// </summary>
-    /// <param name="refreshPublisher">Conformance snapshot publisher</param>
+    /// <param name="conformanceRefresher">Conformance definitions refresher</param>
     /// <param name="logger">Logger instance</param>
     public PackageLoadedNotificationHandler(
-        ConformanceRefreshPublisher refreshPublisher,
+        ConformanceRefresher conformanceRefresher,
         ILogger<PackageLoadedNotificationHandler> logger)
     {
-        _refreshPublisher = refreshPublisher ?? throw new ArgumentNullException(nameof(refreshPublisher));
+        _conformanceRefresher = conformanceRefresher ?? throw new ArgumentNullException(nameof(conformanceRefresher));
         _logger = logger;
     }
 
@@ -41,11 +41,11 @@ public class PackageLoadedNotificationHandler : INotificationHandler<IPackageLoa
         {
             if (evt.RequiresConformanceRefresh)
             {
-                await _refreshPublisher.RefreshCurrentAsync(CancellationToken.None);
+                await _conformanceRefresher.RefreshAsync(force: true, CancellationToken.None);
             }
             else
             {
-                await _refreshPublisher.RefreshUntilCurrentAsync(cancellationToken);
+                await _conformanceRefresher.RefreshAsync(force: false, cancellationToken);
             }
         }
         catch (ConformanceConsumerRefreshException exception)

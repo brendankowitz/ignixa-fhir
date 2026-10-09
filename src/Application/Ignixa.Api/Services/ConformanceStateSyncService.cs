@@ -17,7 +17,7 @@ namespace Ignixa.Api.Services;
 public class ConformanceStateSyncService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
-    ConformanceRefreshPublisher refreshPublisher,
+    ConformanceRefresher conformanceRefresher,
     ConformanceLease conformanceLease,
     IOptions<ConformanceTransitionOptions> transitionOptions,
     ReindexTrigger reindexTrigger,
@@ -78,11 +78,11 @@ public class ConformanceStateSyncService(
             afterEventId = conformanceState.LastProcessedEventId;
         }
 
-        if (afterEventId > _lastRefreshedEventId || refreshPublisher.HasPendingRefresh)
+        if (afterEventId > _lastRefreshedEventId || conformanceRefresher.HasPendingRefresh)
         {
             try
             {
-                _lastRefreshedEventId = await refreshPublisher.RefreshUntilCurrentAsync(cancellationToken);
+                _lastRefreshedEventId = await conformanceRefresher.RefreshAsync(force: false, cancellationToken);
             }
             catch (ConformanceConsumerRefreshException)
             {

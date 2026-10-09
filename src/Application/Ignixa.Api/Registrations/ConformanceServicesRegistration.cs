@@ -68,17 +68,12 @@ public static class ConformanceServicesRegistration
             .AsSelf()
             .SingleInstance();
 
-        builder.RegisterType<ConformanceCacheRefresher>()
-            .AsSelf()
-            .As<IConformanceCacheRefresher>()
+        builder.RegisterType<SqlSearchParameterCatalogSynchronizer>()
+            .As<ISearchParameterCatalogSynchronizer>()
             .SingleInstance();
 
-        builder.RegisterType<ConformanceRefreshPublisher>()
+        builder.RegisterType<ConformanceRefresher>()
             .AsSelf()
-            .SingleInstance();
-
-        builder.RegisterType<ConformanceDefinitionsSynchronizer>()
-            .As<IConformanceDefinitionsSynchronizer>()
             .SingleInstance();
 
         builder.Register(c => new ConformanceLease(

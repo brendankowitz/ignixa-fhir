@@ -14,7 +14,7 @@ public sealed class SearchParameterTransitionCommitter(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
     IReindexTrigger reindexTrigger,
-    ConformanceRefreshPublisher refreshPublisher,
+    ConformanceRefresher conformanceRefresher,
     ILogger<SearchParameterTransitionCommitter> logger)
 {
     private const int MaxConcurrencyAttempts = 3;
@@ -104,7 +104,7 @@ public sealed class SearchParameterTransitionCommitter(
             }
         }
 
-        await refreshPublisher.RefreshUntilCurrentAsync(cancellationToken);
+        await conformanceRefresher.RefreshAsync(force: false, cancellationToken);
 
         return committedTransition;
     }

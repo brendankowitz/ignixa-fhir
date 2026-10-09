@@ -102,8 +102,7 @@ public class ViewDefinitionPipelineTests(ITestOutputHelper output)
             Substitute.For<IApplicationVersionInfo>(), NullLogger<CapabilityStatementService>.Instance);
         var builder = new ContainerBuilder();
         builder.RegisterApplicationServices(new ConfigurationBuilder().Build());
-        builder.RegisterInstance(Substitute.For<IConformanceDefinitionsSynchronizer>())
-            .As<IConformanceDefinitionsSynchronizer>();
+        builder.RegisterInstance(TestConformanceRefresher.Create(new ConformanceState()));
         builder.RegisterInstance(Microsoft.Extensions.Options.Options.Create(new ConformanceTransitionOptions()))
             .As<Microsoft.Extensions.Options.IOptions<ConformanceTransitionOptions>>();
         builder.RegisterValidationServices();

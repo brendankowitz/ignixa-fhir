@@ -10,19 +10,19 @@ namespace Ignixa.Application.Events.Package;
 /// </summary>
 public class PackageUnloadedNotificationHandler : INotificationHandler<IPackageUnloaded>, INotificationHandler<PackageUnloadedEvent>
 {
-    private readonly ConformanceRefreshPublisher _refreshPublisher;
+    private readonly ConformanceRefresher _conformanceRefresher;
     private readonly ILogger<PackageUnloadedNotificationHandler> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PackageUnloadedNotificationHandler"/> class.
     /// </summary>
-    /// <param name="refreshPublisher">Conformance snapshot publisher</param>
+    /// <param name="conformanceRefresher">Conformance definitions refresher</param>
     /// <param name="logger">Logger instance</param>
     public PackageUnloadedNotificationHandler(
-        ConformanceRefreshPublisher refreshPublisher,
+        ConformanceRefresher conformanceRefresher,
         ILogger<PackageUnloadedNotificationHandler> logger)
     {
-        _refreshPublisher = refreshPublisher ?? throw new ArgumentNullException(nameof(refreshPublisher));
+        _conformanceRefresher = conformanceRefresher ?? throw new ArgumentNullException(nameof(conformanceRefresher));
         _logger = logger;
     }
 
@@ -40,7 +40,7 @@ public class PackageUnloadedNotificationHandler : INotificationHandler<IPackageU
 
         try
         {
-            await _refreshPublisher.RefreshCurrentAsync(CancellationToken.None);
+            await _conformanceRefresher.RefreshAsync(force: true, CancellationToken.None);
         }
         catch (ConformanceConsumerRefreshException exception)
         {

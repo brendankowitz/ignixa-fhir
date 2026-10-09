@@ -285,8 +285,8 @@ public class SqlReindexOrchestrationTests
     }
 
     private static Task RefreshConformanceConsumersAsync(IServiceProvider services) =>
-        services.GetRequiredService<ConformanceRefreshPublisher>()
-            .RefreshUntilCurrentAsync(CancellationToken.None);
+        services.GetRequiredService<ConformanceRefresher>()
+            .RefreshAsync(force: false, CancellationToken.None);
 
     private static async Task WaitForJobStatusAsync(
         IServiceProvider services,

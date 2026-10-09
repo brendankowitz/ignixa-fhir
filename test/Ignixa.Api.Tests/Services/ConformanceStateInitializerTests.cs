@@ -3,6 +3,8 @@ using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -20,7 +22,7 @@ public class ConformanceStateInitializerTests
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        using var service = new TestInitializer(store, state, CreateRefresher(), CreateLease());
+        using var service = new TestInitializer(store, state, TestConformanceRefresher.Tenants(), CreateLease());
 
         await service.RunAsync();
 
@@ -35,7 +37,7 @@ public class ConformanceStateInitializerTests
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
         var lease = CreateLease();
-        using var service = new TestInitializer(store, state, CreateRefresher(), lease);
+        using var service = new TestInitializer(store, state, TestConformanceRefresher.Tenants(), lease);
 
         await service.RunAsync();
 
@@ -50,17 +52,14 @@ public class ConformanceStateInitializerTests
         using var state = new ConformanceState();
         var lease = CreateLease();
         bool? heldDuringRefresh = null;
-        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+        var refreshTenants = Substitute.For<ITenantConfigurationStore>();
+        refreshTenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
             {
                 heldDuringRefresh = lease.IsHeld;
-                return Task.FromResult<IConformanceConsumerSnapshot>(new TestSnapshot(callInfo.ArgAt<long>(1)));
+                return new ValueTask<IReadOnlyList<TenantConfiguration>>([]);
             });
-        using var service = new TestInitializer(store, state, cacheRefresher, lease);
+        using var service = new TestInitializer(store, state, refreshTenants, lease);
 
         await service.RunAsync();
 
@@ -91,7 +90,7 @@ public class ConformanceStateInitializerTests
                 : Events(first, second));
         store.ReadFromAsync(1, Arg.Any<CancellationToken>()).Returns(Events(second));
         using var state = new ConformanceState();
-        using var service = new TestInitializer(store, state, CreateRefresher(), CreateLease());
+        using var service = new TestInitializer(store, state, TestConformanceRefresher.Tenants(), CreateLease());
 
         await service.RunAsync();
 
@@ -134,30 +133,15 @@ public class ConformanceStateInitializerTests
             TimeProvider.System,
             NullLogger<ConformanceLease>.Instance);
 
-    private static IConformanceCacheRefresher CreateRefresher()
-    {
-        var refresher = Substitute.For<IConformanceCacheRefresher>();
-        refresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo => Task.FromResult<IConformanceConsumerSnapshot>(
-                new TestSnapshot(callInfo.ArgAt<long>(1))));
-        return refresher;
-    }
-
     private sealed class TestInitializer(
         ISourceEventStore store,
         ConformanceState state,
-        IConformanceCacheRefresher cacheRefresher,
+        ITenantConfigurationStore refreshTenants,
         ConformanceLease lease)
         : ConformanceStateInitializerService(
             store,
             state,
-            new ConformanceRefreshPublisher(
-                state,
-                cacheRefresher,
-                NullLogger<ConformanceRefreshPublisher>.Instance),
+            TestConformanceRefresher.Create(state, tenants: refreshTenants),
             lease,
             NullLogger<ConformanceStateInitializerService>.Instance)
     {
@@ -168,6 +152,4 @@ public class ConformanceStateInitializerTests
             CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
-
-    private sealed record TestSnapshot(long Generation) : IConformanceConsumerSnapshot;
 }

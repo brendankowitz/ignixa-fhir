@@ -16,7 +16,7 @@ namespace Ignixa.Api.Services;
 public class ConformanceStateInitializerService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
-    ConformanceRefreshPublisher refreshPublisher,
+    ConformanceRefresher conformanceRefresher,
     ConformanceLease conformanceLease,
     ILogger<ConformanceStateInitializerService> logger) : BackgroundService
 {
@@ -41,7 +41,7 @@ public class ConformanceStateInitializerService(
             try
             {
                 await conformanceState.InitializeFromEventsAsync(eventStore, stoppingToken);
-                await refreshPublisher.RefreshUntilCurrentAsync(stoppingToken);
+                await conformanceRefresher.RefreshAsync(force: false, stoppingToken);
                 conformanceLease.Renew(leaseStart);
 
                 stopwatch.Stop();

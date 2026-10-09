@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -13,8 +14,8 @@ public class ConformanceBarrierRetryPolicyTests
     [Fact]
     public async Task GivenTheFirstAllocationIsStale_WhenDefinitionsAreSynchronized_ThenOperationRetriesOnce()
     {
-        var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
-        var policy = CreatePolicy(synchronizer);
+        var eventStore = TestConformanceRefresher.EmptyEventStore();
+        var policy = CreatePolicy(eventStore);
         var attempts = 0;
         using var listener = ListenForOutcomes(out var outcomes);
 
@@ -31,14 +32,14 @@ public class ConformanceBarrierRetryPolicyTests
         result.ShouldBe(42);
         attempts.ShouldBe(2);
         outcomes.ShouldContain("retried_ok");
-        await synchronizer.Received(1).SynchronizeAsync(CancellationToken.None);
+        _ = eventStore.Received(1).ReadFromAsync(0, CancellationToken.None);
     }
 
     [Fact]
     public async Task GivenTheRetryAllocationIsStillStale_WhenOperationRetries_Then503IncludesSyncInterval()
     {
-        var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
-        var policy = CreatePolicy(synchronizer);
+        var eventStore = TestConformanceRefresher.EmptyEventStore();
+        var policy = CreatePolicy(eventStore);
         using var listener = ListenForOutcomes(out var outcomes);
 
         var exception = await Should.ThrowAsync<ConformanceStaleException>(() =>
@@ -49,14 +50,14 @@ public class ConformanceBarrierRetryPolicyTests
         exception.StatusCode.ShouldBe(503);
         exception.RetryAfter.ShouldBe(TimeSpan.FromSeconds(17));
         outcomes.ShouldContain("failed");
-        await synchronizer.Received(1).SynchronizeAsync(CancellationToken.None);
+        _ = eventStore.Received(1).ReadFromAsync(0, CancellationToken.None);
     }
 
     [Fact]
     public async Task GivenTheRetryFailsForAnotherReason_WhenOperationRetries_ThenFailureIsRecordedAndRethrown()
     {
-        var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
-        var policy = CreatePolicy(synchronizer);
+        var eventStore = TestConformanceRefresher.EmptyEventStore();
+        var policy = CreatePolicy(eventStore);
         var retryFailure = new IOException("Retry storage failure.");
         var attempts = 0;
         using var listener = ListenForOutcomes(out var outcomes);
@@ -77,9 +78,9 @@ public class ConformanceBarrierRetryPolicyTests
         outcomes.Count(outcome => outcome == "failed").ShouldBe(1);
     }
 
-    private static ConformanceBarrierRetryPolicy CreatePolicy(IConformanceDefinitionsSynchronizer synchronizer) =>
+    private static ConformanceBarrierRetryPolicy CreatePolicy(ISourceEventStore eventStore) =>
         new(
-            synchronizer,
+            TestConformanceRefresher.Create(new ConformanceState(), eventStore),
             Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
             NullLogger<ConformanceBarrierRetryPolicy>.Instance);
 

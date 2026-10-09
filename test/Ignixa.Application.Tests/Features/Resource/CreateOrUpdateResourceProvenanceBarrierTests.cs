@@ -69,9 +69,8 @@ public class CreateOrUpdateResourceProvenanceBarrierTests
             .Returns(new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 11));
         var validationResolver = Substitute.For<IValidationSchemaResolver>();
         validationResolver.GetSchema("Provenance").Returns((ValidationSchema?)null);
-        var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
         var retryPolicy = new ConformanceBarrierRetryPolicy(
-            synchronizer,
+            TestConformanceRefresher.Create(new ConformanceState()),
             Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
             NullLogger<ConformanceBarrierRetryPolicy>.Instance);
         var handler = new CreateOrUpdateResourceHandler(

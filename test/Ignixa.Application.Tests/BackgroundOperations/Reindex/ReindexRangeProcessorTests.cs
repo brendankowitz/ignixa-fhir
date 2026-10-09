@@ -77,7 +77,7 @@ public class ReindexRangeProcessorTests
             repositories,
             tenants,
             versions,
-            Substitute.For<IConformanceDefinitionsSynchronizer>(),
+            TestConformanceRefresher.Create(new ConformanceState()),
             new FhirRequestContextAccessor());
 
         var result = await processor.ProcessAsync(
@@ -114,12 +114,12 @@ public class ReindexRangeProcessorTests
                     Substitute.For<ISearchIndexer>(),
                     Substitute.For<IFhirSchemaProvider>(),
                     42));
-        var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
+        var eventStore = TestConformanceRefresher.EmptyEventStore();
         var processor = new ReindexRangeProcessor(
             repositories,
             tenants,
             versions,
-            synchronizer,
+            TestConformanceRefresher.Create(new ConformanceState(), eventStore),
             new FhirRequestContextAccessor());
 
         var result = await processor.ProcessAsync(
@@ -127,7 +127,7 @@ public class ReindexRangeProcessorTests
             CancellationToken.None);
 
         result.ResourcesRead.ShouldBe(0);
-        await synchronizer.Received(1).SynchronizeAsync(Arg.Any<CancellationToken>());
+        _ = eventStore.Received(1).ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
         versions.Received(2).GetDefinitionsHandle(FhirVersion.R4, 1);
     }
 }

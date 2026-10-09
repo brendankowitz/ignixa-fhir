@@ -116,9 +116,8 @@ public class DeferredWriteCoordinatorBarrierTests
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
         versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(definitionsHandle);
-        var synchronizer = Substitute.For<IConformanceDefinitionsSynchronizer>();
         var retryPolicy = new ConformanceBarrierRetryPolicy(
-            synchronizer,
+            TestConformanceRefresher.Create(new ConformanceState()),
             Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
             NullLogger<ConformanceBarrierRetryPolicy>.Instance);
 

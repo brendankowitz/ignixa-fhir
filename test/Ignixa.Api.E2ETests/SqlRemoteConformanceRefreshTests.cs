@@ -169,8 +169,8 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
             await stateA.CatchUpAsync(
                 hostA.Services.GetRequiredService<ISourceEventStore>(),
                 CancellationToken.None);
-            await hostA.Services.GetRequiredService<ConformanceRefreshPublisher>()
-                .RefreshUntilCurrentAsync(CancellationToken.None);
+            await hostA.Services.GetRequiredService<ConformanceRefresher>()
+                .RefreshAsync(force: false, CancellationToken.None);
             await AssertEventuallySupportedAsync(clientA, identifier);
             await PutPatientAsync(clientB, afterId, identifier);
             await AssertPatientsAsync(clientB, identifier, afterId);

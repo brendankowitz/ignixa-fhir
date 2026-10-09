@@ -34,7 +34,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
@@ -73,7 +73,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(30, CancellationToken.None);
@@ -110,7 +110,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
@@ -143,7 +143,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         await Should.ThrowAsync<InvalidOperationException>(() =>
@@ -169,7 +169,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
@@ -205,7 +205,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
@@ -244,7 +244,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
@@ -277,7 +277,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
@@ -301,7 +301,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            CreateRefreshPublisher(state),
+            TestConformanceRefresher.Create(state),
             NullLogger<SearchParameterTransitionCommitter>.Instance);
 
         await Should.ThrowAsync<SourceEventConcurrencyException>(() => committer.CommitAsync(20, CancellationToken.None));
@@ -354,26 +354,5 @@ public class SearchParameterTransitionCommitterTests
         }
 
         await Task.CompletedTask;
-    }
-
-    private static ConformanceRefreshPublisher CreateRefreshPublisher(ConformanceState state) =>
-        new(
-            state,
-            new NoOpCacheRefresher(),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ConformanceRefreshPublisher>.Instance);
-
-    private sealed class NoOpCacheRefresher : IConformanceCacheRefresher
-    {
-        public Task<IConformanceConsumerSnapshot> BuildSnapshotAsync(
-            ConformanceStateSnapshot stateSnapshot,
-            long generation,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IConformanceConsumerSnapshot>(new Snapshot(generation));
-
-        public void PublishSnapshot(IConformanceConsumerSnapshot snapshot)
-        {
-        }
-
-        private sealed record Snapshot(long Generation) : IConformanceConsumerSnapshot;
     }
 }

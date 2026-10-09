@@ -33,18 +33,11 @@ public class ConformanceStateSyncServiceTests
                 DateTimeOffset.UtcNow)));
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
-                new InvalidOperationException("refresh failed")));
         var lease = TestConformanceLease.NotHeld();
         using var service = new TestSyncService(
             store,
             state,
-            cacheRefresher,
+            TestConformanceRefresher.FailingTenants(new InvalidOperationException("refresh failed")),
             lease);
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.RunSyncAsync());
@@ -65,33 +58,21 @@ public class ConformanceStateSyncServiceTests
             new PackageActivated("test", "1", []),
             DateTimeOffset.UtcNow));
         var builds = 0;
-        var refresher = Substitute.For<IConformanceCacheRefresher>();
-        refresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                builds++;
-                return builds == 2
-                    ? Task.FromException<IConformanceConsumerSnapshot>(
-                        new ConformanceConsumerRefreshException("failed", new IOException("failed")))
-                    : Task.FromResult<IConformanceConsumerSnapshot>(new TestSnapshot(1));
-            });
-        using var publisher = new ConformanceRefreshPublisher(
-            state,
-            refresher,
-            NullLogger<ConformanceRefreshPublisher>.Instance);
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => ++builds == 2
+                ? ValueTask.FromException<IReadOnlyList<TenantConfiguration>>(new IOException("failed"))
+                : new ValueTask<IReadOnlyList<TenantConfiguration>>([]));
+        using var refresher = TestConformanceRefresher.Create(state, tenants: tenants);
         using var service = new TestSyncService(
             store,
             state,
             refresher,
-            TestConformanceLease.NotHeld(),
-            refreshPublisher: publisher);
+            TestConformanceLease.NotHeld());
 
         await service.RunSyncAsync();
         await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
-            publisher.RefreshCurrentAsync(CancellationToken.None));
+            refresher.RefreshAsync(force: true, CancellationToken.None));
         await service.RunSyncAsync();
 
         builds.ShouldBe(3);
@@ -129,7 +110,7 @@ public class ConformanceStateSyncServiceTests
         using var service = new TestSyncService(
             store,
             state,
-            CreateRefresher(),
+            TestConformanceRefresher.Tenants(),
             TestConformanceLease.NotHeld(),
             CreateReindexTrigger(mediator, autoStart: true));
 
@@ -157,7 +138,7 @@ public class ConformanceStateSyncServiceTests
         using var service = new TestSyncService(
             store,
             state,
-            CreateRefresher(),
+            TestConformanceRefresher.Tenants(),
             lease,
             CreateReindexTrigger(mediator, autoStart: true));
 
@@ -182,18 +163,6 @@ public class ConformanceStateSyncServiceTests
         await Task.CompletedTask;
     }
 
-    private static IConformanceCacheRefresher CreateRefresher()
-    {
-        var refresher = Substitute.For<IConformanceCacheRefresher>();
-        refresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo => Task.FromResult<IConformanceConsumerSnapshot>(
-                new TestSnapshot(callInfo.ArgAt<long>(1))));
-        return refresher;
-    }
-
     private static ReindexTrigger CreateReindexTrigger(
         IMediator mediator,
         bool autoStart)
@@ -204,29 +173,37 @@ public class ConformanceStateSyncServiceTests
             NullLogger<ReindexTrigger>.Instance);
     }
 
-    private sealed class TestSyncService(
-        ISourceEventStore store,
-        ConformanceState state,
-        IConformanceCacheRefresher cacheRefresher,
-        ConformanceLease lease,
-        ReindexTrigger? reindexTrigger = null,
-        ConformanceRefreshPublisher? refreshPublisher = null)
-        : ConformanceStateSyncService(
-            store,
-            state,
-            refreshPublisher ?? new ConformanceRefreshPublisher(
-                state,
-                cacheRefresher,
-                NullLogger<ConformanceRefreshPublisher>.Instance),
-            lease,
-            Options.Create(new ConformanceTransitionOptions()),
-            reindexTrigger ?? CreateReindexTrigger(
-                Substitute.For<IMediator>(),
-                autoStart: false),
-            NullLogger<ConformanceStateSyncService>.Instance)
+    private sealed class TestSyncService : ConformanceStateSyncService
     {
+        public TestSyncService(
+            ISourceEventStore store,
+            ConformanceState state,
+            ITenantConfigurationStore refreshTenants,
+            ConformanceLease lease,
+            ReindexTrigger? reindexTrigger = null)
+            : this(store, state, TestConformanceRefresher.Create(state, tenants: refreshTenants), lease, reindexTrigger)
+        {
+        }
+
+        public TestSyncService(
+            ISourceEventStore store,
+            ConformanceState state,
+            ConformanceRefresher refresher,
+            ConformanceLease lease,
+            ReindexTrigger? reindexTrigger = null)
+            : base(
+                store,
+                state,
+                refresher,
+                lease,
+                Options.Create(new ConformanceTransitionOptions()),
+                reindexTrigger ?? CreateReindexTrigger(
+                    Substitute.For<IMediator>(),
+                    autoStart: false),
+                NullLogger<ConformanceStateSyncService>.Instance)
+        {
+        }
+
         public Task RunSyncAsync() => SyncAsync(CancellationToken.None);
     }
-
-    private sealed record TestSnapshot(long Generation) : IConformanceConsumerSnapshot;
 }

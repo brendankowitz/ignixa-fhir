@@ -14,7 +14,7 @@ public sealed class ReindexRangeProcessor(
     IFhirRepositoryFactory repositoryFactory,
     ITenantConfigurationStore tenantConfigurationStore,
     IFhirVersionContext fhirVersionContext,
-    IConformanceDefinitionsSynchronizer definitionsSynchronizer,
+    ConformanceRefresher conformanceRefresher,
     IFhirRequestContextAccessor fhirContextAccessor)
 {
     private const int MinimumWriteBatchSize = 10;
@@ -25,8 +25,8 @@ public sealed class ReindexRangeProcessor(
         tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
     private readonly IFhirVersionContext _fhirVersionContext =
         fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
-    private readonly IConformanceDefinitionsSynchronizer _definitionsSynchronizer =
-        definitionsSynchronizer ?? throw new ArgumentNullException(nameof(definitionsSynchronizer));
+    private readonly ConformanceRefresher _conformanceRefresher =
+        conformanceRefresher ?? throw new ArgumentNullException(nameof(conformanceRefresher));
     private readonly IFhirRequestContextAccessor _fhirContextAccessor =
         fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
 
@@ -50,7 +50,7 @@ public sealed class ReindexRangeProcessor(
             var handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
             if (handle.DefinitionsEventId < input.TargetEventId)
             {
-                await _definitionsSynchronizer.SynchronizeAsync(cancellationToken);
+                await _conformanceRefresher.SynchronizeAsync(cancellationToken);
                 handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
                 if (handle.DefinitionsEventId < input.TargetEventId)
                 {

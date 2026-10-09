@@ -215,7 +215,7 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
 ### 4.5 Conformance staleness lease
 
 - Each instance records `LeaseStartUtc`: the **start** time, on a monotonic clock, of its most recent sync whose
-  catch-up **and** consumer refresh both succeeded (`ConformanceStateSyncService`, `ConformanceCacheRefresher`).
+  catch-up **and** consumer refresh both succeeded (`ConformanceStateSyncService`, `ConformanceRefresher`).
   Initial state load counts as such a sync, and so does applying a local activation.
 - An instance holds the lease while `now − LeaseStartUtc ≤ Conformance:MaxStaleness`. The default is
   `3 × SyncIntervalSeconds`.
@@ -294,7 +294,7 @@ commit.
 
 ### 5.4 Definitions handle
 
-`CompositeSearchParameterDefinitionManager`/`ConformanceCacheRefresher` publish immutable definitions snapshots
+`CompositeSearchParameterDefinitionManager`/`ConformanceRefresher` publish immutable definitions snapshots
 and `DefinitionsHandle(ISearchIndexer Indexer, long DefinitionsEventId, long PublicationSequence)`. The event id is
 the position the indexer's definitions were built from, which is the *refreshed* position, not
 `ConformanceState.LastProcessedEventId`. Snapshot slots publish monotonically by generation and use

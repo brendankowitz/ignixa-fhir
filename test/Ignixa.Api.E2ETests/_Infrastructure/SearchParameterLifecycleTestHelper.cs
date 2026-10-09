@@ -34,8 +34,8 @@ internal static class SearchParameterLifecycleTestHelper
         CancellationToken.None);
 
         await state.CatchUpAsync(store, CancellationToken.None);
-        await services.GetRequiredService<ConformanceRefreshPublisher>()
-            .RefreshUntilCurrentAsync(CancellationToken.None);
+        await services.GetRequiredService<ConformanceRefresher>()
+            .RefreshAsync(force: false, CancellationToken.None);
         await WaitForStatusAsync(state, stagedCanonical, SearchParameterStatus.Pending);
     }
 
@@ -77,8 +77,8 @@ internal static class SearchParameterLifecycleTestHelper
         CancellationToken.None);
 
         await state.CatchUpAsync(store, CancellationToken.None);
-        await services.GetRequiredService<ConformanceRefreshPublisher>()
-            .RefreshUntilCurrentAsync(CancellationToken.None);
+        await services.GetRequiredService<ConformanceRefresher>()
+            .RefreshAsync(force: false, CancellationToken.None);
         await WaitForStatusAsync(state, canonical, SearchParameterStatus.Enabled);
     }
 

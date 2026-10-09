@@ -39,7 +39,7 @@ public class PackageActivationPipelineTests
             eventStore,
             state,
             transitionScheduler,
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
 
         var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
 
@@ -74,7 +74,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
 
         var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
 
@@ -106,7 +106,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
 
         (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
         (await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
@@ -138,7 +138,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
 
         var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
 
@@ -188,7 +188,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
 
         var result = await pipeline.ActivateAsync("test.multi-base", "1.0.0", CancellationToken.None);
 
@@ -257,7 +257,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
 
         var result = await pipeline.ActivateAsync("test.future", "1.0.0", CancellationToken.None);
 
@@ -309,13 +309,13 @@ public class PackageActivationPipelineTests
         var trigger = Substitute.For<IReindexTrigger>();
         trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new ReindexTriggerResult("job-1", false, null));
-        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
+        var refreshTenants = TestConformanceRefresher.Tenants();
         var pipeline = CreatePipeline(
             packageRepository,
             eventStore,
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            cacheRefresher,
+            refreshTenants,
             reindexTrigger: trigger);
 
         var result = await pipeline.ActivateAsync(
@@ -364,7 +364,7 @@ public class PackageActivationPipelineTests
             eventStore,
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>(),
+            TestConformanceRefresher.Tenants(),
             reindexTrigger: trigger);
 
         var result = await pipeline.ActivateAsync(
@@ -410,7 +410,7 @@ public class PackageActivationPipelineTests
             eventStore,
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>(),
+            TestConformanceRefresher.Tenants(),
             reindexTrigger: trigger);
 
         await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
@@ -451,13 +451,8 @@ public class PackageActivationPipelineTests
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreateBaseActivation());
         var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
-                new InvalidOperationException("Injected refresh failure.")));
+        var refreshTenants = TestConformanceRefresher.FailingTenants(
+            new InvalidOperationException("Injected refresh failure."));
         var lease = TestConformanceLease.NotHeld();
         var logger = Substitute.For<ILogger<PackageActivationPipeline>>();
         var pipeline = new PackageActivationPipeline(
@@ -467,7 +462,7 @@ public class PackageActivationPipelineTests
             Options.Create(new SearchParameterResolutionOptions()),
             transitionScheduler,
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            CreateRefreshPublisher(state, cacheRefresher),
+            TestConformanceRefresher.Create(state, tenants: refreshTenants),
             lease,
             CreateReindexTrigger(),
             CreateFhirVersionContext(state),
@@ -485,10 +480,7 @@ public class PackageActivationPipelineTests
             persistedEvents[0].EventId,
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
-        await cacheRefresher.Received(1).BuildSnapshotAsync(
-            Arg.Any<ConformanceStateSnapshot>(),
-            Arg.Any<long>(),
-            CancellationToken.None);
+        await refreshTenants.Received(1).GetAllTenantsAsync(CancellationToken.None);
         lease.LeaseStartUtc.ShouldBeNull();
     }
 
@@ -517,20 +509,14 @@ public class PackageActivationPipelineTests
                 .ToArray()));
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreateBaseActivation());
-        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                CancellationToken.None)
-            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
-                new OperationCanceledException("Independent cancellation.")));
+        var refreshTenants = TestConformanceRefresher.FailingTenants(
+            new OperationCanceledException("Independent cancellation."));
         var pipeline = CreatePipeline(
             packageRepository,
             eventStore,
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            cacheRefresher,
-            configureSuccessfulRefresh: false);
+            refreshTenants);
 
         await Should.ThrowAsync<OperationCanceledException>(() => pipeline.ActivateAsync(
             "test.override",
@@ -563,15 +549,7 @@ public class PackageActivationPipelineTests
                 .ToArray()));
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreateBaseActivation());
-        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
-        cacheRefresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                CancellationToken.None)
-            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
-                new ConformanceConsumerRefreshException(
-                "Expected refresh failure.",
-                new IOException("Database unavailable."))));
+        var refreshTenants = TestConformanceRefresher.FailingTenants(new IOException("Database unavailable."));
         var lease = TestConformanceLease.NotHeld();
         var pipeline = new PackageActivationPipeline(
             packageRepository,
@@ -580,7 +558,7 @@ public class PackageActivationPipelineTests
             Options.Create(new SearchParameterResolutionOptions()),
             Substitute.For<ISearchParameterTransitionScheduler>(),
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            CreateRefreshPublisher(state, cacheRefresher),
+            TestConformanceRefresher.Create(state, tenants: refreshTenants),
             lease,
             CreateReindexTrigger(),
             CreateFhirVersionContext(state),
@@ -632,7 +610,7 @@ public class PackageActivationPipelineTests
             eventStore,
             state,
             transitionScheduler,
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
 
         var result = await pipeline.ActivateAsync(
             "test.override",
@@ -652,20 +630,10 @@ public class PackageActivationPipelineTests
         ISourceEventStore eventStore,
         ConformanceState state,
         ISearchParameterTransitionScheduler transitionScheduler,
-        IConformanceCacheRefresher cacheRefresher,
-        bool configureSuccessfulRefresh = true,
+        ITenantConfigurationStore refreshTenants,
         IReindexTrigger? reindexTrigger = null)
     {
         var lease = TestConformanceLease.NotHeld();
-        if (configureSuccessfulRefresh)
-        {
-            cacheRefresher.BuildSnapshotAsync(
-                    Arg.Any<ConformanceStateSnapshot>(),
-                    Arg.Any<long>(),
-                    Arg.Any<CancellationToken>())
-                .Returns(callInfo => Task.FromResult<IConformanceConsumerSnapshot>(
-                    new TestConsumerSnapshot(callInfo.ArgAt<long>(1))));
-        }
         return new PackageActivationPipeline(
             packageRepository,
             eventStore,
@@ -673,7 +641,7 @@ public class PackageActivationPipelineTests
             Options.Create(new SearchParameterResolutionOptions()),
             transitionScheduler,
             Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromSeconds(1) }),
-            CreateRefreshPublisher(state, cacheRefresher),
+            TestConformanceRefresher.Create(state, tenants: refreshTenants),
             lease,
             reindexTrigger ?? CreateReindexTrigger(),
             CreateFhirVersionContext(state),
@@ -696,13 +664,6 @@ public class PackageActivationPipelineTests
             .Returns(Task.FromResult(new ReindexTriggerResult(null, false, null)));
         return trigger;
     }
-
-    private static ConformanceRefreshPublisher CreateRefreshPublisher(
-        ConformanceState state,
-        IConformanceCacheRefresher cacheRefresher) =>
-        new(state, cacheRefresher, Microsoft.Extensions.Logging.Abstractions.NullLogger<ConformanceRefreshPublisher>.Instance);
-
-    private sealed record TestConsumerSnapshot(long Generation) : IConformanceConsumerSnapshot;
 
     private static ISourceEventStore CreateEventStore(List<SourceEvent> persistedEvents)
     {
@@ -746,7 +707,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
         (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
 
         if (commitFirstTransition)
@@ -833,7 +794,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
 
         return await pipeline.ActivateAsync("test.multi-base", "1.0.0", CancellationToken.None);
     }
@@ -856,7 +817,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
         (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
         var first = state.FindByCanonical("http://example.org/SearchParameter/test.first")!;
         var baseOwner = state.GetSearchParameter("Patient", "identifier")!;
@@ -946,7 +907,7 @@ public class PackageActivationPipelineTests
             CreateEventStore(persistedEvents),
             state,
             Substitute.For<ISearchParameterTransitionScheduler>(),
-            Substitute.For<IConformanceCacheRefresher>());
+            TestConformanceRefresher.Tenants());
         return await pipeline.ActivateAsync("test.new", "1.0.0", CancellationToken.None);
 
         void ApplyAndRecord(object data)

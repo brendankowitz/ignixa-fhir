@@ -30,7 +30,7 @@ public class PackageActivationPipeline(
     IOptions<SearchParameterResolutionOptions> options,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
-    ConformanceRefreshPublisher refreshPublisher,
+    ConformanceRefresher conformanceRefresher,
     ConformanceLease conformanceLease,
     IReindexTrigger reindexTrigger,
     IFhirVersionContext fhirVersionContext,
@@ -45,7 +45,7 @@ public class PackageActivationPipeline(
     private readonly SearchParameterResolutionOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly ISearchParameterTransitionScheduler _transitionScheduler = transitionScheduler ?? throw new ArgumentNullException(nameof(transitionScheduler));
     private readonly ConformanceTransitionOptions _transitionOptions = transitionOptions?.Value ?? throw new ArgumentNullException(nameof(transitionOptions));
-    private readonly ConformanceRefreshPublisher _refreshPublisher = refreshPublisher ?? throw new ArgumentNullException(nameof(refreshPublisher));
+    private readonly ConformanceRefresher _conformanceRefresher = conformanceRefresher ?? throw new ArgumentNullException(nameof(conformanceRefresher));
     private readonly ConformanceLease _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
     private readonly IReindexTrigger _reindexTrigger = reindexTrigger ?? throw new ArgumentNullException(nameof(reindexTrigger));
     private readonly IFhirVersionContext _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
@@ -155,7 +155,7 @@ public class PackageActivationPipeline(
         var refreshed = true;
         try
         {
-            await _refreshPublisher.RefreshUntilCurrentAsync(CancellationToken.None);
+            await _conformanceRefresher.RefreshAsync(force: false, CancellationToken.None);
         }
         catch (ConformanceConsumerRefreshException exception)
         {

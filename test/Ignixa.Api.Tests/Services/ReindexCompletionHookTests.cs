@@ -20,17 +20,6 @@ public sealed class ReindexCompletionHookTests
     public async Task GivenLocalRefreshFails_WhenCompletionRuns_ThenTerminalDecisionDoesNotDependOnRefresh()
     {
         using var state = new ConformanceState();
-        var refresher = Substitute.For<IConformanceCacheRefresher>();
-        refresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IConformanceConsumerSnapshot>(
-                new InvalidOperationException("local refresh failed")));
-        using var publisher = new ConformanceRefreshPublisher(
-            state,
-            refresher,
-            NullLogger<ConformanceRefreshPublisher>.Instance);
         var hook = new ReindexCompletionHook(
             new ReindexAutomationStateStore(
                 Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>()),
@@ -79,17 +68,6 @@ public sealed class ReindexCompletionHookTests
                 null,
                 null),
             DateTimeOffset.UtcNow));
-        var refresher = Substitute.For<IConformanceCacheRefresher>();
-        refresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(call => Task.FromResult<IConformanceConsumerSnapshot>(
-                new TestSnapshot(call.ArgAt<long>(1))));
-        using var publisher = new ConformanceRefreshPublisher(
-            state,
-            refresher,
-            NullLogger<ConformanceRefreshPublisher>.Instance);
         var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         repository.GetAsync(
                 ReindexAutomationStateStore.StateJobId,
@@ -142,6 +120,4 @@ public sealed class ReindexCompletionHookTests
             Arg.Any<CreateReindexJobCommand>(),
             Arg.Any<CancellationToken>());
     }
-
-    private sealed record TestSnapshot(long Generation) : IConformanceConsumerSnapshot;
 }
