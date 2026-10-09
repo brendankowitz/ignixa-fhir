@@ -47,7 +47,7 @@ public class IpsGeneratorService(
     IFhirRequestContextAccessor contextAccessor,
     INarrativeGenerator narrativeGenerator,
     ISchema schema,
-    IConformanceLease conformanceLease,
+    ConformanceLease conformanceLease,
     ILogger<IpsGeneratorService> logger) : IIpsGeneratorService
 {
     /// <summary>

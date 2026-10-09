@@ -41,9 +41,7 @@ public class ConformanceStateSyncServiceTests
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromException<IConformanceConsumerSnapshot>(
                 new InvalidOperationException("refresh failed")));
-        var lease = Substitute.For<IConformanceLease>();
-        var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
-        lease.CaptureStart().Returns(leaseStart);
+        var lease = TestConformanceLease.NotHeld();
         using var service = new TestSyncService(
             store,
             state,
@@ -55,8 +53,7 @@ public class ConformanceStateSyncServiceTests
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.RunSyncAsync());
 
-        _ = lease.Received(1).CaptureStart();
-        lease.DidNotReceive().Renew(Arg.Any<ConformanceLeaseStart>());
+        lease.LeaseStartUtc.ShouldBeNull();
     }
 
     [Fact]
@@ -93,7 +90,7 @@ public class ConformanceStateSyncServiceTests
             store,
             state,
             refresher,
-            Substitute.For<IConformanceLease>(),
+            TestConformanceLease.NotHeld(),
             Substitute.For<ISearchParameterTransitionScheduler>(),
             TimeProvider.System,
             TimeSpan.FromMinutes(3),
@@ -120,7 +117,7 @@ public class ConformanceStateSyncServiceTests
             store,
             state,
             CreateRefresher(),
-            Substitute.For<IConformanceLease>(),
+            TestConformanceLease.NotHeld(),
             scheduler,
             clock,
             grace);
@@ -173,7 +170,7 @@ public class ConformanceStateSyncServiceTests
             store,
             state,
             CreateRefresher(),
-            Substitute.For<IConformanceLease>(),
+            TestConformanceLease.NotHeld(),
             Substitute.For<ISearchParameterTransitionScheduler>(),
             TimeProvider.System,
             TimeSpan.FromMinutes(3),
@@ -194,9 +191,7 @@ public class ConformanceStateSyncServiceTests
         var store = Substitute.For<ISourceEventStore>();
         store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
-        var lease = Substitute.For<IConformanceLease>();
-        var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
-        lease.CaptureStart().Returns(leaseStart);
+        var lease = TestConformanceLease.NotHeld();
         var mediator = Substitute.For<IMediator>();
         mediator.SendAsync(
                 Arg.Any<CreateReindexJobCommand>(),
@@ -214,7 +209,7 @@ public class ConformanceStateSyncServiceTests
 
         await service.RunSyncAsync();
 
-        lease.Received(1).Renew(leaseStart);
+        lease.IsHeld.ShouldBeTrue();
     }
 
     private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
@@ -301,7 +296,7 @@ public class ConformanceStateSyncServiceTests
         ISourceEventStore store,
         ConformanceState state,
         IConformanceCacheRefresher cacheRefresher,
-        IConformanceLease lease,
+        ConformanceLease lease,
         ISearchParameterTransitionScheduler transitionScheduler,
         TimeProvider timeProvider,
         TimeSpan transitionGrace,

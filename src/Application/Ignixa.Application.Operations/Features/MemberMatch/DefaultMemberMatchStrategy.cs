@@ -17,7 +17,7 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using ConformanceSearchGuard = Ignixa.Application.Features.Conformance.ConformanceSearchGuard;
-using IConformanceLease = Ignixa.Application.Features.Conformance.IConformanceLease;
+using ConformanceLease = Ignixa.Application.Features.Conformance.ConformanceLease;
 
 namespace Ignixa.Application.Operations.Features.MemberMatch;
 
@@ -41,14 +41,14 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
     private readonly ISearchServiceFactory _searchServiceFactory;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly IFhirVersionContext _versionContext;
-    private readonly IConformanceLease _conformanceLease;
+    private readonly ConformanceLease _conformanceLease;
     private readonly ILogger<DefaultMemberMatchStrategy> _logger;
 
     public DefaultMemberMatchStrategy(
         ISearchServiceFactory searchServiceFactory,
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext versionContext,
-        IConformanceLease conformanceLease,
+        ConformanceLease conformanceLease,
         ILogger<DefaultMemberMatchStrategy> logger)
     {
         _searchServiceFactory = searchServiceFactory ?? throw new ArgumentNullException(nameof(searchServiceFactory));

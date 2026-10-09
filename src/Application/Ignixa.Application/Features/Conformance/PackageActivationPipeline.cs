@@ -31,7 +31,7 @@ public class PackageActivationPipeline(
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
     ConformanceRefreshPublisher refreshPublisher,
-    IConformanceLease conformanceLease,
+    ConformanceLease conformanceLease,
     IReindexTrigger reindexTrigger,
     IFhirVersionContext fhirVersionContext,
     ILogger<PackageActivationPipeline> logger)
@@ -46,7 +46,7 @@ public class PackageActivationPipeline(
     private readonly ISearchParameterTransitionScheduler _transitionScheduler = transitionScheduler ?? throw new ArgumentNullException(nameof(transitionScheduler));
     private readonly ConformanceTransitionOptions _transitionOptions = transitionOptions?.Value ?? throw new ArgumentNullException(nameof(transitionOptions));
     private readonly ConformanceRefreshPublisher _refreshPublisher = refreshPublisher ?? throw new ArgumentNullException(nameof(refreshPublisher));
-    private readonly IConformanceLease _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
+    private readonly ConformanceLease _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
     private readonly IReindexTrigger _reindexTrigger = reindexTrigger ?? throw new ArgumentNullException(nameof(reindexTrigger));
     private readonly IFhirVersionContext _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
     private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));

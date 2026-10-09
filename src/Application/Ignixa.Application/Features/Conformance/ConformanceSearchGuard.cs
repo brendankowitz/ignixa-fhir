@@ -9,7 +9,7 @@ public static class ConformanceSearchGuard
     /// Throws when a request-originated search would use stale conformance definitions.
     /// </summary>
     public static void EnsureRequestCanSearch(
-        IConformanceLease lease,
+        ConformanceLease lease,
         bool requestOriginated,
         bool isBackgroundTask)
     {

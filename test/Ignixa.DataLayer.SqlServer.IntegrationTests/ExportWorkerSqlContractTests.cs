@@ -99,7 +99,7 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
         services.AddLogging();
         services.AddHttpContextAccessor();
         services.AddSingleton<IFhirVersionContext>(_versions);
-        services.AddSingleton<IConformanceLease>(new HeldConformanceLease());
+        services.AddSingleton(CreateHeldConformanceLease());
         services.AddSingleton<ITenantConfigurationStore>(tenants);
         services.AddSingleton<IFhirBaseUriProvider>(baseUris);
         services.AddSingleton<IFhirRequestContextAccessor>(_contextAccessor);
@@ -526,16 +526,14 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
         public Task<IFhirRepository> GetRepositoryAsync(int tenantId, CancellationToken ct = default) => Task.FromResult(repository);
     }
 
-    private sealed class HeldConformanceLease : IConformanceLease
+    private static ConformanceLease CreateHeldConformanceLease()
     {
-        public bool IsHeld => true;
-        public TimeSpan Age => TimeSpan.Zero;
-        public DateTimeOffset? LeaseStartUtc => DateTimeOffset.UtcNow;
-        public TimeSpan RetryAfter => TimeSpan.FromSeconds(30);
-        public ConformanceLeaseStart CaptureStart() => new(DateTimeOffset.UtcNow, 0);
-        public void Renew(ConformanceLeaseStart start)
-        {
-        }
+        var lease = new ConformanceLease(
+            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromHours(1) }),
+            TimeProvider.System,
+            NullLogger<ConformanceLease>.Instance);
+        lease.Renew(lease.CaptureStart());
+        return lease;
     }
 
     private sealed class SearchFactory(ISearchService service) : ISearchServiceFactory

@@ -52,7 +52,7 @@ public class FhirBaseUriProviderWiringTests
             baseUriProvider: null!,
             Substitute.For<IHttpContextAccessor>(),
             Substitute.For<IFhirRequestContextAccessor>(),
-            Substitute.For<IConformanceLease>()));
+            TestConformanceLease.Held()));
     }
 
     [Fact]
@@ -60,9 +60,7 @@ public class FhirBaseUriProviderWiringTests
     {
         var httpContextAccessor = Substitute.For<IHttpContextAccessor>();
         httpContextAccessor.HttpContext.Returns(new DefaultHttpContext());
-        var lease = Substitute.For<IConformanceLease>();
-        lease.IsHeld.Returns(false);
-        lease.RetryAfter.Returns(TimeSpan.FromSeconds(30));
+        var lease = TestConformanceLease.NotHeld();
         var factory = new SearchOptionsBuilderFactory(
             Substitute.For<IFhirVersionContext>(),
             NullFhirBaseUriProvider.Instance,

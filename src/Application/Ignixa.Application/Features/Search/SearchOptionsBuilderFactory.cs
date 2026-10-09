@@ -36,7 +36,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     private readonly IFhirBaseUriProvider _baseUriProvider;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IFhirRequestContextAccessor _fhirRequestContextAccessor;
-    private readonly IConformanceLease _conformanceLease;
+    private readonly ConformanceLease _conformanceLease;
 
     /// <param name="baseUriProvider">
     /// Supplies this server's base URIs so an absolute self-reference in a search value is recognized as
@@ -50,7 +50,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         IFhirBaseUriProvider baseUriProvider,
         IHttpContextAccessor httpContextAccessor,
         IFhirRequestContextAccessor fhirRequestContextAccessor,
-        IConformanceLease conformanceLease)
+        ConformanceLease conformanceLease)
     {
         EnsureArg.IsNotNull(versionContext, nameof(versionContext));
         ArgumentNullException.ThrowIfNull(baseUriProvider);

@@ -69,7 +69,7 @@ public class BulkDeleteRegistrationTests
         builder.RegisterType<QueryParameterParser>().As<IQueryParameterParser>();
         builder.RegisterType<SearchOptionsBuilderFactory>().As<ISearchOptionsBuilderFactory>().SingleInstance();
         builder.RegisterType<HttpContextAccessor>().As<IHttpContextAccessor>().SingleInstance();
-        builder.RegisterInstance(Substitute.For<IConformanceLease>()).As<IConformanceLease>();
+        builder.RegisterInstance(TestConformanceLease.Held());
         builder.RegisterInstance(jobs).As<IBackgroundJobRepository<BulkDeleteJobDefinition>>();
         builder.RegisterInstance(Options.Create(new BulkDeleteOptions { BatchSize = 25 })).As<IOptions<BulkDeleteOptions>>();
         builder.RegisterInstance(new TaskHubClient(new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance)));

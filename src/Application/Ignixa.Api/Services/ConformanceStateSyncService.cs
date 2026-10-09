@@ -18,7 +18,7 @@ public class ConformanceStateSyncService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
     ConformanceRefreshPublisher refreshPublisher,
-    IConformanceLease conformanceLease,
+    ConformanceLease conformanceLease,
     ISearchParameterTransitionScheduler transitionScheduler,
     IOptions<ConformanceTransitionOptions> transitionOptions,
     ReindexTrigger reindexTrigger,
@@ -60,7 +60,7 @@ public class ConformanceStateSyncService(
             }
             catch (Exception ex)
             {
-                _ = conformanceLease.IsHeld;
+                conformanceLease.Observe();
                 logger.LogWarning(
                     ex,
                     "Conformance sync failed at applied EventId {AppliedEventId}, refreshed EventId {RefreshedEventId}; will retry",
@@ -74,7 +74,7 @@ public class ConformanceStateSyncService(
 
     protected async Task SyncAsync(CancellationToken cancellationToken)
     {
-        _ = conformanceLease.IsHeld;
+        conformanceLease.Observe();
         var syncStart = conformanceLease.CaptureStart();
         var beforeEventId = conformanceState.LastProcessedEventId;
         long afterEventId;

@@ -48,22 +48,24 @@ public class ConformanceStateInitializerTests
         var store = Substitute.For<ISourceEventStore>();
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
-        var cacheRefresher = CreateRefresher();
-        var lease = Substitute.For<IConformanceLease>();
-        var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
-        lease.CaptureStart().Returns(leaseStart);
+        var lease = CreateLease();
+        bool? heldDuringRefresh = null;
+        var cacheRefresher = Substitute.For<IConformanceCacheRefresher>();
+        cacheRefresher.BuildSnapshotAsync(
+                Arg.Any<ConformanceStateSnapshot>(),
+                Arg.Any<long>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                heldDuringRefresh = lease.IsHeld;
+                return Task.FromResult<IConformanceConsumerSnapshot>(new TestSnapshot(callInfo.ArgAt<long>(1)));
+            });
         using var service = new TestInitializer(store, state, cacheRefresher, lease);
 
         await service.RunAsync();
 
-        Received.InOrder(() =>
-        {
-            cacheRefresher.BuildSnapshotAsync(
-                Arg.Any<ConformanceStateSnapshot>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>());
-            lease.Renew(leaseStart);
-        });
+        heldDuringRefresh.ShouldBe(false);
+        lease.IsHeld.ShouldBeTrue();
     }
 
     [Fact]
@@ -126,7 +128,7 @@ public class ConformanceStateInitializerTests
         throw new IOException("event store failed");
     }
 
-    private static IConformanceLease CreateLease() =>
+    private static ConformanceLease CreateLease() =>
         new ConformanceLease(
             Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromMinutes(1) }),
             TimeProvider.System,
@@ -148,7 +150,7 @@ public class ConformanceStateInitializerTests
         ISourceEventStore store,
         ConformanceState state,
         IConformanceCacheRefresher cacheRefresher,
-        IConformanceLease lease)
+        ConformanceLease lease)
         : ConformanceStateInitializerService(
             store,
             state,

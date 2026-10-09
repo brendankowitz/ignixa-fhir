@@ -56,8 +56,7 @@ public class ExportRegistrationTests
             tenants, NullLogger<InMemoryBackgroundJobRepository<ExportJobDefinition>>.Instance);
         var runtime = new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance);
         var builder = new ContainerBuilder();
-        var conformanceLease = Substitute.For<IConformanceLease>();
-        conformanceLease.IsHeld.Returns(true);
+        var conformanceLease = TestConformanceLease.Held();
         builder.RegisterBackgroundJobHandlers();
         builder.RegisterDurableTaskActivities();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>));
@@ -66,7 +65,7 @@ public class ExportRegistrationTests
         builder.RegisterType<FhirRequestContextAccessor>().As<IFhirRequestContextAccessor>().SingleInstance();
         builder.RegisterInstance(NullFhirBaseUriProvider.Instance).As<IFhirBaseUriProvider>();
         builder.RegisterInstance(new HttpContextAccessor()).As<IHttpContextAccessor>();
-        builder.RegisterInstance(conformanceLease).As<IConformanceLease>();
+        builder.RegisterInstance(conformanceLease);
         builder.RegisterInstance(tenants).As<ITenantConfigurationStore>();
         builder.RegisterInstance(repositories).As<IFhirRepositoryFactory>();
         builder.RegisterInstance(searches).As<ISearchServiceFactory>();

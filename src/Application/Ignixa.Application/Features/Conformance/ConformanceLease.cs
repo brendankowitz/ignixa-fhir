@@ -7,17 +7,19 @@ namespace Ignixa.Application.Features.Conformance;
 /// <summary>
 /// Process-local, monotonic staleness lease for serving searches.
 /// </summary>
-public sealed class ConformanceLease : IConformanceLease
+/// <remarks>
+/// Thread-safe. <see cref="IsHeld"/> is a pure read; lease lost/regained transitions are logged and counted
+/// only by <see cref="Renew"/> and <see cref="Observe"/>, so the synchronization loop owns that telemetry.
+/// </remarks>
+public sealed class ConformanceLease
 {
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _maxStaleness;
-    private readonly TimeSpan _retryAfter;
     private readonly ILogger<ConformanceLease> _logger;
     private readonly ObservableGauge<double> _ageGauge;
-    private long _leaseStartTimestamp = -1;
-    private long _leaseStartUtcTicks;
+    private ConformanceLeaseStart? _start;
     // 0 = never held, 1 = held, 2 = lost after being held.
-    private int _leaseState;
+    private int _observedState;
 
     public ConformanceLease(
         IOptions<ConformanceTransitionOptions> options,
@@ -30,81 +32,92 @@ public sealed class ConformanceLease : IConformanceLease
 
         var configuredOptions = options.Value;
         _maxStaleness = configuredOptions.MaxStaleness;
-        _retryAfter = TimeSpan.FromSeconds(configuredOptions.SyncIntervalSeconds);
+        RetryAfter = TimeSpan.FromSeconds(configuredOptions.SyncIntervalSeconds);
         _ageGauge = ConformanceMetrics.CreateLeaseAgeGauge(
-            () => IsStarted ? Age.TotalSeconds : 0d);
+            () => Volatile.Read(ref _start) is null ? 0d : Age.TotalSeconds);
     }
 
-    /// <inheritdoc />
-    public bool IsHeld
-    {
-        get
-        {
-            var held = IsStarted && Age <= _maxStaleness;
-            ObserveTransition(held);
-            return held;
-        }
-    }
+    /// <summary>
+    /// Gets whether this instance may serve request-originated searches.
+    /// </summary>
+    public bool IsHeld => IsHeldAt(Volatile.Read(ref _start));
 
-    /// <inheritdoc />
-    public TimeSpan Age
-    {
-        get
-        {
-            var startTimestamp = Interlocked.Read(ref _leaseStartTimestamp);
-            return startTimestamp < 0
-                ? TimeSpan.MaxValue
-                : _timeProvider.GetElapsedTime(startTimestamp);
-        }
-    }
+    /// <summary>
+    /// Gets the elapsed time since the successful synchronization began.
+    /// </summary>
+    public TimeSpan Age => AgeOf(Volatile.Read(ref _start));
 
-    /// <inheritdoc />
-    public DateTimeOffset? LeaseStartUtc
-    {
-        get
-        {
-            var startTimestamp = Interlocked.Read(ref _leaseStartTimestamp);
-            return startTimestamp < 0
-                ? null
-                : new DateTimeOffset(Interlocked.Read(ref _leaseStartUtcTicks), TimeSpan.Zero);
-        }
-    }
+    /// <summary>
+    /// Gets the UTC start recorded for observability, or <see langword="null"/> before a successful synchronization.
+    /// Lease enforcement uses the corresponding monotonic timestamp.
+    /// </summary>
+    public DateTimeOffset? LeaseStartUtc => Volatile.Read(ref _start)?.Utc;
 
-    /// <inheritdoc />
-    public TimeSpan RetryAfter => _retryAfter;
+    /// <summary>
+    /// Gets the retry delay clients should use after a stale-lease response.
+    /// </summary>
+    public TimeSpan RetryAfter { get; }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Captures the start of a synchronization or local activation.
+    /// </summary>
     public ConformanceLeaseStart CaptureStart() =>
         new(_timeProvider.GetUtcNow(), _timeProvider.GetTimestamp());
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Renews the lease after all work in the operation represented by <paramref name="start"/> has succeeded.
+    /// A start older than the current one is ignored, so concurrent renewals never move the lease backwards.
+    /// </summary>
     public void Renew(ConformanceLeaseStart start)
     {
-        Interlocked.Exchange(ref _leaseStartUtcTicks, start.Utc.UtcTicks);
-        Interlocked.Exchange(ref _leaseStartTimestamp, start.Timestamp);
-        ObserveTransition(_timeProvider.GetElapsedTime(start.Timestamp) <= _maxStaleness);
+        ArgumentNullException.ThrowIfNull(start);
+
+        while (true)
+        {
+            var current = Volatile.Read(ref _start);
+            if (current is not null && current.Timestamp >= start.Timestamp)
+            {
+                break;
+            }
+
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _start, start, current), current))
+            {
+                break;
+            }
+        }
+
+        Observe();
     }
 
-    private bool IsStarted => Interlocked.Read(ref _leaseStartTimestamp) >= 0;
-
-    private void ObserveTransition(bool held)
+    /// <summary>
+    /// Records a lease lost/regained transition since the previous observation. Called by the
+    /// synchronization loop so an expiry is reported even when no request reads the lease.
+    /// </summary>
+    public void Observe()
     {
-        if (held)
+        var start = Volatile.Read(ref _start);
+        if (IsHeldAt(start))
         {
-            var previous = Interlocked.Exchange(ref _leaseState, 1);
-            if (previous == 2)
+            if (Interlocked.Exchange(ref _observedState, 1) == 2)
             {
                 _logger.LogInformation("Conformance staleness lease regained");
             }
+
             return;
         }
 
-        if (Interlocked.CompareExchange(ref _leaseState, 2, 1) == 1)
+        if (Interlocked.CompareExchange(ref _observedState, 2, 1) == 1)
         {
             ConformanceMetrics.RecordLeaseLost();
             _logger.LogWarning(
                 "Conformance staleness lease lost after {LeaseAge}; search requests will fail until synchronization succeeds",
-                Age);
+                AgeOf(start));
         }
     }
+
+    private bool IsHeldAt(ConformanceLeaseStart? start) =>
+        start is not null && AgeOf(start) <= _maxStaleness;
+
+    private TimeSpan AgeOf(ConformanceLeaseStart? start) =>
+        start is null ? TimeSpan.MaxValue : _timeProvider.GetElapsedTime(start.Timestamp);
 }

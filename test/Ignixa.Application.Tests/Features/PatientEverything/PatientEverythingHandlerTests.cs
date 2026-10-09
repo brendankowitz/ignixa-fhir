@@ -32,7 +32,6 @@ public class PatientEverythingHandlerTests
     private readonly IPartitionStrategy _partitionStrategy;
     private readonly IQueryExecutionStrategy _executionStrategy;
     private readonly IFhirRequestContextAccessor _contextAccessor;
-    private readonly IConformanceLease _conformanceLease;
     private readonly ILogger<PatientEverythingHandler> _logger;
     private readonly PatientEverythingHandler _handler;
 
@@ -41,14 +40,12 @@ public class PatientEverythingHandlerTests
         _partitionStrategy = Substitute.For<IPartitionStrategy>();
         _executionStrategy = Substitute.For<IQueryExecutionStrategy>();
         _contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
-        _conformanceLease = Substitute.For<IConformanceLease>();
-        _conformanceLease.IsHeld.Returns(true);
         _logger = NullLogger<PatientEverythingHandler>.Instance;
         _handler = new PatientEverythingHandler(
             _partitionStrategy,
             _executionStrategy,
             _contextAccessor,
-            _conformanceLease,
+            TestConformanceLease.Held(),
             _logger);
     }
 
@@ -131,11 +128,15 @@ public class PatientEverythingHandlerTests
     public async Task GivenStaleLease_WhenHandlingEverything_ThenItFailsClosed()
     {
         SetupDefaultMocks();
-        _conformanceLease.IsHeld.Returns(false);
-        _conformanceLease.RetryAfter.Returns(TimeSpan.FromSeconds(30));
+        var handler = new PatientEverythingHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            TestConformanceLease.NotHeld(),
+            _logger);
 
         var exception = await Should.ThrowAsync<ConformanceStaleException>(() =>
-            _handler.HandleAsync(new PatientEverythingQuery("patient-123"), CancellationToken.None));
+            handler.HandleAsync(new PatientEverythingQuery("patient-123"), CancellationToken.None));
 
         exception.RetryAfter.ShouldBe(TimeSpan.FromSeconds(30));
     }

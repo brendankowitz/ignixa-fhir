@@ -56,7 +56,7 @@ public class PatientEverythingHandler(
     IPartitionStrategy partitionStrategy,
     IQueryExecutionStrategy executionStrategy,
     IFhirRequestContextAccessor contextAccessor,
-    IConformanceLease conformanceLease,
+    ConformanceLease conformanceLease,
     ILogger<PatientEverythingHandler> logger) : IRequestHandler<PatientEverythingQuery, SearchResourcesResult>
 {
 

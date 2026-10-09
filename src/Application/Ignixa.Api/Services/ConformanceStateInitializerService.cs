@@ -17,7 +17,7 @@ public class ConformanceStateInitializerService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
     ConformanceRefreshPublisher refreshPublisher,
-    IConformanceLease conformanceLease,
+    ConformanceLease conformanceLease,
     ILogger<ConformanceStateInitializerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

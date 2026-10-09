@@ -458,9 +458,7 @@ public class PackageActivationPipelineTests
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromException<IConformanceConsumerSnapshot>(
                 new InvalidOperationException("Injected refresh failure.")));
-        var lease = Substitute.For<IConformanceLease>();
-        var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
-        lease.CaptureStart().Returns(leaseStart);
+        var lease = TestConformanceLease.NotHeld();
         var logger = Substitute.For<ILogger<PackageActivationPipeline>>();
         var pipeline = new PackageActivationPipeline(
             packageRepository,
@@ -491,7 +489,7 @@ public class PackageActivationPipelineTests
             Arg.Any<ConformanceStateSnapshot>(),
             Arg.Any<long>(),
             CancellationToken.None);
-        lease.DidNotReceive().Renew(leaseStart);
+        lease.LeaseStartUtc.ShouldBeNull();
     }
 
     [Fact]
@@ -574,9 +572,7 @@ public class PackageActivationPipelineTests
                 new ConformanceConsumerRefreshException(
                 "Expected refresh failure.",
                 new IOException("Database unavailable."))));
-        var lease = Substitute.For<IConformanceLease>();
-        var leaseStart = new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1);
-        lease.CaptureStart().Returns(leaseStart);
+        var lease = TestConformanceLease.NotHeld();
         var pipeline = new PackageActivationPipeline(
             packageRepository,
             eventStore,
@@ -597,7 +593,7 @@ public class PackageActivationPipelineTests
 
         result.Success.ShouldBeTrue();
         result.LocalRefreshDeferred.ShouldBeTrue();
-        lease.DidNotReceive().Renew(leaseStart);
+        lease.LeaseStartUtc.ShouldBeNull();
     }
 
     [Fact]
@@ -660,8 +656,7 @@ public class PackageActivationPipelineTests
         bool configureSuccessfulRefresh = true,
         IReindexTrigger? reindexTrigger = null)
     {
-        var lease = Substitute.For<IConformanceLease>();
-        lease.CaptureStart().Returns(new ConformanceLeaseStart(DateTimeOffset.UtcNow, 1));
+        var lease = TestConformanceLease.NotHeld();
         if (configureSuccessfulRefresh)
         {
             cacheRefresher.BuildSnapshotAsync(

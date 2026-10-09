@@ -85,7 +85,7 @@ public static class ConformanceServicesRegistration
                 c.Resolve<IOptions<ConformanceTransitionOptions>>(),
                 TimeProvider.System,
                 c.Resolve<ILogger<ConformanceLease>>()))
-            .As<IConformanceLease>()
+            .AsSelf()
             .SingleInstance();
 
         builder.RegisterType<ReindexTrigger>()

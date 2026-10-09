@@ -282,7 +282,7 @@ public class SqlOverrideActivationLifecycleTests
 
     private static void RenewLease(IServiceProvider services)
     {
-        var lease = services.GetRequiredService<IConformanceLease>();
+        var lease = services.GetRequiredService<ConformanceLease>();
         lease.Renew(lease.CaptureStart());
     }
 
