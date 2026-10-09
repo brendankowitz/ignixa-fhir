@@ -120,8 +120,9 @@ parameter:
   carries an `OperationOutcome` warning such as *"Search parameter 'x' is pending reindex and was
   ignored."* The remaining parameters still apply, so the result can be **broader** than intended.
 - With `Prefer: handling=strict` the request fails with `400`.
-- Conditional create, update, patch and delete treat it the same way, so a hidden parameter can
-  never match the wrong resource.
+- Conditional create, update, patch and delete always reject a criterion that uses a non-searchable
+  parameter with `400` (regardless of `Prefer`), and they ignore `x-ms-use-partial-indices`, so a
+  hidden parameter can never widen a conditional match.
 
 To search anyway while a job is running, send `x-ms-use-partial-indices: true`. `Pending` and
 `Reindexing` parameters are then used, and the bundle carries a warning that results may be
@@ -129,7 +130,9 @@ incomplete. Use it for diagnosis, not for application logic.
 
 A parameter moves to `Enabled` only when its job finishes with **zero failed resources** in every
 tenant. If a resource cannot be indexed, the job ends `Failed`, the parameter returns to `Pending`,
-and the failing resource ids are listed in the job status.
+and the failing resource ids are listed in the job status. After a failed or cancelled job the
+parameters stay `Pending` until you start a new job with `POST $reindex` (or a later package
+activation does); the server does not retry on its own.
 
 #### Replacing or removing a parameter
 
@@ -143,6 +146,14 @@ against rows extracted differently:
    becomes `Pending` and is reindexed.
 
 During a replacement the code stays unavailable until the replacement is `Enabled`.
+
+:::caution
+This applies to packages that redefine a **base** FHIR search parameter, which is common: an IG such as
+US Core redefines codes like `identifier` and `name`. Installing it hides each of those codes from
+search until the IG's reindex finishes. Plan installs for a quiet period, and expect strict requests
+to fail with `400` and lenient requests to carry a warning in the meantime. A package that redefines
+the same code with different base definitions for different resource types is rejected at activation.
+:::
 
 #### Stale servers refuse to search
 

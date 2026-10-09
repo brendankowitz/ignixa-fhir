@@ -405,6 +405,8 @@ supported and are rejected, not silently ignored.
   failed resources. Status therefore resolves from any tenant route.
 - `DELETE` returns `202 Accepted`, `404` for an unknown job, or `409` if the job already finished.
   Cancelling returns the job's parameters to `Pending`; it does not undo index rows already written.
+  A failed or cancelled job is **not** retried automatically. Start a new one with `POST $reindex`
+  (a later package activation also starts one).
 - A job does not change a resource's `version`, `lastUpdated`, content or history, and it does not
   block normal writes. A resource updated while its range is processed is counted as a *conflict*, not
   a failure, because its new version is indexed with the current definitions.
