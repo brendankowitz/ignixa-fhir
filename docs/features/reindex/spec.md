@@ -180,9 +180,9 @@ puts every such search before *t_c*, while extraction is still unchanged.
 **Cases.**
 
 - **Plain deactivation** (no other definition shares the id): Hide, then Commit. No reindex. Orphaned rows are
-  never queried, because ids are never reassigned across canonicals (`GetOrAllocateSearchParamId`). They are
-  removed when the type is next reindexed or the resource is next written. Operators can reclaim storage early
-  with a full-scope reindex job.
+  never queried, because ids are never reassigned across canonicals (`GetOrAllocateSearchParamId`). They are removed
+  opportunistically when a resource is rewritten or the affected type is reindexed later. Explicit maintenance
+  reindexing and `targetResourceTypes` are deferred.
 - **Override added on an extracted id:** the base moves to `Disabling` and the override to `Staged`. After Commit,
   the override is `Pending` and gets reindexed.
 - **Override removed:** the override moves to `Disabling` and the restored definition to `Staged`. After Commit,

@@ -21,8 +21,22 @@ public class SqlReindexOrchestrationTests
     [SqlFact]
     public async Task GivenReindexRequest_WhenPollingAndListing_ThenJobCompletesAndIsListed()
     {
-        await using var fixture = new ReindexFixture();
+        await using var fixture = new ReindexFixture(reindexAutoStart: false);
         await fixture.InitializeAsync();
+        var marker = Guid.NewGuid().ToString("N");
+        var code = $"listing-{marker}";
+        var canonical = $"http://example.org/SearchParameter/{code}";
+        var packageId = $"test.listing.{marker}";
+
+        await PutPatientAsync(fixture.Client, $"reindex-{marker}", marker);
+        await StoreParameterAsync(fixture.Services, packageId, code, canonical);
+        var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
+            .ActivateAsync(packageId, "1.0.0", CancellationToken.None);
+
+        activation.Success.ShouldBeTrue();
+        activation.ReindexJobId.ShouldBeNull();
+        fixture.Services.GetRequiredService<ConformanceState>()
+            .FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
 
         var created = await CreateReindexAsync(fixture.Client);
         using var createdResponse = created.Response;
@@ -96,6 +110,11 @@ public class SqlReindexOrchestrationTests
             .ActivateAsync($"test.cancel.{marker}", "1.0.0", CancellationToken.None);
         var jobId = activation.ReindexJobId.ShouldNotBeNull();
         await WaitForJobStatusAsync(fixture.Services, jobId, "Running");
+        var parameter = fixture.Services.GetRequiredService<ConformanceState>()
+            .FindByCanonical(canonical)!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
+        parameter.ReindexJobId.ShouldBe(jobId);
+
         using var cancellation = await fixture.Client.DeleteAsync($"/tenant/1/$reindex/{jobId}");
 
         cancellation.StatusCode.ShouldBe(HttpStatusCode.Accepted, await cancellation.Content.ReadAsStringAsync());
@@ -103,6 +122,8 @@ public class SqlReindexOrchestrationTests
         ParameterValue(cancellationBody, "status").ShouldBe("Cancelled");
         var cancelled = await WaitForStatusAsync(fixture.Client, jobId, "Cancelled");
         ParameterValue(cancelled, "status").ShouldBe("Cancelled");
+        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
+        parameter.ReindexJobId.ShouldBeNull();
     }
 
     [SqlFact]
@@ -163,11 +184,13 @@ public class SqlReindexOrchestrationTests
     public async Task GivenAbsoluteSelfReference_WhenResourceTypeIsReindexed_ThenAbsoluteReferenceSearchStillMatches(
         string referenceFormat)
     {
-        await using var fixture = new ReindexFixture();
+        await using var fixture = new ReindexFixture(reindexAutoStart: false);
         await fixture.InitializeAsync();
         var marker = Guid.NewGuid().ToString("N");
         var patientId = $"reference-patient-{marker}";
         var observationId = $"reference-observation-{marker}";
+        var code = $"absolute-reference-{marker}";
+        var canonical = $"http://example.org/SearchParameter/{code}";
         var reference = string.Format(
             System.Globalization.CultureInfo.InvariantCulture,
             referenceFormat,
@@ -177,6 +200,21 @@ public class SqlReindexOrchestrationTests
         await PutObservationAsync(fixture.Client, observationId, reference);
         RenewLease(fixture.Services);
         await AssertAbsoluteReferenceSearchAsync(fixture.Client, reference, observationId);
+        await StoreParameterAsync(
+            fixture.Services,
+            $"test.absolute-reference.{marker}",
+            code,
+            canonical,
+            resourceType: "Observation",
+            expression: "Observation.subject",
+            type: "reference");
+        var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
+            .ActivateAsync($"test.absolute-reference.{marker}", "1.0.0", CancellationToken.None);
+
+        activation.Success.ShouldBeTrue();
+        activation.ReindexJobId.ShouldBeNull();
+        fixture.Services.GetRequiredService<ConformanceState>()
+            .FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
 
         var created = await CreateReindexAsync(fixture.Client);
         using var createdResponse = created.Response;
@@ -344,7 +382,10 @@ public class SqlReindexOrchestrationTests
         IServiceProvider services,
         string packageId,
         string code,
-        string canonical)
+        string canonical,
+        string resourceType = "Patient",
+        string expression = "Patient.identifier",
+        string type = "token")
     {
         var parameter = new JsonObject
         {
@@ -355,9 +396,9 @@ public class SqlReindexOrchestrationTests
             ["name"] = "ReindexMarker",
             ["status"] = "active",
             ["code"] = code,
-            ["base"] = new JsonArray("Patient"),
-            ["type"] = "token",
-            ["expression"] = "Patient.identifier"
+            ["base"] = new JsonArray(resourceType),
+            ["type"] = type,
+            ["expression"] = expression
         };
         await services.GetRequiredService<IPackageResourceRepository>().UpsertAsync(
             new PackageResource

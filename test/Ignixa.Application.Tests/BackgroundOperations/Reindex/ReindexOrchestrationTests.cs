@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DurableTask.Core;
+using DurableTask.Core.Serializing;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
@@ -151,16 +152,21 @@ public class ReindexOrchestrationTests
             barrierDelay: TimeSpan.Zero,
             tenantIds: [1]) with
         {
-            ContinueAsNewThreshold = 2
+            ContinueAsNewThreshold = 3
         };
 
         await new ReindexOrchestration().RunTask(context, input);
 
-        var roundTripped = JsonSerializer.Deserialize<ReindexOrchestrationInput>(
-            JsonSerializer.Serialize(context.LastContinuationInput))!;
+        var roundTripped = JsonDataConverter.Default.Deserialize<ReindexOrchestrationInput>(
+            JsonDataConverter.Default.Serialize(context.LastContinuationInput))!;
         var tenant = roundTripped.State!.Tenants.Single();
         tenant.CutoffSurrogateId.ShouldBe(30);
         tenant.CutoffTransactionId.ShouldBe(10);
+
+        await new ReindexOrchestration().RunTask(context, roundTripped);
+
+        context.PlanInputs.ShouldHaveSingleItem().CutoffSurrogateId.ShouldBe(30);
+        context.DrainInputs.ShouldHaveSingleItem().CutoffTransactionId.ShouldBe(10);
     }
 
     [Fact]
