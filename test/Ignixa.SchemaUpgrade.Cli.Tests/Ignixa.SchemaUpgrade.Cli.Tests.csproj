@@ -22,7 +22,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Fixtures\*.dacpac" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Ignixa.DataLayer.SqlServer.IntegrationTests\Fixtures\schema-v5-before-reindex-retirement.dacpac"
+          Link="Fixtures\schema-v5-before-reindex-retirement.dacpac"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
