@@ -1157,6 +1157,24 @@ namespace Ignixa.Search {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Semantic search chains are not supported..
+        /// </summary>
+        internal static string SemanticSearchChainNotSupported {
+            get {
+                return ResourceManager.GetString("SemanticSearchChainNotSupported", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Modifier &apos;{0}&apos; is not supported for semantic search parameter &apos;{1}&apos;..
+        /// </summary>
+        internal static string SemanticSearchModifierNotSupported {
+            get {
+                return ResourceManager.GetString("SemanticSearchModifierNotSupported", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Microsoft FHIR Server.
         /// </summary>
         internal static string ServerName {

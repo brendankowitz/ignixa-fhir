@@ -5,7 +5,9 @@
 
 using System.Text.Json;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Conformance;
 
@@ -17,7 +19,11 @@ public static class PackageResourceMapper
     /// <summary>
     /// Converts PackageResource entities to PackageResources DTO.
     /// </summary>
-    public static PackageResources MapToPackageResources(PackageResource[] resources)
+    /// <param name="resources">The package resources to map.</param>
+    /// <param name="logger">Optional logger used to report a malformed <c>vector-search-config</c>
+    /// extension (see <see cref="TryGetVectorSearchConfig"/>). Tests that do not care about that
+    /// diagnostic may omit it.</param>
+    public static PackageResources MapToPackageResources(PackageResource[] resources, ILogger? logger = null)
     {
         var searchParameters = new List<SearchParameterInfo>();
         var structureDefinitions = new List<StructureDefinitionInfo>();
@@ -27,7 +33,7 @@ public static class PackageResourceMapper
             switch (resource.ResourceType)
             {
                 case "SearchParameter":
-                    var sp = MapSearchParameter(resource);
+                    var sp = MapSearchParameter(resource, logger);
                     if (sp != null)
                     {
                         searchParameters.Add(sp);
@@ -47,7 +53,7 @@ public static class PackageResourceMapper
         return new PackageResources(searchParameters, structureDefinitions);
     }
 
-    private static SearchParameterInfo? MapSearchParameter(PackageResource resource)
+    private static SearchParameterInfo? MapSearchParameter(PackageResource resource, ILogger? logger)
     {
         try
         {
@@ -125,6 +131,29 @@ public static class PackageResourceMapper
                 description = descProp.GetString();
             }
 
+            VectorSearchConfig? vectorConfig = null;
+            bool hasInvalidVectorConfig = false;
+            try
+            {
+                vectorConfig = TryGetVectorSearchConfig(root);
+            }
+            catch (FormatException ex)
+            {
+                // Keep mapping the rest of the SearchParameter: a malformed vector-search-config must
+                // not drop the whole definition from activation, matching the IElement/runtime-
+                // registration path where the same failure leaves the parameter registered but marks
+                // it unsupported (see Core SearchParameterInfo.IsSupported). HasInvalidVectorConfig
+                // carries that same signal through the conformance DTO chain to
+                // CompositeSearchParameterDefinitionManager.ConvertToSearchParameterInfo, which is
+                // where it is applied to the Core SearchParameterInfo this DTO eventually becomes.
+                hasInvalidVectorConfig = true;
+                logger?.LogWarning(
+                    ex,
+                    "SearchParameter '{Canonical}' has an invalid vector-search-config extension and will be kept as unsupported: {Reason}",
+                    resource.Canonical,
+                    ex.Message);
+            }
+
             return new SearchParameterInfo(
                 resource.Canonical,
                 code,
@@ -136,12 +165,41 @@ public static class PackageResourceMapper
                 components,
                 targetResourceTypes,
                 name,
-                description);
+                description,
+                vectorConfig,
+                hasInvalidVectorConfig);
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Finds the <c>vector-search-config</c> extension in the SearchParameter's root-level
+    /// <c>extension</c> array and parses it. A malformed sub-extension propagates as the
+    /// <see cref="FormatException"/> <see cref="VectorSearchConfig.Parse(JsonElement)"/> raises; the
+    /// caller catches only that exception around this call so the rest of the SearchParameter is still
+    /// mapped (see the catch in <see cref="MapSearchParameter"/>).
+    /// </summary>
+    private static VectorSearchConfig? TryGetVectorSearchConfig(JsonElement root)
+    {
+        if (!root.TryGetProperty("extension", out var extensions) || extensions.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var extension in extensions.EnumerateArray())
+        {
+            if (extension.TryGetProperty("url", out var urlProperty) &&
+                urlProperty.ValueKind == JsonValueKind.String &&
+                string.Equals(urlProperty.GetString(), VectorSearchConfig.ExtensionUrl, StringComparison.Ordinal))
+            {
+                return VectorSearchConfig.Parse(extension);
+            }
+        }
+
+        return null;
     }
 
     private static StructureDefinitionInfo? MapStructureDefinition(PackageResource resource)

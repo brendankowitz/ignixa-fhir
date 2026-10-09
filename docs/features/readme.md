@@ -141,6 +141,7 @@ docs/features/
 | [package-management](package-management/) | Research | npm-simplifier, multi-version-ig |
 | [performance](performance/) | Active | post-put-analysis, version-override |
 | [search](search/) | Partial | query-parsing, compartment-wildcard, +6 more |
+| [semantic-search](semantic-search/) | Proposed | wire-compatible-port |
 | [serialization](serialization/) | Viable | model-refactoring, viewdefinition-support |
 | [smart-on-fhir](smart-on-fhir/) | Research | identity-provider, v2-implementation |
 | [status-reports](status-reports/) | Complete | october-2025-gaps, roadmap-gaps, legacy-analysis, +3 more |

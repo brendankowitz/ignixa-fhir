@@ -58,6 +58,7 @@ public sealed class SearchOptions
         Summary = other.Summary;
         UnsupportedParams = other.UnsupportedParams;
         UnsupportedModifierParams = other.UnsupportedModifierParams;
+        UnsupportedModifierReasons = other.UnsupportedModifierReasons;
         BundleIssues = other.BundleIssues;
         ResourceType = other.ResourceType;
         ResourceTypes = other.ResourceTypes;
@@ -156,6 +157,25 @@ public sealed class SearchOptions
     /// this layer having to know about headers.
     /// </remarks>
     public IReadOnlyList<string> UnsupportedModifierParams { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets the rejection reason for a subset of <see cref="UnsupportedModifierParams"/> entries,
+    /// keyed by the same parameter name recorded there.
+    /// </summary>
+    /// <remarks>
+    /// Most unsupported-modifier rejections genuinely are "this modifier is not valid for this
+    /// parameter", which is exactly what <c>FhirEndpoints.BuildUnsupportedParametersResult</c>'s generic
+    /// diagnostics template already says, so those entries are intentionally absent here. A chain that
+    /// terminates in a semantic search parameter (e.g. <c>subject:Patient.semantic-text=x</c>) is routed
+    /// into <see cref="UnsupportedModifierParams"/> for the same SHALL-reject-by-default treatment, but
+    /// the generic template would misreport it: <c>:Patient</c> is a valid reference type qualifier, not
+    /// an unsupported modifier, and the real reason is that the chain cannot terminate in a vector
+    /// parameter at all. Only that kind of entry -- where the generic template would be actively wrong
+    /// rather than merely less detailed -- gets a reason recorded here, which
+    /// <c>BuildUnsupportedParametersResult</c> prefers over its own template when present.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string> UnsupportedModifierReasons { get; set; } =
+        new Dictionary<string, string>();
 
     /// <summary>
     /// Gets or sets issues related to the search (e.g., unsupported parameters).

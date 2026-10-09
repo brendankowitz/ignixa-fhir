@@ -3,6 +3,7 @@ using System.Text.Json;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.RowGenerators;
+using Ignixa.DataLayer.SqlServer.SemanticSearch;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
@@ -28,7 +29,8 @@ public class SqlServerMergeRepository(
     GzipResourceCompressor compressor,
     SqlServerSearchIndexReferenceDataCache referenceDataCache,
     SqlServerPostMergeExtensionUpdater extensionUpdater,
-    ILogger<SqlServerMergeRepository> logger)
+    ILogger<SqlServerMergeRepository> logger,
+    SqlServerVectorIndexWriter? vectorIndexWriter = null)
 {
     private readonly ISqlExecutionService _sqlExecutionService =
         sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
@@ -38,6 +40,7 @@ public class SqlServerMergeRepository(
         extensionUpdater ?? throw new ArgumentNullException(nameof(extensionUpdater));
     private readonly ILogger<SqlServerMergeRepository> _logger =
         logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly SqlServerVectorIndexWriter? _vectorIndexWriter = vectorIndexWriter;
 
     private readonly ResourceRowGenerator _resourceRowGenerator =
         new(compressor ?? throw new ArgumentNullException(nameof(compressor)));
@@ -137,6 +140,23 @@ public class SqlServerMergeRepository(
     /// <param name="entryIndices">Bundle entry indices for surrogate ID calculation (transactionId + entryIndex).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Number of affected rows.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="singleTransaction"/> is <see langword="false"/> and at least one resource has a
+    /// non-null <see cref="ResourceWrapper.VectorIndices"/>. See the remarks below on why that combination
+    /// can never be served correctly, not just inefficiently.
+    /// </exception>
+    /// <remarks>
+    /// <see cref="SqlServerVectorIndexWriter"/> persists vectors in a separate call that must run strictly
+    /// AFTER this method's own <c>dbo.MergeResources</c> call has committed -- see that writer's remarks and
+    /// <c>MergeVectorSearchParams.sql</c>'s header for the lock-ordering race this split avoids. That
+    /// precondition holds today only because every production caller passes <paramref name="singleTransaction"/>
+    /// <see langword="true"/>, under which this method commits the core merge before returning (see the
+    /// commit call near the end of this method's body). Nothing enforces that at the call site, so a future
+    /// caller passing <see langword="false"/> for a resource batch carrying vectors would silently run the
+    /// vector writer against rows that are not yet, and might never be, committed -- exactly the
+    /// commit-ordering violation the split exists to prevent. This method fails fast instead, before the
+    /// merge call runs at all, so nothing is committed under the combination it cannot support.
+    /// </remarks>
     public async Task<int> MergeResourcesAsync(
         long transactionId,
         bool singleTransaction,
@@ -155,6 +175,21 @@ public class SqlServerMergeRepository(
             throw new ArgumentException(
                 $"Entry indices count ({entryIndices?.Count ?? 0}) must match resources count ({resources.Count})",
                 nameof(entryIndices));
+        }
+
+        // Programmer error, caught before anything is committed (AGENTS.md: fail fast). The vector writer
+        // below only runs after this method's own merge call has committed, which this method guarantees
+        // only when singleTransaction is true (see this method's remarks). A caller passing false for a
+        // batch that includes vector-bearing resources has no commit point for the writer to run after, so
+        // there is no correct behavior to fall back to -- not "skip the vectors", which would silently
+        // index differently than the caller asked for.
+        if (!singleTransaction && resources.Any(resource => resource.VectorIndices is not null))
+        {
+            throw new InvalidOperationException(
+                "Semantic vector persistence requires singleTransaction: true. SqlServerVectorIndexWriter " +
+                "runs only after MergeResources has committed, and a multi-transaction merge (singleTransaction: " +
+                "false) has no commit point for it to run after -- the caller must either merge these resources " +
+                "with singleTransaction: true, or not evaluate VectorIndices for a multi-transaction merge at all.");
         }
 
         _logger.LogDebug(
@@ -428,7 +463,91 @@ public class SqlServerMergeRepository(
             }
         }
 
+        // Persist semantic vectors, strictly after the core merge above has committed (never inside the
+        // same transaction -- see MergeVectorSearchParams.sql's header). Only resources whose VectorIndices
+        // was actually evaluated participate: null means semantic indexing did not run for this write (the
+        // feature is off, or this write path doesn't run it) and any already-persisted vectors must be left
+        // alone, so such a resource must not appear in @Evaluated at all. An empty (non-null) list DOES
+        // still participate -- the resource's semantic text was evaluated and found empty (e.g. removed on
+        // update), and dbo.MergeVectorSearchParams deletes that resource's prior vectors precisely because
+        // it is listed as evaluated with nothing in @Vectors (Review Focus 4).
+        //
+        // singleTransaction is checked again here, not just in the guard above: the guard above only ever
+        // throws for a batch that already carries vectors, so this condition is never false by the time
+        // control reaches here for such a batch. It stays explicit anyway -- "the writer runs only under
+        // singleTransaction" should be visible at the call site itself, not only provable by tracing back
+        // to a guard several dozen lines earlier.
+        if (_vectorIndexWriter is not null && singleTransaction)
+        {
+            var vectorEvaluations = BuildVectorEvaluations(resources, resourceTypeIdMap, resourceSurrogateIdMap);
+            if (vectorEvaluations.Count > 0)
+            {
+                try
+                {
+                    await _vectorIndexWriter.WriteAsync(vectorEvaluations, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    // Never fail an already-committed resource write because vector persistence failed
+                    // (Global Constraints). This intentionally also swallows a caller-cancelled
+                    // cancellationToken surfacing here as OperationCanceledException: the core resources
+                    // above are committed either way, so a cancellation during this best-effort step is
+                    // just another reason vectors may be stale, not a reason to report the whole merge as
+                    // failed or cancelled.
+                    _logger.LogError(
+                        ex,
+                        "Failed to persist semantic vectors after merge (TenantId={TenantId}). Affected resources: {AffectedResources}. " +
+                        "Core resource data and search indices were successfully merged; semantic vectors may be stale or missing.",
+                        tenantId,
+                        FormatAffectedResourcesForLog(vectorEvaluations));
+                }
+            }
+        }
+
         return affectedRows;
+    }
+
+    /// <summary>
+    /// Builds the writer's evaluated-resource list from this call's own surrogate/type maps, including only
+    /// resources whose <see cref="ResourceWrapper.VectorIndices"/> is non-null (see the call site's remarks
+    /// on why a null entry must not appear here at all).
+    /// </summary>
+    private static IReadOnlyList<(short ResourceTypeId, long ResourceSurrogateId, IReadOnlyList<VectorIndexEntry> Entries)> BuildVectorEvaluations(
+        IReadOnlyList<ResourceWrapper> resources,
+        IReadOnlyDictionary<string, short> resourceTypeIdMap,
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+    {
+        List<(short, long, IReadOnlyList<VectorIndexEntry>)>? evaluations = null;
+        foreach (var resource in resources)
+        {
+            if (resource.VectorIndices is null)
+            {
+                continue;
+            }
+
+            // Every resource reaching this point was already accepted by the core merge above, which
+            // means ResourceRowGenerator already proved resourceTypeIdMap contains its ResourceType (it
+            // throws otherwise) and resourceSurrogateIdMap is built directly from this same resources list
+            // -- both lookups are guaranteed to succeed, so a miss here would be a genuine bug, not a
+            // recoverable condition to skip past quietly.
+            evaluations ??= [];
+            evaluations.Add((resourceTypeIdMap[resource.ResourceType], resourceSurrogateIdMap[resource], resource.VectorIndices));
+        }
+
+        return (IReadOnlyList<(short, long, IReadOnlyList<VectorIndexEntry>)>?)evaluations ?? [];
+    }
+
+    private const int MaxLoggedAffectedResources = 20;
+
+    private static string FormatAffectedResourcesForLog(
+        IReadOnlyList<(short ResourceTypeId, long ResourceSurrogateId, IReadOnlyList<VectorIndexEntry> Entries)> evaluations)
+    {
+        var shown = string.Join(", ", evaluations.Take(MaxLoggedAffectedResources)
+            .Select(e => $"{e.ResourceTypeId}/{e.ResourceSurrogateId}"));
+
+        return evaluations.Count > MaxLoggedAffectedResources
+            ? $"{shown}, ... ({evaluations.Count - MaxLoggedAffectedResources} more)"
+            : shown;
     }
 
     /// <summary>

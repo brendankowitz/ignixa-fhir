@@ -6,6 +6,7 @@
 using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -32,20 +33,23 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
     private readonly IQueryExecutionStrategy _executionStrategy;
     private readonly IFhirRequestContextAccessor _contextAccessor;
     private readonly ILogger<SearchCompartmentHandler> _logger;
+    private readonly SemanticQueryPreparer? _semanticQueryPreparer;
 
     public SearchCompartmentHandler(
         IPartitionStrategy partitionStrategy,
         IQueryExecutionStrategy executionStrategy,
         IFhirRequestContextAccessor contextAccessor,
-        ILogger<SearchCompartmentHandler> logger)
+        ILogger<SearchCompartmentHandler> logger,
+        SemanticQueryPreparer? semanticQueryPreparer = null)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _executionStrategy = executionStrategy ?? throw new ArgumentNullException(nameof(executionStrategy));
         _contextAccessor = contextAccessor ?? throw new ArgumentNullException(nameof(contextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _semanticQueryPreparer = semanticQueryPreparer;
     }
 
-    public Task<SearchResourcesResult> HandleAsync(
+    public async Task<SearchResourcesResult> HandleAsync(
         SearchCompartmentQuery request,
         CancellationToken cancellationToken)
     {
@@ -97,6 +101,14 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         {
             Expression = finalExpression,
         };
+
+        // Embed this search's one semantic query term (if any) now that the compartment expression has
+        // been spliced in -- a no-op when the feature is disabled (preparer is null) or neither the
+        // caller's filters nor the compartment expression carry a semantic parameter.
+        if (_semanticQueryPreparer is not null)
+        {
+            compartmentSearchOptions = await _semanticQueryPreparer.PrepareAsync(compartmentSearchOptions, cancellationToken);
+        }
 
         // 4. Determine partition(s) using IPartitionStrategy
         var partitionContext = new PartitionResolutionContext
@@ -152,8 +164,9 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         var result = new SearchResourcesResult(
             Resources: resourceStream,
             Total: total,
-            ContinuationToken: null); // TODO: Implement paging in Phase 1.2a
+            ContinuationToken: null, // TODO: Implement paging in Phase 1.2a
+            SearchOptions: compartmentSearchOptions); // Prepared instance, including any semantic rewrite
 
-        return Task.FromResult(result);
+        return result;
     }
 }

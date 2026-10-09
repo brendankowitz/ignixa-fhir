@@ -141,5 +141,8 @@ public class ImplicitParameterDiagnosticsTests
 
         public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
             => Task.FromResult<int?>(null);
+
+        public Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken)
+            => Task.FromResult<short?>(null);
     }
 }

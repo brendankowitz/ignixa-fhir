@@ -6,15 +6,19 @@
 using System.Runtime.CompilerServices;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Tests.SemanticSearch;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 using Xunit;
+using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Tests.Features.Resource;
 
@@ -174,6 +178,98 @@ public class SearchOptionsForwardingTests
         executed.AccessConstraints.ShouldBe(options.AccessConstraints);
         executed.AllowedResourceTypes.ShouldBe(options.AllowedResourceTypes);
     }
+
+    // The three tests below pin SearchResourcesResult.SearchOptions itself (not the options forwarded to
+    // the execution strategy, which the tests above already cover): each handler must return the PREPARED
+    // instance -- carrying the embedded VectorSearchExpression -- rather than the caller's original, and
+    // must report the caller's own page size, not a data-layer over-fetch such as the probe row above.
+
+    [Fact]
+    public async Task GivenSemanticQuery_WhenSearching_ThenTheReturnedSearchOptionsCarryThePreparedExpression()
+    {
+        SearchOptions options = SemanticOptions();
+
+        var handler = new SearchResourcesHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            NullLogger<SearchResourcesHandler>.Instance,
+            CreateSemanticQueryPreparer());
+
+        SearchResourcesResult result = await handler.HandleAsync(
+            new SearchResourcesQuery("Observation", options), CancellationToken.None);
+
+        result.SearchOptions.ShouldNotBeNull();
+        result.SearchOptions!.MaxItemCount.ShouldBe(options.MaxItemCount);
+        RequirePrepared(result.SearchOptions).ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenSemanticQuery_WhenFetchingIncludes_ThenTheReturnedSearchOptionsCarryThePreparedExpression()
+    {
+        SearchOptions options = SemanticOptions();
+
+        var handler = new IncludesResourceHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            NullLogger<IncludesResourceHandler>.Instance,
+            CreateSemanticQueryPreparer());
+
+        SearchResourcesResult result = await handler.HandleAsync(
+            new IncludesResourceQuery("Observation", options), CancellationToken.None);
+
+        result.SearchOptions.ShouldNotBeNull();
+        result.SearchOptions!.MaxItemCount.ShouldBe(options.MaxItemCount);
+        RequirePrepared(result.SearchOptions).ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenSemanticQuery_WhenSearchingCompartment_ThenTheReturnedSearchOptionsCarryThePreparedExpression()
+    {
+        SearchOptions options = SemanticOptions();
+
+        var handler = new SearchCompartmentHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            NullLogger<SearchCompartmentHandler>.Instance,
+            CreateSemanticQueryPreparer());
+
+        SearchResourcesResult result = await handler.HandleAsync(
+            new SearchCompartmentQuery("Patient", "123", "Observation", options), CancellationToken.None);
+
+        result.SearchOptions.ShouldNotBeNull();
+        result.SearchOptions!.MaxItemCount.ShouldBe(options.MaxItemCount);
+        RequirePrepared(result.SearchOptions).ShouldNotBeNull();
+    }
+
+    private static SearchOptions SemanticOptions() => new()
+    {
+        MaxItemCount = 10,
+        ResourceType = "Observation",
+        Expression = new VectorSearchExpression(SemanticParameter(), "chest pain"),
+    };
+
+    private static SearchParameterInfo SemanticParameter() => new(
+        "semantic-text",
+        "semantic-text",
+        SearchParamType.Special,
+        new Uri("http://example.org/SearchParameter/semantic-text"),
+        vectorConfig: new VectorSearchConfig(VectorTextExtractionPolicy.Concatenate, 8000, 0m, null, null));
+
+    private static SemanticQueryPreparer CreateSemanticQueryPreparer() => new(
+        new DeterministicEmbeddingGenerator(),
+        new SemanticTextChunker("text-embedding-3-small"),
+        new MemoryCache(new MemoryCacheOptions()),
+        new VectorSearchOptions
+        {
+            Enabled = true,
+            Embedding = new VectorSearchEmbeddingOptions { ModelName = "text-embedding-3-small", ModelVersion = "1" },
+        });
+
+    private static PreparedVectorQuery RequirePrepared(SearchOptions options)
+        => VectorSearchExpressionLocator.FindAll(options.Expression).ShouldHaveSingleItem().Prepared.ShouldNotBeNull();
 
     private static SearchOptions ConstrainedOptions() => new()
     {

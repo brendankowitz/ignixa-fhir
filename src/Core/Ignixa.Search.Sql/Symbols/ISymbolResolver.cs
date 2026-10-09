@@ -50,4 +50,12 @@ public interface ISymbolResolver
     /// (empty match) rather than throwing.
     /// </summary>
     Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Looks up the surrogate id of the embedding model a semantic query was embedded with, or null when the
+    /// store has no row for <paramref name="modelKey"/>. Lookup only: an implementation must never create the
+    /// row as a side effect of a search. A null result means no vector was ever written under that model, so
+    /// the semantic predicate lowers to an empty match rather than an error.
+    /// </summary>
+    Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken);
 }

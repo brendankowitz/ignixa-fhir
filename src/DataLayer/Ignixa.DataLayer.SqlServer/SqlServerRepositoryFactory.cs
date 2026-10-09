@@ -1,6 +1,7 @@
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.Search;
+using Ignixa.DataLayer.SqlServer.SemanticSearch;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging;
@@ -64,9 +65,15 @@ public static class SqlServerRepositoryFactory
         var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
             sqlExecutionService, tenantId, loggerFactory.CreateLogger<SqlServerPostMergeExtensionUpdater>());
 
+        var embeddingModelRegistry = new SqlServerEmbeddingModelRegistry(
+            sqlExecutionService, tenantId, cache, loggerFactory.CreateLogger<SqlServerEmbeddingModelRegistry>());
+        var vectorIndexWriter = new SqlServerVectorIndexWriter(
+            sqlExecutionService, tenantId, compressor, cache, embeddingModelRegistry,
+            loggerFactory.CreateLogger<SqlServerVectorIndexWriter>());
+
         var mergeRepository = new SqlServerMergeRepository(
             sqlExecutionService, tenantId, compressor, cache, extensionUpdater,
-            loggerFactory.CreateLogger<SqlServerMergeRepository>());
+            loggerFactory.CreateLogger<SqlServerMergeRepository>(), vectorIndexWriter);
 
         return new SqlServerFhirRepository(
             sqlExecutionService, tenantId, compressor, cache, mergeRepository,

@@ -3,12 +3,14 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using EnsureThat;
 using Ignixa.Abstractions;
 using Ignixa.Search.Expressions.Parsers.Syntax;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
@@ -60,11 +62,69 @@ public class SearchParameterExpressionParser : ISearchParameterExpressionParser
         EnsureArg.IsNotNull(searchParameter, nameof(searchParameter));
         EnsureArg.IsNotNullOrWhiteSpace(value, nameof(value));
 
+        // Semantic parameters are bound here, at the earliest point that has the resolved
+        // SearchParameterInfo, rather than falling into SearchValueSyntaxParser.Parse below: that scanner
+        // only sees the raw SearchParamType (Special) and would split the value on unescaped commas like
+        // any other scalar, destroying a query such as "chest pain, nausea" into two ORed alternatives
+        // instead of one verbatim embedding request (Review Focus #1 in the slice-1 plan).
+        if (searchParameter.IsSemantic)
+        {
+            return ParseSemantic(searchParameter, modifier, value);
+        }
+
         SearchValueSyntax syntax = SearchValueSyntaxParser.Parse(
             searchParameter.Type,
             modifier,
             value);
 
         return (syntax, _binder.BindValue(searchParameter, modifier, syntax));
+    }
+
+    private static (SearchValueSyntax Syntax, Expression Expression) ParseSemantic(
+        SearchParameterInfo searchParameter,
+        SearchModifier modifier,
+        string value)
+    {
+        if (!searchParameter.IsSupported)
+        {
+            // Covers both an invalid vector-search-config extension (SearchParameterInfo.IsSupported set
+            // false at definition load) and the VectorSearchEnabled=false feature gate
+            // (CompositeSearchParameterDefinitionManager sets the same flag for the same reason): either
+            // way the parameter must behave as unsupported here, which is what drives
+            // SearchOptionsBuilder's existing lenient-ignore / strict-reject handling for this exception
+            // type.
+            throw new SearchParameterNotSupportedException(searchParameter.Url);
+        }
+
+        // No modifier is defined for semantic search (:text, :missing, :exact, etc. all presuppose a
+        // typed, filterable value this parameter does not have). This must be the
+        // SearchModifierNotSupportedException subclass, not the InvalidSearchOperationException base:
+        // SearchOptionsBuilder's catch order routes the subclass into
+        // SearchOptions.UnsupportedModifierParams, which FhirEndpoints.CheckStrictHandling rejects with a
+        // 400 by default (no Prefer header needed) per R4's modifier SHALL. The base type is only routed
+        // into UnsupportedParams, which is silently dropped unless the client opts in with
+        // Prefer: handling=strict -- so a plain InvalidSearchOperationException here would let
+        // GET /Observation?semantic-text:exact=... return 200 with the embedding filter silently dropped.
+        if (modifier is not null)
+        {
+            throw new SearchModifierNotSupportedException(string.Format(
+                CultureInfo.InvariantCulture,
+                Resources.SemanticSearchModifierNotSupported,
+                modifier,
+                searchParameter.Code));
+        }
+
+        // Trim only at the ends -- no comma splitting, no escape processing beyond the URL decoding
+        // already done upstream. No empty-after-trim check is needed: ParseCore's own
+        // EnsureArg.IsNotNullOrWhiteSpace above already guarantees value contains at least one
+        // non-whitespace character, so Trim() can never reduce it to an empty string here.
+        string queryText = value.Trim();
+
+        var syntax = new AtomicValueSyntax(queryText, SearchComparator.Eq)
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, queryText.Length),
+        };
+
+        return (syntax, new VectorSearchExpression(searchParameter, queryText));
     }
 }

@@ -219,6 +219,28 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         constraint.Predicate.AcceptVisitor(this, context: null);
     }
 
+    /// <summary>The embedding model keys of every prepared semantic expression in the tree.</summary>
+    public HashSet<string> EmbeddingModelKeys { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Records a semantic search's parameter and, when the query has been embedded, the model key its
+    /// <c>EmbeddingModelId</c> must be resolved for. An unprepared expression is collected without a key:
+    /// rejecting it is Lower's job, where the failure is attributed to the parameter, rather than an
+    /// unattributed throw out of Resolve.
+    /// </summary>
+    public override Expression VisitVectorSearch(VectorSearchExpression expression, object? context)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+
+        AddParameter(expression.Parameter);
+        if (expression.Prepared is { } prepared)
+        {
+            EmbeddingModelKeys.Add(prepared.EmbeddingModelKey);
+        }
+
+        return expression;
+    }
+
     /// <summary>
     /// Records a parameter, skipping resource-column codes — those target dbo.Resource's own columns and
     /// never reach a SearchParamId lookup, so collecting them would make a resolver with no _id row report
