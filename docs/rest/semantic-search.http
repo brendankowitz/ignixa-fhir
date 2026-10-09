@@ -1,0 +1,177 @@
+@hostname = https://localhost:7058
+@tenantId = 1
+@baseUrl = {{hostname}}/tenant/{{tenantId}}
+@tagSystem = https://example.org/ignixa/samples
+@tagCode = semantic-search-http
+@packageId = ignixa.sample.semantic-search
+@packageVersion = 1.0.0
+
+# Semantic (vector) search: rank Observations by meaning instead of exact token/string match.
+# Reference: docs/site/docs/server/features/semantic-search.md and
+# docs/features/semantic-search/adr-2610-semantic-vector-search.md
+#
+# Use a disposable test tenant, never tenant 0 or production. In single-tenant mode,
+# set baseUrl to {{hostname}}. If authorization is enabled, add your Authorization header
+# to every request; the admin package requests need an administrator principal.
+#
+# Prerequisites (the feature is off by default):
+# 1. SQL-backed storage on Azure SQL Database or SQL Server 2025+ (native vector type, schema v4).
+#    The FileSystem data layer is not supported and fails startup when the feature is enabled.
+# 2. Embedding provider settings (Azure OpenAI), as appsettings or environment variables:
+#      VectorSearch__Enabled=true
+#      VectorSearch__Embedding__Endpoint=https://<resource>.openai.azure.com/
+#      VectorSearch__Embedding__DeploymentName=<deployment of a 1536-dimension model>
+#      VectorSearch__Embedding__ModelName=text-embedding-3-small
+#    Authentication uses Managed Identity, or DefaultAzureCredential locally (for example `az login`).
+#    Every write of a semantic-indexed resource and every semantic search calls the provider.
+# 3. A SearchParameter carrying the vector-search-config extension, delivered as a FHIR package.
+#    The sample package in ./data/semantic-search-package defines `semantic-text` on Observation.
+#    The admin load endpoint fetches packages from the configured npm registry, so publish the
+#    sample to a registry the server can reach, for example a local one:
+#      cd docs/rest/data/semantic-search-package
+#      npm pack                                          # produces ignixa.sample.semantic-search-1.0.0.tgz
+#      npx verdaccio                                     # local registry, default http://localhost:4873
+#      npm publish --registry http://localhost:4873
+#    then start the server with PackageManagement__NpmRegistry__RegistryUrl=http://localhost:4873.
+#    The package must be loaded BEFORE the seed requests: there is no backfill yet, so resources
+#    written before the parameter exists are never embedded (follow-up #495).
+#    Not verified against a local registry in CI. If step 4 fails, check the server log: the
+#    registry must serve npm version metadata at {registry}/{packageId}/{version} and the
+#    tarball URL must sit under the registry base.
+#
+# Run in order: 4 (load) -> 5 (confirm) -> 6 (seed) -> 7 onward (search). The embedding model
+# decides exact scores, so the expected ordering below is qualitative.
+
+### 4. Load the package that defines the semantic-text SearchParameter
+POST {{baseUrl}}/admin/packages/load
+Content-Type: application/json
+
+{
+  "packageId": "{{packageId}}",
+  "version": "{{packageVersion}}",
+  "includeDependencies": false
+}
+
+### 4b. List packages loaded in the tenant (expect the sample package)
+GET {{baseUrl}}/admin/packages
+
+### 5. Confirm the parameter is advertised: Observation.searchParam "semantic-text" with type "special"
+# If it is absent, the feature is disabled or the parameter was not activated.
+GET {{baseUrl}}/metadata
+Accept: application/fhir+json
+
+### 6a. Seed: persistent cough
+PUT {{baseUrl}}/Observation/semantic-http-cough
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "semantic-http-cough",
+  "meta": { "tag": [{ "system": "{{tagSystem}}", "code": "{{tagCode}}" }] },
+  "status": "final",
+  "code": { "coding": [{ "system": "http://loinc.org", "code": "11506-3", "display": "Progress note" }] },
+  "valueString": "Patient reports a persistent dry cough for the past two weeks, worse at night"
+}
+
+### 6b. Seed: chest tightness on exertion
+PUT {{baseUrl}}/Observation/semantic-http-chest
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "semantic-http-chest",
+  "meta": { "tag": [{ "system": "{{tagSystem}}", "code": "{{tagCode}}" }] },
+  "status": "final",
+  "code": { "coding": [{ "system": "http://loinc.org", "code": "11506-3", "display": "Progress note" }] },
+  "valueString": "Complains of chest tightness and shortness of breath when climbing stairs"
+}
+
+### 6c. Seed: blood pressure (text lives in note.text, the second path of the expression)
+PUT {{baseUrl}}/Observation/semantic-http-bp
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "semantic-http-bp",
+  "meta": { "tag": [{ "system": "{{tagSystem}}", "code": "{{tagCode}}" }] },
+  "status": "final",
+  "code": { "coding": [{ "system": "http://loinc.org", "code": "11506-3", "display": "Progress note" }] },
+  "note": [{ "text": "Elevated blood pressure noted during the visit; advised to reduce sodium intake" }]
+}
+
+### 6d. Seed: routine check-up, status preliminary (for the status filter example)
+PUT {{baseUrl}}/Observation/semantic-http-routine
+Content-Type: application/fhir+json
+
+{
+  "resourceType": "Observation",
+  "id": "semantic-http-routine",
+  "meta": { "tag": [{ "system": "{{tagSystem}}", "code": "{{tagCode}}" }] },
+  "status": "preliminary",
+  "code": { "coding": [{ "system": "http://loinc.org", "code": "11506-3", "display": "Progress note" }] },
+  "valueString": "Routine annual check-up, no complaints, vitals within normal limits"
+}
+
+### 7. Semantic search. No keyword overlaps with the notes. Expect cough and chest tightness
+# ranked above blood pressure and the routine visit, entries in descending
+# Bundle.entry.search.score (range 0 to 1), each with search.mode "match".
+# The value is sent verbatim: commas are not OR-split.
+GET {{baseUrl}}/Observation?_tag={{tagCode}}&semantic-text=trouble%20breathing%20and%20coughing
+Accept: application/fhir+json
+
+### 8. Same query with strict handling, so an unknown or disabled parameter is a 400 instead of ignored
+GET {{baseUrl}}/Observation?_tag={{tagCode}}&semantic-text=trouble%20breathing%20and%20coughing
+Accept: application/fhir+json
+Prefer: handling=strict
+
+### 9. Semantic term intersected with an ordinary filter: only status=final rows are ranked
+GET {{baseUrl}}/Observation?_tag={{tagCode}}&status=final&semantic-text=high%20blood%20pressure
+Accept: application/fhir+json
+
+### 10. Paging: offset-based; the query embedding is cached, so page 2 ranks by the same vector as page 1.
+# Follow the Bundle link with relation "next" for the next page.
+GET {{baseUrl}}/Observation?_tag={{tagCode}}&semantic-text=trouble%20breathing%20and%20coughing&_count=2
+Accept: application/fhir+json
+
+### 11. An explicit _sort takes priority over relevance; distance only breaks ties within the sort
+GET {{baseUrl}}/Observation?_tag={{tagCode}}&semantic-text=trouble%20breathing%20and%20coughing&_sort=-_lastUpdated
+Accept: application/fhir+json
+
+### 12a. Rejected: modifiers are not defined for a semantic parameter (400)
+GET {{baseUrl}}/Observation?_tag={{tagCode}}&semantic-text:text=anything
+Accept: application/fhir+json
+Prefer: handling=strict
+
+### 12b. Rejected: a chain cannot end in a semantic parameter (400, "Semantic search chains are not supported")
+GET {{baseUrl}}/DiagnosticReport?result:Observation.semantic-text=anything
+Accept: application/fhir+json
+Prefer: handling=strict
+
+### 12c. Rejected: the _has form of a semantic chain (400)
+GET {{baseUrl}}/Patient?_has:Observation:subject:semantic-text=anything
+Accept: application/fhir+json
+Prefer: handling=strict
+
+### 13a. Delete a seeded Observation; its vectors are removed with it
+DELETE {{baseUrl}}/Observation/semantic-http-cough
+
+### 13b. Re-run request 7: the cough Observation must no longer appear
+GET {{baseUrl}}/Observation?_tag={{tagCode}}&semantic-text=trouble%20breathing%20and%20coughing
+Accept: application/fhir+json
+
+### 14. Cleanup: delete the remaining seeded Observations (re-run the seed PUTs to start over)
+DELETE {{baseUrl}}/Observation/semantic-http-chest
+
+###
+DELETE {{baseUrl}}/Observation/semantic-http-bp
+
+###
+DELETE {{baseUrl}}/Observation/semantic-http-routine
+
+# When the feature is disabled (VectorSearch__Enabled=false), the same semantic-text queries behave
+# like an unknown parameter: ignored with an OperationOutcome warning by default, and 400 under
+# "Prefer: handling=strict". Nothing calls the embedding provider.
+#
+# If a seed PUT returns 503, the embedding provider is unavailable: the write fails and nothing is
+# committed. Semantic searches also call the provider (once per query, then cached), so they depend
+# on it too.
