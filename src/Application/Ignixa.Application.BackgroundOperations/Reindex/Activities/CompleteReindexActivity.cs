@@ -88,6 +88,7 @@ public sealed class CompleteReindexActivity(
             .Take(100)
             .ToArray();
         IReadOnlyList<string> ignored = [];
+        var resumed = false;
         var won = await jobs.TryCompleteAsync(
             input.JobId,
             async (job, cancellationToken) =>
@@ -98,6 +99,20 @@ public sealed class CompleteReindexActivity(
                         ?? throw new InvalidOperationException(
                             $"Reindex job {job.JobId} is Completing without a persisted terminal decision.");
                     success = terminalStatus == "Completed";
+                    resumed = true;
+
+                    // A retry must apply the outcomes persisted with the decision; recomputing them could
+                    // enable targets that the persisted Failed decision already failed.
+                    var persisted = ReindexJobReconciler.ReadPersistedOutcomes(job.Progress);
+                    completions = completions.Select(completion =>
+                            persisted.TryGetValue(ReindexJobReconciler.TargetIdentity(completion.Target), out var outcome)
+                                ? completion with { Success = outcome.Success, ErrorMessage = outcome.ErrorMessage }
+                                : completion with
+                                {
+                                    Success = false,
+                                    ErrorMessage = "No terminal outcome was persisted for this target."
+                                })
+                        .ToList();
                     return terminalStatus;
                 }
 
@@ -138,6 +153,17 @@ public sealed class CompleteReindexActivity(
             {
                 job.Status = success ? "Completed" : "Failed";
                 job.EndDate = completedAt;
+                if (job.StartDate.HasValue)
+                {
+                    ReindexMetrics.RecordJobDuration(completedAt - job.StartDate.Value);
+                }
+
+                if (resumed)
+                {
+                    // The Completing write already persisted the error, progress, and outcomes.
+                    return;
+                }
+
                 job.ErrorMessage = success
                     ? null
                     : string.Join(
@@ -190,10 +216,6 @@ public sealed class CompleteReindexActivity(
                 {
                     ["success"] = success
                 };
-                if (job.StartDate.HasValue)
-                {
-                    ReindexMetrics.RecordJobDuration(completedAt - job.StartDate.Value);
-                }
             },
             CancellationToken.None);
 
