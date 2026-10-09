@@ -277,7 +277,10 @@ public partial class InMemoryOrchestrationService : IOrchestrationService, IOrch
             Input = null,
         };
 
+        // A create always starts a new execution; replaying a terminal predecessor's history would
+        // resume that execution instead of running the new input.
         _instances[instanceId] = state;
+        _history.TryRemove(instanceId, out _);
         _orchestrationQueue.Enqueue(creationMessage);
 
         LogCreatedOrchestration(_logger, instanceId);

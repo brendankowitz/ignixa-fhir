@@ -131,6 +131,43 @@ public class InMemoryOrchestrationServiceTests
         }
     }
 
+    [Fact]
+    public async Task GivenCompletedInstance_WhenRecreatedWithTheSameId_ThenTheNewExecutionRunsFromItsOwnInput()
+    {
+        var service = new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance);
+        using var worker = new TaskHubWorker(service);
+        worker.AddTaskOrchestrations(typeof(TimerOrchestration));
+        await worker.StartAsync();
+        try
+        {
+            var client = new TaskHubClient(service);
+            OrchestrationStatus[] activeStatuses =
+                [OrchestrationStatus.Running, OrchestrationStatus.Pending, OrchestrationStatus.ContinuedAsNew];
+            var first = await client.CreateOrchestrationInstanceAsync(
+                typeof(TimerOrchestration),
+                "transition",
+                "first",
+                activeStatuses);
+            (await client.WaitForOrchestrationAsync(first, TimeSpan.FromSeconds(2), CancellationToken.None))
+                .Output.ShouldContain("first");
+
+            var second = await client.CreateOrchestrationInstanceAsync(
+                typeof(TimerOrchestration),
+                "transition",
+                "second",
+                activeStatuses);
+            var state = await client.WaitForOrchestrationAsync(second, TimeSpan.FromSeconds(2), CancellationToken.None);
+
+            state.OrchestrationStatus.ShouldBe(OrchestrationStatus.Completed);
+            state.OrchestrationInstance.ExecutionId.ShouldBe(second.ExecutionId);
+            state.Output.ShouldContain("second");
+        }
+        finally
+        {
+            await worker.StopAsync(true);
+        }
+    }
+
     [Theory]
     [InlineData("ttl-cleanup-eternal")]
     [InlineData("transaction-watcher-eternal")]

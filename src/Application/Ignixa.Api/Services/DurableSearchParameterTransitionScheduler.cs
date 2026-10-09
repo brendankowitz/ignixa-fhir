@@ -7,6 +7,11 @@ namespace Ignixa.Api.Services;
 /// <summary>
 /// Creates the durable phase-two transition orchestration for one hide event.
 /// </summary>
+/// <remarks>
+/// The instance id is derived only from the hide event id, so activation and every node's startup
+/// reconciliation collapse onto one active orchestration. A terminal predecessor is replaced by a new
+/// full-grace execution.
+/// </remarks>
 public sealed class DurableSearchParameterTransitionScheduler(TaskHubClient taskHubClient)
     : ISearchParameterTransitionScheduler
 {
@@ -22,42 +27,17 @@ public sealed class DurableSearchParameterTransitionScheduler(TaskHubClient task
         TimeSpan transitionGrace,
         CancellationToken cancellationToken)
     {
-        await ScheduleAsync(
-            hideEventId,
-            transitionGrace,
-            GetInstanceId(hideEventId),
-            cancellationToken);
-    }
-
-    public async Task ScheduleReconciliationAsync(
-        long hideEventId,
-        TimeSpan transitionGrace,
-        CancellationToken cancellationToken)
-    {
-        await ScheduleAsync(
-            hideEventId,
-            transitionGrace,
-            $"{GetInstanceId(hideEventId)}-r-{Guid.NewGuid():N}",
-            cancellationToken);
-    }
-
-    private async Task ScheduleAsync(
-        long hideEventId,
-        TimeSpan transitionGrace,
-        string instanceId,
-        CancellationToken cancellationToken)
-    {
         try
         {
             await taskHubClient.CreateOrchestrationInstanceAsync(
                 typeof(SearchParameterTransitionOrchestration),
-                instanceId,
+                GetInstanceId(hideEventId),
                 new SearchParameterTransitionOrchestrationInput(hideEventId, transitionGrace),
                 dedupeStatuses: ActiveStatuses);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
         {
-            // The deterministic activation instance id makes activation retries idempotent.
+            // An active orchestration for this hide event already waits its grace and will commit it.
         }
     }
 

@@ -22,7 +22,7 @@ public sealed class SearchParameterTransitionReconciler(
         {
             // Do not derive elapsed grace from the source-event timestamp: it is not the
             // database commit time. A reconciliation instance always waits full grace.
-            await transitionScheduler.ScheduleReconciliationAsync(
+            await transitionScheduler.ScheduleAsync(
                 hideEventId,
                 transitionOptions.Value.TransitionGrace,
                 cancellationToken);
