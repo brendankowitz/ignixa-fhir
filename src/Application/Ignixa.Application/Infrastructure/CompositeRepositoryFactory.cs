@@ -13,7 +13,7 @@ namespace Ignixa.Application.Infrastructure;
 /// based on tenant configuration (FileSystem, SqlEntityFramework, etc.).
 /// Multi-tenancy: Each tenant can use a different storage backend.
 /// </summary>
-public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexProviderCapabilities
+public class CompositeRepositoryFactory : IFhirRepositoryFactory
 {
     private static readonly Dictionary<string, ProviderType> ProviderTypes = new(StringComparer.Ordinal)
     {
