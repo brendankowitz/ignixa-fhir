@@ -20,13 +20,9 @@ public sealed class AwaitDrainActivity(
 
     private async Task<AwaitDrainOutput> DrainAsync(AwaitDrainInput input, CancellationToken cancellationToken)
     {
-        var repository = await repositoryFactory.GetRepositoryAsync(
+        var store = await repositoryFactory.GetReindexStoreAsync(
             input.TenantId,
             cancellationToken);
-        if (repository is not IReindexStore store)
-        {
-            throw new ReindexProviderNotSupportedException(input.TenantId);
-        }
 
         var watermark = await store.GetVisibleWatermarkAsync(cancellationToken);
         var oldest = await store.GetOldestIncompleteTransactionAsync(

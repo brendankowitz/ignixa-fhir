@@ -22,7 +22,7 @@ public class GetReindexStatusHandlerTests
                 JobId = "job",
                 JobType = (int)BackgroundJobType.Reindex,
                 Status = "Queued",
-                Definition = ReindexJobDefinition.CreateForTest(),
+                Definition = ReindexTestHelper.CreateJobDefinition(),
                 CreateDate = now.AddHours(-1),
                 HeartbeatDate = now.AddHours(-1)
             });
@@ -76,7 +76,7 @@ public class GetReindexStatusHandlerTests
             JobId = jobId,
             JobType = (int)BackgroundJobType.Reindex,
             Status = status,
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = queuedTime,
             HeartbeatDate = queuedTime,
             EndDate = endTime

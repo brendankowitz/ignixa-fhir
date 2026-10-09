@@ -62,11 +62,10 @@ public sealed class CompleteReindexActivity(
                         $"Tenant {tenant.TenantId}: {tenant.ErrorMessage ?? "resource failures occurred"}");
                 }
 
-                var repository = await repositoryFactory.GetRepositoryAsync(
+                var store = await repositoryFactory.GetReindexStoreAsync(
                     tenant.TenantId,
                     CancellationToken.None);
-                if (repository is not IReindexStore store ||
-                    !await store.HasSearchParameterAsync(target.SearchParamId, CancellationToken.None))
+                if (!await store.HasSearchParameterAsync(target.SearchParamId, CancellationToken.None))
                 {
                     errors.Add(
                         $"Tenant {tenant.TenantId}: no physical dbo.SearchParam catalog id {target.SearchParamId} exists for {target.Canonical}.");

@@ -16,13 +16,9 @@ public sealed class PlanReindexActivity(
 
     private async Task<PlanReindexOutput> PlanAsync(PlanReindexInput input, CancellationToken cancellationToken)
     {
-        var repository = await repositoryFactory.GetRepositoryAsync(
+        var store = await repositoryFactory.GetReindexStoreAsync(
             input.TenantId,
             cancellationToken);
-        if (repository is not IReindexStore store)
-        {
-            throw new ReindexProviderNotSupportedException(input.TenantId);
-        }
 
         var page = await store.GetSurrogateIdRangesAsync(
             input.ResourceType,

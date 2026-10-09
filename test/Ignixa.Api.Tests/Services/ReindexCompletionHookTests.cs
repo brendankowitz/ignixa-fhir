@@ -44,7 +44,7 @@ public sealed class ReindexCompletionHookTests
                 JobId = "job",
                 JobType = (int)BackgroundJobType.Reindex,
                 Status = "Completed",
-                Definition = ReindexJobDefinition.CreateForTest(),
+                Definition = ReindexTestHelper.CreateJobDefinition(),
                 CreateDate = DateTimeOffset.UtcNow,
                 HeartbeatDate = DateTimeOffset.UtcNow
             },
@@ -100,7 +100,7 @@ public sealed class ReindexCompletionHookTests
                 JobId = ReindexAutomationStateStore.StateJobId,
                 JobType = (int)BackgroundJobType.ReindexAutomation,
                 Status = "Active",
-                Definition = ReindexJobDefinition.CreateForTest(),
+                Definition = ReindexTestHelper.CreateJobDefinition(),
                 Progress = new JsonObject { ["requestedGeneration"] = requestedGeneration },
                 CreateDate = DateTimeOffset.UtcNow,
                 HeartbeatDate = DateTimeOffset.UtcNow
@@ -111,7 +111,7 @@ public sealed class ReindexCompletionHookTests
             mediator,
             Options.Create(new ReindexOptions { AutoStart = autoStart }),
             NullLogger<ReindexCompletionHook>.Instance);
-        var definition = ReindexJobDefinition.CreateForTest();
+        var definition = ReindexTestHelper.CreateJobDefinition();
         definition = new ReindexJobDefinition
         {
             TargetEventId = definition.TargetEventId,

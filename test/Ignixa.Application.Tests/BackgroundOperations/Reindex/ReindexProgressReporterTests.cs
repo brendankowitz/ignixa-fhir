@@ -145,7 +145,7 @@ public class ReindexProgressReporterTests
     private static BackgroundJob<ReindexJobDefinition> CreateJob() =>
         new()
         {
-            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexJobDefinition.CreateForTest(),
+            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexTestHelper.CreateJobDefinition(),
             Progress = new JsonObject { ["notCovered"] = new JsonArray("http://example.org/not-covered") }
         };
 

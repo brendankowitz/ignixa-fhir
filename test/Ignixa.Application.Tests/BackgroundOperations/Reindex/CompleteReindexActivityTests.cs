@@ -37,7 +37,7 @@ public class CompleteReindexActivityTests
             JobId = "job",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
@@ -179,7 +179,7 @@ public class CompleteReindexActivityTests
         var jobs = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
             tenantStore,
             NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
-        var definition = ReindexJobDefinition.CreateForTest();
+        var definition = ReindexTestHelper.CreateJobDefinition();
         await jobs.CreateAsync(new BackgroundJob<ReindexJobDefinition>
         {
             JobId = "job",
@@ -244,7 +244,7 @@ public class CompleteReindexActivityTests
             JobId = "job",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
@@ -302,7 +302,7 @@ public class CompleteReindexActivityTests
             JobId = "job",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
@@ -359,7 +359,7 @@ public class CompleteReindexActivityTests
             JobId = "job",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
@@ -417,7 +417,7 @@ public class CompleteReindexActivityTests
             JobId = "job",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
@@ -493,7 +493,7 @@ public class CompleteReindexActivityTests
             JobId = "job",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexJobDefinition.CreateForTest(),
+            Definition = ReindexTestHelper.CreateJobDefinition(),
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);

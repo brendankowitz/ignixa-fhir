@@ -763,7 +763,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         }
 
         outgoing.DeactivationEventId = eventId;
-        _searchParameterActivations.Add(CloneForRestoration(previous, eventId));
+        _searchParameterActivations.Add(previous.CloneForRestoration(eventId));
     }
 
     private ActiveSearchParameter? FindAvailablePredecessor(ActiveSearchParameter parameter)
@@ -813,26 +813,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         parameter.ReindexJobId == jobId &&
         (activationEventId is null || parameter.ActivationEventId == activationEventId);
 
-    private static ActiveSearchParameter CloneForRestoration(ActiveSearchParameter previous, long eventId) =>
-        new()
-        {
-            SearchParamId = previous.SearchParamId,
-            Canonical = previous.Canonical,
-            Code = previous.Code,
-            ResourceType = previous.ResourceType,
-            Expression = previous.Expression,
-            ParamType = previous.ParamType,
-            SourcePackage = previous.SourcePackage,
-            OverridesCanonical = previous.OverridesCanonical,
-            TargetResourceTypes = previous.TargetResourceTypes,
-            Components = previous.Components,
-            Name = previous.Name,
-            Description = previous.Description,
-            ActivationEventId = eventId,
-            PreviousActivationEventId = previous.PreviousActivationEventId,
-            IsAvailable = true,
-            Status = SearchParameterStatus.Staged,
-        };
+
 
     private void LogIgnoredLifecycleEvent(
         long eventId,

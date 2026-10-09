@@ -271,7 +271,7 @@ public class StartReindexActivityTests
                 JobId = "job",
                 JobType = (int)BackgroundJobType.Reindex,
                 Status = "Queued",
-                Definition = ReindexJobDefinition.CreateForTest(),
+                Definition = ReindexTestHelper.CreateJobDefinition(),
                 CreateDate = DateTimeOffset.UtcNow,
                 HeartbeatDate = DateTimeOffset.UtcNow
             }, CancellationToken.None);

@@ -60,13 +60,9 @@ public sealed class ReindexRangeProcessor(
                 }
             }
 
-            var repository = await _repositoryFactory.GetRepositoryAsync(
+            var store = await _repositoryFactory.GetReindexStoreAsync(
                 input.TenantId,
                 cancellationToken);
-            if (repository is not IReindexStore store)
-            {
-                throw new ReindexProviderNotSupportedException(input.TenantId);
-            }
 
             long resourcesRead = 0;
             long resourcesReindexed = 0;

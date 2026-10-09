@@ -17,18 +17,4 @@ public sealed record ReindexOrchestrationInput(
     public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(30);
     public TimeSpan StartDebounce { get; init; }
     public TimeSpan StaleJobTimeout { get; init; } = TimeSpan.FromMinutes(30);
-
-    public static ReindexOrchestrationInput CreateForTest(
-        string jobId,
-        long targetEventId,
-        TimeSpan barrierDelay,
-        IReadOnlyList<int> tenantIds) =>
-        new(
-            jobId,
-            targetEventId,
-            barrierDelay,
-            tenantIds,
-            ["Patient"],
-            [],
-            ReindexJobParameters.Create());
 }

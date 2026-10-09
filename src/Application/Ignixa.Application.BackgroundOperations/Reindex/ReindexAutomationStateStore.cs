@@ -27,7 +27,7 @@ public sealed class ReindexAutomationStateStore(
                 JobId = StateJobId,
                 JobType = (int)BackgroundJobType.ReindexAutomation,
                 Status = "Active",
-                Definition = ReindexJobDefinition.CreateForTest(),
+                Definition = CreateAutomationDefinition(),
                 Progress = new JsonObject { [RequestedGenerationName] = 1 },
                 CreateDate = DateTimeOffset.UtcNow,
                 HeartbeatDate = DateTimeOffset.UtcNow
@@ -41,4 +41,18 @@ public sealed class ReindexAutomationStateStore(
         await repository.UpdateAsync(state, GlobalTenantId, cancellationToken);
         return generation;
     }
+
+    private static ReindexJobDefinition CreateAutomationDefinition() => new()
+    {
+        TargetEventId = 0,
+        TenantIds = [GlobalTenantId],
+        ResourceTypes = [],
+        SearchParameters = [],
+        MaximumNumberOfResourcesPerQuery = 10_000,
+        MaximumNumberOfResourcesPerWrite = 1_000,
+        MaximumConcurrency = 4,
+        QueryDelayIntervalInMilliseconds = 0,
+        Trigger = "Automation",
+        ConsumedGeneration = 0
+    };
 }
