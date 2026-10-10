@@ -616,7 +616,7 @@ control how stale a server may become before it stops answering searches, and ho
 | `Reindex:DefaultMaximumNumberOfResourcesPerQuery` | `10000` | Default size of one range of work. |
 | `Reindex:DefaultMaximumNumberOfResourcesPerWrite` | `100` | Default batch size for index writes. Large batches hold row locks until they commit and can escalate to partition locks that block normal writes of the same resource type; raise it only after measuring. |
 | `Reindex:DefaultMaximumConcurrency` | `4` | Default concurrent ranges per tenant. |
-| `Reindex:StaleJobTimeout` | `00:30:00` | A running job with no heartbeat for this long is flagged in its status and logged as an error. A job that waits longer than this for in-flight writes to finish also fails. |
+| `Reindex:StaleJobTimeout` | `00:30:00` | A running job with no heartbeat for this long is flagged in its status and logged as an error. A tenant that waits longer than this for in-flight writes to finish, or for the workers' search parameter definitions to catch up with the job's target, also fails. |
 | `Reindex:DrainWarningAfter` | `00:05:00` | A job waiting for in-flight writes longer than this logs the oldest incomplete transaction. |
 | `Reindex:OrphanGrace` | `00:02:00` | How long a job with no live orchestration is left alone before it is recovered and its parameters returned to `Pending`. |
 | `Reindex:ContinueAsNewThreshold` | `2000` | Activities scheduled before a job restarts its orchestration to keep its history bounded. Leave it unless support asks. |

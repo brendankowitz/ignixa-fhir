@@ -463,7 +463,7 @@ All components live in `src/Application/Ignixa.Application.BackgroundOperations/
 | `AwaitDrainActivity` | For each tenant: waits until no incomplete transaction remains at or below B_t; the watermark is display-only (step 3). |
 | `PlanReindexActivity` | For each tenant and affected type: surrogate ranges up to S_t (§8.3). |
 | `ReindexRangeActivity` | Processes one (tenant, type, range) (§8.4). |
-| `PersistReindexProgressActivity` | Persists the orchestration's cumulative counts and phase with optimistic concurrency, independently of range retries. |
+| `PersistReindexProgressActivity` | Persists the orchestration's typed `ReindexProgress` snapshot (phase and per-tenant progress) at phase boundaries and every few waves, independently of range retries, and reports whether the job row is still open. |
 | `CompleteReindexActivity` | Appends guarded lifecycle events, finalizes the job, and performs the hand-off (§7). |
 | `SearchParameterTransitionOrchestration` | Runs a durable `TransitionGrace` timer, then appends a guarded `SearchParameterTransitionCommitted` (§4.4), then calls `StartOrQueueReindex` if anything became `Pending`. Lives in `…/Conformance/` next to the activation pipeline. |
 | `GetReindexStatusQuery`, `GetReindexJobsQuery`, `CancelReindexCommand` | API handlers. |
@@ -497,11 +497,20 @@ sequenceDiagram
 - `BarrierDelay` is a DurableTask timer, so it costs nothing and survives restarts.
 - Tenants run in parallel, each limited by `maximumConcurrency`, as in `TtlCleanupOrchestration`.
 - Ranges are scheduled in waves. Above `Reindex:ContinueAsNewThreshold` scheduled activities, the orchestration
-  calls `ContinueAsNew` and carries B_t, S_t, counts, and the progress sequence forward.
-- Range activities return counts rather than persisting them. After each completed wave and phase advance,
-  the orchestration persists one cumulative snapshot through `PersistReindexProgressActivity`. Snapshot sequences
-  make duplicate or delayed delivery idempotent. Progress persistence retries independently with durable backoff
-  (up to 30 seconds between attempts); it never reruns successful ranges or marks a resource type failed.
+  calls `ContinueAsNew` and carries the typed `ReindexOrchestrationState` forward: the job phase, and per tenant
+  its `ReindexTenantProgress` (status, B_t, S_t, counts), planner position, pending ranges and current wait.
+  Phases and statuses are enums serialized as strings, so the history stays readable.
+- Range activities return counts rather than persisting them. The orchestration persists one cumulative
+  `ReindexProgress` snapshot through `PersistReindexProgressActivity` at every phase boundary and after every
+  five range waves, not after every wave or drain poll. A snapshot replaces the whole reported progress, so a
+  redelivered activity is idempotent. The activity returns whether the job row is still open: a job that was
+  cancelled, reconciled or removed meanwhile stops the orchestration at that boundary without scheduling
+  completion. Its retry is bounded (eight attempts, up to 30 seconds apart); a snapshot that still cannot be
+  written fails the job visibly instead of retrying forever, and never reruns a range.
+- The drain is polled on a durable timer that backs off from 1 second to 30 seconds, bounded by
+  `Reindex:StaleJobTimeout`. A tenant that is waiting (on the drain, or on worker definitions catching up, §8.4)
+  does not hold the other tenants' waves: the orchestration only sleeps when every unfinished tenant is waiting,
+  and then until the earliest poll is due.
 
 ### 8.3 Range planning
 
@@ -524,9 +533,12 @@ The planner generalizes `ISearchService.GetExportRangesAsync` to
 6. Return counts and failures (≤ 100).
 
 Retries use the established SQL transient policy. When a write times out, the worker halves its batch size and
-retries, down to a minimum of 10. The range worker forces a definitions catch-up before throwing
-`ReindexDefinitionsNotReadyException`; the orchestration retries that exception longer than ordinary range errors,
-bounded by `StaleJobTimeout`.
+retries, down to a minimum of 10. The range worker forces a definitions catch-up; if its definitions are still
+behind E it returns a typed not-ready output (`ReindexRangeOutput.StaleDefinitionsEventId`) rather than throwing.
+No exception crosses the activity boundary: DurableTask serializes activity exceptions and cannot rebuild a custom
+type on the orchestrator side, which is why an exception-based retry policy could never match. The orchestration
+keeps the not-ready ranges and retries them on a durable timer that backs off from 1 second to 30 seconds; a tenant
+whose definitions stay behind for `StaleJobTimeout` fails.
 
 ### 8.5 Completion
 
@@ -553,16 +565,16 @@ authoritative, so a delayed activity cannot reopen a finalized job or its parame
 - **Activity failure after retries:** that (tenant, type) is marked failed, the other tenants continue, and the
   job ends `Failed`. Unlike MS, one bad range does not abort healthy tenants.
 - **Progress storage failures:** logged and metered as `reindex.progress.persistence_failures`; the dedicated
-  persistence activity retries without repeating ranges. Long-running worker heartbeats retry on their next tick
-  without failing the underlying work.
-- **Liveness:** wave/phase snapshots refresh the `BackgroundJob` heartbeat. Long-running barrier, drain,
-  planning, and range activities also heartbeat through the optimistic path every
-  `min(30 seconds, StaleJobTimeout / 4)` (30 seconds versus a 30-minute stale timeout by default).
-  Long barrier delays are split into durable waits at the same cadence with progress heartbeats between them.
-  A job that is `Running` with a heartbeat
-  older than `Reindex:StaleJobTimeout` is flagged in status and logged at error level. A drain still waiting
-  beyond `Reindex:DrainWarningAfter` logs the oldest incomplete transaction. `TransactionWatcher` already
-  recovers stalled transactions, so the drain does not wait forever.
+  persistence activity retries with bounded durable backoff without repeating ranges, and the job fails visibly
+  once that is exhausted. A heartbeat that fails after an activity's work is done is logged and metered rather
+  than throwing the work away; a heartbeat that fails before the work fails the activity, which DurableTask retries.
+- **Liveness:** every barrier, drain, planning and range activity refreshes the `BackgroundJob` heartbeat when it
+  starts and when it finishes, and each progress snapshot refreshes it too. A barrier delay longer than
+  `StaleJobTimeout / 2` is split into durable waits of that length with a heartbeat between them. A job that is
+  `Running` with a heartbeat older than `Reindex:StaleJobTimeout` is flagged in status and logged at error level.
+  A drain still waiting beyond `Reindex:DrainWarningAfter` logs the oldest incomplete transaction; one still
+  waiting at `StaleJobTimeout` fails the tenant. `TransactionWatcher` already recovers stalled transactions, so
+  the drain does not wait forever.
 - **Recovery:** the periodic tick (§7) hands an active job past `OrphanGrace` to `ReindexJobReconciler`, which has
   one rule, applied under the singleton lock after two non-active DurableTask reads: a job whose orchestration is
   missing or terminal is `Completed` when the projection already shows its completion (its events were appended
