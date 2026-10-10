@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using Shouldly;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Domain.Abstractions;
@@ -45,21 +46,66 @@ public class PatientEverythingHandlerTests
             _partitionStrategy,
             _executionStrategy,
             _contextAccessor,
+            Substitute.For<IFhirVersionContext>(),
             TestConformanceLease.Held(),
             _logger);
+    }
+
+    [Theory]
+    [InlineData(HiddenMembershipScenario.Disabling, "is being redefined")]
+    [InlineData(HiddenMembershipScenario.Pending, "is pending reindex")]
+    public async Task GivenAMembershipParameterIsHidden_WhenEverythingRuns_ThenTheBundleWarnsNamingIt(
+        HiddenMembershipScenario scenario,
+        string expectedReason)
+    {
+        SetupDefaultMocks(fhirVersion: "4.0");
+        var handler = new PatientEverythingHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            await HiddenMembershipFixture.CreateVersionContextAsync(scenario),
+            TestConformanceLease.Held(),
+            _logger);
+
+        var result = await handler.HandleAsync(new PatientEverythingQuery("123"), CancellationToken.None);
+
+        var issue = result.SearchOptions.ShouldNotBeNull().BundleIssues.ShouldHaveSingleItem();
+        issue.Severity.ShouldBe("warning");
+        issue.Code.ShouldBe("incomplete");
+        issue.Diagnostics.ShouldContain("'Observation.subject'");
+        issue.Diagnostics.ShouldContain(expectedReason);
+    }
+
+    [Fact]
+    public async Task GivenAMembershipParameterIsHiddenOnAnExcludedType_WhenEverythingRunsWithType_ThenNoWarningIsRaised()
+    {
+        SetupDefaultMocks(fhirVersion: "4.0");
+        var handler = new PatientEverythingHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            await HiddenMembershipFixture.CreateVersionContextAsync(HiddenMembershipScenario.Pending),
+            TestConformanceLease.Held(),
+            _logger);
+
+        var result = await handler.HandleAsync(
+            new PatientEverythingQuery("123", Types: new HashSet<string> { "Condition" }),
+            CancellationToken.None);
+
+        result.SearchOptions.ShouldNotBeNull().BundleIssues.ShouldBeEmpty();
     }
 
     #region Setup
 
     private static readonly int[] SinglePartitionArray = new[] { 1 };
 
-    private void SetupDefaultMocks()
+    private void SetupDefaultMocks(string fhirVersion = "R4")
     {
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
             DisplayName = "Test Tenant",
-            FhirVersion = "R4",
+            FhirVersion = fhirVersion,
             ValidationDepth = "Spec"
         };
 
@@ -132,6 +178,7 @@ public class PatientEverythingHandlerTests
             _partitionStrategy,
             _executionStrategy,
             _contextAccessor,
+            Substitute.For<IFhirVersionContext>(),
             TestConformanceLease.NotHeld(),
             _logger);
 

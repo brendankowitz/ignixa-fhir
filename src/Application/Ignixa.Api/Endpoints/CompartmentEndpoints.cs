@@ -282,13 +282,14 @@ public static class CompartmentEndpoints
         // Check for _pretty parameter
         bool pretty = context.Request.Query.GetPrettyParameter();
 
-        // Stream Bundle response (95% memory reduction vs buffering)
+        // Stream Bundle response (95% memory reduction vs buffering). The handler's options carry the issues
+        // it found while composing the compartment search, on top of the ones parsing found.
         await StreamingBundleSerializer.SerializeWithPaginationAsync(
             outputStream: context.Response.Body,
             bundleType: "searchset",
             total: result.Total,
             entries: result.Resources,
-            searchOptions: searchOptions,
+            searchOptions: result.SearchOptions ?? searchOptions,
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
             schemaProvider: schemaProvider,
