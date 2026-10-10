@@ -125,7 +125,17 @@ public sealed class ReindexOrchestration
             if (state.Phase != previousPhase || state.WavesSinceSnapshot >= WavesPerProgressSnapshot)
             {
                 // Persist outside the tenant/range failure boundary: retrying this activity never repeats range work.
-                if (!await PersistProgressAsync(context, input, state))
+                bool open;
+                try
+                {
+                    open = await PersistProgressAsync(context, input, state);
+                }
+                catch (Exception ex)
+                {
+                    return await CompleteFailureAsync(context, input, state, ex);
+                }
+
+                if (!open)
                 {
                     return Stopped(state);
                 }
