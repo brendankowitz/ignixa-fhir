@@ -145,7 +145,8 @@ public sealed class ReindexLifecycleEventWriter(
             parameter.SearchParamId,
             parameter.ActivationEventId,
             [parameter.ResourceType],
-            parameter.OverridesCanonical);
+            parameter.OverridesCanonical,
+            parameter.FhirVersion);
 
     private async Task<IReadOnlyList<string>> AppendAsync(
         IReadOnlyList<ReindexParameterDefinition> targets,

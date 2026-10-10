@@ -100,23 +100,27 @@ public sealed class CompleteReindexActivity(
             .Where(owned => owned.JobId == input.JobId)
             .Select(owned => owned.Target)
             .Where(owned => !input.Targets.Any(planned => ReindexLifecycleEventWriter.SameTarget(planned, owned)));
+        var tenantVersions = await GetTenantVersionsAsync(CancellationToken.None);
         var completions = new List<ReindexTargetCompletion>(input.Targets.Count);
         foreach (var target in input.Targets)
         {
-            completions.Add(await EvaluateTargetAsync(input, target, unplanned: false));
+            completions.Add(await EvaluateTargetAsync(input, target, tenantVersions, unplanned: false));
         }
 
         foreach (var target in unplannedOwners)
         {
-            completions.Add(await EvaluateTargetAsync(input, target, unplanned: true));
+            completions.Add(await EvaluateTargetAsync(input, target, tenantVersions, unplanned: true));
         }
 
         return completions;
     }
 
+    // A tenant on another FHIR version never indexed this target, so neither its failures nor its catalog
+    // decide the target's outcome. A tenant no longer configured is judged in full: nothing says it was exempt.
     private async Task<ReindexTargetCompletion> EvaluateTargetAsync(
         CompleteReindexInput input,
         ReindexParameterDefinition target,
+        IReadOnlyDictionary<int, string> tenantVersions,
         bool unplanned)
     {
         var errors = new List<string>();
@@ -133,6 +137,11 @@ public sealed class CompleteReindexActivity(
         long resourcesIndexed = 0;
         foreach (var tenant in input.Tenants)
         {
+            if (tenantVersions.TryGetValue(tenant.TenantId, out var fhirVersion) && !target.AppliesToTenant(fhirVersion))
+            {
+                continue;
+            }
+
             resourcesIndexed += tenant.ResourcesReindexed;
             errors.AddRange(await DescribeTenantFailuresAsync(tenant, target));
         }
@@ -168,18 +177,26 @@ public sealed class CompleteReindexActivity(
         return errors;
     }
 
+    // Only a tenant the job's targets apply to had to be in the job; one on another FHIR version was never
+    // part of the plan. A job with no recorded targets is held to every active tenant.
     private async Task<int[]> GetTenantsAddedSinceStartAsync(
         BackgroundJob<ReindexJobDefinition> job,
         CancellationToken cancellationToken)
     {
+        var targets = job.Definition.SearchParameters;
         var activeTenantIds = (await tenantConfigurationStore.GetAllTenantsAsync(cancellationToken))
             .Where(tenant =>
                 tenant.IsActive &&
-                tenant.TenantId != SystemConstants.SystemPartitionId)
+                tenant.TenantId != SystemConstants.SystemPartitionId &&
+                (targets.Count == 0 || targets.Any(target => target.AppliesToTenant(tenant.FhirVersion))))
             .Select(tenant => tenant.TenantId)
             .Order();
         return activeTenantIds.Except(job.Definition.TenantIds).ToArray();
     }
+
+    private async Task<IReadOnlyDictionary<int, string>> GetTenantVersionsAsync(CancellationToken cancellationToken) =>
+        (await tenantConfigurationStore.GetAllTenantsAsync(cancellationToken))
+            .ToDictionary(tenant => tenant.TenantId, tenant => tenant.FhirVersion);
 
     private static JsonNode BuildProgress(CompleteReindexInput input, IReadOnlyList<string> ignored) =>
         new ReindexProgress(ReindexPhase.Completing)

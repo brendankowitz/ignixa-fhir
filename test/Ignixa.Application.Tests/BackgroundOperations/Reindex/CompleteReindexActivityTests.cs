@@ -199,6 +199,31 @@ public class CompleteReindexActivityTests
         state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
+    [Fact]
+    public async Task GivenAnActiveTenantOnAnotherFhirVersion_WhenAnR4JobCompletes_ThenThatTenantIsNeitherRequiredNorChecked()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-r4-only";
+        var (jobs, tenants) = await CreateRunningJobAsync(
+            [Tenant(1), Tenant(2) with { FhirVersion = "5.0" }],
+            targets: [new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"], null, "4.0")]);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical, fhirVersion: "4.0"));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"], null, "4.0");
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        using var jobLock = new TestJobLock();
+        // Only tenant 1 has a store: a catalog check against tenant 2 would throw and fail the activity.
+        var activity = CreateActivity(StoreFactoryWithCatalog(canonical), lifecycle, jobs, jobLock, tenants);
+
+        await activity.RunAsync(
+            new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
+            SingleTenantInput(target));
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        job!.Status.ShouldBe("Completed");
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Enabled);
+    }
+
     [Theory]
     [InlineData("canonical")]
     [InlineData("resourceType")]
@@ -457,7 +482,9 @@ public class CompleteReindexActivityTests
     }
 
     private static async Task<(InMemoryBackgroundJobRepository<ReindexJobDefinition> Jobs, ITenantConfigurationStore Tenants)>
-        CreateRunningJobAsync(IReadOnlyList<TenantConfiguration> activeTenants)
+        CreateRunningJobAsync(
+            IReadOnlyList<TenantConfiguration> activeTenants,
+            IReadOnlyList<ReindexParameterDefinition>? targets = null)
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.Mode.Returns(TenantMode.Isolated);
@@ -470,7 +497,7 @@ public class CompleteReindexActivityTests
             JobId = "job",
             JobType = (int)BackgroundJobType.Reindex,
             Status = "Running",
-            Definition = ReindexTestHelper.CreateJobDefinition(),
+            Definition = ReindexTestHelper.CreateJobDefinition(targets ?? []),
             CreateDate = DateTimeOffset.UtcNow,
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
@@ -547,7 +574,7 @@ public class CompleteReindexActivityTests
         return store;
     }
 
-    private static SourceEvent Activation(string canonical) => new(
+    private static SourceEvent Activation(string canonical, string? fhirVersion = null) => new(
         1,
         "search",
         nameof(SearchParameterActivated),
@@ -563,7 +590,8 @@ public class CompleteReindexActivityTests
             null,
             null,
             null,
-            null),
+            null,
+            fhirVersion),
         DateTimeOffset.UtcNow);
 
     private static CompleteReindexActivity CreateActivity(
