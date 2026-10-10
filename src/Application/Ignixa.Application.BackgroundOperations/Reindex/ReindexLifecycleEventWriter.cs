@@ -37,10 +37,7 @@ public sealed class ReindexLifecycleEventWriter(
             completions.Select(completion => completion.Target).ToArray(),
             target =>
             {
-                var completion = completions.Single(item =>
-                    item.Target.Canonical == target.Canonical &&
-                    item.Target.ResourceType == target.ResourceType &&
-                    item.Target.Code == target.Code);
+                var completion = completions.Single(item => SameTarget(item.Target, target));
                 return completion.Success
                     ? new SearchParameterReindexCompleted(
                         target.Canonical,
@@ -192,7 +189,7 @@ public sealed class ReindexLifecycleEventWriter(
     private bool WasApplied(ReindexParameterDefinition target, object data, string jobId)
     {
         var current = conformanceState.GetSearchParameter(target.ResourceType, target.Code);
-        if (current?.ActivationEventId != target.ActivationEventId)
+        if (current is null || !IsSameActivation(current, target))
         {
             return false;
         }
@@ -209,13 +206,29 @@ public sealed class ReindexLifecycleEventWriter(
         };
     }
 
+    // Ownership is one activation of one canonical: a planned target that names another canonical or
+    // activation of the same code must neither complete nor fail the parameter the job owns.
     private bool IsOwnedByJob(ReindexParameterDefinition target, string jobId)
     {
         var current = conformanceState.GetSearchParameter(target.ResourceType, target.Code);
-        return current?.ActivationEventId == target.ActivationEventId &&
+        return current is not null &&
+            IsSameActivation(current, target) &&
             current.Status == SearchParameterStatus.Reindexing &&
             current.ReindexJobId == jobId;
     }
+
+    private static bool IsSameActivation(ActiveSearchParameter current, ReindexParameterDefinition target) =>
+        current.Canonical == target.Canonical &&
+        current.ActivationEventId == target.ActivationEventId;
+
+    /// <summary>
+    /// Target identity: one activation of one canonical for one resource type and code.
+    /// </summary>
+    internal static bool SameTarget(ReindexParameterDefinition left, ReindexParameterDefinition right) =>
+        left.Canonical == right.Canonical &&
+        left.ResourceType == right.ResourceType &&
+        left.Code == right.Code &&
+        left.ActivationEventId == right.ActivationEventId;
 
     private static string TargetIdentity(ReindexParameterDefinition target) =>
         $"{target.Canonical}|{target.ResourceType}|{target.Code}";

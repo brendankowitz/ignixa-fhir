@@ -57,6 +57,53 @@ public class CompleteReindexActivityTests
     }
 
     [Fact]
+    public async Task GivenFinalWriteFailsAfterFailureWasAppended_WhenActivityRetries_ThenJobStillFails()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-retry-failure";
+        var (jobs, tenants) = await CreateRunningJobAsync([Tenant(1)]);
+        var proxy = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
+        proxy.GetAsync("job", 1, Arg.Any<CancellationToken>())
+            .Returns(_ => jobs.GetAsync("job", 1, CancellationToken.None));
+        var failWrite = true;
+        proxy.UpdateAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
+            .Returns(call => failWrite
+                ? Task.FromException(new TimeoutException("job store unavailable"))
+                : jobs.UpdateAsync(call.Arg<BackgroundJob<ReindexJobDefinition>>(), 1, CancellationToken.None));
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(RepositoryFactoryWithCatalogId(17), lifecycle, proxy, jobLock, tenants);
+        var input = JsonSerializer.Serialize(new[]
+        {
+            new CompleteReindexInput(
+                "job",
+                1,
+                [target],
+                [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                [])
+            {
+                FailureMessage = "Reindex orchestration failed: worker crashed"
+            }
+        });
+        var context = new TaskContext(new OrchestrationInstance { InstanceId = "job" });
+
+        await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(
+            () => activity.RunAsync(context, input));
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+
+        failWrite = false;
+        await activity.RunAsync(context, input);
+
+        var job = (await jobs.GetAsync("job", 1, CancellationToken.None))!;
+        job.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("worker crashed");
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+    }
+
+    [Fact]
     public async Task GivenLifecycleAppendFails_WhenActivityRetries_ThenTargetIsNotEnabled()
     {
         const string canonical = "http://example.org/SearchParameter/patient-retry-lifecycle";

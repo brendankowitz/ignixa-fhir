@@ -32,7 +32,7 @@ public sealed class CompleteReindexActivity(
         TaskContext context,
         CompleteReindexInput input)
     {
-        var completions = await EvaluateOwnedTargetsAsync(input);
+        var completions = await EvaluateTargetsAsync(input);
         return await jobLock.ExecuteAsync(
             cancellationToken => CompleteUnderLockAsync(input, completions, cancellationToken),
             CancellationToken.None);
@@ -95,49 +95,58 @@ public sealed class CompleteReindexActivity(
         return new CompleteReindexOutput(success, ignored);
     }
 
-    // Every parameter the job owns is completed, planned or not: an unplanned owner fails so it returns to
-    // Pending instead of staying Reindexing forever.
-    private async Task<IReadOnlyList<ReindexTargetCompletion>> EvaluateOwnedTargetsAsync(CompleteReindexInput input)
+    // The outcome of every planned target is derived from the orchestration's input, so a retried activity
+    // reaches the same decision. Every parameter the job still owns is completed as well, planned or not: an
+    // unplanned owner fails so it returns to Pending instead of staying Reindexing forever.
+    private async Task<IReadOnlyList<ReindexTargetCompletion>> EvaluateTargetsAsync(CompleteReindexInput input)
     {
-        var ownedTargets = (await lifecycle.GetOwnedTargetsAsync(CancellationToken.None))
+        var unplannedOwners = (await lifecycle.GetOwnedTargetsAsync(CancellationToken.None))
             .Where(owned => owned.JobId == input.JobId)
-            .ToArray();
-        var completions = new List<ReindexTargetCompletion>(ownedTargets.Length);
-        foreach (var owned in ownedTargets)
+            .Select(owned => owned.Target)
+            .Where(owned => !input.Targets.Any(planned => ReindexLifecycleEventWriter.SameTarget(planned, owned)));
+        var completions = new List<ReindexTargetCompletion>(input.Targets.Count);
+        foreach (var target in input.Targets)
         {
-            var plannedTarget = input.Targets.FirstOrDefault(target =>
-                target.Canonical == owned.Target.Canonical &&
-                target.ResourceType == owned.Target.ResourceType &&
-                target.Code == owned.Target.Code &&
-                target.ActivationEventId == owned.Target.ActivationEventId);
-            var target = plannedTarget ?? owned.Target;
-            var errors = new List<string>();
-            if (plannedTarget is null)
-            {
-                errors.Add($"Search parameter {target.Canonical} was not planned by this job.");
-            }
+            completions.Add(await EvaluateTargetAsync(input, target, unplanned: false));
+        }
 
-            if (input.FailureMessage is not null)
-            {
-                errors.Add(input.FailureMessage);
-            }
-
-            long resourcesIndexed = 0;
-            foreach (var tenant in input.Tenants)
-            {
-                resourcesIndexed += tenant.ResourcesReindexed;
-                errors.AddRange(await DescribeTenantFailuresAsync(tenant, target));
-            }
-
-            completions.Add(new ReindexTargetCompletion(
-                target,
-                errors.Count == 0,
-                resourcesIndexed,
-                TimeSpan.Zero,
-                errors.Count == 0 ? null : string.Join(" ", errors)));
+        foreach (var target in unplannedOwners)
+        {
+            completions.Add(await EvaluateTargetAsync(input, target, unplanned: true));
         }
 
         return completions;
+    }
+
+    private async Task<ReindexTargetCompletion> EvaluateTargetAsync(
+        CompleteReindexInput input,
+        ReindexParameterDefinition target,
+        bool unplanned)
+    {
+        var errors = new List<string>();
+        if (unplanned)
+        {
+            errors.Add($"Search parameter {target.Canonical} was not planned by this job.");
+        }
+
+        if (input.FailureMessage is not null)
+        {
+            errors.Add(input.FailureMessage);
+        }
+
+        long resourcesIndexed = 0;
+        foreach (var tenant in input.Tenants)
+        {
+            resourcesIndexed += tenant.ResourcesReindexed;
+            errors.AddRange(await DescribeTenantFailuresAsync(tenant, target));
+        }
+
+        return new ReindexTargetCompletion(
+            target,
+            errors.Count == 0,
+            resourcesIndexed,
+            TimeSpan.Zero,
+            errors.Count == 0 ? null : string.Join(" ", errors));
     }
 
     private async Task<IReadOnlyList<string>> DescribeTenantFailuresAsync(
