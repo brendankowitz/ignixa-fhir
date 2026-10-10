@@ -144,8 +144,12 @@ stateDiagram-v2
 - `_sort` follows the same rules.
 - StructureDefinitions are activated and replaced directly; they do not use the two-phase SearchParameter
   transition.
-- Compartment and `$everything` membership use the tenant's searchable snapshot. MCP search uses tenant
-  definitions. `_include=*` and `_revinclude=*` follow only searchable reference parameters.
+- Compartment and `$everything` membership use the tenant's searchable snapshot. A membership parameter that is
+  hidden (`Pending`, `Reindexing`, `Staged` or `Disabling`) is left out of the membership, and the bundle carries an
+  `OperationOutcome` warning naming it (*"Results may be incomplete: compartment membership through
+  'Observation.subject' is pending reindex."* or *"... is being redefined and was ignored."*), so the incomplete
+  result is never silent. MCP search uses tenant definitions. `_include=*` and `_revinclude=*` follow only
+  searchable reference parameters.
 
 ### 4.3 Lifecycle guards
 
@@ -205,6 +209,17 @@ safety margin after every such search and before *t_c*, while extraction is stil
   resolve to different base canonicals; base types with no matching base code are ignored. A package declaring
   SearchParameters for an unrecognised FHIR version is rejected with `SP_UNKNOWN_FHIR_VERSION`. Validation uses the
   latest available non-`Disabled` owner, so its result is independent of activation timing.
+
+- **FHIR version partitioning:** the conformance projection is shared by every tenant, so each
+  `SearchParameterActivated` event records the package's FHIR version (`FhirVersion`; null on events appended
+  before it was carried, which apply to every version as they always did). A tenant's definitions, capability
+  statement and catalog list only the definitions recorded for its version, so an R4 package, including the base
+  owners it materialises, leaves STU3, R4B and R5 tenants on their own base definitions. A reindex job targets a
+  parameter only on tenants of its version and judges its completion only by them. One `(resourceType, code)`
+  still has one owner across versions: a package whose definition would take a code over from an owner recorded
+  for another version is rejected with `SP_FHIR_VERSION_CONFLICT` instead of silently removing the code from that
+  version's tenants. Keying ownership by version as well is the eventual design; it is a larger change and was
+  deferred.
 
 This shared-identity rule deliberately costs availability during installation: installing US Core hides
 approximately 70 base codes until its reindex completes. Human acceptance of that cost remains pending.
