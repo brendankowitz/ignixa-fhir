@@ -21,10 +21,6 @@ public static class ReindexMetrics
         Meter.CreateCounter<long>("reindex.progress.persistence_failures");
     private static readonly Counter<long> Triggers =
         Meter.CreateCounter<long>("reindex.triggers");
-    private static readonly Counter<long> QueuedGenerations =
-        Meter.CreateCounter<long>("reindex.queued_generations");
-    private static readonly Counter<long> FollowUps =
-        Meter.CreateCounter<long>("reindex.followup.starts");
     private static readonly Counter<long> ReconciliationFailures =
         Meter.CreateCounter<long>("reindex.reconciliation.failures");
     private static readonly Counter<long> TriggerFailures =
@@ -34,11 +30,6 @@ public static class ReindexMetrics
 
     public static void TriggerStarted(string trigger) =>
         Triggers.Add(1, new KeyValuePair<string, object?>("trigger", trigger));
-
-    public static void GenerationQueued(long generation) =>
-        QueuedGenerations.Add(1, new KeyValuePair<string, object?>("generation", generation));
-
-    public static void FollowUpStarted() => FollowUps.Add(1);
 
     public static void RangeStarted() => ActiveRanges.Add(1);
 

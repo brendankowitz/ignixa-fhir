@@ -33,8 +33,7 @@ public class SearchParameterTransitionBatchTests
             store,
             state,
             trigger,
-            TestConformanceRefresher.Create(state, tenants: tenants),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state, tenants: tenants));
 
         var committed = await committer.CommitAsync(batchId, CancellationToken.None);
 
@@ -84,8 +83,7 @@ public class SearchParameterTransitionBatchTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         state.GetTransitionParameters(firstBatch).Select(parameter => parameter.Code).Distinct()
             .ShouldBe([Code(2)]);

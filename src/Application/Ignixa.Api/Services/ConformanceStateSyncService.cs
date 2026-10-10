@@ -99,17 +99,8 @@ public class ConformanceStateSyncService(
 
         conformanceLease.Renew(syncStart);
 
-        try
-        {
-            await reindexTrigger.ReconcileAsync(cancellationToken);
-        }
-        catch (ReindexTriggerUnavailableException exception)
-        {
-            ReindexMetrics.RecordReconciliationFailure();
-            logger.LogError(
-                exception,
-                "Reindex reconciliation failed operationally; the next conformance sync will retry");
-        }
+        // The trigger defers its own operational failures; a programmer error fails this tick loudly.
+        await reindexTrigger.ReconcileAsync(cancellationToken);
 
         if (afterEventId > beforeEventId)
         {

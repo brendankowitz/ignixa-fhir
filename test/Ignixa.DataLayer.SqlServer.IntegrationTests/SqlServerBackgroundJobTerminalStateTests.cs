@@ -14,62 +14,6 @@ public class SqlServerBackgroundJobTerminalStateTests(SqlPersistenceContractFixt
 {
     private const string ConflictType = "Ignixa.Domain.Exceptions.BackgroundJobUpdateConflictException";
 
-    [Fact]
-    public async Task GivenConcurrentProgressSnapshots_WhenUpdated_ThenStaleVersionConflictsAndOnlyProgressChanges()
-    {
-        var repository = CreateRepository();
-        var job = NewJob();
-        await repository.CreateAsync(job);
-        var first = (await repository.GetAsync(job.JobId, 1))!;
-        var stale = (await repository.GetAsync(job.JobId, 1))!;
-        first.Progress = JsonNode.Parse("""{"count":10}""");
-        first.Status = "Failed";
-        first.ErrorMessage = "must not persist";
-        (await repository.TryUpdateProgressAsync(first, 1, CancellationToken.None)).ShouldBeTrue();
-        stale.Progress = JsonNode.Parse("""{"count":20}""");
-
-        await Should.ThrowAsync<BackgroundJobUpdateConflictException>(() =>
-            repository.TryUpdateProgressAsync(stale, 1, CancellationToken.None));
-
-        var current = (await repository.GetAsync(job.JobId, 1))!;
-        current.Progress!["count"]!.GetValue<int>().ShouldBe(10);
-        current.Status.ShouldBe("Queued");
-        current.ErrorMessage.ShouldBeNull();
-        current.Progress["count"] = 20;
-        (await repository.TryUpdateProgressAsync(current, 1, CancellationToken.None)).ShouldBeTrue();
-        (await repository.GetAsync(job.JobId, 1))!.Progress!["count"]!.GetValue<int>().ShouldBe(20);
-    }
-
-    [Theory]
-    [InlineData("Completing")]
-    [InlineData("Completed")]
-    [InlineData("Failed")]
-    [InlineData("Cancelled")]
-    public async Task GivenClosureBetweenProgressReadAndWrite_WhenPersisted_ThenClosedJobIsUnchanged(string status)
-    {
-        var repository = CreateRepository();
-        var job = NewJob();
-        await repository.CreateAsync(job);
-        var stale = (await repository.GetAsync(job.JobId, 1))!;
-        var terminal = (await repository.GetAsync(job.JobId, 1))!;
-        Complete(terminal, status);
-        BackgroundJob<ExportJobDefinition>? expected = null;
-        var racing = CreateRepository(new BeforeMutationExecutionService(
-            fixture.Database.SqlExecutionService,
-            async () =>
-            {
-                await repository.UpdateAsync(terminal, 1);
-                expected = (await repository.GetAsync(job.JobId, 1))!;
-            }));
-        stale.Progress = JsonNode.Parse("""{"count":999}""");
-
-        (await racing.TryUpdateProgressAsync(stale, 1, CancellationToken.None)).ShouldBeFalse();
-
-        AssertUnchanged((await repository.GetAsync(job.JobId, 1))!, expected!);
-        (await repository.TryUpdateProgressAsync(expected!, 1, CancellationToken.None)).ShouldBeFalse();
-        AssertUnchanged((await repository.GetAsync(job.JobId, 1))!, expected!);
-    }
-
     [Theory]
     [InlineData("Completed", "Running")]
     [InlineData("Completed", "Completed")]

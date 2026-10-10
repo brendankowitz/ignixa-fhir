@@ -40,9 +40,4 @@ public enum BackgroundJobType
     /// FHIR bulk data deletion operation ($bulk-delete).
     /// </summary>
     BulkDelete = 5,
-
-    /// <summary>
-    /// Durable automation state for reindex request generations.
-    /// </summary>
-    ReindexAutomation = 6,
 }

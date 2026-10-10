@@ -1,18 +1,27 @@
 using System.Text.Json.Nodes;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
-public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
+/// <summary>
+/// Writes routine progress and heartbeats without the singleton job lock. A job that is already terminal,
+/// or becomes terminal between the read and the write, is left untouched and reported as closed.
+/// </summary>
+public sealed class ReindexProgressReporter(
+    IBackgroundJobRepository<ReindexJobDefinition> repository,
+    TimeProvider timeProvider)
 {
     internal static void InitializeBarrierDelay(
         BackgroundJob<ReindexJobDefinition> job,
         IReadOnlyList<int> tenantIds,
-        IReadOnlyList<string> ignoredLifecycleEvents)
+        IReadOnlyList<string> ignoredLifecycleEvents,
+        DateTimeOffset now)
     {
         job.Status = "Running";
-        job.StartDate ??= DateTimeOffset.UtcNow;
+        job.StartDate ??= now;
         var progress = new JsonObject
         {
             ["phase"] = "BarrierDelay",
@@ -31,12 +40,12 @@ public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
     }
 
     public Task<bool> HeartbeatAsync(string jobId, CancellationToken cancellationToken) =>
-        jobs.UpdateProgressAsync(jobId, _ => { }, cancellationToken);
+        UpdateAsync(jobId, _ => { }, cancellationToken);
 
     public Task<bool> ReportAsync(
         PersistReindexProgressInput input,
         CancellationToken cancellationToken) =>
-        jobs.UpdateProgressAsync(
+        UpdateAsync(
             input.JobId,
             job =>
             {
@@ -69,6 +78,32 @@ public sealed class ReindexProgressReporter(ReindexJobUpdater jobs)
                 job.Progress = progress;
             },
             cancellationToken);
+
+    private async Task<bool> UpdateAsync(
+        string jobId,
+        Action<BackgroundJob<ReindexJobDefinition>> update,
+        CancellationToken cancellationToken)
+    {
+        var job = await repository.GetAsync(jobId, ReindexJobs.GlobalTenantId, cancellationToken)
+            ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
+        if (ReindexJobs.IsTerminal(job.Status))
+        {
+            return false;
+        }
+
+        update(job);
+        job.HeartbeatDate = timeProvider.GetUtcNow();
+        try
+        {
+            await repository.UpdateAsync(job, ReindexJobs.GlobalTenantId, cancellationToken);
+            return true;
+        }
+        catch (BackgroundJobUpdateConflictException)
+        {
+            // The job closed between the read and the write; the terminal state is authoritative.
+            return false;
+        }
+    }
 
     private static JsonObject EnsureProgress(JsonNode? progress) =>
         progress as JsonObject ?? new JsonObject();

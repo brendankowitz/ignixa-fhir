@@ -200,29 +200,11 @@ public class PackageActivationPipeline(
         return [];
     }
 
-    private async Task<ReindexTriggerResult> RequestReindexAsync(string packageId, string version)
-    {
-        try
-        {
-            return await reindexTrigger.RequestReindexAsync(
-                $"Package {packageId}@{version} activation created Pending search parameters",
-                CancellationToken.None);
-        }
-        catch (ReindexTriggerUnavailableException exception) when (!IsProgrammerError(exception.InnerException!))
-        {
-            ReindexMetrics.RecordTriggerFailure("Activation");
-            logger.LogError(
-                exception,
-                "Package {PackageId}@{Version} activated durably, but the automatic reindex trigger failed; periodic reconciliation will retry",
-                packageId,
-                version);
-            return new ReindexTriggerResult(
-                null,
-                false,
-                "The automatic reindex trigger failed; periodic reconciliation will retry.",
-                Deferred: true);
-        }
-    }
+    // The trigger owns its failure policy: it defers operational failures and lets programmer errors propagate.
+    private Task<ReindexTriggerResult> RequestReindexAsync(string packageId, string version) =>
+        reindexTrigger.RequestReindexAsync(
+            $"Package {packageId}@{version} activation created Pending search parameters",
+            CancellationToken.None);
 
     private static IReadOnlyList<ValidationIssue> DescribeReindex(ReindexTriggerResult reindex) =>
         reindex switch

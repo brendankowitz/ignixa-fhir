@@ -26,10 +26,7 @@ public sealed class AwaitDrainActivityTests
         var repositories = Substitute.For<IFhirRepositoryFactory>();
         repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
         var jobRepository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        var progress = new ReindexProgressReporter(new ReindexJobUpdater(
-            jobRepository,
-            Substitute.For<IReindexJobLock>(),
-            Substitute.For<IReindexCompletionHook>()));
+        var progress = new ReindexProgressReporter(jobRepository, TimeProvider.System);
         var heartbeat = new ReindexActivityHeartbeat(
             progress,
             Options.Create(new ReindexOptions()),

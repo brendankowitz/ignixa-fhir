@@ -331,7 +331,7 @@ public class PackageActivationPipelineTests
     }
 
     [Fact]
-    public async Task GivenAutomaticReindexTriggerFailsAfterDurableActivation_WhenActivated_ThenActivationSucceedsDegraded()
+    public async Task GivenAutomaticReindexTriggerIsDeferredAfterDurableActivation_WhenActivated_ThenActivationSucceedsDegraded()
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();
         packageRepository.GetResourcesForActivationAsync(
@@ -355,10 +355,11 @@ public class PackageActivationPipelineTests
         using var state = new ConformanceState();
         var trigger = Substitute.For<IReindexTrigger>();
         trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns<Task<ReindexTriggerResult>>(_ =>
-                throw new ReindexTriggerUnavailableException(
-                    "Injected trigger failure.",
-                    new IOException("Database unavailable.")));
+            .Returns(new ReindexTriggerResult(
+                null,
+                false,
+                "The automatic reindex trigger failed; periodic reconciliation will retry.",
+                Deferred: true));
         var pipeline = CreatePipeline(
             packageRepository,
             eventStore,
@@ -775,33 +776,6 @@ public class PackageActivationPipelineTests
         hidden.Message.ShouldContain("Patient.identifier");
         hidden.Message.ShouldContain(TestPackageActivationPipeline.TransitionGrace.ToString());
         hidden.Message.ShouldContain("reindex");
-    }
-
-    [Fact]
-    public async Task GivenReindexTriggerWrapsAProgrammerError_WhenActivated_ThenTheFailurePropagates()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync("test.custom", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns([CreateCustomResource()]);
-        using var state = new ConformanceState();
-        var trigger = Substitute.For<IReindexTrigger>();
-        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns<Task<ReindexTriggerResult>>(_ =>
-                throw new ReindexTriggerUnavailableException(
-                    "The automatic reindex trigger is temporarily unavailable.",
-                    new NullReferenceException("Bug in the trigger.")));
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore([]),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants(),
-            reindexTrigger: trigger);
-
-        var exception = await Should.ThrowAsync<ReindexTriggerUnavailableException>(() =>
-            pipeline.ActivateAsync("test.custom", "1.0.0", CancellationToken.None));
-
-        exception.InnerException.ShouldBeOfType<NullReferenceException>();
     }
 
     [Fact]

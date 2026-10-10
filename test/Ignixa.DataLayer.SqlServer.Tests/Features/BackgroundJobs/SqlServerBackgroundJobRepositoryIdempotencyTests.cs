@@ -44,7 +44,7 @@ public class SqlServerBackgroundJobRepositoryIdempotencyTests
             1,
             Arg.Is<SqlCommand>(command =>
                 command.CommandText.Contains("TOP (1)", StringComparison.Ordinal) &&
-                command.CommandText.Contains("'Queued', 'Running', 'Completing'", StringComparison.Ordinal)),
+                command.CommandText.Contains("'Queued', 'Running'", StringComparison.Ordinal)),
             Arg.Any<Func<SqlDataReader, BackgroundJob<ExportJobDefinition>>>(),
             CancellationToken.None);
     }

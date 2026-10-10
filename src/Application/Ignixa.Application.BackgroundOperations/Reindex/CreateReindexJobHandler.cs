@@ -3,53 +3,36 @@ using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Reindex;
-using Ignixa.Application.Features.Search;
-using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
-using Ignixa.Serialization;
 using Medino;
 using Microsoft.Extensions.Options;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
+/// <summary>
+/// Creates a reindex job: under the singleton job lock, an active job wins, the targets are resolved, the
+/// row is written and the orchestration is started. Availability is the caller's concern.
+/// </summary>
 public sealed class CreateReindexJobHandler(
     TaskHubClient taskHubClient,
     IBackgroundJobRepository<ReindexJobDefinition> jobRepository,
-    ITenantConfigurationStore tenantConfigurationStore,
-    IFhirVersionContext fhirVersionContext,
-    ConformanceState conformanceState,
-    IReindexAvailability availability,
     IReindexJobLock jobLock,
-    ReindexJobReconciler reconciler,
-    ReindexAutomationStateStore automationState,
-    ISourceEventStore eventStore,
+    ReindexTargetResolver targetResolver,
     IOptions<ReindexOptions> options,
     TimeProvider timeProvider)
     : IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>
 {
+    private static readonly List<string> FinishedStatuses = ["Completed", "Failed", "Cancelled"];
+
     private readonly TaskHubClient _taskHubClient =
         taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
     private readonly IBackgroundJobRepository<ReindexJobDefinition> _jobRepository =
         jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
-    private readonly ITenantConfigurationStore _tenantConfigurationStore =
-        tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
-    private readonly IFhirVersionContext _fhirVersionContext =
-        fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
-    private readonly ConformanceState _conformanceState =
-        conformanceState ?? throw new ArgumentNullException(nameof(conformanceState));
-    private readonly IReindexAvailability _availability =
-        availability ?? throw new ArgumentNullException(nameof(availability));
     private readonly IReindexJobLock _jobLock =
         jobLock ?? throw new ArgumentNullException(nameof(jobLock));
-    private readonly ReindexJobReconciler _reconciler =
-        reconciler ?? throw new ArgumentNullException(nameof(reconciler));
-    private readonly ReindexAutomationStateStore _automationState =
-        automationState ?? throw new ArgumentNullException(nameof(automationState));
-    private readonly ISourceEventStore _eventStore =
-        eventStore ?? throw new ArgumentNullException(nameof(eventStore));
+    private readonly ReindexTargetResolver _targetResolver =
+        targetResolver ?? throw new ArgumentNullException(nameof(targetResolver));
     private readonly ReindexOptions _options =
         options?.Value ?? throw new ArgumentNullException(nameof(options));
     private readonly TimeProvider _timeProvider =
@@ -59,48 +42,6 @@ public sealed class CreateReindexJobHandler(
         CreateReindexJobCommand request,
         CancellationToken cancellationToken)
     {
-        if (request.Trigger.Equals("Reconciliation", StringComparison.OrdinalIgnoreCase))
-        {
-            var activeJob = await _jobRepository.GetActiveAsync(
-                (int)BackgroundJobType.Reindex,
-                cancellationToken);
-            if (activeJob is not null)
-            {
-                var lastObserved = activeJob.HeartbeatDate > activeJob.CreateDate
-                    ? activeJob.HeartbeatDate
-                    : activeJob.CreateDate;
-                var isFresh = !activeJob.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase) &&
-                    _timeProvider.GetUtcNow() - lastObserved < _options.OrphanGrace;
-                if (isFresh)
-                {
-                    return new ActiveReindexJobResult(activeJob.JobId);
-                }
-            }
-            else
-            {
-                var hasPendingParameters = _conformanceState.AllSearchParameters.Values.Any(
-                    parameter => parameter.Status == Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending);
-                var hasOwnedReindexingParameters = _conformanceState.AllSearchParameters.Values.Any(
-                    parameter => parameter.Status == Ignixa.Conformance.Events.Models.SearchParameterStatus.Reindexing &&
-                        parameter.ReindexJobId is not null);
-                if (!hasPendingParameters && !hasOwnedReindexingParameters)
-                {
-                    return new NoReindexWorkResult("No resources need reindexing.");
-                }
-            }
-        }
-
-        var availability = await _availability.GetAvailabilityAsync(cancellationToken);
-        if (availability.Status == ReindexAvailabilityStatus.Disabled)
-        {
-            return new ReindexDisabledResult();
-        }
-
-        if (availability.Status == ReindexAvailabilityStatus.Unsupported)
-        {
-            return new ReindexProviderUnavailableResult(availability.UnsupportedTenantId ?? 0);
-        }
-
         ReindexJobParameters parameters;
         try
         {
@@ -118,213 +59,109 @@ public sealed class CreateReindexJobHandler(
             return new InvalidReindexRequestResult(ex.Message);
         }
 
-        var tenants = (await _tenantConfigurationStore.GetAllTenantsAsync(cancellationToken))
-            .Where(tenant =>
-                tenant.IsActive &&
-                tenant.TenantId != SystemConstants.SystemPartitionId)
-            .OrderBy(tenant => tenant.TenantId)
-            .ToArray();
-        if (tenants.Length == 0)
+        return await _jobLock.ExecuteAsync(
+            ct => StartUnderLockAsync(request, parameters, ct),
+            cancellationToken);
+    }
+
+    private async Task<CreateReindexJobResult> StartUnderLockAsync(
+        CreateReindexJobCommand request,
+        ReindexJobParameters parameters,
+        CancellationToken cancellationToken)
+    {
+        var active = await _jobRepository.GetActiveAsync(
+            (int)BackgroundJobType.Reindex,
+            cancellationToken);
+        if (active is not null)
+        {
+            return new ActiveReindexJobResult(active.JobId);
+        }
+
+        var plan = await _targetResolver.ResolveAsync(cancellationToken);
+        if (plan.TenantIds.Count == 0)
         {
             return new NoReindexWorkResult("No active tenant is configured for reindexing.");
         }
 
-        var concreteResourceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var domainResourceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var tenant in tenants)
+        if (!plan.Resolution.HasWork)
         {
-            var version = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
-            var schema = _fhirVersionContext.GetSchemaProvider(version, tenant.TenantId);
-            foreach (var resourceType in schema.ResourceTypeNames)
-            {
-                if (schema.GetTypeDefinition(resourceType)?.Info.IsAbstract == false)
-                {
-                    concreteResourceTypes.Add(resourceType);
-                    var definition = schema.GetTypeDefinition(resourceType);
-                    if (definition!.Children.Any(child =>
-                        child.Info.Name.Equals("text", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        domainResourceTypes.Add(resourceType);
-                    }
-                }
-            }
+            return new NoReindexWorkResult("No resources need reindexing.");
         }
 
-        async Task<CreateReindexJobResult> StartUnderLockAsync(CancellationToken ct)
+        if (request.IsAutomatic &&
+            await GetLatestFinishedAsync(cancellationToken) is { } finished &&
+            !ReindexStartRule.RequiresJob(
+                plan.Resolution.Targets.Select(target => target.ActivationEventId),
+                finished.Definition.TargetEventId))
         {
-            async Task<(long TargetEventId, ReindexTargetResolution Resolution)> ResolveAsync()
-            {
-                using (await _conformanceState.AcquireActivationLockAsync(ct))
-                {
-                    await _conformanceState.CatchUpWhileActivationLockHeldAsync(
-                        _eventStore,
-                        ct);
-                    return (
-                        _conformanceState.LastProcessedEventId,
-                        ReindexTargetResolver.Resolve(
-                            _conformanceState.AllSearchParameters.Values.ToArray(),
-                            concreteResourceTypes,
-                            new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
-                            {
-                                ["Resource"] = concreteResourceTypes,
-                                ["DomainResource"] = domainResourceTypes
-                            }));
-                }
-            }
-
-            var requestedGeneration = request.QueueRequest
-                ? await _automationState.IncrementRequestedGenerationAsync(ct)
-                : await _automationState.GetRequestedGenerationAsync(ct);
-            var lastFailedOrCancelled = await _jobRepository.GetLatestAsync(
-                (int)BackgroundJobType.Reindex,
-                ["Failed", "Cancelled"],
-                ct);
-            if ((request.Trigger.Equals("Reconciliation", StringComparison.OrdinalIgnoreCase) ||
-                 request.Trigger.Equals("FollowUp", StringComparison.OrdinalIgnoreCase)) &&
-                lastFailedOrCancelled is not null &&
-                requestedGeneration <= lastFailedOrCancelled.Definition.ConsumedGeneration)
-            {
-                return new NoReindexWorkResult(
-                    $"Reindex restart after {lastFailedOrCancelled.Status} requires a new request generation.");
-            }
-
-            var active = await _jobRepository.GetActiveAsync(
-                (int)BackgroundJobType.Reindex,
-                ct);
-            if (active is not null && active.JobId != request.ExcludedActiveJobId)
-            {
-                if (request.QueueRequest &&
-                    active.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase) &&
-                    active.Definition.Trigger.Equals("Activation", StringComparison.OrdinalIgnoreCase))
-                {
-                    var queuedResolution = await ResolveAsync();
-                    active.Definition = CopyWithResolution(
-                        active.Definition,
-                        queuedResolution.TargetEventId,
-                        queuedResolution.Resolution,
-                        requestedGeneration);
-                    active.Progress ??= new JsonObject();
-                    await _jobRepository.UpdateAsync(active, 1, ct);
-                    return new ReindexRequestQueuedResult(active.JobId, requestedGeneration);
-                }
-
-                if (request.QueueRequest)
-                {
-                    return new ReindexRequestQueuedResult(active.JobId, requestedGeneration);
-                }
-
-                return new ActiveReindexJobResult(active.JobId);
-            }
-
-            var (targetEventId, resolution) = await ResolveAsync();
-            if (!resolution.HasWork)
-            {
-                return new NoReindexWorkResult("No resources need reindexing.");
-            }
-
-            var jobId = Guid.NewGuid().ToString();
-            var definition = new ReindexJobDefinition
-            {
-                TargetEventId = targetEventId,
-                TenantIds = tenants.Select(tenant => tenant.TenantId).ToArray(),
-                ResourceTypes = resolution.ResourceTypes,
-                SearchParameters = resolution.Targets,
-                MaximumNumberOfResourcesPerQuery = parameters.MaximumNumberOfResourcesPerQuery,
-                MaximumNumberOfResourcesPerWrite = parameters.MaximumNumberOfResourcesPerWrite,
-                MaximumConcurrency = parameters.MaximumConcurrency,
-                QueryDelayIntervalInMilliseconds = parameters.QueryDelayIntervalInMilliseconds,
-                Trigger = request.Trigger,
-                ConsumedGeneration = requestedGeneration
-            };
-            var now = DateTimeOffset.UtcNow;
-            await _jobRepository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
-            {
-                JobId = jobId,
-                OrchestrationInstanceId = jobId,
-                JobType = (int)BackgroundJobType.Reindex,
-                Status = "Queued",
-                Definition = definition,
-                Progress = new JsonObject
-                {
-                    ["phase"] = "BarrierDelay",
-                    ["ignoredLifecycleEvents"] = new JsonArray()
-                },
-                CreateDate = now,
-                HeartbeatDate = now
-            }, ct);
-
-            try
-            {
-                await _taskHubClient.CreateOrchestrationInstanceAsync(
-                    typeof(ReindexOrchestration),
-                    jobId,
-                    new ReindexOrchestrationInput(
-                        jobId,
-                        targetEventId,
-                        _options.BarrierDelay,
-                        definition.TenantIds,
-                        definition.ResourceTypes,
-                        resolution.Targets,
-                        parameters,
-                        _options.DrainWarningAfter,
-                        _options.ContinueAsNewThreshold)
-                    {
-                        HeartbeatInterval = ReindexActivityHeartbeat.GetInterval(_options.StaleJobTimeout),
-                        StaleJobTimeout = _options.StaleJobTimeout,
-                        StartDebounce = request.QueueRequest &&
-                            request.Trigger.Equals("Activation", StringComparison.OrdinalIgnoreCase)
-                            ? _options.StartDebounce
-                            : TimeSpan.Zero
-                    });
-            }
-            catch (Exception ex)
-            {
-                var failed = await _jobRepository.GetAsync(jobId, 1, ct)
-                    ?? throw new InvalidOperationException(
-                        $"Reindex job {jobId} disappeared after its orchestration failed to start.",
-                        ex);
-                failed.Status = "Failed";
-                failed.EndDate = DateTimeOffset.UtcNow;
-                failed.ErrorMessage = $"Failed to start reindex orchestration: {ex.Message}";
-                failed.HeartbeatDate = DateTimeOffset.UtcNow;
-                await _jobRepository.UpdateAsync(failed, 1, ct);
-                throw;
-            }
-
-            return new ReindexJobCreatedResult(jobId);
+            return new NoReindexWorkResult(
+                $"Pending parameters were already targeted by {finished.Status} job {finished.JobId}; a newer activation or a manual $reindex starts the next job.");
         }
 
-        if (request.LockAlreadyHeld)
+        var jobId = Guid.NewGuid().ToString();
+        var definition = new ReindexJobDefinition
         {
-            return await StartUnderLockAsync(cancellationToken);
-        }
-
-        return await _jobLock.ExecuteAsync<CreateReindexJobResult>(
-            async ct =>
+            TargetEventId = plan.TargetEventId,
+            TenantIds = plan.TenantIds,
+            ResourceTypes = plan.Resolution.ResourceTypes,
+            SearchParameters = plan.Resolution.Targets,
+            MaximumNumberOfResourcesPerQuery = parameters.MaximumNumberOfResourcesPerQuery,
+            MaximumNumberOfResourcesPerWrite = parameters.MaximumNumberOfResourcesPerWrite,
+            MaximumConcurrency = parameters.MaximumConcurrency,
+            QueryDelayIntervalInMilliseconds = parameters.QueryDelayIntervalInMilliseconds,
+            Trigger = request.Trigger
+        };
+        var now = _timeProvider.GetUtcNow();
+        await _jobRepository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        {
+            JobId = jobId,
+            OrchestrationInstanceId = jobId,
+            JobType = (int)BackgroundJobType.Reindex,
+            Status = "Queued",
+            Definition = definition,
+            Progress = new JsonObject
             {
-                await _reconciler.ReconcileUnderLockAsync(ct);
-                return await StartUnderLockAsync(ct);
+                ["phase"] = "BarrierDelay",
+                ["ignoredLifecycleEvents"] = new JsonArray()
             },
-            cancellationToken);
+            CreateDate = now,
+            HeartbeatDate = now
+        }, cancellationToken);
+
+        try
+        {
+            await _taskHubClient.CreateOrchestrationInstanceAsync(
+                typeof(ReindexOrchestration),
+                jobId,
+                new ReindexOrchestrationInput(
+                    jobId,
+                    plan.TargetEventId,
+                    _options.BarrierDelay,
+                    definition.TenantIds,
+                    definition.ResourceTypes,
+                    plan.Resolution.Targets,
+                    parameters,
+                    _options.DrainWarningAfter,
+                    _options.ContinueAsNewThreshold)
+                {
+                    HeartbeatInterval = ReindexActivityHeartbeat.GetInterval(_options.StaleJobTimeout),
+                    StaleJobTimeout = _options.StaleJobTimeout,
+                    StartDebounce = request.Trigger.Equals("Activation", StringComparison.OrdinalIgnoreCase)
+                        ? _options.StartDebounce
+                        : TimeSpan.Zero
+                });
+        }
+        catch
+        {
+            // A row without an orchestration must not survive: as the latest finished job it would block
+            // the next automatic start, and as an active job it would answer every $reindex with 409.
+            await _jobRepository.DeleteAsync(jobId, ReindexJobs.GlobalTenantId, CancellationToken.None);
+            throw;
+        }
+
+        return new ReindexJobCreatedResult(jobId);
     }
 
-    private static ReindexJobDefinition CopyWithResolution(
-        ReindexJobDefinition definition,
-        long targetEventId,
-        ReindexTargetResolution resolution,
-        long consumedGeneration) =>
-        new()
-        {
-            TenantId = definition.TenantId,
-            TargetEventId = targetEventId,
-            TenantIds = definition.TenantIds,
-            ResourceTypes = resolution.ResourceTypes,
-            SearchParameters = resolution.Targets,
-            MaximumNumberOfResourcesPerQuery = definition.MaximumNumberOfResourcesPerQuery,
-            MaximumNumberOfResourcesPerWrite = definition.MaximumNumberOfResourcesPerWrite,
-            MaximumConcurrency = definition.MaximumConcurrency,
-            QueryDelayIntervalInMilliseconds = definition.QueryDelayIntervalInMilliseconds,
-            Trigger = definition.Trigger,
-            ConsumedGeneration = consumedGeneration
-        };
+    private Task<BackgroundJob<ReindexJobDefinition>?> GetLatestFinishedAsync(CancellationToken cancellationToken) =>
+        _jobRepository.GetLatestAsync((int)BackgroundJobType.Reindex, FinishedStatuses, cancellationToken);
 }

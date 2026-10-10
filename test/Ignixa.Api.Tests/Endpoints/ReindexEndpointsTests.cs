@@ -115,7 +115,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     {
         _availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(ReindexAvailability.Disabled));
-        _createResult = new ReindexDisabledResult();
 
         var endpointNames = ((IEndpointRouteBuilder)_app).DataSources
             .SelectMany(source => source.Endpoints)
@@ -131,12 +130,9 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
         response.Body["issue"]![0]!["diagnostics"]!.GetValue<string>()
             .ShouldBe("The $reindex operation is disabled on this server.");
-        if (!operationEndpointName.StartsWith("Create", StringComparison.Ordinal))
-        {
-            await _mediator.DidNotReceive().SendAsync(
-                Arg.Any<CreateReindexJobCommand>(),
-                Arg.Any<CancellationToken>());
-        }
+        await _mediator.DidNotReceive().SendAsync(
+            Arg.Any<CreateReindexJobCommand>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -311,7 +307,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenCompletionDecisionSurvivesRestart_WhenGettingStatus_ThenTerminalProgressRoundTrips()
+    public async Task GivenFailedCompletion_WhenGettingStatus_ThenTerminalProgressRoundTrips()
     {
         const string canonical = "http://example.test/SearchParameter/patient-custom";
         var tenants = Substitute.For<ITenantConfigurationStore>();
@@ -375,12 +371,14 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         var writer = new CompleteReindexActivity(
             repositoryFactory,
             lifecycle,
-            new ReindexJobUpdater(repository, jobLock, new ThrowingCompletionHook()),
+            repository,
+            jobLock,
             tenants,
-            TimeProvider.System);
+            TimeProvider.System,
+            NullLogger<CompleteReindexActivity>.Instance);
         var failedResource = new ReindexFailedResource("Patient", "p1", "index failure");
 
-        await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(() => writer.RunAsync(
+        await writer.RunAsync(
             new TaskContext(new OrchestrationInstance { InstanceId = "round-trip" }),
             JsonSerializer.Serialize(new[]
             {
@@ -390,23 +388,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                     [target],
                     [new ReindexTenantOutput(1, true, 10, 20, 1, 0, 0, 1, [failedResource], "index failure")],
                     [])
-            })));
-
-        (await repository.GetAsync("round-trip", 1, CancellationToken.None))!
-            .Status.ShouldBe("Completing");
-
-        var runtime = Substitute.For<IOrchestrationServiceClient>();
-        runtime.GetOrchestrationStateAsync("round-trip", false).Returns([]);
-        var reconciler = new ReindexJobReconciler(
-            new TaskHubClient(runtime),
-            repository,
-            lifecycle,
-            new ReindexJobUpdater(repository, jobLock, Substitute.For<IReindexCompletionHook>()),
-            jobLock,
-            Options.Create(new ReindexOptions()),
-            TimeProvider.System,
-            NullLogger<ReindexJobReconciler>.Instance);
-        await reconciler.ReconcileAsync(CancellationToken.None);
+            }));
 
         var statusHandler = new GetReindexStatusHandler(
             repository,
@@ -556,7 +538,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     {
         _availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new ReindexAvailability(ReindexAvailabilityStatus.Unsupported, 2)));
-        _createResult = new ReindexProviderUnavailableResult(2);
 
         var response = await SendAsync(operationEndpointName, body: Parameters());
 
@@ -1051,14 +1032,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     public async Task DisposeAsync() => await _app.DisposeAsync();
 
     private sealed record Response(int StatusCode, JsonNode Body, IReadOnlyDictionary<string, string> Headers);
-
-    private sealed class ThrowingCompletionHook : IReindexCompletionHook
-    {
-        public Task OnCompletedAsync(
-            BackgroundJob<ReindexJobDefinition> job,
-            CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("simulated restart");
-    }
 
     private sealed class TestJobLock : IReindexJobLock, IDisposable
     {

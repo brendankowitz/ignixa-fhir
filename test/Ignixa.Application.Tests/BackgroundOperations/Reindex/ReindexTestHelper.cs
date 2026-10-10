@@ -16,8 +16,7 @@ internal static class ReindexTestHelper
         MaximumNumberOfResourcesPerWrite = 1_000,
         MaximumConcurrency = 4,
         QueryDelayIntervalInMilliseconds = 0,
-        Trigger = "Manual",
-        ConsumedGeneration = 0
+        Trigger = "Manual"
     };
 
     public static ReindexOrchestrationInput CreateOrchestrationInput(

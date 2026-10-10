@@ -321,7 +321,7 @@ public class SqlReindexOrchestrationTests
                     CancellationToken.None))
                 .SingleOrDefault(job =>
                     job.JobId != firstJobId &&
-                    job.Definition.Trigger == "FollowUp");
+                    job.Definition.Trigger == "Reconciliation");
             if (followUp is not null)
             {
                 return followUp;
@@ -514,6 +514,8 @@ public class SqlReindexOrchestrationTests
             builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:01");
             builder.UseSetting("Reindex:BarrierDelay", "00:00:01");
             builder.UseSetting("Reindex:StartDebounce", "00:00:00.100");
+            // Follow-up jobs start from the periodic reconciliation tick.
+            builder.UseSetting("Conformance:SyncIntervalSeconds", "1");
             builder.UseSetting("Reindex:DrainWarningAfter", "00:00:01");
             builder.UseSetting("Fhir:BaseUri", "https://example.test/fhir");
             base.ConfigureWebHost(builder);

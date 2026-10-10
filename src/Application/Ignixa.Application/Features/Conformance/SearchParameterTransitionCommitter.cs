@@ -3,7 +3,6 @@ using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Application.Features.Search;
 using Ignixa.Search.Definition;
-using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Conformance;
 
@@ -16,8 +15,7 @@ public sealed class SearchParameterTransitionCommitter(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
     IReindexTrigger reindexTrigger,
-    ConformanceRefresher conformanceRefresher,
-    ILogger<SearchParameterTransitionCommitter> logger)
+    ConformanceRefresher conformanceRefresher)
 {
     /// <returns>Whether a transition event was appended; false when nothing it hid is still pending.</returns>
     public async Task<bool> CommitAsync(long hideEventId, CancellationToken cancellationToken)
@@ -40,20 +38,10 @@ public sealed class SearchParameterTransitionCommitter(
         var committedTransition = committed.Count > 0;
         if (committedTransition && reindexRequired)
         {
-            try
-            {
-                _ = await reindexTrigger.RequestReindexAsync(
-                    $"Search parameter transition {hideEventId} committed",
-                    cancellationToken);
-            }
-            catch (ReindexTriggerUnavailableException exception)
-            {
-                ReindexMetrics.RecordTriggerFailure("TransitionCommit");
-                logger.LogError(
-                    exception,
-                    "Search parameter transition {HideEventId} committed durably, but the automatic reindex trigger failed; periodic reconciliation will retry",
-                    hideEventId);
-            }
+            // The trigger defers its own operational failures; periodic reconciliation retries them.
+            _ = await reindexTrigger.RequestReindexAsync(
+                $"Search parameter transition {hideEventId} committed",
+                cancellationToken);
         }
 
         await conformanceRefresher.RefreshAsync(force: false, cancellationToken);

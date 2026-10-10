@@ -151,51 +151,6 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         logger.LogDebug("Updated background job {JobId}", job.JobId);
     }
 
-    public async Task<bool> TryUpdateProgressAsync(
-        BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(job);
-        var existing = await FindByJobIdAsync(job.JobId, cancellationToken) ?? throw NotFound(job.JobId);
-        if (ShouldValidateTenant() && existing.Definition.TenantId != tenantId)
-        {
-            throw new InvalidOperationException($"Not authorized to update job {job.JobId}");
-        }
-
-        if (job.Definition.TenantId != existing.Definition.TenantId)
-        {
-            throw new InvalidOperationException($"Cannot change the owning tenant of background job {job.JobId}");
-        }
-
-        using var command = CreateCommand(
-            $"UPDATE {QualifiedTable} SET " +
-            $"{Jobs.Column("Progress").Name} = @progress, " +
-            $"{Jobs.Column("HeartbeatDate").Name} = @heartbeatDate " +
-            $"WHERE {Jobs.Column("TenantId").Name} = @rowTenantId AND {Jobs.Column("JobId").Name} = @jobId " +
-            $"AND {Jobs.Column("RowVersion").Name} = CONVERT(binary(8), @rowVersion) " +
-            $"AND {Jobs.Column("Status").Name} COLLATE Latin1_General_100_CI_AS " +
-            "NOT IN (N'Completing', N'Completed', N'Failed', N'Cancelled')");
-        command.Parameters.AddWithValue("@rowTenantId", existing.Definition.TenantId);
-        command.Parameters.AddWithValue("@jobId", job.JobId);
-        command.Parameters.AddWithValue("@rowVersion", job.RowVersion);
-        command.Parameters.AddWithValue("@progress", (object?)job.Progress?.ToJsonString() ?? DBNull.Value);
-        command.Parameters.AddWithValue("@heartbeatDate", DateTimeOffset.UtcNow);
-        var affectedRows = await sqlExecutionService.ExecuteNonQueryAsync(
-            connectionTenantId, command, cancellationToken, SqlCommandIdempotency.NonIdempotent);
-        if (affectedRows == 1)
-        {
-            return true;
-        }
-
-        var current = await FindByJobIdAsync(job.JobId, cancellationToken, existing.Definition.TenantId)
-            ?? throw NotFound(job.JobId);
-        if (IsTerminal(current.Status) || current.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        throw new BackgroundJobUpdateConflictException(job.JobId, current.Status);
-    }
-
     public async Task DeleteAsync(string jobId, int tenantId, CancellationToken cancellationToken = default)
     {
         var existing = await FindByJobIdAsync(jobId, cancellationToken);
@@ -251,7 +206,7 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         using var command = CreateCommand(
             $"SELECT TOP (1) {AllColumns} FROM {QualifiedTable} " +
             $"WHERE {Jobs.Column("JobType").Name} = @jobType " +
-            $"AND {Jobs.Column("Status").Name} IN ('Queued', 'Running', 'Completing') " +
+            $"AND {Jobs.Column("Status").Name} IN ('Queued', 'Running') " +
             $"ORDER BY {Jobs.Column("CreateDate").Name} DESC");
         command.Parameters.AddWithValue("@jobType", jobType);
 

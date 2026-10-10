@@ -141,47 +141,6 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
     }
 
     /// <inheritdoc/>
-    public Task<bool> TryUpdateProgressAsync(
-        BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(job);
-        while (_jobs.TryGetValue(job.JobId, out var existing))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (ShouldValidateTenant() && !ValidateTenantOwnership(existing, tenantId))
-            {
-                throw new InvalidOperationException($"Not authorized to update job {job.JobId}");
-            }
-
-            if (job.Definition.TenantId != existing.Definition.TenantId)
-            {
-                throw new InvalidOperationException($"Cannot change the owning tenant of background job {job.JobId}");
-            }
-
-            if (IsTerminal(existing.Status) || existing.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase))
-            {
-                return Task.FromResult(false);
-            }
-
-            if (job.RowVersion != existing.RowVersion)
-            {
-                throw new BackgroundJobUpdateConflictException(job.JobId, existing.Status);
-            }
-
-            var snapshot = Snapshot(existing);
-            snapshot.Progress = job.Progress?.DeepClone();
-            snapshot.HeartbeatDate = DateTimeOffset.UtcNow;
-            snapshot.RowVersion = Interlocked.Increment(ref _version);
-            if (_jobs.TryUpdate(job.JobId, snapshot, existing))
-            {
-                return Task.FromResult(true);
-            }
-        }
-
-        throw new InvalidOperationException($"Background job with ID '{job.JobId}' does not exist");
-    }
-
-    /// <inheritdoc/>
     public Task<IReadOnlyList<BackgroundJob<T>>> ListAsync(int? jobType = null, CancellationToken cancellationToken = default)
     {
         var jobs = _jobs.Values

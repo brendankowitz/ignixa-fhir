@@ -55,25 +55,25 @@ public static class ReindexEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> CreateAsync(
+    private static Task<IResult> CreateAsync(
         HttpContext context,
         int? tenantId,
         IMediator mediator,
-        CancellationToken cancellationToken)
-    {
-        return await ResolveTenantAsync(
-            context,
-            tenantId,
-            resolvedTenantId => CreateJobAsync(context, resolvedTenantId, mediator, cancellationToken));
-    }
+        IReindexAvailability availability,
+        CancellationToken cancellationToken) =>
+        ExecuteWhenAvailableAsync(
+            availability,
+            () => ResolveTenantAsync(
+                context,
+                tenantId,
+                _ => CreateJobAsync(context, mediator, cancellationToken)),
+            cancellationToken);
 
     private static async Task<IResult> CreateJobAsync(
         HttpContext context,
-        int tenantId,
         IMediator mediator,
         CancellationToken cancellationToken)
     {
-
         if (context.Request.Headers.TryGetValue("Prefer", out var prefer) &&
             !prefer.All(value => string.Equals(value, "respond-async", StringComparison.OrdinalIgnoreCase)))
         {
@@ -125,10 +125,6 @@ public static class ReindexEndpoints
                 return Error(StatusCodes.Status400BadRequest, invalid.ErrorMessage);
             case NoReindexWorkResult noWork:
                 return Error(StatusCodes.Status400BadRequest, noWork.ErrorMessage);
-            case ReindexDisabledResult:
-                return Disabled();
-            case ReindexProviderUnavailableResult:
-                return Unsupported();
             default:
                 throw new InvalidOperationException($"Unhandled reindex result {result.GetType().Name}.");
         }

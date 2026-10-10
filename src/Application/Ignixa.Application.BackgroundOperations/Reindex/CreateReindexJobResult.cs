@@ -6,14 +6,6 @@ public sealed record ReindexJobCreatedResult(string JobId) : CreateReindexJobRes
 
 public sealed record ActiveReindexJobResult(string ActiveJobId) : CreateReindexJobResult;
 
-public sealed record ReindexRequestQueuedResult(
-    string ActiveJobId,
-    long RequestedGeneration) : CreateReindexJobResult;
-
 public sealed record InvalidReindexRequestResult(string ErrorMessage) : CreateReindexJobResult;
 
 public sealed record NoReindexWorkResult(string ErrorMessage) : CreateReindexJobResult;
-
-public sealed record ReindexDisabledResult : CreateReindexJobResult;
-
-public sealed record ReindexProviderUnavailableResult(int TenantId) : CreateReindexJobResult;

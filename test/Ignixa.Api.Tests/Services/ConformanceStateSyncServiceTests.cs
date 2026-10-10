@@ -1,6 +1,8 @@
+using DurableTask.Core;
 using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Reindex;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -112,14 +114,12 @@ public class ConformanceStateSyncServiceTests
             state,
             TestConformanceRefresher.Tenants(),
             TestConformanceLease.NotHeld(),
-            CreateReindexTrigger(mediator, autoStart: true));
+            CreateReindexTrigger(mediator, state, autoStart: true));
 
         await service.RunSyncAsync();
 
         await mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command =>
-                command.Trigger == "Reconciliation" &&
-                !command.QueueRequest),
+            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == "Reconciliation"),
             CancellationToken.None);
     }
 
@@ -130,17 +130,15 @@ public class ConformanceStateSyncServiceTests
         store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
         var lease = TestConformanceLease.NotHeld();
-        var mediator = Substitute.For<IMediator>();
-        mediator.SendAsync(
-                Arg.Any<CreateReindexJobCommand>(),
-                Arg.Any<CancellationToken>())
-            .Returns<Task<CreateReindexJobResult>>(_ => throw new IOException("Database unavailable."));
+        var jobs = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
+        jobs.GetActiveAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<Task<BackgroundJob<ReindexJobDefinition>?>>(_ => throw new IOException("Database unavailable."));
         using var service = new TestSyncService(
             store,
             state,
             TestConformanceRefresher.Tenants(),
             lease,
-            CreateReindexTrigger(mediator, autoStart: true));
+            CreateReindexTrigger(Substitute.For<IMediator>(), state, autoStart: true, jobs));
 
         await service.RunSyncAsync();
 
@@ -165,11 +163,29 @@ public class ConformanceStateSyncServiceTests
 
     private static ReindexTrigger CreateReindexTrigger(
         IMediator mediator,
-        bool autoStart)
+        ConformanceState state,
+        bool autoStart,
+        IBackgroundJobRepository<ReindexJobDefinition>? jobs = null)
     {
+        jobs ??= Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
+        var availability = Substitute.For<IReindexAvailability>();
+        availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ReindexAvailability.Available));
+        var options = Options.Create(new ReindexOptions { AutoStart = autoStart });
         return new ReindexTrigger(
             mediator,
-            Options.Create(new ReindexOptions { AutoStart = autoStart }),
+            jobs,
+            state,
+            new ReindexJobReconciler(
+                new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()),
+                jobs,
+                new ReindexLifecycleEventWriter(Substitute.For<ISourceEventStore>(), state),
+                Substitute.For<IReindexJobLock>(),
+                options,
+                TimeProvider.System,
+                NullLogger<ReindexJobReconciler>.Instance),
+            availability,
+            options,
             NullLogger<ReindexTrigger>.Instance);
     }
 
@@ -199,6 +215,7 @@ public class ConformanceStateSyncServiceTests
                 Options.Create(new ConformanceTransitionOptions()),
                 reindexTrigger ?? CreateReindexTrigger(
                     Substitute.For<IMediator>(),
+                    state,
                     autoStart: false),
                 NullLogger<ConformanceStateSyncService>.Instance)
         {

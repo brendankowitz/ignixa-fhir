@@ -63,14 +63,6 @@ public interface IBackgroundJobRepository<T> where T : class, IJobDefinition
     Task UpdateAsync(BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Updates only progress and heartbeat if the stored version matches <see cref="BackgroundJob{T}.RowVersion"/>.
-    /// Returns false without writing when the job is Completing, Completed, Failed, or Cancelled.
-    /// An active version conflict throws <see cref="Ignixa.Domain.Exceptions.BackgroundJobUpdateConflictException"/>;
-    /// the caller must reload and re-merge before retrying. Ownership validation is identical to UpdateAsync.
-    /// </summary>
-    Task<bool> TryUpdateProgressAsync(BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken);
-
-    /// <summary>
     /// Lists all background jobs (system-wide).
     /// </summary>
     /// <param name="jobType">Optional: Filter by job type.</param>

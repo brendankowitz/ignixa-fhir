@@ -136,14 +136,10 @@ public static class BackgroundServicesRegistration
             .InstancePerDependency();
         builder.RegisterType<ReindexRangeProcessor>().AsSelf().InstancePerDependency();
         builder.RegisterType<ReindexLifecycleEventWriter>().AsSelf().SingleInstance();
-        builder.RegisterType<ReindexJobUpdater>().AsSelf().SingleInstance();
+        builder.RegisterType<ReindexTargetResolver>().AsSelf().SingleInstance();
         builder.RegisterType<ReindexJobReconciler>().AsSelf().SingleInstance();
-        builder.RegisterType<ReindexAutomationStateStore>().AsSelf().SingleInstance();
         builder.RegisterType<ReindexProgressReporter>().AsSelf().SingleInstance();
         builder.RegisterType<ReindexActivityHeartbeat>().AsSelf().SingleInstance();
-        builder.RegisterType<ReindexCompletionHook>()
-            .As<IReindexCompletionHook>()
-            .SingleInstance();
 
         // Bulk delete job handlers
         builder.RegisterType<CreateBulkDeleteJobHandler>()

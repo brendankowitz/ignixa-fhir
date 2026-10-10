@@ -80,13 +80,12 @@ public class ReindexRangeActivityTests
         });
         if (failProgress)
         {
-            repository.TryUpdateProgressAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
-                .Returns(_ => Task.FromException<bool>(new TimeoutException("progress storage unavailable")));
+            repository.UpdateAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromException(new TimeoutException("progress storage unavailable")));
         }
 
         var jobLock = new CountingJobLock();
-        var progress = new ReindexProgressReporter(new ReindexJobUpdater(
-            repository, jobLock, Substitute.For<IReindexCompletionHook>()));
+        var progress = new ReindexProgressReporter(repository, TimeProvider.System);
         var heartbeat = new ReindexActivityHeartbeat(
             progress, Options.Create(new ReindexOptions()), TimeProvider.System,
             NullLogger<ReindexActivityHeartbeat>.Instance);

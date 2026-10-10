@@ -34,8 +34,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -73,8 +72,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         var committed = await committer.CommitAsync(30, CancellationToken.None);
 
@@ -85,7 +83,7 @@ public class SearchParameterTransitionCommitterTests
     }
 
     [Fact]
-    public async Task GivenReindexTriggerFailsAfterTransitionCommit_WhenCommitted_ThenTheDurableCommitStillSucceeds()
+    public async Task GivenReindexTriggerDefersAfterTransitionCommit_WhenCommitted_ThenTheDurableCommitStillSucceeds()
     {
         using var state = new ConformanceState();
         state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
@@ -102,16 +100,16 @@ public class SearchParameterTransitionCommitterTests
                     DateTimeOffset.UtcNow)]));
         var trigger = Substitute.For<IReindexTrigger>();
         trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns<Task<ReindexTriggerResult>>(_ =>
-                throw new ReindexTriggerUnavailableException(
-                    "Injected trigger failure.",
-                    new IOException("Database unavailable.")));
+            .Returns(new ReindexTriggerResult(
+                null,
+                false,
+                "The automatic reindex trigger failed; periodic reconciliation will retry.",
+                Deferred: true));
         var committer = new SearchParameterTransitionCommitter(
             store,
             state,
             trigger,
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -143,8 +141,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         await Should.ThrowAsync<InvalidOperationException>(() =>
             committer.CommitAsync(20, CancellationToken.None));
@@ -169,8 +166,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -205,8 +201,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -244,8 +239,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -277,8 +271,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             trigger,
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         var committed = await committer.CommitAsync(20, CancellationToken.None);
 
@@ -301,8 +294,7 @@ public class SearchParameterTransitionCommitterTests
             store,
             state,
             Substitute.For<IReindexTrigger>(),
-            TestConformanceRefresher.Create(state),
-            NullLogger<SearchParameterTransitionCommitter>.Instance);
+            TestConformanceRefresher.Create(state));
 
         await Should.ThrowAsync<SourceEventConcurrencyException>(() => committer.CommitAsync(20, CancellationToken.None));
 

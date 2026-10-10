@@ -14,5 +14,4 @@ public sealed class ReindexJobDefinition : IJobDefinition
     public required int MaximumConcurrency { get; init; }
     public required int QueryDelayIntervalInMilliseconds { get; init; }
     public required string Trigger { get; init; }
-    public long ConsumedGeneration { get; init; }
 }

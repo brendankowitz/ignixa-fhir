@@ -9,7 +9,10 @@ public sealed record CreateReindexJobCommand : IRequest<CreateReindexJobResult>
     public int? MaximumConcurrency { get; init; }
     public int? QueryDelayIntervalInMilliseconds { get; init; }
     public string Trigger { get; init; } = "Manual";
-    public bool QueueRequest { get; init; }
-    public bool LockAlreadyHeld { get; init; }
-    public string? ExcludedActiveJobId { get; init; }
+
+    /// <summary>
+    /// Automatic triggers (activation, reconciliation) apply <see cref="ReindexStartRule"/>; a manual request
+    /// starts a job whenever none is active.
+    /// </summary>
+    public bool IsAutomatic => !Trigger.Equals("Manual", StringComparison.OrdinalIgnoreCase);
 }

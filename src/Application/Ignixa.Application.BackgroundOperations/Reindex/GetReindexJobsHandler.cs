@@ -49,5 +49,5 @@ public sealed class GetReindexJobsHandler(
             job.Definition);
 
     private static bool IsActive(BackgroundJob<ReindexJobDefinition> job) =>
-        job.Status is "Queued" or "Running" or "Completing";
+        job.Status is "Queued" or "Running";
 }

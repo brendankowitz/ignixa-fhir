@@ -62,6 +62,59 @@ public sealed class ReindexLifecycleEventWriter(
             requireOwnership: true,
             cancellationToken);
 
+    /// <summary>
+    /// Whether the projection already shows the job's successful completion: every planned target is Enabled
+    /// for the same activation and the job owns nothing, which is what its completion events leave behind.
+    /// </summary>
+    public async Task<bool> HasCompletedAsync(
+        string jobId,
+        IReadOnlyList<ReindexParameterDefinition> targets,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targets);
+        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
+        {
+            await conformanceState.CatchUpWhileActivationLockHeldAsync(
+                eventStore,
+                cancellationToken);
+            return targets.Count > 0 &&
+                targets.All(target =>
+                    conformanceState.GetSearchParameter(target.ResourceType, target.Code) is { } current &&
+                    current.Canonical == target.Canonical &&
+                    current.ActivationEventId == target.ActivationEventId &&
+                    current.Status == SearchParameterStatus.Enabled) &&
+                !GetOwnedTargets(jobId).Any();
+        }
+    }
+
+    /// <summary>
+    /// Returns every parameter the job still owns to Pending with a guarded Failed event, planned or not.
+    /// </summary>
+    public async Task FailOwnedAsync(
+        string jobId,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
+        {
+            await conformanceState.AppendWhileActivationLockHeldAsync(
+                eventStore,
+                () => GetOwnedTargets(jobId)
+                    .Select(target => new NewSourceEvent(
+                        $"reindex:{target.Canonical}",
+                        nameof(SearchParameterReindexFailed),
+                        new SearchParameterReindexFailed(
+                            target.Canonical,
+                            target.Code,
+                            target.ResourceType,
+                            jobId,
+                            reason,
+                            target.ActivationEventId)))
+                    .ToArray(),
+                cancellationToken);
+        }
+    }
+
     public async Task<IReadOnlyList<OwnedReindexTarget>> GetOwnedTargetsAsync(
         CancellationToken cancellationToken)
     {
@@ -74,18 +127,27 @@ public sealed class ReindexLifecycleEventWriter(
                 .Where(parameter =>
                     parameter.Status == SearchParameterStatus.Reindexing &&
                     parameter.ReindexJobId is not null)
-                .Select(parameter => new OwnedReindexTarget(
-                    parameter.ReindexJobId!,
-                    new ReindexParameterDefinition(
-                        parameter.Canonical,
-                        parameter.Code,
-                        parameter.ResourceType,
-                        parameter.SearchParamId,
-                        parameter.ActivationEventId,
-                        [parameter.ResourceType])))
+                .Select(parameter => new OwnedReindexTarget(parameter.ReindexJobId!, ToTarget(parameter)))
                 .ToArray();
         }
     }
+
+    // The caller holds the activation lock.
+    private IEnumerable<ReindexParameterDefinition> GetOwnedTargets(string jobId) =>
+        conformanceState.AllSearchParameters.Values
+            .Where(parameter =>
+                parameter.Status == SearchParameterStatus.Reindexing &&
+                parameter.ReindexJobId == jobId)
+            .Select(ToTarget);
+
+    private static ReindexParameterDefinition ToTarget(ActiveSearchParameter parameter) =>
+        new(
+            parameter.Canonical,
+            parameter.Code,
+            parameter.ResourceType,
+            parameter.SearchParamId,
+            parameter.ActivationEventId,
+            [parameter.ResourceType]);
 
     private async Task<IReadOnlyList<string>> AppendAsync(
         IReadOnlyList<ReindexParameterDefinition> targets,

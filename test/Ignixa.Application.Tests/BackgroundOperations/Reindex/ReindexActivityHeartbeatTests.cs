@@ -46,19 +46,18 @@ public class ReindexActivityHeartbeatTests
             failureObserved.TrySetResult();
         });
         listener.Start();
-        repository.TryUpdateProgressAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
+        repository.UpdateAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 if (++attempts == 1)
                 {
-                    return Task.FromException<bool>(new TimeoutException("storage unavailable"));
+                    return Task.FromException(new TimeoutException("storage unavailable"));
                 }
 
                 heartbeatPersisted.TrySetResult();
-                return Task.FromResult(true);
+                return Task.CompletedTask;
             });
-        var reporter = new ReindexProgressReporter(new ReindexJobUpdater(
-            repository, new ForbiddenJobLock(), Substitute.For<IReindexCompletionHook>()));
+        var reporter = new ReindexProgressReporter(repository, TimeProvider.System);
         var heartbeat = new ReindexActivityHeartbeat(
             reporter,
             Options.Create(new ReindexOptions { StaleJobTimeout = TimeSpan.FromSeconds(staleSeconds) }),
@@ -97,17 +96,16 @@ public class ReindexActivityHeartbeatTests
         repository.GetAsync("job", 1, Arg.Any<CancellationToken>())
             .Returns(_ => JsonSerializer.Deserialize<BackgroundJob<ReindexJobDefinition>>(JsonSerializer.Serialize(current)));
         var attempts = 0;
-        repository.TryUpdateProgressAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
+        repository.UpdateAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 current = call.Arg<BackgroundJob<ReindexJobDefinition>>();
                 return ++attempts == 1
-                    ? Task.FromException<bool>(new TimeoutException("response lost after commit"))
-                    : Task.FromResult(true);
+                    ? Task.FromException(new TimeoutException("response lost after commit"))
+                    : Task.CompletedTask;
             });
         var activity = new PersistReindexProgressActivity(
-            new ReindexProgressReporter(new ReindexJobUpdater(
-                repository, new ForbiddenJobLock(), Substitute.For<IReindexCompletionHook>())),
+            new ReindexProgressReporter(repository, TimeProvider.System),
             NullLogger<PersistReindexProgressActivity>.Instance);
         var input = JsonSerializer.Serialize(new[]
         {
@@ -120,12 +118,6 @@ public class ReindexActivityHeartbeatTests
 
         current.Progress!["resourcesSuccessfullyReindexed"]!.GetValue<long>().ShouldBe(10);
         attempts.ShouldBe(2);
-    }
-
-    private sealed class ForbiddenJobLock : IReindexJobLock
-    {
-        public Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("Heartbeats must not acquire the singleton lock.");
     }
 
     private sealed class ControlledTimeProvider : TimeProvider

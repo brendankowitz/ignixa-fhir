@@ -8,167 +8,84 @@ using Microsoft.Extensions.Options;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
+/// <summary>
+/// Recovers the active reindex job when its orchestration is missing or already terminal. One rule: the job
+/// is Completed when the projection already shows its completion (the events were appended before the final
+/// status write was lost); otherwise guarded Failed events return every parameter it still owns to Pending
+/// and the job is Failed. A Queued job whose orchestration was never
+/// created is deleted, so it can neither block the start rule nor answer <c>$reindex</c> with 409.
+/// </summary>
 public sealed class ReindexJobReconciler(
     TaskHubClient taskHubClient,
     IBackgroundJobRepository<ReindexJobDefinition> repository,
     ReindexLifecycleEventWriter lifecycle,
-    ReindexJobUpdater jobs,
     IReindexJobLock jobLock,
     IOptions<ReindexOptions> options,
     TimeProvider timeProvider,
     ILogger<ReindexJobReconciler> logger)
 {
-    public async Task ReconcileAsync(CancellationToken cancellationToken)
-    {
-        await jobLock.ExecuteAsync(
-            async ct =>
-            {
-                await ReconcileUnderLockAsync(recoverFreshQueuedJobs: false, ct);
-                return true;
-            },
-            cancellationToken);
-    }
-
-    public async Task ReconcileStartupAsync(CancellationToken cancellationToken)
-    {
-        await jobLock.ExecuteAsync(
-            async ct =>
-            {
-                await ReconcileUnderLockAsync(recoverFreshQueuedJobs: true, ct);
-                return true;
-            },
-            cancellationToken);
-    }
-
-    internal Task ReconcileUnderLockAsync(CancellationToken cancellationToken) =>
-        ReconcileUnderLockAsync(recoverFreshQueuedJobs: false, cancellationToken);
-
-    private async Task ReconcileUnderLockAsync(
-        bool recoverFreshQueuedJobs,
+    /// <summary>
+    /// Recovers <paramref name="active"/> once it has gone unobserved for <see cref="ReindexOptions.OrphanGrace"/>.
+    /// Re-reads the job under the singleton lock, so a completion that lands first wins and nothing is applied twice.
+    /// </summary>
+    public async Task ReconcileAsync(
+        BackgroundJob<ReindexJobDefinition> active,
         CancellationToken cancellationToken)
     {
-        var active = await repository.GetActiveAsync(
-            (int)BackgroundJobType.Reindex,
-            cancellationToken);
-        var candidates = active is null ? [] : new[] { active };
-        foreach (var job in candidates)
+        ArgumentNullException.ThrowIfNull(active);
+        var lastObserved = active.HeartbeatDate > active.CreateDate
+            ? active.HeartbeatDate
+            : active.CreateDate;
+        if (timeProvider.GetUtcNow() - lastObserved < options.Value.OrphanGrace)
         {
-            if (job.Status.Equals("Completing", StringComparison.OrdinalIgnoreCase))
-            {
-                await ResumePersistedDecisionAsync(job, cancellationToken);
-                continue;
-            }
-
-            var lastObserved = job.HeartbeatDate > job.CreateDate
-                ? job.HeartbeatDate
-                : job.CreateDate;
-            var isWithinOrphanGrace =
-                timeProvider.GetUtcNow() - lastObserved < options.Value.OrphanGrace;
-            var shouldRecoverFreshQueuedJob =
-                recoverFreshQueuedJobs &&
-                job.Status.Equals("Queued", StringComparison.OrdinalIgnoreCase);
-            if (isWithinOrphanGrace && !shouldRecoverFreshQueuedJob)
-            {
-                continue;
-            }
-
-            var instanceId = job.OrchestrationInstanceId ?? job.JobId;
-            var first = await taskHubClient.GetOrchestrationStateAsync(instanceId);
-            if (IsActive(first))
-            {
-                continue;
-            }
-
-            var second = await taskHubClient.GetOrchestrationStateAsync(instanceId);
-            if (IsActive(second))
-            {
-                continue;
-            }
-
-            await FinalizeOrphanAsync(job, second ?? first, cancellationToken);
+            return;
         }
 
-        await ResetParametersOwnedByTerminalJobsAsync(cancellationToken);
+        await jobLock.ExecuteAsync(
+            async ct =>
+            {
+                await ReconcileUnderLockAsync(active.JobId, ct);
+                return true;
+            },
+            cancellationToken);
     }
 
-    private async Task ResetParametersOwnedByTerminalJobsAsync(
-        CancellationToken cancellationToken)
+    private async Task ReconcileUnderLockAsync(string jobId, CancellationToken cancellationToken)
     {
-        var ownedTargets = await lifecycle.GetOwnedTargetsAsync(cancellationToken);
-        foreach (var group in ownedTargets.GroupBy(target => target.JobId, StringComparer.Ordinal))
+        var job = await repository.GetAsync(jobId, ReindexJobs.GlobalTenantId, cancellationToken);
+        if (job is null || ReindexJobs.IsTerminal(job.Status))
         {
-            var job = await repository.GetAsync(group.Key, 1, cancellationToken);
-            if (job is null || !IsTerminal(job.Status))
-            {
-                continue;
-            }
+            return;
+        }
 
-            var reason =
-                $"Reindex parameter remained owned by terminal {job.Status} job {job.JobId}.";
-            var completions = group.Select(owned => new ReindexTargetCompletion(
-                owned.Target,
-                false,
-                0,
-                TimeSpan.Zero,
-                reason)).ToArray();
-            await lifecycle.CompleteAsync(job.JobId, completions, cancellationToken);
+        var instanceId = job.OrchestrationInstanceId ?? job.JobId;
+        var state = await taskHubClient.GetOrchestrationStateAsync(instanceId);
+        if (IsActive(state))
+        {
+            return;
+        }
+
+        // The runtime can register the instance after the job row became visible; a second read is cheap.
+        var confirmed = await taskHubClient.GetOrchestrationStateAsync(instanceId);
+        if (IsActive(confirmed))
+        {
+            return;
+        }
+
+        state = confirmed ?? state;
+        if (state is null && job.Status == "Queued")
+        {
+            await repository.DeleteAsync(job.JobId, ReindexJobs.GlobalTenantId, cancellationToken);
             logger.LogWarning(
-                "Reindex: reset {ParameterCount} parameters still owned by terminal {Status} job {JobId}",
-                completions.Length,
-                job.Status,
-                job.JobId);
-        }
-    }
-
-    private async Task ResumePersistedDecisionAsync(
-        BackgroundJob<ReindexJobDefinition> job,
-        CancellationToken cancellationToken)
-    {
-        var decision = job.Progress?["terminalDecision"]?.GetValue<string>();
-        if (decision is not ("Completed" or "Failed" or "Cancelled"))
-        {
-            logger.LogError(
-                "Reindex: job {JobId} is Completing without a valid persisted terminal decision",
+                "Reindex: deleted queued job {JobId} because its orchestration was never created",
                 job.JobId);
             return;
         }
 
-        var outcomes = ReadPersistedOutcomes(job.Progress);
-        var completions = ReconstructTargets(job)
-            .Where(target =>
-                outcomes.ContainsKey(TargetIdentity(target)) ||
-                outcomes.ContainsKey(target.Canonical))
-            .Select(target =>
-            {
-                var outcome = outcomes.GetValueOrDefault(TargetIdentity(target)) ??
-                    outcomes[target.Canonical];
-                return new ReindexTargetCompletion(
-                    target,
-                    outcome.Success,
-                    outcome.ResourcesIndexed,
-                    TimeSpan.Zero,
-                    outcome.ErrorMessage);
-            })
-            .ToArray();
-
-        await jobs.TryCompleteUnderLockAsync(
-            job.JobId,
-            decision,
-            (_, ct) => lifecycle.CompleteAsync(job.JobId, completions, ct),
-            current =>
-            {
-                current.Status = decision;
-                current.EndDate ??= timeProvider.GetUtcNow();
-            },
-            cancellationToken);
-
-        logger.LogInformation(
-            "Reindex: reconciled persisted {Decision} decision for job {JobId}",
-            decision,
-            job.JobId);
+        await FinalizeAsync(job, state, cancellationToken);
     }
 
-    private async Task FinalizeOrphanAsync(
+    private async Task FinalizeAsync(
         BackgroundJob<ReindexJobDefinition> job,
         OrchestrationState? state,
         CancellationToken cancellationToken)
@@ -176,94 +93,35 @@ public sealed class ReindexJobReconciler(
         var reason = state is null
             ? "Reindex orchestration instance is missing."
             : $"Reindex orchestration ended as {state.OrchestrationStatus} before the job was finalized.";
-        var targets = ReconstructTargets(job)
-            .ToArray();
-        var completions = targets.Select(target => new ReindexTargetCompletion(
-            target,
-            false,
-            0,
-            TimeSpan.Zero,
-            reason)).ToArray();
+        var now = timeProvider.GetUtcNow();
+        if (await lifecycle.HasCompletedAsync(job.JobId, job.Definition.SearchParameters, cancellationToken))
+        {
+            job.Status = "Completed";
+            job.Result = new JsonObject { ["success"] = true };
+            logger.LogInformation(
+                "Reindex: finalized job {JobId} as Completed; its targets were already enabled. {Reason}",
+                job.JobId,
+                reason);
+        }
+        else
+        {
+            await lifecycle.FailOwnedAsync(job.JobId, reason, cancellationToken);
+            job.Status = "Failed";
+            job.ErrorMessage = reason;
+            job.Result = new JsonObject { ["success"] = false };
+            logger.LogError(
+                "Reindex: finalized orphaned job {JobId} as Failed: {Reason}",
+                job.JobId,
+                reason);
+        }
 
-        await jobs.TryCompleteUnderLockAsync(
-            job.JobId,
-            "Failed",
-            (_, ct) => lifecycle.CompleteAsync(job.JobId, completions, ct),
-            current =>
-            {
-                current.Status = "Failed";
-                current.EndDate = timeProvider.GetUtcNow();
-                current.ErrorMessage = reason;
-                current.Progress ??= new JsonObject();
-                current.Progress["terminalOutcomes"] = new JsonArray(
-                    completions.Select(completion => (JsonNode?)new JsonObject
-                    {
-                        ["canonical"] = completion.Target.Canonical,
-                        ["resourceType"] = completion.Target.ResourceType,
-                        ["code"] = completion.Target.Code,
-                        ["success"] = false,
-                        ["resourcesIndexed"] = 0,
-                        ["errorMessage"] = reason
-                    }).ToArray());
-                current.Result = new JsonObject
-                {
-                    ["success"] = false
-                };
-            },
-            cancellationToken);
-
-        logger.LogError(
-            "Reindex: finalized orphaned job {JobId}: {Reason}",
-            job.JobId,
-            reason);
+        job.EndDate = now;
+        job.HeartbeatDate = now;
+        await repository.UpdateAsync(job, ReindexJobs.GlobalTenantId, cancellationToken);
     }
-
-    private static IReadOnlyList<ReindexParameterDefinition> ReconstructTargets(
-        BackgroundJob<ReindexJobDefinition> job) =>
-        job.Definition.SearchParameters;
-
-    internal static IReadOnlyDictionary<string, PersistedOutcome> ReadPersistedOutcomes(
-        JsonNode? progress) =>
-        (progress?["terminalOutcomes"] as JsonArray)?
-            .OfType<JsonObject>()
-            .Where(value => value["canonical"] is not null)
-            .GroupBy(
-                value => value["resourceType"] is not null && value["code"] is not null
-                    ? TargetIdentity(
-                        value["canonical"]!.GetValue<string>(),
-                        value["resourceType"]!.GetValue<string>(),
-                        value["code"]!.GetValue<string>())
-                    : value["canonical"]!.GetValue<string>(),
-                StringComparer.Ordinal)
-            .ToDictionary(
-                group => group.Key,
-                group =>
-                {
-                    var value = group.Last();
-                    return new PersistedOutcome(
-                        value["success"]?.GetValue<bool>() ?? false,
-                        value["resourcesIndexed"]?.GetValue<long>() ?? 0,
-                        value["errorMessage"]?.GetValue<string>());
-                },
-                StringComparer.Ordinal)
-        ?? new Dictionary<string, PersistedOutcome>(StringComparer.Ordinal);
-
-    internal static string TargetIdentity(ReindexParameterDefinition target) =>
-        TargetIdentity(target.Canonical, target.ResourceType, target.Code);
-
-    private static string TargetIdentity(string canonical, string resourceType, string code) =>
-        $"{canonical}|{resourceType}|{code}";
 
     private static bool IsActive(OrchestrationState? state) =>
         state?.OrchestrationStatus is OrchestrationStatus.Pending
             or OrchestrationStatus.Running
             or OrchestrationStatus.ContinuedAsNew;
-
-    private static bool IsTerminal(string status) =>
-        status is "Completed" or "Failed" or "Cancelled";
-
-    internal sealed record PersistedOutcome(
-        bool Success,
-        long ResourcesIndexed,
-        string? ErrorMessage);
 }

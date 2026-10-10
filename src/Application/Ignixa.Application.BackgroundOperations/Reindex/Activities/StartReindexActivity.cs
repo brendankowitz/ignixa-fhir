@@ -1,48 +1,57 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
+/// <summary>
+/// Takes ownership of the job's targets: under the singleton job lock it appends the guarded Started
+/// events and moves the job to Running. A job that was finished while it waited (cancelled, recovered)
+/// is left alone and the orchestration is told not to continue.
+/// </summary>
 public sealed class StartReindexActivity(
     ReindexLifecycleEventWriter lifecycle,
-    ReindexJobUpdater jobs)
+    IBackgroundJobRepository<ReindexJobDefinition> repository,
+    IReindexJobLock jobLock,
+    TimeProvider timeProvider)
     : AsyncTaskActivity<StartReindexInput, StartReindexOutput>
 {
-    protected override async Task<StartReindexOutput> ExecuteAsync(
+    protected override Task<StartReindexOutput> ExecuteAsync(
         TaskContext context,
-        StartReindexInput input)
-    {
-        IReadOnlyList<string> ignored = [];
-        IReadOnlyList<ReindexParameterDefinition> targets = input.Targets;
-        ReindexJobDefinition? definition = null;
-        var shouldContinue = await jobs.UpdateAsync(
-            input.JobId,
-            async (job, cancellationToken) =>
-            {
-                definition = job.Definition;
-                if (job.Definition.SearchParameters.Count > 0 || input.Targets.Count == 0)
-                {
-                    targets = job.Definition.SearchParameters;
-                }
-
-                ignored = await lifecycle.StartAsync(
-                    input.JobId,
-                    targets,
-                    cancellationToken);
-                ReindexProgressReporter.InitializeBarrierDelay(job, input.TenantIds, ignored);
-            },
+        StartReindexInput input) =>
+        jobLock.ExecuteAsync(
+            cancellationToken => StartUnderLockAsync(input, cancellationToken),
             CancellationToken.None);
 
+    private async Task<StartReindexOutput> StartUnderLockAsync(
+        StartReindexInput input,
+        CancellationToken cancellationToken)
+    {
+        var job = await repository.GetAsync(input.JobId, ReindexJobs.GlobalTenantId, cancellationToken)
+            ?? throw new InvalidOperationException($"Reindex job {input.JobId} does not exist.");
+        if (ReindexJobs.IsTerminal(job.Status))
+        {
+            return new StartReindexOutput([])
+            {
+                ShouldContinue = false,
+                TargetEventId = input.TargetEventId,
+                Targets = input.Targets
+            };
+        }
+
         var usesPersistedDefinition =
-            definition is { SearchParameters.Count: > 0 } || input.Targets.Count == 0;
+            job.Definition.SearchParameters.Count > 0 || input.Targets.Count == 0;
+        var targets = usesPersistedDefinition ? job.Definition.SearchParameters : input.Targets;
+        var ignored = await lifecycle.StartAsync(input.JobId, targets, cancellationToken);
+        ReindexProgressReporter.InitializeBarrierDelay(job, input.TenantIds, ignored, timeProvider.GetUtcNow());
+        await repository.UpdateAsync(job, ReindexJobs.GlobalTenantId, cancellationToken);
+
         return new StartReindexOutput(ignored)
         {
-            ShouldContinue = shouldContinue,
-            TargetEventId = usesPersistedDefinition
-                ? definition?.TargetEventId ?? input.TargetEventId
-                : input.TargetEventId,
-            ResourceTypes = usesPersistedDefinition ? definition?.ResourceTypes : null,
+            ShouldContinue = true,
+            TargetEventId = usesPersistedDefinition ? job.Definition.TargetEventId : input.TargetEventId,
+            ResourceTypes = usesPersistedDefinition ? job.Definition.ResourceTypes : null,
             Targets = targets
         };
     }
