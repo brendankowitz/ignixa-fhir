@@ -11,6 +11,12 @@ namespace Ignixa.DataLayer.SqlServer;
 
 public sealed class SchemaDeployer : ISchemaDeployer
 {
+    /// <summary>Per-command deploy timeout; DacFx defaults to 60 seconds.</summary>
+    internal const int DeployCommandTimeoutSeconds = 600;
+
+    /// <summary>Timeout for DacFx's long-running deploy commands, such as an ONLINE index build.</summary>
+    internal const int DeployLongRunningCommandTimeoutSeconds = 3600;
+
     private const string DacpacResourceName = "Ignixa.DataLayer.SqlServer.Schema.dacpac";
 
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
@@ -190,6 +196,11 @@ public sealed class SchemaDeployer : ISchemaDeployer
         // platform this schema is built for and the deploy should fail loudly rather than be
         // forced through.
         AllowIncompatiblePlatform = !_environment.IsProduction() || _options.Value.AllowIncompatiblePlatform,
+        // The upgrade runs lazily, on the first use of a tenant behind CurrentVersion, and may build an index
+        // ONLINE over a large table (schema 9's filtered dbo.Transactions index). DacFx's 60-second command
+        // default would abort that part-way; these bound it without leaving it unbounded.
+        CommandTimeout = DeployCommandTimeoutSeconds,
+        LongRunningCommandTimeout = DeployLongRunningCommandTimeoutSeconds,
     };
 
     private static async Task<bool> CanConnectAsync(string connectionString, CancellationToken cancellationToken)

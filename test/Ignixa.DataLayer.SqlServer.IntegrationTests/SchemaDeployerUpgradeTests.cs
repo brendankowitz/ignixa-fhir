@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using DurableTask.Core;
 using DurableTask.SqlServer;
 using Ignixa.Domain.Abstractions;
@@ -14,6 +15,12 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
 public class SchemaDeployerUpgradeTests
 {
+    /// <summary>
+    /// Pins Fixtures/schema-v5-before-reindex-retirement.dacpac; Fixtures/README.md says what it holds and how to
+    /// regenerate it.
+    /// </summary>
+    private const string SchemaVersionFiveFixtureSha256 = "9928BDAF7C868285A2759D4D2A13E4D2DF1DA853ECFB98C546FC658619978009";
+
     private static readonly string[] LegacyReindexObjectNames =
     [
         "AcquireReindexJobs",
@@ -180,6 +187,8 @@ public class SchemaDeployerUpgradeTests
     private static async Task DeployVersionFiveSchemaAsync(string connectionString, string databaseName, CancellationToken cancellationToken)
     {
         var legacyDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "schema-v5-before-reindex-retirement.dacpac");
+        Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(legacyDacpacPath, cancellationToken)))
+            .ShouldBe(SchemaVersionFiveFixtureSha256);
         using var legacyDacpacStream = File.OpenRead(legacyDacpacPath);
         using var legacyPackage = DacPackage.Load(legacyDacpacStream);
         var legacyDacServices = new DacServices(connectionString);
@@ -345,7 +354,7 @@ public class SchemaDeployerUpgradeTests
     }
 
     [SkippableFact]
-    public async Task GivenAVersionFiveTenantWithPopulatedLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenFailsWithoutDroppingLegacyObjects()
+    public async Task GivenAVersionFiveTenantWithPopulatedLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenFailsWithoutDroppingLegacyObjectsOrStampingAndARetryAfterDeletingTheRowsSucceeds()
     {
         var databaseName = $"SchemaDeployerReindexRetirementRowsTest_{Guid.NewGuid():N}";
         var connectionString = BuildConnectionStringForDatabase(databaseName);
@@ -366,11 +375,28 @@ public class SchemaDeployerUpgradeTests
             }
 
             var deployer = CreateDeployer(connectionString);
-            await Should.ThrowAsync<DacServicesException>(
+            var resolver = new SchemaVersionResolver(new SingleTenantStore(connectionString), NullLogger<SchemaVersionResolver>.Instance);
+            var refusal = await Should.ThrowAsync<DacServicesException>(
                 () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
 
+            refusal.Message.ShouldContain("Cannot retire dbo.ReindexJob");
+            (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(5);
             (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
                 .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
+
+            // The operator exports or deletes the legacy rows and the next lazy upgrade completes.
+            await using (var connection = new SqlConnection(connectionString))
+            {
+                await connection.OpenAsync(CancellationToken.None);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "DELETE FROM dbo.ReindexJob;";
+                await command.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
+
+            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None)).ShouldBeEmpty();
+            (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(SchemaVersionConstants.CurrentVersion);
         }
         finally
         {

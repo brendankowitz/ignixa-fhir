@@ -612,6 +612,8 @@ authoritative, so a delayed activity cannot reopen a finalized job or its parame
 | Extension columns | Reuse `SqlServerPostMergeExtensionUpdater`, following the merge-transaction rule |
 | Retire `ReindexJob` table plus 5 sprocs; `Resource.SearchParamHash` usage, `MatchPageEmitter` hash clause, `SearchPlanOptions.SearchParameterHash` | Unused. Separate cleanup PR. The `ResourceList` TVP column stays (repository rule), so pass `NULL`. |
 | `MergeResources*` procedures and TVPs | **Unchanged** |
+| `dbo.Transactions` indexes (schema 7 and 9) | `IX_Transactions_SurrogateIdRangeLastValue` (barrier cutoff) and the filtered `IX_Transactions_SurrogateIdRangeFirstValue_Incomplete` (drain), both `ONLINE = ON`. An existing tenant gets them from the **lazy upgrade** on its first use by a new build, so on a large `dbo.Transactions` the online build runs inside that upgrade. The deploy options allow 10 minutes per command and 1 hour for long-running commands (`SchemaDeployer.CreateDeployOptions`); a longer build fails the upgrade, which leaves the stamp unchanged and can be rerun, or applied ahead of time with the schema-upgrade CLI. Online index builds need Enterprise, Developer or Azure SQL. |
+| `IReindexStore.HasSearchParameterAsync(storageCanonical)` | Completion checks the tenant catalog by storage URI (§8.5), not by conformance id. |
 
 ---
 
