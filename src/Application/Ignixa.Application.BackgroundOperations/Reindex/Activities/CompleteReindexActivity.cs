@@ -43,7 +43,7 @@ public sealed class CompleteReindexActivity(
         IReadOnlyList<ReindexTargetCompletion> completions,
         CancellationToken cancellationToken)
     {
-        var job = await repository.GetAsync(input.JobId, ReindexJobs.GlobalTenantId, cancellationToken)
+        var job = await repository.GetAsync(input.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {input.JobId} does not exist.");
         if (ReindexJobs.IsTerminal(job.Status))
         {
@@ -85,7 +85,7 @@ public sealed class CompleteReindexActivity(
                     .Where(message => message is not null));
         job.Progress = BuildProgress(input, success, ignored);
         job.Result = new JsonObject { ["success"] = success };
-        await repository.UpdateAsync(job, ReindexJobs.GlobalTenantId, cancellationToken);
+        await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
 
         if (job.StartDate.HasValue)
         {

@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Medino;
 
@@ -21,7 +22,7 @@ public sealed class CancelReindexHandler(
         // Job ids are shared by every job type; a job of another type is reported as absent.
         var job = await repository.GetAsync(
             request.JobId,
-            ReindexJobs.GlobalTenantId,
+            SystemConstants.GlobalTenantId,
             (int)BackgroundJobType.Reindex,
             cancellationToken);
         if (job is null)
@@ -45,7 +46,7 @@ public sealed class CancelReindexHandler(
             return new ReindexCancelledResult(job.JobId);
         }
 
-        var terminal = await repository.GetAsync(request.JobId, ReindexJobs.GlobalTenantId, cancellationToken)
+        var terminal = await repository.GetAsync(request.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {request.JobId} disappeared during cancellation.");
         return new ReindexJobAlreadyTerminalResult(terminal.JobId, terminal.Status);
     }
@@ -54,7 +55,7 @@ public sealed class CancelReindexHandler(
     // path, so a job can never finish while still owning a parameter.
     private async Task<bool> CancelUnderLockAsync(CancelReindexCommand request, CancellationToken cancellationToken)
     {
-        var job = await repository.GetAsync(request.JobId, ReindexJobs.GlobalTenantId, cancellationToken)
+        var job = await repository.GetAsync(request.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {request.JobId} disappeared during cancellation.");
         if (ReindexJobs.IsTerminal(job.Status))
         {
@@ -72,7 +73,7 @@ public sealed class CancelReindexHandler(
         job.ErrorMessage = reason;
         job.Progress ??= new JsonObject();
         job.Progress["cancellationReason"] = request.Reason;
-        await repository.UpdateAsync(job, ReindexJobs.GlobalTenantId, cancellationToken);
+        await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
         return true;
     }
 }

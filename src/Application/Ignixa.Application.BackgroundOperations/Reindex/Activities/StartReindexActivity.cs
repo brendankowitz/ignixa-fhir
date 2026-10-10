@@ -1,6 +1,7 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
@@ -28,7 +29,7 @@ public sealed class StartReindexActivity(
         StartReindexInput input,
         CancellationToken cancellationToken)
     {
-        var job = await repository.GetAsync(input.JobId, ReindexJobs.GlobalTenantId, cancellationToken)
+        var job = await repository.GetAsync(input.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {input.JobId} does not exist.");
         if (ReindexJobs.IsTerminal(job.Status))
         {
@@ -45,7 +46,7 @@ public sealed class StartReindexActivity(
         var targets = usesPersistedDefinition ? job.Definition.SearchParameters : input.Targets;
         var ignored = await lifecycle.StartAsync(input.JobId, targets, cancellationToken);
         ReindexProgressReporter.InitializeBarrierDelay(job, input.TenantIds, ignored, timeProvider.GetUtcNow());
-        await repository.UpdateAsync(job, ReindexJobs.GlobalTenantId, cancellationToken);
+        await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
 
         return new StartReindexOutput(ignored)
         {

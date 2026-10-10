@@ -4,6 +4,7 @@ using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.Extensions.Options;
@@ -152,7 +153,7 @@ public sealed class CreateReindexJobHandler(
         {
             // A row without an orchestration must not survive: as the latest finished job it would block
             // the next automatic start, and as an active job it would answer every $reindex with 409.
-            await _jobRepository.DeleteAsync(jobId, ReindexJobs.GlobalTenantId, CancellationToken.None);
+            await _jobRepository.DeleteAsync(jobId, SystemConstants.GlobalTenantId, CancellationToken.None);
             throw;
         }
 

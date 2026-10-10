@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Microsoft.Data.SqlClient;
 
 namespace Ignixa.DataLayer.SqlServer;
@@ -15,7 +16,6 @@ namespace Ignixa.DataLayer.SqlServer;
 /// </remarks>
 public sealed class ReindexJobLock(ISqlExecutionService sqlExecutionService) : IReindexJobLock
 {
-    private const int GlobalConformanceTenantId = 1;
     private const string ResourceName = "Ignixa.Reindex.Singleton";
     private readonly ISqlExecutionService _sqlExecutionService =
         sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
@@ -27,7 +27,7 @@ public sealed class ReindexJobLock(ISqlExecutionService sqlExecutionService) : I
         ArgumentNullException.ThrowIfNull(action);
         ExceptionDispatchInfo? actionFailure = null;
         var result = await _sqlExecutionService.ExecuteInTransactionAsync(
-            GlobalConformanceTenantId,
+            SystemConstants.GlobalTenantId,
             async (transaction, ct) =>
             {
                 await AcquireAsync(transaction, ct);

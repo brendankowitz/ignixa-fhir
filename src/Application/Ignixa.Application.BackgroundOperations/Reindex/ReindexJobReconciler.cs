@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -52,7 +53,7 @@ public sealed class ReindexJobReconciler(
 
     private async Task ReconcileUnderLockAsync(string jobId, CancellationToken cancellationToken)
     {
-        var job = await repository.GetAsync(jobId, ReindexJobs.GlobalTenantId, cancellationToken);
+        var job = await repository.GetAsync(jobId, SystemConstants.GlobalTenantId, cancellationToken);
         if (job is null || ReindexJobs.IsTerminal(job.Status))
         {
             return;
@@ -75,7 +76,7 @@ public sealed class ReindexJobReconciler(
         state = confirmed ?? state;
         if (state is null && job.Status == "Queued")
         {
-            await repository.DeleteAsync(job.JobId, ReindexJobs.GlobalTenantId, cancellationToken);
+            await repository.DeleteAsync(job.JobId, SystemConstants.GlobalTenantId, cancellationToken);
             logger.LogWarning(
                 "Reindex: deleted queued job {JobId} because its orchestration was never created",
                 job.JobId);
@@ -117,7 +118,7 @@ public sealed class ReindexJobReconciler(
 
         job.EndDate = now;
         job.HeartbeatDate = now;
-        await repository.UpdateAsync(job, ReindexJobs.GlobalTenantId, cancellationToken);
+        await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
     }
 
     private static bool IsActive(OrchestrationState? state) =>

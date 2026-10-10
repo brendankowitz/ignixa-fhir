@@ -1,10 +1,11 @@
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 
 namespace Ignixa.Domain.Models;
 
 public sealed class ReindexJobDefinition : IJobDefinition
 {
-    public int TenantId { get; init; } = 1;
+    public int TenantId { get; init; } = SystemConstants.GlobalTenantId;
     public required long TargetEventId { get; init; }
     public required IReadOnlyList<int> TenantIds { get; init; }
     public required IReadOnlyList<string> ResourceTypes { get; init; }

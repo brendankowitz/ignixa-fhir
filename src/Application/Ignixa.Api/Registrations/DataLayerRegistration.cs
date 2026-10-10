@@ -305,13 +305,10 @@ public static class DataLayerRegistration
         .SingleInstance();
     }
 
-    // Package and conformance content is global rather than per-tenant, and lives in tenant 1's database.
-    private const int GlobalPackageTenantId = 1;
-
     private static void RegisterPackageRepository(ContainerBuilder builder)
     {
         builder.Register(c => new SharedContentDatabaseGuard(
-                c.Resolve<ISqlExecutionService>(), GlobalPackageTenantId, SystemConstants.SystemPartitionId))
+                c.Resolve<ISqlExecutionService>(), SystemConstants.GlobalTenantId, SystemConstants.SystemPartitionId))
             .SingleInstance();
 
         // PackageRepositoryDbContextFactory is deliberately not registered. Its only two consumers -- the EF
@@ -326,12 +323,12 @@ public static class DataLayerRegistration
         builder.Register<IPackageResourceRepository>(c =>
             new SqlServerPackageResourceRepository(
                 c.Resolve<ISqlExecutionService>(),
-                GlobalPackageTenantId,
+                SystemConstants.GlobalTenantId,
                 c.Resolve<ILogger<SqlServerPackageResourceRepository>>(),
                 c.Resolve<SharedContentDatabaseGuard>()))
             .InstancePerDependency();
 
-        // Terminology importer factory. SystemPartitionId rather than GlobalPackageTenantId above: the
+        // Terminology importer factory. SystemPartitionId rather than GlobalTenantId above: the
         // terminology tables are server-wide and live in the system partition's database, matching the
         // SqlServerTerminologyService registration in ValidationServicesRegistration. A factory rather than
         // a direct ITerminologyImporter registration because the importer needs a reference-data cache that
@@ -343,7 +340,7 @@ public static class DataLayerRegistration
                 SystemConstants.SystemPartitionId,
                 c.Resolve<ILoggerFactory>(),
                 c.Resolve<IOptions<SqlServerOptions>>().Value.TerminologyImportCommandTimeoutSeconds,
-                GlobalPackageTenantId))
+                SystemConstants.GlobalTenantId))
             .InstancePerDependency();
     }
 }

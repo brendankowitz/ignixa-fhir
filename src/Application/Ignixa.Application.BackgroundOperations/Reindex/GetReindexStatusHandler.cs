@@ -1,5 +1,6 @@
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -21,7 +22,7 @@ public sealed class GetReindexStatusHandler(
         // Job ids are shared by every job type; a job of another type is reported as absent.
         var job = await repository.GetAsync(
             request.JobId,
-            ReindexJobs.GlobalTenantId,
+            SystemConstants.GlobalTenantId,
             (int)BackgroundJobType.Reindex,
             cancellationToken);
         if (job is null)

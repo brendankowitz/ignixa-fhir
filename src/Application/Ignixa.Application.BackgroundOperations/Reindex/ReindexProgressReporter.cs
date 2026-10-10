@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 
@@ -84,7 +85,7 @@ public sealed class ReindexProgressReporter(
         Action<BackgroundJob<ReindexJobDefinition>> update,
         CancellationToken cancellationToken)
     {
-        var job = await repository.GetAsync(jobId, ReindexJobs.GlobalTenantId, cancellationToken)
+        var job = await repository.GetAsync(jobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
         if (ReindexJobs.IsTerminal(job.Status))
         {
@@ -95,7 +96,7 @@ public sealed class ReindexProgressReporter(
         job.HeartbeatDate = timeProvider.GetUtcNow();
         try
         {
-            await repository.UpdateAsync(job, ReindexJobs.GlobalTenantId, cancellationToken);
+            await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
             return true;
         }
         catch (BackgroundJobUpdateConflictException)

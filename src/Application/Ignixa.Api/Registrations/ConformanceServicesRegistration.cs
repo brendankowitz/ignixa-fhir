@@ -11,6 +11,7 @@ using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.EventStore;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -39,10 +40,6 @@ public static class ConformanceServicesRegistration
         return services;
     }
 
-    // Conformance and package state is global, not per-tenant, and has always lived in tenant 1's
-    // database (see GlobalPackageTenantId in DataLayerRegistration).
-    private const int GlobalConformanceTenantId = 1;
-
     /// <summary>
     /// Registers conformance services in the Autofac container.
     /// </summary>
@@ -59,7 +56,7 @@ public static class ConformanceServicesRegistration
         // implementation to raw ADO.NET; it did not change which database the store reads and writes.
         builder.Register<ISourceEventStore>(c => new SqlServerSourceEventStore(
                 c.Resolve<ISqlExecutionService>(),
-                GlobalConformanceTenantId,
+                SystemConstants.GlobalTenantId,
                 c.Resolve<ILogger<SqlServerSourceEventStore>>()))
             .SingleInstance();
 
