@@ -230,10 +230,17 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
 - Startup validates `TransitionGrace ≥ MaxStaleness + TransitionSafetyMargin`, and also
   `BarrierDelay ≥ MaxStaleness` so barrier rejections stay rare, and fails fast if either does not hold.
 - The lease is checked once when `SearchOptionsBuilderFactory` creates search options for a request. This covers the
-  same builder path used by search, includes, compartments, `$everything`, and conditional matching. **Deliberate
-  decision:** `ExportWorkerActivity` creates a background `FhirRequestContext`, and
-  `ConformanceSearchGuard` bypasses the lease for background work; an export `_typeFilter` is therefore not rejected
-  merely because the serving instance's lease is stale.
+  same builder path used by search, includes, compartments, `$everything`, and conditional matching.
+  `ConformanceSearchGuard` bypasses the lease for background `FhirRequestContext`s, so background work decides
+  for itself:
+  - **`$export` is exempt (deliberate decision).** It is read-only: an export `_typeFilter` is not rejected merely
+    because the serving instance's lease is stale; at worst it reads a set selected with an outgoing definition.
+  - **`$bulk-delete` is not exempt.** It is destructive: a batch selected with an outgoing definition over rows
+    other instances already index the new way would delete the wrong set. `BulkDeleteBatchActivity` checks
+    `ConformanceLease.IsHeld` before it searches. Without the lease it neither searches nor deletes and reports a
+    deferred batch; `BulkDeleteOrchestration` runs the same batch again after a durable wait (5 s doubling to
+    1 min, so any instance may pick it up) and fails the job, with the reason, once one batch has waited
+    15 minutes.
 
 ---
 

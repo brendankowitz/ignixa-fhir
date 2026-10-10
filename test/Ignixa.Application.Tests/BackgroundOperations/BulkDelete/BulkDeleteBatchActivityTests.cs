@@ -33,6 +33,12 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
     private readonly FhirVersionContext _versions = new(NullLoggerFactory.Instance, new SearchParameterResolutionOptions(),
         NullFhirBaseUriProvider.Instance);
     private readonly SearchOptionsBuilderFactory _builders;
+
+    /// <summary>
+    /// One lease shared by the search-option builders and the activity, as the production singleton is.
+    /// </summary>
+    private readonly ConformanceLease _lease = TestConformanceLease.NotHeld();
+    private bool _leaseHeld = true;
     private readonly ITenantConfigurationStore _tenants = Substitute.For<ITenantConfigurationStore>();
     private readonly InMemoryBackgroundJobRepository<BulkDeleteJobDefinition> _jobs;
     private readonly ISearchService _search = Substitute.For<ISearchService>();
@@ -58,7 +64,7 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
             NullFhirBaseUriProvider.Instance,
             new HttpContextAccessor(),
             _accessor,
-            TestConformanceLease.Held());
+            _lease);
         _tenants.Mode.Returns(TenantMode.Isolated);
         _tenants.GetTenantConfigurationAsync(TenantId, Arg.Any<CancellationToken>())
             .Returns(new TenantConfiguration { TenantId = TenantId, DisplayName = "Bulk delete", FhirVersion = "4.0" });
@@ -121,6 +127,25 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
         output.DeletedCounts.ShouldBeEmpty();
         _searches.ShouldBeEmpty();
         _operations.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(BulkDeleteMode.SoftDelete)]
+    [InlineData(BulkDeleteMode.HardDelete)]
+    [InlineData(BulkDeleteMode.PurgeHistory)]
+    public async Task GivenTheConformanceLeaseIsNotHeld_WhenABatchRuns_ThenNothingIsSearchedOrDeletedAndTheBatchAsksToWait(BulkDeleteMode mode)
+    {
+        _leaseHeld = false;
+        _results = _ => [Match("Patient", "p1")];
+
+        var output = await RunAsync(Input(mode));
+
+        _searches.ShouldBeEmpty();
+        _operations.ShouldBeEmpty();
+        output.DeletedCounts.ShouldBeEmpty();
+        output.ConformanceStale.ShouldBeTrue();
+        output.Superseded.ShouldBeFalse();
+        (await _jobs.GetAsync(JobId, TenantId, CancellationToken.None))!.Status.ShouldBe("Queued");
     }
 
     [Fact]
@@ -434,6 +459,11 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
 
     private async Task<BulkDeleteBatchOutput> RunAsync(BulkDeleteBatchInput input)
     {
+        if (_leaseHeld)
+        {
+            _lease.Renew(_lease.CaptureStart());
+        }
+
         var repositories = Substitute.For<IFhirRepositoryFactory>();
         repositories.GetRepositoryAsync(TenantId, Arg.Any<CancellationToken>()).Returns(_repository);
         var searches = Substitute.For<ISearchServiceFactory>();
@@ -441,7 +471,7 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
         var lifetime = Substitute.For<IHostApplicationLifetime>();
         lifetime.ApplicationStopping.Returns(CancellationToken.None);
         var activity = new BulkDeleteBatchActivity(_jobs, _tenants, searches, repositories, new QueryParameterParser(), _builders,
-            _versions, _baseUris, _mediator, _accessor, lifetime, NullLogger<BulkDeleteBatchActivity>.Instance);
+            _versions, _baseUris, _mediator, _accessor, _lease, lifetime, NullLogger<BulkDeleteBatchActivity>.Instance);
         var json = await activity.RunAsync(new TaskContext(new OrchestrationInstance { InstanceId = JobId }),
             JsonSerializer.Serialize(new[] { input }));
         return JsonDataConverter.Default.Deserialize<BulkDeleteBatchOutput>(json);
