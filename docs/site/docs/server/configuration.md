@@ -611,12 +611,12 @@ control how stale a server may become before it stops answering searches, and ho
 | `Conformance:TransitionGrace` | `MaxStaleness + TransitionSafetyMargin` | Delay between hiding a replaced or removed parameter and changing how it is extracted. |
 | `Conformance:TransitionSafetyMargin` | `00:02:30` | Time added above `MaxStaleness` before a transition may commit. It covers one search that passed the staleness check just before expiry, running its longest default SQL command budget, plus clock skew. Lower it only if you also lower your SQL command timeouts. |
 | `Reindex:Enabled` | `true` | Registers the `$reindex` endpoints and the job. |
-| `Reindex:AutoStart` | `true` | Start a reindex job automatically after a package activation creates parameters that need one. When `false`, start jobs with `POST $reindex`. |
+| `Reindex:AutoStart` | `true` | Start a reindex job automatically after a package activation creates parameters that need one, and start a follow-up when an activation arrives while a job runs. A failed job is not retried automatically; the next activation or a `POST $reindex` starts the next job. When `false`, start jobs with `POST $reindex`. |
 | `Reindex:BarrierDelay` | `3 × SyncIntervalSeconds` | Wait after a change before a job fences out writers with older definitions, giving other servers time to catch up. |
 | `Reindex:DefaultMaximumNumberOfResourcesPerQuery` | `10000` | Default size of one range of work. |
 | `Reindex:DefaultMaximumNumberOfResourcesPerWrite` | `100` | Default batch size for index writes. Large batches hold row locks until they commit and can escalate to partition locks that block normal writes of the same resource type; raise it only after measuring. |
 | `Reindex:DefaultMaximumConcurrency` | `4` | Default concurrent ranges per tenant. |
-| `Reindex:StartDebounce` | `00:00:10` | Merges activations that arrive close together into one job. |
+| `Reindex:StartDebounce` | `00:00:10` | Delay before a job started by a package activation begins its work. |
 | `Reindex:StaleJobTimeout` | `00:30:00` | A running job with no heartbeat for this long is flagged in its status and logged as an error. A job that waits longer than this for in-flight writes to finish also fails. |
 | `Reindex:DrainWarningAfter` | `00:05:00` | A job waiting for in-flight writes longer than this logs the oldest incomplete transaction. |
 | `Reindex:OrphanGrace` | `00:02:00` | How long a job with no live orchestration is left alone before it is recovered and its parameters returned to `Pending`. |

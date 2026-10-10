@@ -70,7 +70,7 @@ staleness lease (§4.4, §4.5, §9.4).
 | F2 | A parameter moves to `Enabled` only after its job has reindexed the cutoff set (§5.2) for every resource type it applies to, in **every** tenant, with zero failed resources, **and** its activation is unchanged since the job started (§4.3). |
 | F3 | Search indexes are extracted through an immutable **definitions handle** `(indexer, DefinitionsEventId)` that is acquired once per extraction (§5.4). |
 | F4 | Every SQL transaction allocation checks the writer's `DefinitionsEventId` against the tenant's **conformance barrier**. A stale writer is rejected, refreshes its definitions, re-extracts, and retries (§5.3). |
-| F5 | Activation automatically starts a job when `Reindex:AutoStart` is true. If a job is already running, a follow-up is **durably queued** (§7). |
+| F5 | Activation automatically starts a job when `Reindex:AutoStart` is true. If a job is already running, periodic reconciliation starts a **follow-up** job once it finishes (§7). |
 | F6 | `POST [base]/$reindex` starts a job. `GET` returns its status or lists jobs. `DELETE` cancels it (§6). |
 | F7 | Single-resource `$reindex` is deferred to issue #485. |
 | F8 | At most **one** reindex job is active across the whole server. |
@@ -157,7 +157,7 @@ applies each event **only if** both conditions hold:
 - for `Completed` and `Failed`, its `ReindexJobId` equals the event's `JobId`.
 
 A non-matching event is ignored and logged. A job therefore never moves a newer activation of the same canonical:
-it does not start it, enable it, or reset it. The newer activation stays `Pending` and is handled by the queued
+it does not start it, enable it, or reset it. The newer activation stays `Pending` and is handled by the
 follow-up (§7). `SearchParameterTransitionCommitted` (§4.4) carries the activation and deactivation `EventId`s it
 commits, and it is guarded the same way.
 
@@ -386,7 +386,7 @@ The MS-compatible top-level parameters are `id`, `status`, `queuedTime`, `startT
 Ignixa additions:
 
 - `maximumConcurrency`, `queryDelayIntervalInMilliseconds`
-- `trigger`: `Manual`, `Activation`, `FollowUp`, or `Reconciliation`
+- `trigger`: `Manual`, `Activation`, or `Reconciliation`
 - `targetEventId` (E)
 - `phase`: `BarrierDelay`, `Draining`, `Reindexing`, or `Completing`
 - `cancellationReason`
@@ -407,7 +407,7 @@ deliberately emits `Cancelled`.
 
 Returns `202 Accepted`, `404` for an unknown job, or `409` if the job is already terminal. The orchestration is
 terminated. A guarded `Failed("Cancelled")` event returns this job's `Reindexing` params to `Pending`. The barrier
-stays raised (it only increases). A queued follow-up is not cancelled.
+stays raised (it only increases). A follow-up that a newer activation needs still starts (§7).
 
 ### 6.5 Single resource: `GET|POST [base]/{type}/{id}/$reindex`
 
@@ -433,17 +433,16 @@ resource type `*`: SMART `system/*.write` or RBAC write on `*`. `OperationDefini
 | **Activation** (`Reindex:AutoStart = true`, default) | After activation events that create `Pending` params commit (including override removals, §4.4), a Medino notification handler calls `StartOrQueueReindex(Activation)`, debounced by `Reindex:StartDebounce`. |
 | **Manual** | `POST $reindex` (§6.1). |
 | **Transition commit** | When `SearchParameterTransitionCommitted` produces `Pending` params (an override added or removed, §4.4), the orchestration calls `StartOrQueueReindex(Activation)`. |
-| **Follow-up** | Hand-off at job end (below). |
-| **Periodic reconciliation** | Every `ConformanceStateSyncService.SyncAsync` tick calls `ReindexTrigger.ReconcileAsync`, which sends `CreateReindexJobCommand { Trigger = "Reconciliation" }`. The handler's cheap pre-check returns without the singleton lock when an active job is neither `Completing` nor past `OrphanGrace`, or when there is no active job and neither `Pending` nor owned `Reindexing` parameters exist. Otherwise it takes the lock, calls `ReindexJobReconciler.ReconcileUnderLockAsync`, and creates work if needed. |
-| **Startup reconciliation** | `EternalOrchestrationStarter` runs the transition reconciler, `ReindexJobReconciler`, then `ReindexTrigger.ReconcileAsync`; this uses the same reconciliation command and pending-work rule as the periodic path. |
+| **Follow-up** | The periodic tick below, once the running job has finished. |
+| **Periodic reconciliation** | Every `ConformanceStateSyncService.SyncAsync` tick calls `ReindexTrigger.ReconcileAsync`. With an active job it recovers it only once the job is past `OrphanGrace` (§8.6). Otherwise it applies the **start rule** below from two job-table reads and one projection read under the activation lock, and only then sends `CreateReindexJobCommand { Trigger = "Reconciliation" }`, which re-applies the rule under the singleton lock. An idle tick, and the steady state after a Failed or Cancelled job, never take the lock. |
+| **Startup reconciliation** | `EternalOrchestrationStarter` runs the transition reconciler and then the first `ReindexTrigger.ReconcileAsync` tick. |
 
-**Durable hand-off** (prevents the lost-follow-up race between job end and a concurrent activation):
-
-- `StartOrQueueReindex` takes the singleton lock (`sp_getapplock` on the tenant 1 database). If a job is active,
-  it **persists** an incremented `ReindexRequestedGeneration` instead of returning silently.
-- At job end, `CompleteReindexActivity`, under the same lock, marks the job terminal. If the generation is
-  greater than the one the job consumed, it starts the follow-up job before releasing the lock. A Failed or
-  Cancelled generation is not retried automatically; a manual `$reindex` must create a new request generation.
+**Start rule** (replaces a durable follow-up queue): an automatic job starts when some `Pending` parameter has an
+`ActivationEventId` greater than the `TargetEventId` of the latest finished job (Completed, Failed or Cancelled),
+or when no job has finished yet. A finished job's own `Pending` parameters therefore never restart on their own,
+so a failing job cannot loop; a later activation restarts them together with the parameters it adds, at the cost
+of at most one sync interval of latency; and a manual `$reindex` ignores the rule. A job row whose orchestration
+could not be started is deleted so it cannot block the comparison.
 
 `LoadPackageHandler` and `InstallPackageTool` keep reporting `PendingReindex`, and now also return the job id
 (active or queued) and its status URL.
@@ -492,7 +491,7 @@ sequenceDiagram
     else
         O->>E: SearchParameterReindexFailed (guarded, details)
     end
-    O->>O: hand-off to queued follow-up (section 7)
+    O->>O: the next tick starts a follow-up if the start rule says so (section 7)
 ```
 
 - `BarrierDelay` is a DurableTask timer, so it costs nothing and survives restarts.
@@ -535,21 +534,19 @@ A targeted parameter **completes** when its affected types are reindexed in ever
 resources. Completion considers every parameter owned by the job. An owned target that does not match a planned
 canonical, resource type, code, and activation event id fails back to `Pending`. `CompleteReindexActivity` then appends
 `SearchParameterReindexCompleted(…, ActivationEventId, JobId, ResourcesIndexed, Duration)`, which §4.3 applies or
-ignores. Otherwise the job ends `Failed` with a guarded `SearchParameterReindexFailed`. Either way, the hand-off
-in §7 runs.
+ignores. Otherwise the job ends `Failed` with a guarded `SearchParameterReindexFailed`. Either way the next
+periodic tick applies the start rule (§7).
 
 At terminal completion, the active tenant set is re-read under the lock. If one was added after the job started, the
-job fails with a manual-reindex message. Seeding the barrier when a tenant is provisioned is issue #496. The
-completion hook does not wait for a local definitions refresh; consumers refresh on their sync tick.
+job fails with a manual-reindex message. Seeding the barrier when a tenant is provisioned is issue #496.
+Completion does not wait for a local definitions refresh; consumers refresh on their sync tick.
 
-Only creation, lifecycle start, cancellation, reconciliation when needed, and terminal decisions take the singleton
-reindex job lock. Lifecycle start reloads under that lock and skips closed jobs before appending events or initializing
-progress. Routine progress and heartbeat writes use a repository-level rowversion compare-and-swap, with an
-atomic status predicate excluding `Completing`, `Completed`, `Failed`, and `Cancelled`. Closed writes return
-false without changing even the heartbeat; active conflicts reload and re-merge, up to five attempts.
-Only terminal completion may resume a persisted `Completing` decision, reusing its persisted decision and
-per-target outcomes. A delayed activity cannot reopen a finalized job or its parameters. SQL schema version 5 adds
-`BackgroundJobs.RowVersion`; the development in-memory job repository provides the same conditional-write contract.
+Finishing a job is the same shape as `$export`: under the singleton reindex job lock the writer reloads the job,
+leaves it alone when it is already terminal, appends the guarded lifecycle events for every parameter the job
+still owns (idempotent, so a retried activity appends nothing twice) and then makes one `UpdateAsync` to the final
+status. Creation, lifecycle start, cancellation, completion and recovery take that lock; routine progress and
+heartbeat writes do not, and a write that finds the job closed is a no-op. The job store's first terminal status is
+authoritative, so a delayed activity cannot reopen a finalized job or its parameters.
 
 ### 8.6 Failure and liveness
 
@@ -566,11 +563,11 @@ per-target outcomes. A delayed activity cannot reopen a finalized job or its par
   older than `Reindex:StaleJobTimeout` is flagged in status and logged at error level. A drain still waiting
   beyond `Reindex:DrainWarningAfter` logs the oldest incomplete transaction. `TransactionWatcher` already
   recovers stalled transactions, so the drain does not wait forever.
-- **Periodic reconciliation:** after its cheap pre-check (§7), `CreateReindexJobHandler` takes the singleton lock
-  only for a stale active job, a `Completing` job, owned `Reindexing` parameters, or pending work with no active job.
-  Under the lock, `ReindexJobReconciler` resumes a `Completing` job's persisted decision, finalizes an orphaned
-  active job after two non-active DurableTask reads, and sweeps `Reindexing` parameters owned by terminal jobs back
-  to `Pending`.
+- **Recovery:** the periodic tick (§7) hands an active job past `OrphanGrace` to `ReindexJobReconciler`, which has
+  one rule, applied under the singleton lock after two non-active DurableTask reads: a job whose orchestration is
+  missing or terminal is `Completed` when the projection already shows its completion (its events were appended
+  before the final status write was lost), otherwise guarded `Failed` events return every parameter it still owns
+  to `Pending` and it is `Failed`. A `Queued` row whose orchestration was never created is deleted.
 - Barrier, drain, and planning activities use `ScheduleWithRetry`.
 
 ### 8.7 Data layer changes
@@ -584,7 +581,6 @@ per-target outcomes. A delayed activity cannot reopen a finalized job or its par
 | Reindex lifecycle events gain `ActivationEventId` (nullable) | §4.3, and registration in `SqlServerSourceEventStore` |
 | `SearchParameterStatus` gains `Staged` and `Disabling`; new event `SearchParameterTransitionCommitted` | §4.4. Apply logic in `ConformanceState`. `CompositeSearchParameterDefinitionManager` extracts `Enabled`, `Pending`, `Reindexing`, and `Disabling`, and **not** `Staged`. |
 | Staleness lease (`LeaseStartUtc`) in `ConformanceStateSyncService`, and a search-entry guard | §4.5. The guard sits where search options are built (`SearchOptionsBuilderFactory`), so search, includes, compartments, and conditional matching all pass through it. |
-| `ReindexRequestedGeneration` (tenant 1, with the job store) | §7 hand-off |
 | `UpdateResourceSearchParams.sql` | Reused unchanged. Must be verified against Ignixa's typed tables, including composites. |
 | Extension columns | Reuse `SqlServerPostMergeExtensionUpdater`, following the merge-transaction rule |
 | Retire `ReindexJob` table plus 5 sprocs; `Resource.SearchParamHash` usage, `MatchPageEmitter` hash clause, `SearchPlanOptions.SearchParameterHash` | Unused. Separate cleanup PR. The `ResourceList` TVP column stays (repository rule), so pass `NULL`. |
@@ -617,7 +613,7 @@ it as a conflict.
 ### 9.3 Concurrent SearchParameter changes (queue, don't supersede)
 
 A new activation during a running job neither cancels it nor is rejected. Its params stay `Pending` and are
-covered by the durably queued follow-up (§7). The running job keeps going: its workers' handles are ≥ E, and §4.3
+covered by the follow-up the next tick starts (§7). The running job keeps going: its workers' handles are ≥ E, and §4.3
 keeps it from touching the newer activation. Superseding would throw away completed ranges, because there is no
 per-row marker. Rejecting with 409, as MS does, would block package installs.
 
@@ -649,7 +645,7 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
   used for other tenants.
 - A job fans out over all configured tenants, excluding tenant 0. A parameter completes only when every tenant
   completes.
-- Job metadata, the singleton lock, and `ReindexRequestedGeneration` live with the global conformance state in
+- Job metadata and the singleton lock live with the global conformance state in
   tenant 1. Status resolves from any tenant route.
 
 ### 10.2 Configuration
@@ -699,7 +695,7 @@ All tests follow the `GivenContext_WhenAction_ThenResult` naming convention.
 
 | Layer | Scenarios |
 |---|---|
-| Unit (`Ignixa.Application.Tests`) | Pending and Reindexing are hidden by default; the partial-index header admits them with a warning; strict vs lenient handling; CapabilityStatement shows `Enabled` only; the §4.3 guards (a `Started`/`Completed`/`Failed`/`TransitionCommitted` event for an older activation or another job is ignored); the two-phase states (`Staged` is not extracted, `Disabling` is extracted, neither is searchable; Commit moves them to `Pending`/`Disabled`); override add and remove go through `Staged`; the lease (search, includes, and conditional matching return 503 once `MaxStaleness` passes without a successful sync; reads by id and plain writes still succeed; the lease is measured from sync *start*); startup validation rejects `TransitionGrace ≤ MaxStaleness`; F12 validation; singleton, 409, durable generation hand-off, and debounce; the handle's `DefinitionsEventId` is atomic with its indexer; bundles use the minimum. |
+| Unit (`Ignixa.Application.Tests`) | Pending and Reindexing are hidden by default; the partial-index header admits them with a warning; strict vs lenient handling; CapabilityStatement shows `Enabled` only; the §4.3 guards (a `Started`/`Completed`/`Failed`/`TransitionCommitted` event for an older activation or another job is ignored); the two-phase states (`Staged` is not extracted, `Disabling` is extracted, neither is searchable; Commit moves them to `Pending`/`Disabled`); override add and remove go through `Staged`; the lease (search, includes, and conditional matching return 503 once `MaxStaleness` passes without a successful sync; reads by id and plain writes still succeed; the lease is measured from sync *start*); startup validation rejects `TransitionGrace ≤ MaxStaleness`; F12 validation; singleton, 409, the start rule, and debounce; the handle's `DefinitionsEventId` is atomic with its indexer; bundles use the minimum. |
 | Orchestration (DurableTask test host) | delay → barrier → drain → plan → ranges → complete; definitions guard retries; `ContinueAsNew` carries B_t and S_t; one tenant's failure is isolated; cancel compensation; follow-up starts when an activation races job end; the transition orchestration commits after `TransitionGrace` and triggers reindex for `Pending`; startup reconciliation re-schedules an uncommitted transition and the sync tick recovers pending work. |
 | SQL integration (`TestTenantDatabase`) | Barrier raised monotonically; B_t and S_t are read after it. **Barrier race:** a stale writer that allocates concurrently with the raise is either ≤ B_t or rejected, in a loop of interleavings including under RCSI. The rejected transaction is marked failed and visibility advances. The cutoff set is exactly current, non-deleted rows with surrogate id ≤ S_t, including an import reservation that straddles B_t. `UpdateResourceSearchParams` rewrites every typed table and changes no version, transaction, or history (F9). `IsHistory` conflicts (F10). Extension columns are populated. Every write path allocates through `BeginTransactionAsync` (invariant). |
 | E2E (`Ignixa.Api.E2ETests`, SQL) | Install a package: the search warns and ignores the new param, the job completes, and the search returns the pre-existing resources. A write extracted with a stale handle after the barrier is rejected, refreshed, retried, and indexed correctly. Multi-tenant: completion waits for both tenants. A second package installed mid-job gets a follow-up job. Override add then remove (two-phase, with a reindex after each Commit). **Two instances** (two `IgnixaApiFixture` hosts on one database with a long sync interval on B): deactivating on A keeps B's search results complete until Commit; B's searches return 503 once its sync is forced to fail beyond `MaxStaleness`. |
@@ -718,7 +714,7 @@ removing the stale-writer guard must fail
 |---|---|---|
 | **0: Correctness and plumbing** | §4.2 visibility and partial-index header; `Reindexing` added to the extraction set; CapabilityStatement filter; two-phase transitions (`Staged`/`Disabling`, the transition orchestration); staleness lease; `DefinitionsHandle`; the barrier check in `BeginTransactionAsync` (barrier stays at 0 until the first job); lifecycle guards | It stops today's silent wrong results, on a single instance and in a web farm. Once a job raises the barrier, the write path is already correct. |
 | **1: Job** | `IReindexStore`, the orchestration (delay, barrier, drain, ranges), `POST`/`GET`/`DELETE $reindex`, retiring `ReindexJob` | Parameters actually reach `Enabled`. |
-| **2: Automation** | Activation trigger and debounce, durable follow-up hand-off, periodic and startup reconciliation | Hands-off package installs. |
+| **2: Automation** | Activation trigger and debounce, the start rule, periodic and startup reconciliation | Hands-off package installs. |
 | **3: Tools and polish** | Deferred single-resource `$reindex` (issue #485), deferred `targetResourceTypes` and maintenance jobs, query delay, dashboards, user docs (`docs/site/docs/server/fhir/search-parameters.md`, `configuration.md`), the hash cleanup PR | Operability. |
 
 ---

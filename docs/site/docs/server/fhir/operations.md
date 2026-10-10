@@ -396,8 +396,8 @@ supported and are rejected, not silently ignored.
 - `POST` returns `201 Created` with a `Parameters` body and a `Content-Location` job URL. If a job
   is already running it returns `409 Conflict` with the active job in `Content-Location`; use that
   job. With nothing to reindex it returns `400`.
-- A package activation that arrives while a job runs is queued and handled by a follow-up job. It
-  never cancels or restarts the running one.
+- A package activation that arrives while a job runs is covered by a follow-up job that starts
+  automatically once the running one finishes. It never cancels or restarts the running one.
 - `status` is `Queued`, `Running`, `Completed`, `Failed` or `Cancelled`. A `Parameters` job body
   reports progress, per-tenant counts, resource ids that failed (at most 100), and the target event
   and trigger.
