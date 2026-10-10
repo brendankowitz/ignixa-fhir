@@ -370,6 +370,21 @@ public class ReindexOrchestrationTests
         context.RangeCalls.ShouldBe(6);
     }
 
+    [Fact]
+    public async Task GivenJob_WhenOrchestrated_ThenEveryActivityIncludingDrainAndPlanIsScheduledWithRetry()
+    {
+        var context = new ExecutingContext(drainPollsBeforeDrained: 1);
+        var input = ReindexTestHelper.CreateOrchestrationInput(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
+
+        var result = await new ReindexOrchestration().RunTask(context, input);
+
+        result.Success.ShouldBeTrue();
+        context.RetrySchedules.ShouldContain(typeof(AwaitDrainActivity).FullName);
+        context.RetrySchedules.ShouldContain(typeof(PlanReindexActivity).FullName);
+        context.DirectSchedules.ShouldBeEmpty();
+    }
+
     private static ReindexOrchestrationState DrainingState(DateTime now) =>
         ReindexOrchestrationState.Create([1]) with
         {
@@ -450,10 +465,39 @@ public class ReindexOrchestrationTests
         public CompleteReindexInput? LastCompletionInput { get; private set; }
         public ReindexOrchestrationInput? LastContinuationInput { get; private set; }
 
+        /// <summary>Activity names scheduled through <see cref="ScheduleWithRetry{T}(Type, RetryOptions, object[])"/>.</summary>
+        public List<string> RetrySchedules { get; } = [];
+
+        /// <summary>Activity names scheduled directly, outside any retry wrapper.</summary>
+        public List<string> DirectSchedules { get; } = [];
+
+        private bool _withinRetry;
+
         public override DateTime CurrentUtcDateTime => _currentUtcDateTime;
+
+        // Every fake activity completes synchronously, so the retry interceptor's inner ScheduleTask calls
+        // all happen before this returns and the flag classifies them correctly.
+        public override Task<T> ScheduleWithRetry<T>(Type taskActivityType, RetryOptions retryOptions, params object[] parameters)
+        {
+            RetrySchedules.Add(taskActivityType.FullName!);
+            _withinRetry = true;
+            try
+            {
+                return base.ScheduleWithRetry<T>(taskActivityType, retryOptions, parameters);
+            }
+            finally
+            {
+                _withinRetry = false;
+            }
+        }
 
         public override Task<T> ScheduleTask<T>(string name, string version, params object[] parameters)
         {
+            if (!_withinRetry)
+            {
+                DirectSchedules.Add(name);
+            }
+
             object result = name switch
             {
                 var value when value == typeof(StartReindexActivity).FullName => Start(),

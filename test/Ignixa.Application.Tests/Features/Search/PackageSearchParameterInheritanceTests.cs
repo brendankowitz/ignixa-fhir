@@ -1,10 +1,13 @@
 using Ignixa.Abstractions;
+using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Exceptions;
 using Ignixa.Search.Indexing;
@@ -14,6 +17,7 @@ using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using SearchParamInfo = Ignixa.Search.Models.SearchParameterInfo;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Tests.Features.Search;
@@ -347,47 +351,159 @@ public class PackageSearchParameterInheritanceTests
         }
     }
 
+    // B-L2: on a web farm, instance A writes with its extraction definition while instance B, up to one grace
+    // window behind, still searches with its own. The stream is the one the real activation, transition commit
+    // and reindex completion append; every prefix is one instance's view, and every ordered pair is one lag.
     [Fact]
     public async Task GivenLaggingInstancesAtEachShadowTransitionCut_WhenDefinitionsReplay_ThenNoPairBindsDifferentStorageIdentity()
     {
-        var events = new List<SourceEvent>();
-        await foreach (var row in SharedIdentityTransitionEvents())
-        {
-            events.Add(row);
-        }
+        const string baseCanonical = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
+        const string overrideCanonical = "http://example.org/SearchParameter/shadow-identifier";
+        var events = await RecordShadowLifecycleAsync(overrideCanonical);
+        events.Select(row => row.Data.GetType().Name).ShouldBe(
+        [
+            nameof(SearchParameterActivated),
+            nameof(SearchParameterActivated),
+            nameof(PackageActivated),
+            nameof(SearchParameterTransitionCommitted),
+            nameof(SearchParameterReindexStarted),
+            nameof(SearchParameterReindexCompleted)
+        ]);
 
-        foreach (int eventCount in new[] { 1, 2, 3 })
+        var instances = new List<(int Cut, SearchParamInfo Extraction, SearchParamInfo? Searchable)>();
+        for (var cut = 0; cut <= events.Count; cut++)
         {
             using var state = new ConformanceState();
-            var store = Substitute.For<ISourceEventStore>();
-            store.ReadAllAsync(Arg.Any<CancellationToken>())
-                .Returns(ReplayCut(events, eventCount));
-            await state.InitializeFromEventsAsync(store, CancellationToken.None);
+            await state.InitializeFromEventsAsync(new InMemoryEventStore(events.Take(cut)), CancellationToken.None);
             using var context = new FhirVersionContext(
                 NullLoggerFactory.Instance,
                 new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
                 NullFhirBaseUriProvider.Instance);
             PublishTenantDefinitions(context, state);
-            var extraction = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
-            var search = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
-
-            if (search.TryGetSearchParameter("Patient", "identifier", out var searchable))
-            {
-                var extracted = extraction.GetSearchParameter("Patient", "identifier");
-                (extracted.OverridesUrl ?? extracted.Url).ShouldBe(searchable.OverridesUrl ?? searchable.Url);
-            }
+            var extraction = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1)
+                .GetSearchParameter("Patient", "identifier");
+            var searchable = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1)
+                .TryGetSearchParameter("Patient", "identifier", out var visible)
+                ? visible
+                : null;
+            instances.Add((cut, extraction, searchable));
         }
 
-        static async IAsyncEnumerable<SourceEvent> ReplayCut(
-            IReadOnlyList<SourceEvent> rows,
-            int eventCount)
+        // Not vacuous: the code is visible before the hide and after the reindex, and hidden in between.
+        instances.Where(instance => instance.Searchable is not null).Select(instance => instance.Cut)
+            .ShouldBe([0, 1, events.Count]);
+        instances[^1].Searchable!.Url.ShouldBe(new Uri(overrideCanonical));
+        foreach (var writer in instances)
         {
-            await Task.CompletedTask;
-            for (var index = 0; index < eventCount; index++)
+            foreach (var reader in instances.Where(instance => instance.Searchable is not null))
             {
-                yield return rows[index];
+                Identity(reader.Searchable!).ShouldBe(
+                    Identity(writer.Extraction),
+                    $"instance at cut {reader.Cut} searches an identity instance at cut {writer.Cut} does not extract");
+                Identity(writer.Extraction).ShouldBe(new Uri(baseCanonical));
             }
         }
+
+        static Uri Identity(SearchParamInfo parameter) => parameter.OverridesUrl ?? parameter.Url;
+    }
+
+    // Activates a package that shadows the in-process base Patient.identifier, commits its transition and
+    // completes its reindex, all through the production writers, and returns the durable stream.
+    private static async Task<IReadOnlyList<SourceEvent>> RecordShadowLifecycleAsync(string overrideCanonical)
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync("shadow.package", "1.0.0", Arg.Any<CancellationToken>())
+            .Returns([
+                new PackageResource
+                {
+                    PackageId = "shadow.package",
+                    PackageVersion = "1.0.0",
+                    ResourceType = "SearchParameter",
+                    ResourceId = "shadow-identifier",
+                    Canonical = overrideCanonical,
+                    FhirVersion = "4.0.1",
+                    ResourceJson = $$"""
+                        {
+                          "resourceType": "SearchParameter",
+                          "id": "shadow-identifier",
+                          "url": "{{overrideCanonical}}",
+                          "code": "identifier",
+                          "base": ["Patient"],
+                          "type": "token",
+                          "expression": "Patient.identifier",
+                          "derivedFrom": "http://hl7.org/fhir/SearchParameter/Patient-identifier"
+                        }
+                        """
+                }
+            ]);
+        var store = new InMemoryEventStore([]);
+        using var state = new ConformanceState();
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var pipeline = TestPackageActivationPipeline.Create(packageRepository, store, state);
+        (await pipeline.ActivateAsync("shadow.package", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
+
+        var transitionId = store.Events.Single(row => row.Data is PackageActivated).EventId;
+        var committer = new SearchParameterTransitionCommitter(
+            store,
+            state,
+            TestPackageActivationPipeline.NoJobTrigger(),
+            TestConformanceRefresher.Create(state, store));
+        (await committer.CommitAsync(transitionId, CancellationToken.None)).ShouldBeTrue();
+
+        var pending = state.FindByCanonical(overrideCanonical)!;
+        pending.Status.ShouldBe(SearchParameterStatus.Pending);
+        var target = new ReindexParameterDefinition(
+            pending.Canonical,
+            pending.Code,
+            pending.ResourceType,
+            pending.SearchParamId,
+            pending.ActivationEventId,
+            ["Patient"],
+            pending.OverridesCanonical,
+            pending.FhirVersion);
+        var lifecycle = new ReindexLifecycleEventWriter(store, state);
+        (await lifecycle.StartAsync("job", [target], CancellationToken.None)).ShouldBeEmpty();
+        (await lifecycle.CompleteAsync(
+            "job",
+            [new ReindexTargetCompletion(target, true, 1, TimeSpan.Zero, null)],
+            CancellationToken.None)).ShouldBeEmpty();
+        state.FindByCanonical(overrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
+        return store.Events.ToArray();
+    }
+
+    private sealed class InMemoryEventStore(IEnumerable<SourceEvent> seed) : ISourceEventStore
+    {
+        public List<SourceEvent> Events { get; } = seed.ToList();
+
+        public Task<IReadOnlyList<SourceEvent>> AppendAsync(IEnumerable<NewSourceEvent> events, CancellationToken cancellationToken) =>
+            AppendAsync(events, Events.Count, cancellationToken);
+
+        public Task<IReadOnlyList<SourceEvent>> AppendAsync(
+            IEnumerable<NewSourceEvent> events,
+            long expectedLastEventId,
+            CancellationToken cancellationToken)
+        {
+            expectedLastEventId.ShouldBe(Events.Count);
+            var appended = events
+                .Select((evt, index) => new SourceEvent(
+                    Events.Count + index + 1,
+                    evt.StreamId,
+                    evt.EventType,
+                    evt.Data,
+                    DateTimeOffset.UtcNow))
+                .ToArray();
+            Events.AddRange(appended);
+            return Task.FromResult<IReadOnlyList<SourceEvent>>(appended);
+        }
+
+        public IAsyncEnumerable<SourceEvent> ReadAllAsync(CancellationToken cancellationToken) =>
+            Events.ToArray().ToAsyncEnumerable();
+
+        public IAsyncEnumerable<SourceEvent> ReadFromAsync(long afterEventId, CancellationToken cancellationToken) =>
+            Events.Where(evt => evt.EventId > afterEventId).ToArray().ToAsyncEnumerable();
+
+        public IAsyncEnumerable<SourceEvent> ReadStreamAsync(string streamId, CancellationToken cancellationToken) =>
+            Events.Where(evt => evt.StreamId == streamId).ToArray().ToAsyncEnumerable();
     }
 
     [Fact]
@@ -572,41 +688,6 @@ public class PackageSearchParameterInheritanceTests
             "package-restore",
             nameof(SearchParameterTransitionCommitted),
             new SearchParameterTransitionCommitted(1, [4], [4]),
-            DateTimeOffset.UtcNow);
-    }
-
-    private static async IAsyncEnumerable<SourceEvent> SharedIdentityTransitionEvents()
-    {
-        await Task.CompletedTask;
-        yield return Activation(
-            1,
-            "http://hl7.org/fhir/SearchParameter/Patient-identifier",
-            "identifier",
-            1,
-            "hl7.fhir.r4.core@4.0.1");
-        yield return new SourceEvent(
-            2,
-            "package-shared-identity",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                "http://example.org/SearchParameter/identifier",
-                "identifier",
-                "Patient",
-                "Patient.identifier",
-                SearchParamType.Token,
-                "custom.package@1.0",
-                new OverrideInfo("http://hl7.org/fhir/SearchParameter/Patient-identifier", 1),
-                1,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow);
-        yield return new SourceEvent(
-            3,
-            "package-shared-identity",
-            nameof(SearchParameterTransitionCommitted),
-            new SearchParameterTransitionCommitted(1, [2], [2]),
             DateTimeOffset.UtcNow);
     }
 
