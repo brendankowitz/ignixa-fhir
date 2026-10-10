@@ -1,5 +1,9 @@
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
+/// <summary>
+/// The tuning parameters of one reindex job. <see cref="Create"/> is the one place their ranges are
+/// enforced, for request parameters and for the configured defaults alike.
+/// </summary>
 public sealed record ReindexJobParameters(
     int MaximumNumberOfResourcesPerQuery,
     int MaximumNumberOfResourcesPerWrite,
@@ -40,8 +44,7 @@ public sealed record ReindexJobParameters(
     {
         if (value < minimum || value > maximum)
         {
-            throw new ReindexValidationException(
-                $"{name} must be between {minimum} and {maximum}.");
+            throw new ReindexValidationException(name, minimum, maximum);
         }
     }
 }
