@@ -24,7 +24,7 @@ public class CancelReindexHandlerTests
     {
         var runtime = Substitute.For<IOrchestrationServiceClient>();
         var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        repository.GetAsync("job", 1, Arg.Any<CancellationToken>())
+        repository.GetAsync("job", 1, (int)BackgroundJobType.Reindex, Arg.Any<CancellationToken>())
             .Returns(new BackgroundJob<ReindexJobDefinition>
             {
                 JobId = "job",

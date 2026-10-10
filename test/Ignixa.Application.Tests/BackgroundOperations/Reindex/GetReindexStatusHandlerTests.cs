@@ -16,7 +16,7 @@ public class GetReindexStatusHandlerTests
     {
         var now = new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
         var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        repository.GetAsync("job", 1, Arg.Any<CancellationToken>())
+        repository.GetAsync("job", 1, (int)BackgroundJobType.Reindex, Arg.Any<CancellationToken>())
             .Returns(new BackgroundJob<ReindexJobDefinition>
             {
                 JobId = "job",
@@ -40,6 +40,30 @@ public class GetReindexStatusHandlerTests
 
         result.ShouldNotBeNull();
         result.IsStale.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenJobOfAnotherType_WhenStatusIsRead_ThenItIsAbsent()
+    {
+        var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
+        repository.GetAsync("export", 1, Arg.Any<CancellationToken>())
+            .Returns(new BackgroundJob<ReindexJobDefinition>
+            {
+                JobId = "export",
+                JobType = (int)BackgroundJobType.Export,
+                Status = "Running",
+                Definition = ReindexTestHelper.CreateJobDefinition()
+            });
+        var handler = new GetReindexStatusHandler(
+            repository,
+            Options.Create(new ReindexOptions()),
+            TimeProvider.System,
+            NullLogger<GetReindexStatusHandler>.Instance);
+
+        var result = await handler.HandleAsync(new GetReindexStatusQuery("export"), CancellationToken.None);
+
+        result.ShouldBeNull();
+        await repository.Received(1).GetAsync("export", 1, (int)BackgroundJobType.Reindex, Arg.Any<CancellationToken>());
     }
 
     [Fact]

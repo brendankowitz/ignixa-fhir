@@ -18,7 +18,12 @@ public sealed class GetReindexStatusHandler(
         GetReindexStatusQuery request,
         CancellationToken cancellationToken)
     {
-        var job = await repository.GetAsync(request.JobId, 1, cancellationToken);
+        // Job ids are shared by every job type; a job of another type is reported as absent.
+        var job = await repository.GetAsync(
+            request.JobId,
+            ReindexJobs.GlobalTenantId,
+            (int)BackgroundJobType.Reindex,
+            cancellationToken);
         if (job is null)
         {
             return null;
