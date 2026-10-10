@@ -47,6 +47,7 @@ public sealed class ReindexRangeProcessor(
             input.ResourceType);
         try
         {
+            // Catch up once before giving up on this attempt; the orchestration waits and retries the range.
             var handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
             if (handle.DefinitionsEventId < input.TargetEventId)
             {
@@ -54,9 +55,7 @@ public sealed class ReindexRangeProcessor(
                 handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
                 if (handle.DefinitionsEventId < input.TargetEventId)
                 {
-                    throw new ReindexDefinitionsNotReadyException(
-                        handle.DefinitionsEventId,
-                        input.TargetEventId);
+                    return ReindexRangeOutput.DefinitionsNotReady(handle.DefinitionsEventId);
                 }
             }
 

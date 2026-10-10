@@ -1,5 +1,4 @@
 using DurableTask.Core;
-using DurableTask.Core.Exceptions;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 
@@ -9,7 +8,8 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 /// Coordinates one reindex job: start, barrier delay, then per tenant the barrier, the drain and the range
 /// waves, and finally completion. Progress is persisted at every phase boundary and every
 /// <see cref="WavesPerProgressSnapshot"/> range waves; a persist that finds the job closed stops the
-/// orchestration without completing it. Tenants that wait on a polled condition do so on one durable timer
+/// orchestration without completing it. Tenants that wait on a polled condition (the drain, or range workers
+/// whose definitions are behind the target) do so on one durable timer, bounded by the stale-job timeout,
 /// while the others keep working.
 /// </summary>
 public sealed class ReindexOrchestration
@@ -398,18 +398,41 @@ public sealed class ReindexOrchestration
             .ToArray();
         var attempts = await Task.WhenAll(wave.Select(range => RunRangeAsync(context, input, state, resourceType, range)));
         var progress = state.Progress;
-        foreach (var attempt in attempts)
+        var notReady = new List<ReindexRange>();
+        foreach (var (range, attempt) in wave.Zip(attempts))
         {
-            progress = attempt.Output is not null
-                ? progress.Add(attempt.Output)
-                : progress.AddRangeFailure(resourceType, attempt.Error!.Message);
+            if (attempt.Output is { IsDefinitionsNotReady: true })
+            {
+                notReady.Add(range);
+            }
+            else
+            {
+                progress = attempt.Output is not null
+                    ? progress.Add(attempt.Output)
+                    : progress.AddRangeFailure(resourceType, attempt.Error!.Message);
+            }
         }
 
         var advanced = state with
         {
-            PendingRanges = state.PendingRanges.Skip(wave.Length).ToArray(),
+            PendingRanges = notReady.Concat(state.PendingRanges.Skip(wave.Length)).ToArray(),
             Progress = progress
         };
+        if (notReady.Count > 0)
+        {
+            // The workers' definitions are behind the target: keep those ranges and poll again after a wait.
+            var now = context.CurrentUtcDateTime;
+            var wait = state.Wait ?? ReindexWait.Begin(now);
+            if (wait.Elapsed(now) >= input.StaleJobTimeout)
+            {
+                throw new InvalidOperationException(
+                    $"Reindex definitions for tenant {state.TenantId} stayed behind target event {input.TargetEventId} for {input.StaleJobTimeout}.");
+            }
+
+            return new TenantAdvance(advanced with { Wait = wait.Backoff(now) }, wave.Length, notReady.Count < wave.Length);
+        }
+
+        advanced = advanced with { Wait = null };
         if (advanced.PendingRanges.Count == 0)
         {
             advanced = AdvancePlanner(advanced);
@@ -429,7 +452,7 @@ public sealed class ReindexOrchestration
         {
             var output = await context.ScheduleWithRetry<ReindexRangeOutput>(
                 typeof(ReindexRangeActivity),
-                CreateRangeRetryOptions(input.StaleJobTimeout),
+                CreateRetryOptions(),
                 new ReindexRangeInput(
                     input.JobId,
                     state.TenantId,
@@ -467,24 +490,6 @@ public sealed class ReindexOrchestration
                 PlannerCursor = null,
                 NextPlannerCursor = null
             };
-
-    private static RetryOptions CreateRangeRetryOptions(TimeSpan retryTimeout)
-    {
-        var standardFailureCount = 0;
-        return new RetryOptions(TimeSpan.FromSeconds(1), int.MaxValue)
-        {
-            BackoffCoefficient = 2,
-            MaxRetryInterval = TimeSpan.FromSeconds(30),
-            RetryTimeout = retryTimeout,
-            Handle = error => IsDefinitionsNotReady(error) || ++standardFailureCount < 5
-        };
-    }
-
-    private static bool IsDefinitionsNotReady(Exception error) =>
-        error is ReindexDefinitionsNotReadyException ||
-        error.InnerException is ReindexDefinitionsNotReadyException ||
-        error is TaskFailedException { FailureDetails: { } details } &&
-        details.IsCausedBy<ReindexDefinitionsNotReadyException>();
 
     private static bool ContinueIfNeeded(
         OrchestrationContext context,

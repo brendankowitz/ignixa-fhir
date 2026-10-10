@@ -83,7 +83,7 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
-    public async Task GivenDefinitionsRemainBehindForFiveAttempts_WhenRangeIsRetried_ThenTenantCompletes()
+    public async Task GivenDefinitionsBehindTargetForThreeWaves_WhenRangesReportNotReady_ThenTenantWaitsWithBackoffAndCompletes()
     {
         var context = new ExecutingContext(definitionsNotReadyAttempts: 6);
         var input = ReindexTestHelper.CreateOrchestrationInput(
@@ -93,7 +93,31 @@ public class ReindexOrchestrationTests
 
         result.Success.ShouldBeTrue();
         context.RangeCalls.ShouldBe(9);
+        context.TimerDelays.Skip(1).ShouldBe([1, 2, 4]);
         result.Tenants.Single().Success.ShouldBeTrue();
+        result.Tenants.Single().ResourcesReindexed.ShouldBe(30);
+    }
+
+    [Fact]
+    public async Task GivenDefinitionsNeverCatchUp_WhenStaleJobTimeoutElapses_ThenTenantFailsWithoutAnExceptionCrossingTheActivityBoundary()
+    {
+        var context = new ExecutingContext(definitionsNotReadyAttempts: int.MaxValue);
+        var input = ReindexTestHelper.CreateOrchestrationInput(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]) with
+        {
+            StaleJobTimeout = TimeSpan.FromSeconds(10),
+            ContinueAsNewThreshold = 100
+        };
+
+        var result = await new ReindexOrchestration().RunTask(context, input);
+
+        result.Success.ShouldBeFalse();
+        var tenant = result.Tenants.Single();
+        tenant.Status.ShouldBe(ReindexTenantStatus.Failed);
+        tenant.ErrorMessage.ShouldContain("behind target event 42");
+        tenant.FailedResourceTypes.ShouldBe(["Patient"]);
+        context.TimerDelays.Skip(1).ShouldBe([1, 2, 4, 8]);
+        context.CompletionCalls.ShouldBe(1);
     }
 
     [Fact]
@@ -557,7 +581,7 @@ public class ReindexOrchestrationTests
             RangeCalls++;
             if (RangeCalls <= definitionsNotReadyAttempts)
             {
-                throw new ReindexDefinitionsNotReadyException(41, 42);
+                return ReindexRangeOutput.DefinitionsNotReady(41);
             }
 
             if (!includeResourceFailures)
@@ -629,6 +653,7 @@ public class ReindexOrchestrationTests
 
             if (definitionsNotReadyAttempts > 0 && input.Tenants.Single().Success is false)
             {
+                input.Tenants.Single().ErrorMessage.ShouldContain("definitions");
                 return new CompleteReindexOutput(false, []);
             }
 

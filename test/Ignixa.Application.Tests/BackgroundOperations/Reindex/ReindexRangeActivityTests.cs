@@ -47,6 +47,21 @@ public class ReindexRangeActivityTests
     }
 
     [Fact]
+    public async Task GivenDefinitionsBehindTarget_WhenRangeRuns_ThenItReturnsNotReadyWithoutReadingOrThrowing()
+    {
+        var fixture = new Fixture(definitionsEventId: 41);
+
+        var result = await fixture.Activity.RunAsync(null!, JsonSerializer.Serialize(
+            new[] { new ReindexRangeInput("job", 1, "Patient", 1, 10, 42, 10, 0) }));
+
+        var output = JsonSerializer.Deserialize<ReindexRangeOutput>(result)!;
+        output.IsDefinitionsNotReady.ShouldBeTrue();
+        output.StaleDefinitionsEventId.ShouldBe(41);
+        output.ResourcesRead.ShouldBe(0);
+        fixture.RangeReads.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task GivenJobStoreUnavailable_WhenRangeStarts_ThenTheActivityFailsBeforeReadingRanges()
     {
         var fixture = new Fixture(failEveryHeartbeat: true);
@@ -62,7 +77,11 @@ public class ReindexRangeActivityTests
         private int _heartbeatAttempts;
         private int _rangeReads;
 
-        public Fixture(int concurrentReaders = 1, bool failFinishingHeartbeat = false, bool failEveryHeartbeat = false)
+        public Fixture(
+            int concurrentReaders = 1,
+            bool failFinishingHeartbeat = false,
+            bool failEveryHeartbeat = false,
+            long definitionsEventId = 42)
         {
             var tenants = Substitute.For<ITenantConfigurationStore>();
             tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
@@ -89,7 +108,7 @@ public class ReindexRangeActivityTests
             var versions = Substitute.For<IFhirVersionContext>();
             versions.GetDefinitionsHandle(FhirVersion.R4, 1)
                 .Returns(new DefinitionsHandle(
-                    Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 42));
+                    Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), definitionsEventId));
             var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
             repository.GetAsync("job", 1, Arg.Any<CancellationToken>()).Returns(_ => new BackgroundJob<ReindexJobDefinition>
             {
