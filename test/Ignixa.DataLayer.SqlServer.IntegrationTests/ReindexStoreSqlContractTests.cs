@@ -157,6 +157,30 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenVisibilityDisagreesWithCompletion_WhenDraining_ThenOnlyIncompleteTransactionsAreReported()
+    {
+        // 300: completed but not yet visible (visibility trails a lower incomplete transaction).
+        // 400: still incomplete although marked visible (the visibility race: a late lower-id allocation).
+        await _database.ExecuteNonQueryAsync(
+            """
+            INSERT INTO dbo.Transactions
+                (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
+            VALUES (300, 300, 1, 0),
+                   (400, 400, 0, 1);
+            """);
+
+        var oldest = await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None);
+
+        oldest.ShouldNotBeNull();
+        oldest.TransactionId.ShouldBe(400);
+
+        await _database.ExecuteNonQueryAsync(
+            "UPDATE dbo.Transactions SET IsCompleted = 1 WHERE SurrogateIdRangeFirstValue = 400");
+
+        (await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None)).ShouldBeNull();
+    }
+
+    [Fact]
     public async Task GivenACatalogProvisionedByUri_WhenAParameterIsChecked_ThenItIsFoundByItsStorageUriNotItsConformanceId()
     {
         const string provisioned = "http://example.org/SearchParameter/provisioned";
