@@ -616,7 +616,6 @@ control how stale a server may become before it stops answering searches, and ho
 | `Reindex:DefaultMaximumNumberOfResourcesPerQuery` | `10000` | Default size of one range of work. |
 | `Reindex:DefaultMaximumNumberOfResourcesPerWrite` | `100` | Default batch size for index writes. Large batches hold row locks until they commit and can escalate to partition locks that block normal writes of the same resource type; raise it only after measuring. |
 | `Reindex:DefaultMaximumConcurrency` | `4` | Default concurrent ranges per tenant. |
-| `Reindex:StartDebounce` | `00:00:10` | Delay before a job started by a package activation begins its work. |
 | `Reindex:StaleJobTimeout` | `00:30:00` | A running job with no heartbeat for this long is flagged in its status and logged as an error. A job that waits longer than this for in-flight writes to finish also fails. |
 | `Reindex:DrainWarningAfter` | `00:05:00` | A job waiting for in-flight writes longer than this logs the oldest incomplete transaction. |
 | `Reindex:OrphanGrace` | `00:02:00` | How long a job with no live orchestration is left alone before it is recovered and its parameters returned to `Pending`. |
@@ -632,8 +631,8 @@ serve wrong results:
 - `Reindex:DefaultMaximumNumberOfResourcesPerQuery` and `...PerWrite` must be `1`–`10000`, and
   `Reindex:DefaultMaximumConcurrency` must be `1`–`16`, the same ranges the `$reindex` request
   parameters accept.
-- `Reindex:StartDebounce` must not be negative. `OrphanGrace`, `StaleJobTimeout` and
-  `DrainWarningAfter` must be positive, and `ContinueAsNewThreshold` at least `1`.
+- `Reindex:OrphanGrace`, `StaleJobTimeout` and `DrainWarningAfter` must be positive, and
+  `ContinueAsNewThreshold` at least `1`.
 - `TransactionWatcher:Enabled` must be `true` when `Reindex:Enabled` is `true`. A reindex job waits for
   in-flight writes to complete, and the [transaction watcher](#transaction-watcher) is what completes
   a stalled one.

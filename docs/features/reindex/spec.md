@@ -430,7 +430,7 @@ resource type `*`: SMART `system/*.write` or RBAC write on `*`. `OperationDefini
 
 | Trigger | Behavior |
 |---|---|
-| **Activation** (`Reindex:AutoStart = true`, default) | After activation events that create `Pending` params commit (including override removals, §4.4), a Medino notification handler calls `StartOrQueueReindex(Activation)`, debounced by `Reindex:StartDebounce`. |
+| **Activation** (`Reindex:AutoStart = true`, default) | After activation events that create `Pending` params commit (including override removals, §4.4), a Medino notification handler calls `StartOrQueueReindex(Activation)`. An activation that commits after the job was created is picked up by the start rule when that job finishes. |
 | **Manual** | `POST $reindex` (§6.1). |
 | **Transition commit** | When `SearchParameterTransitionCommitted` produces `Pending` params (an override added or removed, §4.4), the orchestration calls `StartOrQueueReindex(Activation)`. |
 | **Follow-up** | The periodic tick below, once the running job has finished. |
@@ -669,12 +669,10 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
 | `DefaultMaximumNumberOfResourcesPerQuery` | `10000` | §6.1 |
 | `DefaultMaximumNumberOfResourcesPerWrite` | `100` | §6.1 |
 | `DefaultMaximumConcurrency` | `4` | §6.1 |
-| `StartDebounce` | `00:00:10` | §7 |
 | `OrphanGrace` | `00:02:00` | Minimum job age before two missing/terminal orchestration-state reads can classify it as orphaned (§8.6) |
 | `StaleJobTimeout` | `00:30:00` | §8.6 |
 | `DrainWarningAfter` | `00:05:00` | §8.6 |
 | `ContinueAsNewThreshold` | `2000` | §8.2 |
-| `RecentTerminalJobsListed` | `10` | §6.2 |
 
 ### 10.3 Observability
 
@@ -695,7 +693,7 @@ All tests follow the `GivenContext_WhenAction_ThenResult` naming convention.
 
 | Layer | Scenarios |
 |---|---|
-| Unit (`Ignixa.Application.Tests`) | Pending and Reindexing are hidden by default; the partial-index header admits them with a warning; strict vs lenient handling; CapabilityStatement shows `Enabled` only; the §4.3 guards (a `Started`/`Completed`/`Failed`/`TransitionCommitted` event for an older activation or another job is ignored); the two-phase states (`Staged` is not extracted, `Disabling` is extracted, neither is searchable; Commit moves them to `Pending`/`Disabled`); override add and remove go through `Staged`; the lease (search, includes, and conditional matching return 503 once `MaxStaleness` passes without a successful sync; reads by id and plain writes still succeed; the lease is measured from sync *start*); startup validation rejects `TransitionGrace ≤ MaxStaleness`; F12 validation; singleton, 409, the start rule, and debounce; the handle's `DefinitionsEventId` is atomic with its indexer; bundles use the minimum. |
+| Unit (`Ignixa.Application.Tests`) | Pending and Reindexing are hidden by default; the partial-index header admits them with a warning; strict vs lenient handling; CapabilityStatement shows `Enabled` only; the §4.3 guards (a `Started`/`Completed`/`Failed`/`TransitionCommitted` event for an older activation or another job is ignored); the two-phase states (`Staged` is not extracted, `Disabling` is extracted, neither is searchable; Commit moves them to `Pending`/`Disabled`); override add and remove go through `Staged`; the lease (search, includes, and conditional matching return 503 once `MaxStaleness` passes without a successful sync; reads by id and plain writes still succeed; the lease is measured from sync *start*); startup validation rejects `TransitionGrace ≤ MaxStaleness`; F12 validation; singleton, 409, and the start rule; the handle's `DefinitionsEventId` is atomic with its indexer; bundles use the minimum. |
 | Orchestration (DurableTask test host) | delay → barrier → drain → plan → ranges → complete; definitions guard retries; `ContinueAsNew` carries B_t and S_t; one tenant's failure is isolated; cancel compensation; follow-up starts when an activation races job end; the transition orchestration commits after `TransitionGrace` and triggers reindex for `Pending`; startup reconciliation re-schedules an uncommitted transition and the sync tick recovers pending work. |
 | SQL integration (`TestTenantDatabase`) | Barrier raised monotonically; B_t and S_t are read after it. **Barrier race:** a stale writer that allocates concurrently with the raise is either ≤ B_t or rejected, in a loop of interleavings including under RCSI. The rejected transaction is marked failed and visibility advances. The cutoff set is exactly current, non-deleted rows with surrogate id ≤ S_t, including an import reservation that straddles B_t. `UpdateResourceSearchParams` rewrites every typed table and changes no version, transaction, or history (F9). `IsHistory` conflicts (F10). Extension columns are populated. Every write path allocates through `BeginTransactionAsync` (invariant). |
 | E2E (`Ignixa.Api.E2ETests`, SQL) | Install a package: the search warns and ignores the new param, the job completes, and the search returns the pre-existing resources. A write extracted with a stale handle after the barrier is rejected, refreshed, retried, and indexed correctly. Multi-tenant: completion waits for both tenants. A second package installed mid-job gets a follow-up job. Override add then remove (two-phase, with a reindex after each Commit). **Two instances** (two `IgnixaApiFixture` hosts on one database with a long sync interval on B): deactivating on A keeps B's search results complete until Commit; B's searches return 503 once its sync is forced to fail beyond `MaxStaleness`. |
@@ -714,7 +712,7 @@ removing the stale-writer guard must fail
 |---|---|---|
 | **0: Correctness and plumbing** | §4.2 visibility and partial-index header; `Reindexing` added to the extraction set; CapabilityStatement filter; two-phase transitions (`Staged`/`Disabling`, the transition orchestration); staleness lease; `DefinitionsHandle`; the barrier check in `BeginTransactionAsync` (barrier stays at 0 until the first job); lifecycle guards | It stops today's silent wrong results, on a single instance and in a web farm. Once a job raises the barrier, the write path is already correct. |
 | **1: Job** | `IReindexStore`, the orchestration (delay, barrier, drain, ranges), `POST`/`GET`/`DELETE $reindex`, retiring `ReindexJob` | Parameters actually reach `Enabled`. |
-| **2: Automation** | Activation trigger and debounce, the start rule, periodic and startup reconciliation | Hands-off package installs. |
+| **2: Automation** | Activation trigger, the start rule, periodic and startup reconciliation | Hands-off package installs. |
 | **3: Tools and polish** | Deferred single-resource `$reindex` (issue #485), deferred `targetResourceTypes` and maintenance jobs, query delay, dashboards, user docs (`docs/site/docs/server/fhir/search-parameters.md`, `configuration.md`), the hash cleanup PR | Operability. |
 
 ---

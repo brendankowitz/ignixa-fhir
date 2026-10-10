@@ -29,7 +29,6 @@ public sealed class ReindexOptionsValidator : IValidateOptions<ReindexOptions>
             nameof(options.DefaultMaximumConcurrency),
             failures);
 
-        ValidatePositive(options.StartDebounce, nameof(options.StartDebounce), allowZero: true, failures);
         ValidatePositive(options.OrphanGrace, nameof(options.OrphanGrace), allowZero: false, failures);
         ValidatePositive(options.StaleJobTimeout, nameof(options.StaleJobTimeout), allowZero: false, failures);
         ValidatePositive(options.DrainWarningAfter, nameof(options.DrainWarningAfter), allowZero: false, failures);

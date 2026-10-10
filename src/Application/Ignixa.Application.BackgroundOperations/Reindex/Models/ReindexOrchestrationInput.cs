@@ -15,6 +15,5 @@ public sealed record ReindexOrchestrationInput(
     ReindexOrchestrationState? State = null)
 {
     public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(30);
-    public TimeSpan StartDebounce { get; init; }
     public TimeSpan StaleJobTimeout { get; init; } = TimeSpan.FromMinutes(30);
 }

@@ -20,7 +20,6 @@ public class ReindexOptionsValidatorTests
             DefaultMaximumNumberOfResourcesPerQuery = 0,
             DefaultMaximumNumberOfResourcesPerWrite = 10_001,
             DefaultMaximumConcurrency = 17,
-            StartDebounce = TimeSpan.FromSeconds(-1),
             OrphanGrace = TimeSpan.Zero,
             StaleJobTimeout = TimeSpan.Zero,
             DrainWarningAfter = TimeSpan.Zero,
@@ -31,7 +30,6 @@ public class ReindexOptionsValidatorTests
         result.Failures.ShouldContain(message => message.Contains("DefaultMaximumNumberOfResourcesPerQuery", StringComparison.Ordinal));
         result.Failures.ShouldContain(message => message.Contains("DefaultMaximumNumberOfResourcesPerWrite", StringComparison.Ordinal));
         result.Failures.ShouldContain(message => message.Contains("DefaultMaximumConcurrency", StringComparison.Ordinal));
-        result.Failures.ShouldContain(message => message.Contains("StartDebounce", StringComparison.Ordinal));
         result.Failures.ShouldContain(message => message.Contains("OrphanGrace", StringComparison.Ordinal));
         result.Failures.ShouldContain(message => message.Contains("StaleJobTimeout", StringComparison.Ordinal));
         result.Failures.ShouldContain(message => message.Contains("DrainWarningAfter", StringComparison.Ordinal));

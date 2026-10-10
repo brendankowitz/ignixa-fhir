@@ -7,7 +7,6 @@ public sealed record ReindexOrchestrationState(
     IReadOnlyList<ReindexTenantState> Tenants)
 {
     public long ProgressSequence { get; init; }
-    public bool DebounceCompleted { get; init; }
 
     public static ReindexOrchestrationState Create(IReadOnlyList<int> tenantIds) =>
         new(

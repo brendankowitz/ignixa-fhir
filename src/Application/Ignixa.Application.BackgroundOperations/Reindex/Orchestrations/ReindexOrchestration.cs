@@ -15,18 +15,6 @@ public sealed class ReindexOrchestration
         var state = input.State ?? ReindexOrchestrationState.Create(input.TenantIds);
         var scheduledActivities = 0;
 
-        if (!state.DebounceCompleted)
-        {
-            if (input.StartDebounce > TimeSpan.Zero)
-            {
-                await context.CreateTimer(
-                    context.CurrentUtcDateTime.Add(input.StartDebounce),
-                    true);
-            }
-
-            state = state with { DebounceCompleted = true };
-        }
-
         if (!state.Started)
         {
             var retry = CreateRetryOptions();
@@ -78,9 +66,7 @@ public sealed class ReindexOrchestration
         {
             try
             {
-                var remaining = input.BarrierDelay > input.StartDebounce
-                    ? input.BarrierDelay - input.StartDebounce
-                    : TimeSpan.Zero;
+                var remaining = input.BarrierDelay;
                 do
                 {
                     var delay = remaining > input.HeartbeatInterval ? input.HeartbeatInterval : remaining;
