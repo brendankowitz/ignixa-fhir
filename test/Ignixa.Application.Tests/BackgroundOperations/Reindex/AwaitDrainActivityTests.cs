@@ -3,11 +3,9 @@ using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -25,16 +23,12 @@ public sealed class AwaitDrainActivityTests
         var stores = Substitute.For<IReindexStoreFactory>();
         stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
         var jobRepository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        var progress = new ReindexProgressReporter(jobRepository, TimeProvider.System);
-        var heartbeat = new ReindexActivityHeartbeat(
-            progress,
-            Options.Create(new ReindexOptions()),
-            TimeProvider.System,
-            NullLogger<ReindexActivityHeartbeat>.Instance);
+        var progress = new ReindexProgressReporter(
+            jobRepository, TimeProvider.System, NullLogger<ReindexProgressReporter>.Instance);
         var activity = new AwaitDrainActivity(
             stores,
             TimeProvider.System,
-            heartbeat,
+            progress,
             NullLogger<AwaitDrainActivity>.Instance);
         var input = new AwaitDrainInput(
             "job",

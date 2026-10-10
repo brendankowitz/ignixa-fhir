@@ -1,61 +1,40 @@
+using Ignixa.Domain.Models;
+
 namespace Ignixa.Application.BackgroundOperations.Reindex.Models;
 
-public sealed record ReindexTenantState(
-    int TenantId,
-    string Phase,
-    long CutoffTransactionId,
-    long CutoffSurrogateId,
-    DateTime DrainStartedUtc,
-    int ResourceTypeIndex,
-    long PlannerCursor,
-    IReadOnlyList<ReindexRange> PendingRanges,
-    long? NextPlannerCursor,
-    long ResourcesToReindex,
-    long ResourcesRead,
-    long ResourcesReindexed,
-    long Conflicts,
-    long FailedResourceCount,
-    IReadOnlyList<ReindexFailedResource> FailedResources,
-    IReadOnlyList<string> FailedResourceTypes,
-    string? ErrorMessage)
+/// <summary>
+/// One tenant's orchestration state: the progress it reports plus the planner position, pending ranges and
+/// the wait it is in. Carried through <c>ContinueAsNew</c>, so everything here round-trips as JSON.
+/// </summary>
+public sealed record ReindexTenantState(ReindexTenantProgress Progress)
 {
     public long? VisibleWatermark { get; init; }
 
-    public static ReindexTenantState Create(int tenantId) =>
-        new(
-            tenantId,
-            "Barrier",
-            -1,
-            -1,
-            default,
-            0,
-            -1,
-            [],
-            null,
-            0,
-            0,
-            0,
-            0,
-            0,
-            [],
-            [],
-            null);
+    public ReindexWait? Wait { get; init; }
 
-    public bool IsCompleted => Phase == "Completed";
+    public int ResourceTypeIndex { get; init; }
 
-    public ReindexTenantOutput ToOutput() =>
-        new(
-            TenantId,
-            FailedResourceTypes.Count == 0 && FailedResources.Count == 0 && ErrorMessage is null,
-            CutoffTransactionId,
-            CutoffSurrogateId,
-            ResourcesToReindex,
-            ResourcesReindexed,
-            Conflicts,
-            FailedResourceCount,
-            FailedResources,
-            ErrorMessage)
-        {
-            FailedResourceTypes = FailedResourceTypes
-        };
+    /// <summary>The surrogate id the next planning page starts after; null plans a type from its start.</summary>
+    public long? PlannerCursor { get; init; }
+
+    public long? NextPlannerCursor { get; init; }
+
+    public IReadOnlyList<ReindexRange> PendingRanges { get; init; } = [];
+
+    public static ReindexTenantState Create(int tenantId) => new(ReindexTenantProgress.Create(tenantId));
+
+    [Newtonsoft.Json.JsonIgnore]
+    public int TenantId => Progress.TenantId;
+
+    [Newtonsoft.Json.JsonIgnore]
+    public ReindexTenantStatus Status => Progress.Status;
+
+    [Newtonsoft.Json.JsonIgnore]
+    public bool IsCompleted => Progress.IsCompleted;
+
+    /// <summary>The cutoffs the barrier returned; a tenant past the barrier always has them.</summary>
+    public BarrierCutoff RequireCutoff() =>
+        Progress is { CutoffTransactionId: { } transactionId, CutoffSurrogateId: { } surrogateId }
+            ? new BarrierCutoff(transactionId, surrogateId)
+            : throw new InvalidOperationException($"Tenant {TenantId} is {Status} without a barrier cutoff.");
 }

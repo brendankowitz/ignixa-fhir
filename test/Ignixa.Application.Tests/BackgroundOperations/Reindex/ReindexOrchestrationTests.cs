@@ -28,6 +28,47 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
+    public async Task GivenManyWaves_WhenOrchestrated_ThenProgressIsPersistedAtPhaseBoundariesAndEveryFewWaves()
+    {
+        var context = new ExecutingContext(rangesPerPage: 1, pages: 12);
+        var input = ReindexTestHelper.CreateOrchestrationInput(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
+
+        var result = await new ReindexOrchestration().RunTask(context, input);
+
+        result.Success.ShouldBeTrue();
+        context.RangeCalls.ShouldBe(12);
+        // Draining, Reindexing, two snapshots after five waves each, then Completing.
+        context.Snapshots.Select(snapshot => snapshot.Phase).ShouldBe(
+        [
+            ReindexPhase.Draining,
+            ReindexPhase.Reindexing,
+            ReindexPhase.Reindexing,
+            ReindexPhase.Reindexing,
+            ReindexPhase.Completing
+        ]);
+        context.Snapshots[2].Tenants.Single().ResourcesReindexed.ShouldBe(50);
+        context.Snapshots[3].Tenants.Single().ResourcesReindexed.ShouldBe(100);
+    }
+
+    [Fact]
+    public async Task GivenJobClosedElsewhere_WhenProgressIsPersistedAtAPhaseBoundary_ThenOrchestrationStopsWithoutCompleting()
+    {
+        var context = new ExecutingContext(jobClosed: true);
+        var input = ReindexTestHelper.CreateOrchestrationInput(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
+
+        var result = await new ReindexOrchestration().RunTask(context, input);
+
+        result.Success.ShouldBeFalse();
+        context.ProgressCalls.ShouldBe(1);
+        context.BarrierCalls.ShouldBe(0);
+        context.RangeCalls.ShouldBe(0);
+        context.CompletionCalls.ShouldBe(0);
+        context.ContinuationCount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task GivenBarrierActivityThrowsTransiently_WhenRetried_ThenTenantCompletes()
     {
         var context = new ExecutingContext(failBarrierOnce: true);
@@ -116,7 +157,7 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
-    public async Task GivenContinuationAfterBarrier_WhenSerialized_ThenBarrierCutoffsRoundTrip()
+    public async Task GivenContinuationAfterBarrier_WhenSerialized_ThenTypedStateRoundTripsWithReadableEnums()
     {
         var context = new ExecutingContext();
         var input = ReindexTestHelper.CreateOrchestrationInput(
@@ -130,29 +171,41 @@ public class ReindexOrchestrationTests
 
         await new ReindexOrchestration().RunTask(context, input);
 
-        var roundTripped = JsonDataConverter.Default.Deserialize<ReindexOrchestrationInput>(
-            JsonDataConverter.Default.Serialize(context.LastContinuationInput))!;
-        var tenant = roundTripped.State!.Tenants.Single();
-        tenant.CutoffSurrogateId.ShouldBe(30);
-        tenant.CutoffTransactionId.ShouldBe(10);
+        var serialized = JsonDataConverter.Default.Serialize(context.LastContinuationInput);
+        serialized.ShouldContain("\"Draining\"");
+        serialized.ShouldNotContain("\"Status\":1");
+        var roundTripped = JsonDataConverter.Default.Deserialize<ReindexOrchestrationInput>(serialized)!;
+        JsonDataConverter.Default.Serialize(roundTripped.State)
+            .ShouldBe(JsonDataConverter.Default.Serialize(context.LastContinuationInput!.State));
+        roundTripped.State!.Phase.ShouldBe(ReindexPhase.Draining);
+        var tenant = roundTripped.State.Tenants.Single();
+        tenant.Status.ShouldBe(ReindexTenantStatus.Draining);
+        tenant.Progress.CutoffSurrogateId.ShouldBe(30);
+        tenant.Progress.CutoffTransactionId.ShouldBe(10);
+        tenant.Wait.ShouldNotBeNull();
+        tenant.PlannerCursor.ShouldBeNull();
 
         await new ReindexOrchestration().RunTask(context, roundTripped);
 
         context.PlanInputs.ShouldHaveSingleItem().CutoffSurrogateId.ShouldBe(30);
+        context.PlanInputs.Single().StartAfterSurrogateId.ShouldBeNull();
         context.DrainInputs.ShouldHaveSingleItem().CutoffTransactionId.ShouldBe(10);
     }
 
     [Fact]
-    public async Task GivenLongBarrierDelay_WhenOrchestrated_ThenProgressHeartbeatsSplitTheDurableWait()
+    public async Task GivenLongBarrierDelay_WhenOrchestrated_ThenTheDurableWaitIsSplitWithHeartbeatsBetween()
     {
         var context = new ExecutingContext();
         var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job", targetEventId: 42, barrierDelay: TimeSpan.FromSeconds(95), tenantIds: [1]);
+            "job", targetEventId: 42, barrierDelay: TimeSpan.FromSeconds(95), tenantIds: [1]) with
+        {
+            StaleJobTimeout = TimeSpan.FromSeconds(60)
+        };
 
         await new ReindexOrchestration().RunTask(context, input);
 
-        context.TimerCalls.ShouldBe(4);
-        context.Snapshots.Count(snapshot => snapshot.Phase == "BarrierDelay").ShouldBe(3);
+        context.TimerDelays.Take(4).ShouldBe([30, 30, 30, 5]);
+        context.Snapshots.Count(snapshot => snapshot.Phase == ReindexPhase.BarrierDelay).ShouldBe(3);
         context.RangeCalls.ShouldBe(3);
     }
 
@@ -234,25 +287,10 @@ public class ReindexOrchestrationTests
     public async Task GivenDrainNeverCompletes_WhenStaleJobTimeoutElapses_ThenTenantFails()
     {
         var context = new ExecutingContext(drainNeverCompletes: true);
-        var state = ReindexOrchestrationState.Create([1]) with
-        {
-            Started = true,
-            BarrierDelayCompleted = true,
-            Tenants =
-            [
-                ReindexTenantState.Create(1) with
-                {
-                    Phase = "Draining",
-                    CutoffTransactionId = 30,
-                    CutoffSurrogateId = 10,
-                    DrainStartedUtc = context.CurrentUtcDateTime
-                }
-            ]
-        };
         var input = ReindexTestHelper.CreateOrchestrationInput(
             "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]) with
         {
-            State = state,
+            State = DrainingState(context.CurrentUtcDateTime),
             StaleJobTimeout = TimeSpan.FromSeconds(2),
             ContinueAsNewThreshold = 100
         };
@@ -261,9 +299,72 @@ public class ReindexOrchestrationTests
 
         output.Success.ShouldBeFalse();
         output.Tenants.Single().Success.ShouldBeFalse();
+        output.Tenants.Single().Status.ShouldBe(ReindexTenantStatus.Failed);
         output.Tenants.Single().ErrorMessage.ShouldContain("drain");
         context.TimerCalls.ShouldBe(2);
+        context.ProgressCalls.ShouldBe(1);
     }
+
+    [Fact]
+    public async Task GivenDrainWaits_WhenPolled_ThenPollsBackOffFromOneSecondToThirtyOnDurableTimers()
+    {
+        var context = new ExecutingContext(drainPollsBeforeDrained: 7);
+        var input = ReindexTestHelper.CreateOrchestrationInput(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]) with
+        {
+            State = DrainingState(context.CurrentUtcDateTime),
+            StaleJobTimeout = TimeSpan.FromMinutes(5),
+            ContinueAsNewThreshold = 100
+        };
+
+        var output = await new ReindexOrchestration().RunTask(context, input);
+
+        output.Success.ShouldBeTrue();
+        context.DrainInputs.Count.ShouldBe(8);
+        context.TimerDelays.ShouldBe([1, 2, 4, 8, 16, 30, 30]);
+        context.DrainInputs.Last().DrainElapsed.ShouldBe(TimeSpan.FromSeconds(91));
+    }
+
+    [Fact]
+    public async Task GivenOneTenantStillDraining_WhenAnotherReindexes_ThenTheReindexingTenantIsNotHeldByTheDrainPoll()
+    {
+        var context = new ExecutingContext(drainPollsBeforeDrained: 2, slowDrainTenantId: 2);
+        var input = ReindexTestHelper.CreateOrchestrationInput(
+            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1, 2]);
+
+        var output = await new ReindexOrchestration().RunTask(context, input);
+
+        output.Success.ShouldBeTrue();
+        output.Tenants.Count.ShouldBe(2);
+        var lastDrainOfTenant2 = context.Log.LastIndexOf("drain:2");
+        var rangesOfTenant1 = context.Log.Select((entry, index) => (entry, index))
+            .Where(item => item.entry == "range:1")
+            .Select(item => item.index)
+            .ToArray();
+        rangesOfTenant1.Length.ShouldBe(3);
+        rangesOfTenant1.ShouldAllBe(index => index < lastDrainOfTenant2);
+        context.RangeCalls.ShouldBe(6);
+    }
+
+    private static ReindexOrchestrationState DrainingState(DateTime now) =>
+        ReindexOrchestrationState.Create([1]) with
+        {
+            Started = true,
+            Phase = ReindexPhase.Draining,
+            Tenants =
+            [
+                ReindexTenantState.Create(1) with
+                {
+                    Progress = ReindexTenantProgress.Create(1) with
+                    {
+                        Status = ReindexTenantStatus.Draining,
+                        CutoffTransactionId = 30,
+                        CutoffSurrogateId = 10
+                    },
+                    Wait = ReindexWait.Begin(now)
+                }
+            ]
+        };
 
     private static async Task<(ReindexOrchestrationOutput Output, ExecutingContext Context)> RunToCompletionAsync(
         int continueAsNewThreshold)
@@ -295,11 +396,16 @@ public class ReindexOrchestrationTests
         bool includeResourceFailures = false,
         bool failStart = false,
         bool failProgressOnce = false,
+        bool jobClosed = false,
         bool drainNeverCompletes = false,
+        int drainPollsBeforeDrained = 0,
+        int? slowDrainTenantId = null,
         bool failBarrierOnce = false,
         int definitionsNotReadyAttempts = 0,
         bool startShouldContinue = true,
-        bool useBarrierCutoffForRanges = false) : OrchestrationContext
+        bool useBarrierCutoffForRanges = false,
+        int rangesPerPage = 2,
+        int pages = 2) : OrchestrationContext
     {
         private DateTime _currentUtcDateTime = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
 
@@ -311,7 +417,9 @@ public class ReindexOrchestrationTests
         public int ProgressCalls { get; private set; }
         public int ProgressFailures { get; private set; }
         public int RangeCalls { get; private set; }
-        public List<PersistReindexProgressInput> Snapshots { get; } = [];
+        public List<double> TimerDelays { get; } = [];
+        public List<string> Log { get; } = [];
+        public List<ReindexProgress> Snapshots { get; } = [];
         public List<PlanReindexInput> PlanInputs { get; } = [];
         public List<ReindexRangeInput> RangeInputs { get; } = [];
         public List<AwaitDrainInput> DrainInputs { get; } = [];
@@ -325,7 +433,8 @@ public class ReindexOrchestrationTests
             object result = name switch
             {
                 var value when value == typeof(StartReindexActivity).FullName => Start(),
-                var value when value == typeof(RaiseBarrierActivity).FullName => Barrier(),
+                var value when value == typeof(RaiseBarrierActivity).FullName =>
+                    Barrier((RaiseBarrierInput)parameters.Single()),
                 var value when value == typeof(AwaitDrainActivity).FullName =>
                     Drain((AwaitDrainInput)parameters.Single()),
                 var value when value == typeof(PlanReindexActivity).FullName =>
@@ -350,6 +459,7 @@ public class ReindexOrchestrationTests
                 throw new InvalidOperationException("The drain did not complete.");
             }
 
+            TimerDelays.Add((fireAt - _currentUtcDateTime).TotalSeconds);
             _currentUtcDateTime = fireAt;
             return Task.FromResult(state);
         }
@@ -404,7 +514,7 @@ public class ReindexOrchestrationTests
             };
         }
 
-        private RaiseBarrierOutput Barrier()
+        private RaiseBarrierOutput Barrier(RaiseBarrierInput input)
         {
             BarrierCalls++;
             if (failBarrierOnce && BarrierCalls == 1)
@@ -412,7 +522,7 @@ public class ReindexOrchestrationTests
                 throw new InvalidOperationException("transient barrier failure");
             }
 
-            return new RaiseBarrierOutput(1, 10, 30);
+            return new RaiseBarrierOutput(input.TenantId, 10, 30);
         }
 
         private PlanReindexOutput Plan(PlanReindexInput input)
@@ -420,27 +530,30 @@ public class ReindexOrchestrationTests
             PlanInputs.Add(input);
             if (useBarrierCutoffForRanges)
             {
-                return input.StartAfterSurrogateId < input.CutoffSurrogateId
-                    ? input.StartAfterSurrogateId < 0
+                return input.StartAfterSurrogateId is null
+                    ? new PlanReindexOutput(
+                        [new ReindexRange(1, 10, 10), new ReindexRange(11, 20, 10)],
+                        20)
+                    : input.StartAfterSurrogateId < input.CutoffSurrogateId
                         ? new PlanReindexOutput(
-                            [new ReindexRange(1, 10, 10), new ReindexRange(11, 20, 10)],
-                            20)
-                        : new PlanReindexOutput(
                             [new ReindexRange(21, input.CutoffSurrogateId, 10)],
                             null)
-                    : new PlanReindexOutput([], null);
+                        : new PlanReindexOutput([], null);
             }
 
-            return input.StartAfterSurrogateId < 0
-                ? new PlanReindexOutput(
-                    [new ReindexRange(1, 10, 10), new ReindexRange(11, 20, 10)],
-                    20)
-                : new PlanReindexOutput([new ReindexRange(21, 30, 10)], null);
+            // Pages of rangesPerPage ranges of ten resources each; the last page ends the type.
+            var page = (int)((input.StartAfterSurrogateId ?? 0) / (rangesPerPage * 10));
+            var first = (input.StartAfterSurrogateId ?? 0) + 1;
+            var ranges = Enumerable.Range(0, page == pages - 1 ? Math.Max(1, rangesPerPage - 1) : rangesPerPage)
+                .Select(index => new ReindexRange(first + index * 10, first + index * 10 + 9, 10))
+                .ToArray();
+            return new PlanReindexOutput(ranges, page == pages - 1 ? null : ranges[^1].End);
         }
 
         private ReindexRangeOutput Range(ReindexRangeInput input)
         {
             RangeInputs.Add(input);
+            Log.Add($"range:{input.TenantId}");
             RangeCalls++;
             if (RangeCalls <= definitionsNotReadyAttempts)
             {
@@ -468,7 +581,11 @@ public class ReindexOrchestrationTests
         private AwaitDrainOutput Drain(AwaitDrainInput input)
         {
             DrainInputs.Add(input);
-            return new AwaitDrainOutput(1, !drainNeverCompletes, 10);
+            Log.Add($"drain:{input.TenantId}");
+            var polls = DrainInputs.Count(drain => drain.TenantId == input.TenantId);
+            var isSlow = slowDrainTenantId is null || slowDrainTenantId == input.TenantId;
+            var pending = drainNeverCompletes || isSlow && polls <= drainPollsBeforeDrained;
+            return new AwaitDrainOutput(input.TenantId, !pending, 10);
         }
 
         private bool Progress(PersistReindexProgressInput input)
@@ -480,8 +597,8 @@ public class ReindexOrchestrationTests
                 throw new InvalidOperationException("progress storage unavailable");
             }
 
-            Snapshots.Add(input);
-            return true;
+            Snapshots.Add(input.Progress);
+            return !jobClosed;
         }
 
         private CompleteReindexOutput Complete(CompleteReindexInput input)
@@ -515,9 +632,19 @@ public class ReindexOrchestrationTests
                 return new CompleteReindexOutput(false, []);
             }
 
-            input.Tenants.Single().ResourcesToReindex.ShouldBe(30);
-            input.Tenants.Single().ResourcesReindexed.ShouldBe(30);
-            input.Tenants.Single().Conflicts.ShouldBe(1);
+            var expectedPerTenant = 10L * RangeInputs
+                .Where(range => range.TenantId == input.Tenants[0].TenantId)
+                .Select(range => (range.StartSurrogateId, range.EndSurrogateId))
+                .Distinct()
+                .Count();
+            foreach (var tenant in input.Tenants)
+            {
+                tenant.Status.ShouldBe(ReindexTenantStatus.Completed);
+                tenant.ResourcesToReindex.ShouldBe(expectedPerTenant);
+                tenant.ResourcesReindexed.ShouldBe(expectedPerTenant);
+                tenant.Conflicts.ShouldBe(1);
+            }
+
             return new CompleteReindexOutput(true, []);
         }
     }

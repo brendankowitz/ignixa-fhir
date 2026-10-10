@@ -82,7 +82,7 @@ public class CompleteReindexActivityTests
                 "job",
                 1,
                 [target],
-                [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
                 [])
             {
                 FailureMessage = "Reindex orchestration failed: worker crashed"
@@ -189,7 +189,7 @@ public class CompleteReindexActivityTests
                     "job",
                     1,
                     [target],
-                    [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
                     [])
             }));
 
@@ -291,7 +291,7 @@ public class CompleteReindexActivityTests
                     "job",
                     1,
                     [],
-                    [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
                     [])
             }));
 
@@ -350,7 +350,7 @@ public class CompleteReindexActivityTests
                     "job",
                     1,
                     [],
-                    [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
                     [])
             }));
 
@@ -417,14 +417,15 @@ public class CompleteReindexActivityTests
                 "job",
                 1,
                 [target],
-                [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 153, [], null)],
+                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 153, null)],
                 [])
             }));
 
         var job = await jobs.GetAsync("job", 1, CancellationToken.None);
         job!.Status.ShouldBe("Completed");
-        job.Progress!["tenants"]![0]!["tenantId"]!.GetValue<int>().ShouldBe(1);
-        job.Progress!["tenants"]![0]!["failedResources"]!.GetValue<long>().ShouldBe(153);
+        var tenant = ReindexProgress.FromJson(job.Progress)!.Tenants.ShouldHaveSingleItem();
+        tenant.TenantId.ShouldBe(1);
+        tenant.FailedResourceCount.ShouldBe(153);
         job.Result!["success"]!.GetValue<bool>().ShouldBeTrue();
         state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(
             Ignixa.Conformance.Events.Models.SearchParameterStatus.Enabled);
@@ -468,7 +469,7 @@ public class CompleteReindexActivityTests
                 "job",
                 1,
                 [target],
-                [new ReindexTenantOutput(1, true, 1, 1, 1, 1, 0, 0, [], null)],
+                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
                 [])
         });
 

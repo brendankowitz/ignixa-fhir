@@ -6,7 +6,7 @@ public sealed record CompleteReindexInput(
     string JobId,
     long TargetEventId,
     IReadOnlyList<ReindexParameterDefinition> Targets,
-    IReadOnlyList<ReindexTenantOutput> Tenants,
+    IReadOnlyList<ReindexTenantProgress> Tenants,
     IReadOnlyList<string> IgnoredLifecycleEvents)
 {
     public string? FailureMessage { get; init; }

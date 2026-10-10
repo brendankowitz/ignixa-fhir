@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
@@ -118,11 +117,7 @@ public sealed class CreateReindexJobHandler(
             JobType = (int)BackgroundJobType.Reindex,
             Status = nameof(ReindexJobStatus.Queued),
             Definition = definition,
-            Progress = new JsonObject
-            {
-                ["phase"] = "BarrierDelay",
-                ["ignoredLifecycleEvents"] = new JsonArray()
-            },
+            Progress = ReindexProgress.Create([]).ToJson(),
             CreateDate = now,
             HeartbeatDate = now
         }, cancellationToken);
@@ -143,7 +138,6 @@ public sealed class CreateReindexJobHandler(
                     _options.DrainWarningAfter,
                     _options.ContinueAsNewThreshold)
                 {
-                    HeartbeatInterval = ReindexActivityHeartbeat.GetInterval(_options.StaleJobTimeout),
                     StaleJobTimeout = _options.StaleJobTimeout
                 });
         }

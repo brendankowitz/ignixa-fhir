@@ -1,5 +1,6 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
@@ -90,7 +91,7 @@ public class CancelReindexHandlerTests
         var job = (await repository.GetAsync("job", 1, CancellationToken.None))!;
         job.Status.ShouldBe("Cancelled");
         job.CancelRequested.ShouldBeTrue();
-        job.Progress!["cancellationReason"]!.GetValue<string>().ShouldBe("operator request");
+        ReindexProgress.FromJson(job.Progress)!.CancellationReason.ShouldBe("operator request");
         var parameter = state.GetSearchParameter("Patient", "custom")!;
         parameter.Status.ShouldBe(SearchParameterStatus.Pending);
         parameter.ReindexJobId.ShouldBeNull();

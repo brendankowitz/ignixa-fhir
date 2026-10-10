@@ -9,14 +9,15 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 public sealed class AwaitDrainActivity(
     IReindexStoreFactory reindexStoreFactory,
     TimeProvider timeProvider,
-    ReindexActivityHeartbeat heartbeat,
+    ReindexProgressReporter progress,
     ILogger<AwaitDrainActivity> logger)
     : AsyncTaskActivity<AwaitDrainInput, AwaitDrainOutput>
 {
     protected override Task<AwaitDrainOutput> ExecuteAsync(
         TaskContext context,
         AwaitDrainInput input) =>
-        heartbeat.RunAsync(input.JobId, cancellationToken => DrainAsync(input, cancellationToken), CancellationToken.None);
+        progress.RunWithHeartbeatAsync(
+            input.JobId, cancellationToken => DrainAsync(input, cancellationToken), CancellationToken.None);
 
     private async Task<AwaitDrainOutput> DrainAsync(AwaitDrainInput input, CancellationToken cancellationToken)
     {

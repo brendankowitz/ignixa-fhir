@@ -194,22 +194,23 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         var status = CreateStatus();
         _status = status with
         {
-            Progress = JsonNode.Parse($$"""
-                {
-                  "totalResourcesToReindex": {{largeValue}},
-                  "resourcesSuccessfullyReindexed": {{largeValue}},
-                  "conflicts": {{largeValue}},
-                  "tenants": [{
-                    "tenantId": 1,
-                    "cutoffTransactionId": {{largeValue}},
-                    "cutoffSurrogateId": {{largeValue}},
-                    "resourcesToReindex": {{largeValue}},
-                    "resourcesReindexed": {{largeValue}},
-                    "conflicts": {{largeValue}},
-                    "failedResources": {{largeValue}}
-                  }]
-                }
-                """),
+            Progress = new ReindexProgress(ReindexPhase.Reindexing)
+            {
+                Tenants =
+                [
+                    new ReindexTenantProgress(
+                        1,
+                        ReindexTenantStatus.Reindexing,
+                        largeValue,
+                        largeValue,
+                        largeValue,
+                        largeValue,
+                        largeValue,
+                        largeValue,
+                        largeValue,
+                        null)
+                ]
+            },
             Definition = new ReindexJobDefinition
             {
                 TargetEventId = largeValue,
@@ -273,7 +274,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         Value(response.Body, "totalResourcesToReindex").ShouldBe(10);
         Value(response.Body, "resourcesSuccessfullyReindexed").ShouldBe(7);
         Convert.ToDouble(Value(response.Body, "progress"), System.Globalization.CultureInfo.InvariantCulture)
-            .ShouldBe(99.9d);
+            .ShouldBe(70d);
         Value(response.Body, "phase").ShouldBe("Reindexing");
         Value(response.Body, "cancellationReason").ShouldBe("Operator request");
         Value(response.Body, "conflicts").ShouldBe(2);
@@ -385,7 +386,13 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                     "round-trip",
                     1,
                     [target],
-                    [new ReindexTenantOutput(1, true, 10, 20, 1, 0, 0, 1, [failedResource], "index failure")],
+                    [
+                        new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 10, 20, 1, 1, 0, 0, 1, "index failure")
+                        {
+                            FailedResources = [failedResource],
+                            FailedResourceTypes = ["Patient"]
+                        }
+                    ],
                     [])
             }));
 
@@ -945,27 +952,22 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             DateTimeOffset.Parse("2026-10-07T00:02:00Z", System.Globalization.CultureInfo.InvariantCulture),
             false,
             "failure detail",
-            JsonNode.Parse("""
-                {
-                  "totalResourcesToReindex": 10,
-                  "resourcesSuccessfullyReindexed": 7,
-                  "progress": 100,
-                  "phase": "Reindexing",
-                  "cancellationReason": "Operator request",
-                  "conflicts": 2,
-                  "notCovered": ["http://example.test/SearchParameter/not-covered"],
-                  "ignoredLifecycleEvents": ["http://example.test/SearchParameter/ignored"],
-                  "tenants": [
-                    {"tenantId": 1, "cutoffTransactionId": 10, "cutoffSurrogateId": 20, "status": "Running", "resourcesToReindex": 5, "resourcesReindexed": 3, "conflicts": 1, "failedResources": 1},
-                    {"tenantId": 2, "cutoffTransactionId": 11, "cutoffSurrogateId": 21, "status": "Running", "resourcesToReindex": 5, "resourcesReindexed": 4, "conflicts": 1, "failedResources": 1}
-                  ],
-                  "failedResources": [
-                    {"resourceType": "Patient", "id": "first", "reason": "first failure"},
-                    {"resourceType": "Observation", "id": "second", "reason": "second failure"}
-                  ]
-                }
-                """),
-            null,
+            new ReindexProgress(ReindexPhase.Reindexing)
+            {
+                CancellationReason = "Operator request",
+                IgnoredLifecycleEvents = ["http://example.test/SearchParameter/ignored"],
+                Tenants =
+                [
+                    new ReindexTenantProgress(1, ReindexTenantStatus.Reindexing, 10, 20, 5, 3, 3, 1, 1, null)
+                    {
+                        FailedResources = [new ReindexFailedResource("Patient", "first", "first failure")]
+                    },
+                    new ReindexTenantProgress(2, ReindexTenantStatus.Reindexing, 11, 21, 5, 4, 4, 1, 1, null)
+                    {
+                        FailedResources = [new ReindexFailedResource("Observation", "second", "second failure")]
+                    }
+                ]
+            },
             new ReindexJobDefinition
             {
                 TargetEventId = 42,

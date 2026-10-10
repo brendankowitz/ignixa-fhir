@@ -1,6 +1,7 @@
+using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Application.Features.Conformance;
 using Medino;
 using Microsoft.Extensions.Options;
 
@@ -44,8 +45,7 @@ public sealed class GetReindexJobsHandler(
             job.HeartbeatDate,
             IsActive(job) && timeProvider.GetUtcNow() - job.HeartbeatDate > options.StaleJobTimeout,
             job.ErrorMessage,
-            job.Progress,
-            job.Result,
+            ReindexProgress.FromJson(job.Progress),
             job.Definition);
 
     private static bool IsActive(BackgroundJob<ReindexJobDefinition> job) => !job.IsTerminal();

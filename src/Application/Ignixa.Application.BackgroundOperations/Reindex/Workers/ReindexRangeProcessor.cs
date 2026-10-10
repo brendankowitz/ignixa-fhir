@@ -107,7 +107,7 @@ public sealed class ReindexRangeProcessor(
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         failedResourceCount++;
-                        if (failures.Count < 100)
+                        if (failures.Count < ReindexTenantProgress.FailedResourceSampleSize)
                         {
                             failures.Add(new ReindexFailedResource(
                                 input.ResourceType,

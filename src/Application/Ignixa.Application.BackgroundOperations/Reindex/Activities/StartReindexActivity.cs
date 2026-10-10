@@ -45,7 +45,11 @@ public sealed class StartReindexActivity(
             job.Definition.SearchParameters.Count > 0 || input.Targets.Count == 0;
         var targets = usesPersistedDefinition ? job.Definition.SearchParameters : input.Targets;
         var ignored = await lifecycle.StartAsync(input.JobId, targets, cancellationToken);
-        ReindexProgressReporter.InitializeBarrierDelay(job, input.TenantIds, ignored, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        job.SetStatus(ReindexJobStatus.Running);
+        job.StartDate ??= now;
+        job.HeartbeatDate = now;
+        job.Progress = (ReindexProgress.Create(input.TenantIds) with { IgnoredLifecycleEvents = ignored }).ToJson();
         await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
 
         return new StartReindexOutput(ignored)

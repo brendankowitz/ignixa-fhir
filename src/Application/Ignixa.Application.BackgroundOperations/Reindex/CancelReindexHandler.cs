@@ -1,5 +1,5 @@
-using System.Text.Json.Nodes;
 using DurableTask.Core;
+using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
@@ -71,8 +71,8 @@ public sealed class CancelReindexHandler(
         job.EndDate = now;
         job.HeartbeatDate = now;
         job.ErrorMessage = reason;
-        job.Progress ??= new JsonObject();
-        job.Progress["cancellationReason"] = request.Reason;
+        var progress = ReindexProgress.FromJson(job.Progress) ?? ReindexProgress.Create(job.Definition.TenantIds);
+        job.Progress = (progress with { CancellationReason = request.Reason }).ToJson();
         await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
         return true;
     }

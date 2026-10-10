@@ -6,13 +6,14 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class RaiseBarrierActivity(
     IReindexStoreFactory reindexStoreFactory,
-    ReindexActivityHeartbeat heartbeat)
+    ReindexProgressReporter progress)
     : AsyncTaskActivity<RaiseBarrierInput, RaiseBarrierOutput>
 {
     protected override Task<RaiseBarrierOutput> ExecuteAsync(
         TaskContext context,
         RaiseBarrierInput input) =>
-        heartbeat.RunAsync(input.JobId, cancellationToken => RaiseAsync(input, cancellationToken), CancellationToken.None);
+        progress.RunWithHeartbeatAsync(
+            input.JobId, cancellationToken => RaiseAsync(input, cancellationToken), CancellationToken.None);
 
     private async Task<RaiseBarrierOutput> RaiseAsync(RaiseBarrierInput input, CancellationToken cancellationToken)
     {

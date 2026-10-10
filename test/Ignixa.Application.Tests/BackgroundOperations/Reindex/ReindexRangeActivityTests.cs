@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DurableTask.Core;
+using DurableTask.Core.Exceptions;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
@@ -13,7 +14,6 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -24,79 +24,105 @@ public class ReindexRangeActivityTests
     [Fact]
     public async Task GivenConcurrentRangeCompletions_WhenExecuted_ThenNoSingletonLockIsAcquired()
     {
-        var (activity, jobLock) = CreateActivity(failProgress: false, concurrentReaders: 32);
+        var fixture = new Fixture(concurrentReaders: 32);
 
         var outputs = await Task.WhenAll(Enumerable.Range(0, 32).Select(_ =>
-            activity.RunAsync(null!, JsonSerializer.Serialize(
+            fixture.Activity.RunAsync(null!, JsonSerializer.Serialize(
                 new[] { new ReindexRangeInput("job", 1, "Patient", 1, 10, 42, 10, 0) }))));
 
         outputs.Length.ShouldBe(32);
-        jobLock.Calls.ShouldBe(0);
+        fixture.JobLock.Calls.ShouldBe(0);
     }
 
     [Fact]
-    public async Task GivenProgressStorageFails_WhenRangeFinishes_ThenRangeStillReturnsItsCounts()
+    public async Task GivenJobStoreFailsAfterTheWork_WhenRangeFinishes_ThenRangeStillReturnsItsCounts()
     {
-        var (activity, _) = CreateActivity(failProgress: true);
+        var fixture = new Fixture(failFinishingHeartbeat: true);
 
-        var result = await activity.RunAsync(null!, JsonSerializer.Serialize(
+        var result = await fixture.Activity.RunAsync(null!, JsonSerializer.Serialize(
             new[] { new ReindexRangeInput("job", 1, "Patient", 1, 10, 42, 10, 0) }));
 
         JsonSerializer.Deserialize<ReindexRangeOutput>(result)!.ResourcesRead.ShouldBe(0);
+        fixture.HeartbeatAttempts.ShouldBe(2);
     }
 
-    private static (ReindexRangeActivity Activity, CountingJobLock JobLock) CreateActivity(
-        bool failProgress, int concurrentReaders = 1)
+    [Fact]
+    public async Task GivenJobStoreUnavailable_WhenRangeStarts_ThenTheActivityFailsBeforeReadingRanges()
     {
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
-            .Returns(new TenantConfiguration { TenantId = 1, DisplayName = "Tenant", FhirVersion = "4.0" });
-        var store = Substitute.For<IReindexStore>();
-        var readers = 0;
-        var readGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        store.ReadRangeAsync(
-                Arg.Any<string>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<int>(),
-                Arg.Any<long?>(), Arg.Any<CancellationToken>())
-            .Returns(async _ =>
-            {
-                if (Interlocked.Increment(ref readers) == concurrentReaders)
-                {
-                    readGate.TrySetResult();
-                }
+        var fixture = new Fixture(failEveryHeartbeat: true);
 
-                await readGate.Task.WaitAsync(TimeSpan.FromSeconds(10));
-                return (IReadOnlyList<ReindexResource>)Array.Empty<ReindexResource>();
+        await Should.ThrowAsync<TaskFailureException>(() => fixture.Activity.RunAsync(null!, JsonSerializer.Serialize(
+            new[] { new ReindexRangeInput("job", 1, "Patient", 1, 10, 42, 10, 0) })));
+
+        fixture.RangeReads.ShouldBe(0);
+    }
+
+    private sealed class Fixture
+    {
+        private int _heartbeatAttempts;
+        private int _rangeReads;
+
+        public Fixture(int concurrentReaders = 1, bool failFinishingHeartbeat = false, bool failEveryHeartbeat = false)
+        {
+            var tenants = Substitute.For<ITenantConfigurationStore>();
+            tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
+                .Returns(new TenantConfiguration { TenantId = 1, DisplayName = "Tenant", FhirVersion = "4.0" });
+            var store = Substitute.For<IReindexStore>();
+            var readers = 0;
+            var readGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            store.ReadRangeAsync(
+                    Arg.Any<string>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<int>(),
+                    Arg.Any<long?>(), Arg.Any<CancellationToken>())
+                .Returns(async _ =>
+                {
+                    Interlocked.Increment(ref _rangeReads);
+                    if (Interlocked.Increment(ref readers) == concurrentReaders)
+                    {
+                        readGate.TrySetResult();
+                    }
+
+                    await readGate.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    return (IReadOnlyList<ReindexResource>)Array.Empty<ReindexResource>();
+                });
+            var stores = Substitute.For<IReindexStoreFactory>();
+            stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
+            var versions = Substitute.For<IFhirVersionContext>();
+            versions.GetDefinitionsHandle(FhirVersion.R4, 1)
+                .Returns(new DefinitionsHandle(
+                    Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 42));
+            var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
+            repository.GetAsync("job", 1, Arg.Any<CancellationToken>()).Returns(_ => new BackgroundJob<ReindexJobDefinition>
+            {
+                JobId = "job", JobType = 4, Status = "Running", Definition = ReindexTestHelper.CreateJobDefinition()
             });
-        var stores = Substitute.For<IReindexStoreFactory>();
-        stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(
-                Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 42));
-        var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        repository.GetAsync("job", 1, Arg.Any<CancellationToken>()).Returns(new BackgroundJob<ReindexJobDefinition>
-        {
-            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexTestHelper.CreateJobDefinition()
-        });
-        if (failProgress)
-        {
             repository.UpdateAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
-                .Returns(_ => Task.FromException(new TimeoutException("progress storage unavailable")));
+                .Returns(_ =>
+                {
+                    var attempt = Interlocked.Increment(ref _heartbeatAttempts);
+                    return failEveryHeartbeat || failFinishingHeartbeat && attempt > 1
+                        ? Task.FromException(new TimeoutException("job store unavailable"))
+                        : Task.CompletedTask;
+                });
+
+            var progress = new ReindexProgressReporter(
+                repository, TimeProvider.System, NullLogger<ReindexProgressReporter>.Instance);
+            Activity = new ReindexRangeActivity(
+                new ReindexRangeProcessor(
+                    stores,
+                    tenants,
+                    versions,
+                    TestConformanceRefresher.Create(new ConformanceState()),
+                    new FhirRequestContextAccessor()),
+                progress);
         }
 
-        var jobLock = new CountingJobLock();
-        var progress = new ReindexProgressReporter(repository, TimeProvider.System);
-        var heartbeat = new ReindexActivityHeartbeat(
-            progress, Options.Create(new ReindexOptions()), TimeProvider.System,
-            NullLogger<ReindexActivityHeartbeat>.Instance);
-        return (new ReindexRangeActivity(
-            new ReindexRangeProcessor(
-                stores,
-                tenants,
-                versions,
-                TestConformanceRefresher.Create(new ConformanceState()),
-                new FhirRequestContextAccessor()),
-            heartbeat), jobLock);
+        public ReindexRangeActivity Activity { get; }
+
+        public CountingJobLock JobLock { get; } = new();
+
+        public int HeartbeatAttempts => _heartbeatAttempts;
+
+        public int RangeReads => _rangeReads;
     }
 
     private sealed class CountingJobLock : IReindexJobLock

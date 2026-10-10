@@ -17,7 +17,7 @@ public class ReindexProgressReporterTests
     [InlineData("Completed")]
     [InlineData("Failed")]
     [InlineData("Cancelled")]
-    public async Task GivenClosedJob_WhenLateProgressOrHeartbeatIsReported_ThenNoOpPreservesJobAndHeartbeat(string status)
+    public async Task GivenClosedJob_WhenLateProgressOrHeartbeatIsReported_ThenNoOpReportsClosedAndPreservesJob(string status)
     {
         var repository = CreateRepository();
         var job = CreateJob();
@@ -27,29 +27,39 @@ public class ReindexProgressReporterTests
         var reporter = CreateReporter(repository);
         var before = JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None));
 
-        (await reporter.ReportAsync(Snapshot(1, 10), CancellationToken.None)).ShouldBeFalse();
+        (await reporter.ReportAsync("job", Snapshot(10), CancellationToken.None)).ShouldBeFalse();
         (await reporter.HeartbeatAsync("job", CancellationToken.None)).ShouldBeFalse();
 
         JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None)).ShouldBe(before);
     }
 
     [Fact]
-    public async Task GivenRepeatedAndDelayedSnapshots_WhenReported_ThenCountsAreIdempotentAndNeverRegress()
+    public async Task GivenMissingJob_WhenProgressIsReported_ThenItIsReportedClosed()
+    {
+        var reporter = CreateReporter(CreateRepository());
+
+        (await reporter.ReportAsync("job", Snapshot(10), CancellationToken.None)).ShouldBeFalse();
+        (await reporter.HeartbeatAsync("job", CancellationToken.None)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenRunningJob_WhenProgressIsReported_ThenTheTypedSnapshotIsStoredAsCamelCaseJsonWithHeartbeat()
     {
         var repository = CreateRepository();
-        await repository.CreateAsync(CreateJob(), CancellationToken.None);
+        var job = CreateJob();
+        job.HeartbeatDate = DateTimeOffset.UtcNow.AddMinutes(-5);
+        await repository.CreateAsync(job, CancellationToken.None);
         var reporter = CreateReporter(repository);
+        var snapshot = Snapshot(15);
 
-        await reporter.ReportAsync(Snapshot(1, 10), CancellationToken.None);
-        await reporter.ReportAsync(Snapshot(2, 15), CancellationToken.None);
-        await reporter.ReportAsync(Snapshot(2, 15), CancellationToken.None);
-        await reporter.ReportAsync(Snapshot(1, 10), CancellationToken.None);
-        await reporter.HeartbeatAsync("job", CancellationToken.None);
+        (await reporter.ReportAsync("job", snapshot, CancellationToken.None)).ShouldBeTrue();
 
-        var job = (await repository.GetAsync("job", 1, CancellationToken.None))!;
-        job.Progress!["totalResourcesToReindex"]!.GetValue<long>().ShouldBe(15);
-        job.Progress["resourcesSuccessfullyReindexed"]!.GetValue<long>().ShouldBe(15);
-        job.Progress["progress"]!.GetValue<double>().ShouldBe(99.9);
+        var stored = (await repository.GetAsync("job", 1, CancellationToken.None))!;
+        stored.HeartbeatDate.ShouldBeGreaterThan(DateTimeOffset.UtcNow.AddMinutes(-1));
+        stored.Progress!["phase"]!.GetValue<string>().ShouldBe("Reindexing");
+        stored.Progress["tenants"]![0]!["status"]!.GetValue<string>().ShouldBe("Reindexing");
+        stored.Progress["tenants"]![0]!["resourcesReindexed"]!.GetValue<long>().ShouldBe(15);
+        ReindexProgress.FromJson(stored.Progress)!.ToJson().ToJsonString().ShouldBe(snapshot.ToJson().ToJsonString());
     }
 
     [Theory]
@@ -75,17 +85,63 @@ public class ReindexProgressReporterTests
                     call.Arg<BackgroundJob<ReindexJobDefinition>>(), 1, CancellationToken.None);
             });
 
-        (await CreateReporter(proxy).ReportAsync(Snapshot(1, 15), CancellationToken.None)).ShouldBeFalse();
+        (await CreateReporter(proxy).ReportAsync("job", Snapshot(15), CancellationToken.None)).ShouldBeFalse();
 
         JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None)).ShouldBe(closed);
     }
 
-    private static PersistReindexProgressInput Snapshot(long sequence, long count) =>
-        new("job", sequence, "Reindexing",
-            [ReindexTenantState.Create(1) with
+    [Fact]
+    public async Task GivenWorkBetweenHeartbeats_WhenTheFinishingHeartbeatFails_ThenTheWorkResultIsStillReturned()
+    {
+        var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
+        repository.GetAsync("job", 1, Arg.Any<CancellationToken>()).Returns(_ => CreateJob());
+        var updates = 0;
+        repository.UpdateAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
+            .Returns(_ => ++updates == 1
+                ? Task.CompletedTask
+                : Task.FromException(new TimeoutException("job store unavailable")));
+
+        var result = await CreateReporter(repository).RunWithHeartbeatAsync(
+            "job", _ => Task.FromResult(17), CancellationToken.None);
+
+        result.ShouldBe(17);
+        updates.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenJobStoreUnavailable_WhenWorkWouldStart_ThenTheStartingHeartbeatFailsBeforeTheWork()
+    {
+        var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
+        repository.GetAsync("job", 1, Arg.Any<CancellationToken>())
+            .Returns<Task<BackgroundJob<ReindexJobDefinition>?>>(_ => throw new TimeoutException("job store unavailable"));
+        var started = false;
+
+        await Should.ThrowAsync<TimeoutException>(() => CreateReporter(repository).RunWithHeartbeatAsync(
+            "job",
+            _ =>
             {
-                Phase = "Reindexing", ResourcesToReindex = 15, ResourcesRead = count, ResourcesReindexed = count
-            }]);
+                started = true;
+                return Task.FromResult(17);
+            },
+            CancellationToken.None));
+
+        started.ShouldBeFalse();
+    }
+
+    private static ReindexProgress Snapshot(long count) =>
+        new(ReindexPhase.Reindexing)
+        {
+            Tenants =
+            [
+                ReindexTenantProgress.Create(1) with
+                {
+                    Status = ReindexTenantStatus.Reindexing,
+                    ResourcesToReindex = 15,
+                    ResourcesRead = count,
+                    ResourcesReindexed = count
+                }
+            ]
+        };
 
     private static BackgroundJob<ReindexJobDefinition> CreateJob() =>
         new()
@@ -99,5 +155,5 @@ public class ReindexProgressReporterTests
             NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
 
     private static ReindexProgressReporter CreateReporter(IBackgroundJobRepository<ReindexJobDefinition> repository) =>
-        new(repository, TimeProvider.System);
+        new(repository, TimeProvider.System, NullLogger<ReindexProgressReporter>.Instance);
 }

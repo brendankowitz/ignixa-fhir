@@ -7,7 +7,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class ReindexRangeActivity(
     ReindexRangeProcessor processor,
-    ReindexActivityHeartbeat heartbeat)
+    ReindexProgressReporter progress)
     : AsyncTaskActivity<ReindexRangeInput, ReindexRangeOutput>
 {
     protected override async Task<ReindexRangeOutput> ExecuteAsync(
@@ -17,7 +17,7 @@ public sealed class ReindexRangeActivity(
         ReindexMetrics.RangeStarted();
         try
         {
-            var output = await heartbeat.RunAsync(
+            var output = await progress.RunWithHeartbeatAsync(
                 input.JobId, cancellationToken => processor.ProcessAsync(input, cancellationToken), CancellationToken.None);
             ReindexMetrics.RangeCompleted(output.ResourcesReindexed, output.Conflicts, output.FailedResources.Count);
             return output;

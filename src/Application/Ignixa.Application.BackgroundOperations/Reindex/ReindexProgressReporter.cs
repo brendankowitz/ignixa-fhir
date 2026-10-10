@@ -1,93 +1,64 @@
-using System.Text.Json.Nodes;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
 /// <summary>
-/// Writes routine progress and heartbeats without the singleton job lock. A job that is already terminal,
-/// or becomes terminal between the read and the write, is left untouched and reported as closed.
+/// Writes a job's heartbeat and reported progress without the singleton job lock. A job that is already
+/// finished or gone, or that finishes between the read and the write, is left untouched and reported as
+/// closed so the orchestration can stop.
 /// </summary>
 public sealed class ReindexProgressReporter(
     IBackgroundJobRepository<ReindexJobDefinition> repository,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<ReindexProgressReporter> logger)
 {
-    internal static void InitializeBarrierDelay(
-        BackgroundJob<ReindexJobDefinition> job,
-        IReadOnlyList<int> tenantIds,
-        IReadOnlyList<string> ignoredLifecycleEvents,
-        DateTimeOffset now)
-    {
-        job.SetStatus(ReindexJobStatus.Running);
-        job.StartDate ??= now;
-        var progress = new JsonObject
-        {
-            ["phase"] = "BarrierDelay",
-            ["ignoredLifecycleEvents"] = new JsonArray(
-                ignoredLifecycleEvents
-                    .Select(value => (JsonNode?)JsonValue.Create(value))
-                    .ToArray())
-        };
-        foreach (var tenantId in tenantIds)
-        {
-            _ = GetOrAddTenant(progress, tenantId);
-        }
-
-        Recalculate(progress, job.Status);
-        job.Progress = progress;
-    }
-
+    /// <summary>Refreshes <c>HeartbeatDate</c>, which is what stale-job detection reads.</summary>
     public Task<bool> HeartbeatAsync(string jobId, CancellationToken cancellationToken) =>
         UpdateAsync(jobId, _ => { }, cancellationToken);
 
-    public Task<bool> ReportAsync(
-        PersistReindexProgressInput input,
-        CancellationToken cancellationToken) =>
-        UpdateAsync(
-            input.JobId,
-            job =>
-            {
-                var progress = EnsureProgress(job.Progress);
-                // DurableTask may redeliver an activity whose write committed before its response was lost.
-                if (input.Sequence <= GetInt64(progress, "sequence"))
-                {
-                    return;
-                }
+    /// <summary>Replaces the job's reported progress with the orchestration's current snapshot.</summary>
+    public Task<bool> ReportAsync(string jobId, ReindexProgress progress, CancellationToken cancellationToken) =>
+        UpdateAsync(jobId, job => job.Progress = progress.ToJson(), cancellationToken);
 
-                progress["sequence"] = input.Sequence;
-                SetPhase(progress, input.Phase);
-                foreach (var state in input.Tenants)
-                {
-                    var tenant = GetOrAddTenant(progress, state.TenantId);
-                    tenant["status"] = state.Phase;
-                    tenant["cutoffTransactionId"] = state.CutoffTransactionId;
-                    tenant["cutoffSurrogateId"] = state.CutoffSurrogateId;
-                    tenant["visibleWatermark"] = state.VisibleWatermark;
-                    tenant["plannerCursor"] = state.PlannerCursor;
-                    tenant["resourcesToReindex"] = state.ResourcesToReindex;
-                    tenant["resourcesRead"] = state.ResourcesRead;
-                    tenant["resourcesReindexed"] = state.ResourcesReindexed;
-                    tenant["conflicts"] = state.Conflicts;
-                    tenant["failedResources"] = state.FailedResourceCount;
-                    tenant["errorMessage"] = state.ErrorMessage;
-                }
+    /// <summary>
+    /// Runs one activity's work between two heartbeats. The job store must be reachable to start; a heartbeat
+    /// that fails after the work is done is logged and metered rather than throwing the finished work away.
+    /// </summary>
+    public async Task<T> RunWithHeartbeatAsync<T>(
+        string jobId,
+        Func<CancellationToken, Task<T>> work,
+        CancellationToken cancellationToken)
+    {
+        await HeartbeatAsync(jobId, cancellationToken);
+        var result = await work(cancellationToken);
+        try
+        {
+            await HeartbeatAsync(jobId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ReindexMetrics.ProgressPersistenceFailed();
+            logger.LogWarning(ex,
+                "Reindex job {JobId} heartbeat failed after an activity finished; the next activity or snapshot refreshes it",
+                jobId);
+        }
 
-                Recalculate(progress, job.Status);
-                job.Progress = progress;
-            },
-            cancellationToken);
+        return result;
+    }
 
     private async Task<bool> UpdateAsync(
         string jobId,
         Action<BackgroundJob<ReindexJobDefinition>> update,
         CancellationToken cancellationToken)
     {
-        var job = await repository.GetAsync(jobId, SystemConstants.GlobalTenantId, cancellationToken)
-            ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
-        if (job.IsTerminal())
+        var job = await repository.GetAsync(jobId, SystemConstants.GlobalTenantId, cancellationToken);
+        if (job is null || job.IsTerminal())
         {
             return false;
         }
@@ -105,88 +76,4 @@ public sealed class ReindexProgressReporter(
             return false;
         }
     }
-
-    private static JsonObject EnsureProgress(JsonNode? progress) =>
-        progress as JsonObject ?? new JsonObject();
-
-    private static JsonObject GetOrAddTenant(JsonObject progress, int tenantId)
-    {
-        var tenants = progress["tenants"] as JsonArray;
-        if (tenants is null)
-        {
-            tenants = [];
-            progress["tenants"] = tenants;
-        }
-
-        var tenant = tenants
-            .OfType<JsonObject>()
-            .SingleOrDefault(item => item["tenantId"]?.GetValue<int>() == tenantId);
-        if (tenant is not null)
-        {
-            return tenant;
-        }
-
-        tenant = new JsonObject
-        {
-            ["tenantId"] = tenantId,
-            ["status"] = "BarrierDelay",
-            ["resourcesToReindex"] = 0,
-            ["resourcesRead"] = 0,
-            ["resourcesReindexed"] = 0,
-            ["conflicts"] = 0,
-            ["failedResources"] = 0
-        };
-        tenants.Add(tenant);
-        return tenant;
-    }
-
-    private static void Recalculate(JsonObject progress, string status)
-    {
-        var tenants = progress["tenants"] as JsonArray;
-        var tenantObjects = tenants?.OfType<JsonObject>().ToArray() ?? [];
-        var total = tenantObjects.Sum(tenant => GetInt64(tenant, "resourcesToReindex"));
-        var reindexed = tenantObjects.Sum(tenant => GetInt64(tenant, "resourcesReindexed"));
-        progress["totalResourcesToReindex"] = total;
-        progress["resourcesSuccessfullyReindexed"] = reindexed;
-        progress["conflicts"] = tenantObjects.Sum(tenant => GetInt64(tenant, "conflicts"));
-        progress["progress"] = status == nameof(ReindexJobStatus.Completed)
-            ? 100
-            : total == 0
-                ? 0
-                : Math.Min(99.9, reindexed * 100.0 / total);
-    }
-
-    private static long GetInt64(JsonObject value, string propertyName)
-    {
-        if (value[propertyName] is not JsonValue number)
-        {
-            return 0;
-        }
-
-        if (number.TryGetValue<long>(out var int64))
-        {
-            return int64;
-        }
-
-        return number.TryGetValue<int>(out var int32) ? int32 : 0;
-    }
-
-    private static void SetPhase(JsonObject progress, string phase)
-    {
-        var current = progress["phase"]?.GetValue<string>();
-        if (current is null || GetPhaseOrder(phase) >= GetPhaseOrder(current))
-        {
-            progress["phase"] = phase;
-        }
-    }
-
-    private static int GetPhaseOrder(string phase) =>
-        phase switch
-        {
-            "BarrierDelay" => 0,
-            "Draining" => 1,
-            "Reindexing" => 2,
-            "Completing" => 3,
-            _ => -1
-        };
 }

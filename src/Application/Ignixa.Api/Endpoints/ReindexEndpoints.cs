@@ -4,6 +4,7 @@ using Ignixa.Abstractions;
 using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Infrastructure;
@@ -113,7 +114,6 @@ public static class ReindexEndpoints
                         null,
                         DateTimeOffset.UtcNow,
                         false,
-                        null,
                         null,
                         null),
                         GetFhirVersion(context)).ToJsonString()));
@@ -266,13 +266,16 @@ public static class ReindexEndpoints
         AddValue(values, "endTime", "valueDateTime", status.EndTime);
         AddValue(values, "lastModified", "valueDateTime", status.LastModified);
 
-        var progress = status.Progress as JsonObject;
-        AddProgressValue(values, progress, "totalResourcesToReindex", CountValueName(fhirVersion));
-        AddProgressValue(values, progress, "resourcesSuccessfullyReindexed", CountValueName(fhirVersion));
-        AddProgressValue(values, progress, "progress", "valueDecimal", status.Status);
-        AddProgressValue(values, progress, "phase", "valueString");
-        AddProgressValue(values, progress, "cancellationReason", "valueString");
-        AddProgressValue(values, progress, "conflicts", CountValueName(fhirVersion));
+        if (status.Progress is { } progress)
+        {
+            AddValue(values, "totalResourcesToReindex", CountValueName(fhirVersion), progress.TotalResourcesToReindex);
+            AddValue(values, "resourcesSuccessfullyReindexed", CountValueName(fhirVersion), progress.ResourcesSuccessfullyReindexed);
+            AddValue(values, "progress", "valueDecimal", progress.PercentComplete(status.Status));
+            AddValue(values, "phase", "valueString", progress.Phase.ToString());
+            AddValue(values, "cancellationReason", "valueString", progress.CancellationReason);
+            AddValue(values, "conflicts", CountValueName(fhirVersion), progress.Conflicts);
+        }
+
         AddValue(values, "failureDetails", "valueString", status.ErrorMessage);
 
         if (status.Definition is { } definition)
@@ -293,10 +296,13 @@ public static class ReindexEndpoints
             }
         }
 
-        AddStringArray(values, "ignoredLifecycleEvents", progress?["ignoredLifecycleEvents"] as JsonArray);
-        AddTenantParts(values, progress?["tenants"] as JsonArray, fhirVersion);
-        AddFailedResources(values, progress?["failedResources"] as JsonArray);
-        AddFailedResources(values, status.Result?["failedResources"] as JsonArray);
+        foreach (var ignored in status.Progress?.IgnoredLifecycleEvents ?? [])
+        {
+            AddValue(values, "ignoredLifecycleEvents", "valueString", ignored);
+        }
+
+        AddTenantParts(values, status.Progress?.Tenants ?? [], fhirVersion);
+        AddFailedResources(values, status.Progress?.FailedResources ?? []);
         return parameters;
     }
 
@@ -322,68 +328,35 @@ public static class ReindexEndpoints
         };
     }
 
-    private static void AddTenantParts(JsonArray parameters, JsonArray? tenants, FhirVersion fhirVersion)
+    private static void AddTenantParts(
+        JsonArray parameters,
+        IReadOnlyList<ReindexTenantProgress> tenants,
+        FhirVersion fhirVersion)
     {
-        foreach (var tenant in tenants?.OfType<JsonObject>() ?? [])
+        foreach (var tenant in tenants)
         {
             var parts = new JsonArray();
-            AddJsonValue(parts, "tenantId", "valueInteger", tenant["tenantId"]);
-            AddIdentifierJsonValue(parts, "cutoffTransactionId", tenant["cutoffTransactionId"], fhirVersion);
-            AddIdentifierJsonValue(parts, "cutoffSurrogateId", tenant["cutoffSurrogateId"], fhirVersion);
-            AddJsonValue(parts, "status", "valueString", tenant["status"]);
-            AddJsonValue(parts, "resourcesToReindex", CountValueName(fhirVersion), tenant["resourcesToReindex"]);
-            AddJsonValue(parts, "resourcesReindexed", CountValueName(fhirVersion), tenant["resourcesReindexed"]);
-            AddJsonValue(parts, "conflicts", CountValueName(fhirVersion), tenant["conflicts"]);
-            AddJsonValue(parts, "failedResources", CountValueName(fhirVersion), tenant["failedResources"]);
+            AddValue(parts, "tenantId", "valueInteger", tenant.TenantId);
+            AddIdentifierValue(parts, "cutoffTransactionId", tenant.CutoffTransactionId, fhirVersion);
+            AddIdentifierValue(parts, "cutoffSurrogateId", tenant.CutoffSurrogateId, fhirVersion);
+            AddValue(parts, "status", "valueString", tenant.Status.ToString());
+            AddValue(parts, "resourcesToReindex", CountValueName(fhirVersion), tenant.ResourcesToReindex);
+            AddValue(parts, "resourcesReindexed", CountValueName(fhirVersion), tenant.ResourcesReindexed);
+            AddValue(parts, "conflicts", CountValueName(fhirVersion), tenant.Conflicts);
+            AddValue(parts, "failedResources", CountValueName(fhirVersion), tenant.FailedResourceCount);
             parameters.Add(new JsonObject { ["name"] = "tenant", ["part"] = parts });
         }
     }
 
-    private static void AddFailedResources(JsonArray parameters, JsonArray? failures)
+    private static void AddFailedResources(JsonArray parameters, IReadOnlyList<ReindexFailedResource> failures)
     {
-        foreach (var failure in failures?.OfType<JsonObject>().Take(100) ?? [])
+        foreach (var failure in failures)
         {
             var parts = new JsonArray();
-            AddJsonValue(parts, "resourceType", "valueString", failure["resourceType"]);
-            AddJsonValue(parts, "id", "valueString", failure["id"]);
-            AddJsonValue(parts, "reason", "valueString", failure["reason"] ?? failure["errorMessage"]);
+            AddValue(parts, "resourceType", "valueString", failure.ResourceType);
+            AddValue(parts, "id", "valueString", failure.Id);
+            AddValue(parts, "reason", "valueString", failure.Reason);
             parameters.Add(new JsonObject { ["name"] = "failedResource", ["part"] = parts });
-        }
-    }
-
-    private static void AddStringArray(JsonArray parameters, string name, JsonArray? values)
-    {
-        foreach (var value in values?.OfType<JsonValue>() ?? [])
-        {
-            if (value.TryGetValue<string>(out var stringValue))
-            {
-                AddValue(parameters, name, "valueString", stringValue);
-            }
-        }
-    }
-
-    private static void AddProgressValue(
-        JsonArray parameters,
-        JsonObject? progress,
-        string name,
-        string valueName,
-        ReindexJobStatus? status = null)
-    {
-        var value = progress?[name];
-        if (name == "progress" && status is not ReindexJobStatus.Completed &&
-            value is JsonValue progressValue &&
-            progressValue.TryGetValue<double>(out var progressPercent))
-        {
-            value = JsonValue.Create(Math.Min(99.9, progressPercent));
-        }
-        AddJsonValue(parameters, name, valueName, value);
-    }
-
-    private static void AddJsonValue(JsonArray parameters, string name, string valueName, JsonNode? value)
-    {
-        if (value is not null)
-        {
-            parameters.Add(new JsonObject { ["name"] = name, [valueName] = value.DeepClone() });
         }
     }
 
@@ -404,29 +377,19 @@ public static class ReindexEndpoints
     private static void AddIdentifierValue(
         JsonArray parameters,
         string name,
-        long value,
-        FhirVersion fhirVersion) =>
-        AddValue(
-            parameters,
-            name,
-            IdentifierValueName(fhirVersion),
-            fhirVersion == FhirVersion.R5
-                ? value
-                : value.ToString(System.Globalization.CultureInfo.InvariantCulture));
-
-    private static void AddIdentifierJsonValue(
-        JsonArray parameters,
-        string name,
-        JsonNode? value,
+        long? value,
         FhirVersion fhirVersion)
     {
-        if (value is not JsonValue jsonValue ||
-            !jsonValue.TryGetValue<long>(out var identifier))
+        if (value is { } identifier)
         {
-            return;
+            AddValue(
+                parameters,
+                name,
+                IdentifierValueName(fhirVersion),
+                fhirVersion == FhirVersion.R5
+                    ? identifier
+                    : identifier.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
-
-        AddIdentifierValue(parameters, name, identifier, fhirVersion);
     }
 
     private static IResult Error(int statusCode, string diagnostics) =>

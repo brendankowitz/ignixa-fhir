@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
@@ -25,9 +24,6 @@ public sealed class CompleteReindexActivity(
     ILogger<CompleteReindexActivity> logger)
     : AsyncTaskActivity<CompleteReindexInput, CompleteReindexOutput>
 {
-    private static readonly JsonSerializerOptions ProgressSerializerOptions =
-        new(JsonSerializerDefaults.Web);
-
     protected override async Task<CompleteReindexOutput> ExecuteAsync(
         TaskContext context,
         CompleteReindexInput input)
@@ -83,7 +79,7 @@ public sealed class CompleteReindexActivity(
                 completions.Where(completion => !completion.Success)
                     .Select(completion => completion.ErrorMessage)
                     .Where(message => message is not null));
-        job.Progress = BuildProgress(input, success, ignored);
+        job.Progress = BuildProgress(input, ignored);
         job.Result = new JsonObject { ["success"] = success };
         await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
 
@@ -150,7 +146,7 @@ public sealed class CompleteReindexActivity(
     }
 
     private async Task<IReadOnlyList<string>> DescribeTenantFailuresAsync(
-        ReindexTenantOutput tenant,
+        ReindexTenantProgress tenant,
         ReindexParameterDefinition target)
     {
         var errors = new List<string>();
@@ -185,46 +181,18 @@ public sealed class CompleteReindexActivity(
         return activeTenantIds.Except(job.Definition.TenantIds).ToArray();
     }
 
-    private static JsonNode? BuildProgress(
-        CompleteReindexInput input,
-        bool success,
-        IReadOnlyList<string> ignored) =>
-        JsonSerializer.SerializeToNode(
-            new
-            {
-                phase = "Completing",
-                resourcesSuccessfullyReindexed = input.Tenants.Sum(tenant => tenant.ResourcesReindexed),
-                totalResourcesToReindex = input.Tenants.Sum(tenant => tenant.ResourcesToReindex),
-                progress = success ? 100 : CalculateProgress(input.Tenants),
-                conflicts = input.Tenants.Sum(tenant => tenant.Conflicts),
-                tenants = input.Tenants.Select(tenant => new
+    private static JsonNode BuildProgress(CompleteReindexInput input, IReadOnlyList<string> ignored) =>
+        new ReindexProgress(ReindexPhase.Completing)
+        {
+            Tenants = input.Tenants
+                .Select(tenant => tenant with
                 {
-                    tenant.TenantId,
-                    tenant.CutoffTransactionId,
-                    tenant.CutoffSurrogateId,
-                    status = tenant.Success ? "Completed" : "Failed",
-                    tenant.ResourcesToReindex,
-                    tenant.ResourcesReindexed,
-                    tenant.Conflicts,
-                    failedResources = tenant.FailedResourceCount,
-                    tenant.ErrorMessage
-                }).ToArray(),
-                failedResources = input.Tenants
-                    .SelectMany(tenant => tenant.FailedResources)
-                    .Take(100)
-                    .ToArray(),
-                ignoredLifecycleEvents = input.IgnoredLifecycleEvents.Concat(ignored).Distinct().ToArray()
-            },
-            ProgressSerializerOptions);
+                    Status = tenant.Success ? ReindexTenantStatus.Completed : ReindexTenantStatus.Failed
+                })
+                .ToArray(),
+            IgnoredLifecycleEvents = input.IgnoredLifecycleEvents.Concat(ignored).Distinct().ToArray()
+        }.ToJson();
 
     private static string Join(string? first, string second) =>
         first is null ? second : $"{first} {second}";
-
-    private static double CalculateProgress(IReadOnlyList<ReindexTenantOutput> tenants)
-    {
-        var total = tenants.Sum(tenant => tenant.ResourcesToReindex);
-        return total == 0
-            ? 0
-            : Math.Min(99.9, tenants.Sum(tenant => tenant.ResourcesReindexed) * 100.0 / total);
-    }
 }

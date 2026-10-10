@@ -6,13 +6,17 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class PlanReindexActivity(
     IReindexStoreFactory reindexStoreFactory,
-    ReindexActivityHeartbeat heartbeat)
+    ReindexProgressReporter progress)
     : AsyncTaskActivity<PlanReindexInput, PlanReindexOutput>
 {
+    // The store takes -1 for "from the start of the type"; the orchestration models that as no cursor.
+    private const long StartOfType = -1;
+
     protected override Task<PlanReindexOutput> ExecuteAsync(
         TaskContext context,
         PlanReindexInput input) =>
-        heartbeat.RunAsync(input.JobId, cancellationToken => PlanAsync(input, cancellationToken), CancellationToken.None);
+        progress.RunWithHeartbeatAsync(
+            input.JobId, cancellationToken => PlanAsync(input, cancellationToken), CancellationToken.None);
 
     private async Task<PlanReindexOutput> PlanAsync(PlanReindexInput input, CancellationToken cancellationToken)
     {
@@ -22,7 +26,7 @@ public sealed class PlanReindexActivity(
 
         var page = await store.GetSurrogateIdRangesAsync(
             input.ResourceType,
-            input.StartAfterSurrogateId,
+            input.StartAfterSurrogateId ?? StartOfType,
             input.CutoffSurrogateId,
             input.TargetRangeSize,
             input.MaxRanges,
