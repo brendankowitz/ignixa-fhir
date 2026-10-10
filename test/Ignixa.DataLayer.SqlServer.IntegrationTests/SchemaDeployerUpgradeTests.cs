@@ -141,7 +141,7 @@ public class SchemaDeployerUpgradeTests
         return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
-    private static async Task<(bool HasLastValueIndex, bool ReturnsUpdatedSurrogates)> GetReindexObjectStateAsync(
+    private static async Task<(bool HasLastValueIndex, bool ReturnsUpdatedSurrogates, bool HasIncompleteDrainIndex)> GetReindexObjectStateAsync(
         string connectionString,
         CancellationToken cancellationToken)
     {
@@ -162,11 +162,19 @@ public class SchemaDeployerUpgradeTests
                         OBJECT_ID('dbo.UpdateResourceSearchParams'),
                         0)
                     WHERE name = 'ResourceSurrogateId')
+                    THEN 1 ELSE 0 END AS bit),
+                CAST(CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE object_id = OBJECT_ID('dbo.Transactions')
+                      AND name = 'IX_Transactions_SurrogateIdRangeFirstValue_Incomplete'
+                      AND has_filter = 1
+                      AND filter_definition = '([IsCompleted]=(0))')
                     THEN 1 ELSE 0 END AS bit);
             """;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         (await reader.ReadAsync(cancellationToken)).ShouldBeTrue();
-        return (reader.GetBoolean(0), reader.GetBoolean(1));
+        return (reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2));
     }
 
     private static async Task DeployVersionFiveSchemaAsync(string connectionString, string databaseName, CancellationToken cancellationToken)
@@ -322,6 +330,7 @@ public class SchemaDeployerUpgradeTests
             var reindexObjects = await GetReindexObjectStateAsync(connectionString, CancellationToken.None);
             reindexObjects.HasLastValueIndex.ShouldBeTrue();
             reindexObjects.ReturnsUpdatedSurrogates.ShouldBeTrue();
+            reindexObjects.HasIncompleteDrainIndex.ShouldBeTrue();
 
             await using var verifyConnection = new SqlConnection(connectionString);
             await verifyConnection.OpenAsync(CancellationToken.None);

@@ -9,7 +9,7 @@ namespace Ignixa.DataLayer.SqlServer;
 public static class SchemaVersionConstants
 {
     /// <summary>The schema version this build's dacpac represents.</summary>
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
 
     /// <summary>
     /// The oldest tenant schema version this build still tolerates reading an
@@ -50,4 +50,10 @@ public static class SchemaVersionConstants
     // reindex barrier to read its surrogate cutoff without scanning dbo.Transactions.
     // Version 8 (expand, unreleased) -- UpdateResourceSearchParams returns the surrogate ids whose
     // index rows it updated so reindex can skip post-write extension updates for version conflicts.
+    // Version 9 (expand, unreleased) -- adds IX_Transactions_SurrogateIdRangeFirstValue_Incomplete, a
+    // covering filtered index (WHERE IsCompleted = 0) the reindex drain seeks for the oldest incomplete
+    // transaction instead of reading every completed row below its cutoff. Built ONLINE = ON inside the lazy upgrade, so
+    // like IX_Transactions_SurrogateIdRangeLastValue and the ResourceChangeData indexes it needs an edition
+    // with online index operations (Enterprise, Developer, Azure SQL Database / Managed Instance); on a
+    // large dbo.Transactions the build runs for as long as the deploy command timeouts allow.
 }

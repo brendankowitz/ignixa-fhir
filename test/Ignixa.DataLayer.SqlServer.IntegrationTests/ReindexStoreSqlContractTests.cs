@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Xml.Linq;
 using Ignixa.Abstractions;
@@ -33,11 +34,14 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         _store = _database.ReindexStore;
     }
 
-    private sealed class BarrierCommandCaptureSqlExecutionService(ISqlExecutionService inner) : ISqlExecutionService
+    /// <summary>
+    /// Captures a copy of the last reader command that binds <paramref name="parameterName"/>, so its plan can be read.
+    /// </summary>
+    private sealed class CommandCaptureSqlExecutionService(ISqlExecutionService inner, string parameterName) : ISqlExecutionService
     {
         private readonly ISqlExecutionService _inner = inner;
 
-        public SqlCommand? BarrierCommand { get; private set; }
+        public SqlCommand? Command { get; private set; }
 
         public Task<int> ExecuteNonQueryAsync(
             int tenantId,
@@ -53,9 +57,9 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             CancellationToken cancellationToken,
             SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         {
-            if (command.Parameters.Contains("@BarrierId"))
+            if (command.Parameters.Contains(parameterName))
             {
-                BarrierCommand = Clone(command);
+                Command = Clone(command);
             }
 
             return _inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken, idempotency);
@@ -235,13 +239,13 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     public async Task GivenCurrentResources_WhenBarrierIsRaised_ThenTheResourceCutoffUsesABackwardIndexSeek()
     {
         await _database.Repository.CreateOrUpdateAsync(Patient("barrier-plan"));
-        var (store, commands, cache) = await CreateCommandCapturingReindexStoreAsync();
+        var (store, commands, cache) = await CreateCommandCapturingReindexStoreAsync("@BarrierId");
         using (cache)
         {
             await store.RaiseBarrierAsync(42, CancellationToken.None);
         }
 
-        var plans = await CaptureShowPlanXmlAsync(commands.BarrierCommand!);
+        var plans = await CaptureShowPlanXmlAsync(commands.Command!);
         var resourcePlan = plans.SingleOrDefault(plan =>
             plan.Contains("ResourceCutoffCandidates", StringComparison.Ordinal));
 
@@ -267,6 +271,53 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             .ToArray();
 
         transactionLastValueOperators.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenManyCompletedTransactions_WhenTheDrainLooksForAnIncompleteOne_ThenItSeeksTheFilteredIndexInsteadOfScanning()
+    {
+        // The normal state: nothing incomplete, and dbo.Transactions is never pruned.
+        await _database.ExecuteNonQueryAsync(
+            """
+            INSERT dbo.Transactions (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
+            SELECT TOP (20000) numbers.Value, numbers.Value, 1, 1
+            FROM (SELECT ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS Value
+                  FROM sys.all_objects AS a CROSS JOIN sys.all_objects AS b) AS numbers;
+
+            UPDATE STATISTICS dbo.Transactions WITH FULLSCAN;
+            """);
+        var (store, commands, cache) = await CreateCommandCapturingReindexStoreAsync("@CutoffTransactionId");
+        using (cache)
+        {
+            (await store.GetOldestIncompleteTransactionAsync(20_000, CancellationToken.None)).ShouldBeNull();
+        }
+
+        var plan = (await CaptureShowPlanXmlAsync(commands.Command!)).ShouldHaveSingleItem();
+        var showPlanNamespace = XNamespace.Get("http://schemas.microsoft.com/sqlserver/2004/07/showplan");
+        var transactionOperators = XDocument.Parse(plan)
+            .Descendants(showPlanNamespace + "RelOp")
+            .Select(operation => (
+                PhysicalOp: operation.Attribute("PhysicalOp")!.Value,
+                Index: operation.Elements()
+                    .Where(element => element.Name != showPlanNamespace + "RelOp")
+                    .Descendants(showPlanNamespace + "Object")
+                    .Where(@object => @object.Attribute("Table")?.Value == "[Transactions]")
+                    .Select(@object => @object.Attribute("Index")?.Value)
+                    .FirstOrDefault(),
+                RowsRead: operation.Elements(showPlanNamespace + "RunTimeInformation")
+                    .Descendants(showPlanNamespace + "RunTimeCountersPerThread")
+                    .Sum(counters => long.Parse(counters.Attribute("ActualRowsRead")?.Value ?? "0", CultureInfo.InvariantCulture))))
+            .Where(operation => operation.Index is not null)
+            .ToArray();
+
+        transactionOperators.ShouldContain(
+            operation => operation.PhysicalOp == "Index Seek" &&
+                operation.Index == "[IX_Transactions_SurrogateIdRangeFirstValue_Incomplete]",
+            plan);
+        transactionOperators.ShouldNotContain(
+            operation => operation.Index == "[PKC_Transactions_SurrogateIdRangeFirstValue]" && operation.PhysicalOp != "Key Lookup",
+            plan);
+        transactionOperators.Sum(operation => operation.RowsRead).ShouldBe(0, plan);
     }
 
     [Fact]
@@ -783,9 +834,10 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             NullLogger.Instance), cache);
     }
 
-    private async Task<(IReindexStore Store, BarrierCommandCaptureSqlExecutionService Commands, SqlServerSearchIndexReferenceDataCache Cache)> CreateCommandCapturingReindexStoreAsync()
+    private async Task<(IReindexStore Store, CommandCaptureSqlExecutionService Commands, SqlServerSearchIndexReferenceDataCache Cache)> CreateCommandCapturingReindexStoreAsync(
+        string parameterName)
     {
-        var commands = new BarrierCommandCaptureSqlExecutionService(_database.SqlExecutionService);
+        var commands = new CommandCaptureSqlExecutionService(_database.SqlExecutionService, parameterName);
         var cache = new SqlServerSearchIndexReferenceDataCache(
             commands, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
         await cache.PreloadResourceTypesAsync(CancellationToken.None);
