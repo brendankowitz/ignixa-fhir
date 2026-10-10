@@ -127,7 +127,7 @@ public class SqlReindexOrchestrationTests
     }
 
     [SqlFact]
-    public async Task GivenReindexFeature_WhenReadingMetadataAndDefinition_ThenItIsAdvertisedAndRetrievable()
+    public async Task GivenReindexEnabledOnSqlServer_WhenReadingMetadataAndDefinition_ThenItIsAdvertisedAndRetrievable()
     {
         await using var fixture = new ReindexFixture();
         await fixture.InitializeAsync();

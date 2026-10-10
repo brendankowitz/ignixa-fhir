@@ -81,7 +81,7 @@ public sealed class ReindexTriggerTests
     }
 
     [Fact]
-    public async Task GivenJobIsActive_WhenActivationTriggers_ThenActivationIsQueuedBehindIt()
+    public async Task GivenJobIsActive_WhenActivationTriggers_ThenTheActiveJobIsReported()
     {
         var fixture = new Fixture();
         fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())

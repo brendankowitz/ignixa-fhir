@@ -307,7 +307,7 @@ public class CompleteReindexActivityTests
     [Fact]
     public async Task GivenJobOwnsTargetMissingFromInput_WhenCompletionRuns_ThenJobFailsAndOwnedTargetReturnsToPending()
     {
-        const string canonical = "http://example.org/SearchParameter/patient-added-during-debounce";
+        const string canonical = "http://example.org/SearchParameter/patient-added-after-planning";
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.Mode.Returns(TenantMode.Isolated);
         tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([Tenant(1)]);
