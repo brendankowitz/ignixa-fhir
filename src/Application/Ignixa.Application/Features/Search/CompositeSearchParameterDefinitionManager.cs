@@ -11,6 +11,7 @@ using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Models;
+using Ignixa.Serialization;
 using Microsoft.Extensions.Logging;
 
 using SearchParamInfo = Ignixa.Search.Models.SearchParameterInfo;
@@ -27,6 +28,9 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     private readonly ISearchParameterDefinitionManager _baseManager;
     private readonly IConformanceStateView _conformanceState;
     private readonly string? _fhirVersion;
+
+    // The version this manager projects for; null (tests, pre-tenant callers) lists every definition.
+    private readonly FhirVersion? _version;
     private readonly ILogger<CompositeSearchParameterDefinitionManager> _logger;
     private readonly SearchParameterResolutionOptions _options;
 
@@ -49,6 +53,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _baseManager = baseManager ?? throw new ArgumentNullException(nameof(baseManager));
         _conformanceState = conformanceState ?? throw new ArgumentNullException(nameof(conformanceState));
         _fhirVersion = fhirVersion;
+        _version = fhirVersion is null ? null : FhirSpecificationExtensions.FromVersionString(fhirVersion);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _schemaProvider = schemaProvider;
@@ -411,7 +416,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         var active = _conformanceState.IsInitialized
             ? _conformanceState.FindExtractedByCanonical(definitionUri.ToString())
             : null;
-        if (active is not null && IsExtracted(active.Status))
+        if (active is not null && IsListed(active))
         {
             value = ConvertToSearchParameterInfo(active);
             _packageSearchParameterCache.TryAdd(definitionUri, value);
@@ -454,8 +459,11 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     // One manager serves extraction and search; the SearchParameterInfo flags carry the difference.
     // Pending/Reindexing are extracted but not searchable, Disabling is extracted but hidden by the
     // transition, and Staged activations are never projection owners, so they are not listed here.
-    private static bool IsListed(ActiveSearchParameter parameter) =>
-        IsExtracted(parameter.Status);
+    // The projection is shared by every FHIR version, so a definition activated for another version is
+    // not this version's: its tenants keep their own base definition for the code.
+    private bool IsListed(ActiveSearchParameter parameter) =>
+        IsExtracted(parameter.Status) &&
+        (_version is not { } version || parameter.AppliesTo(version));
 
     /// <inheritdoc/>
     public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap)

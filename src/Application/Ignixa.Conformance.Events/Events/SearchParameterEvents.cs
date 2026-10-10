@@ -3,6 +3,11 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Conformance.Events.Events;
 
+/// <param name="FhirVersion">
+/// The FHIR version ("4.0", "5.0", ...) whose tenants this definition applies to. Null on events appended
+/// before versions were recorded; such a definition applies to every version, which is how it was always
+/// projected.
+/// </param>
 public record SearchParameterActivated(
     string Canonical,
     string Code,
@@ -15,7 +20,8 @@ public record SearchParameterActivated(
     IReadOnlyList<string>? TargetResourceTypes,
     IReadOnlyList<SearchParameterComponentData>? Components,
     string? Name,
-    string? Description);
+    string? Description,
+    string? FhirVersion = null);
 
 public record SearchParameterComponentData(
     string DefinitionUrl,

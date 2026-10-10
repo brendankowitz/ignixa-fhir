@@ -238,6 +238,43 @@ public class PackageActivationPipelineTests
     }
 
     [Fact]
+    public async Task GivenR4PackageOwnsACode_WhenAnR5PackageRedefinesIt_ThenActivationIsRejectedAsAVersionConflict()
+    {
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call => [CreateOverrideResource(
+                packageId: call.ArgAt<string>(0),
+                canonical: $"http://example.org/SearchParameter/{call.ArgAt<string>(0)}",
+                includeDerivedFrom: false,
+                fhirVersion: call.ArgAt<string>(0) == "test.r5" ? "5.0.0" : "4.0.1")]);
+        var persistedEvents = new List<SourceEvent>();
+        using var state = new ConformanceState();
+        var pipeline = CreatePipeline(
+            packageRepository,
+            CreateEventStore(persistedEvents),
+            state,
+            Substitute.For<ISearchParameterTransitionScheduler>(),
+            TestConformanceRefresher.Tenants());
+        (await pipeline.ActivateAsync("test.r4", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
+        var eventCount = persistedEvents.Count;
+
+        var result = await pipeline.ActivateAsync("test.r5", "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeFalse();
+        var issue = result.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("SP_FHIR_VERSION_CONFLICT");
+        issue.Message.ShouldContain("FHIR 4.0");
+        issue.Message.ShouldContain("FHIR 5.0");
+        persistedEvents.Count.ShouldBe(eventCount);
+        persistedEvents.Select(row => row.Data)
+            .OfType<SearchParameterActivated>()
+            .ShouldAllBe(activation => activation.FhirVersion == "4.0");
+    }
+
+    [Fact]
     public async Task GivenUnknownFhirVersionWithSearchParameters_WhenActivated_ThenItIsRejected()
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();

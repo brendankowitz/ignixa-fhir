@@ -141,6 +141,12 @@ public sealed class PackageActivationPlanner(
                 $"Package {packageKey} declares SearchParameters for unknown FHIR version '{fhirVersionString ?? "(missing)"}'."));
         }
 
+        // Every definition this package activates, the base owners it materialises included, belongs to the
+        // package's FHIR version: tenants on other versions keep their own base definitions.
+        var activationVersion = resources.SearchParameters.Count > 0
+            ? FhirSpecificationExtensions.FromVersionString(fhirVersionString!).ToVersionString()
+            : null;
+
         // Emit SearchParameter events (non-composite first, then composite)
         foreach (var sp in resources.SearchParameters.OrderBy(sp => sp.Type == SearchParamType.Composite ? 1 : 0))
         {
@@ -224,7 +230,8 @@ public sealed class PackageActivationPlanner(
                                     component.DefinitionUrl?.ToString() ?? string.Empty,
                                     component.Expression)).ToList(),
                             baseParameter.Name,
-                            baseParameter.Description));
+                            baseParameter.Description,
+                            activationVersion));
                     if (staged.ApplyProposedEvent(baseActivation) is { } baseIssue)
                     {
                         return (events, baseIssue);
@@ -238,6 +245,17 @@ public sealed class PackageActivationPlanner(
 
                 if (existing is not null)
                 {
+                    // One (resourceType, code) has one owner across versions, so a definition for another
+                    // version cannot take the code over without silently removing it from the owner's tenants.
+                    if (!existing.SharesVersionWith(activationVersion))
+                    {
+                        return (events, new ValidationIssue(
+                            "SP_FHIR_VERSION_CONFLICT",
+                            $"SearchParameter '{sp.Code}' on {resourceType} is owned by {existing.Canonical} from {existing.SourcePackage} for FHIR {existing.FhirVersion}; a package for FHIR {activationVersion} cannot replace it",
+                            resourceType,
+                            sp.Code));
+                    }
+
                     var latest = staged.GetLatestNonDisabledActivation(resourceType, sp.Code);
                     if (latest is not null && !IsValidOverride(sp, latest))
                     {
@@ -282,7 +300,8 @@ public sealed class PackageActivationPlanner(
                         sp.TargetResourceTypes,
                         componentData,
                         sp.Name,
-                        sp.Description));
+                        sp.Description,
+                        activationVersion));
                 if (staged.ApplyProposedEvent(proposed) is { } issue)
                 {
                     return (events, issue);
