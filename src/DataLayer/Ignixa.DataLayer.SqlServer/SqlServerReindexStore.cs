@@ -442,25 +442,16 @@ public sealed class SqlServerReindexStore(
                 cancellationToken,
                 SqlCommandIdempotency.Idempotent);
 
+            // Only resources the procedure actually updated; a conflicted (superseded) resource keeps its rows.
             var updatedResourceSurrogateIdSet = updatedResourceSurrogateIds.ToHashSet();
-            var filterExtensionUpdates = updatedResourceSurrogateIds.Count != 0 ||
-                await SupportsUpdatedResourceResultSetAsync(cancellationToken);
-            if (!filterExtensionUpdates)
-            {
-                _logger.LogWarning(
-                    "UpdateResourceSearchParams ran without returning updated surrogate ids because the tenant schema predates version 8. Applying extension updates to every reindex input (TenantId={TenantId}, ResourceCount={ResourceCount}).",
-                    _tenantId,
-                    resources.Count);
-            }
-
             var conflicts = Convert.ToInt32(failedResources.Value, CultureInfo.InvariantCulture);
             var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
                     resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger)
-                .Where(extension => !filterExtensionUpdates || updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
+                .Where(extension => updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
                 .ToArray();
             var uriExtensions = _uriRowGenerator.ExtractExtensionData(
                     resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger)
-                .Where(extension => !filterExtensionUpdates || updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
+                .Where(extension => updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
                 .ToArray();
             if (tokenExtensions.Length > 0 || uriExtensions.Length > 0)
             {
@@ -486,29 +477,6 @@ public sealed class SqlServerReindexStore(
         {
             throw new TimeoutException("The SQL reindex write timed out.", ex);
         }
-    }
-
-    private async Task<bool> SupportsUpdatedResourceResultSetAsync(CancellationToken cancellationToken)
-    {
-        using var command = new SqlCommand(
-            """
-            SELECT CAST(CASE WHEN EXISTS (
-                SELECT 1
-                FROM sys.tables
-                WHERE schema_id = SCHEMA_ID('dbo')
-                  AND name = 'SchemaVersion')
-              AND EXISTS (
-                SELECT 1
-                FROM dbo.SchemaVersion
-                WHERE Version >= 8)
-              THEN 1 ELSE 0 END AS bit);
-            """);
-        var values = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId,
-            command,
-            static reader => reader.GetBoolean(0),
-            cancellationToken);
-        return values.Single();
     }
 
     // Resolved through the same catalog cache extraction and search use, so the answer is the one they see.

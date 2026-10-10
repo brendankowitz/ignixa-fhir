@@ -33,46 +33,6 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         _store = _database.ReindexStore;
     }
 
-    private sealed class LegacyUpdateResourceSearchParamsSqlExecutionService(ISqlExecutionService inner) : ISqlExecutionService
-    {
-        private readonly ISqlExecutionService _inner = inner;
-
-        public Task<int> ExecuteNonQueryAsync(
-            int tenantId,
-            SqlCommand command,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent) =>
-            _inner.ExecuteNonQueryAsync(tenantId, command, cancellationToken, idempotency);
-
-        public async Task<IReadOnlyList<T>> ExecuteReaderAsync<T>(
-            int tenantId,
-            SqlCommand command,
-            Func<SqlDataReader, T> readRow,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
-        {
-            if (command.CommandText.Contains("EXEC dbo.UpdateResourceSearchParams", StringComparison.Ordinal))
-            {
-                await _inner.ExecuteNonQueryAsync(tenantId, command, cancellationToken, idempotency);
-                return [];
-            }
-
-            return await _inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken, idempotency);
-        }
-
-        public Task<T> ExecuteInTransactionAsync<T>(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task<T>> work,
-            CancellationToken cancellationToken) =>
-            _inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
-
-        public Task ExecuteInTransactionAsync(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task> work,
-            CancellationToken cancellationToken) =>
-            _inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
-    }
-
     private sealed class BarrierCommandCaptureSqlExecutionService(ISqlExecutionService inner) : ISqlExecutionService
     {
         private readonly ISqlExecutionService _inner = inner;
@@ -610,50 +570,6 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenAPreVersionEightSchema_WhenReindexDoesNotReturnUpdatedSurrogates_ThenExtensionsAreUpdatedWithAWarning()
-    {
-        await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
-        var searchIndices = BuildSearchIndicesWithExtensions("reindex-target");
-        var indexed = Patient("legacy-extension-result") with { SearchIndices = searchIndices };
-        await _database.Repository.CreateOrUpdateAsync(indexed);
-
-        var (_, cutoff) = await _store.RaiseBarrierAsync(65, CancellationToken.None);
-        var resource = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None))
-            .Single(reindexResource => reindexResource.Resource.ResourceId == indexed.ResourceId);
-        var reindexResource = resource with { Resource = resource.Resource with { SearchIndices = searchIndices } };
-        await _database.ExecuteNonQueryAsync(
-            $"""
-             UPDATE dbo.TokenSearchParam
-             SET IdentifierTypeCode = NULL
-             WHERE ResourceSurrogateId = {reindexResource.ResourceSurrogateId};
-
-             UPDATE dbo.UriSearchParam
-             SET Version = NULL, Fragment = NULL
-             WHERE ResourceSurrogateId = {reindexResource.ResourceSurrogateId};
-
-             DELETE FROM dbo.SchemaVersion;
-             INSERT dbo.SchemaVersion (Version) VALUES (7);
-             """);
-
-        var storeLogger = new RecordingLogger<SqlServerReindexStore>();
-        var commands = new LegacyUpdateResourceSearchParamsSqlExecutionService(_database.SqlExecutionService);
-        var (store, cache) = await CreateReindexStoreAsync(commands, storeLogger);
-        using (cache)
-        {
-            (await store.UpdateSearchIndicesAsync([reindexResource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
-        }
-
-        storeLogger.Messages(LogLevel.Warning).ShouldContain(message =>
-            message.Contains("without returning updated surrogate ids", StringComparison.Ordinal));
-        (await _database.ExecuteScalarAsync<string>(
-            $"SELECT TOP (1) IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {reindexResource.ResourceSurrogateId}"))
-            .ShouldBe("MR");
-        (await _database.ExecuteScalarAsync<string>(
-            $"SELECT TOP (1) Version FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {reindexResource.ResourceSurrogateId}"))
-            .ShouldBe("1.0");
-    }
-
-    [Fact]
     public async Task GivenACurrentResource_WhenIndexOnlyUpdateIsRepeated_ThenVersionRawResourceTransactionAndHistoryStayUnchanged()
     {
         await _database.Repository.CreateOrUpdateAsync(Patient("idempotent"));
@@ -841,27 +757,6 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             cache,
             extensionUpdater,
             NullLogger.Instance), cache);
-    }
-
-    private async Task<(IReindexStore Store, SqlServerSearchIndexReferenceDataCache Cache)> CreateReindexStoreAsync(
-        ISqlExecutionService sqlExecutionService,
-        ILogger storeLogger)
-    {
-        var cache = new SqlServerSearchIndexReferenceDataCache(
-            sqlExecutionService, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
-        await cache.PreloadResourceTypesAsync(CancellationToken.None);
-        var compressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
-        var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
-            sqlExecutionService,
-            _database.TenantId,
-            NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
-        return (new SqlServerReindexStore(
-            sqlExecutionService,
-            _database.TenantId,
-            compressor,
-            cache,
-            extensionUpdater,
-            storeLogger), cache);
     }
 
     private async Task<(IReindexStore Store, BarrierCommandCaptureSqlExecutionService Commands, SqlServerSearchIndexReferenceDataCache Cache)> CreateCommandCapturingReindexStoreAsync()
