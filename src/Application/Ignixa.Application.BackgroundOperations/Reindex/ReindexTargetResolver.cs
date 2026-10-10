@@ -105,7 +105,8 @@ public sealed class ReindexTargetResolver(
                         parameter.ResourceType,
                         parameter.SearchParamId,
                         parameter.ActivationEventId,
-                        affectedTypes);
+                        affectedTypes,
+                        parameter.OverridesCanonical);
             })
             .ToArray();
 

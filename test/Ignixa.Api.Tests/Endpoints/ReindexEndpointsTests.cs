@@ -362,7 +362,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
         await lifecycle.StartAsync("round-trip", [target], CancellationToken.None);
         var store = Substitute.For<IReindexStore>();
-        store.HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+        store.HasSearchParameterAsync(target.StorageCanonical, Arg.Any<CancellationToken>())
             .Returns(true);
         var storeFactory = Substitute.For<IReindexStoreFactory>();
         storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())

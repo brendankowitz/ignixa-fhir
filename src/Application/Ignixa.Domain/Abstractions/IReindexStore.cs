@@ -40,7 +40,12 @@ public interface IReindexStore
         IReadOnlyList<ReindexResource> resources,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Reports whether the tenant's search-parameter catalog has a row for <paramref name="storageCanonical"/>,
+    /// the URI index rows are stored under (<see cref="ReindexParameterDefinition.StorageCanonical"/>). Catalog
+    /// ids are allocated per tenant by URI and are unrelated to the conformance search-parameter id.
+    /// </summary>
     Task<bool> HasSearchParameterAsync(
-        int searchParamId,
+        string storageCanonical,
         CancellationToken cancellationToken);
 }

@@ -511,20 +511,13 @@ public sealed class SqlServerReindexStore(
         return values.Single();
     }
 
+    // Resolved through the same catalog cache extraction and search use, so the answer is the one they see.
     public async Task<bool> HasSearchParameterAsync(
-        int searchParamId,
+        string storageCanonical,
         CancellationToken cancellationToken)
     {
-        using var command = new SqlCommand(
-            "SELECT SearchParamId FROM dbo.SearchParam WHERE SearchParamId = @SearchParamId");
-        command.Parameters.Add("@SearchParamId", SqlDbType.SmallInt).Value =
-            checked((short)searchParamId);
-        var rows = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId,
-            command,
-            static reader => reader.GetInt16(0),
-            cancellationToken);
-        return rows.Count != 0;
+        ArgumentException.ThrowIfNullOrEmpty(storageCanonical);
+        return await _referenceDataCache.GetSearchParamIdAsync(storageCanonical, cancellationToken) is not null;
     }
 
     private async Task<IList<SqlDataRecord>?> ReadResourceWriteClaimsAsync(

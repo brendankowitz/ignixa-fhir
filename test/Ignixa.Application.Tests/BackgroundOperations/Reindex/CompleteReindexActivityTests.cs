@@ -40,7 +40,7 @@ public class CompleteReindexActivityTests
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         using var jobLock = new TestJobLock();
-        var activity = CreateActivity(StoreFactoryWithCatalogId(17), lifecycle, proxy, jobLock, tenants);
+        var activity = CreateActivity(StoreFactoryWithCatalog(canonical), lifecycle, proxy, jobLock, tenants);
         var input = SingleTenantInput(target);
         var context = new TaskContext(new OrchestrationInstance { InstanceId = "job" });
 
@@ -75,7 +75,7 @@ public class CompleteReindexActivityTests
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         using var jobLock = new TestJobLock();
-        var activity = CreateActivity(StoreFactoryWithCatalogId(17), lifecycle, proxy, jobLock, tenants);
+        var activity = CreateActivity(StoreFactoryWithCatalog(canonical), lifecycle, proxy, jobLock, tenants);
         var input = JsonSerializer.Serialize(new[]
         {
             new CompleteReindexInput(
@@ -116,7 +116,7 @@ public class CompleteReindexActivityTests
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
-            StoreFactoryWithCatalogId(17),
+            StoreFactoryWithCatalog(canonical),
             lifecycle,
             jobs,
             jobLock,
@@ -168,7 +168,7 @@ public class CompleteReindexActivityTests
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IReindexStore>();
-        repository.HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+        repository.HasSearchParameterAsync(canonical, Arg.Any<CancellationToken>())
             .Returns(true);
         var storeFactory = Substitute.For<IReindexStoreFactory>();
         storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
@@ -223,7 +223,7 @@ public class CompleteReindexActivityTests
         };
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
-            StoreFactoryWithCatalogId(17),
+            StoreFactoryWithCatalog(canonical),
             lifecycle,
             jobs,
             jobLock,
@@ -270,7 +270,7 @@ public class CompleteReindexActivityTests
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IReindexStore>();
-        repository.HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+        repository.HasSearchParameterAsync(canonical, Arg.Any<CancellationToken>())
             .Returns(true);
         var storeFactory = Substitute.For<IReindexStoreFactory>();
         storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
@@ -329,7 +329,7 @@ public class CompleteReindexActivityTests
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IReindexStore>();
-        repository.HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+        repository.HasSearchParameterAsync(canonical, Arg.Any<CancellationToken>())
             .Returns(true);
         var storeFactory = Substitute.For<IReindexStoreFactory>();
         storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
@@ -363,9 +363,10 @@ public class CompleteReindexActivityTests
     }
 
     [Fact]
-    public async Task GivenOverrideUsesExistingPhysicalId_WhenReindexCompletes_ThenOverrideIsEnabled()
+    public async Task GivenAnOverrideStoredUnderItsBaseCanonical_WhenReindexCompletes_ThenTheBaseCatalogRowIsCheckedAndTheOverrideIsEnabled()
     {
         const string overrideCanonical = "http://example.org/SearchParameter/patient-override";
+        const string baseCanonical = "http://hl7.org/fhir/SearchParameter/Resource-id";
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.Mode.Returns(TenantMode.Isolated);
         tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([Tenant(1)]);
@@ -391,11 +392,12 @@ public class CompleteReindexActivityTests
             "Patient",
             17,
             1,
-            ["Patient"]);
+            ["Patient"],
+            OverridesCanonical: baseCanonical);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         var repository = Substitute.For<IReindexStore>();
         repository.HasSearchParameterAsync(
-                17,
+                baseCanonical,
                 Arg.Any<CancellationToken>())
             .Returns(true);
         var storeFactory = Substitute.For<IReindexStoreFactory>();
@@ -431,6 +433,29 @@ public class CompleteReindexActivityTests
             Ignixa.Conformance.Events.Models.SearchParameterStatus.Enabled);
     }
 
+    [Fact]
+    public async Task GivenTheTenantCatalogHasNoRowForTheStorageCanonical_WhenCompletionRuns_ThenTheJobFailsAndTheParameterIsNotEnabled()
+    {
+        const string canonical = "http://example.org/SearchParameter/patient-uncatalogued";
+        var (jobs, tenants) = await CreateRunningJobAsync([Tenant(1)]);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(canonical));
+        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
+        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
+        await lifecycle.StartAsync("job", [target], CancellationToken.None);
+        using var jobLock = new TestJobLock();
+        var activity = CreateActivity(StoreFactoryWithCatalog(), lifecycle, jobs, jobLock, tenants);
+
+        await activity.RunAsync(new TaskContext(new OrchestrationInstance { InstanceId = "job" }), SingleTenantInput(target));
+
+        var job = await jobs.GetAsync("job", 1, CancellationToken.None);
+        job!.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain($"Tenant 1: the search-parameter catalog has no row for {canonical}");
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
+        parameter.ReindexJobId.ShouldBeNull();
+    }
+
     private static async Task<(InMemoryBackgroundJobRepository<ReindexJobDefinition> Jobs, ITenantConfigurationStore Tenants)>
         CreateRunningJobAsync(IReadOnlyList<TenantConfiguration> activeTenants)
     {
@@ -452,10 +477,10 @@ public class CompleteReindexActivityTests
         return (jobs, tenants);
     }
 
-    private static IReindexStoreFactory StoreFactoryWithCatalogId(int searchParamId)
+    private static IReindexStoreFactory StoreFactoryWithCatalog(params string[] storageCanonicals)
     {
         var repository = Substitute.For<IReindexStore>();
-        repository.HasSearchParameterAsync(searchParamId, Arg.Any<CancellationToken>())
+        repository.HasSearchParameterAsync(Arg.Is<string>(uri => storageCanonicals.Contains(uri)), Arg.Any<CancellationToken>())
             .Returns(true);
         var storeFactory = Substitute.For<IReindexStoreFactory>();
         storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(repository);

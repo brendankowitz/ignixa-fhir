@@ -551,7 +551,11 @@ whose definitions stay behind for `StaleJobTimeout` fails.
 
 A targeted parameter **completes** when its affected types are reindexed in every tenant with zero failed
 resources. Completion considers every parameter owned by the job. An owned target that does not match a planned
-canonical, resource type, code, and activation event id fails back to `Pending`. `CompleteReindexActivity` then appends
+canonical, resource type, code, and activation event id fails back to `Pending`. A target also fails in a tenant
+whose search-parameter catalog (`dbo.SearchParam`) has no row for its storage canonical (`OverridesCanonical ??
+Canonical`, the URI extraction stores its rows under): without that row every index row for it was dropped. The
+catalog's ids are per-tenant `IDENTITY` values allocated by URI and are never compared with the conformance
+`SearchParamId`. `CompleteReindexActivity` then appends
 `SearchParameterReindexCompleted(…, ActivationEventId, JobId, ResourcesIndexed, Duration)`, which §4.3 applies or
 ignores. Otherwise the job ends `Failed` with a guarded `SearchParameterReindexFailed`. Either way the next
 periodic tick applies the start rule (§7).

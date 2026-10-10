@@ -197,24 +197,31 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenSearchParameterCatalog_WhenPhysicalIdIsChecked_ThenPresenceIsReported()
+    public async Task GivenACatalogProvisionedByUri_WhenAParameterIsChecked_ThenItIsFoundByItsStorageUriNotItsConformanceId()
     {
-        const string provisionedCanonical = "http://example.org/SearchParameter/provisioned";
-        await _database.ExecuteNonQueryAsync(
-            $"""
-             INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported)
-             VALUES ('{provisionedCanonical}', 'Supported', SYSUTCDATETIME(), 0);
-             """);
+        const string provisioned = "http://example.org/SearchParameter/provisioned";
+        const string neverProvisioned = "http://example.org/SearchParameter/never-provisioned";
+        using var catalog = new SqlServerSearchIndexReferenceDataCache(
+            _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
+        await catalog.SyncSearchParametersToDatabaseAsync([provisioned], null, CancellationToken.None);
+        var physicalId = (await catalog.GetSearchParamIdAsync(provisioned, CancellationToken.None))!.Value;
 
-        var searchParamId = await _database.ExecuteScalarAsync<short>(
-            $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{provisionedCanonical}'");
-        (await _store.HasSearchParameterAsync(
-            searchParamId,
-            CancellationToken.None)).ShouldBeTrue();
-        (await _store.HasSearchParameterAsync(
-            searchParamId + 1,
-            CancellationToken.None)).ShouldBeFalse();
+        // Conformance allocates its own logical ids; one can equal another URI's IDENTITY value.
+        var unprovisionedTarget = Target(neverProvisioned, conformanceId: physicalId);
+        var provisionedTarget = Target(provisioned, conformanceId: short.MaxValue + 1);
+        var overridingTarget = Target("http://example.org/SearchParameter/override", conformanceId: 40_000) with
+        {
+            OverridesCanonical = provisioned,
+        };
+
+        (await _store.HasSearchParameterAsync(unprovisionedTarget.StorageCanonical, CancellationToken.None)).ShouldBeFalse(
+            $"{neverProvisioned} has no catalog row although its conformance id equals {provisioned}'s physical id.");
+        (await _store.HasSearchParameterAsync(provisionedTarget.StorageCanonical, CancellationToken.None)).ShouldBeTrue();
+        (await _store.HasSearchParameterAsync(overridingTarget.StorageCanonical, CancellationToken.None)).ShouldBeTrue();
     }
+
+    private static ReindexParameterDefinition Target(string canonical, int conformanceId) =>
+        new(canonical, "code", "Patient", conformanceId, ActivationEventId: 1, ["Patient"]);
 
     [Fact]
     public async Task GivenLegacyCurrentResourcesWithoutTransactions_WhenBarrierIsRaised_ThenTheSurrogateCutoffIncludesThem()

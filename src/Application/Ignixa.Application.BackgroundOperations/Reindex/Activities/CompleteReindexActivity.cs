@@ -159,10 +159,10 @@ public sealed class CompleteReindexActivity(
         }
 
         var store = await reindexStoreFactory.GetReindexStoreAsync(tenant.TenantId, CancellationToken.None);
-        if (!await store.HasSearchParameterAsync(target.SearchParamId, CancellationToken.None))
+        if (!await store.HasSearchParameterAsync(target.StorageCanonical, CancellationToken.None))
         {
             errors.Add(
-                $"Tenant {tenant.TenantId}: no physical dbo.SearchParam catalog id {target.SearchParamId} exists for {target.Canonical}.");
+                $"Tenant {tenant.TenantId}: the search-parameter catalog has no row for {target.StorageCanonical}, so {target.Canonical} was not indexed.");
         }
 
         return errors;
