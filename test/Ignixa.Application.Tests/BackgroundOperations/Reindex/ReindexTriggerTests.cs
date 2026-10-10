@@ -1,7 +1,6 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Reindex;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -38,9 +37,7 @@ public sealed class ReindexTriggerTests
     [Fact]
     public async Task GivenReindexIsDisabled_WhenActivationTriggers_ThenPendingStateIsExplicit()
     {
-        var fixture = new Fixture();
-        fixture.Availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ReindexAvailability.Disabled));
+        var fixture = new Fixture(enabled: false);
 
         var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
 
@@ -55,9 +52,11 @@ public sealed class ReindexTriggerTests
     [Fact]
     public async Task GivenProviderIsUnavailable_WhenActivationTriggers_ThenPendingStateIsExplicit()
     {
-        var fixture = new Fixture();
-        fixture.Availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new ReindexAvailability(ReindexAvailabilityStatus.Unsupported, 3)));
+        var fixture = new Fixture(tenants:
+        [
+            ReindexTestHelper.Tenant(1, "SqlServer"),
+            ReindexTestHelper.Tenant(3, "FileSystem")
+        ]);
 
         var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
 
@@ -286,12 +285,16 @@ public sealed class ReindexTriggerTests
 
     private sealed class Fixture
     {
-        public Fixture(bool autoStart = true, bool withPendingParameter = true)
+        public Fixture(
+            bool autoStart = true,
+            bool withPendingParameter = true,
+            bool enabled = true,
+            TenantConfiguration[]? tenants = null)
         {
-            var tenants = Substitute.For<ITenantConfigurationStore>();
-            tenants.Mode.Returns(TenantMode.Isolated);
+            var jobTenants = Substitute.For<ITenantConfigurationStore>();
+            jobTenants.Mode.Returns(TenantMode.Isolated);
             Repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
-                tenants,
+                jobTenants,
                 NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
             if (withPendingParameter)
             {
@@ -305,8 +308,6 @@ public sealed class ReindexTriggerTests
                     DateTimeOffset.UtcNow));
             }
 
-            Availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
-                .Returns(Task.FromResult(ReindexAvailability.Available));
             Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
                 .Returns(new NoReindexWorkResult("No resources need reindexing."));
             var eventStore = Substitute.For<ISourceEventStore>();
@@ -314,6 +315,7 @@ public sealed class ReindexTriggerTests
                 .Returns(AsyncEnumerable.Empty<SourceEvent>());
             var options = Options.Create(new ReindexOptions
             {
+                Enabled = enabled,
                 AutoStart = autoStart,
                 OrphanGrace = TimeSpan.FromMinutes(2)
             });
@@ -329,14 +331,13 @@ public sealed class ReindexTriggerTests
                     options,
                     new FixedTimeProvider(Now),
                     NullLogger<ReindexJobReconciler>.Instance),
-                Availability,
+                ReindexTestHelper.CreateRepositoryFactory(tenants ?? []),
                 options,
                 NullLogger<ReindexTrigger>.Instance);
         }
 
         public ReindexTrigger Trigger { get; }
         public IMediator Mediator { get; } = Substitute.For<IMediator>();
-        public IReindexAvailability Availability { get; } = Substitute.For<IReindexAvailability>();
         public IOrchestrationServiceClient Runtime { get; } = Substitute.For<IOrchestrationServiceClient>();
         public InMemoryBackgroundJobRepository<ReindexJobDefinition> Repository { get; }
         public ConformanceState State { get; } = new();

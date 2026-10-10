@@ -2,7 +2,6 @@ using DurableTask.Core;
 using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Reindex;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -168,9 +167,6 @@ public class ConformanceStateSyncServiceTests
         IBackgroundJobRepository<ReindexJobDefinition>? jobs = null)
     {
         jobs ??= Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        var availability = Substitute.For<IReindexAvailability>();
-        availability.GetAvailabilityAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ReindexAvailability.Available));
         var options = Options.Create(new ReindexOptions { AutoStart = autoStart });
         return new ReindexTrigger(
             mediator,
@@ -184,7 +180,7 @@ public class ConformanceStateSyncServiceTests
                 options,
                 TimeProvider.System,
                 NullLogger<ReindexJobReconciler>.Instance),
-            availability,
+            ReindexTestHelper.CreateRepositoryFactory(),
             options,
             NullLogger<ReindexTrigger>.Instance);
     }

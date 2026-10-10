@@ -1,6 +1,9 @@
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using NSubstitute;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
@@ -32,4 +35,30 @@ internal static class ReindexTestHelper
             ["Patient"],
             [],
             ReindexJobParameters.Create());
+
+    /// <summary>
+    /// A repository factory whose tenant store lists <paramref name="tenants"/>; by default one SQL Server
+    /// tenant, which makes reindex available.
+    /// </summary>
+    public static CompositeRepositoryFactory CreateRepositoryFactory(params TenantConfiguration[] tenants) =>
+        new(
+            TenantStore(tenants.Length == 0 ? [Tenant(1, "SqlServer")] : tenants),
+            Substitute.For<IFhirRepositoryFactory>(),
+            Substitute.For<IFhirRepositoryFactory>(),
+            Substitute.For<IReindexStoreFactory>());
+
+    public static TenantConfiguration Tenant(int tenantId, string storageType) => new()
+    {
+        TenantId = tenantId,
+        DisplayName = $"Tenant {tenantId}",
+        FhirVersion = "4.0",
+        Storage = new TenantStorageConfiguration { Type = storageType }
+    };
+
+    private static ITenantConfigurationStore TenantStore(TenantConfiguration[] tenants)
+    {
+        var store = Substitute.For<ITenantConfigurationStore>();
+        store.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns(tenants);
+        return store;
+    }
 }

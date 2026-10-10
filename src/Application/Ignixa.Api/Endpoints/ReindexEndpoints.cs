@@ -6,11 +6,13 @@ using Ignixa.Api.Http;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Reindex;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using FhirInteraction = Ignixa.Application.Features.Authorization.Models.FhirInteraction;
 
 namespace Ignixa.Api.Endpoints;
@@ -39,14 +41,16 @@ public static class ReindexEndpoints
             .WithName("GetReindexOperationDefinition");
 
         var tenantReindexEndpoints = tenantEndpoints.MapGroup(string.Empty)
-            .WithMetadata(reindexAuthorization);
+            .WithMetadata(reindexAuthorization)
+            .AddEndpointFilter(RequireReindexAvailableAsync);
         tenantReindexEndpoints.MapPost("/$reindex", CreateAsync).WithName("CreateReindexForTenant");
         tenantReindexEndpoints.MapGet("/$reindex", ListAsync).WithName("ListReindexForTenant");
         tenantReindexEndpoints.MapGet("/$reindex/{jobId}", GetAsync).WithName("GetReindexForTenant");
         tenantReindexEndpoints.MapDelete("/$reindex/{jobId}", CancelAsync).WithName("CancelReindexForTenant");
 
         var systemReindexEndpoints = systemEndpoints.MapGroup(string.Empty)
-            .WithMetadata(reindexAuthorization);
+            .WithMetadata(reindexAuthorization)
+            .AddEndpointFilter(RequireReindexAvailableAsync);
         systemReindexEndpoints.MapPost("/$reindex", CreateAsync).WithName("CreateReindex");
         systemReindexEndpoints.MapGet("/$reindex", ListAsync).WithName("ListReindex");
         systemReindexEndpoints.MapGet("/$reindex/{jobId}", GetAsync).WithName("GetReindex");
@@ -59,15 +63,11 @@ public static class ReindexEndpoints
         HttpContext context,
         int? tenantId,
         IMediator mediator,
-        IReindexAvailability availability,
         CancellationToken cancellationToken) =>
-        ExecuteWhenAvailableAsync(
-            availability,
-            () => ResolveTenantAsync(
-                context,
-                tenantId,
-                _ => CreateJobAsync(context, mediator, cancellationToken)),
-            cancellationToken);
+        ResolveTenantAsync(
+            context,
+            tenantId,
+            _ => CreateJobAsync(context, mediator, cancellationToken));
 
     private static async Task<IResult> CreateJobAsync(
         HttpContext context,
@@ -134,15 +134,11 @@ public static class ReindexEndpoints
         HttpContext context,
         int? tenantId,
         IMediator mediator,
-        IReindexAvailability availability,
         CancellationToken cancellationToken) =>
-        ExecuteWhenAvailableAsync(
-            availability,
-            () => ResolveTenantAsync(
-                context,
-                tenantId,
-                _ => ListJobsAsync(context, mediator, cancellationToken)),
-            cancellationToken);
+        ResolveTenantAsync(
+            context,
+            tenantId,
+            _ => ListJobsAsync(context, mediator, cancellationToken));
 
     private static async Task<IResult> ListJobsAsync(
         HttpContext context,
@@ -165,15 +161,11 @@ public static class ReindexEndpoints
         int? tenantId,
         string jobId,
         IMediator mediator,
-        IReindexAvailability availability,
         CancellationToken cancellationToken) =>
-        ExecuteWhenAvailableAsync(
-            availability,
-            () => ResolveTenantAsync(
-                context,
-                tenantId,
-                _ => GetJobAsync(context, jobId, mediator, cancellationToken)),
-            cancellationToken);
+        ResolveTenantAsync(
+            context,
+            tenantId,
+            _ => GetJobAsync(context, jobId, mediator, cancellationToken));
 
     private static async Task<IResult> GetJobAsync(
         HttpContext context,
@@ -193,15 +185,11 @@ public static class ReindexEndpoints
         int? tenantId,
         string jobId,
         IMediator mediator,
-        IReindexAvailability availability,
         CancellationToken cancellationToken) =>
-        ExecuteWhenAvailableAsync(
-            availability,
-            () => ResolveTenantAsync(
-                context,
-                tenantId,
-                _ => CancelJobAsync(context, jobId, mediator, cancellationToken)),
-            cancellationToken);
+        ResolveTenantAsync(
+            context,
+            tenantId,
+            _ => CancelJobAsync(context, jobId, mediator, cancellationToken));
 
     private static async Task<IResult> CancelJobAsync(
         HttpContext context,
@@ -456,19 +444,24 @@ public static class ReindexEndpoints
             }
         }.ToJsonString()));
 
-    private static async Task<IResult> ExecuteWhenAvailableAsync(
-        IReindexAvailability availability,
-        Func<Task<IResult>> next,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Answers every operational $reindex route with 404 while Reindex:Enabled is false, and with 501 while
+    /// any active tenant's storage provider cannot reindex. Evaluated per request, so a tenant added at
+    /// runtime is reflected at once.
+    /// </summary>
+    private static async ValueTask<object?> RequireReindexAvailableAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
     {
-        var result = await availability.GetAvailabilityAsync(cancellationToken);
-        return result.Status switch
+        var services = context.HttpContext.RequestServices;
+        if (!services.GetRequiredService<IOptions<ReindexOptions>>().Value.Enabled)
         {
-            ReindexAvailabilityStatus.Available => await next(),
-            ReindexAvailabilityStatus.Disabled => Disabled(),
-            ReindexAvailabilityStatus.Unsupported => Unsupported(),
-            _ => throw new InvalidOperationException($"Unknown reindex availability {result.Status}.")
-        };
+            return Disabled();
+        }
+
+        var unsupportedTenantId = await services.GetRequiredService<CompositeRepositoryFactory>()
+            .FindTenantWithoutReindexSupportAsync(context.HttpContext.RequestAborted);
+        return unsupportedTenantId is null ? await next(context) : Unsupported();
     }
 
     private static IResult Disabled() =>

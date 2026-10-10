@@ -28,7 +28,6 @@ using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Patch.Executors;
 using Ignixa.Application.Features.Patch.Validation;
 using Ignixa.Application.Features.Resource;
-using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Infrastructure.Behaviors;
@@ -109,7 +108,7 @@ public static class ApplicationServicesRegistration
         RegisterBundleServices(builder, maxRequestBodySize, maxTransactionEntries);
 
         // Package management handlers
-        RegisterPackageManagementHandlers(builder, configuration);
+        RegisterPackageManagementHandlers(builder);
 
         // Event handlers
         RegisterEventHandlers(builder, configuration);
@@ -477,9 +476,7 @@ public static class ApplicationServicesRegistration
         .SingleInstance();
     }
 
-    private static void RegisterPackageManagementHandlers(
-        ContainerBuilder builder,
-        IConfiguration configuration)
+    private static void RegisterPackageManagementHandlers(ContainerBuilder builder)
     {
         builder.RegisterType<LoadPackageHandler>()
             .As<IRequestHandler<LoadPackageCommand, LoadPackageResult>>()
@@ -497,17 +494,6 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<BulkDataExportFeature>()
             .As<IPackageFeature>()
             .SingleInstance();
-
-        builder.RegisterType<ReindexAvailabilityService>()
-            .As<IReindexAvailability>()
-            .SingleInstance();
-
-        if (configuration.GetValue<bool?>($"{ReindexOptions.SectionName}:Enabled") ?? true)
-        {
-            builder.RegisterType<ReindexFeature>()
-                .As<IPackageFeature>()
-                .SingleInstance();
-        }
 
         // Package feature ($includes operation for independent pagination of _include/_revinclude results)
         builder.RegisterType<IncludesOperationFeature>()

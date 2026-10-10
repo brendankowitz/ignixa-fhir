@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.Infrastructure;
@@ -78,14 +79,28 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexStoreF
     }
 
     /// <summary>
-    /// Whether the storage provider of <paramref name="tenantConfiguration"/> can reindex.
+    /// Finds the lowest id of an active, non-system tenant whose storage provider cannot reindex. The tenant
+    /// store is read on every call, so a tenant added at runtime is reflected at once.
     /// </summary>
-    public bool SupportsReindex(TenantConfiguration tenantConfiguration)
+    /// <returns>The tenant id, or <see langword="null"/> when every active tenant can reindex.</returns>
+    /// <exception cref="NotSupportedException">An active tenant has an unrecognized storage type.</exception>
+    public async Task<int?> FindTenantWithoutReindexSupportAsync(CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(tenantConfiguration);
+        var tenants = await _tenantStore.GetAllTenantsAsync(cancellationToken);
 
-        return ResolveProviderType(tenantConfiguration.Storage.Type) == ProviderType.SqlEntityFramework;
+        // Every active tenant is classified, so a misconfigured storage type fails even when an earlier
+        // tenant is already unsupported.
+        var unsupportedTenantIds = tenants
+            .Where(tenant => tenant.IsActive && tenant.TenantId != SystemConstants.SystemPartitionId)
+            .Where(tenant => !SupportsReindex(tenant))
+            .Select(tenant => tenant.TenantId)
+            .ToList();
+
+        return unsupportedTenantIds.Count == 0 ? null : unsupportedTenantIds.Min();
     }
+
+    private static bool SupportsReindex(TenantConfiguration tenantConfiguration) =>
+        ResolveProviderType(tenantConfiguration.Storage.Type) == ProviderType.SqlEntityFramework;
 
     private static ProviderType ResolveProviderType(string storageType)
     {

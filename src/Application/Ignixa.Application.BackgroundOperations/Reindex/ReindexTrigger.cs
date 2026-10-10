@@ -1,5 +1,5 @@
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Reindex;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -24,7 +24,7 @@ public sealed class ReindexTrigger(
     IBackgroundJobRepository<ReindexJobDefinition> jobRepository,
     ConformanceState conformanceState,
     ReindexJobReconciler reconciler,
-    IReindexAvailability availability,
+    CompositeRepositoryFactory repositoryFactory,
     IOptions<ReindexOptions> options,
     ILogger<ReindexTrigger> logger) : IReindexTrigger
 {
@@ -165,16 +165,14 @@ public sealed class ReindexTrigger(
 
     private async Task<string?> DescribeUnavailabilityAsync(CancellationToken cancellationToken)
     {
-        var result = await availability.GetAvailabilityAsync(cancellationToken);
-        return result.Status switch
+        if (!options.Value.Enabled)
         {
-            ReindexAvailabilityStatus.Available => null,
-            ReindexAvailabilityStatus.Disabled =>
-                "Reindex is unavailable because the feature is disabled; parameters remain Pending.",
-            ReindexAvailabilityStatus.Unsupported =>
-                $"Reindex is unavailable for tenant {result.UnsupportedTenantId}; parameters remain Pending.",
-            _ => throw new InvalidOperationException($"Unknown reindex availability {result.Status}.")
-        };
+            return "Reindex is unavailable because the feature is disabled; parameters remain Pending.";
+        }
+
+        return await repositoryFactory.FindTenantWithoutReindexSupportAsync(cancellationToken) is int tenantId
+            ? $"Reindex is unavailable for tenant {tenantId}; parameters remain Pending."
+            : null;
     }
 
     private ReindexTriggerResult RecordStarted(string trigger, string jobId, string reason)

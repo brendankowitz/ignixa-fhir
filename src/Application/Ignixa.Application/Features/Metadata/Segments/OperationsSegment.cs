@@ -6,9 +6,12 @@
 using System.Security.Cryptography;
 using System.Text;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Application.Features.Metadata.Segments;
 
@@ -16,6 +19,8 @@ namespace Ignixa.Application.Features.Metadata.Segments;
 /// CapabilityStatement segment that exposes operations from registered IPackageFeature implementations.
 /// Only adds operations that are declared by an IPackageFeature (conditional exposure).
 /// Dynamically loads OperationDefinitions from the PackageResource table.
+/// <c>$reindex</c> is advertised only while <c>Reindex:Enabled</c> is set and every active tenant's storage
+/// provider can reindex, evaluated on every build so a tenant added at runtime is reflected.
 /// </summary>
 public class OperationsSegment : ICapabilitySegment
 {
@@ -25,8 +30,12 @@ public class OperationsSegment : ICapabilitySegment
     /// </summary>
     public const string AllResourceTypesWildcard = "*";
 
+    private const string ReindexOperation = "reindex";
+
     private readonly IEnumerable<IPackageFeature> _features;
     private readonly IPackageResourceRepository _packageResourceRepository;
+    private readonly ReindexOptions _reindexOptions;
+    private readonly CompositeRepositoryFactory _repositoryFactory;
     private readonly ILogger<OperationsSegment> _logger;
 
     public string SegmentKey => "operations";
@@ -36,10 +45,14 @@ public class OperationsSegment : ICapabilitySegment
     public OperationsSegment(
         IEnumerable<IPackageFeature> features,
         IPackageResourceRepository packageResourceRepository,
+        IOptions<ReindexOptions> reindexOptions,
+        CompositeRepositoryFactory repositoryFactory,
         ILogger<OperationsSegment> logger)
     {
         _features = features ?? throw new ArgumentNullException(nameof(features));
         _packageResourceRepository = packageResourceRepository ?? throw new ArgumentNullException(nameof(packageResourceRepository));
+        _reindexOptions = reindexOptions?.Value ?? throw new ArgumentNullException(nameof(reindexOptions));
+        _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -69,16 +82,6 @@ public class OperationsSegment : ICapabilitySegment
                 continue;
             }
 
-            if (feature is ICapabilityContextAwarePackageFeature contextAwareFeature &&
-                !await contextAwareFeature.IsAvailableAsync(context, cancellationToken))
-            {
-                _logger.LogDebug(
-                    "Feature {PackageId} is unavailable for tenant {TenantId}",
-                    feature.PackageId,
-                    context.TenantId?.ToString() ?? "default");
-                continue;
-            }
-
             // Collect system operations
             foreach (var op in feature.SystemOperations)
             {
@@ -104,6 +107,11 @@ public class OperationsSegment : ICapabilitySegment
                         feature.PackageId);
                 }
             }
+        }
+
+        if (await IsReindexAvailableAsync(cancellationToken))
+        {
+            systemOperations.Add(ReindexOperation);
         }
 
         ExpandAllResourceTypesWildcard(statement, resourceOperations);
@@ -261,13 +269,6 @@ public class OperationsSegment : ICapabilitySegment
             featureDeclarations.Append(feature.PackageId);
             featureDeclarations.Append(':');
 
-            if (feature is ICapabilityContextAwarePackageFeature contextAwareFeature &&
-                !await contextAwareFeature.IsAvailableAsync(context, cancellationToken))
-            {
-                featureDeclarations.Append("unavailable;");
-                continue;
-            }
-
             foreach (var op in feature.SystemOperations.OrderBy(x => x, StringComparer.Ordinal))
             {
                 featureDeclarations.Append('S');
@@ -290,11 +291,22 @@ public class OperationsSegment : ICapabilitySegment
             featureDeclarations.Append(';');
         }
 
+        if (await IsReindexAvailableAsync(cancellationToken))
+        {
+            featureDeclarations.Append('S');
+            featureDeclarations.Append(ReindexOperation);
+            featureDeclarations.Append(';');
+        }
+
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(featureDeclarations.ToString()));
         var hashString = BitConverter.ToString(hash).Replace("-", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
         return hashString;
     }
+
+    private async ValueTask<bool> IsReindexAvailableAsync(CancellationToken cancellationToken) =>
+        _reindexOptions.Enabled &&
+        await _repositoryFactory.FindTenantWithoutReindexSupportAsync(cancellationToken) is null;
 
     private static string GetFhirVersionString(FhirVersion fhirVersion)
     {
