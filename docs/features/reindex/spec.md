@@ -415,8 +415,8 @@ Single-resource `$reindex` was removed from this delivery and is deferred to iss
 
 ### 6.6 Provider capability
 
-When the tenant's provider does not implement `IReindexStore`, the endpoints return `501` with an
-`OperationOutcome`. Package params stay `Pending` and can be searched only with the partial-index header.
+When any active tenant's storage provider cannot reindex (only SQL Server can), the endpoints return `501`
+with an `OperationOutcome`. Package params stay `Pending` and can be searched only with the partial-index header.
 
 ### 6.7 Authorization
 
@@ -574,7 +574,7 @@ authoritative, so a delayed activity cannot reopen a finalized job or its parame
 
 | Change | Notes |
 |---|---|
-| `IReindexStore` (Domain) with a SQL implementation | `RaiseBarrierAsync(E) → (B, S)`, `GetVisibleWatermarkAsync`, `GetSurrogateIdRangesAsync`, `ReadRangeAsync`, `UpdateSearchIndicesAsync → (updated, conflicts)` |
+| `IReindexStore` (Domain) with a SQL implementation, reached through `IReindexStoreFactory` | `RaiseBarrierAsync(E) → BarrierCutoff(B, S)`, `GetVisibleWatermarkAsync`, `GetOldestIncompleteTransactionAsync → IncompleteTransaction?`, `GetSurrogateIdRangesAsync → SurrogateIdRangePage`, `ReadRangeAsync`, `UpdateSearchIndicesAsync → SearchIndexUpdateResult(Updated, Conflicts)` |
 | `dbo.Parameters` row `Conformance.MinAcceptedDefinitionsEventId` | Stored in the existing `Bigint` column, so no schema change is needed (`Tables/Parameters.sql`). Raised monotonically with an `UPDATE … SET Bigint = @E WHERE Id = … AND (Bigint IS NULL OR Bigint < @E)`, plus an insert if the row is missing. |
 | `BeginTransactionAsync(count, definitionsEventId)` | One command batch: the existing `EXEC` plus the barrier `SELECT` (§5.3). `IFhirRepository.GetNextTransactionIdAsync` and the batch-write APIs take the handle's event id. |
 | `StaleConformanceDefinitionsException` | Handled at the write boundary (refresh, re-extract, one retry, then 503) |

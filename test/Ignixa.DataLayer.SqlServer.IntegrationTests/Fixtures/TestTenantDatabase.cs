@@ -153,7 +153,9 @@ public sealed class TestTenantDatabase
         database.Repository = new SqlServerFhirRepository(
             database.SqlExecutionService, database.TenantId, compressor, cache, mergeRepository,
             NullLogger<SqlServerFhirRepository>.Instance);
-        database.ReindexStore = database.Repository;
+        database.ReindexStore = new SqlServerReindexStore(
+            database.SqlExecutionService, database.TenantId, compressor, cache, extensionUpdater,
+            NullLogger<SqlServerReindexStore>.Instance);
         return database;
     }
 

@@ -16,7 +16,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 /// status once. A job that is already terminal is left alone.
 /// </summary>
 public sealed class CompleteReindexActivity(
-    IFhirRepositoryFactory repositoryFactory,
+    IReindexStoreFactory reindexStoreFactory,
     ReindexLifecycleEventWriter lifecycle,
     IBackgroundJobRepository<ReindexJobDefinition> repository,
     IReindexJobLock jobLock,
@@ -162,7 +162,7 @@ public sealed class CompleteReindexActivity(
             errors.Add($"Tenant {tenant.TenantId}: {tenant.ErrorMessage ?? "resource failures occurred"}");
         }
 
-        var store = await repositoryFactory.GetReindexStoreAsync(tenant.TenantId, CancellationToken.None);
+        var store = await reindexStoreFactory.GetReindexStoreAsync(tenant.TenantId, CancellationToken.None);
         if (!await store.HasSearchParameterAsync(target.SearchParamId, CancellationToken.None))
         {
             errors.Add(

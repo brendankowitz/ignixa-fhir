@@ -12,8 +12,9 @@ namespace Ignixa.Application.Infrastructure;
 /// Composite repository factory that routes to the appropriate storage provider
 /// based on tenant configuration (FileSystem, SqlEntityFramework, etc.).
 /// Multi-tenancy: Each tenant can use a different storage backend.
+/// Only the SQL Server provider can reindex; this is the one place that decides which providers can.
 /// </summary>
-public class CompositeRepositoryFactory : IFhirRepositoryFactory
+public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexStoreFactory
 {
     private static readonly Dictionary<string, ProviderType> ProviderTypes = new(StringComparer.Ordinal)
     {
@@ -25,6 +26,7 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory
     private readonly ITenantConfigurationStore _tenantStore;
     private readonly IFhirRepositoryFactory _fileSystemFactory;
     private readonly IFhirRepositoryFactory _sqlEfFactory;
+    private readonly IReindexStoreFactory _sqlReindexStoreFactory;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CompositeRepositoryFactory"/> class.
@@ -32,14 +34,17 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory
     /// <param name="tenantStore">The tenant configuration store.</param>
     /// <param name="fileSystemFactory">Factory for FileSystem storage.</param>
     /// <param name="sqlEfFactory">Factory for SQL EF storage.</param>
+    /// <param name="sqlReindexStoreFactory">Reindex store factory for SQL storage.</param>
     public CompositeRepositoryFactory(
         ITenantConfigurationStore tenantStore,
         IFhirRepositoryFactory fileSystemFactory,
-        IFhirRepositoryFactory sqlEfFactory)
+        IFhirRepositoryFactory sqlEfFactory,
+        IReindexStoreFactory sqlReindexStoreFactory)
     {
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _fileSystemFactory = fileSystemFactory ?? throw new ArgumentNullException(nameof(fileSystemFactory));
         _sqlEfFactory = sqlEfFactory ?? throw new ArgumentNullException(nameof(sqlEfFactory));
+        _sqlReindexStoreFactory = sqlReindexStoreFactory ?? throw new ArgumentNullException(nameof(sqlReindexStoreFactory));
     }
 
     /// <inheritdoc/>
@@ -61,6 +66,20 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory
     }
 
     /// <inheritdoc/>
+    public async Task<IReindexStore> GetReindexStoreAsync(int tenantId, CancellationToken cancellationToken)
+    {
+        var tenantConfig = await _tenantStore.GetTenantConfigurationAsync(tenantId, cancellationToken)
+            ?? throw new InvalidOperationException($"Tenant {tenantId} does not exist");
+
+        return SupportsReindex(tenantConfig)
+            ? await _sqlReindexStoreFactory.GetReindexStoreAsync(tenantId, cancellationToken)
+            : throw new NotSupportedException(
+                $"The storage provider '{tenantConfig.Storage.Type}' of tenant {tenantId} does not support $reindex.");
+    }
+
+    /// <summary>
+    /// Whether the storage provider of <paramref name="tenantConfiguration"/> can reindex.
+    /// </summary>
     public bool SupportsReindex(TenantConfiguration tenantConfiguration)
     {
         ArgumentNullException.ThrowIfNull(tenantConfiguration);

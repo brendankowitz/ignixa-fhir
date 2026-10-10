@@ -11,7 +11,7 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Application.BackgroundOperations.Reindex.Workers;
 
 public sealed class ReindexRangeProcessor(
-    IFhirRepositoryFactory repositoryFactory,
+    IReindexStoreFactory reindexStoreFactory,
     ITenantConfigurationStore tenantConfigurationStore,
     IFhirVersionContext fhirVersionContext,
     ConformanceRefresher conformanceRefresher,
@@ -19,8 +19,8 @@ public sealed class ReindexRangeProcessor(
 {
     private const int MinimumWriteBatchSize = 10;
 
-    private readonly IFhirRepositoryFactory _repositoryFactory =
-        repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
+    private readonly IReindexStoreFactory _reindexStoreFactory =
+        reindexStoreFactory ?? throw new ArgumentNullException(nameof(reindexStoreFactory));
     private readonly ITenantConfigurationStore _tenantConfigurationStore =
         tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
     private readonly IFhirVersionContext _fhirVersionContext =
@@ -60,7 +60,7 @@ public sealed class ReindexRangeProcessor(
                 }
             }
 
-            var store = await _repositoryFactory.GetReindexStoreAsync(
+            var store = await _reindexStoreFactory.GetReindexStoreAsync(
                 input.TenantId,
                 cancellationToken);
 

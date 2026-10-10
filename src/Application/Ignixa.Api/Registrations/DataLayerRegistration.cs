@@ -201,7 +201,7 @@ public static class DataLayerRegistration
             .AsSelf()
             .SingleInstance();
 
-        // SQL Server factory (implements both interfaces). The "SqlEf" name is the DI key the composite
+        // SQL Server factory (implements all three interfaces). The "SqlEf" name is the DI key the composite
         // factories resolve by, not a statement about the implementation: it is kept so
         // CompositeRepositoryFactory/CompositeSearchServiceFactory -- which take the inner factory as a
         // plain interface -- need no change. Tenant storage types "SqlEntityFramework" and "SqlServer" are
@@ -221,6 +221,7 @@ public static class DataLayerRegistration
         })
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")
+            .Named<IReindexStoreFactory>("SqlEf")
             .AsSelf()
             .SingleInstance();
     }
@@ -232,8 +233,10 @@ public static class DataLayerRegistration
             new CompositeRepositoryFactory(
                 c.Resolve<ITenantConfigurationStore>(),
                 c.ResolveNamed<IFhirRepositoryFactory>("FileSystem"),
-                c.ResolveNamed<IFhirRepositoryFactory>("SqlEf")))
+                c.ResolveNamed<IFhirRepositoryFactory>("SqlEf"),
+                c.ResolveNamed<IReindexStoreFactory>("SqlEf")))
             .As<IFhirRepositoryFactory>()
+            .As<IReindexStoreFactory>()
             .AsSelf()
             .SingleInstance();
 

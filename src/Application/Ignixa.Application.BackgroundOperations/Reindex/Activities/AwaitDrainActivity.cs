@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class AwaitDrainActivity(
-    IFhirRepositoryFactory repositoryFactory,
+    IReindexStoreFactory reindexStoreFactory,
     TimeProvider timeProvider,
     ReindexActivityHeartbeat heartbeat,
     ILogger<AwaitDrainActivity> logger)
@@ -20,7 +20,7 @@ public sealed class AwaitDrainActivity(
 
     private async Task<AwaitDrainOutput> DrainAsync(AwaitDrainInput input, CancellationToken cancellationToken)
     {
-        var store = await repositoryFactory.GetReindexStoreAsync(
+        var store = await reindexStoreFactory.GetReindexStoreAsync(
             input.TenantId,
             cancellationToken);
 
@@ -37,9 +37,9 @@ public sealed class AwaitDrainActivity(
                 input.TenantId,
                 watermark,
                 input.CutoffTransactionId,
-                oldest.Value.TransactionId,
-                oldest.Value.CreateDate,
-                oldest.Value.HeartbeatDate);
+                oldest.TransactionId,
+                oldest.CreateDate,
+                oldest.HeartbeatDate);
         }
 
         if (oldest is not null &&
@@ -50,7 +50,7 @@ public sealed class AwaitDrainActivity(
                 "Reindex: drain timed out for tenant {TenantId}; cutoff transaction {CutoffTransactionId}, oldest incomplete transaction {OldestTransactionId}",
                 input.TenantId,
                 input.CutoffTransactionId,
-                oldest.Value.TransactionId);
+                oldest.TransactionId);
         }
 
         var output = new AwaitDrainOutput(input.TenantId, isDrained, watermark);

@@ -170,7 +170,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     {
         var cutoff = await _store.RaiseBarrierAsync(42, CancellationToken.None);
 
-        cutoff.ShouldBe((-1, -1));
+        cutoff.ShouldBe(new BarrierCutoff(-1, -1));
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         var oldest = await _store.GetOldestIncompleteTransactionAsync(200, CancellationToken.None);
 
         oldest.ShouldNotBeNull();
-        oldest.Value.TransactionId.ShouldBe(100);
+        oldest.TransactionId.ShouldBe(100);
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
 
         var cutoff = await _store.RaiseBarrierAsync(42, CancellationToken.None);
 
-        cutoff.ShouldBe((-1, 999_999));
+        cutoff.ShouldBe(new BarrierCutoff(-1, 999_999));
     }
 
     [Fact]
@@ -459,7 +459,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
                     ({resource.ResourceSurrogateId}, 2, N'beta');
              """);
 
-        (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe((1, 0));
+        (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
 
         (await _database.ExecuteScalarAsync<int>(
             $"SELECT COUNT(*) FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {resource.ResourceSurrogateId}"))
@@ -588,7 +588,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
                 Patient(conflicted.ResourceId) with { VersionId = "2", DefinitionsEventId = 65 });
             gate.Release.SetResult();
 
-            (await update).ShouldBe((1, 1));
+            (await update).ShouldBe(new SearchIndexUpdateResult(1, 1));
             await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(
                 _database, conflictedResource.ResourceSurrogateId, CancellationToken.None);
         }
@@ -633,7 +633,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         var (store, cache) = await CreateReindexStoreAsync(commands, storeLogger);
         using (cache)
         {
-            (await store.UpdateSearchIndicesAsync([reindexResource], CancellationToken.None)).ShouldBe((1, 0));
+            (await store.UpdateSearchIndicesAsync([reindexResource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
         }
 
         storeLogger.Messages(LogLevel.Warning).ShouldContain(message =>
@@ -663,8 +663,8 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         var historyCount = await _database.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 1");
 
-        (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe((1, 0));
-        (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe((1, 0));
+        (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
+        (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
 
         (await _database.ExecuteScalarAsync<int>(
             "SELECT Version FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0"))
@@ -715,7 +715,7 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
                 $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId = {resourceSurrogateId}");
         }
 
-        (await _store.UpdateSearchIndicesAsync([indexedResource], CancellationToken.None)).ShouldBe((1, 0));
+        (await _store.UpdateSearchIndicesAsync([indexedResource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
 
         foreach (var (table, expectedCount) in expectedRowCounts)
         {

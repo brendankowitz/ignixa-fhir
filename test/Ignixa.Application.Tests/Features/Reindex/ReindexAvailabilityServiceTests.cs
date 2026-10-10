@@ -45,24 +45,37 @@ public sealed class ReindexAvailabilityServiceTests
     [Theory]
     [InlineData("SqlServer")]
     [InlineData("SqlEntityFramework")]
-    public async Task GivenStorageTypeSupportingReindex_WhenCreatingRepository_ThenRepositoryImplementsReindexStore(
+    public async Task GivenStorageTypeSupportingReindex_WhenGettingReindexStore_ThenSqlStoreIsReturned(
         string storageType)
     {
         var tenant = Tenant(1, storageType);
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(tenant.TenantId, Arg.Any<CancellationToken>())
             .Returns(tenant);
-        var sqlRepository = Substitute.For<IFhirRepository, IReindexStore>();
-        var sqlFactory = Substitute.For<IFhirRepositoryFactory>();
-        sqlFactory.GetRepositoryAsync(tenant.TenantId, Arg.Any<CancellationToken>())
-            .Returns(sqlRepository);
-        var capabilities = CreateCompositeRepositoryFactory(
-            tenants,
-            sqlEfFactory: sqlFactory);
+        var sqlStore = Substitute.For<IReindexStore>();
+        var sqlStores = Substitute.For<IReindexStoreFactory>();
+        sqlStores.GetReindexStoreAsync(tenant.TenantId, Arg.Any<CancellationToken>())
+            .Returns(sqlStore);
+        var capabilities = CreateCompositeRepositoryFactory(tenants, sqlReindexStoreFactory: sqlStores);
 
         capabilities.SupportsReindex(tenant).ShouldBeTrue();
-        (await capabilities.GetRepositoryAsync(tenant.TenantId, CancellationToken.None))
-            .ShouldBeAssignableTo<IReindexStore>();
+        (await capabilities.GetReindexStoreAsync(tenant.TenantId, CancellationToken.None))
+            .ShouldBeSameAs(sqlStore);
+    }
+
+    [Fact]
+    public async Task GivenFileSystemTenant_WhenGettingReindexStore_ThenNotSupportedIsThrown()
+    {
+        var tenant = Tenant(2, "FileSystem");
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.GetTenantConfigurationAsync(tenant.TenantId, Arg.Any<CancellationToken>())
+            .Returns(tenant);
+        var sqlStores = Substitute.For<IReindexStoreFactory>();
+        var capabilities = CreateCompositeRepositoryFactory(tenants, sqlReindexStoreFactory: sqlStores);
+
+        await Should.ThrowAsync<NotSupportedException>(
+            () => capabilities.GetReindexStoreAsync(tenant.TenantId, CancellationToken.None));
+        await sqlStores.DidNotReceive().GetReindexStoreAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -80,7 +93,8 @@ public sealed class ReindexAvailabilityServiceTests
         var capabilities = new CompositeRepositoryFactory(
             tenants,
             fileSystemFactory,
-            sqlServerFactory);
+            sqlServerFactory,
+            Substitute.For<IReindexStoreFactory>());
         var service = new ReindexAvailabilityService(
             Options.Create(new ReindexOptions { Enabled = true }),
             tenants,
@@ -239,9 +253,11 @@ public sealed class ReindexAvailabilityServiceTests
     private static CompositeRepositoryFactory CreateCompositeRepositoryFactory(
         ITenantConfigurationStore tenants,
         IFhirRepositoryFactory? fileSystemFactory = null,
-        IFhirRepositoryFactory? sqlEfFactory = null) =>
+        IFhirRepositoryFactory? sqlEfFactory = null,
+        IReindexStoreFactory? sqlReindexStoreFactory = null) =>
         new(
             tenants,
             fileSystemFactory ?? Substitute.For<IFhirRepositoryFactory>(),
-            sqlEfFactory ?? Substitute.For<IFhirRepositoryFactory>());
+            sqlEfFactory ?? Substitute.For<IFhirRepositoryFactory>(),
+            sqlReindexStoreFactory ?? Substitute.For<IReindexStoreFactory>());
 }

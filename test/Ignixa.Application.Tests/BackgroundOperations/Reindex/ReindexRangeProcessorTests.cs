@@ -29,7 +29,7 @@ public class ReindexRangeProcessorTests
                 DisplayName = "Tenant",
                 FhirVersion = "4.0"
             });
-        var store = Substitute.For<IFhirRepository, IReindexStore>();
+        var store = Substitute.For<IReindexStore>();
         var resources = Enumerable.Range(1, 20)
             .Select(index => new ReindexResource(
                 new ResourceWrapper(
@@ -41,7 +41,7 @@ public class ReindexRangeProcessorTests
                     new ResourceRequest("PUT", $"Patient/p{index}")),
                 index))
             .ToArray();
-        ((IReindexStore)store).ReadRangeAsync(
+        store.ReadRangeAsync(
                 "Patient",
                 1,
                 20,
@@ -51,7 +51,7 @@ public class ReindexRangeProcessorTests
             .Returns(call => call.ArgAt<long?>(4).HasValue ? [] : resources);
         var writeSizes = new List<int>();
         var writeAttempt = 0;
-        ((IReindexStore)store).UpdateSearchIndicesAsync(
+        store.UpdateSearchIndicesAsync(
                 Arg.Any<IReadOnlyList<ReindexResource>>(),
                 Arg.Any<CancellationToken>())
             .Returns(call =>
@@ -63,18 +63,18 @@ public class ReindexRangeProcessorTests
                     throw new TimeoutException("SQL command timed out.");
                 }
 
-                return (count, 0);
+                return new SearchIndexUpdateResult(count, 0);
             });
-        var repositories = Substitute.For<IFhirRepositoryFactory>();
-        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
-            .Returns((IFhirRepository)store);
+        var stores = Substitute.For<IReindexStoreFactory>();
+        stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
+            .Returns(store);
         var indexer = Substitute.For<ISearchIndexer>();
         indexer.Extract(Arg.Any<IElement>()).Returns([]);
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetDefinitionsHandle(FhirVersion.R4, 1)
             .Returns(new DefinitionsHandle(indexer, FhirVersion.R4.GetSchemaProvider(), 42));
         var processor = new ReindexRangeProcessor(
-            repositories,
+            stores,
             tenants,
             versions,
             TestConformanceRefresher.Create(new ConformanceState()),
@@ -99,10 +99,10 @@ public class ReindexRangeProcessorTests
                 DisplayName = "Tenant",
                 FhirVersion = "4.0"
             });
-        var repository = Substitute.For<IFhirRepository, IReindexStore>();
-        var repositories = Substitute.For<IFhirRepositoryFactory>();
-        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
-            .Returns((IFhirRepository)repository);
+        var repository = Substitute.For<IReindexStore>();
+        var stores = Substitute.For<IReindexStoreFactory>();
+        stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
+            .Returns(repository);
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetDefinitionsHandle(Arg.Any<FhirVersion>(), 1)
             .Returns(
@@ -116,7 +116,7 @@ public class ReindexRangeProcessorTests
                     42));
         var eventStore = TestConformanceRefresher.EmptyEventStore();
         var processor = new ReindexRangeProcessor(
-            repositories,
+            stores,
             tenants,
             versions,
             TestConformanceRefresher.Create(new ConformanceState(), eventStore),

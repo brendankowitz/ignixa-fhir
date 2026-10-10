@@ -60,7 +60,7 @@ public sealed class SqlServerReindexStore(
     private readonly ISearchParameterRowGenerator _tokenNumberNumberCompositeRowGenerator =
         new TokenNumberNumberCompositeRowGenerator(referenceDataCache.SystemMappings);
 
-    public async Task<(long TransactionId, long SurrogateId)> RaiseBarrierAsync(
+    public async Task<BarrierCutoff> RaiseBarrierAsync(
         long targetEventId,
         CancellationToken cancellationToken)
     {
@@ -116,7 +116,7 @@ public sealed class SqlServerReindexStore(
         var rows = await _sqlExecutionService.ExecuteReaderAsync(
             _tenantId,
             command,
-            static reader => (TransactionId: reader.GetInt64(0), SurrogateId: reader.GetInt64(1)),
+            static reader => new BarrierCutoff(reader.GetInt64(0), reader.GetInt64(1)),
             cancellationToken,
             SqlCommandIdempotency.NonIdempotent);
 
@@ -138,7 +138,7 @@ public sealed class SqlServerReindexStore(
         return values.Single();
     }
 
-    public async Task<(long TransactionId, DateTime CreateDate, DateTime HeartbeatDate)?> GetOldestIncompleteTransactionAsync(
+    public async Task<IncompleteTransaction?> GetOldestIncompleteTransactionAsync(
         long cutoffTransactionId,
         CancellationToken cancellationToken)
     {
@@ -154,15 +154,15 @@ public sealed class SqlServerReindexStore(
         var rows = await _sqlExecutionService.ExecuteReaderAsync(
             _tenantId,
             command,
-            static reader => (
-                TransactionId: reader.GetInt64(0),
-                CreateDate: reader.GetDateTime(1),
-                HeartbeatDate: reader.GetDateTime(2)),
+            static reader => new IncompleteTransaction(
+                reader.GetInt64(0),
+                reader.GetDateTime(1),
+                reader.GetDateTime(2)),
             cancellationToken);
         return rows.Count == 0 ? null : rows[0];
     }
 
-    public async Task<(IReadOnlyList<(long Start, long End, long ResourceCount)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
+    public async Task<SurrogateIdRangePage> GetSurrogateIdRangesAsync(
         string resourceType,
         long startAfterSurrogateId,
         long upperBoundSurrogateId,
@@ -180,13 +180,13 @@ public sealed class SqlServerReindexStore(
         var resourceTypeId = await GetResourceTypeIdAsync(resourceType, cancellationToken);
         if (!resourceTypeId.HasValue || startAfterSurrogateId >= upperBoundSurrogateId)
         {
-            return ([], null);
+            return new SurrogateIdRangePage([], null);
         }
 
         // Each seek reads at most targetRangeSize rows from the clustered resource key. The resulting
         // ranges deliberately cover ID gaps. Pages continue from the preceding range end, so the
         // caller can discard each page without losing the contiguous cutoff partition.
-        var ranges = new List<(long Start, long End, long ResourceCount)>();
+        var ranges = new List<SurrogateIdRange>();
         var cursor = startAfterSurrogateId;
         while (true)
         {
@@ -221,13 +221,10 @@ public sealed class SqlServerReindexStore(
             {
                 if (ranges.Count > 0)
                 {
-                    ranges[^1] = (
-                        ranges[^1].Start,
-                        upperBoundSurrogateId,
-                        ranges[^1].ResourceCount);
+                    ranges[^1] = ranges[^1] with { End = upperBoundSurrogateId };
                 }
 
-                return (ranges, null);
+                return new SurrogateIdRangePage(ranges, null);
             }
 
             var rangeStart = cursor == startAfterSurrogateId && startAfterSurrogateId == -1
@@ -235,11 +232,11 @@ public sealed class SqlServerReindexStore(
                 : checked(cursor + 1);
             if (count < targetRangeSize || end.Value == upperBoundSurrogateId)
             {
-                ranges.Add((rangeStart, upperBoundSurrogateId, count));
-                return (ranges, null);
+                ranges.Add(new SurrogateIdRange(rangeStart, upperBoundSurrogateId, count));
+                return new SurrogateIdRangePage(ranges, null);
             }
 
-            ranges.Add((rangeStart, end.Value, count));
+            ranges.Add(new SurrogateIdRange(rangeStart, end.Value, count));
             if (ranges.Count == maxRanges)
             {
                 using var continuationCommand = new SqlCommand(
@@ -264,14 +261,11 @@ public sealed class SqlServerReindexStore(
                     cancellationToken);
                 if (!hasMore.Single())
                 {
-                    ranges[^1] = (
-                        ranges[^1].Start,
-                        upperBoundSurrogateId,
-                        ranges[^1].ResourceCount);
-                    return (ranges, null);
+                    ranges[^1] = ranges[^1] with { End = upperBoundSurrogateId };
+                    return new SurrogateIdRangePage(ranges, null);
                 }
 
-                return (ranges, end.Value);
+                return new SurrogateIdRangePage(ranges, end.Value);
             }
 
             cursor = end.Value;
@@ -347,14 +341,14 @@ public sealed class SqlServerReindexStore(
             row.ResourceSurrogateId)).ToArray();
     }
 
-    public async Task<(int Updated, int Conflicts)> UpdateSearchIndicesAsync(
+    public async Task<SearchIndexUpdateResult> UpdateSearchIndicesAsync(
         IReadOnlyList<ReindexResource> resources,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(resources);
         if (resources.Count == 0)
         {
-            return (0, 0);
+            return new SearchIndexUpdateResult(0, 0);
         }
 
         await _referenceDataCache.EnsureResourceTypesPreloadedAsync(cancellationToken);
@@ -486,7 +480,7 @@ public sealed class SqlServerReindexStore(
                 }
             }
 
-            return (resources.Count - conflicts, conflicts);
+            return new SearchIndexUpdateResult(resources.Count - conflicts, conflicts);
         }
         catch (SqlException ex) when (ex.Number == -2)
         {

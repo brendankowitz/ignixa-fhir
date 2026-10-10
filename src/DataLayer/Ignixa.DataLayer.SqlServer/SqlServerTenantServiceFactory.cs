@@ -16,7 +16,7 @@ using Microsoft.IO;
 namespace Ignixa.DataLayer.SqlServer;
 
 /// <summary>
-/// Hands out SQL Server-backed repositories and search services for a tenant, replacing
+/// Hands out SQL Server-backed repositories, search services and reindex stores for a tenant, replacing
 /// <c>Ignixa.DataLayer.SqlEntityFramework.SqlEntityFrameworkRepositoryFactory</c> — which had already
 /// delegated every construction to <see cref="SqlServerRepositoryFactory"/> and existed only to hold the
 /// per-tenant state below, plus a <c>DbContextOptions</c> nothing on the production path read.
@@ -41,7 +41,7 @@ namespace Ignixa.DataLayer.SqlServer;
 /// its credentials, initialize its database once, and cache what that produced.
 /// </para>
 /// </summary>
-public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISearchServiceFactory
+public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISearchServiceFactory, IReindexStoreFactory
 {
     private readonly ITenantConfigurationStore _tenantStore;
     private readonly ILoggerFactory _loggerFactory;
@@ -127,6 +127,20 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
             cache,
             services.Definitions.CompartmentManager,
             searchableDefinitions,
+            _memoryStreamManager,
+            _loggerFactory);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReindexStore> GetReindexStoreAsync(int tenantId, CancellationToken cancellationToken)
+    {
+        await GetOrInitializeTenantAsync(tenantId, cancellationToken);
+        var cache = await _tenantInitializer.GetReferenceDataCacheAsync(tenantId, cancellationToken);
+
+        return SqlServerRepositoryFactory.CreateReindexStore(
+            _sqlExecutionService,
+            tenantId,
+            cache,
             _memoryStreamManager,
             _loggerFactory);
     }

@@ -361,15 +361,15 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         state.ApplyAndTrack(Activation(canonical));
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
         await lifecycle.StartAsync("round-trip", [target], CancellationToken.None);
-        var fhirRepository = Substitute.For<IFhirRepository, IReindexStore>();
-        ((IReindexStore)fhirRepository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+        var store = Substitute.For<IReindexStore>();
+        store.HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
             .Returns(true);
-        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
-        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
-            .Returns(fhirRepository);
+        var storeFactory = Substitute.For<IReindexStoreFactory>();
+        storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
+            .Returns(store);
         using var jobLock = new TestJobLock();
         var writer = new CompleteReindexActivity(
-            repositoryFactory,
+            storeFactory,
             lifecycle,
             repository,
             jobLock,

@@ -18,13 +18,12 @@ public sealed class AwaitDrainActivityTests
     [Fact]
     public async Task GivenAnIncompleteTransactionBelowTheCutoff_WhenTheWatermarkHasAdvanced_ThenDrainStillWaits()
     {
-        var repository = Substitute.For<IFhirRepository, IReindexStore>();
-        var store = (IReindexStore)repository;
+        var store = Substitute.For<IReindexStore>();
         store.GetVisibleWatermarkAsync(Arg.Any<CancellationToken>()).Returns(100);
         store.GetOldestIncompleteTransactionAsync(50, Arg.Any<CancellationToken>())
-            .Returns((25, DateTime.UtcNow, DateTime.UtcNow));
-        var repositories = Substitute.For<IFhirRepositoryFactory>();
-        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
+            .Returns(new IncompleteTransaction(25, DateTime.UtcNow, DateTime.UtcNow));
+        var stores = Substitute.For<IReindexStoreFactory>();
+        stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
         var jobRepository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         var progress = new ReindexProgressReporter(jobRepository, TimeProvider.System);
         var heartbeat = new ReindexActivityHeartbeat(
@@ -33,7 +32,7 @@ public sealed class AwaitDrainActivityTests
             TimeProvider.System,
             NullLogger<ReindexActivityHeartbeat>.Instance);
         var activity = new AwaitDrainActivity(
-            repositories,
+            stores,
             TimeProvider.System,
             heartbeat,
             NullLogger<AwaitDrainActivity>.Instance);

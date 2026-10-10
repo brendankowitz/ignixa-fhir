@@ -10,17 +10,17 @@ namespace Ignixa.Domain.Abstractions;
 public interface IReindexStore
 {
     [SuppressMessage("Design", "CA1030:Use events where appropriate", Justification = "Raising the persisted SQL conformance barrier is a command, not an in-process notification.")]
-    Task<(long TransactionId, long SurrogateId)> RaiseBarrierAsync(
+    Task<BarrierCutoff> RaiseBarrierAsync(
         long targetEventId,
         CancellationToken cancellationToken);
 
     Task<long> GetVisibleWatermarkAsync(CancellationToken cancellationToken);
 
-    Task<(long TransactionId, DateTime CreateDate, DateTime HeartbeatDate)?> GetOldestIncompleteTransactionAsync(
+    Task<IncompleteTransaction?> GetOldestIncompleteTransactionAsync(
         long cutoffTransactionId,
         CancellationToken cancellationToken);
 
-    Task<(IReadOnlyList<(long Start, long End, long ResourceCount)> Ranges, long? NextStartAfter)> GetSurrogateIdRangesAsync(
+    Task<SurrogateIdRangePage> GetSurrogateIdRangesAsync(
         string resourceType,
         long startAfterSurrogateId,
         long upperBoundSurrogateId,
@@ -36,7 +36,7 @@ public interface IReindexStore
         long? afterSurrogateId,
         CancellationToken cancellationToken);
 
-    Task<(int Updated, int Conflicts)> UpdateSearchIndicesAsync(
+    Task<SearchIndexUpdateResult> UpdateSearchIndicesAsync(
         IReadOnlyList<ReindexResource> resources,
         CancellationToken cancellationToken);
 

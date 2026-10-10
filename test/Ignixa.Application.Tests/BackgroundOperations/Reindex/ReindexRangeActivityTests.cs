@@ -51,10 +51,10 @@ public class ReindexRangeActivityTests
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
             .Returns(new TenantConfiguration { TenantId = 1, DisplayName = "Tenant", FhirVersion = "4.0" });
-        var store = Substitute.For<IFhirRepository, IReindexStore>();
+        var store = Substitute.For<IReindexStore>();
         var readers = 0;
         var readGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        ((IReindexStore)store).ReadRangeAsync(
+        store.ReadRangeAsync(
                 Arg.Any<string>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<int>(),
                 Arg.Any<long?>(), Arg.Any<CancellationToken>())
             .Returns(async _ =>
@@ -67,8 +67,8 @@ public class ReindexRangeActivityTests
                 await readGate.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 return (IReadOnlyList<ReindexResource>)Array.Empty<ReindexResource>();
             });
-        var repositories = Substitute.For<IFhirRepositoryFactory>();
-        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(store);
+        var stores = Substitute.For<IReindexStoreFactory>();
+        stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetDefinitionsHandle(FhirVersion.R4, 1)
             .Returns(new DefinitionsHandle(
@@ -91,7 +91,7 @@ public class ReindexRangeActivityTests
             NullLogger<ReindexActivityHeartbeat>.Instance);
         return (new ReindexRangeActivity(
             new ReindexRangeProcessor(
-                repositories,
+                stores,
                 tenants,
                 versions,
                 TestConformanceRefresher.Create(new ConformanceState()),

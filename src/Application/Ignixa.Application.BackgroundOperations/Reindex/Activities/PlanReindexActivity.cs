@@ -5,7 +5,7 @@ using Ignixa.Domain.Abstractions;
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class PlanReindexActivity(
-    IFhirRepositoryFactory repositoryFactory,
+    IReindexStoreFactory reindexStoreFactory,
     ReindexActivityHeartbeat heartbeat)
     : AsyncTaskActivity<PlanReindexInput, PlanReindexOutput>
 {
@@ -16,7 +16,7 @@ public sealed class PlanReindexActivity(
 
     private async Task<PlanReindexOutput> PlanAsync(PlanReindexInput input, CancellationToken cancellationToken)
     {
-        var store = await repositoryFactory.GetReindexStoreAsync(
+        var store = await reindexStoreFactory.GetReindexStoreAsync(
             input.TenantId,
             cancellationToken);
 

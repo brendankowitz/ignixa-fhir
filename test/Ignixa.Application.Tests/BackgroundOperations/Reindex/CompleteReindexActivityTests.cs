@@ -40,7 +40,7 @@ public class CompleteReindexActivityTests
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         using var jobLock = new TestJobLock();
-        var activity = CreateActivity(RepositoryFactoryWithCatalogId(17), lifecycle, proxy, jobLock, tenants);
+        var activity = CreateActivity(StoreFactoryWithCatalogId(17), lifecycle, proxy, jobLock, tenants);
         var input = SingleTenantInput(target);
         var context = new TaskContext(new OrchestrationInstance { InstanceId = "job" });
 
@@ -75,7 +75,7 @@ public class CompleteReindexActivityTests
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         using var jobLock = new TestJobLock();
-        var activity = CreateActivity(RepositoryFactoryWithCatalogId(17), lifecycle, proxy, jobLock, tenants);
+        var activity = CreateActivity(StoreFactoryWithCatalogId(17), lifecycle, proxy, jobLock, tenants);
         var input = JsonSerializer.Serialize(new[]
         {
             new CompleteReindexInput(
@@ -116,7 +116,7 @@ public class CompleteReindexActivityTests
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
-            RepositoryFactoryWithCatalogId(17),
+            StoreFactoryWithCatalogId(17),
             lifecycle,
             jobs,
             jobLock,
@@ -167,15 +167,15 @@ public class CompleteReindexActivityTests
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
-        var repository = Substitute.For<IFhirRepository, IReindexStore>();
-        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+        var repository = Substitute.For<IReindexStore>();
+        repository.HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
             .Returns(true);
-        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
-        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+        var storeFactory = Substitute.For<IReindexStoreFactory>();
+        storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
             .Returns(repository);
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
-            repositoryFactory,
+            storeFactory,
             lifecycle,
             jobs,
             jobLock,
@@ -223,7 +223,7 @@ public class CompleteReindexActivityTests
         };
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
-            RepositoryFactoryWithCatalogId(17),
+            StoreFactoryWithCatalogId(17),
             lifecycle,
             jobs,
             jobLock,
@@ -269,15 +269,15 @@ public class CompleteReindexActivityTests
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
-        var repository = Substitute.For<IFhirRepository, IReindexStore>();
-        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+        var repository = Substitute.For<IReindexStore>();
+        repository.HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
             .Returns(true);
-        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
-        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+        var storeFactory = Substitute.For<IReindexStoreFactory>();
+        storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
             .Returns(repository);
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
-            repositoryFactory,
+            storeFactory,
             lifecycle,
             jobs,
             jobLock,
@@ -328,15 +328,15 @@ public class CompleteReindexActivityTests
         var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
         var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
-        var repository = Substitute.For<IFhirRepository, IReindexStore>();
-        ((IReindexStore)repository).HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
+        var repository = Substitute.For<IReindexStore>();
+        repository.HasSearchParameterAsync(17, Arg.Any<CancellationToken>())
             .Returns(true);
-        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
-        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+        var storeFactory = Substitute.For<IReindexStoreFactory>();
+        storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
             .Returns(repository);
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
-            repositoryFactory,
+            storeFactory,
             lifecycle,
             jobs,
             jobLock,
@@ -393,17 +393,17 @@ public class CompleteReindexActivityTests
             1,
             ["Patient"]);
         await lifecycle.StartAsync("job", [target], CancellationToken.None);
-        var repository = Substitute.For<IFhirRepository, IReindexStore>();
-        ((IReindexStore)repository).HasSearchParameterAsync(
+        var repository = Substitute.For<IReindexStore>();
+        repository.HasSearchParameterAsync(
                 17,
                 Arg.Any<CancellationToken>())
             .Returns(true);
-        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
-        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>())
+        var storeFactory = Substitute.For<IReindexStoreFactory>();
+        storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
             .Returns(repository);
         using var jobLock = new TestJobLock();
         var activity = CreateActivity(
-            repositoryFactory,
+            storeFactory,
             lifecycle,
             jobs,
             jobLock,
@@ -451,14 +451,14 @@ public class CompleteReindexActivityTests
         return (jobs, tenants);
     }
 
-    private static IFhirRepositoryFactory RepositoryFactoryWithCatalogId(int searchParamId)
+    private static IReindexStoreFactory StoreFactoryWithCatalogId(int searchParamId)
     {
-        var repository = Substitute.For<IFhirRepository, IReindexStore>();
-        ((IReindexStore)repository).HasSearchParameterAsync(searchParamId, Arg.Any<CancellationToken>())
+        var repository = Substitute.For<IReindexStore>();
+        repository.HasSearchParameterAsync(searchParamId, Arg.Any<CancellationToken>())
             .Returns(true);
-        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
-        repositoryFactory.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
-        return repositoryFactory;
+        var storeFactory = Substitute.For<IReindexStoreFactory>();
+        storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
+        return storeFactory;
     }
 
     private static string SingleTenantInput(ReindexParameterDefinition target) =>
@@ -541,13 +541,13 @@ public class CompleteReindexActivityTests
         DateTimeOffset.UtcNow);
 
     private static CompleteReindexActivity CreateActivity(
-        IFhirRepositoryFactory repositoryFactory,
+        IReindexStoreFactory storeFactory,
         ReindexLifecycleEventWriter lifecycle,
         IBackgroundJobRepository<ReindexJobDefinition> jobs,
         IReindexJobLock jobLock,
         ITenantConfigurationStore tenantStore) =>
         new(
-            repositoryFactory,
+            storeFactory,
             lifecycle,
             jobs,
             jobLock,

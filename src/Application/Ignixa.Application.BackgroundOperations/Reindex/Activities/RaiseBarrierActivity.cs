@@ -5,7 +5,7 @@ using Ignixa.Domain.Abstractions;
 namespace Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 public sealed class RaiseBarrierActivity(
-    IFhirRepositoryFactory repositoryFactory,
+    IReindexStoreFactory reindexStoreFactory,
     ReindexActivityHeartbeat heartbeat)
     : AsyncTaskActivity<RaiseBarrierInput, RaiseBarrierOutput>
 {
@@ -16,7 +16,7 @@ public sealed class RaiseBarrierActivity(
 
     private async Task<RaiseBarrierOutput> RaiseAsync(RaiseBarrierInput input, CancellationToken cancellationToken)
     {
-        var store = await repositoryFactory.GetReindexStoreAsync(
+        var store = await reindexStoreFactory.GetReindexStoreAsync(
             input.TenantId,
             cancellationToken);
 

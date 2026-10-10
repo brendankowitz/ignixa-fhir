@@ -66,22 +66,6 @@ public class SqlServerMergeRepository(
         new TokenNumberNumberCompositeRowGenerator(referenceDataCache.SystemMappings);
 
     /// <summary>
-    /// Creates the index-only store with the same tenant-scoped execution and reference-data services as
-    /// this merge repository. This keeps the SQL-only reindex capability discoverable through the SQL
-    /// FHIR repository without introducing a second tenant-service factory.
-    /// </summary>
-    public IReindexStore CreateReindexStore(
-        GzipResourceCompressor compressor,
-        SqlServerSearchIndexReferenceDataCache referenceDataCache) =>
-        new SqlServerReindexStore(
-            _sqlExecutionService,
-            tenantId,
-            compressor,
-            referenceDataCache,
-            _extensionUpdater,
-            _logger);
-
-    /// <summary>
     /// Begins a merge transaction, allocating transaction ID and sequence range.
     /// </summary>
     /// <param name="resourceCount">Number of resources to be merged in this transaction.</param>
