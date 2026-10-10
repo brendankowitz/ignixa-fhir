@@ -37,7 +37,7 @@ public sealed class GetReindexJobsHandler(
         TimeProvider timeProvider) =>
         new(
             job.JobId,
-            job.Status,
+            job.GetStatus(),
             job.CreateDate,
             job.StartDate,
             job.EndDate,
@@ -48,6 +48,5 @@ public sealed class GetReindexJobsHandler(
             job.Result,
             job.Definition);
 
-    private static bool IsActive(BackgroundJob<ReindexJobDefinition> job) =>
-        job.Status is "Queued" or "Running";
+    private static bool IsActive(BackgroundJob<ReindexJobDefinition> job) => !job.IsTerminal();
 }

@@ -118,7 +118,7 @@ public class ConformanceStateSyncServiceTests
         await service.RunSyncAsync();
 
         await mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == "Reconciliation"),
+            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Reconciliation),
             CancellationToken.None);
     }
 

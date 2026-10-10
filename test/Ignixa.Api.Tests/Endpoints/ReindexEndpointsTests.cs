@@ -444,7 +444,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task GivenTerminalJob_WhenCancelling_ThenReturnsConflictOutcome()
     {
-        _cancelResult = new ReindexJobAlreadyTerminalResult("done", "Completed");
+        _cancelResult = new ReindexJobAlreadyTerminalResult("done", ReindexJobStatus.Completed);
 
         var response = await SendAsync("CancelReindexForTenant", jobId: "done");
 
@@ -938,7 +938,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     private static ReindexStatusResult CreateStatus(string jobId = "complete-fields") =>
         new(
             jobId,
-            "Running",
+            ReindexJobStatus.Running,
             DateTimeOffset.Parse("2026-10-07T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
             DateTimeOffset.Parse("2026-10-07T00:01:00Z", System.Globalization.CultureInfo.InvariantCulture),
             DateTimeOffset.Parse("2026-10-07T00:03:00Z", System.Globalization.CultureInfo.InvariantCulture),

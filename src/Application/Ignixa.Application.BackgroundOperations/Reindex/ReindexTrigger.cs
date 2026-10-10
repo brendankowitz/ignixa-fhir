@@ -30,7 +30,6 @@ public sealed class ReindexTrigger(
 {
     private static readonly EventId ActivationTriggerDeferred = new(4201, "ReindexActivationTriggerDeferred");
     private static readonly EventId ReconciliationDeferred = new(4202, "ReindexReconciliationDeferred");
-    private static readonly List<string> FinishedStatuses = ["Completed", "Failed", "Cancelled"];
 
     public async Task<ReindexTriggerResult> RequestReindexAsync(
         string reason,
@@ -55,11 +54,11 @@ public sealed class ReindexTrigger(
             }
 
             var result = await mediator.SendAsync(
-                new CreateReindexJobCommand { Trigger = "Activation" },
+                new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Activation },
                 cancellationToken);
             return result switch
             {
-                ReindexJobCreatedResult created => RecordStarted("Activation", created.JobId, reason),
+                ReindexJobCreatedResult created => RecordStarted(ReindexTriggerKind.Activation, created.JobId, reason),
                 ActiveReindexJobResult active => new ReindexTriggerResult(active.ActiveJobId, true, null),
                 NoReindexWorkResult noWork => new ReindexTriggerResult(null, false, noWork.ErrorMessage),
                 InvalidReindexRequestResult invalid => throw new InvalidOperationException(invalid.ErrorMessage),
@@ -69,7 +68,7 @@ public sealed class ReindexTrigger(
         }
         catch (Exception exception) when (IsOperational(exception, cancellationToken))
         {
-            ReindexMetrics.RecordTriggerFailure("Activation");
+            ReindexMetrics.RecordTriggerFailure(nameof(ReindexTriggerKind.Activation));
             logger.LogError(
                 ActivationTriggerDeferred,
                 exception,
@@ -108,7 +107,7 @@ public sealed class ReindexTrigger(
 
             var latestFinished = await jobRepository.GetLatestAsync(
                 (int)BackgroundJobType.Reindex,
-                FinishedStatuses,
+                ReindexJobs.FinishedStatuses,
                 cancellationToken);
             if (!await HasPendingActivationAfterAsync(latestFinished?.Definition.TargetEventId, cancellationToken))
             {
@@ -122,12 +121,12 @@ public sealed class ReindexTrigger(
             }
 
             var result = await mediator.SendAsync(
-                new CreateReindexJobCommand { Trigger = "Reconciliation" },
+                new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Reconciliation },
                 cancellationToken);
             switch (result)
             {
                 case ReindexJobCreatedResult created:
-                    RecordStarted("Reconciliation", created.JobId, "periodic reconciliation");
+                    RecordStarted(ReindexTriggerKind.Reconciliation, created.JobId, "periodic reconciliation");
                     break;
                 case ActiveReindexJobResult:
                 case NoReindexWorkResult:
@@ -175,9 +174,9 @@ public sealed class ReindexTrigger(
             : null;
     }
 
-    private ReindexTriggerResult RecordStarted(string trigger, string jobId, string reason)
+    private ReindexTriggerResult RecordStarted(ReindexTriggerKind trigger, string jobId, string reason)
     {
-        ReindexMetrics.TriggerStarted(trigger);
+        ReindexMetrics.TriggerStarted(trigger.ToString());
         logger.LogInformation(
             "Reindex: {Trigger} trigger started job {JobId}; reason {Reason}",
             trigger,

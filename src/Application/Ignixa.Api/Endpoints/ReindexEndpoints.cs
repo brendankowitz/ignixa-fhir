@@ -107,7 +107,7 @@ public static class ReindexEndpoints
                     StatusCodes.Status201Created,
                     Encoding.UTF8.GetBytes(BuildJobParameters(status ?? new ReindexStatusResult(
                         created.JobId,
-                        "Queued",
+                        ReindexJobStatus.Queued,
                         DateTimeOffset.UtcNow,
                         null,
                         null,
@@ -260,7 +260,7 @@ public static class ReindexEndpoints
         };
         var values = parameters["parameter"]!.AsArray();
         AddValue(values, "id", "valueString", status.JobId);
-        AddValue(values, "status", "valueString", status.Status);
+        AddValue(values, "status", "valueString", status.Status.ToString());
         AddValue(values, "queuedTime", "valueDateTime", status.QueuedTime);
         AddValue(values, "startTime", "valueDateTime", status.StartTime);
         AddValue(values, "endTime", "valueDateTime", status.EndTime);
@@ -308,7 +308,7 @@ public static class ReindexEndpoints
             ["parameter"] = new JsonArray()
         };
         AddValue(parameters["parameter"]!.AsArray(), "id", "valueString", jobId);
-        AddValue(parameters["parameter"]!.AsArray(), "status", "valueString", "Cancelled");
+        AddValue(parameters["parameter"]!.AsArray(), "status", "valueString", ReindexJobStatus.Cancelled.ToString());
         return parameters;
     }
 
@@ -367,10 +367,10 @@ public static class ReindexEndpoints
         JsonObject? progress,
         string name,
         string valueName,
-        string? status = null)
+        ReindexJobStatus? status = null)
     {
         var value = progress?[name];
-        if (name == "progress" && status is not "Completed" &&
+        if (name == "progress" && status is not ReindexJobStatus.Completed &&
             value is JsonValue progressValue &&
             progressValue.TryGetValue<double>(out var progressPercent))
         {

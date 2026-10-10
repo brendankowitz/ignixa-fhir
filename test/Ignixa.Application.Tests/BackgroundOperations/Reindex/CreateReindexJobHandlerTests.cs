@@ -26,7 +26,7 @@ public class CreateReindexJobHandlerTests
         var fixture = CreateFixture(withPendingParameter: false);
 
         var result = await fixture.Handler.HandleAsync(
-            new CreateReindexJobCommand { Trigger = "Activation" },
+            new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Activation },
             CancellationToken.None);
 
         result.ShouldBeOfType<NoReindexWorkResult>();
@@ -66,7 +66,7 @@ public class CreateReindexJobHandlerTests
                     DateTimeOffset.UtcNow)));
 
         var result = await fixture.Handler.HandleAsync(
-            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Reconciliation },
             CancellationToken.None);
 
         result.ShouldBeOfType<NoReindexWorkResult>();
@@ -91,7 +91,7 @@ public class CreateReindexJobHandlerTests
             });
 
         var result = await fixture.Handler.HandleAsync(
-            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Reconciliation },
             CancellationToken.None);
 
         result.ShouldBeOfType<NoReindexWorkResult>().ErrorMessage.ShouldContain("failed-during-race");
@@ -121,7 +121,7 @@ public class CreateReindexJobHandlerTests
         await fixture.Repository.CreateAsync(FinishedJob("older", status, olderDefinition, fixture.Now), CancellationToken.None);
 
         var result = await fixture.Handler.HandleAsync(
-            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Reconciliation },
             CancellationToken.None);
 
         var created = result.ShouldBeOfType<ReindexJobCreatedResult>();
@@ -191,7 +191,7 @@ public class CreateReindexJobHandlerTests
         var fixture = CreateFixture();
 
         var result = await fixture.Handler.HandleAsync(
-            new CreateReindexJobCommand { Trigger = "Activation" },
+            new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Activation },
             CancellationToken.None);
 
         var created = result.ShouldBeOfType<ReindexJobCreatedResult>();
@@ -230,7 +230,7 @@ public class CreateReindexJobHandlerTests
 
         failStart = false;
         var retried = await fixture.Handler.HandleAsync(
-            new CreateReindexJobCommand { Trigger = "Reconciliation" },
+            new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Reconciliation },
             CancellationToken.None);
 
         retried.ShouldBeOfType<ReindexJobCreatedResult>();

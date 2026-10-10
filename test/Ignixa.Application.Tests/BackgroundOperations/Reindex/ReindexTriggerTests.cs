@@ -76,7 +76,7 @@ public sealed class ReindexTriggerTests
 
         result.ShouldBe(new ReindexTriggerResult("job-1", false, null));
         await fixture.Mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == "Activation"),
+            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Activation),
             CancellationToken.None);
     }
 
@@ -191,7 +191,7 @@ public sealed class ReindexTriggerTests
         await fixture.Trigger.ReconcileAsync(CancellationToken.None);
 
         await fixture.Mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == "Reconciliation"),
+            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Reconciliation),
             CancellationToken.None);
     }
 
@@ -212,7 +212,7 @@ public sealed class ReindexTriggerTests
         await fixture.Trigger.ReconcileAsync(CancellationToken.None);
 
         await fixture.Mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == "Reconciliation"),
+            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Reconciliation),
             CancellationToken.None);
     }
 
@@ -256,7 +256,7 @@ public sealed class ReindexTriggerTests
         await tick;
 
         await fixture.Mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == "Reconciliation"),
+            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Reconciliation),
             CancellationToken.None);
     }
 

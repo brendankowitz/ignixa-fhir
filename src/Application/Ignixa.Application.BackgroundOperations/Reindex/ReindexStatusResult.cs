@@ -5,7 +5,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 
 public sealed record ReindexStatusResult(
     string JobId,
-    string Status,
+    ReindexJobStatus Status,
     DateTimeOffset QueuedTime,
     DateTimeOffset? StartTime,
     DateTimeOffset? EndTime,

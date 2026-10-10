@@ -54,7 +54,7 @@ public sealed class ReindexJobReconciler(
     private async Task ReconcileUnderLockAsync(string jobId, CancellationToken cancellationToken)
     {
         var job = await repository.GetAsync(jobId, SystemConstants.GlobalTenantId, cancellationToken);
-        if (job is null || ReindexJobs.IsTerminal(job.Status))
+        if (job is null || job.IsTerminal())
         {
             return;
         }
@@ -74,7 +74,7 @@ public sealed class ReindexJobReconciler(
         }
 
         state = confirmed ?? state;
-        if (state is null && job.Status == "Queued")
+        if (state is null && job.GetStatus() == ReindexJobStatus.Queued)
         {
             await repository.DeleteAsync(job.JobId, SystemConstants.GlobalTenantId, cancellationToken);
             logger.LogWarning(
@@ -97,7 +97,7 @@ public sealed class ReindexJobReconciler(
         var now = timeProvider.GetUtcNow();
         if (await lifecycle.HasCompletedAsync(job.JobId, job.Definition.SearchParameters, cancellationToken))
         {
-            job.Status = "Completed";
+            job.SetStatus(ReindexJobStatus.Completed);
             job.Result = new JsonObject { ["success"] = true };
             logger.LogInformation(
                 "Reindex: finalized job {JobId} as Completed; its targets were already enabled. {Reason}",
@@ -107,7 +107,7 @@ public sealed class ReindexJobReconciler(
         else
         {
             await lifecycle.FailOwnedAsync(job.JobId, reason, cancellationToken);
-            job.Status = "Failed";
+            job.SetStatus(ReindexJobStatus.Failed);
             job.ErrorMessage = reason;
             job.Result = new JsonObject { ["success"] = false };
             logger.LogError(

@@ -44,7 +44,7 @@ public class CancelReindexHandlerTests
             new CancelReindexCommand("job", "operator request"),
             CancellationToken.None);
 
-        result.ShouldBeOfType<ReindexJobAlreadyTerminalResult>().Status.ShouldBe("Completed");
+        result.ShouldBeOfType<ReindexJobAlreadyTerminalResult>().Status.ShouldBe(ReindexJobStatus.Completed);
         await runtime.DidNotReceive().ForceTerminateTaskOrchestrationAsync(
             Arg.Any<string>(),
             Arg.Any<string>());

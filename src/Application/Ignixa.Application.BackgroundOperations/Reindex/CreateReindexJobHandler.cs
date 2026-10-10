@@ -24,8 +24,6 @@ public sealed class CreateReindexJobHandler(
     TimeProvider timeProvider)
     : IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>
 {
-    private static readonly List<string> FinishedStatuses = ["Completed", "Failed", "Cancelled"];
-
     private readonly TaskHubClient _taskHubClient =
         taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
     private readonly IBackgroundJobRepository<ReindexJobDefinition> _jobRepository =
@@ -110,7 +108,7 @@ public sealed class CreateReindexJobHandler(
             MaximumNumberOfResourcesPerWrite = parameters.MaximumNumberOfResourcesPerWrite,
             MaximumConcurrency = parameters.MaximumConcurrency,
             QueryDelayIntervalInMilliseconds = parameters.QueryDelayIntervalInMilliseconds,
-            Trigger = request.Trigger
+            Trigger = request.Trigger.ToString()
         };
         var now = _timeProvider.GetUtcNow();
         await _jobRepository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
@@ -118,7 +116,7 @@ public sealed class CreateReindexJobHandler(
             JobId = jobId,
             OrchestrationInstanceId = jobId,
             JobType = (int)BackgroundJobType.Reindex,
-            Status = "Queued",
+            Status = nameof(ReindexJobStatus.Queued),
             Definition = definition,
             Progress = new JsonObject
             {
@@ -161,5 +159,5 @@ public sealed class CreateReindexJobHandler(
     }
 
     private Task<BackgroundJob<ReindexJobDefinition>?> GetLatestFinishedAsync(CancellationToken cancellationToken) =>
-        _jobRepository.GetLatestAsync((int)BackgroundJobType.Reindex, FinishedStatuses, cancellationToken);
+        _jobRepository.GetLatestAsync((int)BackgroundJobType.Reindex, ReindexJobs.FinishedStatuses, cancellationToken);
 }

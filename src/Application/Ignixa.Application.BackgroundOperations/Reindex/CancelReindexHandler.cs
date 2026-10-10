@@ -30,9 +30,9 @@ public sealed class CancelReindexHandler(
             return new ReindexJobNotFoundResult(request.JobId);
         }
 
-        if (ReindexJobs.IsTerminal(job.Status))
+        if (job.IsTerminal())
         {
-            return new ReindexJobAlreadyTerminalResult(job.JobId, job.Status);
+            return new ReindexJobAlreadyTerminalResult(job.JobId, job.GetStatus());
         }
 
         await taskHubClient.TerminateInstanceAsync(
@@ -48,7 +48,7 @@ public sealed class CancelReindexHandler(
 
         var terminal = await repository.GetAsync(request.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {request.JobId} disappeared during cancellation.");
-        return new ReindexJobAlreadyTerminalResult(terminal.JobId, terminal.Status);
+        return new ReindexJobAlreadyTerminalResult(terminal.JobId, terminal.GetStatus());
     }
 
     // Cancellation returns the job's parameters to Pending before the final write, like every other terminal
@@ -57,7 +57,7 @@ public sealed class CancelReindexHandler(
     {
         var job = await repository.GetAsync(request.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {request.JobId} disappeared during cancellation.");
-        if (ReindexJobs.IsTerminal(job.Status))
+        if (job.IsTerminal())
         {
             return false;
         }
@@ -66,7 +66,7 @@ public sealed class CancelReindexHandler(
         await lifecycle.FailOwnedAsync(job.JobId, reason, cancellationToken);
 
         var now = timeProvider.GetUtcNow();
-        job.Status = "Cancelled";
+        job.SetStatus(ReindexJobStatus.Cancelled);
         job.CancelRequested = true;
         job.EndDate = now;
         job.HeartbeatDate = now;

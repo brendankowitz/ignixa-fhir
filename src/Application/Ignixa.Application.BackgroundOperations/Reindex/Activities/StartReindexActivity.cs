@@ -31,7 +31,7 @@ public sealed class StartReindexActivity(
     {
         var job = await repository.GetAsync(input.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {input.JobId} does not exist.");
-        if (ReindexJobs.IsTerminal(job.Status))
+        if (job.IsTerminal())
         {
             return new StartReindexOutput([])
             {

@@ -21,7 +21,7 @@ public sealed class ReindexProgressReporter(
         IReadOnlyList<string> ignoredLifecycleEvents,
         DateTimeOffset now)
     {
-        job.Status = "Running";
+        job.SetStatus(ReindexJobStatus.Running);
         job.StartDate ??= now;
         var progress = new JsonObject
         {
@@ -87,7 +87,7 @@ public sealed class ReindexProgressReporter(
     {
         var job = await repository.GetAsync(jobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {jobId} does not exist.");
-        if (ReindexJobs.IsTerminal(job.Status))
+        if (job.IsTerminal())
         {
             return false;
         }
@@ -149,7 +149,7 @@ public sealed class ReindexProgressReporter(
         progress["totalResourcesToReindex"] = total;
         progress["resourcesSuccessfullyReindexed"] = reindexed;
         progress["conflicts"] = tenantObjects.Sum(tenant => GetInt64(tenant, "conflicts"));
-        progress["progress"] = status == "Completed"
+        progress["progress"] = status == nameof(ReindexJobStatus.Completed)
             ? 100
             : total == 0
                 ? 0

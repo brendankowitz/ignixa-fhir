@@ -45,13 +45,13 @@ public sealed class CompleteReindexActivity(
     {
         var job = await repository.GetAsync(input.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {input.JobId} does not exist.");
-        if (ReindexJobs.IsTerminal(job.Status))
+        if (job.IsTerminal())
         {
             logger.LogInformation(
                 "Reindex: completion of job {JobId} is superseded by {Status}",
                 job.JobId,
                 job.Status);
-            return new CompleteReindexOutput(job.Status == "Completed", []);
+            return new CompleteReindexOutput(job.GetStatus() == ReindexJobStatus.Completed, []);
         }
 
         var missingTenantIds = await GetTenantsAddedSinceStartAsync(job, cancellationToken);
@@ -73,7 +73,7 @@ public sealed class CompleteReindexActivity(
         var ignored = await lifecycle.CompleteAsync(input.JobId, completions, cancellationToken);
 
         var completedAt = timeProvider.GetUtcNow();
-        job.Status = success ? "Completed" : "Failed";
+        job.SetStatus(success ? ReindexJobStatus.Completed : ReindexJobStatus.Failed);
         job.EndDate = completedAt;
         job.HeartbeatDate = completedAt;
         job.ErrorMessage = success
