@@ -233,12 +233,3 @@ public sealed class ReindexLifecycleEventWriter(
     private static string TargetIdentity(ReindexParameterDefinition target) =>
         $"{target.Canonical}|{target.ResourceType}|{target.Code}";
 }
-
-public sealed record ReindexTargetCompletion(
-    ReindexParameterDefinition Target,
-    bool Success,
-    long ResourcesIndexed,
-    TimeSpan Duration,
-    string? ErrorMessage);
-
-public sealed record OwnedReindexTarget(string JobId, ReindexParameterDefinition Target);
