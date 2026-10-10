@@ -8,6 +8,7 @@ using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
@@ -20,6 +21,7 @@ using Ignixa.Search.Parsing;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.Http;
 using NSubstitute;
 using Shouldly;
 
@@ -54,6 +56,7 @@ public class ExportRegistrationTests
             tenants, NullLogger<InMemoryBackgroundJobRepository<ExportJobDefinition>>.Instance);
         var runtime = new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance);
         var builder = new ContainerBuilder();
+        var conformanceLease = TestConformanceLease.Held();
         builder.RegisterBackgroundJobHandlers();
         builder.RegisterDurableTaskActivities();
         builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>));
@@ -61,6 +64,8 @@ public class ExportRegistrationTests
         builder.RegisterInstance(versions).As<IFhirVersionContext>().ExternallyOwned();
         builder.RegisterType<FhirRequestContextAccessor>().As<IFhirRequestContextAccessor>().SingleInstance();
         builder.RegisterInstance(NullFhirBaseUriProvider.Instance).As<IFhirBaseUriProvider>();
+        builder.RegisterInstance(new HttpContextAccessor()).As<IHttpContextAccessor>();
+        builder.RegisterInstance(conformanceLease);
         builder.RegisterInstance(tenants).As<ITenantConfigurationStore>();
         builder.RegisterInstance(repositories).As<IFhirRepositoryFactory>();
         builder.RegisterInstance(searches).As<ISearchServiceFactory>();

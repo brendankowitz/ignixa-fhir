@@ -4,7 +4,9 @@ using DurableTask.Core.History;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.BulkDelete;
 using Ignixa.Application.BackgroundOperations.BulkDelete.Orchestrations;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
@@ -13,6 +15,7 @@ using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization.Abstractions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -34,7 +37,12 @@ public sealed class CreateBulkDeleteJobHandlerTests : IDisposable
 
     public CreateBulkDeleteJobHandlerTests()
     {
-        _builders = new SearchOptionsBuilderFactory(_versions, NullFhirBaseUriProvider.Instance);
+        _builders = new SearchOptionsBuilderFactory(
+            _versions,
+            NullFhirBaseUriProvider.Instance,
+            new HttpContextAccessor(),
+            Substitute.For<IFhirRequestContextAccessor>(),
+            TestConformanceLease.Held());
         _tenants.Mode.Returns(TenantMode.Isolated);
         _tenants.GetTenantConfigurationAsync(TenantId, Arg.Any<CancellationToken>())
             .Returns(new TenantConfiguration { TenantId = TenantId, DisplayName = "Bulk delete", FhirVersion = "4.0" });

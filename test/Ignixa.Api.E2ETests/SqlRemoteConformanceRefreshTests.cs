@@ -8,10 +8,12 @@ using Ignixa.Abstractions;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
+using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Parsing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
@@ -70,6 +72,7 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
         ReferenceEquals(stateA, stateB).ShouldBeFalse();
         stateA.IsInitialized.ShouldBeTrue();
         stateB.IsInitialized.ShouldBeTrue();
+        var versionsA = hostA.Services.GetRequiredService<IFhirVersionContext>();
         var versionsB = hostB.Services.GetRequiredService<IFhirVersionContext>();
         var warmDefinitions = versionsB.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
         var warmIndexer = versionsB.GetSearchIndexer(FhirVersion.R4, 1);
@@ -142,12 +145,37 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
             await AssertUnsupportedAsync(clientB, identifier);
             gate.AllowRetry.TrySetResult();
 
-            await AssertEventuallySupportedAsync(clientB, identifier);
+            await AssertEventuallyPendingAsync(clientB, identifier);
             ReferenceEquals(versionsB.GetSearchIndexer(FhirVersion.R4, 1), warmIndexer).ShouldBeFalse();
             ReferenceEquals(await registryB.GetOrCreateAsync(1, CancellationToken.None), warmCache).ShouldBeTrue();
-            warmDefinitions.GetSearchParameter("Patient", SearchCode).Url.ShouldBe(new Uri(Canonical));
+            // Managers are immutable per published generation: the warm one keeps the old definitions.
+            var refreshedDefinitions = versionsB.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+            refreshedDefinitions.ShouldNotBeSameAs(warmDefinitions);
+            refreshedDefinitions.GetSearchParameter("Patient", SearchCode).Url.ShouldBe(new Uri(Canonical));
+            warmDefinitions.TryGetSearchParameter("Patient", SearchCode, out _).ShouldBeFalse();
             (await warmCache.GetSearchParamIdAsync(Canonical, CancellationToken.None)).ShouldNotBeNull();
+            await AssertCapabilityAsync(clientB, expected: false, waitForRefresh: true);
+            var searchBuilderFactory = hostB.Services.GetRequiredService<ISearchOptionsBuilderFactory>();
+            var pendingSearchBuilder = searchBuilderFactory.Create(FhirVersion.R4, 1);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(hostB.Services, Canonical);
+            versionsB.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1)
+                .GetSearchParameter("Patient", SearchCode)
+                .Url.ShouldBe(new Uri(Canonical));
+            var enabledSearchBuilder = searchBuilderFactory.Create(FhirVersion.R4, 1);
+            enabledSearchBuilder.ShouldNotBeSameAs(pendingSearchBuilder);
+            enabledSearchBuilder.Build(
+                    "Patient",
+                [new QueryParameter(SearchCode, $"{IdentifierSystem}|{identifier}")],
+                    versionsB.GetSchemaProvider(FhirVersion.R4, 1))
+            .UnsupportedParams.ShouldBeEmpty();
+            await AssertEventuallySupportedAsync(clientB, identifier);
             await AssertCapabilityAsync(clientB, expected: true, waitForRefresh: true);
+            await stateA.CatchUpAsync(
+                hostA.Services.GetRequiredService<ISourceEventStore>(),
+                CancellationToken.None);
+            await hostA.Services.GetRequiredService<ConformanceRefresher>()
+                .RefreshAsync(force: false, CancellationToken.None);
+            await AssertEventuallySupportedAsync(clientA, identifier);
             await PutPatientAsync(clientB, afterId, identifier);
             await AssertPatientsAsync(clientB, identifier, afterId);
             await AssertPatientsAsync(clientA, identifier, afterId);
@@ -164,6 +192,13 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
     private static WebApplicationFactory<Program> CreateHost(
         IgnixaApiFixture template, string connectionString, int pollSeconds) =>
         template.WithWebHostBuilder(builder =>
+        {
+            // This test intentionally blocks a consumer refresh while it proves retry behavior.
+            // Keep that transient test window below the lease duration rather than making normal
+            // assertions nondeterministically depend on a one-second polling cadence.
+            builder.UseSetting("Conformance:SyncIntervalSeconds", pollSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            builder.UseSetting("Conformance:MaxStaleness", "00:00:30");
+            builder.UseSetting("Reindex:BarrierDelay", "00:00:30");
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -172,7 +207,8 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
                     ["Tenants:Configurations:0:Storage:Type"] = "SqlServer",
                     ["Tenants:Configurations:0:Storage:InheritConnectionStringFromTenant"] = "1",
                     ["Conformance:SyncIntervalSeconds"] = pollSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                })));
+                }));
+        });
 
     private static async Task AssertSignalAsync(Task signal, string reason)
     {
@@ -238,6 +274,38 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
             {
                 response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
                 return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+        }
+    }
+
+    private static async Task AssertEventuallyPendingAsync(HttpClient client, string identifier)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        while (true)
+        {
+            using var strictResponse = await SearchAsync(client, identifier);
+            var strictBody = await strictResponse.Content.ReadAsStringAsync();
+            if (strictResponse.StatusCode == HttpStatusCode.BadRequest)
+            {
+                using var lenientRequest = new HttpRequestMessage(HttpMethod.Get,
+                    $"/tenant/1/Patient?{SearchCode}={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}");
+                lenientRequest.Headers.Add("Prefer", "handling=lenient");
+                using var lenientResponse = await client.SendAsync(lenientRequest);
+                var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
+                if (lenientResponse.StatusCode == HttpStatusCode.OK &&
+                    lenientBody.Contains($"Search parameter '{SearchCode}' is pending reindex and was ignored.", StringComparison.Ordinal))
+                {
+                    return;
+                }
+            }
+
+            if (timeout.IsCancellationRequested)
+            {
+                strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, strictBody);
+                throw new InvalidOperationException(
+                    $"Search parameter '{SearchCode}' did not produce the pending-reindex lenient warning.");
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(100));

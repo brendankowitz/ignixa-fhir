@@ -106,6 +106,7 @@ public sealed class LegacyExpressionParser : IExpressionParser
 
         SearchParameterInfo refSearchParameter;
         List<string> referencedTypes = null;
+        IReadOnlyList<SearchParameterInfo> wildcardReferenceSearchParameters = [];
         bool wildCard = false;
         string targetType = null;
 
@@ -152,16 +153,37 @@ public sealed class LegacyExpressionParser : IExpressionParser
         if (wildCard)
         {
             referencedTypes = new List<string>();
-            IEnumerable<SearchParameterInfo> searchParameters = resourceTypes.SelectMany(t => _searchParameterDefinitionManager.GetSearchParameters(t))
-                .Where(p => p.Type == SearchParamType.Reference);
+            IEnumerable<SearchParameterInfo> searchParameters =
+                originalType.Equals("*".AsSpan(), StringComparison.Ordinal)
+                    ? isReversed
+                        ? _searchParameterDefinitionManager.AllSearchParameters
+                        : resourceTypes.SelectMany(_searchParameterDefinitionManager.GetSearchParameters)
+                    : _searchParameterDefinitionManager.GetSearchParameters(originalType.ToString());
+            wildcardReferenceSearchParameters = searchParameters
+                .Where(p =>
+                    p.Type == SearchParamType.Reference &&
+                    p.IsSearchable &&
+                    !p.IsHiddenByTransition &&
+                    p.Url is not null)
+                .DistinctBy(p => p.Url)
+                .ToList();
 
-            foreach (SearchParameterInfo p in searchParameters)
+            foreach (SearchParameterInfo p in wildcardReferenceSearchParameters)
             foreach (string t in p.TargetResourceTypes)
                 if (!referencedTypes.Contains(t))
                     referencedTypes.Add(t);
         }
 
-        return new IncludeExpression(resourceTypes, refSearchParameter, originalType.ToString(), targetType, referencedTypes, wildCard, isReversed, iterate);
+        return new IncludeExpression(
+            resourceTypes,
+            refSearchParameter,
+            originalType.ToString(),
+            targetType,
+            referencedTypes,
+            wildCard,
+            isReversed,
+            iterate,
+            wildcardReferenceSearchParameters);
     }
 
     private Expression ParseImpl(string[] resourceTypes, ReadOnlySpan<char> key, string value)

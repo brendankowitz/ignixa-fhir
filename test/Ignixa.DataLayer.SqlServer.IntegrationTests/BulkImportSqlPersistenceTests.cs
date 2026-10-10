@@ -27,6 +27,15 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IO;
 using Shouldly;
+using ConformanceBarrierRetryPolicy = Ignixa.Application.Features.Conformance.ConformanceBarrierRetryPolicy;
+using ConformanceTransitionOptions = Ignixa.Application.Features.Conformance.ConformanceTransitionOptions;
+using ConformanceRefresher = Ignixa.Application.Features.Conformance.ConformanceRefresher;
+using ConformanceState = Ignixa.Application.Features.Conformance.ConformanceState;
+using ICapabilityCacheInvalidator = Ignixa.Application.Infrastructure.Caching.ICapabilityCacheInvalidator;
+using ISearchParameterCatalogSynchronizer = Ignixa.Application.Features.Conformance.ISearchParameterCatalogSynchronizer;
+using ISourceEventStore = Ignixa.Conformance.Events.Abstractions.ISourceEventStore;
+using NewSourceEvent = Ignixa.Conformance.Events.NewSourceEvent;
+using SourceEvent = Ignixa.Conformance.Events.SourceEvent;
 using SearchComparator = Ignixa.Specification.ValueSets.Normative.SearchComparator;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
@@ -53,6 +62,8 @@ public class BulkImportSqlPersistenceTests
             using var versions = new FhirVersionContext(NullLoggerFactory.Instance,
                 new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance);
             var definitions = versions.GetSearchParameterDefinitionManager(FhirVersion.R4);
+            using var conformanceState = new ConformanceState();
+            using var conformanceRefresher = CreateConformanceRefresher(conformanceState, versions, tenants);
             using var cache = new SqlServerSearchIndexReferenceDataCache(database.SqlExecutionService, 1,
                 NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
             await cache.PreloadResourceTypesAsync(CancellationToken.None);
@@ -74,7 +85,13 @@ public class BulkImportSqlPersistenceTests
                 blobs, new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["Import:ConsumerCount"] = "1"
-                }).Build(), new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance);
+                }).Build(),
+                new FhirRequestContextAccessor(),
+                new ConformanceBarrierRetryPolicy(
+                    conformanceRefresher,
+                    Options.Create(new ConformanceTransitionOptions()),
+                    NullLogger<ConformanceBarrierRetryPolicy>.Instance),
+                NullLogger<StreamingImportFileActivity>.Instance);
 
             var outputJson = await activity.RunAsync(context, JsonSerializer.Serialize(new[]
             {
@@ -172,6 +189,51 @@ public class BulkImportSqlPersistenceTests
     private sealed class RepositoryFactory(IFhirRepository repository) : IFhirRepositoryFactory
     {
         public Task<IFhirRepository> GetRepositoryAsync(int tenantId, CancellationToken ct = default) => Task.FromResult(repository);
+    }
+
+    // The barrier never rejects in this test; the refresher only has to be constructible with the
+    // real version context and tenant store.
+    private static ConformanceRefresher CreateConformanceRefresher(
+        ConformanceState conformanceState,
+        IFhirVersionContext versions,
+        ITenantConfigurationStore tenants) =>
+        new(
+            conformanceState,
+            new EmptyEventStore(),
+            versions,
+            tenants,
+            new UnusedSearchParameterCatalog(),
+            new UnusedCapabilityCacheInvalidator(),
+            NullLogger<ConformanceRefresher>.Instance);
+
+    private sealed class EmptyEventStore : ISourceEventStore
+    {
+        public Task<IReadOnlyList<SourceEvent>> AppendAsync(IEnumerable<NewSourceEvent> events, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public IAsyncEnumerable<SourceEvent> ReadAllAsync(CancellationToken cancellationToken) => AsyncEnumerable.Empty<SourceEvent>();
+
+        public IAsyncEnumerable<SourceEvent> ReadFromAsync(long afterEventId, CancellationToken cancellationToken) =>
+            AsyncEnumerable.Empty<SourceEvent>();
+
+        public IAsyncEnumerable<SourceEvent> ReadStreamAsync(string streamId, CancellationToken cancellationToken) =>
+            AsyncEnumerable.Empty<SourceEvent>();
+    }
+
+    private sealed class UnusedSearchParameterCatalog : ISearchParameterCatalogSynchronizer
+    {
+        public Task SynchronizeAsync(
+            TenantConfiguration tenant,
+            ISearchParameterDefinitionManager definitions,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class UnusedCapabilityCacheInvalidator : ICapabilityCacheInvalidator
+    {
+        public ValueTask InvalidateForProfileChangesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask InvalidateForSearchParameterChangesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask InvalidateAllAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask InvalidateForTenantAsync(int tenantId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class TenantStore : ITenantConfigurationStore

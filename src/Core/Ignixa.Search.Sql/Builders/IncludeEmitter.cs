@@ -32,6 +32,12 @@ internal static class IncludeEmitter
         {
             whereClauses.Add($"rsp.SearchParamId = {paramId}");
         }
+        else if (stage.WildcardReferenceSearchParamIds is { } wildcardParamIds)
+        {
+            whereClauses.Add(wildcardParamIds.Count == 0
+                ? "1 = 0"
+                : EmitTypeInFilter("rsp.SearchParamId", wildcardParamIds));
+        }
 
         if (stage.SeedTypeIds is { Count: > 0 } seedTypeIds)
         {

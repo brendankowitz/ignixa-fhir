@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.DataLayer.SqlServer.Features.BackgroundJobs;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -127,6 +128,7 @@ public class SqlServerBackgroundJobTerminalStateTests(SqlPersistenceContractFixt
     private static void AssertUnchanged(BackgroundJob<ExportJobDefinition> actual, BackgroundJob<ExportJobDefinition> expected)
     {
         actual.Status.ShouldBe(expected.Status);
+        actual.RowVersion.ShouldBe(expected.RowVersion);
         actual.EndDate.ShouldBe(expected.EndDate);
         actual.HeartbeatDate.ShouldBe(expected.HeartbeatDate);
         actual.ErrorMessage.ShouldBe(expected.ErrorMessage);

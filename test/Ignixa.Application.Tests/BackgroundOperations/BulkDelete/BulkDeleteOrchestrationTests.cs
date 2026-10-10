@@ -18,9 +18,19 @@ public class BulkDeleteOrchestrationTests
     private readonly List<RetryOptions> _retries = [];
     private readonly Queue<Func<BulkDeleteBatchOutput>> _outputs = new();
     private readonly List<object> _continued = [];
+    private readonly List<TimeSpan> _waits = [];
+    private DateTime _now = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     public BulkDeleteOrchestrationTests()
     {
+        _context.CurrentUtcDateTime.Returns(_ => _now);
+        _context.CreateTimer(Arg.Any<DateTime>(), true).Returns(call =>
+        {
+            var fireAt = call.Arg<DateTime>();
+            _waits.Add(fireAt - _now);
+            _now = fireAt;
+            return Task.FromResult(true);
+        });
         _context.When(context => context.ContinueAsNew(Arg.Any<object>())).Do(call => _continued.Add(call.Arg<object>()));
         _context.ScheduleWithRetry<BulkDeleteBatchOutput>(typeof(BulkDeleteBatchActivity), Arg.Any<RetryOptions>(), Arg.Any<object[]>())
             .Returns(call =>
@@ -57,6 +67,46 @@ public class BulkDeleteOrchestrationTests
         output.ShouldBe(output with { Success = true, Superseded = false, ErrorMessage = null });
         _retries.ShouldAllBe(retry => retry.FirstRetryInterval == TimeSpan.FromSeconds(5) &&
             retry.MaxNumberOfAttempts == 3 && retry.BackoffCoefficient == 2);
+    }
+
+    [Fact]
+    public async Task GivenABatchDeferredForAStaleConformanceLease_WhenRunning_ThenTheSameBatchRunsAgainAfterADurableWait()
+    {
+        Enqueue(Batch(new() { ["Patient"] = 2 }, hasMore: true, firstMatch: "Patient/p1"));
+        Enqueue(BulkDeleteBatchOutput.WaitForConformance());
+        Enqueue(BulkDeleteBatchOutput.WaitForConformance());
+        Enqueue(Batch(new() { ["Patient"] = 1 }, hasMore: false, firstMatch: "Patient/p3"));
+
+        var output = await new BulkDeleteOrchestration().RunTask(_context, Input(BulkDeleteMode.HardDelete, "Patient"));
+
+        _batches.Count.ShouldBe(4);
+        _batches.Skip(1).ShouldAllBe(batch =>
+            batch.ResourceType == "Patient" && batch.ContinuationToken == null && batch.CumulativeCounts["Patient"] == 2);
+        _waits.ShouldBe([TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)]);
+        var completion = _completions.ShouldHaveSingleItem();
+        completion.Success.ShouldBeTrue();
+        completion.ResourceDeletedCount.ShouldBe(new Dictionary<string, long> { ["Patient"] = 3 });
+        output.Success.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenTheConformanceLeaseStaysLost_WhenTheWaitExceedsItsBound_ThenTheJobFailsWithTheReason()
+    {
+        for (var index = 0; index < 100; index++)
+        {
+            Enqueue(BulkDeleteBatchOutput.WaitForConformance());
+        }
+
+        var output = await new BulkDeleteOrchestration().RunTask(_context, Input(BulkDeleteMode.HardDelete, "Patient"));
+
+        _waits.ShouldAllBe(wait => wait <= TimeSpan.FromMinutes(1));
+        _waits.Aggregate(TimeSpan.Zero, (total, wait) => total + wait)
+            .ShouldBeGreaterThanOrEqualTo(BulkDeleteOrchestration.ConformanceWaitTimeout);
+        var completion = _completions.ShouldHaveSingleItem();
+        completion.Success.ShouldBeFalse();
+        completion.ErrorMessage.ShouldContain("conformance staleness lease");
+        completion.ResourceDeletedCount.ShouldBeEmpty();
+        output.Success.ShouldBeFalse();
     }
 
     [Fact]

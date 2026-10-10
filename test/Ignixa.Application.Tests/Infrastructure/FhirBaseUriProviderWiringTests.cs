@@ -4,11 +4,14 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Specification.Generated;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
@@ -46,7 +49,28 @@ public class FhirBaseUriProviderWiringTests
     {
         Should.Throw<ArgumentNullException>(() => new SearchOptionsBuilderFactory(
             Substitute.For<IFhirVersionContext>(),
-            baseUriProvider: null!));
+            baseUriProvider: null!,
+            Substitute.For<IHttpContextAccessor>(),
+            Substitute.For<IFhirRequestContextAccessor>(),
+            TestConformanceLease.Held()));
+    }
+
+    [Fact]
+    public void GivenStaleLeaseForAnHttpRequest_WhenCreatingSearchOptions_ThenItFailsClosed()
+    {
+        var httpContextAccessor = Substitute.For<IHttpContextAccessor>();
+        httpContextAccessor.HttpContext.Returns(new DefaultHttpContext());
+        var lease = TestConformanceLease.NotHeld();
+        var factory = new SearchOptionsBuilderFactory(
+            Substitute.For<IFhirVersionContext>(),
+            NullFhirBaseUriProvider.Instance,
+            httpContextAccessor,
+            Substitute.For<IFhirRequestContextAccessor>(),
+            lease);
+
+        var exception = Should.Throw<ConformanceStaleException>(() => factory.Create(FhirVersion.R4));
+
+        exception.RetryAfter.ShouldBe(TimeSpan.FromSeconds(30));
     }
 
     [Fact]

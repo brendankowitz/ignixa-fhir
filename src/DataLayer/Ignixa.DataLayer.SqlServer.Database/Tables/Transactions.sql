@@ -20,3 +20,18 @@ GO
 
 CREATE INDEX IX_IsVisible
     ON dbo.Transactions(IsVisible);
+
+GO
+
+CREATE INDEX IX_Transactions_SurrogateIdRangeLastValue
+    ON dbo.Transactions(SurrogateIdRangeLastValue DESC) WITH (ONLINE = ON);
+
+GO
+
+-- Only incomplete transactions, so the reindex drain's TOP (1) seeks a near-empty index instead of reading every
+-- completed row below the cutoff: dbo.Transactions is never pruned and nothing is incomplete in the normal case.
+-- Covering on purpose: without the INCLUDE the optimizer costs the key lookup above a clustered scan and never
+-- uses the index.
+CREATE INDEX IX_Transactions_SurrogateIdRangeFirstValue_Incomplete
+    ON dbo.Transactions(SurrogateIdRangeFirstValue) INCLUDE (CreateDate, HeartbeatDate)
+    WHERE IsCompleted = 0 WITH (ONLINE = ON);

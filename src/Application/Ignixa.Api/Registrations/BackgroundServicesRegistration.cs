@@ -12,6 +12,9 @@ using Ignixa.Application.BackgroundOperations.BulkDelete;
 using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Import;
 using Ignixa.Application.BackgroundOperations.Jobs;
+using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.BackgroundOperations.Reindex.Workers;
+using Ignixa.Application.Features.Conformance;
 using Medino;
 
 namespace Ignixa.Api.Registrations;
@@ -58,7 +61,36 @@ public static class BackgroundServicesRegistration
             .ValidateOnStart();
 
         // Transaction watcher options (used by eternal orchestration)
-        services.Configure<TransactionWatcherOptions>(configuration.GetSection(TransactionWatcherOptions.SectionName));
+        services.AddOptions<TransactionWatcherOptions>()
+            .Configure(options => configuration.GetSection(TransactionWatcherOptions.SectionName).Bind(options))
+            .Validate<IOptions<ReindexOptions>>(
+                (transactionWatcher, reindexOptions) =>
+                    !reindexOptions.Value.Enabled || transactionWatcher.Enabled,
+                "TransactionWatcher:Enabled must be true when Reindex:Enabled is true.")
+            .ValidateOnStart();
+
+        services.AddOptions<ReindexOptions>()
+            .Configure(options =>
+            {
+                configuration.GetSection(ReindexOptions.SectionName).Bind(options);
+                options.BarrierDelay = configuration.GetValue<TimeSpan?>("Reindex:BarrierDelay")
+                    ?? TimeSpan.FromSeconds(3 * configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
+            })
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ReindexOptions>, ReindexOptionsValidator>();
+
+        services.AddOptions<ConformanceTransitionOptions>()
+            .Configure(options =>
+            {
+                configuration.GetSection(ConformanceTransitionOptions.SectionName).Bind(options);
+                options.SyncIntervalSeconds = configuration.GetValue("Conformance:SyncIntervalSeconds", 30);
+                options.MaxStaleness = configuration.GetValue<TimeSpan?>("Conformance:MaxStaleness")
+                    ?? TimeSpan.FromSeconds(3 * options.SyncIntervalSeconds);
+                options.TransitionGrace = configuration.GetValue<TimeSpan?>("Conformance:TransitionGrace")
+                    ?? options.MaxStaleness + options.TransitionSafetyMargin;
+            })
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ConformanceTransitionOptions>, ConformanceTransitionOptionsValidator>();
 
         // Eternal orchestration starter (starts all periodic DurableTask orchestrations)
         services.AddHostedService<EternalOrchestrationStarter>();
@@ -89,6 +121,24 @@ public static class BackgroundServicesRegistration
         builder.RegisterType<GetJobStatusHandler>()
             .As<IRequestHandler<GetJobStatusQuery, GetJobStatusResult>>()
             .InstancePerDependency();
+
+        builder.RegisterType<CreateReindexJobHandler>()
+            .As<IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>>()
+            .InstancePerDependency();
+        builder.RegisterType<GetReindexStatusHandler>()
+            .As<IRequestHandler<GetReindexStatusQuery, ReindexStatusResult?>>()
+            .InstancePerDependency();
+        builder.RegisterType<GetReindexJobsHandler>()
+            .As<IRequestHandler<GetReindexJobsQuery, IReadOnlyList<ReindexStatusResult>>>()
+            .InstancePerDependency();
+        builder.RegisterType<CancelReindexHandler>()
+            .As<IRequestHandler<CancelReindexCommand, CancelReindexResult>>()
+            .InstancePerDependency();
+        builder.RegisterType<ReindexRangeProcessor>().AsSelf().InstancePerDependency();
+        builder.RegisterType<ReindexLifecycleEventWriter>().AsSelf().SingleInstance();
+        builder.RegisterType<ReindexTargetResolver>().AsSelf().SingleInstance();
+        builder.RegisterType<ReindexJobReconciler>().AsSelf().SingleInstance();
+        builder.RegisterType<ReindexProgressReporter>().AsSelf().SingleInstance();
 
         // Bulk delete job handlers
         builder.RegisterType<CreateBulkDeleteJobHandler>()

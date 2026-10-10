@@ -6,11 +6,14 @@
 using System.Collections.Concurrent;
 using EnsureThat;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Parsing;
+using Microsoft.AspNetCore.Http;
 
 namespace Ignixa.Application.Features.Search;
 
@@ -24,11 +27,16 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
 {
     private readonly IFhirVersionContext _versionContext;
     private readonly ConcurrentDictionary<(TenantContext Tenant, FhirVersion Version), ISearchOptionsBuilder> _builderCache = new();
-    private readonly ConcurrentDictionary<(TenantContext Tenant, FhirVersion Version, int? TenantId), ISearchOptionsBuilder> _tenantBuilderCache = new();
+    private readonly ConcurrentDictionary<
+        (TenantContext Tenant, FhirVersion Version, int TenantId, long DefinitionsGeneration),
+        ISearchOptionsBuilder> _tenantBuilderCache = new();
     private readonly SemaphoreSlim _creationLock = new(1, 1);
     private bool _disposed;
 
     private readonly IFhirBaseUriProvider _baseUriProvider;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IFhirRequestContextAccessor _fhirRequestContextAccessor;
+    private readonly ConformanceLease _conformanceLease;
 
     /// <param name="baseUriProvider">
     /// Supplies this server's base URIs so an absolute self-reference in a search value is recognized as
@@ -37,13 +45,21 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     /// stop reconciling. Required for that reason — pass
     /// <see cref="NullFhirBaseUriProvider.Instance"/> to opt out deliberately.
     /// </param>
-    public SearchOptionsBuilderFactory(IFhirVersionContext versionContext, IFhirBaseUriProvider baseUriProvider)
+    public SearchOptionsBuilderFactory(
+        IFhirVersionContext versionContext,
+        IFhirBaseUriProvider baseUriProvider,
+        IHttpContextAccessor httpContextAccessor,
+        IFhirRequestContextAccessor fhirRequestContextAccessor,
+        ConformanceLease conformanceLease)
     {
         EnsureArg.IsNotNull(versionContext, nameof(versionContext));
         ArgumentNullException.ThrowIfNull(baseUriProvider);
 
         _versionContext = versionContext;
         _baseUriProvider = baseUriProvider;
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+        _fhirRequestContextAccessor = fhirRequestContextAccessor ?? throw new ArgumentNullException(nameof(fhirRequestContextAccessor));
+        _conformanceLease = conformanceLease ?? throw new ArgumentNullException(nameof(conformanceLease));
     }
 
     /// <inheritdoc/>
@@ -72,8 +88,12 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         FhirVersion fhirVersion,
         int? tenantId)
     {
-        // Include tenantId in cache key to separate tenant-specific builders
-        var cacheKey = (tenant, fhirVersion, tenantId);
+        EnsureConformanceLease();
+
+        var definitionsGeneration = tenantId.HasValue
+            ? _versionContext.GetDefinitionsHandle(fhirVersion, tenantId).DefinitionsEventId
+            : 0;
+        var cacheKey = (tenant, fhirVersion, tenantId.GetValueOrDefault(), definitionsGeneration);
 
         // Fast path: check cache (use TryGetValue on extension for tuple key)
         if (_builderCache.TryGetValue((tenant, fhirVersion), out var cachedBuilder) && !tenantId.HasValue)
@@ -107,11 +127,11 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
 
             // CRITICAL: Use tenant-specific search parameter manager when tenantId is provided
             // This ensures query parsing uses the same search parameters as indexing (including US Core)
-            var searchParamDefinitionManager = tenantId.HasValue
-                ? _versionContext.GetSearchParameterDefinitionManager(fhirVersion, tenantId)
-                : _versionContext.GetSearchParameterDefinitionManager(fhirVersion);
+            var searchParamDefinitionManager = _versionContext.GetSearchableSearchParameterDefinitionManager(
+                fhirVersion,
+                tenantId,
+                UsePartialIndices);
 
-            // Create resolver delegate for SearchParameterDefinitionManager
             ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver resolver =
                 () => searchParamDefinitionManager;
 
@@ -138,6 +158,15 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
             // Cache and return - use appropriate cache based on tenant ID
             if (tenantId.HasValue)
             {
+                foreach (var staleKey in _tenantBuilderCache.Keys.Where(key =>
+                    key.Tenant == tenant &&
+                    key.Version == fhirVersion &&
+                    key.TenantId == tenantId.Value &&
+                    key.DefinitionsGeneration != definitionsGeneration))
+                {
+                    _tenantBuilderCache.TryRemove(staleKey, out _);
+                }
+
                 _tenantBuilderCache.TryAdd(cacheKey, builder);
             }
             else
@@ -166,5 +195,19 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
         _creationLock?.Dispose();
         _disposed = true;
         GC.SuppressFinalize(this);
+    }
+
+    private bool UsePartialIndices()
+    {
+        var header = _httpContextAccessor.HttpContext?.Request.Headers["x-ms-use-partial-indices"].ToString();
+        return string.Equals(header, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsureConformanceLease()
+    {
+        ConformanceSearchGuard.EnsureRequestCanSearch(
+            _conformanceLease,
+            requestOriginated: _httpContextAccessor.HttpContext is not null,
+            isBackgroundTask: _fhirRequestContextAccessor.RequestContext?.IsBackgroundTask == true);
     }
 }

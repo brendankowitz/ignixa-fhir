@@ -1,4 +1,5 @@
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.ConditionalOperations;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
@@ -61,7 +62,7 @@ public class ConditionalDeleteHandler : IRequestHandler<ConditionalDeleteCommand
         // Step 3: Build search options with appropriate max count
         int maxItemCount = isSingleMode ? 2 : (request.Count!.Value + 1);
         var searchOptions = searchOptionsBuilder.Build(request.ResourceType, queryParameters);
-        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+        ConditionalSearchParameterValidator.ThrowIfInvalid(searchOptions);
         searchOptions.MaxItemCount = maxItemCount;
 
         // Step 4: Execute search to find matching resources

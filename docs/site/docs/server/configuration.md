@@ -444,8 +444,8 @@ Two things depend on setting it:
   logs a warning at startup when the setting is missing. Recognising the tenant-scoped base also depends on
   the background activity establishing which tenant it is running for — `$import` does this via
   `FhirRequestContextFactory.CreateBackgroundContext`, restored on exit so it cannot leak to the next job on
-  a pooled thread. Any future background path that indexes resources (a `$reindex` implementation, for
-  example) must do the same or it will silently reintroduce this gap even with `Fhir:BaseUri` set.
+  a pooled thread. `$reindex` does the same for each range it processes. Any future background path that
+  indexes resources must do the same or it will silently reintroduce this gap even with `Fhir:BaseUri` set.
 - **Host header trust.** With `Fhir:BaseUri` unset, the base is derived from the request's `Host` header,
   which a client controls — a forged `Host` decides whether an inbound reference is stored as internal or
   external. When it is set, the `Host` header is ignored for this purpose. Independently, set `AllowedHosts`
@@ -578,6 +578,70 @@ Configure import performance for high-volume ingestion:
 
 :::note
 Higher concurrency values improve throughput but use more system resources and threads. Start with defaults and increase conservatively based on monitoring. Each concurrent file spawn 1 producer + ConsumerCount worker threads, so total threads = MaxConcurrentFiles * (1 + ConsumerCount).
+:::
+
+## Conformance Freshness and Reindexing
+
+Servers that share a conformance event store poll it for search-parameter changes. These settings
+control how stale a server may become before it stops answering searches, and how the
+[`$reindex`](/docs/server/fhir/operations#reindex) job behaves. The defaults suit most deployments,
+`MaxStaleness` and `BarrierDelay` derive from `Conformance:SyncIntervalSeconds`, and
+`TransitionSafetyMargin` from the longest default SQL command budget.
+
+```json
+{
+  "Conformance": {
+    "SyncIntervalSeconds": 30,
+    "MaxStaleness": "00:01:30",
+    "TransitionGrace": "00:04:00",
+    "TransitionSafetyMargin": "00:02:30"
+  },
+  "Reindex": {
+    "Enabled": true,
+    "AutoStart": true,
+    "BarrierDelay": "00:01:30"
+  }
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Conformance:SyncIntervalSeconds` | `30` | How often each server polls for conformance changes. |
+| `Conformance:MaxStaleness` | `3 × SyncIntervalSeconds` | A server whose last successful sync *started* longer ago than this returns `503` for requests that evaluate search parameters. The default tolerates one missed poll. See [search parameters](/docs/server/fhir/search-parameters#reindexing-and-search-parameter-lifecycle). |
+| `Conformance:TransitionGrace` | `MaxStaleness + TransitionSafetyMargin` | Delay between hiding a replaced or removed parameter and changing how it is extracted. |
+| `Conformance:TransitionSafetyMargin` | `00:02:30` | Time added above `MaxStaleness` before a transition may commit. It covers one search that passed the staleness check just before expiry, running its longest default SQL command budget, plus clock skew. Lower it only if you also lower your SQL command timeouts. |
+| `Reindex:Enabled` | `true` | Registers the `$reindex` endpoints and the job. |
+| `Reindex:AutoStart` | `true` | Start a reindex job automatically after a package activation creates parameters that need one, and start a follow-up when an activation arrives while a job runs. A failed job is not retried automatically; the next activation or a `POST $reindex` starts the next job. When `false`, start jobs with `POST $reindex`. |
+| `Reindex:BarrierDelay` | `3 × SyncIntervalSeconds` | Wait after a change before a job fences out writers with older definitions, giving other servers time to catch up. |
+| `Reindex:DefaultMaximumNumberOfResourcesPerQuery` | `10000` | Default size of one range of work. |
+| `Reindex:DefaultMaximumNumberOfResourcesPerWrite` | `100` | Default batch size for index writes. Large batches hold row locks until they commit and can escalate to partition locks that block normal writes of the same resource type; raise it only after measuring. |
+| `Reindex:DefaultMaximumConcurrency` | `4` | Default concurrent ranges per tenant. |
+| `Reindex:StaleJobTimeout` | `00:30:00` | A running job with no heartbeat for this long is flagged in its status and logged as an error. A tenant that waits longer than this for in-flight writes to finish, or for the workers' search parameter definitions to catch up with the job's target, also fails. |
+| `Reindex:DrainWarningAfter` | `00:05:00` | A job waiting for in-flight writes longer than this logs the oldest incomplete transaction. |
+| `Reindex:OrphanGrace` | `00:02:00` | How long a job with no live orchestration is left alone before it is recovered and its parameters returned to `Pending`. |
+| `Reindex:ContinueAsNewThreshold` | `2000` | Activities scheduled before a job restarts its orchestration to keep its history bounded. Leave it unless support asks. |
+
+The server **fails to start** if these do not hold, so a misconfiguration is caught before it can
+serve wrong results:
+
+- `SyncIntervalSeconds`, `MaxStaleness`, `TransitionGrace` and `TransitionSafetyMargin` must be
+  positive.
+- `TransitionGrace` must be at least `MaxStaleness + TransitionSafetyMargin`.
+- `BarrierDelay` must be at least `MaxStaleness`.
+- `Reindex:DefaultMaximumNumberOfResourcesPerQuery` and `...PerWrite` must be `1`–`10000`, and
+  `Reindex:DefaultMaximumConcurrency` must be `1`–`16`, the same ranges the `$reindex` request
+  parameters accept.
+- `Reindex:OrphanGrace`, `StaleJobTimeout` and `DrainWarningAfter` must be positive, and
+  `ContinueAsNewThreshold` at least `1`.
+- `TransactionWatcher:Enabled` must be `true` when `Reindex:Enabled` is `true`. A reindex job waits for
+  in-flight writes to complete, and the [transaction watcher](#transaction-watcher) is what completes
+  a stalled one.
+
+:::note
+Search availability depends on reaching the shared conformance store. If an instance cannot sync for
+longer than `MaxStaleness`, its searches return `503` with `Retry-After` until it syncs again. Raise
+`MaxStaleness` (and `TransitionGrace` with it) if your deployment has slow or flaky links to the
+conformance database.
 :::
 
 ## Transaction Watcher

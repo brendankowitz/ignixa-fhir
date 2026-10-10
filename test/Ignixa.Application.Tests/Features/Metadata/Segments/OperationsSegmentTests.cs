@@ -8,12 +8,16 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Features.Metadata;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Tests.BackgroundOperations.Reindex;
 using Ignixa.Application.Operations.Features.Transform;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Microsoft.Extensions.Options;
 using Xunit;
 using Ignixa.Serialization.TestSupport;
 
@@ -39,10 +43,7 @@ public class OperationsSegmentTests
                 Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<PackageResource>());
 
-        _segment = new OperationsSegment(
-            _features,
-            _packageResourceRepository,
-            NullLogger<OperationsSegment>.Instance);
+        _segment = CreateSegment(reindexEnabled: false);
     }
 
     [Theory]
@@ -112,10 +113,7 @@ public class OperationsSegmentTests
         var transformFeature = new StructureMapTransformFeature();
         _features.Add(transformFeature);
 
-        var mockSegment = new OperationsSegment(
-            _features,
-            _packageResourceRepository,
-            NullLogger<OperationsSegment>.Instance);
+        var mockSegment = CreateSegment(reindexEnabled: false);
 
         var statement = new CapabilityStatementJsonNode();
         var context = new CapabilityContext(
@@ -217,10 +215,7 @@ public class OperationsSegmentTests
         var graphQlFeature = new GraphQlFeature();
         _features.Add(graphQlFeature);
 
-        var segment = new OperationsSegment(
-            _features,
-            _packageResourceRepository,
-            NullLogger<OperationsSegment>.Instance);
+        var segment = CreateSegment(reindexEnabled: false);
 
         var statement = new CapabilityStatementJsonNode();
         var context = new CapabilityContext(
@@ -266,6 +261,82 @@ public class OperationsSegmentTests
         graphQlOp.ShouldNotBeNull("graphql operation should be listed as a system operation");
         graphQlOp["definition"]?.GetValue<string>()
             .ShouldBe("http://hl7.org/fhir/OperationDefinition/Resource-graphql");
+    }
+
+    [Fact]
+    public async Task GivenReindexEnabledAndEverySqlTenant_WhenApplyingSegment_ThenAdvertisesReindexOperation()
+    {
+        var segment = CreateSegment(
+            reindexEnabled: true,
+            ReindexTestHelper.CreateRepositoryFactory(ReindexTestHelper.Tenant(1, "SqlServer")));
+        var statement = new CapabilityStatementJsonNode();
+
+        await segment.ApplyAsync(
+            statement,
+            new CapabilityContext(FhirVersion.R4, TenantId: 1),
+            CancellationToken.None);
+
+        SystemOperationNames(statement).ShouldBe(["reindex"]);
+    }
+
+    [Fact]
+    public async Task GivenReindexDisabled_WhenApplyingSegment_ThenOmitsReindexOperation()
+    {
+        var segment = CreateSegment(
+            reindexEnabled: false,
+            ReindexTestHelper.CreateRepositoryFactory(ReindexTestHelper.Tenant(1, "SqlServer")));
+        var statement = new CapabilityStatementJsonNode();
+
+        await segment.ApplyAsync(
+            statement,
+            new CapabilityContext(FhirVersion.R4, TenantId: 1),
+            CancellationToken.None);
+
+        statement.Rest.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenUnavailableReindexProvider_WhenApplyingSegment_ThenOmitsReindexOperation()
+    {
+        var segment = CreateSegment(
+            reindexEnabled: true,
+            ReindexTestHelper.CreateRepositoryFactory(
+                ReindexTestHelper.Tenant(1, "SqlServer"),
+                ReindexTestHelper.Tenant(2, "FileSystem")));
+        var statement = new CapabilityStatementJsonNode();
+
+        await segment.ApplyAsync(
+            statement,
+            new CapabilityContext(FhirVersion.R4, TenantId: 1),
+            CancellationToken.None);
+
+        statement.Rest.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenUnsupportedTenantAddedAtRuntime_WhenHashingAndApplyingAgain_ThenReindexIsWithdrawn()
+    {
+        var tenants = Substitute.For<ITenantConfigurationStore>();
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns([ReindexTestHelper.Tenant(1, "SqlServer")]);
+        var segment = CreateSegment(
+            reindexEnabled: true,
+            new CompositeRepositoryFactory(
+                tenants,
+                Substitute.For<IFhirRepositoryFactory>(),
+                Substitute.For<IFhirRepositoryFactory>(),
+                Substitute.For<IReindexStoreFactory>()));
+        var context = new CapabilityContext(FhirVersion.R4, TenantId: 1);
+        var advertisedHash = await segment.GetVersionHashAsync(context, CancellationToken.None);
+
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns([ReindexTestHelper.Tenant(1, "SqlServer"), ReindexTestHelper.Tenant(2, "FileSystem")]);
+        var withdrawnHash = await segment.GetVersionHashAsync(context, CancellationToken.None);
+        var statement = new CapabilityStatementJsonNode();
+        await segment.ApplyAsync(statement, context, CancellationToken.None);
+
+        withdrawnHash.ShouldNotBe(advertisedHash);
+        statement.Rest.ShouldBeEmpty();
     }
 
     [Fact]
@@ -415,4 +486,18 @@ public class OperationsSegmentTests
         feature.SupportedFhirVersions.Returns((IReadOnlyList<string>?)null);
         return feature;
     }
+
+    private OperationsSegment CreateSegment(
+        bool reindexEnabled,
+        CompositeRepositoryFactory? repositoryFactory = null) =>
+        new(
+            _features,
+            _packageResourceRepository,
+            Options.Create(new ReindexOptions { Enabled = reindexEnabled }),
+            repositoryFactory ?? ReindexTestHelper.CreateRepositoryFactory(),
+            NullLogger<OperationsSegment>.Instance);
+
+    private static IEnumerable<string> SystemOperationNames(CapabilityStatementJsonNode statement) =>
+        statement.Rest.ShouldHaveSingleItem().MutableNode()["operation"]!.AsArray()
+            .Select(operation => operation!["name"]!.GetValue<string>());
 }

@@ -37,7 +37,7 @@ public class BulkImportStorageFailureTests
             new TenantConfiguration { TenantId = 1, DisplayName = "Bulk failure test", FhirVersion = "4.0" });
         var repository = Substitute.For<IFhirRepository>();
         var stored = new List<string>();
-        repository.GetNextTransactionIdAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        repository.GetNextTransactionIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(_ =>
             phase == "allocate" ? throw new IOException("allocate response unavailable") : new TransactionId(1));
         repository.BatchWriteAsync(Arg.Any<TransactionId>(),
             Arg.Any<IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>>(),
@@ -62,8 +62,15 @@ public class BulkImportStorageFailureTests
         TaskActivity activity = streaming
             ? new StreamingImportFileActivity(factory, versions, tenants, blobs,
                 new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
-                new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance)
-            : new ImportBatchActivity(factory, versions, tenants, new FhirRequestContextAccessor(), NullLogger<ImportBatchActivity>.Instance);
+                new FhirRequestContextAccessor(), TestConformanceBarrierRetryPolicy.Create(),
+                NullLogger<StreamingImportFileActivity>.Instance)
+            : new ImportBatchActivity(
+                factory,
+                versions,
+                tenants,
+                new FhirRequestContextAccessor(),
+                TestConformanceBarrierRetryPolicy.Create(),
+                NullLogger<ImportBatchActivity>.Instance);
         object input = streaming
             ? new StreamingImportFileInput { JobId = "job", TenantId = 1, ResourceType = "Patient", FileUrl = "input.ndjson",
                 Mode = "IncrementalLoad", BatchSize = 1, ChannelCapacity = 1 }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.RowGenerators;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
@@ -68,15 +69,18 @@ public class SqlServerMergeRepository(
     /// Begins a merge transaction, allocating transaction ID and sequence range.
     /// </summary>
     /// <param name="resourceCount">Number of resources to be merged in this transaction.</param>
+    /// <param name="definitionsEventId">Conformance position of the definitions used to extract indexes.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A tuple containing (TransactionId, SequenceRangeFirstValue).</returns>
     public async Task<(long TransactionId, int SequenceStart)> BeginTransactionAsync(
         int resourceCount,
+        long definitionsEventId,
         CancellationToken cancellationToken = default)
     {
         // A full-cycle request cannot advance the procedure's wrap-retry loop.
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resourceCount);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(resourceCount, 80000);
+        ArgumentOutOfRangeException.ThrowIfNegative(definitionsEventId);
 
         _logger.LogDebug("Beginning merge transaction for {ResourceCount} resources", resourceCount);
 
@@ -95,7 +99,16 @@ public class SqlServerMergeRepository(
         };
 
         using var command = new SqlCommand(
-            "EXEC dbo.MergeResourcesBeginTransaction @Count, @TransactionId OUTPUT, @SequenceRangeFirstValue OUTPUT, @HeartbeatDate")
+            """
+            EXEC dbo.MergeResourcesBeginTransaction
+                @Count,
+                @TransactionId OUTPUT,
+                @SequenceRangeFirstValue OUTPUT,
+                @HeartbeatDate;
+            SELECT Bigint
+            FROM dbo.Parameters
+            WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId';
+            """)
         {
             CommandType = CommandType.Text
         };
@@ -106,8 +119,52 @@ public class SqlServerMergeRepository(
 
         try
         {
-            await _sqlExecutionService.ExecuteNonQueryAsync(
-                tenantId, command, cancellationToken, SqlCommandIdempotency.NonIdempotent);
+            var barrierValues = await _sqlExecutionService.ExecuteReaderAsync(
+                tenantId,
+                command,
+                reader => reader.IsDBNull(0) ? 0L : reader.GetInt64(0),
+                cancellationToken,
+                SqlCommandIdempotency.NonIdempotent);
+            var barrier = barrierValues.Count == 0 ? 0 : barrierValues[0];
+            var transactionId = (long)transactionIdParam.Value!;
+            var sequenceStart = (int)sequenceStartParam.Value!;
+
+            if (definitionsEventId < barrier)
+            {
+                var staleException = new StaleConformanceDefinitionsException(
+                    transactionId,
+                    definitionsEventId,
+                    barrier);
+                try
+                {
+                    await CommitTransactionAsync(
+                        transactionId,
+                        staleException.Message,
+                        CancellationToken.None);
+                }
+                catch (Exception completionFailure)
+                {
+                    completionFailure.Data["Ignixa.StaleConformanceDefinitions"] = staleException;
+                    _logger.LogError(
+                        completionFailure,
+                        "Failed to complete stale transaction {TransactionId}; reconciliation is required",
+                        transactionId);
+                    throw;
+                }
+
+                throw staleException;
+            }
+
+            _logger.LogInformation(
+                "Merge transaction started: TransactionId={TransactionId}, SequenceStart={SequenceStart}",
+                transactionId,
+                sequenceStart);
+
+            return (transactionId, sequenceStart);
+        }
+        catch (StaleConformanceDefinitionsException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -116,16 +173,6 @@ public class SqlServerMergeRepository(
                 tenantId);
             throw;
         }
-
-        var transactionId = (long)transactionIdParam.Value!;
-        var sequenceStart = (int)sequenceStartParam.Value!;
-
-        _logger.LogInformation(
-            "Merge transaction started: TransactionId={TransactionId}, SequenceStart={SequenceStart}",
-            transactionId,
-            sequenceStart);
-
-        return (transactionId, sequenceStart);
     }
 
     /// <summary>

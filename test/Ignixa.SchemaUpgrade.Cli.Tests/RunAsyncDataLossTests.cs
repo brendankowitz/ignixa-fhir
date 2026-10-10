@@ -16,6 +16,17 @@ namespace Ignixa.SchemaUpgrade.Cli.Tests;
 // column-drop is genuinely data-lossy (not just schema-lossy against an empty table).
 public class RunAsyncDataLossTests
 {
+    private static readonly string[] LegacyReindexObjectNames =
+    [
+        "AcquireReindexJobs",
+        "BulkReindexResourceTableType_1",
+        "CheckActiveReindexJobs",
+        "CreateReindexJob",
+        "GetReindexJobById",
+        "ReindexJob",
+        "UpdateReindexJob",
+    ];
+
     private static string GetBaseConnectionString()
     {
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
@@ -77,6 +88,36 @@ public class RunAsyncDataLossTests
             WHERE object_id = OBJECT_ID('dbo.BackgroundJobs') AND name = 'ExtraTestColumn'
             """;
         return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    private static async Task<List<string>> GetLegacyReindexObjectNamesAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT name
+            FROM sys.objects
+            WHERE schema_id = SCHEMA_ID('dbo')
+              AND name IN
+                  ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob',
+                   'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
+            UNION ALL
+            SELECT name
+            FROM sys.table_types
+            WHERE schema_id = SCHEMA_ID('dbo')
+              AND name = 'BulkReindexResourceTableType_1'
+            ORDER BY name
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        var names = new List<string>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            names.Add(reader.GetString(0));
+        }
+
+        return names;
     }
 
     private static async Task WriteAppSettingsAsync(string configPath, string connectionString)
@@ -187,6 +228,56 @@ public class RunAsyncDataLossTests
         finally
         {
             Directory.Delete(tempDir.FullName, recursive: true);
+            await DropDatabaseAsync(databaseName, CancellationToken.None);
+        }
+    }
+
+    [SkippableFact]
+    public async Task GivenAVersionFiveTenantWithEmptyLegacyReindexStorage_WhenSchemaUpgradeCliRunsWithoutAllowDataLoss_ThenItRetiresOnlyThoseObjects()
+    {
+        var databaseName = $"SchemaUpgradeCliReindexRetirementTest_{Guid.NewGuid():N}";
+        var connectionString = BuildConnectionStringForDatabase(databaseName);
+        var configDirectory = Path.Combine(AppContext.BaseDirectory, $"schema-upgrade-cli-reindex-retirement-{Guid.NewGuid():N}");
+        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
+        Directory.CreateDirectory(configDirectory);
+
+        try
+        {
+            var legacyDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "schema-v5-before-reindex-retirement.dacpac");
+            using (var legacyDacpacStream = File.OpenRead(legacyDacpacPath))
+            using (var legacyPackage = DacPackage.Load(legacyDacpacStream))
+            {
+                var legacyDacServices = new DacServices(connectionString);
+                legacyDacServices.Deploy(
+                    legacyPackage,
+                    databaseName,
+                    upgradeExisting: true,
+                    options: new DacDeployOptions { AllowIncompatiblePlatform = true },
+                    cancellationToken: CancellationToken.None);
+            }
+
+            await SchemaDeployer.StampSchemaVersionAsync(connectionString, 5, CancellationToken.None);
+            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
+                .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
+
+            var configPath = Path.Combine(configDirectory, "appsettings.json");
+            await WriteAppSettingsAsync(configPath, connectionString);
+
+            int exitCode;
+            using (var input = new StringReader(string.Empty))
+            using (var output = new StringWriter())
+            {
+                var options = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: false, AllowIncompatiblePlatform: true, ConfigPath: configPath);
+                exitCode = await Program.RunAsync(options, input, output, CancellationToken.None);
+                output.ToString().ShouldContain("IS classified as auto-safe");
+            }
+
+            exitCode.ShouldBe(0);
+            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None)).ShouldBeEmpty();
+        }
+        finally
+        {
+            Directory.Delete(configDirectory, recursive: true);
             await DropDatabaseAsync(databaseName, CancellationToken.None);
         }
     }

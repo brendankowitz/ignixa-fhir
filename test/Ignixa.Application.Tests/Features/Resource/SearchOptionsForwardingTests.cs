@@ -156,6 +156,7 @@ public class SearchOptionsForwardingTests
             _partitionStrategy,
             _executionStrategy,
             _contextAccessor,
+            Substitute.For<Ignixa.Application.Features.Search.IFhirVersionContext>(),
             NullLogger<SearchCompartmentHandler>.Instance);
 
         // Act

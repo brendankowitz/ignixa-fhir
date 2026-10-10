@@ -32,6 +32,13 @@ namespace Ignixa.Application.BackgroundOperations.BulkDelete.Orchestrations;
 /// job; if even that cannot be persisted the orchestration itself fails, and the status handler
 /// reconciles the job from the orchestration state.
 /// </para>
+/// <para>
+/// A batch that reports <see cref="BulkDeleteBatchOutput.ConformanceStale"/> ran on an instance without the
+/// conformance staleness lease and did nothing. The same batch runs again after a durable wait (any instance
+/// may pick it up) that backs off from <see cref="FirstConformanceWait"/> to <see cref="MaxConformanceWait"/>;
+/// once one batch has waited <see cref="ConformanceWaitTimeout"/> the job fails. Waiting attempts are not
+/// counted toward <see cref="BatchesPerExecution"/>: the timeout already bounds their history.
+/// </para>
 /// </remarks>
 public class BulkDeleteOrchestration : TaskOrchestration<BulkDeleteOrchestrationOutput, BulkDeleteOrchestrationInput>
 {
@@ -39,6 +46,15 @@ public class BulkDeleteOrchestration : TaskOrchestration<BulkDeleteOrchestration
     /// Batches run by one execution before it continues as new. Each batch adds a few history events.
     /// </summary>
     public const int BatchesPerExecution = 100;
+
+    /// <summary>
+    /// Longest one batch waits for an instance that holds the conformance staleness lease before the job fails.
+    /// </summary>
+    public static readonly TimeSpan ConformanceWaitTimeout = TimeSpan.FromMinutes(15);
+
+    private static readonly TimeSpan FirstConformanceWait = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan MaxConformanceWait = TimeSpan.FromMinutes(1);
 
     public override async Task<BulkDeleteOrchestrationOutput> RunTask(
         OrchestrationContext context,
@@ -112,8 +128,7 @@ public class BulkDeleteOrchestration : TaskOrchestration<BulkDeleteOrchestration
                     input.BatchSize,
                     state.ContinuationToken,
                     new Dictionary<string, long>(state.Totals, StringComparer.Ordinal));
-                output = await context.ScheduleWithRetry<BulkDeleteBatchOutput>(
-                    typeof(BulkDeleteBatchActivity), CreateRetryOptions(), batch);
+                output = await RunBatchAsync(context, batch);
                 batches++;
                 if (output.Superseded)
                 {
@@ -138,6 +153,30 @@ public class BulkDeleteOrchestration : TaskOrchestration<BulkDeleteOrchestration
         }
 
         return TraversalOutcome.Completed;
+    }
+
+    private static async Task<BulkDeleteBatchOutput> RunBatchAsync(OrchestrationContext context, BulkDeleteBatchInput batch)
+    {
+        var waitingSince = context.CurrentUtcDateTime;
+        var delay = FirstConformanceWait;
+        while (true)
+        {
+            var output = await context.ScheduleWithRetry<BulkDeleteBatchOutput>(
+                typeof(BulkDeleteBatchActivity), CreateRetryOptions(), batch);
+            if (!output.ConformanceStale)
+            {
+                return output;
+            }
+
+            if (context.CurrentUtcDateTime - waitingSince >= ConformanceWaitTimeout)
+            {
+                throw new InvalidOperationException(
+                    $"No instance held the conformance staleness lease for {ConformanceWaitTimeout}; the batch selected and deleted nothing.");
+            }
+
+            await context.CreateTimer(context.CurrentUtcDateTime.Add(delay), true);
+            delay = delay * 2 < MaxConformanceWait ? delay * 2 : MaxConformanceWait;
+        }
     }
 
     private static Task<bool> CompleteAsync(

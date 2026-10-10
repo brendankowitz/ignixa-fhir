@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Polly;
@@ -38,8 +39,8 @@ public sealed class SqlExecutionService : ISqlExecutionService
             .AddRetry(new RetryStrategyOptions
             {
                 ShouldHandle = new PredicateBuilder().Handle<SqlException>(IsTransient),
-                MaxRetryAttempts = 3,
-                Delay = TimeSpan.FromMilliseconds(200),
+                MaxRetryAttempts = SqlExecutionPolicyDefaults.MaxRetryAttempts,
+                Delay = TimeSpan.FromMilliseconds(SqlExecutionPolicyDefaults.RetryBaseDelayMilliseconds),
                 BackoffType = DelayBackoffType.Exponential,
                 OnRetry = args =>
                 {

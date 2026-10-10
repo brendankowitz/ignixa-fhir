@@ -89,4 +89,28 @@ public class SchemaDeployerDeployOptionsTests
     {
         CreateDeployer(environmentName).CreateDeployOptions().BlockOnPossibleDataLoss.ShouldBeTrue();
     }
+
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Test")]
+    [InlineData("Production")]
+    public void GivenAnyEnvironment_WhenBuildingDeployOptions_ThenObjectsAbsentFromTheDacpacArePreserved(string environmentName)
+    {
+        CreateDeployer(environmentName).CreateDeployOptions().DropObjectsNotInSource.ShouldBeFalse();
+    }
+
+    // An upgrade can build an index ONLINE over a large table (schema 9's filtered dbo.Transactions index);
+    // DacFx's 60-second command default would abort it part-way.
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Production")]
+    public void GivenAnyEnvironment_WhenBuildingDeployOptions_ThenCommandTimeoutsAllowALongIndexBuild(string environmentName)
+    {
+        var options = CreateDeployer(environmentName).CreateDeployOptions();
+
+        options.CommandTimeout.ShouldBe(SchemaDeployer.DeployCommandTimeoutSeconds);
+        options.LongRunningCommandTimeout.ShouldBe(SchemaDeployer.DeployLongRunningCommandTimeoutSeconds);
+        options.CommandTimeout.ShouldBeGreaterThanOrEqualTo(600);
+        options.LongRunningCommandTimeout.ShouldBeGreaterThanOrEqualTo(3600);
+    }
 }

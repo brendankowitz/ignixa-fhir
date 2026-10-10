@@ -223,8 +223,14 @@ static async Task InitializeSqlConformanceAsync(
 
     // Repositories need canonical aliases before their caches load. Hosted services start only
     // after this pre-host initialization, and replay itself needs the conformance SQL schema.
-    await app.Services.GetRequiredService<ConformanceState>().InitializeFromEventsAsync(
+    var conformanceLease = app.Services.GetRequiredService<ConformanceLease>();
+    var leaseStart = conformanceLease.CaptureStart();
+    var conformanceState = app.Services.GetRequiredService<ConformanceState>();
+    await conformanceState.InitializeFromEventsAsync(
         app.Services.GetRequiredService<ISourceEventStore>(), cancellationToken);
+    await app.Services.GetRequiredService<ConformanceRefresher>()
+        .RefreshAsync(force: false, cancellationToken);
+    conformanceLease.Renew(leaseStart);
 }
 
 /// <summary>

@@ -11,6 +11,7 @@ using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Models;
+using Ignixa.Serialization;
 using Microsoft.Extensions.Logging;
 
 using SearchParamInfo = Ignixa.Search.Models.SearchParameterInfo;
@@ -25,8 +26,11 @@ namespace Ignixa.Application.Features.Search;
 public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinitionManager
 {
     private readonly ISearchParameterDefinitionManager _baseManager;
-    private readonly ConformanceState _conformanceState;
+    private readonly IConformanceStateView _conformanceState;
     private readonly string? _fhirVersion;
+
+    // The version this manager projects for; null (tests, pre-tenant callers) lists every definition.
+    private readonly FhirVersion? _version;
     private readonly ILogger<CompositeSearchParameterDefinitionManager> _logger;
     private readonly SearchParameterResolutionOptions _options;
 
@@ -40,7 +44,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
     public CompositeSearchParameterDefinitionManager(
         ISearchParameterDefinitionManager baseManager,
-        ConformanceState conformanceState,
+        IConformanceStateView conformanceState,
         string? fhirVersion,
         ILogger<CompositeSearchParameterDefinitionManager> logger,
         SearchParameterResolutionOptions options,
@@ -49,6 +53,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _baseManager = baseManager ?? throw new ArgumentNullException(nameof(baseManager));
         _conformanceState = conformanceState ?? throw new ArgumentNullException(nameof(conformanceState));
         _fhirVersion = fhirVersion;
+        _version = fhirVersion is null ? null : FhirSpecificationExtensions.FromVersionString(fhirVersion);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _schemaProvider = schemaProvider;
@@ -158,7 +163,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         {
             var asp = kvp.Value;
 
-            if (asp.Status != SearchParameterStatus.Enabled && asp.Status != SearchParameterStatus.Pending)
+            if (!IsListed(asp))
             {
                 continue;
             }
@@ -236,6 +241,23 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             searchParamInfo.OverridesUrl = new Uri(asp.OverridesCanonical);
         }
 
+        switch (asp.Status)
+        {
+            case SearchParameterStatus.Pending:
+            case SearchParameterStatus.Reindexing:
+                searchParamInfo.IsSearchable = false;
+                break;
+            case SearchParameterStatus.Staged:
+                searchParamInfo.IsSearchable = false;
+                searchParamInfo.IsSupported = false;
+                searchParamInfo.IsHiddenByTransition = true;
+                break;
+            case SearchParameterStatus.Disabling:
+                searchParamInfo.IsSearchable = false;
+                searchParamInfo.IsHiddenByTransition = true;
+                break;
+        }
+
         return searchParamInfo;
     }
 
@@ -249,14 +271,37 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 return _baseManager.AllSearchParameters;
             }
 
-            return _conformanceState.AllSearchParameters.Values
-                .Where(asp => asp.Status is SearchParameterStatus.Enabled or SearchParameterStatus.Pending)
-                .Select(ConvertToSearchParameterInfo)
-                .Concat(_baseManager.AllSearchParameters)
-                .GroupBy(p => p.OverridesUrl ?? p.Url)
-                .Select(g => g.First())
-                .ToList();
+            var packageParameters = _conformanceState.AllSearchParameters.Values
+                .Where(IsListed)
+                .Select(ConvertToSearchParameterInfo);
+            return DeduplicateByIdentityAndBaseType(packageParameters.Concat(_baseManager.AllSearchParameters));
         }
+    }
+
+    // A package parameter is one (identity, base type) pair; a base parameter can span many base types.
+    // Shadowing is per type: a base parameter is dropped only when every one of its base types is already
+    // represented, so an override for Observation.patient leaves clinical-patient listed for the other types.
+    private static List<SearchParamInfo> DeduplicateByIdentityAndBaseType(IEnumerable<SearchParamInfo> parameters)
+    {
+        var represented = new HashSet<(Uri? Identity, string BaseType)>();
+        var result = new List<SearchParamInfo>();
+        foreach (var parameter in parameters)
+        {
+            var identity = parameter.OverridesUrl ?? parameter.Url;
+            var baseTypes = parameter.BaseResourceTypes is { Count: > 0 } types ? types : [string.Empty];
+            var claimsUnrepresentedType = false;
+            foreach (var baseType in baseTypes)
+            {
+                claimsUnrepresentedType |= represented.Add((identity, baseType));
+            }
+
+            if (claimsUnrepresentedType)
+            {
+                result.Add(parameter);
+            }
+        }
+
+        return result;
     }
 
     /// <inheritdoc/>
@@ -277,7 +322,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         var packageParameters = _conformanceState.AllSearchParameters.Values
             .Where(asp => string.Equals(asp.ResourceType, resourceType, StringComparison.OrdinalIgnoreCase) &&
-                (asp.Status is SearchParameterStatus.Enabled or SearchParameterStatus.Pending))
+                IsListed(asp))
             .ToList();
         var baseParameters = GetBaseParameters(resourceType, packageParameters.Count > 0);
         var merged = new Dictionary<string, SearchParamInfo>(StringComparer.OrdinalIgnoreCase);
@@ -369,9 +414,9 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         }
 
         var active = _conformanceState.IsInitialized
-            ? _conformanceState.FindByCanonical(definitionUri.ToString())
+            ? _conformanceState.FindExtractedByCanonical(definitionUri.ToString())
             : null;
-        if (active?.Status is SearchParameterStatus.Enabled or SearchParameterStatus.Pending)
+        if (active is not null && IsListed(active))
         {
             value = ConvertToSearchParameterInfo(active);
             _packageSearchParameterCache.TryAdd(definitionUri, value);
@@ -404,6 +449,21 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
         return _baseManager.TryGetSearchParameterRootUrl(definitionUri, out rootUri);
     }
+
+    private static bool IsExtracted(SearchParameterStatus status) =>
+        status is SearchParameterStatus.Enabled
+            or SearchParameterStatus.Pending
+            or SearchParameterStatus.Reindexing
+            or SearchParameterStatus.Disabling;
+
+    // One manager serves extraction and search; the SearchParameterInfo flags carry the difference.
+    // Pending/Reindexing are extracted but not searchable, Disabling is extracted but hidden by the
+    // transition, and Staged activations are never projection owners, so they are not listed here.
+    // The projection is shared by every FHIR version, so a definition activated for another version is
+    // not this version's: its tenants keep their own base definition for the code.
+    private bool IsListed(ActiveSearchParameter parameter) =>
+        IsExtracted(parameter.Status) &&
+        (_version is not { } version || parameter.AppliesTo(version));
 
     /// <inheritdoc/>
     public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap)

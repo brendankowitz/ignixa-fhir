@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using Shouldly;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -45,18 +46,63 @@ public class SearchCompartmentHandlerTests
             _partitionStrategy,
             _executionStrategy,
             _contextAccessor,
+            Substitute.For<IFhirVersionContext>(),
             _logger);
+    }
+
+    [Theory]
+    [InlineData(HiddenMembershipScenario.Disabling, "is being redefined")]
+    [InlineData(HiddenMembershipScenario.Pending, "is pending reindex")]
+    public async Task GivenAMembershipParameterIsHidden_WhenTheCompartmentIsSearched_ThenTheBundleWarnsNamingIt(
+        HiddenMembershipScenario scenario,
+        string expectedReason)
+    {
+        SetupDefaultMocks(fhirVersion: "4.0");
+        var handler = new SearchCompartmentHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            await HiddenMembershipFixture.CreateVersionContextAsync(scenario),
+            _logger);
+
+        var result = await handler.HandleAsync(
+            new SearchCompartmentQuery("Patient", "123", "Observation", new SearchOptions()),
+            CancellationToken.None);
+
+        var issue = result.SearchOptions.ShouldNotBeNull().BundleIssues.ShouldHaveSingleItem();
+        issue.Severity.ShouldBe("warning");
+        issue.Code.ShouldBe("incomplete");
+        issue.Diagnostics.ShouldContain("'Observation.subject'");
+        issue.Diagnostics.ShouldContain(expectedReason);
+    }
+
+    [Fact]
+    public async Task GivenAMembershipParameterIsHiddenOnAnotherMemberType_WhenOneTypeIsSearched_ThenNoWarningIsRaised()
+    {
+        SetupDefaultMocks(fhirVersion: "4.0");
+        var handler = new SearchCompartmentHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            await HiddenMembershipFixture.CreateVersionContextAsync(HiddenMembershipScenario.Pending),
+            _logger);
+
+        var result = await handler.HandleAsync(
+            new SearchCompartmentQuery("Patient", "123", "Condition", new SearchOptions()),
+            CancellationToken.None);
+
+        result.SearchOptions.ShouldNotBeNull().BundleIssues.ShouldBeEmpty();
     }
 
     private static readonly int[] SinglePartitionArray = new[] { 1 };
 
-    private void SetupDefaultMocks()
+    private void SetupDefaultMocks(string fhirVersion = "R4")
     {
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
             DisplayName = "Test Tenant",
-            FhirVersion = "R4",
+            FhirVersion = fhirVersion,
             ValidationDepth = "Spec"
         };
 

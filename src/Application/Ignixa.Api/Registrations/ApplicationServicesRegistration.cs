@@ -11,6 +11,7 @@ using ISchema = Ignixa.Abstractions.ISchema;
 using Ignixa.Api.Infrastructure;
 using Ignixa.Application.Features.Admin;
 using Ignixa.Application.Features.Bundle;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Features.BulkDelete;
 using Ignixa.Application.Features.Compartment;
@@ -195,6 +196,10 @@ public static class ApplicationServicesRegistration
         builder.RegisterType<CreateOrUpdateResourceHandler>()
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()
             .InstancePerDependency();
+
+        builder.RegisterType<ConformanceBarrierRetryPolicy>()
+            .AsSelf()
+            .SingleInstance();
 
         builder.RegisterType<DeleteResourceHandler>()
             .As<IRequestHandler<DeleteResourceCommand, bool>>()
@@ -507,12 +512,10 @@ public static class ApplicationServicesRegistration
 
         // Package loaded notification handler
         builder.RegisterType<Ignixa.Application.Events.Package.PackageLoadedNotificationHandler>()
-            .As<INotificationHandler<Ignixa.Application.Events.Package.IPackageLoaded>>()
             .As<INotificationHandler<Ignixa.Application.Events.Package.PackageLoadedEvent>>()
             .InstancePerDependency();
 
         builder.RegisterType<Ignixa.Application.Events.Package.PackageUnloadedNotificationHandler>()
-            .As<INotificationHandler<Ignixa.Application.Events.Package.IPackageUnloaded>>()
             .As<INotificationHandler<Ignixa.Application.Events.Package.PackageUnloadedEvent>>()
             .InstancePerDependency();
 

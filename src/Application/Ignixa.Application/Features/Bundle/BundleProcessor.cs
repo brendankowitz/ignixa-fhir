@@ -7,6 +7,7 @@ using EnsureThat;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Models;
 using Ignixa.Serialization.Models;
@@ -33,6 +34,7 @@ public class BundleProcessor
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<BundleProcessor> _logger;
     private readonly IFhirVersionContext _fhirVersionContext;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
 
     public BundleProcessor(
         BundleReferencePreProcessor referencePreProcessor,
@@ -43,7 +45,8 @@ public class BundleProcessor
         IFhirRequestContextAccessor contextAccessor,
         ILoggerFactory loggerFactory,
         ILogger<BundleProcessor> logger,
-        IFhirVersionContext fhirVersionContext)
+        IFhirVersionContext fhirVersionContext,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy)
     {
         _referencePreProcessor = EnsureArg.IsNotNull(referencePreProcessor, nameof(referencePreProcessor));
         _channelExecutor = EnsureArg.IsNotNull(channelExecutor, nameof(channelExecutor));
@@ -54,6 +57,7 @@ public class BundleProcessor
         _loggerFactory = EnsureArg.IsNotNull(loggerFactory, nameof(loggerFactory));
         _logger = EnsureArg.IsNotNull(logger, nameof(logger));
         _fhirVersionContext = EnsureArg.IsNotNull(fhirVersionContext, nameof(fhirVersionContext));
+        _barrierRetryPolicy = EnsureArg.IsNotNull(barrierRetryPolicy, nameof(barrierRetryPolicy));
     }
 
     /// <summary>
@@ -99,6 +103,8 @@ public class BundleProcessor
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
                 contextAccessor: _contextAccessor,
+                fhirVersionContext: _fhirVersionContext,
+                barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -206,6 +212,8 @@ public class BundleProcessor
                     repositoryFactory: _repositoryFactory,
                     partitionStrategy: _partitionStrategy,
                     contextAccessor: _contextAccessor,
+                    fhirVersionContext: _fhirVersionContext,
+                    barrierRetryPolicy: _barrierRetryPolicy,
                     logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                     cancellationToken: cancellationToken);
 
@@ -321,6 +329,7 @@ public class BundleProcessor
         var coordinator = hasWrites
             ? await DeferredWriteCoordinator.CreateAsync(options.ChannelCapacity,
                 _repositoryFactory, _partitionStrategy, _contextAccessor,
+                _fhirVersionContext, _barrierRetryPolicy,
                 _loggerFactory.CreateLogger<DeferredWriteCoordinator>(), atomic: true, cancellationToken)
             : null;
         var responses = new Dictionary<int, BundleEntryResponse>();
@@ -410,6 +419,8 @@ public class BundleProcessor
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
                 contextAccessor: _contextAccessor,
+                fhirVersionContext: _fhirVersionContext,
+                barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -493,6 +504,8 @@ public class BundleProcessor
                 repositoryFactory: _repositoryFactory,
                 partitionStrategy: _partitionStrategy,
                 contextAccessor: _contextAccessor,
+                fhirVersionContext: _fhirVersionContext,
+                barrierRetryPolicy: _barrierRetryPolicy,
                 logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
                 cancellationToken: cancellationToken);
 
@@ -686,6 +699,8 @@ public class BundleProcessor
             repositoryFactory: _repositoryFactory,
             partitionStrategy: _partitionStrategy,
             contextAccessor: _contextAccessor,
+            fhirVersionContext: _fhirVersionContext,
+            barrierRetryPolicy: _barrierRetryPolicy,
             logger: _loggerFactory.CreateLogger<DeferredWriteCoordinator>(),
             cancellationToken: cancellationToken);
 

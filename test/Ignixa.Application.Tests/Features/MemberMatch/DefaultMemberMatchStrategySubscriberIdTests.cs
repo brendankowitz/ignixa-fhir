@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 using Xunit;
+using ConformanceLease = Ignixa.Application.Features.Conformance.ConformanceLease;
 
 namespace Ignixa.Application.Tests.Features.MemberMatch;
 
@@ -40,6 +41,7 @@ public class DefaultMemberMatchStrategySubscriberIdTests
     private readonly ISearchServiceFactory _searchServiceFactory = Substitute.For<ISearchServiceFactory>();
     private readonly IFhirRequestContextAccessor _contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
     private readonly IFhirVersionContext _versionContext = Substitute.For<IFhirVersionContext>();
+    private readonly ConformanceLease _conformanceLease = TestConformanceLease.Held();
 
     private const string PatientWithoutIdentifiers = """
     {
@@ -223,6 +225,7 @@ public class DefaultMemberMatchStrategySubscriberIdTests
             _searchServiceFactory,
             _contextAccessor,
             _versionContext,
+            _conformanceLease,
             NullLogger<DefaultMemberMatchStrategy>.Instance);
     }
 

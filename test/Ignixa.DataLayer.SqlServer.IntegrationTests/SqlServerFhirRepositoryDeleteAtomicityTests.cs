@@ -94,7 +94,7 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         interceptor.FailBeforeNonQuery(2, new InvalidOperationException("injected failure before the tombstone insert"));
 
         var thrown = await Should.ThrowAsync<InvalidOperationException>(async () => await repository.DeleteAsync(
-            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None));
+            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), 0, null, CancellationToken.None));
         thrown.Message.ShouldContain("injected failure");
 
         interceptor.Disarm();
@@ -177,7 +177,7 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
             await readerStarted.Task;
 
             await _repository.DeleteAsync(
-                key, new ResourceRequest("DELETE", $"Patient/{resourceId}"), null, CancellationToken.None);
+                key, new ResourceRequest("DELETE", $"Patient/{resourceId}"), 0, null, CancellationToken.None);
             Volatile.Write(ref deleteFinished, 1);
 
             await stopReading.CancelAsync();
@@ -247,7 +247,7 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         };
 
         await repository.DeleteAsync(
-            key, new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None);
+            key, new ResourceRequest("DELETE", $"Patient/{ResourceId}"), 0, null, CancellationToken.None);
 
         var racingRead = read ?? throw new InvalidOperationException(
             "the delete never reached the tombstone insert, so the racing read was never started");
@@ -338,7 +338,7 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         };
 
         var conflict = await Should.ThrowAsync<ResourceVersionConflictException>(async () => await repository.DeleteAsync(
-            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None));
+            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), 0, null, CancellationToken.None));
 
         var surrogateIdThatIsActuallyCurrent = await _database.ExecuteScalarAsync<long>(
             $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
@@ -432,7 +432,7 @@ public class SqlServerFhirRepositoryDeleteAtomicityTests : IAsyncLifetime
         interceptor.FailBeforeNonQuery(4, new InvalidOperationException("injected failure before the search-index wipe"));
 
         var thrown = await Should.ThrowAsync<InvalidOperationException>(async () => await repository.DeleteAsync(
-            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None));
+            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), 0, null, CancellationToken.None));
         thrown.Message.ShouldContain("injected failure");
 
         interceptor.Disarm();

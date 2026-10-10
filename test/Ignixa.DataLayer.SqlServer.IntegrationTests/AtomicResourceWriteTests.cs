@@ -104,7 +104,7 @@ public class AtomicResourceWriteTests : IAsyncLifetime
         await _database.Repository.CreateOrUpdateAsync(Patient("sql-precondition", null));
         var proposed = Patient("sql-precondition", "2");
         proposed.Resource.Meta.VersionId = "3";
-        var (transactionId, _) = await _database.MergeRepository.BeginTransactionAsync(1);
+        var (transactionId, _) = await _database.MergeRepository.BeginTransactionAsync(1, definitionsEventId: 0);
 
         await Should.ThrowAsync<PreconditionFailedException>(() =>
             _database.MergeRepository.MergeResourcesAsync(transactionId, true, [proposed], [0]));

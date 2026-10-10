@@ -124,7 +124,8 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
             new TenantStore(_database.ConnectionString), NullLoggerFactory.Instance, new RecyclableMemoryStreamManager(),
             new SqlServerTenantInitializer(new ExistingSchemaDeployer(), registry, NullLogger<SqlServerTenantInitializer>.Instance),
             new ManagedIdentityConnectionStringValidator("Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
-            _database.SqlExecutionService);
+            _database.SqlExecutionService,
+            (_, _) => Definitions);
         await factory.GetRepositoryAsync(_database.TenantId);
         var oldCache = await registry.GetOrCreateAsync(_database.TenantId, CancellationToken.None);
         await oldCache.SyncSearchParametersToDatabaseAsync([OverrideUrl], Definitions, CancellationToken.None);
@@ -185,7 +186,7 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task GivenAnOverrideBeforeItsTargetInTheBatch_WhenPreloadedAgain_ThenBothUseTheTargetId(bool rowsAlreadyExist)
+    public async Task GivenAnOverrideBeforeItsTargetInTheBatch_WhenPreloadedAgain_ThenPhysicalIdsRemainDistinctAndWritesUseTheTargetId(bool rowsAlreadyExist)
     {
         using var cache = CreateCache();
         if (rowsAlreadyExist)
@@ -195,9 +196,10 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
 
         await cache.SyncSearchParametersToDatabaseAsync([OverrideUrl, OriginalUrl], Definitions, CancellationToken.None);
         var targetId = await cache.GetSearchParamIdAsync(OriginalUrl, CancellationToken.None);
-        cache.TryGetSearchParamIdFromCache(OverrideUrl).ShouldBe(targetId);
+        var overrideId = await cache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None);
+        overrideId.ShouldNotBe(targetId);
         await cache.PreloadSearchParamsAsync(null, CancellationToken.None);
-        cache.TryGetSearchParamIdFromCache(OverrideUrl).ShouldBe(targetId);
+        cache.TryGetSearchParamIdFromCache(OverrideUrl).ShouldBe(overrideId);
 
         await WritePatientAsync(cache, OverrideParameter, "ordered-override");
         await AssertPatientsAsync(cache, "ordered-override");
@@ -206,7 +208,7 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task GivenDefinitionsBeforeCatalogRows_WhenColdLookupOrPreload_ThenTheOverrideUsesTheTargetId(bool preload)
+    public async Task GivenDefinitionsBeforeCatalogRows_WhenColdLookupOrPreload_ThenTheGenerationResolverUsesTheTargetId(bool preload)
     {
         using var cache = CreateCache();
         await cache.SyncSearchParametersToDatabaseAsync([OtherUrl], Definitions, CancellationToken.None);
@@ -222,22 +224,25 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
             await cache.PreloadSearchParamsAsync(1, CancellationToken.None);
         }
 
-        (await cache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldBe(targetId);
+        (await cache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldNotBe(targetId);
+        var resolver = new SqlServerSymbolResolver(cache);
+        (await resolver.GetSearchParamIdAsync(OverrideParameter, CancellationToken.None)).ShouldBe(targetId);
     }
 
     [Fact]
-    public async Task GivenAnOverrideWithAnUnseededTarget_WhenAnotherPackageIsSynced_ThenTheFirstRootIdentityIsPreserved()
+    public async Task GivenAnOverrideWithAnUnseededTarget_WhenAnotherPackageIsSynced_ThenGenerationResolutionUsesTheProvisionedRoot()
     {
         using var cache = CreateCache();
         await cache.SyncSearchParametersToDatabaseAsync([OverrideUrl], Definitions, CancellationToken.None);
-        var firstId = await cache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None);
+        var overrideId = await cache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None);
         var baseOnlyDefinitions = new StubSearchParameterDefinitionManager(
             new Dictionary<string, SearchParameterInfo>(StringComparer.Ordinal) { [OriginalUrl] = OriginalParameter });
         await cache.SyncSearchParametersToDatabaseAsync([OriginalUrl], baseOnlyDefinitions, CancellationToken.None);
 
         var targetId = await cache.GetSearchParamIdAsync(OriginalUrl, CancellationToken.None);
-        targetId.ShouldBe(firstId);
-        (await cache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldBe(targetId);
+        targetId.ShouldNotBe(overrideId);
+        var resolver = new SqlServerSymbolResolver(cache);
+        (await resolver.GetSearchParamIdAsync(OverrideParameter, CancellationToken.None)).ShouldBe(targetId);
     }
 
     private SqlServerSearchIndexReferenceDataCache CreateCache() => new(
@@ -259,7 +264,7 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
         {
             SearchIndices = [new SearchIndexEntry(parameter, new TokenSearchValue(null, Identifier, null))]
         };
-        var (transactionId, _) = await repository.BeginTransactionAsync(1, CancellationToken.None);
+        var (transactionId, _) = await repository.BeginTransactionAsync(1, definitionsEventId: 0, CancellationToken.None);
         await repository.MergeResourcesAsync(transactionId, true, [resource], [0], CancellationToken.None);
         await repository.CommitTransactionAsync(transactionId, cancellationToken: CancellationToken.None);
     }

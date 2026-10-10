@@ -14,6 +14,7 @@ using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Abstractions;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Parsing;
 
@@ -80,6 +81,10 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var unsupportedParameters = new List<string>();
         var unsupportedModifierParameters = new List<string>();
         var typeFilterParameters = new List<string>();
+        var bundleIssues = new List<IssueComponent>();
+        var ignoredSearchParameterWarnings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var resolvedSearchParameters = new List<SearchParameterInfo>();
+        var wildcardReferenceSearchParameters = new List<SearchParameterInfo>();
 
         // For system-wide search (resourceType is null), we need to first extract _type parameters
         // to know what resource types we're searching. This is essential for parsing reverse chain
@@ -183,6 +188,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         {
                             ParseResult parseResult = _expressionParser.ParseWithSyntax(resourceTypes, param.Name, param.Value);
                             searchExpressions.Add(parseResult.Expression);
+                            AddResolvedSearchParameters(parseResult.Expression, resolvedSearchParameters);
                             outcomes.Add(new ParameterTrace(
                                 ordinal: searchOrdinal++,
                                 key: param.Name,
@@ -197,6 +203,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         {
                             Expression expr = _expressionParser.Parse(resourceTypes, param.Name, param.Value);
                             searchExpressions.Add(expr);
+                            AddResolvedSearchParameters(expr, resolvedSearchParameters);
                         }
 
                         break;
@@ -244,9 +251,48 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
                 }
             }
+            catch (PartiallyIndexedSearchParameterException ex)
+            {
+                unsupportedParameters.Add(param.Name);
+                ignoredSearchParameterWarnings[param.Name] =
+                    $"Search parameter '{ex.SearchParameter.Code}' is pending reindex and was ignored.";
+
+                if (outcomes is not null && param.Category == ParameterCategory.Search)
+                {
+                    outcomes.Add(new ParameterTrace(
+                        ordinal: searchOrdinal++,
+                        key: param.Name,
+                        keySyntax: null,
+                        value: param.Value,
+                        valueSyntax: null,
+                        ir: null,
+                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
+                        dataType: null));
+                }
+            }
+            catch (TransitionHiddenSearchParameterException ex)
+            {
+                unsupportedParameters.Add(param.Name);
+                ignoredSearchParameterWarnings[param.Name] =
+                    $"Search parameter '{ex.SearchParameter.Code}' is being redefined and was ignored.";
+
+                if (outcomes is not null && param.Category == ParameterCategory.Search)
+                {
+                    outcomes.Add(new ParameterTrace(
+                        ordinal: searchOrdinal++,
+                        key: param.Name,
+                        keySyntax: null,
+                        value: param.Value,
+                        valueSyntax: null,
+                        ir: null,
+                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
+                        dataType: null));
+                }
+            }
             catch (SearchParameterNotSupportedException ex)
             {
                 unsupportedParameters.Add(param.Name);
+
                 if (outcomes is not null && param.Category == ParameterCategory.Search)
                 {
                     outcomes.Add(new ParameterTrace(
@@ -315,19 +361,38 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         // STEP 3: Parse sorting
         if (sortParameters.Count > 0)
         {
-            options.Sort = ParseSortParameters(resourceTypes, sortParameters, unsupportedParameters);
+            options.Sort = ParseSortParameters(
+                resourceTypes,
+                sortParameters,
+                unsupportedParameters,
+                ignoredSearchParameterWarnings,
+                resolvedSearchParameters);
         }
 
         // STEP 4: Parse includes
         if (includeParameters.Count > 0)
         {
-            options.Include = ParseIncludeParameters(resourceTypes, includeParameters, isReversed: false);
+            options.Include = ParseIncludeParameters(
+                resourceTypes,
+                includeParameters,
+                isReversed: false,
+                unsupportedParameters,
+                ignoredSearchParameterWarnings,
+                resolvedSearchParameters,
+                wildcardReferenceSearchParameters);
         }
 
         // STEP 5: Parse reverse includes
         if (revIncludeParameters.Count > 0)
         {
-            options.RevInclude = ParseIncludeParameters(resourceTypes, revIncludeParameters, isReversed: true);
+            options.RevInclude = ParseIncludeParameters(
+                resourceTypes,
+                revIncludeParameters,
+                isReversed: true,
+                unsupportedParameters,
+                ignoredSearchParameterWarnings,
+                resolvedSearchParameters,
+                wildcardReferenceSearchParameters);
         }
 
         // Every include-bearing page is capped, so a data layer can bound the included rows it reads; the
@@ -338,7 +403,6 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         }
 
         // STEP 6: Parse and validate elements
-        var bundleIssues = new List<IssueComponent>();
         if (elementsParameters.Count > 0)
         {
             // Validate that _elements is not empty (FHIR spec: empty _elements is invalid)
@@ -401,9 +465,27 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         // STEP 8: Record unsupported parameters and create Bundle issues
         options.UnsupportedParams = unsupportedParameters;
         options.UnsupportedModifierParams = unsupportedModifierParameters;
+        options.ResolvedSearchParameters = resolvedSearchParameters;
+        foreach (SearchParameterInfo parameter in resolvedSearchParameters)
+        {
+            if (!parameter.IsSearchable && parameter.IsSupported)
+            {
+                AddHiddenSearchParameterWarning(bundleIssues, parameter);
+            }
+        }
+        foreach (SearchParameterInfo parameter in wildcardReferenceSearchParameters)
+        {
+            if (!parameter.IsSearchable)
+            {
+                AddHiddenSearchParameterWarning(bundleIssues, parameter);
+            }
+        }
+
         foreach (var param in unsupportedParameters)
         {
-            var diagnostics = $"Search parameter '{param}' is not supported";
+            var diagnostics = ignoredSearchParameterWarnings.TryGetValue(param, out string? warning)
+                ? warning
+                : $"Search parameter '{param}' is not supported";
 
             bundleIssues.Add(new IssueComponent(
                 Severity: "warning",
@@ -445,7 +527,9 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
     private IReadOnlyList<SortExpression> ParseSortParameters(
         string[] resourceTypes,
         List<string> sortParameters,
-        List<string> unsupportedParameters)
+        List<string> unsupportedParameters,
+        Dictionary<string, string> ignoredSearchParameterWarnings,
+        List<SearchParameterInfo> resolvedSearchParameters)
     {
         var sortExpressions = new List<SortExpression>();
 
@@ -472,25 +556,51 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 {
                     // Look up the search parameter directly (no need to parse a value for sorting)
                     // For sorting, we only need the SearchParameterInfo metadata, not a parsed value expression
-                    if (!_searchParameterDefinitionManager.TryGetSearchParameter(resourceTypes[0], fieldName, out SearchParameterInfo searchParameter))
+                    var searchParameters = new List<SearchParameterInfo>(resourceTypes.Length);
+                    foreach (string resourceType in resourceTypes)
                     {
-                        // Field is not a valid search parameter - record the unsupported field
-                        System.Diagnostics.Debug.WriteLine($"Sort field '{fieldName}' is not supported for resource type: {resourceTypes[0]}");
-                        unsupportedParameters.Add($"_sort={fieldName}");
-                        continue;
+                        SearchParameterInfo searchParameter = _searchParameterDefinitionManager.GetSearchParameter(resourceType, fieldName);
+                        searchParameters.Add(searchParameter);
+                        resolvedSearchParameters.Add(searchParameter);
                     }
 
                     // Check if the parameter is sortable
-                    if (searchParameter.SortStatus != SortParameterStatus.Enabled)
+                    if (searchParameters.Any(parameter => parameter.SortStatus != SortParameterStatus.Enabled))
                     {
                         // Parameter exists but is not sortable
-                        System.Diagnostics.Debug.WriteLine($"Sort field '{fieldName}' is not sortable (SortStatus: {searchParameter.SortStatus})");
+                        System.Diagnostics.Debug.WriteLine($"Sort field '{fieldName}' is not sortable.");
                         unsupportedParameters.Add($"_sort={fieldName}");
                         continue;
                     }
 
-                    sortExpressions.Add(new SortExpression(searchParameter, sortOrder));
-                    System.Diagnostics.Debug.WriteLine($"✅ Added sort expression: {searchParameter.Code} ({searchParameter.Type}) {sortOrder}");
+                    SearchParameterInfo firstSearchParameter = searchParameters[0];
+                    if (searchParameters.Any(parameter => !parameter.Equals(firstSearchParameter)))
+                    {
+                        throw new BadSearchRequestException(
+                            string.Format(Resources.SearchParameterMustBeCommon, fieldName, resourceTypes[0], resourceTypes[1]));
+                    }
+
+                    sortExpressions.Add(new SortExpression(firstSearchParameter, sortOrder));
+
+                    System.Diagnostics.Debug.WriteLine($"✅ Added sort expression: {firstSearchParameter.Code} ({firstSearchParameter.Type}) {sortOrder}");
+                }
+                catch (PartiallyIndexedSearchParameterException ex)
+                {
+                    string parameterName = $"_sort={fieldName}";
+                    unsupportedParameters.Add(parameterName);
+                    ignoredSearchParameterWarnings[parameterName] =
+                        $"Search parameter '{ex.SearchParameter.Code}' is pending reindex and was ignored.";
+                }
+                catch (TransitionHiddenSearchParameterException ex)
+                {
+                    string parameterName = $"_sort={fieldName}";
+                    unsupportedParameters.Add(parameterName);
+                    ignoredSearchParameterWarnings[parameterName] =
+                        $"Search parameter '{ex.SearchParameter.Code}' is being redefined and was ignored.";
+                }
+                catch (BadSearchRequestException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -506,10 +616,30 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         return sortExpressions;
     }
 
+    private static void AddHiddenSearchParameterWarning(
+        List<IssueComponent> bundleIssues,
+        SearchParameterInfo parameter)
+    {
+        var diagnostics = parameter.IsHiddenByTransition
+            ? $"Search parameter '{parameter.Code}' is being redefined and was ignored."
+            : $"Search results may be incomplete because search parameter '{parameter.Code}' is pending reindex.";
+        if (bundleIssues.All(issue => issue.Diagnostics != diagnostics))
+        {
+            bundleIssues.Add(new IssueComponent(
+                Severity: "warning",
+                Code: "incomplete",
+                Diagnostics: diagnostics));
+        }
+    }
+
     private IReadOnlyList<IncludeExpression> ParseIncludeParameters(
         string[] resourceTypes,
         List<(string ParameterName, string Value)> includeParameters,
-        bool isReversed)
+        bool isReversed,
+        List<string> unsupportedParameters,
+        Dictionary<string, string> ignoredSearchParameterWarnings,
+        List<SearchParameterInfo> resolvedSearchParameters,
+        List<SearchParameterInfo> wildcardReferenceSearchParameters)
     {
         var includeExpressions = new List<IncludeExpression>();
 
@@ -524,11 +654,102 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
             // Use ExpressionParser to parse include expressions
             // Note: InvalidSearchOperationException will propagate to caller and result in 400 Bad Request
-            IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeValue, isReversed, iterate);
-            includeExpressions.Add(includeExpr);
+            try
+            {
+                IncludeExpression includeExpr = _expressionParser.ParseInclude(resourceTypes, includeValue, isReversed, iterate);
+                includeExpressions.Add(includeExpr);
+                if (includeExpr.ReferenceSearchParameter is not null)
+                {
+                    resolvedSearchParameters.Add(includeExpr.ReferenceSearchParameter);
+                }
+                else if (includeExpr.WildCard)
+                {
+                    AddWildcardReferenceSearchParameters(
+                        includeExpr,
+                        resolvedSearchParameters,
+                        wildcardReferenceSearchParameters);
+                }
+            }
+            catch (PartiallyIndexedSearchParameterException ex)
+            {
+                unsupportedParameters.Add(parameterName);
+                ignoredSearchParameterWarnings[parameterName] =
+                    $"Search parameter '{ex.SearchParameter.Code}' is pending reindex and was ignored.";
+            }
+            catch (TransitionHiddenSearchParameterException ex)
+            {
+                unsupportedParameters.Add(parameterName);
+                ignoredSearchParameterWarnings[parameterName] =
+                    $"Search parameter '{ex.SearchParameter.Code}' is being redefined and was ignored.";
+            }
+            catch (SearchParameterNotSupportedException)
+            {
+                unsupportedParameters.Add(parameterName);
+            }
         }
 
         return includeExpressions;
+    }
+
+    private void AddWildcardReferenceSearchParameters(
+        IncludeExpression includeExpression,
+        List<SearchParameterInfo> resolvedSearchParameters,
+        List<SearchParameterInfo> wildcardReferenceSearchParameters)
+    {
+        foreach (SearchParameterInfo searchParameter in GetKnownWildcardReferenceSearchParameters(includeExpression)
+                     .Where(parameter => parameter.Type == SearchParamType.Reference)
+                     .Where(parameter => IsApplicableWildcardReferenceParameter(includeExpression, parameter))
+                     .Distinct())
+        {
+            resolvedSearchParameters.Add(searchParameter);
+            wildcardReferenceSearchParameters.Add(searchParameter);
+        }
+    }
+
+    private IEnumerable<SearchParameterInfo> GetKnownWildcardReferenceSearchParameters(IncludeExpression includeExpression)
+    {
+        if (includeExpression.Reversed && includeExpression.SourceResourceType == "*")
+        {
+            return _searchParameterDefinitionManager.GetAllKnownSearchParameters();
+        }
+
+        IEnumerable<string> sourceTypes = includeExpression.SourceResourceType == "*"
+            ? includeExpression.ResourceTypes
+            : [includeExpression.SourceResourceType];
+
+        return sourceTypes.SelectMany(_searchParameterDefinitionManager.GetAllKnownSearchParameters);
+    }
+
+    private static bool IsApplicableWildcardReferenceParameter(
+        IncludeExpression includeExpression,
+        SearchParameterInfo searchParameter)
+    {
+        if (!includeExpression.Reversed)
+        {
+            return true;
+        }
+
+        IEnumerable<string> targetTypes = includeExpression.TargetResourceType is null
+            ? includeExpression.ResourceTypes
+            : [includeExpression.TargetResourceType];
+
+        return targetTypes.Any(targetType =>
+            searchParameter.TargetResourceTypes.Contains(targetType, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static void AddResolvedSearchParameters(Expression expression, List<SearchParameterInfo> resolvedSearchParameters)
+    {
+        switch (expression)
+        {
+            case SearchParameterExpressionBase searchParameterExpression:
+                resolvedSearchParameters.Add(searchParameterExpression.Parameter);
+                break;
+
+            case ChainedExpression chained:
+                resolvedSearchParameters.Add(chained.ReferenceSearchParameter);
+                AddResolvedSearchParameters(chained.Expression, resolvedSearchParameters);
+                break;
+        }
     }
 
     private static IReadOnlySet<string> ParseElementsParameters(List<string> elementsParameters)

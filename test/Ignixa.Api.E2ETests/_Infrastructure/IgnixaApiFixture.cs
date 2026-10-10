@@ -29,6 +29,7 @@ namespace Ignixa.Api.E2ETests._Infrastructure;
 /// </summary>
 public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    protected virtual bool ReindexAutoStart => false;
     private readonly string _testDataPath;
     private readonly string _sqlConnectionString;
     private bool _ownsSqlDatabase;
@@ -111,6 +112,8 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         // set there reaches only the later Autofac registrations, leaving GraphQL half-registered.
         // UseSetting feeds host configuration, which is visible from the start.
         builder.UseSetting("Experimental:Features:GraphQl:Enabled", "true");
+        builder.UseSetting("Reindex:AutoStart", ReindexAutoStart.ToString());
+        builder.UseSetting("TransactionWatcher:Enabled", "true");
 
         builder.ConfigureAppConfiguration((context, config) =>
         {
@@ -169,6 +172,7 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
                 // Disable external dependencies
                 ["DurableTask:Provider"] = "FileSystem",
+                ["FhirRepository:BaseDirectory"] = Path.Combine(_testDataPath, "durable-task"),
                 ["BlobStorage:Provider"] = "Local",
                 ["BlobStorage:RootDirectory"] = Path.Combine(_testDataPath, "blobs"),
 
@@ -177,9 +181,6 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
                 // Disable terminology auto-import for faster test startup
                 ["Experimental:Features:Terminology:EnableAutoImport"] = "false",
-
-                // Disable transaction watcher for tests
-                ["TransactionWatcher:Enabled"] = "false",
 
                 // Disable eager loading of package search parameters (avoids SQL connection)
                 ["SearchParameters:ConflictResolution:EagerLoadPackageSearchParameters"] = "false",

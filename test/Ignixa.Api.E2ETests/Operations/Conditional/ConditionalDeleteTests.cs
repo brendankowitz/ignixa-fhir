@@ -306,6 +306,15 @@ public class ConditionalDeleteTests : CapabilityDrivenTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "server should reject rather than silently widen delete criteria");
     }
 
+    [Fact]
+    public async Task GivenAnUnsupportedParameter_WhenConditionalDelete_ThenReturnsBadRequest()
+    {
+        var response = await Harness.DeleteWithQueryAsync("Patient", "not-a-search-parameter=value");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest,
+            "conditional operations must not discard an unsupported matching criterion");
+    }
+
     /// <summary>
     /// Tests conditional delete on Bundle resource type.
     /// Expected: Returns 400 Bad Request.

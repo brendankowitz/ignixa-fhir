@@ -26,6 +26,7 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
     private readonly ConcurrentDictionary<string, BackgroundJob<T>> _jobs = new();
     private readonly ITenantConfigurationStore _tenantConfigStore;
     private readonly ILogger<InMemoryBackgroundJobRepository<T>> _logger;
+    private long _version;
 
     private static partial class Log
     {
@@ -61,6 +62,7 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
         ArgumentNullException.ThrowIfNull(job);
 
         var snapshot = Snapshot(job);
+        snapshot.RowVersion = Interlocked.Increment(ref _version);
         if (!_jobs.TryAdd(snapshot.JobId, snapshot))
         {
             throw new InvalidOperationException($"Background job with ID '{job.JobId}' already exists");
@@ -127,6 +129,7 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
                 throw new BackgroundJobUpdateConflictException(snapshot.JobId, existing.Status);
             }
 
+            snapshot.RowVersion = Interlocked.Increment(ref _version);
             if (_jobs.TryUpdate(snapshot.JobId, snapshot, existing))
             {
                 Log.UpdatedBackgroundJob(_logger, snapshot.JobId, snapshot.Status);
@@ -149,6 +152,36 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
         Log.ListedJobs(_logger, jobs.Count);
 
         return Task.FromResult<IReadOnlyList<BackgroundJob<T>>>(jobs);
+    }
+
+    public Task<BackgroundJob<T>?> GetActiveAsync(
+        int jobType,
+        CancellationToken cancellationToken = default)
+    {
+        var job = _jobs.Values
+            .Where(candidate =>
+                candidate.JobType == jobType &&
+                !IsTerminal(candidate.Status))
+            .OrderByDescending(candidate => candidate.CreateDate)
+            .Select(Snapshot)
+            .FirstOrDefault();
+        return Task.FromResult(job);
+    }
+
+    public Task<BackgroundJob<T>?> GetLatestAsync(
+        int jobType,
+        IReadOnlyList<string> statuses,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(statuses);
+        var job = _jobs.Values
+            .Where(candidate =>
+                candidate.JobType == jobType &&
+                statuses.Contains(candidate.Status, StringComparer.OrdinalIgnoreCase))
+            .OrderByDescending(candidate => candidate.EndDate ?? candidate.CreateDate)
+            .Select(Snapshot)
+            .FirstOrDefault();
+        return Task.FromResult(job);
     }
 
     /// <inheritdoc/>

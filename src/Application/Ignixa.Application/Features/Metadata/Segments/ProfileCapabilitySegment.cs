@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Metadata.Models;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.PackageManagement.Abstractions;
 using Ignixa.Domain.Abstractions;
@@ -32,17 +33,20 @@ public class ProfileCapabilitySegment : ICapabilitySegment
     private readonly IImplementationGuideProvider _implementationGuideProvider;
     private readonly IPackageResourceRepository _packageResourceRepository;
     private readonly ICapabilityCache _cache;
+    private readonly IFhirVersionContext _versionContext;
 
     public ProfileCapabilitySegment(
         ILogger<ProfileCapabilitySegment> logger,
         IImplementationGuideProvider implementationGuideProvider,
         IPackageResourceRepository packageResourceRepository,
-        ICapabilityCache cache)
+        ICapabilityCache cache,
+        IFhirVersionContext versionContext)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _implementationGuideProvider = implementationGuideProvider ?? throw new ArgumentNullException(nameof(implementationGuideProvider));
         _packageResourceRepository = packageResourceRepository ?? throw new ArgumentNullException(nameof(packageResourceRepository));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _versionContext = versionContext ?? throw new ArgumentNullException(nameof(versionContext));
     }
 
     public string SegmentKey => "profiles";
@@ -74,7 +78,7 @@ public class ProfileCapabilitySegment : ICapabilitySegment
         try
         {
             // Load profile data from cache or database
-            var profileData = await GetCachedProfileDataAsync(tenantId, cancellationToken);
+            var profileData = await GetCachedProfileDataAsync(context, tenantId, cancellationToken);
 
             if (profileData.AllStructureDefinitions.Count == 0)
             {
@@ -164,7 +168,7 @@ public class ProfileCapabilitySegment : ICapabilitySegment
         try
         {
             // Load profile data from cache or database
-            var profileData = await GetCachedProfileDataAsync(tenantId, cancellationToken);
+            var profileData = await GetCachedProfileDataAsync(context, tenantId, cancellationToken);
 
             if (profileData.AllStructureDefinitions.Count == 0)
             {
@@ -196,17 +200,21 @@ public class ProfileCapabilitySegment : ICapabilitySegment
 
     /// <summary>
     /// Gets cached profile data for a tenant, loading from database if not cached.
-    /// Cache key format: "profiles:{tenantId}"
+    /// Cache key format: "profiles:{tenantId}:{definitionsEventId}:{publicationSequence}"
     /// Uses ICapabilityCache with 5-minute TTL to avoid repeated database queries during capability statement builds.
     /// </summary>
     /// <param name="tenantId">Tenant identifier</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Profile data containing all StructureDefinitions and pre-computed version hash</returns>
     private async ValueTask<ProfileData> GetCachedProfileDataAsync(
+        CapabilityContext context,
         string tenantId,
         CancellationToken cancellationToken)
     {
-        var cacheKey = $"profiles:{tenantId}";
+        var definitionsHandle = _versionContext.GetDefinitionsHandle(
+            context.FhirVersion,
+            context.TenantId);
+        var cacheKey = $"profiles:{tenantId}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
 
         // Check cache first
         var cached = await _cache.GetAsync(cacheKey, cancellationToken);

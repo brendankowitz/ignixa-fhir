@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Specification;
@@ -51,6 +52,28 @@ public interface IFhirVersionContext
     ISearchIndexer GetSearchIndexer(FhirVersion fhirVersion, Nullable<int> tenantId);
 
     /// <summary>
+    /// Acquires one immutable indexer/schema/position generation for a complete write extraction.
+    /// </summary>
+    DefinitionsHandle GetDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId);
+
+    /// <summary>
+    /// Builds a complete tenant definition set from a detached conformance projection.
+    /// </summary>
+    ConformanceDefinitionsSnapshot CreateConformanceDefinitionsSnapshot(
+        FhirVersion fhirVersion,
+        int tenantId,
+        ConformanceStateSnapshot stateSnapshot,
+        long generation);
+
+    /// <summary>
+    /// Publishes a complete tenant definition set if it is newer than the currently visible generation.
+    /// </summary>
+    void PublishConformanceDefinitionsSnapshot(
+        FhirVersion fhirVersion,
+        int tenantId,
+        ConformanceDefinitionsSnapshot snapshot);
+
+    /// <summary>
     /// Gets the search parameter definition manager for the specified FHIR version.
     /// Initializes synchronously using pre-generated search parameters.
     /// </summary>
@@ -68,16 +91,20 @@ public interface IFhirVersionContext
     ISearchParameterDefinitionManager GetSearchParameterDefinitionManager(FhirVersion fhirVersion, Nullable<int> tenantId);
 
     /// <summary>
+    /// Gets the search parameter definitions that are safe for query resolution.
+    /// This is intentionally separate from <see cref="GetSearchParameterDefinitionManager(FhirVersion, Nullable{int})"/>,
+    /// which serves extraction and therefore retains parameters while they are pending reindexing.
+    /// </summary>
+    ISearchParameterDefinitionManager GetSearchableSearchParameterDefinitionManager(
+        FhirVersion fhirVersion,
+        Nullable<int> tenantId,
+        Func<bool>? includePartiallyIndexedSearchParameters = null);
+
+    /// <summary>
     /// Gets the compartment definition manager for the specified FHIR version.
     /// Initializes synchronously using pre-generated compartment definitions.
     /// </summary>
     /// <param name="fhirVersion">FHIR version enum (e.g., FhirVersion.R4).</param>
     /// <returns>Compartment definition manager for the specified version.</returns>
     ICompartmentDefinitionManager GetCompartmentDefinitionManager(FhirVersion fhirVersion);
-
-    /// <summary>
-    /// Invalidates cached search parameter managers, forcing them to reload from ConformanceState.
-    /// Should be called when packages are activated/deactivated.
-    /// </summary>
-    void InvalidateSearchParameterCaches();
 }

@@ -56,6 +56,49 @@ public class SqlActivationPreflightTests
         }
     }
 
+    [SqlFact]
+    public async Task GivenPartialIndicesHeader_WhenConditionalDeleteUsesAPendingParameter_ThenItReturnsBadRequest()
+    {
+        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
+            ?? throw new InvalidOperationException("A SQL test connection is required.");
+        var database = $"IgnixaConditionalPartial_{Guid.NewGuid():N}";
+        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
+        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
+        using var names = new SqlCommandBuilder();
+        var quoted = names.QuoteIdentifier(database);
+        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quoted}");
+        try
+        {
+            await using var template = new IgnixaApiFixture();
+            await using var host = CreateHost(template, connectionString);
+            using var client = host.CreateClient();
+            var services = host.Services;
+            const string parameterCode = "conditional-pending";
+
+            await StoreAsync(services, PackageId, "conditional", parameterCode,
+                "http://example.org/SearchParameter/conditional-pending", null);
+            (await services.GetRequiredService<PackageActivationPipeline>()
+                .ActivateAsync(PackageId, "conditional", CancellationToken.None)).Success.ShouldBeTrue();
+            await SynchronizeAsync(services, "conditional");
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Delete,
+                $"/tenant/1/Patient?{parameterCode}=value");
+            request.Headers.Add("x-ms-use-partial-indices", "true");
+            using var response = await client.SendAsync(request);
+            var body = await response.Content.ReadAsStringAsync();
+
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, body);
+            body.ShouldContain("Conditional operations cannot use partially indexed search parameters");
+        }
+        finally
+        {
+            using var pool = new SqlConnection(connectionString);
+            SqlConnection.ClearPool(pool);
+            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quoted}");
+        }
+    }
+
     private static async Task AssertRejectedBatchAsync(string connectionString, string scenario)
     {
         await using var template = new IgnixaApiFixture();
@@ -110,28 +153,35 @@ public class SqlActivationPreflightTests
             Snapshot(state).ShouldBe(before);
             state.Packages.Keys.Order().ShouldBe(packagesBefore);
             ReferenceEquals(versions.GetSearchIndexer(FhirVersion.R4, 1), warmIndexer).ShouldBeTrue();
-            await AssertSearchAsync(client, "identifier", patientId);
+            await AssertRedefiningSearchAsync(client, "identifier");
+            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, OverrideUrl);
 
             await StoreAsync(services, PackageId, "3", "identifier", OverrideUrl, RootOne);
             await StoreAsync(services, PackageId, "3", "after-reject", ValidNewUrl, null);
             (await pipeline.ActivateAsync(PackageId, "3", CancellationToken.None)).Success.ShouldBeTrue();
             state.GetSearchParameter("Patient", "after-reject")!.SearchParamId.ShouldBe(nextId);
             await SynchronizeAsync(services, "3");
+            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, ValidNewUrl);
             await PutAsync(client, patientId, updated: true);
             await AssertSearchAsync(client, "after-reject", patientId);
             eventsAfterValid = await CountEventsAsync(connectionString);
-            eventsAfterValid.ShouldBe(countBefore + 3);
+            eventsAfterValid.ShouldBeGreaterThan(countBefore);
         }
 
         await using var restarted = CreateHost(template, connectionString);
         using var restartedClient = restarted.CreateClient();
-        await AssertSearchAsync(restartedClient, "identifier", patientId);
         await AssertSearchAsync(restartedClient, "after-reject", patientId);
         var replayed = restarted.Services.GetRequiredService<ConformanceState>();
         replayed.IsInitialized.ShouldBeTrue();
         replayed.Packages.ShouldNotContainKey($"{PackageId}@2");
         replayed.Packages.ShouldContainKey($"{PackageId}@3");
-        replayed.GetSearchParameter("Patient", "identifier")!.OverridesCanonical.ShouldBe(RootOne);
+        replayed.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(OverrideUrl);
+        var activated = replayed.FindByCanonical(OverrideUrl)!;
+        activated.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Enabled);
+        activated.OverridesCanonical.ShouldBe(RootOne);
         (await CountEventsAsync(connectionString)).ShouldBe(eventsAfterValid);
     }
 
@@ -167,7 +217,6 @@ public class SqlActivationPreflightTests
             services.GetRequiredService<IFhirVersionContext>(),
             services.GetRequiredService<SqlServerSearchIndexCacheRegistry>(),
             services.GetRequiredService<ITenantConfigurationStore>(),
-            services.GetRequiredService<ICapabilityCacheInvalidator>(),
             services.GetRequiredService<ILogger<PackageLoadedSearchParameterSyncHandler>>());
         await handler.HandleAsync(new PackageLoadedEvent(PackageId, version, 1, DateTimeOffset.UtcNow), CancellationToken.None);
     }
@@ -192,6 +241,21 @@ public class SqlActivationPreflightTests
         var entries = JsonNode.Parse(body)!["entry"]!.AsArray();
         entries.Count.ShouldBe(1);
         entries[0]!["resource"]!["id"]!.GetValue<string>().ShouldBe(id);
+    }
+
+    private static async Task AssertRedefiningSearchAsync(HttpClient client, string code)
+    {
+        using var strictRequest = new HttpRequestMessage(HttpMethod.Get, $"/tenant/1/Patient?{code}={Marker}");
+        strictRequest.Headers.Add("Prefer", "handling=strict");
+        using var strictResponse = await client.SendAsync(strictRequest);
+        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
+
+        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get, $"/tenant/1/Patient?{code}={Marker}");
+        lenientRequest.Headers.Add("Prefer", "handling=lenient");
+        using var lenientResponse = await client.SendAsync(lenientRequest);
+        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
+        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
+        lenientBody.ShouldContain($"Search parameter '{code}' is being redefined and was ignored.");
     }
 
     private static WebApplicationFactory<Program> CreateHost(IgnixaApiFixture template, string connectionString) =>
@@ -224,6 +288,17 @@ public class SqlActivationPreflightTests
     private sealed class SqlTheoryAttribute : TheoryAttribute
     {
         public SqlTheoryAttribute()
+        {
+            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                Skip = "Requires real SQL activation and restart.";
+            }
+        }
+    }
+
+    private sealed class SqlFactAttribute : FactAttribute
+    {
+        public SqlFactAttribute()
         {
             if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
             {

@@ -1,11 +1,11 @@
 namespace Ignixa.Domain.Exceptions;
 
 /// <summary>
-/// The stored job is already terminal, so this update was superseded. Reload its authoritative state;
-/// retrying or requeuing work requires a new job ID.
+/// The stored job has changed or is terminal, so this update was superseded. Reload authoritative state
+/// before merging progress again; retrying or requeuing terminal work requires a new job ID.
 /// </summary>
 public sealed class BackgroundJobUpdateConflictException(string jobId, string currentStatus)
-    : Exception($"Background job {jobId} is already {currentStatus}; its terminal metadata cannot be overwritten.")
+    : Exception($"Background job {jobId} changed or is closed (status {currentStatus}); reload its authoritative state.")
 {
     public string JobId { get; } = jobId;
 

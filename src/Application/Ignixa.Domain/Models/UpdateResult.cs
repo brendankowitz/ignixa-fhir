@@ -22,4 +22,10 @@ public record UpdateResult(
     /// Optional request context (HTTP method, URL) associated with this result.
     /// </summary>
     public ResourceRequest? Request { get; init; }
+
+    /// <summary>
+    /// Optional OperationOutcome returned when the primary write succeeded but an explicitly
+    /// non-atomic secondary write failed.
+    /// </summary>
+    public ReadOnlyMemory<byte>? OperationOutcomeBytes { get; init; }
 }

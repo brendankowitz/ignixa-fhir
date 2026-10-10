@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Specification;
@@ -26,9 +27,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ConcurrentDictionary<FhirVersion, IFhirSchemaProvider> _schemaProviders = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), CompositeStructureDefinitionSummaryProvider> _compositeProviders = new();
     private readonly ConcurrentDictionary<FhirVersion, ISearchIndexer> _searchIndexers = new();
-    private readonly ConcurrentDictionary<(FhirVersion, int), ISearchIndexer> _tenantSearchIndexers = new();
+    private readonly ConcurrentDictionary<(FhirVersion, int), ConformanceDefinitionsSnapshotSlot> _conformanceDefinitions = new();
     private readonly ConcurrentDictionary<FhirVersion, ISearchParameterDefinitionManager> _searchParamManagers = new();
-    private readonly ConcurrentDictionary<(FhirVersion, int), CompositeSearchParameterDefinitionManager> _compositeSearchParamManagers = new();
     private readonly ConcurrentDictionary<FhirVersion, ICompartmentDefinitionManager> _compartmentManagers = new();
     private readonly SemaphoreSlim _indexerLock = new(1, 1);
     private readonly SemaphoreSlim _searchParamLock = new(1, 1);
@@ -38,9 +38,13 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly IPackageResourceProvider? _packageResourceProvider;
     private readonly ICompositeSchemaProviderRegistry? _compositeProviderRegistry;
     private readonly SearchParameterResolutionOptions _searchParameterResolutionOptions;
-    private readonly ConformanceState? _conformanceState;
     private readonly IFhirBaseUriProvider _baseUriProvider;
     private readonly ILogger<FhirVersionContext> _logger;
+    private long _conformancePublicationSequence;
+
+    // The newest definition set published for any tenant. Its detached projection serves tenants the
+    // refresher has not enumerated yet, so no read ever touches the live ConformanceState.
+    private ConformanceDefinitionsSnapshot? _latestPublished;
     private bool _disposed;
 
     /// <param name="baseUriProvider">
@@ -54,8 +58,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         IFhirBaseUriProvider baseUriProvider,
         IPackageResourceRepository? packageResourceRepository = null,
         IPackageResourceProvider? packageResourceProvider = null,
-        ICompositeSchemaProviderRegistry? compositeProviderRegistry = null,
-        ConformanceState? conformanceState = null)
+        ICompositeSchemaProviderRegistry? compositeProviderRegistry = null)
     {
         ArgumentNullException.ThrowIfNull(baseUriProvider);
 
@@ -64,7 +67,6 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         _packageResourceRepository = packageResourceRepository;
         _packageResourceProvider = packageResourceProvider;
         _compositeProviderRegistry = compositeProviderRegistry;
-        _conformanceState = conformanceState;
         _baseUriProvider = baseUriProvider;
         _logger = _loggerFactory.CreateLogger<FhirVersionContext>();
     }
@@ -107,6 +109,11 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetBaseSchemaProvider(fhirVersion);
         }
 
+        if (TryGetDefinitions(fhirVersion, tenantId.Value, out var definitions))
+        {
+            return definitions.Handle.SchemaProvider;
+        }
+
         // Return cached composite provider or create new one
         return _compositeProviders.GetOrAdd((fhirVersion, tenantId.Value), key =>
         {
@@ -117,17 +124,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
                 version,
                 tenant);
 
-            // Get base provider for this FHIR version
-            var baseProvider = GetBaseSchemaProvider(version);
-
-            // Create composite provider that includes base spec + tenant packages
-            var fhirVersionString = version.ToVersionString();
-            var compositeProvider = new CompositeStructureDefinitionSummaryProvider(
-                baseProvider,
-                _packageResourceRepository,
-                _packageResourceProvider,
-                fhirVersionString,
-                _loggerFactory.CreateLogger<CompositeStructureDefinitionSummaryProvider>());
+            var compositeProvider = CreateCompositeSchemaProvider(version);
 
             // Register provider for cache invalidation if registry available
             if (_compositeProviderRegistry != null)
@@ -196,58 +193,120 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetSearchIndexer(fhirVersion);
         }
 
-        // If package management dependencies not available, return base indexer
-        if (_packageResourceRepository == null)
+        return TryGetDefinitions(fhirVersion, tenantId.Value, out var definitions)
+            ? definitions.Handle.Indexer
+            : GetSearchIndexer(fhirVersion);
+    }
+
+    /// <inheritdoc/>
+    public DefinitionsHandle GetDefinitionsHandle(FhirVersion fhirVersion, Nullable<int> tenantId)
+    {
+        if (tenantId is { } tenant && TryGetDefinitions(fhirVersion, tenant, out var definitions))
         {
-            _logger.LogTrace(
-                "Package management dependencies not available - returning base search indexer for {FhirVersion}",
-                fhirVersion);
-            return GetSearchIndexer(fhirVersion);
+            return definitions.Handle;
         }
 
-        // Fast path: check if already cached
-        if (_tenantSearchIndexers.TryGetValue((fhirVersion, tenantId.Value), out var cachedIndexer))
-        {
-            return cachedIndexer;
-        }
+        return new DefinitionsHandle(
+            GetSearchIndexer(fhirVersion, tenantId),
+            GetSchemaProvider(fhirVersion, tenantId),
+            DefinitionsEventId: 0);
+    }
 
-        // IMPORTANT: Call dependency methods BEFORE acquiring lock to avoid nested lock acquisition
-        var schemaProvider = GetSchemaProvider(fhirVersion, tenantId);
-        var searchParamManager = GetSearchParameterDefinitionManager(fhirVersion, tenantId);
+    /// <inheritdoc/>
+    public ConformanceDefinitionsSnapshot CreateConformanceDefinitionsSnapshot(
+        FhirVersion fhirVersion,
+        int tenantId,
+        ConformanceStateSnapshot stateSnapshot,
+        long generation)
+    {
+        ArgumentNullException.ThrowIfNull(stateSnapshot);
+        ArgumentOutOfRangeException.ThrowIfNegative(generation);
 
-        // Slow path: create new tenant-specific indexer (synchronous factory with lock)
-        _indexerLock.Wait();
-        try
-        {
-            // Double-check after acquiring lock
-            if (_tenantSearchIndexers.TryGetValue((fhirVersion, tenantId.Value), out cachedIndexer))
+        var schemaProvider = _packageResourceRepository is not null && _packageResourceProvider is not null
+            ? CreateCompositeSchemaProvider(fhirVersion)
+            : GetBaseSchemaProvider(fhirVersion);
+        var baseManager = GetSearchParameterDefinitionManager(fhirVersion);
+        var definitions = new CompositeSearchParameterDefinitionManager(
+            baseManager,
+            stateSnapshot,
+            fhirVersion.ToVersionString(),
+            _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
+            _searchParameterResolutionOptions,
+            schemaProvider);
+        definitions.ReloadFromConformanceState();
+
+        // The indexer extracts through SupportedSearchParameterDefinitionManager (IsSupported);
+        // queries resolve through SearchableSearchParameterDefinitionManager (IsSearchable/visibility).
+        var indexer = SearchIndexerFactory.CreateInstance(
+            schemaProvider,
+            _loggerFactory,
+            definitions,
+            _baseUriProvider);
+
+        var publicationSequence = Interlocked.Increment(ref _conformancePublicationSequence);
+        return new ConformanceDefinitionsSnapshot(
+            definitions,
+            new DefinitionsHandle(indexer, schemaProvider, generation, publicationSequence),
+            stateSnapshot,
+            publicationSequence);
+    }
+
+    /// <inheritdoc/>
+    public void PublishConformanceDefinitionsSnapshot(
+        FhirVersion fhirVersion,
+        int tenantId,
+        ConformanceDefinitionsSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        _conformanceDefinitions.AddOrUpdate(
+            (fhirVersion, tenantId),
+            _ => new ConformanceDefinitionsSnapshotSlot(snapshot),
+            (_, slot) =>
             {
-                return cachedIndexer;
+                slot.Publish(snapshot);
+                return slot;
+            });
+
+        while (true)
+        {
+            var latest = Volatile.Read(ref _latestPublished);
+            if (latest is not null && !ConformanceDefinitionsSnapshotSlot.IsNewer(snapshot, latest))
+            {
+                return;
             }
 
-            _logger.LogDebug(
-                "Creating tenant-aware search indexer for {FhirVersion}, tenant {TenantId}",
-                fhirVersion,
-                tenantId.Value);
-
-            // Create new search indexer with tenant-specific search parameter manager
-            // This indexer will use IG-provided search parameters from loaded packages
-            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory, searchParamManager, _baseUriProvider);
-
-            // Cache and return
-            _tenantSearchIndexers.TryAdd((fhirVersion, tenantId.Value), indexer);
-
-            _logger.LogDebug(
-                "Tenant-aware search indexer created and cached for {FhirVersion}, tenant {TenantId}",
-                fhirVersion,
-                tenantId.Value);
-
-            return indexer;
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _latestPublished, snapshot, latest), latest))
+            {
+                return;
+            }
         }
-        finally
+    }
+
+    private bool TryGetDefinitions(
+        FhirVersion fhirVersion,
+        int tenantId,
+        [NotNullWhen(true)] out ConformanceDefinitionsSnapshot? definitions)
+    {
+        if (_conformanceDefinitions.TryGetValue((fhirVersion, tenantId), out var slot))
         {
-            _indexerLock.Release();
+            definitions = slot.Current;
+            return true;
         }
+
+        var latest = Volatile.Read(ref _latestPublished);
+        if (latest is null)
+        {
+            definitions = null;
+            return false;
+        }
+
+        // A tenant created after the last refresh: build from the published projection. The refresher's
+        // next publication for this tenant replaces it through the slot's monotonic Publish.
+        var created = CreateConformanceDefinitionsSnapshot(fhirVersion, tenantId, latest.Source, latest.Generation);
+        definitions = _conformanceDefinitions
+            .GetOrAdd((fhirVersion, tenantId), _ => new ConformanceDefinitionsSnapshotSlot(created))
+            .Current;
+        return true;
     }
 
     /// <inheritdoc/>
@@ -297,81 +356,31 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return GetSearchParameterDefinitionManager(fhirVersion);
         }
 
-        // If ConformanceState dependency not available, return base manager
-        if (_conformanceState is null)
-        {
-            _logger.LogTrace(
-                "ConformanceState not available - returning base search parameter manager for {FhirVersion}",
-                fhirVersion);
-            return GetSearchParameterDefinitionManager(fhirVersion);
-        }
-
-        // Check if already cached (fast path)
-        var cacheKey = (fhirVersion, tenantId.Value);
-        if (_compositeSearchParamManagers.TryGetValue(cacheKey, out var cachedManager))
-        {
-            _logger.LogTrace(
-                "Returning cached composite search parameter manager for {FhirVersion}, tenant {TenantId}",
-                fhirVersion,
-                tenantId.Value);
-            return cachedManager;
-        }
-
-        // Return cached composite manager or create new one
-        var compositeManager = _compositeSearchParamManagers.GetOrAdd(cacheKey, key =>
-        {
-            var (version, tenant) = key;
-
-            _logger.LogDebug(
-                "Creating composite search parameter manager for {FhirVersion}, tenant {TenantId}",
-                version,
-                tenant);
-
-            // Get base manager for this FHIR version
-            var baseManager = GetSearchParameterDefinitionManager(version);
-
-            // Create composite manager using ConformanceState as source of truth
-            var fhirVersionString = version.ToVersionString();
-            var manager = new CompositeSearchParameterDefinitionManager(
-                baseManager,
-                _conformanceState,
-                fhirVersionString,
-                _loggerFactory.CreateLogger<CompositeSearchParameterDefinitionManager>(),
-                _searchParameterResolutionOptions,
-                GetSchemaProvider(version, tenant));
-
-            // Initialize eagerly if configured
-            if (_searchParameterResolutionOptions.EagerLoadPackageSearchParameters)
-            {
-                try
-                {
-                    // Use Task.Run to safely execute async initialization in sync context
-                    Task.Run(async () => await manager.InitializeAsync(CancellationToken.None)).GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex,
-                        "Failed to eagerly load package search parameters for {FhirVersion}, tenant {TenantId}",
-                        version,
-                        tenant);
-
-                    if (_searchParameterResolutionOptions.FailStartupOnEagerLoadError)
-                    {
-                        throw;
-                    }
-                }
-            }
-
-            _logger.LogDebug(
-                "Composite search parameter manager created and cached for {FhirVersion}, tenant {TenantId}",
-                version,
-                tenant);
-
-            return manager;
-        });
-
-        return compositeManager;
+        return TryGetDefinitions(fhirVersion, tenantId.Value, out var definitions)
+            ? definitions.Definitions
+            : GetSearchParameterDefinitionManager(fhirVersion);
     }
+
+    /// <inheritdoc/>
+    public ISearchParameterDefinitionManager GetSearchableSearchParameterDefinitionManager(
+        FhirVersion fhirVersion,
+        Nullable<int> tenantId,
+        Func<bool>? includePartiallyIndexedSearchParameters = null)
+    {
+        var manager = tenantId is { } tenant && TryGetDefinitions(fhirVersion, tenant, out var definitions)
+            ? definitions.Definitions
+            : GetSearchParameterDefinitionManager(fhirVersion);
+
+        return new SearchableSearchParameterDefinitionManager(manager, includePartiallyIndexedSearchParameters);
+    }
+
+    private CompositeStructureDefinitionSummaryProvider CreateCompositeSchemaProvider(FhirVersion fhirVersion) =>
+        new(
+            GetBaseSchemaProvider(fhirVersion),
+            _packageResourceRepository!,
+            _packageResourceProvider!,
+            fhirVersion.ToVersionString(),
+            _loggerFactory.CreateLogger<CompositeStructureDefinitionSummaryProvider>());
 
     /// <inheritdoc/>
     public ICompartmentDefinitionManager GetCompartmentDefinitionManager(FhirVersion fhirVersion)
@@ -404,25 +413,6 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         {
             _compartmentLock.Release();
         }
-    }
-
-    /// <inheritdoc/>
-    public void InvalidateSearchParameterCaches()
-    {
-        _logger.LogInformation("Invalidating search parameter caches due to conformance state change");
-
-        // Clear and reload each composite search parameter manager
-        foreach (var manager in _compositeSearchParamManagers.Values)
-        {
-            manager.ReloadFromConformanceState();
-        }
-
-        // Clear tenant-aware search indexers (they depend on search param managers)
-        _tenantSearchIndexers.Clear();
-
-        _logger.LogDebug(
-            "Invalidated {ManagerCount} search parameter managers and cleared tenant indexer cache",
-            _compositeSearchParamManagers.Count);
     }
 
     /// <summary>

@@ -50,6 +50,8 @@ internal static class CompilationContextMapping
             "Builder output, like UnsupportedParams: the subset R4 says SHALL be rejected rather than ignored. It decides an HTTP status at the API boundary, never a CTE.",
         [nameof(SearchOptions.BundleIssues)] =
             "Builder output, like UnsupportedParams.",
+        [nameof(SearchOptions.ResolvedSearchParameters)] =
+            "Parse-time diagnostics for lifecycle-hidden parameter warnings and conditional validation; does not affect SQL shape.",
         [nameof(SearchOptions.ResourceType)] =
             "Superseded by the targetResourceType argument, which is normalized once in CompilationContext.Create so every stage observes the same value.",
         [nameof(SearchOptions.IncludesMaxItemCount)] =

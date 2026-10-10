@@ -4,7 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Conformance.Events.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Services;
 
@@ -15,14 +17,15 @@ namespace Ignixa.Api.Services;
 public class ConformanceStateSyncService(
     ISourceEventStore eventStore,
     ConformanceState conformanceState,
-    ConformanceCacheRefresher cacheRefresher,
-    ILogger<ConformanceStateSyncService> logger,
-    IConfiguration configuration) : BackgroundService
+    ConformanceRefresher conformanceRefresher,
+    ConformanceLease conformanceLease,
+    IOptions<ConformanceTransitionOptions> transitionOptions,
+    ReindexTrigger reindexTrigger,
+    ILogger<ConformanceStateSyncService> logger) : BackgroundService
 {
     private long _lastRefreshedEventId;
 
-    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(
-        configuration.GetValue("Conformance:SyncIntervalSeconds", 30));
+    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(transitionOptions.Value.SyncIntervalSeconds);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -50,6 +53,7 @@ public class ConformanceStateSyncService(
             }
             catch (Exception ex)
             {
+                conformanceLease.Observe();
                 logger.LogWarning(
                     ex,
                     "Conformance sync failed at applied EventId {AppliedEventId}, refreshed EventId {RefreshedEventId}; will retry",
@@ -61,26 +65,42 @@ public class ConformanceStateSyncService(
         logger.LogInformation("ConformanceStateSyncService stopped");
     }
 
-    private async Task SyncAsync(CancellationToken cancellationToken)
+    protected async Task SyncAsync(CancellationToken cancellationToken)
     {
+        conformanceLease.Observe();
+        var syncStart = conformanceLease.CaptureStart();
         var beforeEventId = conformanceState.LastProcessedEventId;
+        long afterEventId;
 
-        await conformanceState.CatchUpAsync(eventStore, cancellationToken);
-
-        // CatchUpAsync takes this same lock. Acquire it only after catch-up has returned, and
-        // hold it through refresh so local activation cannot change the definitions being synced.
-        using var activationLock = await conformanceState.AcquireActivationLockAsync(cancellationToken);
-        var afterEventId = conformanceState.LastProcessedEventId;
-
-        if (afterEventId > _lastRefreshedEventId)
+        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
         {
-            await cacheRefresher.RefreshAsync(cancellationToken);
+            await conformanceState.CatchUpWhileActivationLockHeldAsync(eventStore, cancellationToken);
+            afterEventId = conformanceState.LastProcessedEventId;
+        }
+
+        if (afterEventId > _lastRefreshedEventId || conformanceRefresher.HasPendingRefresh)
+        {
+            try
+            {
+                _lastRefreshedEventId = await conformanceRefresher.RefreshAsync(force: false, cancellationToken);
+            }
+            catch (ConformanceConsumerRefreshException)
+            {
+                ConformanceMetrics.RecordConsumerRefreshFailure("sync");
+                throw;
+            }
 
             // Applying events and refreshing their consumers are separate checkpoints. In particular,
             // an empty subsequent poll must retry a failed refresh of an already-applied event.
-            _lastRefreshedEventId = afterEventId;
-            logger.LogInformation("Refreshed conformance consumers through EventId {EventId}", afterEventId);
+            logger.LogInformation(
+                "Refreshed conformance consumers through EventId {EventId}",
+                _lastRefreshedEventId);
         }
+
+        conformanceLease.Renew(syncStart);
+
+        // The trigger defers its own operational failures; a programmer error fails this tick loudly.
+        await reindexTrigger.ReconcileAsync(cancellationToken);
 
         if (afterEventId > beforeEventId)
         {

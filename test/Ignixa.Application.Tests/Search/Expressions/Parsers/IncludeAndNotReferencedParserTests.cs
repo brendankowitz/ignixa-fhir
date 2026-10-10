@@ -50,18 +50,25 @@ public class IncludeAndNotReferencedParserTests
     }
 
     [Fact]
-    public void GivenWildcardIncludeSyntax_WhenBinding_ThenReturnsDistinctReferencedTypesInDefinitionOrder()
+    public void GivenWildcardIncludeSyntax_WhenBinding_ThenReturnsOnlySearchableReferenceParameters()
     {
         var context = new SearchParserTestContext();
-        context.Add("Patient", "general-practitioner", SearchParamType.Reference, targets: PatientReferenceTargets);
-        context.Add("Patient", "link", SearchParamType.Reference, targets: PatientLinkTargets);
+        var generalPractitioner = context.Add(
+            "Patient",
+            "general-practitioner",
+            SearchParamType.Reference,
+            targets: PatientReferenceTargets);
+        context.Add("Patient", "link", SearchParamType.Reference, targets: PatientLinkTargets).IsSearchable = false;
+        context.Add("Patient", "managing-organization", SearchParamType.Reference, targets: ["Organization"])
+            .IsHiddenByTransition = true;
         var binder = new SearchKeyBinder(context.DefinitionManager, context.SchemaProvider);
         var syntax = new IncludeKeySyntax("Patient", null, null, true);
 
         var include = binder.BindInclude(PatientResourceTypes, syntax, isReversed: false, iterate: false);
 
         include.ReferenceSearchParameter.ShouldBeNull();
-        include.ReferencedTypes.ShouldBe(["Organization", "Practitioner", "Patient"], ignoreOrder: false);
+        include.WildcardReferenceSearchParameters.ShouldBe([generalPractitioner]);
+        include.ReferencedTypes.ShouldBe(["Organization", "Practitioner"], ignoreOrder: false);
     }
 
     [Fact]

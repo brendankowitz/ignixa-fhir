@@ -188,6 +188,11 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
             }
         }
 
+        foreach (var parameter in include.WildcardReferenceSearchParameters)
+        {
+            AddParameter(parameter);
+        }
+
         AddResourceType(include.SourceResourceType);
         AddResourceType(include.TargetResourceType);
         foreach (var referencedType in include.ReferencedTypes ?? [])

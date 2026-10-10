@@ -3,41 +3,49 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Search.Definition;
-using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Ignixa.Application.Features.Conformance;
 
 /// <summary>
-/// Pipeline for activating FHIR packages using event-sourced conformance management.
-/// Validates resources, builds activation events, and updates in-memory state atomically.
+/// Activates a stored package: appends its activation events durably, then starts the follow-up work
+/// (phase-two transition, local refresh, reindex).
 /// </summary>
+/// <remarks>
+/// Once the events are durable the activation is not undone. A follow-up step that fails operationally is
+/// logged and metered here, once, and reported as a warning issue on the successful result; its own recovery
+/// path (startup reconciliation, synchronization, reindex reconciliation) retries it.
+/// </remarks>
 public class PackageActivationPipeline(
     IPackageResourceRepository packageRepo,
     ISourceEventStore eventStore,
     ConformanceState state,
-    IFhirVersionContext fhirVersionContext,
-    IOptions<SearchParameterResolutionOptions> options,
+    PackageActivationPlanner planner,
+    ISearchParameterTransitionScheduler transitionScheduler,
+    IOptions<ConformanceTransitionOptions> transitionOptions,
+    ConformanceRefresher conformanceRefresher,
+    ConformanceLease conformanceLease,
+    IReindexTrigger reindexTrigger,
     ILogger<PackageActivationPipeline> logger)
 {
-    private readonly IPackageResourceRepository _packageRepo = packageRepo ?? throw new ArgumentNullException(nameof(packageRepo));
-    private readonly ISourceEventStore _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
-    private readonly ConformanceState _state = state ?? throw new ArgumentNullException(nameof(state));
-    private readonly IFhirVersionContext _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
-    private readonly SearchParameterResolutionOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-    private readonly ILogger<PackageActivationPipeline> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    public const string RefreshDeferredCode = "CONFORMANCE_REFRESH_DEFERRED";
+    public const string TransitionScheduleDeferredCode = "TRANSITION_SCHEDULE_DEFERRED";
+    public const string TransitionPendingCode = "SP_TRANSITION_PENDING";
+    public const string ReindexTriggerDeferredCode = "REINDEX_TRIGGER_DEFERRED";
+    public const string ReindexNotStartedCode = "REINDEX_NOT_STARTED";
+    public const string ReindexQueuedCode = "REINDEX_QUEUED";
+
+    private readonly TimeSpan _transitionGrace = transitionOptions.Value.TransitionGrace;
 
     /// <summary>
-    /// Activates a package by validating resources, emitting events, and updating state.
-    /// Returns success result with pending reindex list or failure result with validation issues.
+    /// Activates <paramref name="packageId"/>@<paramref name="version"/>. A failed result activated nothing; a
+    /// successful result is durable and may carry warning issues.
     /// </summary>
     public async Task<ActivationResult> ActivateAsync(
         string packageId,
@@ -46,260 +54,178 @@ public class PackageActivationPipeline(
     {
         ArgumentNullException.ThrowIfNull(packageId);
         ArgumentNullException.ThrowIfNull(version);
-
-        // Acquire lock for entire activation to ensure thread safety
-        using var _ = await _state.AcquireActivationLockAsync(cancellationToken);
-
-        // Check if package is already activated (idempotency)
-        var packageKey = $"{packageId}@{version}";
-        if (_state.Packages.ContainsKey(packageKey))
-        {
-            _logger.LogDebug(
-                "Package {PackageId}@{Version} already activated, skipping",
-                packageId,
-                version);
-            return ActivationResult.Succeeded([]);
-        }
-
-        _logger.LogInformation("Activating package {PackageId}@{Version}", packageId, version);
-
-        // 1. Load package resources from repository
-        var packageResources = await _packageRepo.GetResourcesForActivationAsync(packageId, version, cancellationToken);
+        var leaseStart = conformanceLease.CaptureStart();
+        var packageResources = await packageRepo.GetResourcesForActivationAsync(packageId, version, cancellationToken);
         var resources = PackageResourceMapper.MapToPackageResources(packageResources);
-
-        _logger.LogDebug(
-            "Loaded {SearchParamCount} SearchParameters and {StructureDefCount} StructureDefinitions",
+        var fhirVersion = packageResources.Length > 0 ? packageResources[0].FhirVersion : null;
+        logger.LogInformation(
+            "Activating package {PackageId}@{Version}: {SearchParamCount} SearchParameters, {StructureDefCount} StructureDefinitions",
+            packageId,
+            version,
             resources.SearchParameters.Count,
             resources.StructureDefinitions.Count);
 
-        // 2. Validate against current state
-        var validation = ValidateCompositeComponents(resources, _state);
-        if (!validation.Success)
+        Activation activation;
+        using (await state.AcquireActivationLockAsync(cancellationToken))
         {
-            return RejectActivation(validation.Issues);
+            IReadOnlyList<ValidationIssue> rejection = [];
+            IReadOnlyList<SourceEvent> persisted;
+            try
+            {
+                // Each attempt plans against the caught-up projection: the process-local lock cannot keep
+                // another host from activating first, so the append is conditioned on the projection position.
+                persisted = await state.AppendWhileActivationLockHeldAsync(
+                    eventStore,
+                    () =>
+                    {
+                        (var events, rejection) = planner.Plan(packageId, version, fhirVersion, resources, state);
+                        return events;
+                    },
+                    cancellationToken);
+            }
+            catch (SourceEventConcurrencyException exception)
+            {
+                rejection = [new ValidationIssue(PackageActivationRejectedException.ConformanceConflictCode, exception.Message)];
+                persisted = [];
+            }
+
+            if (rejection.Count > 0)
+            {
+                logger.LogWarning(
+                    "Package {PackageId}@{Version} was not activated: {Issues}",
+                    packageId,
+                    version,
+                    string.Join("; ", rejection.Select(issue => $"{issue.Code}: {issue.Message}")));
+                return ActivationResult.Failed(rejection);
+            }
+
+            activation = DescribeActivation($"{packageId}@{version}", persisted);
         }
 
-        // Build and apply every proposed event to detached state before anything is durable.
-        var expectedLastEventId = _state.LastProcessedEventId;
-        using var staged = _state.CreateStagingCopy();
-        var (events, issue) = BuildAndValidateActivationEvents(packageId, version, resources, staged);
-        if (issue is not null)
+        var issues = new List<ValidationIssue>();
+        if (activation.TransitionId is { } transitionId)
         {
-            return RejectActivation([issue]);
+            issues.AddRange(await ScheduleTransitionAsync(transitionId, activation.HiddenCodes));
         }
 
-        _logger.LogDebug("Built {EventCount} activation events", events.Count);
+        issues.AddRange(await RefreshAsync(leaseStart));
+        var reindex = activation.PendingReindex.Count > 0
+            ? await RequestReindexAsync(packageId, version)
+            : new ReindexTriggerResult(null, false, null);
+        issues.AddRange(DescribeReindex(reindex));
 
-        // The process-local lock cannot protect this snapshot from another host's activation.
-        // Compare its durable event position under the store's existing append lock.
-        IReadOnlyList<SourceEvent> persistedEvents;
-        try
-        {
-            persistedEvents = await _eventStore.AppendAsync(events, expectedLastEventId, cancellationToken);
-        }
-        catch (SourceEventConcurrencyException exception)
-        {
-            return RejectActivation([new ValidationIssue("CONFORMANCE_CONFLICT", exception.Message)]);
-        }
-
-        // 5. Apply events with correct EventIds to in-memory state
-        foreach (var evt in persistedEvents)
-        {
-            _state.ApplyAndTrack(evt);
-        }
-
-        // 6. Invalidate search parameter caches so new parameters are visible
-        _fhirVersionContext.InvalidateSearchParameterCaches();
-
-        // 7. Detect reindex requirements
-        var reindexNeeded = DetectReindexRequirements(resources);
-
-        _logger.LogInformation(
-            "Package {PackageId}@{Version} activated successfully. Pending reindex: {Count} resource types",
+        logger.LogInformation(
+            "Package {PackageId}@{Version} activated. Pending reindex: {PendingReindex}; hidden until transition: {HiddenCount}",
             packageId,
             version,
-            reindexNeeded.Count);
-
-        return ActivationResult.Succeeded(reindexNeeded);
+            activation.PendingReindex,
+            activation.HiddenCodes.Count);
+        return ActivationResult.Activated(activation.PendingReindex, reindex.JobId, issues);
     }
 
-    private static ValidationResult ValidateCompositeComponents(PackageResources resources, ConformanceState state)
+    // Every code the activation hid transitions together under its PackageActivated event id. No persisted
+    // events means the package was already active: there is nothing new to transition or reindex.
+    private Activation DescribeActivation(string packageKey, IReadOnlyList<SourceEvent> persisted)
     {
-        var issues = new List<ValidationIssue>();
-
-        var allCanonicals = new HashSet<string>(
-            state.AllSearchParameters.Values.Select(sp => sp.Canonical)
-                .Concat(resources.SearchParameters.Select(sp => sp.Canonical)));
-
-        foreach (var composite in resources.SearchParameters.Where(sp => sp.Type == SearchParamType.Composite))
+        if (persisted.Count == 0)
         {
-            if (composite.Components is null)
-            {
-                issues.Add(new ValidationIssue(
-                    "COMPOSITE_MISSING_COMPONENTS",
-                    $"Composite SP '{composite.Code}': Components array is null or empty"));
-                continue;
-            }
-
-            foreach (var component in composite.Components)
-            {
-                if (!allCanonicals.Contains(component.DefinitionUrl))
-                {
-                    issues.Add(new ValidationIssue(
-                        "COMPOSITE_MISSING_COMPONENT",
-                        $"Composite SP '{composite.Code}': Component '{component.DefinitionUrl}' not found"));
-                }
-            }
+            return new Activation(null, [], []);
         }
 
-        return issues.Count == 0 ? ValidationResult.Valid() : ValidationResult.Invalid(issues);
+        var transitionId = persisted.Single(evt => evt.Data is PackageActivated).EventId;
+        var hiddenCodes = state.GetTransitionParameters(transitionId)
+            .Select(parameter => $"{parameter.ResourceType}.{parameter.Code}")
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var pendingReindex = state.AllSearchParameters.Values
+            .Where(parameter => parameter.SourcePackage == packageKey && parameter.Status == SearchParameterStatus.Pending)
+            .Select(parameter => parameter.ResourceType)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return new Activation(hiddenCodes.Length > 0 ? transitionId : null, hiddenCodes, pendingReindex);
     }
 
-    private ActivationResult RejectActivation(IReadOnlyList<ValidationIssue> issues)
+    private async Task<IReadOnlyList<ValidationIssue>> ScheduleTransitionAsync(
+        long transitionId,
+        IReadOnlyList<string> hiddenCodes)
     {
-        _logger.LogWarning("Package activation validation failed: {Issues}",
-            string.Join(", ", issues.Select(issue => issue.Message)));
-        return ActivationResult.Failed(issues);
+        var pending = ValidationIssue.Warning(
+            TransitionPendingCode,
+            $"{hiddenCodes.Count} search parameter code(s) are hidden from search until the transition grace " +
+            $"({_transitionGrace}) elapses and the reindex that follows completes: {string.Join(", ", hiddenCodes)}.");
+        try
+        {
+            await transitionScheduler.ScheduleAsync(transitionId, _transitionGrace, CancellationToken.None);
+            return [pending];
+        }
+        catch (Exception exception) when (!IsProgrammerError(exception))
+        {
+            ConformanceMetrics.RecordTransitionScheduleFailure();
+            logger.LogError(
+                exception,
+                "Transition {TransitionId} is durable, but scheduling its phase two failed; startup reconciliation will schedule it",
+                transitionId);
+            return
+            [
+                pending,
+                ValidationIssue.Warning(
+                    TransitionScheduleDeferredCode,
+                    "Scheduling the phase-two transition failed; the hidden codes stay hidden until startup reconciliation schedules it."),
+            ];
+        }
     }
 
-    private bool IsValidOverride(SearchParameterInfo newSp, ActiveSearchParameter existing)
+    // A forced refresh also republishes package resources that changed without advancing the projection.
+    // On failure this instance keeps its old lease start, and synchronization retries the refresh.
+    private async Task<IReadOnlyList<ValidationIssue>> RefreshAsync(ConformanceLeaseStart leaseStart)
     {
-        // Explicit derivedFrom relationship
-        if (newSp.DerivedFrom == existing.Canonical)
+        try
         {
-            return true;
+            await conformanceRefresher.RefreshAsync(force: true, CancellationToken.None);
+        }
+        catch (ConformanceConsumerRefreshException exception)
+        {
+            ConformanceMetrics.RecordConsumerRefreshFailure("activation");
+            logger.LogWarning(exception, "Activation is durable, but the local conformance refresh failed; synchronization will retry");
+            return
+            [
+                ValidationIssue.Warning(
+                    RefreshDeferredCode,
+                    "The activation is durable, but this instance's conformance refresh failed; synchronization will retry it."),
+            ];
         }
 
-        // Same canonical URL (version update)
-        if (newSp.Canonical == existing.Canonical)
-        {
-            return true;
-        }
-
-        // Priority-based override
-        if (HasHigherPriority(newSp.SourcePackageId, existing.SourcePackage.Split('@')[0]))
-        {
-            return true;
-        }
-
-        return false;
+        conformanceLease.Renew(leaseStart);
+        return [];
     }
 
-    private bool HasHigherPriority(string newPackageId, string existingPackageId)
-    {
-        var newRank = _options.GetPriorityRank(newPackageId);
-        var existingRank = _options.GetPriorityRank(existingPackageId);
-        return newRank < existingRank;
-    }
+    // The trigger owns its failure policy: it defers operational failures and lets programmer errors propagate.
+    private Task<ReindexTriggerResult> RequestReindexAsync(string packageId, string version) =>
+        reindexTrigger.RequestReindexAsync(
+            $"Package {packageId}@{version} activation created Pending search parameters",
+            CancellationToken.None);
 
-    private (List<NewSourceEvent> Events, ValidationIssue? Issue) BuildAndValidateActivationEvents(
-        string packageId,
-        string version,
-        PackageResources resources,
-        ConformanceState staged)
-    {
-        var events = new List<NewSourceEvent>();
-        var streamId = $"package:{packageId}@{version}";
-        var packageKey = $"{packageId}@{version}";
-
-        // Emit SearchParameter events (non-composite first, then composite)
-        foreach (var sp in resources.SearchParameters.OrderBy(sp => sp.Type == SearchParamType.Composite ? 1 : 0))
+    private static IReadOnlyList<ValidationIssue> DescribeReindex(ReindexTriggerResult reindex) =>
+        reindex switch
         {
-            foreach (var resourceType in sp.BaseResourceTypes)
-            {
-                var existing = staged.GetSearchParameter(resourceType, sp.Code);
-                OverrideInfo? overrides = null;
+            { Deferred: true } => [ValidationIssue.Warning(ReindexTriggerDeferredCode, reindex.Message!)],
+            { Queued: true } =>
+            [
+                ValidationIssue.Information(
+                    ReindexQueuedCode,
+                    $"Reindex job {reindex.JobId} is already active; a follow-up job reindexes these parameters."),
+            ],
+            { JobId: null, Message: { } message } => [ValidationIssue.Warning(ReindexNotStartedCode, message)],
+            _ => [],
+        };
 
-                if (existing is not null)
-                {
-                    if (!IsValidOverride(sp, existing))
-                    {
-                        return (events, new ValidationIssue(
-                            "SP_CONFLICT",
-                            $"SearchParameter '{sp.Code}' on {resourceType} conflicts with existing from {existing.SourcePackage}",
-                            resourceType, sp.Code));
-                    }
-                    overrides = new OverrideInfo(existing.OverridesCanonical ?? existing.Canonical, existing.SearchParamId);
-                }
+    // Programmer errors fail fast; only operational failures of a follow-up step degrade the activation.
+    private static bool IsProgrammerError(Exception exception) =>
+        exception is ArgumentException or NullReferenceException or InvalidCastException;
 
-                var searchParamId = staged.GetSearchParamIdForActivation(sp.Canonical, existing);
-
-                var componentData = sp.Components?.Select(c =>
-                    new SearchParameterComponentData(c.DefinitionUrl, c.Expression)).ToList();
-
-                var proposed = new NewSourceEvent(
-                    streamId,
-                    nameof(SearchParameterActivated),
-                    new SearchParameterActivated(
-                        sp.Canonical,
-                        sp.Code,
-                        resourceType,
-                        sp.Expression,
-                        sp.Type,
-                        packageKey,
-                        overrides,
-                        searchParamId,
-                        sp.TargetResourceTypes,
-                        componentData,
-                        sp.Name,
-                        sp.Description));
-                if (staged.ApplyProposedEvent(proposed) is { } issue)
-                {
-                    return (events, issue);
-                }
-                events.Add(proposed);
-            }
-        }
-
-        // Emit StructureDefinition events
-        foreach (var sd in resources.StructureDefinitions)
-        {
-            var proposed = new NewSourceEvent(
-                streamId,
-                nameof(StructureDefinitionActivated),
-                new StructureDefinitionActivated(
-                    sd.Canonical,
-                    sd.Type,
-                    sd.Kind,
-                    packageKey,
-                    sd.SnapshotJson));
-            if (staged.ApplyProposedEvent(proposed) is { } issue)
-            {
-                return (events, issue);
-            }
-            events.Add(proposed);
-        }
-
-        // Emit package activated event
-        var activatedResources = resources.SearchParameters
-            .SelectMany(sp => sp.BaseResourceTypes.Select(rt => new ActivatedResource(rt, sp.Canonical)))
-            .Concat(resources.StructureDefinitions.Select(sd => new ActivatedResource("StructureDefinition", sd.Canonical)))
-            .ToList();
-
-        var packageEvent = new NewSourceEvent(
-            streamId,
-            nameof(PackageActivated),
-            new PackageActivated(packageId, version, activatedResources));
-        if (staged.ApplyProposedEvent(packageEvent) is { } packageIssue)
-        {
-            return (events, packageIssue);
-        }
-        events.Add(packageEvent);
-
-        return (events, null);
-    }
-
-    private List<string> DetectReindexRequirements(PackageResources resources)
-    {
-        // Non-base-FHIR SearchParameters need reindexing
-        return resources.SearchParameters
-            .Where(sp => !IsBaseFhirPackage(sp.SourcePackageId))
-            .SelectMany(sp => sp.BaseResourceTypes)
-            .Distinct()
-            .ToList();
-    }
-
-    private static bool IsBaseFhirPackage(string packageId) =>
-        packageId.StartsWith("hl7.fhir.r", StringComparison.OrdinalIgnoreCase) &&
-        packageId.EndsWith(".core", StringComparison.OrdinalIgnoreCase);
+    private sealed record Activation(
+        long? TransitionId,
+        IReadOnlyList<string> HiddenCodes,
+        IReadOnlyList<string> PendingReindex);
 }

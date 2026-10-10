@@ -118,7 +118,7 @@ public class SqlServerSearchParameterSyncIndexRowTests : IAsyncLifetime
 
     private async Task<long> WritePatientWithIdentifierAsync(string resourceId, string identifierValue)
     {
-        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 1, definitionsEventId: 0, CancellationToken.None);
 
         var resourceJson = ResourceJsonNode.Parse(
             $$"""{"resourceType":"Patient","id":"{{resourceId}}","identifier":[{"value":"{{identifierValue}}"}]}""");

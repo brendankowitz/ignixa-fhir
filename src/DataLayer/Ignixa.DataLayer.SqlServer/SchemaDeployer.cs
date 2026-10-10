@@ -11,6 +11,12 @@ namespace Ignixa.DataLayer.SqlServer;
 
 public sealed class SchemaDeployer : ISchemaDeployer
 {
+    /// <summary>Per-command deploy timeout; DacFx defaults to 60 seconds.</summary>
+    internal const int DeployCommandTimeoutSeconds = 600;
+
+    /// <summary>Timeout for DacFx's long-running deploy commands, such as an ONLINE index build.</summary>
+    internal const int DeployLongRunningCommandTimeoutSeconds = 3600;
+
     private const string DacpacResourceName = "Ignixa.DataLayer.SqlServer.Schema.dacpac";
 
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
@@ -173,14 +179,6 @@ public sealed class SchemaDeployer : ISchemaDeployer
     /// <c>BlockOnPossibleDataLoss</c> is set explicitly rather than left to DacFx's default: it is
     /// the last backstop behind <see cref="DeployReportClassifier"/>, and inheriting it implicitly
     /// meant any later change that started passing options here would have dropped it silently.
-    /// </summary>
-    /// <summary>
-    /// The deploy options both automatic paths use, for the deploy itself and for the report
-    /// generated to classify it -- the report must be produced under the same options it will be
-    /// applied under, or it describes a different operation than the one that runs.
-    /// <c>BlockOnPossibleDataLoss</c> is set explicitly rather than left to DacFx's default: it is
-    /// the last backstop behind <see cref="DeployReportClassifier"/>, and inheriting it implicitly
-    /// meant any later change that started passing options here would have dropped it silently.
     /// <para>
     /// Internal rather than private so the environment predicate can be tested directly. It is
     /// easy to get subtly wrong -- an earlier revision keyed on <c>IsDevelopment()</c>, which
@@ -198,6 +196,11 @@ public sealed class SchemaDeployer : ISchemaDeployer
         // platform this schema is built for and the deploy should fail loudly rather than be
         // forced through.
         AllowIncompatiblePlatform = !_environment.IsProduction() || _options.Value.AllowIncompatiblePlatform,
+        // The upgrade runs lazily, on the first use of a tenant behind CurrentVersion, and may build an index
+        // ONLINE over a large table (schema 9's filtered dbo.Transactions index). DacFx's 60-second command
+        // default would abort that part-way; these bound it without leaving it unbounded.
+        CommandTimeout = DeployCommandTimeoutSeconds,
+        LongRunningCommandTimeout = DeployLongRunningCommandTimeoutSeconds,
     };
 
     private static async Task<bool> CanConnectAsync(string connectionString, CancellationToken cancellationToken)

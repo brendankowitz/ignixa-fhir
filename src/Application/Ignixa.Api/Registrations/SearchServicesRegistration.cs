@@ -5,7 +5,6 @@
 
 using Autofac;
 using Ignixa.Abstractions;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
 using Ignixa.Application.Infrastructure;
@@ -14,6 +13,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Parsing;
 using Ignixa.Specification;
+using Microsoft.AspNetCore.Http;
 
 namespace Ignixa.Api.Registrations;
 
@@ -67,8 +67,7 @@ public static class SearchServicesRegistration
                 c.Resolve<IFhirBaseUriProvider>(),
                 c.Resolve<IPackageResourceRepository>(),
                 c.Resolve<IPackageResourceProvider>(),
-                c.Resolve<ICompositeSchemaProviderRegistry>(),
-                c.Resolve<ConformanceState>());
+                c.Resolve<ICompositeSchemaProviderRegistry>());
         }).SingleInstance();
 
         // The single authority for a tenant's service base URIs. "Fhir:BaseUri" is the deployment's public
@@ -210,8 +209,15 @@ public static class SearchServicesRegistration
         // Searchable resolver
         builder.Register<ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver>(c =>
         {
-            var manager = c.Resolve<ISearchParameterDefinitionManager>();
-            return () => manager;
+            var versionContext = c.Resolve<IFhirVersionContext>();
+            var httpContextAccessor = c.Resolve<IHttpContextAccessor>();
+            return () => versionContext.GetSearchableSearchParameterDefinitionManager(
+                FhirVersion.R4,
+                tenantId: null,
+                () => string.Equals(
+                    httpContextAccessor.HttpContext?.Request.Headers["x-ms-use-partial-indices"].ToString(),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase));
         }).SingleInstance();
 
         // Default compartment definition manager (R4)

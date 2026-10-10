@@ -7,7 +7,6 @@ using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.Services;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
-using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -23,6 +22,8 @@ namespace Ignixa.Api.E2ETests;
 
 public class SqlActivationConcurrencyTests
 {
+    private static readonly TimeSpan HostStartupTimeout = TimeSpan.FromSeconds(90);
+    private static readonly TimeSpan ConcurrencyAssertionTimeout = TimeSpan.FromSeconds(30);
     private const string FirstRoot = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
     private const string SecondRoot = "http://example.org/SearchParameter/race-other";
     private const string ContendedCanonical = "http://example.org/SearchParameter/race-override";
@@ -52,8 +53,6 @@ public class SqlActivationConcurrencyTests
 
     private static async Task AssertConcurrentActivationAsync(string connectionString)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-        var cancellationToken = timeout.Token;
         var gateA = new AppendGate();
         var gateB = new AppendGate();
         await using var templateA = new GatedFixture(gateA);
@@ -62,16 +61,18 @@ public class SqlActivationConcurrencyTests
         await using (var hostA = CreateHost(templateA, connectionString))
         {
             using var clientA = hostA.CreateClient();
-            await WaitForHostedReplayAsync(hostA.Services, cancellationToken);
+            using var hostAStartup = new CancellationTokenSource(HostStartupTimeout);
+            await WaitForHostedReplayAsync(hostA.Services, hostAStartup.Token);
             await StoreAsync(hostA.Services, "hl7.fhir.r4.core", "identifier", FirstRoot, null);
             await StoreAsync(hostA.Services, "hl7.fhir.r4.core", "other", SecondRoot, null);
             var pipelineA = hostA.Services.GetRequiredService<PackageActivationPipeline>();
-            (await pipelineA.ActivateAsync("hl7.fhir.r4.core", "1", cancellationToken)).Success.ShouldBeTrue();
+            (await pipelineA.ActivateAsync("hl7.fhir.r4.core", "1", hostAStartup.Token)).Success.ShouldBeTrue();
             var stateA = hostA.Services.GetRequiredService<ConformanceState>();
 
             await using var hostB = CreateHost(templateB, connectionString);
             using var clientB = hostB.CreateClient();
-            await WaitForHostedReplayAsync(hostB.Services, cancellationToken);
+            using var hostBStartup = new CancellationTokenSource(HostStartupTimeout);
+            await WaitForHostedReplayAsync(hostB.Services, hostBStartup.Token);
             var stateB = hostB.Services.GetRequiredService<ConformanceState>();
             var pipelineB = hostB.Services.GetRequiredService<PackageActivationPipeline>();
             stateB.LastProcessedEventId.ShouldBe(stateA.LastProcessedEventId);
@@ -80,6 +81,8 @@ public class SqlActivationConcurrencyTests
             long beforeCount = await CountAsync(connectionString);
 
             await StoreAsync(hostA.Services, "race.winner", "identifier", ContendedCanonical, FirstRoot);
+            using var assertionTimeout = new CancellationTokenSource(ConcurrencyAssertionTimeout);
+            var cancellationToken = assertionTimeout.Token;
             gateA.Arm();
             var first = pipelineA.ActivateAsync("race.winner", "1", cancellationToken);
             Task<ActivationResult>? second = null;
@@ -102,15 +105,16 @@ public class SqlActivationConcurrencyTests
                 gateB.Release.TrySetResult();
                 var rejected = await second;
 
+                // B lost the append race, caught up to A's events under its activation lock and
+                // revalidated against them instead of reporting the race itself.
                 rejected.Success.ShouldBeFalse();
-                rejected.Issues.ShouldContain(issue => issue.Code == "CONFORMANCE_CONFLICT");
-                stateB.LastProcessedEventId.ShouldBe(snapshotPosition);
-                stateB.FindByCanonical(ContendedCanonical).ShouldBeNull();
+                rejected.Issues.ShouldContain(issue => issue.Code == "SP_STORAGE_IDENTITY");
+                stateB.LastProcessedEventId.ShouldBe(stateA.LastProcessedEventId);
+                stateB.FindByCanonical(ContendedCanonical)!.OverridesCanonical.ShouldBe(FirstRoot);
                 stateB.Packages.ShouldNotContainKey("race.loser@1");
                 finalCount = await CountAsync(connectionString);
                 finalCount.ShouldBe(beforeCount + 2);
 
-                await stateB.CatchUpAsync(hostB.Services.GetRequiredService<ISourceEventStore>(), cancellationToken);
                 var retry = await pipelineB.ActivateAsync("race.loser", "1", cancellationToken);
                 retry.Success.ShouldBeFalse();
                 retry.Issues.ShouldContain(issue => issue.Code == "SP_STORAGE_IDENTITY");
@@ -131,7 +135,8 @@ public class SqlActivationConcurrencyTests
         await using var restartTemplate = new IgnixaApiFixture();
         await using var restarted = CreateHost(restartTemplate, connectionString);
         using var client = restarted.CreateClient();
-        await WaitForHostedReplayAsync(restarted.Services, cancellationToken);
+        using var restartStartup = new CancellationTokenSource(HostStartupTimeout);
+        await WaitForHostedReplayAsync(restarted.Services, restartStartup.Token);
         var replayed = restarted.Services.GetRequiredService<ConformanceState>();
         replayed.IsInitialized.ShouldBeTrue();
         replayed.Packages.ShouldContainKey("race.winner@1");
@@ -139,12 +144,37 @@ public class SqlActivationConcurrencyTests
         replayed.FindByCanonical(ContendedCanonical)!.OverridesCanonical.ShouldBe(FirstRoot);
         var definitions = restarted.Services.GetRequiredService<IFhirVersionContext>()
             .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+        definitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(FirstRoot));
+        await AssertRedefiningSearchAsync(client);
+        await SearchParameterLifecycleTestHelper.CommitTransitionAsync(restarted.Services, ContendedCanonical);
+        await SearchParameterLifecycleTestHelper.CompleteReindexAsync(restarted.Services, ContendedCanonical);
+        finalCount = await CountAsync(connectionString);
+        definitions = restarted.Services.GetRequiredService<IFhirVersionContext>()
+            .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
         definitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(ContendedCanonical));
+        var searchableDefinitions = restarted.Services.GetRequiredService<IFhirVersionContext>()
+            .GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
+        searchableDefinitions.GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(ContendedCanonical));
         using var request = new HttpRequestMessage(HttpMethod.Get, "/tenant/1/Patient?identifier=none");
         request.Headers.Add("Prefer", "handling=strict");
         using var response = await client.SendAsync(request);
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         (await CountAsync(connectionString)).ShouldBe(finalCount);
+    }
+
+    private static async Task AssertRedefiningSearchAsync(HttpClient client)
+    {
+        using var strictRequest = new HttpRequestMessage(HttpMethod.Get, "/tenant/1/Patient?identifier=none");
+        strictRequest.Headers.Add("Prefer", "handling=strict");
+        using var strictResponse = await client.SendAsync(strictRequest);
+        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
+
+        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get, "/tenant/1/Patient?identifier=none");
+        lenientRequest.Headers.Add("Prefer", "handling=lenient");
+        using var lenientResponse = await client.SendAsync(lenientRequest);
+        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
+        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
+        lenientBody.ShouldContain("Search parameter 'identifier' is being redefined and was ignored.");
     }
 
     private static async Task WaitForHostedReplayAsync(IServiceProvider services, CancellationToken cancellationToken)

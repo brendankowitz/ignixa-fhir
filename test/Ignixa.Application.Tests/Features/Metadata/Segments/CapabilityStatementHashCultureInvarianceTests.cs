@@ -78,7 +78,10 @@ public class CapabilityStatementHashCultureInvarianceTests
         });
 
         var versionContext = Substitute.For<IFhirVersionContext>();
-        versionContext.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(manager);
+        versionContext.GetSearchableSearchParameterDefinitionManager(
+            Arg.Any<FhirVersion>(),
+            Arg.Any<int?>(),
+            Arg.Any<Func<bool>?>()).Returns(manager);
 
         var segment = new SearchParameterCapabilitySegment(versionContext, NullLogger<SearchParameterCapabilitySegment>.Instance);
         var context = new CapabilityContext(FhirVersion.R4);
@@ -113,7 +116,10 @@ public class CapabilityStatementHashCultureInvarianceTests
         });
 
         var versionContext = Substitute.For<IFhirVersionContext>();
-        versionContext.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>()).Returns(manager);
+        versionContext.GetSearchableSearchParameterDefinitionManager(
+            Arg.Any<FhirVersion>(),
+            Arg.Any<int?>(),
+            Arg.Any<Func<bool>?>()).Returns(manager);
 
         var segment = new IncludeRevIncludeCapabilitySegment(versionContext, NullLogger<IncludeRevIncludeCapabilitySegment>.Instance);
         var context = new CapabilityContext(FhirVersion.R4);
@@ -123,6 +129,61 @@ public class CapabilityStatementHashCultureInvarianceTests
 
         // Assert
         hash.ShouldBe(ExpectedIncludeRevIncludeHash);
+    }
+
+    [Fact]
+    public async Task GivenAPendingSearchParameter_WhenBuildingTheCapabilityVersionHash_ThenItIsExcluded()
+    {
+        var manager = Substitute.For<ISearchParameterDefinitionManager>();
+        manager.AllSearchParameters.Returns(
+        [
+            new SearchParameterInfo(
+                "pending",
+                "pending",
+                SearchParamType.String,
+                new Uri("http://example.org/SearchParameter/pending"))
+            {
+                IsSearchable = false
+            }
+        ]);
+        var versionContext = Substitute.For<IFhirVersionContext>();
+        versionContext.GetSearchableSearchParameterDefinitionManager(
+            Arg.Any<FhirVersion>(),
+            Arg.Any<int?>(),
+            Arg.Any<Func<bool>?>()).Returns(manager);
+        var segment = new SearchParameterCapabilitySegment(versionContext, NullLogger<SearchParameterCapabilitySegment>.Instance);
+
+        string hash = await segment.GetVersionHashAsync(new CapabilityContext(FhirVersion.R4), CancellationToken.None);
+
+        hash.ShouldBe("47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=");
+    }
+
+    [Fact]
+    public async Task GivenAPendingReferenceParameter_WhenBuildingTheIncludeCapabilityVersionHash_ThenItIsExcluded()
+    {
+        var manager = Substitute.For<ISearchParameterDefinitionManager>();
+        manager.AllSearchParameters.Returns(
+        [
+            new SearchParameterInfo(
+                "pending-reference",
+                "pending-reference",
+                SearchParamType.Reference,
+                targetResourceTypes: PatientOnly,
+                baseResourceTypes: EncounterOnly)
+            {
+                IsSearchable = false
+            }
+        ]);
+        var versionContext = Substitute.For<IFhirVersionContext>();
+        versionContext.GetSearchableSearchParameterDefinitionManager(
+            Arg.Any<FhirVersion>(),
+            Arg.Any<int?>(),
+            Arg.Any<Func<bool>?>()).Returns(manager);
+        var segment = new IncludeRevIncludeCapabilitySegment(versionContext, NullLogger<IncludeRevIncludeCapabilitySegment>.Instance);
+
+        string hash = await segment.GetVersionHashAsync(new CapabilityContext(FhirVersion.R4), CancellationToken.None);
+
+        hash.ShouldBe("47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=");
     }
 
     private static string UnderCulture(string cultureName, Func<string> act)
