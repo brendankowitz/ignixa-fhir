@@ -167,22 +167,10 @@ public sealed class ConformanceRefresher(
             cancellationToken.ThrowIfCancellationRequested();
             return definitions;
         }
-        catch (DbException exception)
+        catch (Exception exception) when (exception is DbException or IOException or TimeoutException)
         {
             throw new ConformanceConsumerRefreshException(
-                "A database-backed conformance consumer could not be refreshed.",
-                exception);
-        }
-        catch (IOException exception)
-        {
-            throw new ConformanceConsumerRefreshException(
-                "A file-backed conformance consumer could not be refreshed.",
-                exception);
-        }
-        catch (TimeoutException exception)
-        {
-            throw new ConformanceConsumerRefreshException(
-                "A conformance consumer refresh timed out.",
+                $"A conformance consumer could not be refreshed: {exception.Message}",
                 exception);
         }
     }

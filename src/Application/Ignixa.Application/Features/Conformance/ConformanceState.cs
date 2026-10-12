@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -42,18 +40,10 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     public long LastProcessedEventId => Interlocked.Read(ref _lastProcessedEventId);
     public bool IsInitialized => _isInitialized;
 
-    public async Task<IDisposable> AcquireActivationLockAsync(
-        CancellationToken cancellationToken,
-        [CallerMemberName] string operation = "")
+    public async Task<IDisposable> AcquireActivationLockAsync(CancellationToken cancellationToken)
     {
-        var waitStarted = Stopwatch.GetTimestamp();
         await _activationLock.WaitAsync(cancellationToken);
-        var acquired = Stopwatch.GetTimestamp();
-        _logger?.LogDebug(
-            "Conformance activation lock acquired by {Operation} after waiting {WaitDurationMs:N1} ms",
-            operation,
-            Stopwatch.GetElapsedTime(waitStarted, acquired).TotalMilliseconds);
-        return new LockReleaser(_activationLock, _logger, operation, acquired);
+        return new LockReleaser(_activationLock);
     }
 
     public int GetOrAllocateSearchParamId(string canonical, ActiveSearchParameter? existingOverride)
@@ -78,11 +68,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         existingOverride?.SearchParamId
         ?? (_canonicalToParamId.TryGetValue(canonical, out var id) ? id : _nextSearchParamId);
 
-    private sealed class LockReleaser(
-        SemaphoreSlim semaphore,
-        ILogger<ConformanceState>? logger,
-        string operation,
-        long acquired) : IDisposable
+    private sealed class LockReleaser(SemaphoreSlim semaphore) : IDisposable
     {
         private bool _disposed;
 
@@ -91,10 +77,6 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
             if (!_disposed)
             {
                 semaphore.Release();
-                logger?.LogDebug(
-                    "Conformance activation lock released by {Operation} after holding {HoldDurationMs:N1} ms",
-                    operation,
-                    Stopwatch.GetElapsedTime(acquired).TotalMilliseconds);
                 _disposed = true;
             }
         }
@@ -193,28 +175,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         var clones = new Dictionary<ActiveSearchParameter, ActiveSearchParameter>();
         foreach (var parameter in _searchParameterActivations)
         {
-            var clone = new ActiveSearchParameter
-            {
-                SearchParamId = parameter.SearchParamId,
-                Canonical = parameter.Canonical,
-                Code = parameter.Code,
-                ResourceType = parameter.ResourceType,
-                Expression = parameter.Expression,
-                ParamType = parameter.ParamType,
-                SourcePackage = parameter.SourcePackage,
-                FhirVersion = parameter.FhirVersion,
-                OverridesCanonical = parameter.OverridesCanonical,
-                TargetResourceTypes = parameter.TargetResourceTypes?.ToArray(),
-                Components = parameter.Components?.ToArray(),
-                Name = parameter.Name,
-                Description = parameter.Description,
-                ActivationEventId = parameter.ActivationEventId,
-                DeactivationEventId = parameter.DeactivationEventId,
-                PreviousActivationEventId = parameter.PreviousActivationEventId,
-                IsAvailable = parameter.IsAvailable,
-                Status = parameter.Status,
-                ReindexJobId = parameter.ReindexJobId
-            };
+            var clone = parameter.Clone();
             clones.Add(parameter, clone);
             staged._searchParameterActivations.Add(clone);
         }
@@ -920,7 +881,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
             parameter.ReindexJobId);
     }
 
-    private static bool IsBaseFhirPackage(string packageId) =>
+    internal static bool IsBaseFhirPackage(string packageId) =>
         packageId.StartsWith("hl7.fhir.r", StringComparison.OrdinalIgnoreCase) &&
         packageId.EndsWith(".core", StringComparison.OrdinalIgnoreCase);
 

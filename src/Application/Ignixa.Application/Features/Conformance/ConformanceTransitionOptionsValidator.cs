@@ -23,24 +23,17 @@ public sealed class ConformanceTransitionOptionsValidator(IOptions<ReindexOption
             failures.Add($"{ConformanceTransitionOptions.SectionName}:MaxStaleness must be greater than zero.");
         }
 
-        if (options.TransitionGrace <= TimeSpan.Zero)
-        {
-            failures.Add($"{ConformanceTransitionOptions.SectionName}:TransitionGrace must be greater than zero.");
-        }
-
         if (options.TransitionSafetyMargin <= TimeSpan.Zero)
         {
             failures.Add(
                 $"{ConformanceTransitionOptions.SectionName}:TransitionSafetyMargin must be greater than zero.");
         }
 
-        if (reindexOptions.BarrierDelay < TimeSpan.Zero)
-        {
-            failures.Add($"{ReindexOptions.SectionName}:BarrierDelay must be greater than or equal to zero.");
-        }
-
-        if (options.TransitionGrace < options.MaxStaleness ||
-            options.TransitionGrace - options.MaxStaleness < options.TransitionSafetyMargin)
+        // With a positive MaxStaleness these two rules also make TransitionGrace and BarrierDelay positive.
+        // Ordering the comparison first keeps the subtraction from overflowing.
+        if (options.MaxStaleness > TimeSpan.Zero &&
+            (options.TransitionGrace < options.MaxStaleness ||
+             options.TransitionGrace - options.MaxStaleness < options.TransitionSafetyMargin))
         {
             failures.Add(
                 $"{ConformanceTransitionOptions.SectionName}:TransitionGrace must be greater than or equal to " +

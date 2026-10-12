@@ -91,25 +91,6 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
         return false;
     }
 
-    public bool TryGetPartiallyIndexedSearchParameter(
-        string resourceType,
-        string code,
-        out SearchParameterInfo searchParameter)
-    {
-        searchParameter = null;
-
-        if (_inner.TryGetSearchParameter(resourceType, code, out SearchParameterInfo parameter)
-            && !parameter.IsSearchable
-            && parameter.IsSupported
-            && !parameter.IsHiddenByTransition)
-        {
-            searchParameter = parameter;
-            return true;
-        }
-
-        return false;
-    }
-
     public SearchParameterInfo GetSearchParameter(string resourceType, string code)
     {
         SearchParameterInfo parameter = _inner.GetSearchParameter(resourceType, code);
