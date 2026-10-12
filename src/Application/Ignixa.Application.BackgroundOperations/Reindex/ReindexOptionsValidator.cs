@@ -31,13 +31,6 @@ public sealed class ReindexOptionsValidator : IValidateOptions<ReindexOptions>
         ValidatePositive(options.OrphanGrace, nameof(options.OrphanGrace), failures);
         ValidatePositive(options.StaleJobTimeout, nameof(options.StaleJobTimeout), failures);
         ValidatePositive(options.DrainWarningAfter, nameof(options.DrainWarningAfter), failures);
-        // The barrier delay is one durable wait after the start's heartbeat; half the timeout leaves margin.
-        if (options.BarrierDelay >= options.StaleJobTimeout / 2)
-        {
-            failures.Add(
-                $"{ReindexOptions.SectionName}:{nameof(options.BarrierDelay)} must be less than half of {ReindexOptions.SectionName}:{nameof(options.StaleJobTimeout)}.");
-        }
-
         if (options.ContinueAsNewThreshold < 1)
         {
             failures.Add(

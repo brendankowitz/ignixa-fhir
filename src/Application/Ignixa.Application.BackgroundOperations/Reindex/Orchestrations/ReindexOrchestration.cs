@@ -59,8 +59,7 @@ public sealed class ReindexOrchestration
 
         if (state.Phase == ReindexPhase.BarrierDelay)
         {
-            // Startup validation keeps the delay under half the stale-job timeout, so the heartbeat written by the
-            // start stays fresh through it.
+            // One durable wait; stale-job detection adds the barrier delay to its allowance while a job is in it.
             await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
             state = state with { Phase = ReindexPhase.Draining };
             if (!await PersistProgressAsync(context, input, state))
