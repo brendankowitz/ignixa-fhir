@@ -166,6 +166,69 @@ public class CompleteReindexActivityTests
         fixture.State.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
     }
 
+    // F2/F11: while a tenant has failed resources of an affected type, the parameter stays out of Enabled.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenATenantWithFailuresOfAnAffectedType_WhenCompletionRuns_ThenTheJobFailsAndTheParameterReturnsToPending(
+        bool wholeRangeFailed)
+    {
+        var fixture = await Fixture.CreateAsync();
+        var progress = new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 2, 1, 0, 0, null);
+        progress = wholeRangeFailed
+            ? progress.AddRangeFailure("Patient", "range timed out")
+            : progress.Add("Patient", new ReindexRangeOutput(1, 0, [new ReindexFailedResource("Patient", "p2", "bad")]));
+
+        await fixture.Activity().RunAsync(ActivityContext(), Input([Target()], progress));
+
+        var job = await fixture.JobAsync();
+        job.Status.ShouldBe("Failed");
+        job.ErrorMessage.ShouldContain("Tenant 1: resource failures occurred");
+        fixture.Status.ShouldBe(SearchParameterStatus.Pending);
+    }
+
+    // Spec 8.5: the job store's first terminal status is authoritative; a delayed completion changes nothing.
+    [Fact]
+    public async Task GivenTheJobWasCancelledFirst_WhenCompletionRuns_ThenNeitherTheJobNorItsParameterIsTouched()
+    {
+        var fixture = await Fixture.CreateAsync();
+        var cancelled = await fixture.JobAsync();
+        cancelled.Status = "Cancelled";
+        cancelled.EndDate = DateTimeOffset.UtcNow;
+        await fixture.Jobs.UpdateAsync(cancelled, 1, CancellationToken.None);
+
+        var json = await fixture.Activity().RunAsync(ActivityContext(), Input([Target()]));
+
+        JsonSerializer.Deserialize<CompleteReindexOutput>(json)!.Success.ShouldBeFalse();
+        (await fixture.JobAsync()).Status.ShouldBe("Cancelled");
+        fixture.Status.ShouldBe(SearchParameterStatus.Reindexing);
+        fixture.Events.Appended.Select(evt => evt.Data).ShouldNotContain(data =>
+            data is SearchParameterReindexCompleted || data is SearchParameterReindexFailed);
+    }
+
+    // Spec 4.4: a target is judged only by tenants of its FHIR version, so another version's failures do not
+    // keep it from Enabled.
+    [Fact]
+    public async Task GivenAFailedTenantOnAnotherFhirVersion_WhenAnR4TargetCompletes_ThenThatTenantDoesNotDecideIt()
+    {
+        var target = Target(fhirVersion: "4.0");
+        var fixture = await Fixture.CreateAsync(
+            activeTenants: [Tenant(1), Tenant(2, fhirVersion: "5.0")],
+            target: target,
+            jobTargets: [target]);
+        var otherVersion = new ReindexTenantProgress(2, ReindexTenantStatus.Completed, 1, 1, 1, 0, 0, 0, null)
+            .AddRangeFailure("Patient", "range timed out");
+
+        await fixture.Activity().RunAsync(
+            ActivityContext(),
+            Input([target], [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 0, null), otherVersion]));
+
+        fixture.Status.ShouldBe(SearchParameterStatus.Enabled);
+    }
+
+    private static string Input(ReindexParameterDefinition[] targets, ReindexTenantProgress[] tenants) =>
+        JsonSerializer.Serialize(new[] { new CompleteReindexInput("job", 1, targets, tenants, []) });
+
     private static string Input(
         ReindexParameterDefinition[] targets,
         ReindexTenantProgress? tenant = null,
