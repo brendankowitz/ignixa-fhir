@@ -7,6 +7,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Shouldly;
 using Xunit;
@@ -22,9 +23,9 @@ public class ConformanceStateInitializerTests
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        using var service = new TestInitializer(store, state, TestConformanceRefresher.Tenants(), CreateLease());
+        using var service = CreateInitializer(store, state, TestConformanceRefresher.Tenants(), CreateLease());
 
-        await service.RunAsync();
+        await RunAsync(service);
 
         state.IsInitialized.ShouldBeTrue();
         _ = store.Received(1).ReadAllAsync(Arg.Any<CancellationToken>());
@@ -37,9 +38,9 @@ public class ConformanceStateInitializerTests
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
         var lease = CreateLease();
-        using var service = new TestInitializer(store, state, TestConformanceRefresher.Tenants(), lease);
+        using var service = CreateInitializer(store, state, TestConformanceRefresher.Tenants(), lease);
 
-        await service.RunAsync();
+        await RunAsync(service);
 
         lease.IsHeld.ShouldBeTrue();
     }
@@ -59,9 +60,9 @@ public class ConformanceStateInitializerTests
                 heldDuringRefresh = lease.IsHeld;
                 return new ValueTask<IReadOnlyList<TenantConfiguration>>([]);
             });
-        using var service = new TestInitializer(store, state, refreshTenants, lease);
+        using var service = CreateInitializer(store, state, refreshTenants, lease);
 
-        await service.RunAsync();
+        await RunAsync(service);
 
         heldDuringRefresh.ShouldBe(false);
         lease.IsHeld.ShouldBeTrue();
@@ -90,9 +91,11 @@ public class ConformanceStateInitializerTests
                 : Events(first, second));
         store.ReadFromAsync(1, Arg.Any<CancellationToken>()).Returns(Events(second));
         using var state = new ConformanceState();
-        using var service = new TestInitializer(store, state, TestConformanceRefresher.Tenants(), CreateLease());
+        var time = new FakeTimeProvider();
+        using var service = CreateInitializer(store, state, TestConformanceRefresher.Tenants(), CreateLease(), time);
 
-        await service.RunAsync();
+        await service.StartAsync(CancellationToken.None);
+        await AdvanceUntilCompletedAsync(time, service.ExecuteTask!);
 
         state.IsInitialized.ShouldBeTrue();
         state.LastProcessedEventId.ShouldBe(2);
@@ -133,23 +136,37 @@ public class ConformanceStateInitializerTests
             TimeProvider.System,
             NullLogger<ConformanceLease>.Instance);
 
-    private sealed class TestInitializer(
+    private static ConformanceStateInitializerService CreateInitializer(
         ISourceEventStore store,
         ConformanceState state,
         ITenantConfigurationStore refreshTenants,
-        ConformanceLease lease)
-        : ConformanceStateInitializerService(
+        ConformanceLease lease,
+        TimeProvider? timeProvider = null) =>
+        new(
             store,
             state,
             TestConformanceRefresher.Create(state, tenants: refreshTenants),
             lease,
-            NullLogger<ConformanceStateInitializerService>.Instance)
-    {
-        public Task RunAsync() => ExecuteAsync(CancellationToken.None);
+            timeProvider ?? new FakeTimeProvider(),
+            NullLogger<ConformanceStateInitializerService>.Instance);
 
-        protected override Task DelayBeforeRetryAsync(
-            TimeSpan delay,
-            CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+    private static async Task RunAsync(ConformanceStateInitializerService service)
+    {
+        await service.StartAsync(CancellationToken.None);
+        await service.ExecuteTask!;
+    }
+
+    // The retry delay is scheduled asynchronously after the failed attempt, so keep advancing past it.
+    private static async Task AdvanceUntilCompletedAsync(FakeTimeProvider time, Task execution)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!execution.IsCompleted && DateTime.UtcNow < deadline)
+        {
+            time.Advance(TimeSpan.FromSeconds(5));
+            await Task.Delay(10);
+        }
+
+        execution.IsCompleted.ShouldBeTrue("initialization did not finish after its retry delays elapsed");
+        await execution;
     }
 }

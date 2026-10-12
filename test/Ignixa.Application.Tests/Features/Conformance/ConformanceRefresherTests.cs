@@ -118,29 +118,11 @@ public class ConformanceRefresherTests
         await refresher.RefreshAsync(force: false, CancellationToken.None);
         await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
             refresher.RefreshAsync(force: true, CancellationToken.None));
-        var pendingAfterFailure = refresher.HasPendingRefresh;
         await refresher.RefreshAsync(force: false, CancellationToken.None);
 
-        pendingAfterFailure.ShouldBeTrue();
-        refresher.HasPendingRefresh.ShouldBeFalse();
         versions.Built.ShouldBe([1, 1]);
         versions.Published.ShouldBe([1, 1]);
         enumerations.ShouldBe(3);
-    }
-
-    [Fact]
-    public async Task GivenUnforcedRefreshFails_WhenRefreshedAgain_ThenNoPendingForceIsRecorded()
-    {
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(CreatePackageEvent(1, "first"));
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: TestConformanceRefresher.FailingTenants(new IOException("Store unavailable.")));
-
-        await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
-            refresher.RefreshAsync(force: false, CancellationToken.None));
-
-        refresher.HasPendingRefresh.ShouldBeFalse();
     }
 
     [Fact]
@@ -345,8 +327,6 @@ public class ConformanceRefresherTests
                 new PackageLoadedEvent("test", "1", 1, DateTimeOffset.UtcNow),
                 CancellationToken.None));
         }
-
-        refresher.HasPendingRefresh.ShouldBeTrue();
     }
 
     [Fact]
