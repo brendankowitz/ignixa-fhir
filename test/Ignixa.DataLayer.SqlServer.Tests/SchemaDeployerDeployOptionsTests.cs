@@ -99,7 +99,7 @@ public class SchemaDeployerDeployOptionsTests
         CreateDeployer(environmentName).CreateDeployOptions().DropObjectsNotInSource.ShouldBeFalse();
     }
 
-    // An upgrade can build an index ONLINE over a large table (schema 9's filtered dbo.Transactions index);
+    // An upgrade can build an index ONLINE over a large table (schema 4's filtered dbo.Transactions index);
     // DacFx's 60-second command default would abort it part-way.
     [Theory]
     [InlineData("Development")]

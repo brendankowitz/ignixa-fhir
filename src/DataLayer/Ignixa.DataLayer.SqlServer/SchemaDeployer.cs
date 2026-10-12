@@ -197,7 +197,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
         // forced through.
         AllowIncompatiblePlatform = !_environment.IsProduction() || _options.Value.AllowIncompatiblePlatform,
         // The upgrade runs lazily, on the first use of a tenant behind CurrentVersion, and may build an index
-        // ONLINE over a large table (schema 9's filtered dbo.Transactions index). DacFx's 60-second command
+        // ONLINE over a large table (schema 4's filtered dbo.Transactions index). DacFx's 60-second command
         // default would abort that part-way; these bound it without leaving it unbounded.
         CommandTimeout = DeployCommandTimeoutSeconds,
         LongRunningCommandTimeout = DeployLongRunningCommandTimeoutSeconds,

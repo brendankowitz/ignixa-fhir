@@ -10,7 +10,7 @@ When a SearchParameter is added, changed, or removed (for example by installing 
 Ignixa has no way to bring those rows up to date:
 
 - **Legacy job storage is retired.** Reindex work is tracked as `BackgroundJob` entries with
-  `BackgroundJobType.Reindex` and executed by DurableTask. Schema version 6 removes the unused
+  `BackgroundJobType.Reindex` and executed by DurableTask. Schema version 4 removes the unused
   `ReindexJob` table, its five stored procedures, and its unused bulk TVP. `UpdateResourceSearchParams`
   remains the index-only writer.
 - **Partially indexed parameters must not give wrong results without warning.**

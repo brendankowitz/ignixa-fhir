@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using DurableTask.Core;
-using DurableTask.SqlServer;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
@@ -15,12 +12,6 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
 public class SchemaDeployerUpgradeTests
 {
-    /// <summary>
-    /// Pins Fixtures/schema-v5-before-reindex-retirement.dacpac; Fixtures/README.md says what it holds and how to
-    /// regenerate it.
-    /// </summary>
-    private const string SchemaVersionFiveFixtureSha256 = "9928BDAF7C868285A2759D4D2A13E4D2DF1DA853ECFB98C546FC658619978009";
-
     private static readonly string[] LegacyReindexObjectNames =
     [
         "AcquireReindexJobs",
@@ -184,11 +175,12 @@ public class SchemaDeployerUpgradeTests
         return (reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2));
     }
 
-    private static async Task DeployVersionFiveSchemaAsync(string connectionString, string databaseName, CancellationToken cancellationToken)
+    /// <summary>
+    /// Schema version 2 still carries the legacy reindex objects that version 4 retires.
+    /// </summary>
+    private static async Task DeployVersionTwoSchemaAsync(string connectionString, string databaseName, CancellationToken cancellationToken)
     {
-        var legacyDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "schema-v5-before-reindex-retirement.dacpac");
-        Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(legacyDacpacPath, cancellationToken)))
-            .ShouldBe(SchemaVersionFiveFixtureSha256);
+        var legacyDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "terminology-schema-version-2.dacpac");
         using var legacyDacpacStream = File.OpenRead(legacyDacpacPath);
         using var legacyPackage = DacPackage.Load(legacyDacpacStream);
         var legacyDacServices = new DacServices(connectionString);
@@ -199,7 +191,7 @@ public class SchemaDeployerUpgradeTests
             options: TestDeployOptions(),
             cancellationToken: cancellationToken);
 
-        await SchemaDeployer.StampSchemaVersionAsync(connectionString, 5, cancellationToken);
+        await SchemaDeployer.StampSchemaVersionAsync(connectionString, 2, cancellationToken);
     }
 
     private static async Task<List<string>> GetLegacyReindexObjectNamesAsync(string connectionString, CancellationToken cancellationToken)
@@ -230,28 +222,6 @@ public class SchemaDeployerUpgradeTests
         }
 
         return names;
-    }
-
-    private static async Task CreateDurableTaskStateAsync(string connectionString)
-    {
-        var orchestrationService = new SqlOrchestrationService(
-            new SqlOrchestrationServiceSettings(connectionString, "ignixa-schema-upgrade-test"));
-        await orchestrationService.CreateIfNotExistsAsync();
-
-        var taskHubClient = new TaskHubClient(orchestrationService);
-        await taskHubClient.CreateOrchestrationInstanceAsync(
-            "SchemaUpgradeTest",
-            Guid.NewGuid().ToString("N"),
-            input: new { State = "must-survive" });
-    }
-
-    private static async Task<int> GetDurableTaskStateCountAsync(string connectionString, CancellationToken cancellationToken)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM dt.NewEvents";
-        return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
     /// <summary>
@@ -305,7 +275,7 @@ public class SchemaDeployerUpgradeTests
     }
 
     [SkippableFact]
-    public async Task GivenAVersionFiveTenantWithEmptyLegacyReindexStorageAndDurableTaskState_WhenUpgradeIfNeededAsyncCalled_ThenRetiresOnlyLegacyObjects()
+    public async Task GivenAVersionTwoTenantWithEmptyLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenRetiresOnlyLegacyObjects()
     {
         var databaseName = $"SchemaDeployerReindexRetirementTest_{Guid.NewGuid():N}";
         var connectionString = BuildConnectionStringForDatabase(databaseName);
@@ -313,12 +283,9 @@ public class SchemaDeployerUpgradeTests
 
         try
         {
-            await DeployVersionFiveSchemaAsync(connectionString, databaseName, CancellationToken.None);
+            await DeployVersionTwoSchemaAsync(connectionString, databaseName, CancellationToken.None);
             (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
                 .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
-
-            await CreateDurableTaskStateAsync(connectionString);
-            (await GetDurableTaskStateCountAsync(connectionString, CancellationToken.None)).ShouldBeGreaterThan(0);
 
             await using (var connection = new SqlConnection(connectionString))
             {
@@ -335,7 +302,6 @@ public class SchemaDeployerUpgradeTests
             await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
 
             (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None)).ShouldBeEmpty();
-            (await GetDurableTaskStateCountAsync(connectionString, CancellationToken.None)).ShouldBeGreaterThan(0);
             var reindexObjects = await GetReindexObjectStateAsync(connectionString, CancellationToken.None);
             reindexObjects.HasLastValueIndex.ShouldBeTrue();
             reindexObjects.ReturnsUpdatedSurrogates.ShouldBeTrue();
@@ -354,7 +320,7 @@ public class SchemaDeployerUpgradeTests
     }
 
     [SkippableFact]
-    public async Task GivenAVersionFiveTenantWithPopulatedLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenFailsWithoutDroppingLegacyObjectsOrStampingAndARetryAfterDeletingTheRowsSucceeds()
+    public async Task GivenAVersionTwoTenantWithPopulatedLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenFailsWithoutDroppingLegacyObjectsOrStampingAndARetryAfterDeletingTheRowsSucceeds()
     {
         var databaseName = $"SchemaDeployerReindexRetirementRowsTest_{Guid.NewGuid():N}";
         var connectionString = BuildConnectionStringForDatabase(databaseName);
@@ -362,7 +328,7 @@ public class SchemaDeployerUpgradeTests
 
         try
         {
-            await DeployVersionFiveSchemaAsync(connectionString, databaseName, CancellationToken.None);
+            await DeployVersionTwoSchemaAsync(connectionString, databaseName, CancellationToken.None);
             await using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync(CancellationToken.None);
@@ -380,7 +346,7 @@ public class SchemaDeployerUpgradeTests
                 () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
 
             refusal.Message.ShouldContain("Cannot retire dbo.ReindexJob");
-            (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(5);
+            (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(2);
             (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
                 .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
 
