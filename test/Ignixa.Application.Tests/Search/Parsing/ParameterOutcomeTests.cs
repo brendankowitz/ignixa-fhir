@@ -222,100 +222,40 @@ public class ParameterOutcomeTests
             .Build(resourceType, parameters);
     }
 
+    // Registers a hidden "pending" parameter where the search form resolves it, and returns that form's query.
     private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddHiddenParameter(
         SearchParserTestContext context,
         string form,
         bool isSupported)
     {
-        SearchParameterInfo AddHidden(string resourceType, SearchParamType type, string[]? targets = null)
+        (string HiddenOn, SearchParamType Type, string[]? Targets, string? ResourceType, string Name, string Value) query = form switch
         {
-            var pending = context.Add(resourceType, "pending", type, targets);
-            pending.IsSearchable = false;
-            pending.IsSupported = isSupported;
-            pending.IsHiddenByTransition = !isSupported;
-            return pending;
-        }
-
-        return form switch
-        {
-            "direct" => Direct(),
-            "forward-chain" => ForwardChain(),
-            "reverse-chain" => ReverseChain(),
-            "include" => Include(),
-            "revinclude" => RevInclude(),
-            "wildcard-include" => WildcardInclude(),
-            "wildcard-revinclude" => WildcardRevInclude(),
-            "sort" => Sort(),
-
-            "system" => AddSystemPendingParameter(context, isSupported),
-
+            "direct" => ("Patient", SearchParamType.String, null, "Patient", "pending", "Smith"),
+            "forward-chain" => ("Patient", SearchParamType.String, null, "Observation", "subject:Patient.pending", "Smith"),
+            "reverse-chain" => ("Observation", SearchParamType.String, null, "Patient", "_has:Observation:subject:pending", "Smith"),
+            "include" => ("Observation", SearchParamType.Reference, ["Patient"], "Observation", "_include", "Observation:pending:Patient"),
+            "revinclude" => ("Observation", SearchParamType.Reference, ["Patient"], "Patient", "_revinclude", "Observation:pending:Patient"),
+            "wildcard-include" => ("Patient", SearchParamType.Reference, ["Organization"], "Patient", "_include", "Patient:*"),
+            "wildcard-revinclude" => ("Observation", SearchParamType.Reference, ["Patient"], "Patient", "_revinclude", "Observation:*"),
+            "sort" => ("Patient", SearchParamType.String, null, "Patient", "_sort", "pending"),
+            "system" => ("Patient", SearchParamType.String, null, null, "pending", "Smith"),
             _ => throw new ArgumentOutOfRangeException(nameof(form), form, "Unknown search form."),
         };
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Direct()
-        {
-            AddHidden("Patient", SearchParamType.String);
-            return ("Patient", [new QueryParameter("pending", "Smith")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) ForwardChain()
+        if (form is "forward-chain" or "reverse-chain")
         {
             context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
-            AddHidden("Patient", SearchParamType.String);
-            return ("Observation", [new QueryParameter("subject:Patient.pending", "Smith")]);
         }
 
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) ReverseChain()
-        {
-            context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
-            AddHidden("Observation", SearchParamType.String);
-            return ("Patient", [new QueryParameter("_has:Observation:subject:pending", "Smith")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Include()
-        {
-            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
-            return ("Observation", [new QueryParameter("_include", "Observation:pending:Patient")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) RevInclude()
-        {
-            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
-            return ("Patient", [new QueryParameter("_revinclude", "Observation:pending:Patient")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) WildcardInclude()
-        {
-            AddHidden("Patient", SearchParamType.Reference, ["Organization"]);
-            return ("Patient", [new QueryParameter("_include", "Patient:*")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) WildcardRevInclude()
-        {
-            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
-            return ("Patient", [new QueryParameter("_revinclude", "Observation:*")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Sort()
-        {
-            AddHidden("Patient", SearchParamType.String);
-            return ("Patient", [new QueryParameter("_sort", "pending")]);
-        }
-    }
-
-    private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddSystemPendingParameter(
-        SearchParserTestContext context,
-        bool isSupported)
-    {
-        var pending = context.Add("Patient", "pending", SearchParamType.String);
+        var pending = context.Add(query.HiddenOn, "pending", query.Type, query.Targets);
         pending.IsSearchable = false;
         pending.IsSupported = isSupported;
         pending.IsHiddenByTransition = !isSupported;
-        context.AddCommon(pending, "Patient", "Observation");
+        if (form == "system")
+        {
+            context.AddCommon(pending, "Patient", "Observation");
+            return (null, [new QueryParameter("_type", "Patient,Observation"), new QueryParameter("pending", "Smith")]);
+        }
 
-        return (null, [
-            new QueryParameter("_type", "Patient,Observation"),
-            new QueryParameter("pending", "Smith"),
-        ]);
+        return (query.ResourceType, [new QueryParameter(query.Name, query.Value)]);
     }
 }

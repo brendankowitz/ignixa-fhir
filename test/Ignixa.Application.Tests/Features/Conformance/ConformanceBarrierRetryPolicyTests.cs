@@ -11,50 +11,21 @@ namespace Ignixa.Application.Tests.Features.Conformance;
 
 public class ConformanceBarrierRetryPolicyTests
 {
-    [Fact]
-    public async Task GivenTheFirstAllocationIsStale_WhenDefinitionsAreSynchronized_ThenOperationRetriesOnce()
+    public enum RetryAttempt
     {
-        var eventStore = TestConformanceRefresher.EmptyEventStore();
-        var policy = CreatePolicy(eventStore);
-        var attempts = 0;
-        using var listener = ListenForOutcomes(out var outcomes);
-
-        var result = await policy.ExecuteAsync(
-            _ =>
-            {
-                attempts++;
-                return attempts == 1
-                    ? Task.FromException<int>(Stale())
-                    : Task.FromResult(42);
-            },
-            CancellationToken.None);
-
-        result.ShouldBe(42);
-        attempts.ShouldBe(2);
-        outcomes.ShouldContain("retried_ok");
-        _ = eventStore.Received(1).ReadFromAsync(0, CancellationToken.None);
+        Succeeds,
+        IsStillStale,
+        FailsForAnotherReason,
     }
 
-    [Fact]
-    public async Task GivenTheRetryAllocationIsStillStale_WhenOperationRetries_Then503IncludesSyncInterval()
-    {
-        var eventStore = TestConformanceRefresher.EmptyEventStore();
-        var policy = CreatePolicy(eventStore);
-        using var listener = ListenForOutcomes(out var outcomes);
-
-        var exception = await Should.ThrowAsync<ConformanceStaleException>(() =>
-            policy.ExecuteAsync<int>(
-                _ => Task.FromException<int>(Stale()),
-                CancellationToken.None));
-
-        exception.StatusCode.ShouldBe(503);
-        exception.RetryAfter.ShouldBe(TimeSpan.FromSeconds(17));
-        outcomes.ShouldContain("failed");
-        _ = eventStore.Received(1).ReadFromAsync(0, CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task GivenTheRetryFailsForAnotherReason_WhenOperationRetries_ThenFailureIsRecordedAndRethrown()
+    // §5.3: a stale allocation synchronizes definitions and retries once; a second stale rejection is a 503.
+    [Theory]
+    [InlineData(RetryAttempt.Succeeds, "retried_ok")]
+    [InlineData(RetryAttempt.IsStillStale, "failed")]
+    [InlineData(RetryAttempt.FailsForAnotherReason, "failed")]
+    public async Task GivenTheFirstAllocationIsStale_WhenDefinitionsAreSynchronizedAndTheOperationRetries_ThenTheRetryOutcomeIsRecordedAndSurfaced(
+        RetryAttempt retry,
+        string expectedOutcome)
     {
         var eventStore = TestConformanceRefresher.EmptyEventStore();
         var policy = CreatePolicy(eventStore);
@@ -62,20 +33,30 @@ public class ConformanceBarrierRetryPolicyTests
         var attempts = 0;
         using var listener = ListenForOutcomes(out var outcomes);
 
-        var exception = await Should.ThrowAsync<IOException>(() =>
-            policy.ExecuteAsync<int>(
-                _ =>
-                {
-                    attempts++;
-                    return attempts == 1
-                        ? Task.FromException<int>(Stale())
-                        : Task.FromException<int>(retryFailure);
-                },
-                CancellationToken.None));
+        var execution = policy.ExecuteAsync(
+            _ => ++attempts == 1 || retry == RetryAttempt.IsStillStale
+                ? Task.FromException<int>(Stale())
+                : retry == RetryAttempt.Succeeds ? Task.FromResult(42) : Task.FromException<int>(retryFailure),
+            CancellationToken.None);
 
-        exception.ShouldBeSameAs(retryFailure);
+        switch (retry)
+        {
+            case RetryAttempt.Succeeds:
+                (await execution).ShouldBe(42);
+                break;
+            case RetryAttempt.IsStillStale:
+                var stale = await Should.ThrowAsync<ConformanceStaleException>(execution);
+                stale.StatusCode.ShouldBe(503);
+                stale.RetryAfter.ShouldBe(TimeSpan.FromSeconds(17));
+                break;
+            default:
+                (await Should.ThrowAsync<IOException>(execution)).ShouldBeSameAs(retryFailure);
+                break;
+        }
+
         attempts.ShouldBe(2);
-        outcomes.Count(outcome => outcome == "failed").ShouldBe(1);
+        outcomes.Count(outcome => outcome == expectedOutcome).ShouldBe(1);
+        _ = eventStore.Received(1).ReadFromAsync(0, CancellationToken.None);
     }
 
     private static ConformanceBarrierRetryPolicy CreatePolicy(ISourceEventStore eventStore) =>

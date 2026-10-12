@@ -19,31 +19,12 @@ public class ConformanceLifecycleTests
     private static readonly JsonSerializerOptions CamelCase = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     [Fact]
-    public void GivenBrandNewCustomParameter_WhenActivated_ThenItIsPendingAndTracksItsActivation()
-    {
-        using var state = new ConformanceState();
-
-        state.Apply(Custom(10));
-
-        var parameter = state.GetSearchParameter("Patient", "custom")!;
-        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
-        parameter.ActivationEventId.ShouldBe(10);
-    }
-
-    [Fact]
-    public void GivenEnabledBaseParameter_WhenOverrideIsActivated_ThenBaseDisablesAndOverrideIsStaged()
+    public void GivenOverrideActivated_WhenItsTransitionIsCommitted_ThenItMovesFromStagedToPendingAndTheBaseToDisabled()
     {
         using var state = CreateStateWithStagedOverride();
-
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-    }
-
-    [Fact]
-    public void GivenStagedOverride_WhenMatchingTransitionIsCommitted_ThenOverrideBecomesPending()
-    {
-        using var state = CreateStateWithStagedOverride();
 
         state.Apply(Commit(30, 20));
 
@@ -245,10 +226,12 @@ public class ConformanceLifecycleTests
     }
 
     [Fact]
-    public void GivenMatchingActivationAndJob_WhenReindexCompletes_ThenParameterIsEnabled()
+    public void GivenNewCustomParameter_WhenItsReindexStartsAndCompletes_ThenItMovesFromPendingToEnabled()
     {
         using var state = new ConformanceState();
         state.Apply(Custom(10));
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+        state.GetSearchParameter("Patient", "custom")!.ActivationEventId.ShouldBe(10);
         state.Apply(Started(20, 10, "job"));
 
         state.Apply(Completed(30, 10, "job"));

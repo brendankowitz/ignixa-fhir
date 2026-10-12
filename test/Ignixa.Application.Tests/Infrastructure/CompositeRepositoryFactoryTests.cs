@@ -15,46 +15,32 @@ public sealed class CompositeRepositoryFactoryTests
         { "FileSystem", false }
     };
 
-    [Theory]
-    [MemberData(nameof(RecognizedStorageTypes))]
-    public async Task GivenRecognizedStorageType_WhenFindingTenantWithoutReindexSupport_ThenReturnsExpectedCapability(
-        string storageType,
-        bool supportsReindex)
+    // The system partition and inactive tenants never block reindex; otherwise the lowest unsupported id is reported.
+    public static TheoryData<TenantConfiguration[], int?> TenantSets => new()
     {
-        var factory = CreateFactory(TenantStore(Tenant(1, storageType)));
+        { [Tenant(1, "SqlServer")], null },
+        { [Tenant(1, "SqlEntityFramework")], null },
+        { [Tenant(1, "FileSystem")], 1 },
+        { [Tenant(0), Tenant(1, "SqlServer"), Tenant(3, "FileSystem"), Tenant(2, "FileSystem")], 2 },
+        { [Tenant(0), Tenant(1, "SqlServer"), Tenant(2, "FileSystem") with { IsActive = false }], null },
+    };
 
-        var unsupportedTenantId = await factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None);
-
-        unsupportedTenantId.ShouldBe(supportsReindex ? null : 1);
-    }
-
-    [Fact]
-    public async Task GivenMixedProviderServer_WhenFindingTenantWithoutReindexSupport_ThenReturnsItWithoutCreatingRepositories()
+    [Theory]
+    [MemberData(nameof(TenantSets))]
+    public async Task GivenTenantStorage_WhenFindingTenantWithoutReindexSupport_ThenItReturnsTheFirstUnsupportedTenantWithoutCreatingRepositories(
+        TenantConfiguration[] tenants,
+        int? expectedTenantId)
     {
         var fileSystemFactory = Substitute.For<IFhirRepositoryFactory>();
         var sqlServerFactory = Substitute.For<IFhirRepositoryFactory>();
         var sqlStores = Substitute.For<IReindexStoreFactory>();
-        var factory = new CompositeRepositoryFactory(
-            TenantStore(Tenant(0), Tenant(1, "SqlServer"), Tenant(3, "FileSystem"), Tenant(2, "FileSystem")),
-            fileSystemFactory,
-            sqlServerFactory,
-            sqlStores);
+        var factory = new CompositeRepositoryFactory(TenantStore(tenants), fileSystemFactory, sqlServerFactory, sqlStores);
 
-        var unsupportedTenantId = await factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None);
+        (await factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None)).ShouldBe(expectedTenantId);
 
-        unsupportedTenantId.ShouldBe(2);
-        await fileSystemFactory.DidNotReceive().GetRepositoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
-        await sqlServerFactory.DidNotReceive().GetRepositoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
-        await sqlStores.DidNotReceive().GetReindexStoreAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task GivenOnlySystemAndInactiveTenantsCannotReindex_WhenFindingTenantWithoutReindexSupport_ThenReturnsNull()
-    {
-        var inactive = Tenant(2, "FileSystem") with { IsActive = false };
-        var factory = CreateFactory(TenantStore(Tenant(0), Tenant(1, "SqlServer"), inactive));
-
-        (await factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None)).ShouldBeNull();
+        await fileSystemFactory.DidNotReceiveWithAnyArgs().GetRepositoryAsync(default, default);
+        await sqlServerFactory.DidNotReceiveWithAnyArgs().GetRepositoryAsync(default, default);
+        await sqlStores.DidNotReceiveWithAnyArgs().GetReindexStoreAsync(default, default);
     }
 
     [Fact]

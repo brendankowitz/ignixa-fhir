@@ -9,27 +9,21 @@ namespace Ignixa.Application.Tests.Features.Conformance;
 public class ConformanceLeaseTests
 {
     [Fact]
-    public void GivenSyncSucceedsAfterWork_WhenLeaseIsRenewed_ThenAgeIncludesTheSyncDuration()
+    public void GivenNoSyncThenOneThatSucceedsAfterWork_WhenLeaseIsRenewed_ThenItIsHeldOnlyWithinMaxStalenessOfTheSyncStart()
     {
         var clock = new ManualTimeProvider();
         var lease = CreateLease(clock);
+        lease.IsHeld.ShouldBeFalse("no sync has succeeded yet");
+        lease.Age.ShouldBe(TimeSpan.MaxValue);
         var syncStart = lease.CaptureStart();
 
         clock.Advance(TimeSpan.FromSeconds(4));
         lease.Renew(syncStart);
+        lease.IsHeld.ShouldBeTrue();
         clock.Advance(TimeSpan.FromSeconds(7));
 
         lease.IsHeld.ShouldBeFalse();
         lease.Age.ShouldBe(TimeSpan.FromSeconds(11));
-    }
-
-    [Fact]
-    public void GivenNoSuccessfulSync_WhenLeaseIsQueried_ThenItIsNotHeld()
-    {
-        var lease = CreateLease(new ManualTimeProvider());
-
-        lease.IsHeld.ShouldBeFalse();
-        lease.Age.ShouldBe(TimeSpan.MaxValue);
     }
 
     [Fact]

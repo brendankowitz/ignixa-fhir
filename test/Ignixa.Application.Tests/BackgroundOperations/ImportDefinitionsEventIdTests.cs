@@ -4,13 +4,11 @@ using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Import.Activities;
 using Ignixa.Application.BackgroundOperations.Import.Models;
-using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Tests.Features;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Search.Indexing;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -29,12 +27,7 @@ public class ImportDefinitionsEventIdTests
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(
             new TenantConfiguration { TenantId = 1, DisplayName = "Import stamp test", FhirVersion = "4.0" });
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), DefinitionsEventId));
+        var versions = TestWritePath.Versions(DefinitionsEventId);
         var repository = Substitute.For<IFhirRepository>();
         repository.GetNextTransactionIdAsync(DefinitionsEventId, Arg.Any<CancellationToken>())
             .Returns(new TransactionId(1));
@@ -43,8 +36,7 @@ public class ImportDefinitionsEventIdTests
                 Arg.Any<IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>>(),
                 Arg.Any<CancellationToken>())
             .Returns([new ResourceKey("Patient", "p1")]);
-        var factory = Substitute.For<IFhirRepositoryFactory>();
-        factory.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
+        var factory = TestWritePath.Repositories(repository);
         var blobs = Substitute.For<IBlobStorageClient>();
         blobs.ReadBlobAsync("input.ndjson", Arg.Any<CancellationToken>()).Returns(
             new MemoryStream(Encoding.UTF8.GetBytes("""{"resourceType":"Patient","id":"p1"}""" + "\n")));

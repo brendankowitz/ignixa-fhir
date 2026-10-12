@@ -152,18 +152,45 @@ public class PackageSearchParameterInheritanceTests
     private const string PatientName = "http://hl7.org/fhir/SearchParameter/Patient-name";
     private static readonly string StagedName = TestPackages.Canonical("staged");
 
-    [Fact]
-    public async Task GivenAPendingParameter_WhenSearchDefinitionsAreResolved_ThenItIsHiddenUnlessPartialIndicesAreRequested()
+    public enum PendingScenario
     {
-        using var state = await InitializedStateAsync(PackageCustom("Patient"));
+        CustomParameter,
+        DistinctIdentityOverride,
+        RestoredBase,
+    }
+
+    // A Pending parameter is extracted but hidden from search unless the request opts in to partial indices.
+    [Theory]
+    [InlineData(PendingScenario.CustomParameter, "package-custom", "http://example.org/SearchParameter/package-custom")]
+    [InlineData(PendingScenario.DistinctIdentityOverride, "identifier", "http://example.org/SearchParameter/distinct-identifier")]
+    [InlineData(PendingScenario.RestoredBase, "identifier", TestPackages.BaseIdentifier)]
+    public async Task GivenAPendingParameter_WhenSearchDefinitionsAreResolved_ThenItIsExtractedButHiddenUnlessPartialIndicesAreRequested(
+        PendingScenario scenario,
+        string code,
+        string extractedUrl)
+    {
+        object[] events = scenario switch
+        {
+            PendingScenario.CustomParameter => [PackageCustom("Patient")],
+            PendingScenario.DistinctIdentityOverride => [Activated(TestPackages.Canonical("distinct-identifier"), "identifier", 99)],
+            _ =>
+            [
+                Activated(TestPackages.BaseIdentifier, "identifier", 1, package: CorePackage),
+                Activated(TestPackages.Canonical("identifier"), "identifier", 1, TestPackages.BaseIdentifier),
+                Committed(1, 2),
+                PackageDeactivated("custom.package"),
+                Committed(1, 4),
+            ],
+        };
+        using var state = await InitializedStateAsync(events);
         using var context = CreateContext().Publish(state);
 
-        context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1)
-            .TryGetSearchParameter("Patient", "package-custom", out _).ShouldBeFalse();
+        context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1).GetSearchParameter("Patient", code).Url.ShouldBe(new Uri(extractedUrl));
+        context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1).TryGetSearchParameter("Patient", code, out _).ShouldBeFalse();
         context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1, () => true)
-            .TryGetSearchParameter("Patient", "package-custom", out var parameter).ShouldBeTrue();
-        parameter.IsSearchable.ShouldBeFalse();
-        parameter.IsSupported.ShouldBeTrue();
+            .TryGetSearchParameter("Patient", code, out var partial).ShouldBeTrue();
+        partial.IsSearchable.ShouldBeFalse();
+        partial.IsSupported.ShouldBeTrue();
     }
 
     [Fact]
@@ -176,36 +203,6 @@ public class PackageSearchParameterInheritanceTests
 
         partialDefinitions.TryGetSearchParameter("Patient", "name", out _).ShouldBeFalse();
         partialDefinitions.TryGetSearchParameter("Patient", "disabling", out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    public async Task GivenADistinctIdentityPendingOverride_WhenSearchDefinitionsAreResolved_ThenTheCodeIsHiddenAndNotBoundToBase()
-    {
-        using var state = await InitializedStateAsync(
-            Activated(TestPackages.Canonical("distinct-identifier"), "identifier", 99));
-        using var context = CreateContext().Publish(state);
-
-        context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1)
-            .GetSearchParameter("Patient", "identifier").Url.ShouldNotBe(new Uri(TestPackages.BaseIdentifier));
-        context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1)
-            .TryGetSearchParameter("Patient", "identifier", out _).ShouldBeFalse();
-    }
-
-    [Fact]
-    public async Task GivenRestoredBaseIsPending_WhenSearchDefinitionsAreResolved_ThenItStaysHiddenUntilEnabled()
-    {
-        using var state = await InitializedStateAsync(
-            Activated(TestPackages.BaseIdentifier, "identifier", 1, package: CorePackage),
-            Activated(TestPackages.Canonical("identifier"), "identifier", 1, TestPackages.BaseIdentifier),
-            Committed(1, 2),
-            PackageDeactivated("custom.package"),
-            Committed(1, 4));
-        using var context = CreateContext().Publish(state);
-
-        context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1)
-            .GetSearchParameter("Patient", "identifier").Url.ShouldBe(new Uri(TestPackages.BaseIdentifier));
-        context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1)
-            .TryGetSearchParameter("Patient", "identifier", out _).ShouldBeFalse();
     }
 
     // B-L1: a Disabling owner keeps being extracted until its transition commits; a Staged override is not yet.

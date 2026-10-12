@@ -1,16 +1,12 @@
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Search;
-using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -34,9 +30,7 @@ public class DeferredWriteCoordinatorBarrierTests
             });
         var indexer = Substitute.For<ISearchIndexer>();
         indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var coordinator = await CreateCoordinatorAsync(
-            repository,
-            new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 29));
+        var coordinator = await CreateCoordinatorAsync(repository, indexer);
         var wrapper = Patient("retry") with { DefinitionsEventId = 11 };
 
         var queued = coordinator.QueueWriteAsync(wrapper, entryIndex: 7);
@@ -55,12 +49,7 @@ public class DeferredWriteCoordinatorBarrierTests
         var repository = Substitute.For<IFhirRepository>();
         repository.CreateOrUpdateAsync(Arg.Any<ResourceWrapper>(), Arg.Any<CancellationToken>())
             .Returns(_ => ValueTask.FromException<UpdateResult>(new StaleConformanceDefinitionsException(101, 11, 29)));
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var coordinator = await CreateCoordinatorAsync(
-            repository,
-            new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 29),
-            channelCapacity: 2);
+        var coordinator = await CreateCoordinatorAsync(repository, channelCapacity: 2);
 
         var first = coordinator.QueueWriteAsync(Patient("first") with { DefinitionsEventId = 11 });
         var second = coordinator.QueueWriteAsync(Patient("second") with { DefinitionsEventId = 11 });
@@ -72,40 +61,18 @@ public class DeferredWriteCoordinatorBarrierTests
         await Should.ThrowAsync<ConformanceStaleException>(() => second);
     }
 
-    private static async Task<DeferredWriteCoordinator> CreateCoordinatorAsync(
+    private static Task<DeferredWriteCoordinator> CreateCoordinatorAsync(
         IFhirRepository repository,
-        DefinitionsHandle definitionsHandle,
-        int channelCapacity = 1)
-    {
-        var repositories = Substitute.For<IFhirRepositoryFactory>();
-        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
-        var partitions = Substitute.For<IPartitionStrategy>();
-        partitions.DetermineWritePartition(Arg.Any<PartitionResolutionContext>(), Arg.Any<ResourceJsonNode>())
-            .Returns(new RequestPartition { Mode = PartitionMode.Isolated, PartitionIds = [1] });
-        var context = Substitute.For<IFhirRequestContext>();
-        context.TenantId.Returns(1);
-        context.FhirVersion.Returns(FhirVersion.R4);
-        context.TenantConfiguration.Returns(
-            new TenantConfiguration { TenantId = 1, DisplayName = "Barrier test", FhirVersion = "4.0" });
-        var accessor = Substitute.For<IFhirRequestContextAccessor>();
-        accessor.RequestContext.Returns(context);
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(definitionsHandle);
-        var retryPolicy = new ConformanceBarrierRetryPolicy(
-            TestConformanceRefresher.Create(new ConformanceState()),
-            Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
-            NullLogger<ConformanceBarrierRetryPolicy>.Instance);
-
-        return await DeferredWriteCoordinator.CreateAsync(
+        ISearchIndexer? indexer = null,
+        int channelCapacity = 1) =>
+        DeferredWriteCoordinator.CreateAsync(
             channelCapacity,
-            repositories,
-            partitions,
-            accessor,
-            versions,
-            retryPolicy,
+            TestWritePath.Repositories(repository),
+            TestWritePath.IsolatedPartition(),
+            TestWritePath.RequestContext(),
+            TestWritePath.Versions(definitionsEventId: 29, indexer),
+            TestConformanceBarrierRetryPolicy.Create(),
             NullLogger<DeferredWriteCoordinator>.Instance);
-    }
 
     private static ResourceWrapper Patient(string id) => new(
         "Patient",

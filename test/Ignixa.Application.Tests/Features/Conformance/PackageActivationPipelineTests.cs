@@ -416,12 +416,7 @@ public class PackageActivationPipelineTests
         (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
         if (commitFirstTransition)
         {
-            var staged = harness.State.FindByCanonical(Canonical("test.first"))!;
-            var outgoing = harness.State.GetSearchParameter("Patient", "identifier")!;
-            harness.Seed(new SearchParameterTransitionCommitted(
-                staged.SearchParamId,
-                [staged.ActivationEventId],
-                [outgoing.DeactivationEventId!.Value]));
+            harness.CommitTransitionOf(Canonical("test.first"));
         }
 
         return await ActivateAsync(pipeline, "test.second");
@@ -432,27 +427,17 @@ public class PackageActivationPipelineTests
         using var harness = new Harness();
         var pipeline = harness.Pipeline(Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null));
         (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
-        var first = harness.State.FindByCanonical(Canonical("test.first"))!;
-        CommitTransitionOf(first);
+        var first = harness.CommitTransitionOf(Canonical("test.first"));
         harness.Seed(ReindexStarted(first.Canonical, first.Code, first.ActivationEventId, "job"));
         harness.Seed(ReindexCompleted(first.Canonical, first.Code, first.ActivationEventId, "job"));
         harness.Seed(PackageDeactivated("test.first", "1.0.0"));
         harness.State.GetLatestNonDisabledActivation("Patient", "identifier")!.SourcePackage.ShouldBe(CorePackage);
         if (commitRestoration)
         {
-            CommitTransitionOf(harness.State.FindByCanonical(BaseIdentifier)!);
+            harness.CommitTransitionOf(BaseIdentifier);
         }
 
         return await ActivateAsync(pipeline, "test.second");
-
-        void CommitTransitionOf(ActiveSearchParameter incoming)
-        {
-            var outgoing = harness.State.GetSearchParameter("Patient", "identifier")!;
-            harness.Seed(new SearchParameterTransitionCommitted(
-                incoming.SearchParamId,
-                [incoming.ActivationEventId],
-                [outgoing.DeactivationEventId!.Value]));
-        }
     }
 
     /// <summary>A real pipeline over an in-memory event log, with a substituted transition scheduler.</summary>
@@ -468,6 +453,15 @@ public class PackageActivationPipelineTests
             Log.Events.Select(row => row.Data).OfType<SearchParameterActivated>();
 
         public long Seed(object data) => Log.Seed(State, data);
+
+        /// <summary>Commits the transition that swaps Patient.identifier's owner for <paramref name="incoming"/>.</summary>
+        public ActiveSearchParameter CommitTransitionOf(string incoming)
+        {
+            var staged = State.FindByCanonical(incoming)!;
+            var outgoing = State.GetSearchParameter("Patient", "identifier")!;
+            Seed(new SearchParameterTransitionCommitted(staged.SearchParamId, [staged.ActivationEventId], [outgoing.DeactivationEventId!.Value]));
+            return staged;
+        }
 
         public PackageActivationPipeline Pipeline(params PackageResource[] resources) => Pipeline(resources, null);
 

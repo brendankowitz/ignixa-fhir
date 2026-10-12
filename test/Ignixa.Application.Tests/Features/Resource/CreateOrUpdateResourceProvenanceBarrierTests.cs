@@ -1,20 +1,14 @@
 using System.Text;
 using System.Text.Json;
 using Ignixa.Abstractions;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Resource;
-using Ignixa.Application.Features.Search;
-using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
-using Ignixa.Search.Indexing;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Specification.Generated;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -46,38 +40,15 @@ public class CreateOrUpdateResourceProvenanceBarrierTests
                 return ValueTask.FromException<UpdateResult>(
                     new StaleConformanceDefinitionsException(100 + writeCount, wrapper.DefinitionsEventId, 29));
             });
-        var repositories = Substitute.For<IFhirRepositoryFactory>();
-        repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
-        var partitions = Substitute.For<IPartitionStrategy>();
-        partitions.DetermineWritePartition(Arg.Any<PartitionResolutionContext>(), Arg.Any<ResourceJsonNode>())
-            .Returns(new RequestPartition { Mode = PartitionMode.Isolated, PartitionIds = [1] });
-        var context = Substitute.For<IFhirRequestContext>();
-        context.TenantId.Returns(1);
-        context.FhirVersion.Returns(FhirVersion.R4);
-        context.TenantConfiguration.Returns(
-            new TenantConfiguration { TenantId = 1, DisplayName = "Provenance test", FhirVersion = "4.0" });
-        var accessor = Substitute.For<IFhirRequestContextAccessor>();
-        accessor.RequestContext.Returns(context);
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
-        versions.GetBaseSchemaProvider(FhirVersion.R4).Returns(new R4CoreSchemaProvider());
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 11));
         var validationResolver = Substitute.For<IValidationSchemaResolver>();
         validationResolver.GetSchema("Provenance").Returns((ValidationSchema?)null);
-        var retryPolicy = new ConformanceBarrierRetryPolicy(
-            TestConformanceRefresher.Create(new ConformanceState()),
-            Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
-            NullLogger<ConformanceBarrierRetryPolicy>.Instance);
         var handler = new CreateOrUpdateResourceHandler(
-            partitions,
-            repositories,
-            accessor,
-            versions,
+            TestWritePath.IsolatedPartition(),
+            TestWritePath.Repositories(repository),
+            TestWritePath.RequestContext(),
+            TestWritePath.Versions(definitionsEventId: 11),
             _ => validationResolver,
-            retryPolicy,
+            TestConformanceBarrierRetryPolicy.Create(),
             NullLogger<CreateOrUpdateResourceHandler>.Instance);
         var command = new CreateOrUpdateResourceCommand(
             "Patient",
