@@ -131,35 +131,10 @@ public class CapabilityStatementHashCultureInvarianceTests
         hash.ShouldBe(ExpectedIncludeRevIncludeHash);
     }
 
-    [Fact]
-    public async Task GivenAPendingSearchParameter_WhenBuildingTheCapabilityVersionHash_ThenItIsExcluded()
-    {
-        var manager = Substitute.For<ISearchParameterDefinitionManager>();
-        manager.AllSearchParameters.Returns(
-        [
-            new SearchParameterInfo(
-                "pending",
-                "pending",
-                SearchParamType.String,
-                new Uri("http://example.org/SearchParameter/pending"))
-            {
-                IsSearchable = false
-            }
-        ]);
-        var versionContext = Substitute.For<IFhirVersionContext>();
-        versionContext.GetSearchableSearchParameterDefinitionManager(
-            Arg.Any<FhirVersion>(),
-            Arg.Any<int?>(),
-            Arg.Any<Func<bool>?>()).Returns(manager);
-        var segment = new SearchParameterCapabilitySegment(versionContext, NullLogger<SearchParameterCapabilitySegment>.Instance);
-
-        string hash = await segment.GetVersionHashAsync(new CapabilityContext(FhirVersion.R4), CancellationToken.None);
-
-        hash.ShouldBe("47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=");
-    }
-
-    [Fact]
-    public async Task GivenAPendingReferenceParameter_WhenBuildingTheIncludeCapabilityVersionHash_ThenItIsExcluded()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenOnlyAPendingSearchParameter_WhenBuildingASegmentVersionHash_ThenItIsExcluded(bool includeSegment)
     {
         var manager = Substitute.For<ISearchParameterDefinitionManager>();
         manager.AllSearchParameters.Returns(
@@ -169,7 +144,8 @@ public class CapabilityStatementHashCultureInvarianceTests
                 "pending-reference",
                 SearchParamType.Reference,
                 targetResourceTypes: PatientOnly,
-                baseResourceTypes: EncounterOnly)
+                baseResourceTypes: EncounterOnly,
+                url: new Uri("http://example.org/SearchParameter/pending-reference"))
             {
                 IsSearchable = false
             }
@@ -179,7 +155,9 @@ public class CapabilityStatementHashCultureInvarianceTests
             Arg.Any<FhirVersion>(),
             Arg.Any<int?>(),
             Arg.Any<Func<bool>?>()).Returns(manager);
-        var segment = new IncludeRevIncludeCapabilitySegment(versionContext, NullLogger<IncludeRevIncludeCapabilitySegment>.Instance);
+        ICapabilitySegment segment = includeSegment
+            ? new IncludeRevIncludeCapabilitySegment(versionContext, NullLogger<IncludeRevIncludeCapabilitySegment>.Instance)
+            : new SearchParameterCapabilitySegment(versionContext, NullLogger<SearchParameterCapabilitySegment>.Instance);
 
         string hash = await segment.GetVersionHashAsync(new CapabilityContext(FhirVersion.R4), CancellationToken.None);
 

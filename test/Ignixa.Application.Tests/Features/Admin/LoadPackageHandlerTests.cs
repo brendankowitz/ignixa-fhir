@@ -1,11 +1,9 @@
-using System.Text.Json.Nodes;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Admin;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Abstractions;
-using Ignixa.Domain.Abstractions;
+using Ignixa.Application.Tests.Features.Conformance;
 using Ignixa.Domain.Models;
+using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Models;
 using Ignixa.PackageManagement.Abstractions;
 using Ignixa.PackageManagement.Models;
@@ -27,8 +25,8 @@ public class LoadPackageHandlerTests
         var mediator = Substitute.For<IMediator>();
         var handler = CreateHandler(
             mediator,
-            CreateParameter("http://example.org/SearchParameter/mixed", "identifier", ["Patient", "Practitioner"]),
-            AppendingStore());
+            TestPackages.SearchParameter(PackageId, TestPackages.Canonical("mixed"), baseTypes: ["Patient", "Practitioner"]),
+            new InMemoryEventLog());
 
         var exception = await Should.ThrowAsync<PackageActivationRejectedException>(() =>
             handler.HandleAsync(new LoadPackageCommand("1", PackageId, Version), CancellationToken.None));
@@ -49,13 +47,13 @@ public class LoadPackageHandlerTests
     [Fact]
     public async Task GivenActivationLosesEveryAppendRace_WhenLoaded_ThenTheLoadFailsAsARetryableConflict()
     {
-        var store = Substitute.For<ISourceEventStore>();
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<SourceEvent>>(new SourceEventConcurrencyException(0, 1)));
-        var handler = CreateHandler(
-            Substitute.For<IMediator>(),
-            CreateParameter("http://example.org/SearchParameter/custom", "custom", ["Patient"]),
-            store);
+        var log = new InMemoryEventLog();
+        foreach (var index in Enumerable.Range(1, 5))
+        {
+            log.OtherWriters.Enqueue(ConformanceEvents.PackageActivated($"other-{index}"));
+        }
+
+        var handler = CreateHandler(Substitute.For<IMediator>(), TestPackages.Custom(PackageId), log);
 
         var exception = await Should.ThrowAsync<PackageActivationRejectedException>(() =>
             handler.HandleAsync(new LoadPackageCommand("1", PackageId, Version), CancellationToken.None));
@@ -70,14 +68,7 @@ public class LoadPackageHandlerTests
     public async Task GivenShadowingPackage_WhenLoaded_ThenTheResultCarriesTheHiddenCodesAsAWarning()
     {
         var mediator = Substitute.For<IMediator>();
-        var handler = CreateHandler(
-            mediator,
-            CreateParameter(
-                "http://example.org/SearchParameter/Patient-identifier",
-                "identifier",
-                ["Patient"],
-                derivedFrom: "http://hl7.org/fhir/SearchParameter/Patient-identifier"),
-            AppendingStore());
+        var handler = CreateHandler(mediator, TestPackages.Shadow(PackageId), new InMemoryEventLog());
 
         var result = await handler.HandleAsync(new LoadPackageCommand("1", PackageId, Version), CancellationToken.None);
 
@@ -91,71 +82,15 @@ public class LoadPackageHandlerTests
             Arg.Any<CancellationToken>());
     }
 
-    private static LoadPackageHandler CreateHandler(
-        IMediator mediator,
-        PackageResource parameter,
-        ISourceEventStore eventStore)
+    private static LoadPackageHandler CreateHandler(IMediator mediator, PackageResource parameter, ISourceEventStore eventStore)
     {
         var provider = Substitute.For<IImplementationGuideProvider>();
         provider.LoadPackageAsync("1", PackageId, Version, Arg.Any<CancellationToken>())
             .Returns(new PackageImportResult { PackageId = PackageId, PackageVersion = Version, ImportedResources = 1 });
-        var repository = Substitute.For<IPackageResourceRepository>();
-        repository.GetResourcesForActivationAsync(PackageId, Version, Arg.Any<CancellationToken>())
-            .Returns([parameter]);
-        var state = new ConformanceState();
         return new LoadPackageHandler(
             provider,
             mediator,
-            TestPackageActivationPipeline.Create(repository, eventStore, state),
+            TestPackageActivationPipeline.Create(TestPackages.Repository(parameter), eventStore, new ConformanceState()),
             NullLogger<LoadPackageHandler>.Instance);
-    }
-
-    private static ISourceEventStore AppendingStore()
-    {
-        var store = Substitute.For<ISourceEventStore>();
-        var nextEventId = 0L;
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(call.Arg<IEnumerable<NewSourceEvent>>()
-                .Select(sourceEvent => new SourceEvent(
-                    ++nextEventId,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray()));
-        return store;
-    }
-
-    private static PackageResource CreateParameter(
-        string canonical,
-        string code,
-        string[] baseTypes,
-        string? derivedFrom = null)
-    {
-        var resource = new JsonObject
-        {
-            ["resourceType"] = "SearchParameter",
-            ["id"] = code,
-            ["url"] = canonical,
-            ["code"] = code,
-            ["base"] = new JsonArray(baseTypes.Select(type => JsonValue.Create(type)).ToArray<JsonNode?>()),
-            ["type"] = "token",
-            ["expression"] = "Resource.identifier",
-        };
-        if (derivedFrom is not null)
-        {
-            resource["derivedFrom"] = derivedFrom;
-        }
-
-        return new PackageResource
-        {
-            PackageId = PackageId,
-            PackageVersion = Version,
-            ResourceType = "SearchParameter",
-            ResourceId = code,
-            Canonical = canonical,
-            FhirVersion = "4.0.1",
-            ResourceJson = resource.ToJsonString(),
-        };
     }
 }

@@ -1,13 +1,11 @@
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Events;
-using Ignixa.Conformance.Events.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Tests.Features.Search;
@@ -19,15 +17,8 @@ public class CompositeSearchParameterDefinitionManagerTests
     [Fact]
     public async Task GivenOverrideOfAMultiBaseParameterForOneType_WhenAllParametersAreListed_ThenTheBaseRemainsForUnshadowedTypes()
     {
-        using var state = await CreateInitializedStateAsync();
-        state.ApplyAndTrack(Activation(
-            1,
-            "http://example.org/SearchParameter/Observation-patient",
-            "patient",
-            "Observation",
-            SearchParamType.Reference,
-            new OverrideInfo(ClinicalPatient, 7),
-            searchParamId: 7));
+        using var state = await InitializedStateAsync(
+            Subject("http://example.org/SearchParameter/Observation-patient", "patient", "Observation", 7, ClinicalPatient));
         var manager = CreateManager(state);
 
         var all = manager.AllSearchParameters.ToList();
@@ -47,9 +38,9 @@ public class CompositeSearchParameterDefinitionManagerTests
     public async Task GivenPackageParameterActivatedForTwoBaseTypes_WhenAllParametersAreListed_ThenEachBaseTypeKeepsItsEntry()
     {
         const string canonical = "http://example.org/SearchParameter/shared-tag";
-        using var state = await CreateInitializedStateAsync();
-        state.ApplyAndTrack(Activation(1, canonical, "shared-tag", "Patient", SearchParamType.Token, null, 11));
-        state.ApplyAndTrack(Activation(2, canonical, "shared-tag", "Practitioner", SearchParamType.Token, null, 11));
+        using var state = await InitializedStateAsync(
+            Activated(canonical, "shared-tag", 11, package: "custom@1.0.0", expression: "Patient.subject"),
+            Activated(canonical, "shared-tag", 11, package: "custom@1.0.0", resourceType: "Practitioner", expression: "Practitioner.subject"));
         var manager = CreateManager(state);
 
         var entries = manager.AllSearchParameters
@@ -64,28 +55,19 @@ public class CompositeSearchParameterDefinitionManagerTests
     public async Task GivenOverrideOfASingleBaseParameter_WhenAllParametersAreListed_ThenOnlyTheOverrideRepresentsThatIdentity()
     {
         const string patientIdentifier = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
-        using var state = await CreateInitializedStateAsync();
-        state.ApplyAndTrack(Activation(
-            1,
+        using var state = await InitializedStateAsync(Activated(
             "http://example.org/SearchParameter/Patient-identifier",
             "identifier",
-            "Patient",
-            SearchParamType.Token,
-            new OverrideInfo(patientIdentifier, 5),
-            searchParamId: 5));
+            5,
+            patientIdentifier,
+            "custom@1.0.0",
+            expression: "Patient.subject"));
         var manager = CreateManager(state);
 
         manager.AllSearchParameters
             .Where(parameter => (parameter.OverridesUrl ?? parameter.Url) == new Uri(patientIdentifier))
             .Select(parameter => parameter.Url)
             .ShouldBe([new Uri("http://example.org/SearchParameter/Patient-identifier")]);
-    }
-
-    private static async Task<ConformanceState> CreateInitializedStateAsync()
-    {
-        var state = new ConformanceState();
-        await state.InitializeFromEventsAsync(TestConformanceRefresher.EmptyEventStore(), CancellationToken.None);
-        return state;
     }
 
     private static CompositeSearchParameterDefinitionManager CreateManager(ConformanceState state)
@@ -103,30 +85,15 @@ public class CompositeSearchParameterDefinitionManagerTests
         return manager;
     }
 
-    private static SourceEvent Activation(
-        long eventId,
-        string canonical,
-        string code,
-        string resourceType,
-        SearchParamType type,
-        OverrideInfo? overrides,
-        int searchParamId) =>
-        new(
-            eventId,
-            "package:custom@1.0.0",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                canonical,
-                code,
-                resourceType,
-                $"{resourceType}.subject",
-                type,
-                "custom@1.0.0",
-                overrides,
-                searchParamId,
-                type == SearchParamType.Reference ? ["Patient"] : null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow);
+    private static object Subject(string canonical, string code, string resourceType, int searchParamId, string overrides) =>
+        Activated(
+            canonical,
+            code,
+            searchParamId,
+            overrides,
+            "custom@1.0.0",
+            resourceType,
+            $"{resourceType}.subject",
+            SearchParamType.Reference,
+            ["Patient"]);
 }

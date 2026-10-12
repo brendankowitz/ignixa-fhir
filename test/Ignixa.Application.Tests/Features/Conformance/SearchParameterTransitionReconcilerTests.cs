@@ -1,23 +1,40 @@
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Events;
-using Ignixa.Conformance.Events.Models;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
+using Shouldly;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
+using static Ignixa.Application.Tests.Features.Conformance.TestPackages;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
 public class SearchParameterTransitionReconcilerTests
 {
+    // N6 on restart: an uncommitted batch is one transition, rescheduled with the full grace from now.
     [Theory]
     [InlineData(1)]
     [InlineData(-1)]
     [InlineData(0)]
-    public async Task GivenUncommittedTransition_WhenReconciled_ThenItSchedulesFullGraceWhateverTheHideTimestamp(
+    public async Task GivenAnUncommittedBatchOfShadows_WhenReconciled_ThenOneTransitionIsScheduledWithFullGraceWhateverTheHideTimestamp(
         int hideTimestampOffsetDays)
     {
-        using var state = CreateState(DateTimeOffset.UtcNow.AddDays(hideTimestampOffsetDays));
+        const int shadowCount = 70;
+        var hiddenAt = DateTimeOffset.UtcNow.AddDays(hideTimestampOffsetDays);
+        using var state = new ConformanceState();
+        var eventId = 0L;
+        for (var index = 1; index <= shadowCount; index++)
+        {
+            state.ApplyAndTrack(At(++eventId, Activated(Canonical($"seed-{index}"), $"code-{index}", index)));
+        }
+
+        var shadows = Enumerable.Range(1, shadowCount).Select(index => Canonical($"shadow-{index}")).ToArray();
+        for (var index = 1; index <= shadowCount; index++)
+        {
+            var shadow = Activated(shadows[index - 1], $"code-{index}", index, Canonical($"seed-{index}"), "shadow@1.0.0");
+            state.ApplyAndTrack(At(++eventId, shadow, hiddenAt));
+        }
+
+        var batchId = ++eventId;
+        state.ApplyAndTrack(At(batchId, PackageActivated("shadow", "1.0.0", shadows), hiddenAt));
         var scheduler = Substitute.For<ISearchParameterTransitionScheduler>();
         var grace = TimeSpan.FromMinutes(3);
         var reconciler = new SearchParameterTransitionReconciler(
@@ -27,34 +44,7 @@ public class SearchParameterTransitionReconcilerTests
 
         await reconciler.ReconcileAsync(CancellationToken.None);
 
-        await scheduler.Received(1).ScheduleAsync(20, grace, CancellationToken.None);
+        scheduler.ReceivedCalls().ShouldHaveSingleItem();
+        await scheduler.Received(1).ScheduleAsync(batchId, grace, CancellationToken.None);
     }
-
-    private static ConformanceState CreateState(DateTimeOffset hideTimestamp)
-    {
-        var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, hideTimestamp));
-        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier", hideTimestamp));
-        return state;
-    }
-
-    private static SourceEvent Activation(long eventId, string canonical, string? overrides, DateTimeOffset timestamp) =>
-        new(
-            eventId,
-            "transition-test",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                canonical,
-                "identifier",
-                "Patient",
-                "Patient.identifier",
-                SearchParamType.Token,
-                "custom.package@1.0",
-                overrides is null ? null : new OverrideInfo(overrides, 1),
-                1,
-                null,
-                null,
-                null,
-                null),
-            timestamp);
 }

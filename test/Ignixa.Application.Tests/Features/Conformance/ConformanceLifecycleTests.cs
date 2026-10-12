@@ -4,62 +4,36 @@ using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Shouldly;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
+/// <summary>Spec §4.1–§4.4: lifecycle states, guarded reindex events and two-phase transitions.</summary>
 public class ConformanceLifecycleTests
 {
-    private const string BaseCanonical = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
+    private const string BaseCanonical = TestPackages.BaseIdentifier;
     private const string OverrideCanonical = "http://example.org/SearchParameter/Patient-identifier";
-    private static readonly JsonSerializerOptions CamelCaseJsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+    private const string MiddleCanonical = "http://example.org/SearchParameter/Patient-identifier-middle";
+    private const string TopCanonical = "http://example.org/SearchParameter/Patient-identifier-top";
+    private static readonly JsonSerializerOptions CamelCase = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     [Fact]
-    public void GivenBrandNewCustomParameter_WhenActivated_ThenItIsPendingAndTracksItsActivation()
+    public void GivenOverrideActivated_WhenItsTransitionIsCommitted_ThenItMovesFromStagedToPendingAndTheBaseToDisabled()
     {
-        using var state = new ConformanceState();
-
-        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
-
-        var parameter = state.GetSearchParameter("Patient", "custom");
-        parameter.ShouldNotBeNull();
-        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
-        parameter.ActivationEventId.ShouldBe(10);
-    }
-
-    [Fact]
-    public void GivenEnabledBaseParameter_WhenOverrideIsActivated_ThenBaseDisablesAndOverrideIsStaged()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Activation(10, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.1"));
-
-        state.Apply(Activation(
-            20,
-            OverrideCanonical,
-            "identifier",
-            7,
-            new OverrideInfo(BaseCanonical, 7)));
-
+        using var state = CreateStateWithStagedOverride();
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-    }
 
-    [Fact]
-    public void GivenStagedOverride_WhenMatchingTransitionIsCommitted_ThenOverrideBecomesPending()
-    {
-        using var state = CreateStateWithStagedOverride();
-
-        state.Apply(Transition(30, 7, [20], [20]));
+        state.Apply(Commit(30, 20));
 
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(OverrideCanonical);
     }
 
+    // TransitionCommitted guard: it must name both the staging and the hiding event.
     [Theory]
     [InlineData(19, 19)]
     [InlineData(20, 19)]
@@ -70,7 +44,7 @@ public class ConformanceLifecycleTests
     {
         using var state = CreateStateWithStagedOverride();
 
-        state.Apply(Transition(30, 7, [activationEventId], [deactivationEventId]));
+        state.Apply(At(30, new SearchParameterTransitionCommitted(7, [activationEventId], [deactivationEventId])));
 
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
@@ -80,16 +54,11 @@ public class ConformanceLifecycleTests
     [Fact]
     public void GivenNewerStagedOverride_WhenOlderTransitionIsCommitted_ThenOlderOverrideIsNotPromoted()
     {
-        using var state = CreateStateWithStagedOverride();
         const string newerCanonical = "http://example.org/SearchParameter/Patient-identifier-newer";
-        state.Apply(Activation(
-            30,
-            newerCanonical,
-            "identifier",
-            7,
-            new OverrideInfo(BaseCanonical, 7)));
+        using var state = CreateStateWithStagedOverride();
+        state.Apply(Override(30, newerCanonical));
 
-        state.Apply(Transition(40, 7, [20], [20]));
+        state.Apply(Commit(40, 20));
 
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
         state.FindByCanonical(newerCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
@@ -97,75 +66,29 @@ public class ConformanceLifecycleTests
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
     }
 
-    [Fact]
-    public void GivenActiveOverride_WhenDeactivated_ThenOverrideDisablesAndBaseIsStagedForRestoration()
+    // Removing an override is itself two-phase: the base is restaged by the new hide event, and the outgoing owner
+    // keeps extraction until that event's transition commits.
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public void GivenAnOverride_WhenItOrItsPackageIsDeactivatedAndCommitted_ThenTheBaseIsRestagedThenRestoredAsPending(
+        bool overrideEnabled,
+        bool packageDeactivated)
     {
-        using var state = CreateStateWithEnabledOverride();
+        using var state = overrideEnabled ? CreateStateWithEnabledOverride() : CreateStateWithStagedOverride();
 
-        state.Apply(Deactivation(40, OverrideCanonical));
+        state.Apply(packageDeactivated ? At(40, PackageDeactivated("custom.package")) : Hide(40, OverrideCanonical));
 
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
         state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(40);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(OverrideCanonical);
-    }
+        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(overrideEnabled ? OverrideCanonical : BaseCanonical);
 
-    [Fact]
-    public void GivenRestoredBase_WhenMatchingTransitionIsCommitted_ThenBaseBecomesPending()
-    {
-        using var state = CreateStateWithEnabledOverride();
-        state.Apply(Deactivation(40, OverrideCanonical));
-
-        state.Apply(Transition(50, 7, [40], [40]));
+        state.Apply(Commit(50, 40));
 
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
-    }
-
-    [Fact]
-    public void GivenStagedOverride_WhenItIsDeactivatedBeforeCommit_ThenTheNewHideEventRestoresTheBase()
-    {
-        using var state = CreateStateWithStagedOverride();
-
-        state.Apply(Deactivation(30, OverrideCanonical));
-        state.Apply(Transition(40, 7, [30], [30]));
-
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
-        state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(30);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
-    }
-
-    [Fact]
-    public void GivenStagedOverridePackage_WhenPackageIsDeactivatedBeforeCommit_ThenBaseIsRestaged()
-    {
-        using var state = CreateStateWithStagedOverride();
-
-        state.Apply(new SourceEvent(
-            30,
-            "lifecycle-test",
-            nameof(PackageDeactivated),
-            new PackageDeactivated("custom.package", "1.0", "test"),
-            DateTimeOffset.UtcNow));
-
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-        state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(30);
-    }
-
-    [Fact]
-    public void GivenThreeLevelOverride_WhenMiddlePackageIsDeactivatedBeforeTop_ThenMiddleIsNotRestored()
-    {
-        using var state = CreateStateWithEnabledThreeLevelOverride();
-
-        state.Apply(PackageDeactivation(50, "middle.package"));
-        state.Apply(Deactivation(60, TopCanonical));
-
-        state.FindByCanonical(TopCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        var restored = state.FindByCanonical(BaseCanonical)!;
-        restored.Status.ShouldBe(SearchParameterStatus.Staged);
-        restored.ActivationEventId.ShouldBe(60);
     }
 
     [Fact]
@@ -173,95 +96,85 @@ public class ConformanceLifecycleTests
     {
         using var state = CreateStateWithEnabledThreeLevelOverride();
 
-        state.Apply(PackageDeactivation(50, "hl7.fhir.r4.core", "4.0.1"));
-        state.Apply(Deactivation(60, TopCanonical));
-        state.Apply(Transition(61, 7, [60], [60]));
-        state.Apply(ReindexStarted(62, MiddleCanonical, activationEventId: 60, jobId: "middle-job"));
-        state.Apply(ReindexCompleted(63, MiddleCanonical, activationEventId: 60, jobId: "middle-job"));
-        state.Apply(Deactivation(70, MiddleCanonical));
+        state.Apply(At(50, PackageDeactivated("hl7.fhir.r4.core", "4.0.1")));
+        state.Apply(Hide(60, TopCanonical));
+        state.Apply(Commit(61, 60));
+        state.Apply(Started(62, 60, "middle-job", MiddleCanonical));
+        state.Apply(Completed(63, 60, "middle-job", MiddleCanonical));
+        state.Apply(Hide(70, MiddleCanonical));
 
         state.FindByCanonical(MiddleCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(MiddleCanonical);
     }
 
-    [Fact]
-    public void GivenThreeLevelOverride_WhenTopPackageIsDeactivated_ThenMiddleIsRestored()
+    // Removing the top of base <- middle <- top restores the highest definition still installed.
+    [Theory]
+    [InlineData(false, MiddleCanonical, 50)]
+    [InlineData(true, BaseCanonical, 60)]
+    public void GivenThreeLevelOverride_WhenTheTopIsRemoved_ThenTheHighestRemainingDefinitionIsRestaged(
+        bool middlePackageRemovedFirst,
+        string expectedRestored,
+        long expectedActivationEventId)
     {
         using var state = CreateStateWithEnabledThreeLevelOverride();
 
-        state.Apply(PackageDeactivation(50, "top.package"));
+        if (middlePackageRemovedFirst)
+        {
+            state.Apply(At(50, PackageDeactivated("middle.package")));
+            state.Apply(Hide(60, TopCanonical));
+        }
+        else
+        {
+            state.Apply(At(50, PackageDeactivated("top.package")));
+        }
 
         state.FindByCanonical(TopCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        var restored = state.FindByCanonical(MiddleCanonical)!;
+        var restored = state.FindByCanonical(expectedRestored)!;
         restored.Status.ShouldBe(SearchParameterStatus.Staged);
-        restored.ActivationEventId.ShouldBe(50);
+        restored.ActivationEventId.ShouldBe(expectedActivationEventId);
     }
 
+    // Disabling -> Disabled: a repeated deactivation keeps the original hide event, which the commit must name.
     [Fact]
-    public void GivenPlainParameter_WhenDeactivatedAndCommitted_ThenItMovesThroughDisablingToDisabled()
+    public void GivenPlainParameter_WhenDeactivatedTwiceAndCommitted_ThenItMovesThroughDisablingToDisabledOnTheFirstHideEvent()
     {
         using var state = new ConformanceState();
-        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
+        state.Apply(Custom(10));
 
-        state.Apply(Deactivation(20, OverrideCanonical, "custom"));
-
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabling);
-
-        state.Apply(Transition(30, 7, [], [20]));
-
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabled);
-    }
-
-    [Fact]
-    public void GivenAnOwnerAlreadyDisabling_WhenItIsDeactivatedAgain_ThenTheOriginalHideEventIsPreserved()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
-        state.Apply(Deactivation(20, OverrideCanonical, "custom"));
-
-        state.Apply(Deactivation(30, OverrideCanonical, "custom"));
+        state.Apply(Hide(20, OverrideCanonical, "custom"));
+        state.Apply(Hide(30, OverrideCanonical, "custom"));
 
         var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Disabling);
         parameter.DeactivationEventId.ShouldBe(20);
         state.GetTransitionCandidates(20).Count.ShouldBe(1);
         state.GetTransitionCandidates(30).ShouldBeEmpty();
+
+        state.Apply(At(40, new SearchParameterTransitionCommitted(7, [], [20])));
+
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabled);
     }
 
     [Fact]
     public void GivenAnotherParameterSharesThePredecessorEventId_WhenAnOverrideIsRemoved_ThenTheMatchingCodeIsRestored()
     {
         using var state = new ConformanceState();
-        state.Apply(Activation(10, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.1"));
-        state.Apply(new SourceEvent(
-            10,
-            "lifecycle-test",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                "http://hl7.org/fhir/SearchParameter/Observation-subject",
-                "subject",
-                "Observation",
-                "Observation.subject",
-                SearchParamType.Reference,
-                "hl7.fhir.r4.core@4.0.1",
-                null,
-                8,
-                ["Patient"],
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow));
-        state.Apply(Activation(
-            20,
-            OverrideCanonical,
-            "identifier",
-            7,
-            new OverrideInfo(BaseCanonical, 7)));
-        state.Apply(Transition(30, 7, [20], [20]));
-        state.Apply(ReindexStarted(31, activationEventId: 20, jobId: "job"));
-        state.Apply(ReindexCompleted(32, activationEventId: 20, jobId: "job"));
+        state.Apply(Base(10));
+        state.Apply(At(10, Activated(
+            "http://hl7.org/fhir/SearchParameter/Observation-subject",
+            "subject",
+            8,
+            package: CorePackage,
+            resourceType: "Observation",
+            type: SearchParamType.Reference,
+            targets: ["Patient"])));
+        state.Apply(Override(20));
+        state.Apply(Commit(30, 20));
+        state.Apply(Started(31, 20, "job"));
+        state.Apply(Completed(32, 20, "job"));
 
-        state.Apply(Deactivation(40, OverrideCanonical));
+        state.Apply(Hide(40, OverrideCanonical));
 
         var restored = state.FindByCanonical(BaseCanonical)!;
         restored.ResourceType.ShouldBe("Patient");
@@ -274,16 +187,16 @@ public class ConformanceLifecycleTests
     public void GivenNewerActivation_WhenStaleReindexEventsArrive_ThenTheyAreIgnored()
     {
         using var state = new ConformanceState();
-        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
-        state.Apply(Activation(20, OverrideCanonical, "custom", 7));
+        state.Apply(Custom(10));
+        state.Apply(Custom(20));
 
-        state.Apply(ReindexStarted(30, activationEventId: 10, jobId: "stale"));
+        state.Apply(Started(30, 10, "stale"));
         state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabling);
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
 
-        state.Apply(Transition(31, 7, [20], [20]));
-        state.Apply(ReindexStarted(32, activationEventId: 20, jobId: "current"));
-        state.Apply(ReindexCompleted(33, activationEventId: 20, jobId: "other"));
+        state.Apply(Commit(31, 20));
+        state.Apply(Started(32, 20, "current"));
+        state.Apply(Completed(33, 20, "other"));
 
         var current = state.GetSearchParameter("Patient", "custom")!;
         current.Status.ShouldBe(SearchParameterStatus.Reindexing);
@@ -291,29 +204,32 @@ public class ConformanceLifecycleTests
     }
 
     [Fact]
-    public void GivenPendingOwner_WhenReindexStartHasWrongActivation_ThenOwnerRemainsPending()
+    public void GivenNewCustomParameter_WhenItsReindexStartsAndCompletes_ThenItMovesFromPendingToEnabled()
     {
         using var state = new ConformanceState();
-        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
+        state.Apply(Custom(10));
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+        state.GetSearchParameter("Patient", "custom")!.ActivationEventId.ShouldBe(10);
+        state.Apply(Started(20, 10, "job"));
 
-        state.Apply(ReindexStarted(20, activationEventId: 9, jobId: "wrong-activation"));
-
-        var parameter = state.GetSearchParameter("Patient", "custom")!;
-        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
-        parameter.ReindexJobId.ShouldBeNull();
-    }
-
-    [Fact]
-    public void GivenMatchingActivationAndJob_WhenReindexCompletes_ThenParameterIsEnabled()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
-        state.Apply(ReindexStarted(20, activationEventId: 10, jobId: "job"));
-
-        state.Apply(ReindexCompleted(30, activationEventId: 10, jobId: "job"));
+        state.Apply(Completed(30, 10, "job"));
 
         var parameter = state.GetSearchParameter("Patient", "custom")!;
         parameter.Status.ShouldBe(SearchParameterStatus.Enabled);
+        parameter.ReindexJobId.ShouldBeNull();
+    }
+
+    // Started guard: a Pending owner only starts a reindex for its own activation.
+    [Fact]
+    public void GivenPendingOwner_WhenReindexStartHasWrongActivation_ThenOwnerRemainsPending()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Custom(10));
+
+        state.Apply(Started(20, 9, "wrong-activation"));
+
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
         parameter.ReindexJobId.ShouldBeNull();
     }
 
@@ -324,6 +240,7 @@ public class ConformanceLifecycleTests
         Failed,
     }
 
+    // Completed / Failed guards (and Started on a running job): an event for another activation or job never moves it.
     [Theory]
     [InlineData(ReindexEventKind.Started, 9L, "other")]
     [InlineData(ReindexEventKind.Started, null, "legacy-other-job")]
@@ -339,14 +256,14 @@ public class ConformanceLifecycleTests
         string jobId)
     {
         using var state = new ConformanceState();
-        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
-        state.Apply(ReindexStarted(20, activationEventId: 10, jobId: "current"));
+        state.Apply(Custom(10));
+        state.Apply(Started(20, 10, "current"));
 
         state.Apply(kind switch
         {
-            ReindexEventKind.Started => ReindexStarted(30, activationEventId, jobId),
-            ReindexEventKind.Completed => ReindexCompleted(30, activationEventId, jobId),
-            _ => ReindexFailed(30, activationEventId, jobId),
+            ReindexEventKind.Started => Started(30, activationEventId, jobId),
+            ReindexEventKind.Completed => Completed(30, activationEventId, jobId),
+            _ => At(30, ReindexFailed(OverrideCanonical, "custom", activationEventId, jobId)),
         });
 
         var parameter = state.GetSearchParameter("Patient", "custom")!;
@@ -358,11 +275,11 @@ public class ConformanceLifecycleTests
     public void GivenParameterIsDisabling_WhenReindexEventsArrive_ThenTheyCannotResurrectIt()
     {
         using var state = new ConformanceState();
-        state.Apply(Activation(10, OverrideCanonical, "custom", 7));
-        state.Apply(Deactivation(20, OverrideCanonical, "custom"));
+        state.Apply(Custom(10));
+        state.Apply(Hide(20, OverrideCanonical, "custom"));
 
-        state.Apply(ReindexStarted(30, activationEventId: 10, jobId: "job"));
-        state.Apply(ReindexCompleted(31, activationEventId: 10, jobId: "job"));
+        state.Apply(Started(30, 10, "job"));
+        state.Apply(Completed(31, 10, "job"));
 
         var parameter = state.GetSearchParameter("Patient", "custom")!;
         parameter.Status.ShouldBe(SearchParameterStatus.Disabling);
@@ -374,24 +291,19 @@ public class ConformanceLifecycleTests
     {
         const string json =
             """{"canonical":"http://example.org/SearchParameter/custom","code":"custom","resourceType":"Patient","jobId":"job","affectedResourceTypes":["Patient"]}""";
-        var reindex = JsonSerializer.Deserialize<SearchParameterReindexStarted>(json, CamelCaseJsonOptions);
 
-        reindex.ShouldNotBeNull();
-        reindex.ActivationEventId.ShouldBeNull();
+        var reindex = JsonSerializer.Deserialize<SearchParameterReindexStarted>(json, CamelCase);
+
+        reindex.ShouldNotBeNull().ActivationEventId.ShouldBeNull();
     }
 
     [Fact]
     public void GivenOccupiedCode_WhenReplacementUsesDifferentSearchParamId_ThenActivationIsRejectedWithoutMutation()
     {
         using var state = new ConformanceState();
-        state.Apply(Activation(10, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.1"));
+        state.Apply(Base(10));
 
-        state.Apply(Activation(
-            20,
-            OverrideCanonical,
-            "identifier",
-            8,
-            new OverrideInfo(BaseCanonical, 8)));
+        state.Apply(At(20, Activated(OverrideCanonical, "identifier", 8, BaseCanonical)));
 
         var owner = state.GetSearchParameter("Patient", "identifier")!;
         owner.Canonical.ShouldBe(BaseCanonical);
@@ -404,9 +316,9 @@ public class ConformanceLifecycleTests
     public void GivenEnabledBaseParameter_WhenSameCanonicalBaseActivationReplays_ThenOwnerRemainsEnabled()
     {
         using var state = new ConformanceState();
-        state.Apply(Activation(10, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.1"));
+        state.Apply(Base(10));
 
-        state.Apply(Activation(20, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.2"));
+        state.Apply(At(20, Activated(BaseCanonical, "identifier", 7, package: "hl7.fhir.r4.core@4.0.2")));
 
         var owner = state.GetSearchParameter("Patient", "identifier")!;
         owner.Status.ShouldBe(SearchParameterStatus.Enabled);
@@ -414,172 +326,57 @@ public class ConformanceLifecycleTests
         state.FindByCanonical(BaseCanonical).ShouldBeSameAs(owner);
     }
 
-    private const string MiddleCanonical = "http://example.org/SearchParameter/Patient-identifier-middle";
-    private const string TopCanonical = "http://example.org/SearchParameter/Patient-identifier-top";
-
     private static ConformanceState CreateStateWithStagedOverride()
     {
         var state = new ConformanceState();
-        state.Apply(Activation(10, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.1"));
-        state.Apply(Activation(
-            20,
-            OverrideCanonical,
-            "identifier",
-            7,
-            new OverrideInfo(BaseCanonical, 7)));
+        state.Apply(Base(10));
+        state.Apply(Override(20));
         return state;
     }
 
     private static ConformanceState CreateStateWithEnabledOverride()
     {
         var state = CreateStateWithStagedOverride();
-        state.Apply(Transition(30, 7, [20], [20]));
-        state.Apply(ReindexStarted(31, activationEventId: 20, jobId: "job"));
-        state.Apply(ReindexCompleted(32, activationEventId: 20, jobId: "job"));
+        state.Apply(Commit(30, 20));
+        state.Apply(Started(31, 20, "job"));
+        state.Apply(Completed(32, 20, "job"));
         return state;
     }
 
     private static ConformanceState CreateStateWithEnabledThreeLevelOverride()
     {
         var state = new ConformanceState();
-        state.Apply(Activation(10, BaseCanonical, "identifier", 7, sourcePackage: "hl7.fhir.r4.core@4.0.1"));
-        state.Apply(Activation(
-            20,
-            MiddleCanonical,
-            "identifier",
-            7,
-            new OverrideInfo(BaseCanonical, 7),
-            "middle.package@1.0"));
-        state.Apply(Transition(21, 7, [20], [20]));
-        state.Apply(ReindexStarted(22, MiddleCanonical, activationEventId: 20, jobId: "middle-job"));
-        state.Apply(ReindexCompleted(23, MiddleCanonical, activationEventId: 20, jobId: "middle-job"));
-        state.Apply(Activation(
-            30,
-            TopCanonical,
-            "identifier",
-            7,
-            new OverrideInfo(BaseCanonical, 7),
-            "top.package@1.0"));
-        state.Apply(Transition(31, 7, [30], [30]));
-        state.Apply(ReindexStarted(32, TopCanonical, activationEventId: 30, jobId: "top-job"));
-        state.Apply(ReindexCompleted(33, TopCanonical, activationEventId: 30, jobId: "top-job"));
+        state.Apply(Base(10));
+        state.Apply(Override(20, MiddleCanonical, "middle.package@1.0"));
+        state.Apply(Commit(21, 20));
+        state.Apply(Started(22, 20, "middle-job", MiddleCanonical));
+        state.Apply(Completed(23, 20, "middle-job", MiddleCanonical));
+        state.Apply(Override(30, TopCanonical, "top.package@1.0"));
+        state.Apply(Commit(31, 30));
+        state.Apply(Started(32, 30, "top-job", TopCanonical));
+        state.Apply(Completed(33, 30, "top-job", TopCanonical));
         return state;
     }
 
-    private static SourceEvent Activation(
-        long eventId,
-        string canonical,
-        string code,
-        int searchParamId,
-        OverrideInfo? overrides = null,
-        string sourcePackage = "custom.package@1.0") =>
-        new(
-            eventId,
-            "lifecycle-test",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                canonical,
-                code,
-                "Patient",
-                $"Patient.{code}",
-                SearchParamType.Token,
-                sourcePackage,
-                overrides,
-                searchParamId,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow);
+    private static SourceEvent Base(long eventId) =>
+        At(eventId, Activated(BaseCanonical, "identifier", 7, package: CorePackage));
 
-    private static SourceEvent Deactivation(long eventId, string canonical, string code = "identifier") =>
-        new(
-            eventId,
-            "lifecycle-test",
-            nameof(SearchParameterDeactivated),
-            new SearchParameterDeactivated(canonical, code, "Patient", "test"),
-            DateTimeOffset.UtcNow);
+    private static SourceEvent Override(long eventId, string canonical = OverrideCanonical, string package = CustomPackage) =>
+        At(eventId, Activated(canonical, "identifier", 7, BaseCanonical, package));
 
-    private static SourceEvent PackageDeactivation(long eventId, string packageId, string version = "1.0") =>
-        new(
-            eventId,
-            "lifecycle-test",
-            nameof(PackageDeactivated),
-            new PackageDeactivated(packageId, version, "test"),
-            DateTimeOffset.UtcNow);
+    private static SourceEvent Custom(long eventId) => At(eventId, Activated(OverrideCanonical, "custom", 7));
 
-    private static SourceEvent Transition(
-        long eventId,
-        int searchParamId,
-        IReadOnlyList<long> activationEventIds,
-        IReadOnlyList<long> deactivationEventIds) =>
-        new(
-            eventId,
-            "lifecycle-test",
-            nameof(SearchParameterTransitionCommitted),
-            new SearchParameterTransitionCommitted(searchParamId, activationEventIds, deactivationEventIds),
-            DateTimeOffset.UtcNow);
+    private static SourceEvent Hide(long eventId, string canonical, string code = "identifier") =>
+        At(eventId, Deactivated(canonical, code));
 
-    private static SourceEvent ReindexStarted(
-        long eventId,
-        long? activationEventId,
-        string jobId) =>
-        ReindexStarted(eventId, OverrideCanonical, activationEventId, jobId);
+    private static SourceEvent Commit(long eventId, long hideEventId) => At(eventId, Committed(7, hideEventId));
 
-    private static SourceEvent ReindexStarted(
-        long eventId,
-        string canonical,
-        long? activationEventId,
-        string jobId) =>
-        new(
-            eventId,
-            "lifecycle-test",
-            nameof(SearchParameterReindexStarted),
-            new SearchParameterReindexStarted(
-                canonical,
-                canonical == OverrideCanonical ? "custom" : "identifier",
-                "Patient",
-                jobId,
-                ["Patient"],
-                activationEventId),
-            DateTimeOffset.UtcNow);
+    // Reindex events for OverrideCanonical carry the "custom" code; the guards match on canonical and activation.
+    private static SourceEvent Started(long eventId, long? activationEventId, string jobId, string canonical = OverrideCanonical) =>
+        At(eventId, ReindexStarted(canonical, ReindexCode(canonical), activationEventId, jobId));
 
-    private static SourceEvent ReindexCompleted(
-        long eventId,
-        long? activationEventId,
-        string jobId) =>
-        ReindexCompleted(eventId, OverrideCanonical, activationEventId, jobId);
+    private static SourceEvent Completed(long eventId, long? activationEventId, string jobId, string canonical = OverrideCanonical) =>
+        At(eventId, ReindexCompleted(canonical, ReindexCode(canonical), activationEventId, jobId));
 
-    private static SourceEvent ReindexCompleted(
-        long eventId,
-        string canonical,
-        long? activationEventId,
-        string jobId) =>
-        new(
-            eventId,
-            "lifecycle-test",
-            nameof(SearchParameterReindexCompleted),
-            new SearchParameterReindexCompleted(
-                canonical,
-                canonical == OverrideCanonical ? "custom" : "identifier",
-                "Patient",
-                jobId,
-                1,
-                TimeSpan.FromSeconds(1),
-                activationEventId),
-            DateTimeOffset.UtcNow);
-
-    private static SourceEvent ReindexFailed(long eventId, long? activationEventId, string jobId) =>
-        new(
-            eventId,
-            "lifecycle-test",
-            nameof(SearchParameterReindexFailed),
-            new SearchParameterReindexFailed(
-                OverrideCanonical,
-                "custom",
-                "Patient",
-                jobId,
-                "failed",
-                activationEventId),
-            DateTimeOffset.UtcNow);
+    private static string ReindexCode(string canonical) => canonical == OverrideCanonical ? "custom" : "identifier";
 }

@@ -19,105 +19,30 @@ namespace Ignixa.Application.Tests.Search.Parsing;
 
 public class ParameterOutcomeTests
 {
-    [Fact]
-    public void GivenAPendingParameter_WhenBuiltWithoutPartialIndices_ThenItIsIgnoredWithThePendingReindexWarning()
+    public static TheoryData<string, string, string, string, bool> WildcardIncludeCases()
     {
-        var context = new SearchParserTestContext();
-        var pending = context.Add("Patient", "pending", SearchParamType.String);
-        pending.IsSearchable = false;
-        var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
+        var cases = new TheoryData<string, string, string, string, bool>();
+        foreach (var usePartialIndices in new[] { false, true })
+        {
+            cases.Add("_include", "*", "Patient", "Patient", usePartialIndices);
+            cases.Add("_revinclude", "*", "Observation", "Observation", usePartialIndices);
+            foreach (var baseResourceType in new[] { "Resource", "DomainResource" })
+            {
+                cases.Add("_include", "Patient:*", "Patient", baseResourceType, usePartialIndices);
+                cases.Add("_revinclude", "Observation:*", "Observation", baseResourceType, usePartialIndices);
+            }
 
-        var options = builder.Build("Patient", [new QueryParameter("pending", "Smith")]);
+            cases.Add("_include", "Patient:*", "Patient", "Patient", usePartialIndices);
+            cases.Add("_revinclude", "Observation:*", "Observation", "Observation", usePartialIndices);
+        }
 
-        options.UnsupportedParams.ShouldBe(["pending"]);
-        options.BundleIssues.ShouldHaveSingleItem().Diagnostics
-            .ShouldBe("Search parameter 'pending' is pending reindex and was ignored.");
+        return cases;
     }
 
-    [Fact]
-    public void GivenAPendingParameter_WhenBuiltWithPartialIndices_ThenItCompilesAndWarnsThatResultsMayBeIncomplete()
-    {
-        var context = new SearchParserTestContext();
-        var pending = context.Add("Patient", "pending", SearchParamType.String);
-        pending.IsSearchable = false;
-        var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager, () => true);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
-
-        var options = builder.Build("Patient", [new QueryParameter("pending", "Smith")]);
-
-        options.Expression.ShouldNotBeNull();
-        options.BundleIssues.ShouldHaveSingleItem().Diagnostics
-            .ShouldBe("Search results may be incomplete because search parameter 'pending' is pending reindex.");
-    }
-
-    [Fact]
-    public void GivenAPendingSortParameter_WhenBuiltWithPartialIndices_ThenItSortsAndWarnsThatResultsMayBeIncomplete()
-    {
-        var context = new SearchParserTestContext();
-        var pending = context.Add("Patient", "pending", SearchParamType.String);
-        pending.IsSearchable = false;
-        var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager, () => true);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
-
-        var options = builder.Build("Patient", [new QueryParameter("_sort", "pending")]);
-
-        options.Sort.ShouldHaveSingleItem().Parameter.Code.ShouldBe("pending");
-        options.BundleIssues.ShouldHaveSingleItem().Diagnostics
-            .ShouldBe("Search results may be incomplete because search parameter 'pending' is pending reindex.");
-    }
-
+    // A wildcard include expands to pending references too, concrete or declared on an abstract base.
     [Theory]
-    [InlineData("_include", "*", false)]
-    [InlineData("_include", "Patient:*", false)]
-    [InlineData("_revinclude", "*", false)]
-    [InlineData("_revinclude", "Observation:*", false)]
-    [InlineData("_include", "*", true)]
-    [InlineData("_include", "Patient:*", true)]
-    [InlineData("_revinclude", "*", true)]
-    [InlineData("_revinclude", "Observation:*", true)]
+    [MemberData(nameof(WildcardIncludeCases))]
     public void GivenAWildcardIncludeWithAPendingReference_WhenBuilt_ThenItWarnsOfIncompleteResultsAndTracksTheParameter(
-        string parameterName,
-        string parameterValue,
-        bool usePartialIndices)
-    {
-        var context = new SearchParserTestContext();
-        var pending = context.Add(
-            parameterName == "_include" ? "Patient" : "Observation",
-            "pending-reference",
-            SearchParamType.Reference,
-            ["Organization", "Patient"]);
-        pending.IsSearchable = false;
-        var definitions = new SearchableSearchParameterDefinitionManager(
-            context.DefinitionManager,
-            () => usePartialIndices);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
-
-        var options = builder.Build("Patient", [new QueryParameter(parameterName, parameterValue)]);
-
-        options.ResolvedSearchParameters.ShouldContain(parameter => ReferenceEquals(parameter, pending));
-        options.BundleIssues.ShouldContain(issue => issue.Diagnostics ==
-            "Search results may be incomplete because search parameter 'pending-reference' is pending reindex.");
-    }
-
-    [Theory]
-    [InlineData("_include", "Patient:*", "Patient", "Resource", false)]
-    [InlineData("_include", "Patient:*", "Patient", "Resource", true)]
-    [InlineData("_include", "Patient:*", "Patient", "DomainResource", false)]
-    [InlineData("_include", "Patient:*", "Patient", "DomainResource", true)]
-    [InlineData("_revinclude", "Observation:*", "Observation", "Resource", false)]
-    [InlineData("_revinclude", "Observation:*", "Observation", "Resource", true)]
-    [InlineData("_revinclude", "Observation:*", "Observation", "DomainResource", false)]
-    [InlineData("_revinclude", "Observation:*", "Observation", "DomainResource", true)]
-    public void GivenAWildcardIncludeWithAnAbstractPendingReference_WhenBuilt_ThenItWarnsAndTracksTheExpandedParameter(
         string parameterName,
         string parameterValue,
         string sourceResourceType,
@@ -126,12 +51,12 @@ public class ParameterOutcomeTests
     {
         var context = new SearchParserTestContext();
         var pending = new SearchParameterInfo(
-            name: "pending-abstract-reference",
-            code: "pending-abstract-reference",
+            name: "pending-reference",
+            code: "pending-reference",
             searchParamType: SearchParamType.Reference,
-            targetResourceTypes: ["Patient"],
+            targetResourceTypes: ["Organization", "Patient"],
             baseResourceTypes: [baseResourceType],
-            url: new Uri("http://ignixa.test/SearchParameter/pending-abstract-reference"))
+            url: new Uri("http://ignixa.test/SearchParameter/pending-reference"))
         {
             IsSearchable = false,
         };
@@ -139,18 +64,12 @@ public class ParameterOutcomeTests
         context.DefinitionManager.AllSearchParameters.Returns([pending]);
         context.DefinitionManager.GetAllKnownSearchParameters().Returns([pending]);
         context.DefinitionManager.GetAllKnownSearchParameters(sourceResourceType).Returns([pending]);
-        var definitions = new SearchableSearchParameterDefinitionManager(
-            context.DefinitionManager,
-            () => usePartialIndices);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
 
-        var options = builder.Build("Patient", [new QueryParameter(parameterName, parameterValue)]);
+        var options = Build(context, usePartialIndices, "Patient", [new QueryParameter(parameterName, parameterValue)]);
 
         options.ResolvedSearchParameters.ShouldContain(parameter => ReferenceEquals(parameter, pending));
         options.BundleIssues.ShouldContain(issue => issue.Diagnostics ==
-            "Search results may be incomplete because search parameter 'pending-abstract-reference' is pending reindex.");
+            "Search results may be incomplete because search parameter 'pending-reference' is pending reindex.");
     }
 
     [Theory]
@@ -164,14 +83,8 @@ public class ParameterOutcomeTests
         var enabled = context.Add("Patient", "custom", SearchParamType.String, url: canonical);
         var pending = context.Add("Observation", "custom", SearchParamType.String, url: canonical);
         pending.IsSearchable = false;
-        var definitions = new SearchableSearchParameterDefinitionManager(
-            context.DefinitionManager,
-            () => usePartialIndices);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
 
-        var options = builder.Build(null,
+        var options = Build(context, usePartialIndices, null,
         [
             new QueryParameter("_type", "Patient,Observation"),
             new QueryParameter("_sort", "custom"),
@@ -208,12 +121,7 @@ public class ParameterOutcomeTests
             "custom",
             SearchParamType.String,
             url: new Uri("http://ignixa.test/SearchParameter/observation-custom"));
-        var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
-
-        Should.Throw<BadSearchRequestException>(() => builder.Build(null,
+        Should.Throw<BadSearchRequestException>(() => Build(context, usePartialIndices: false, null,
         [
             new QueryParameter("_type", "Patient,Observation"),
             new QueryParameter("_sort", "custom"),
@@ -255,14 +163,8 @@ public class ParameterOutcomeTests
     {
         var context = new SearchParserTestContext();
         var (resourceType, parameters) = AddHiddenParameter(context, form, isSupported: isPending);
-        var definitions = new SearchableSearchParameterDefinitionManager(
-            context.DefinitionManager,
-            () => usePartialIndices);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
 
-        var options = builder.Build(resourceType, parameters);
+        var options = Build(context, usePartialIndices, resourceType, parameters);
 
         options.BundleIssues.ShouldContain(issue => issue.Diagnostics == expectedDiagnostics);
     }
@@ -307,100 +209,53 @@ public class ParameterOutcomeTests
         trace.KeySyntax.Children.ShouldHaveSingleItem();
     }
 
+    private static SearchOptions Build(
+        SearchParserTestContext context,
+        bool usePartialIndices,
+        string? resourceType,
+        IReadOnlyList<QueryParameter> parameters)
+    {
+        var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager, () => usePartialIndices);
+        return new SearchOptionsBuilder(
+                new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
+                definitions)
+            .Build(resourceType, parameters);
+    }
+
+    // Registers a hidden "pending" parameter where the search form resolves it, and returns that form's query.
     private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddHiddenParameter(
         SearchParserTestContext context,
         string form,
         bool isSupported)
     {
-        SearchParameterInfo AddHidden(string resourceType, SearchParamType type, string[]? targets = null)
+        (string HiddenOn, SearchParamType Type, string[]? Targets, string? ResourceType, string Name, string Value) query = form switch
         {
-            var pending = context.Add(resourceType, "pending", type, targets);
-            pending.IsSearchable = false;
-            pending.IsSupported = isSupported;
-            pending.IsHiddenByTransition = !isSupported;
-            return pending;
-        }
-
-        return form switch
-        {
-            "direct" => Direct(),
-            "forward-chain" => ForwardChain(),
-            "reverse-chain" => ReverseChain(),
-            "include" => Include(),
-            "revinclude" => RevInclude(),
-            "wildcard-include" => WildcardInclude(),
-            "wildcard-revinclude" => WildcardRevInclude(),
-            "sort" => Sort(),
-
-            "system" => AddSystemPendingParameter(context, isSupported),
-
+            "direct" => ("Patient", SearchParamType.String, null, "Patient", "pending", "Smith"),
+            "forward-chain" => ("Patient", SearchParamType.String, null, "Observation", "subject:Patient.pending", "Smith"),
+            "reverse-chain" => ("Observation", SearchParamType.String, null, "Patient", "_has:Observation:subject:pending", "Smith"),
+            "include" => ("Observation", SearchParamType.Reference, ["Patient"], "Observation", "_include", "Observation:pending:Patient"),
+            "revinclude" => ("Observation", SearchParamType.Reference, ["Patient"], "Patient", "_revinclude", "Observation:pending:Patient"),
+            "wildcard-include" => ("Patient", SearchParamType.Reference, ["Organization"], "Patient", "_include", "Patient:*"),
+            "wildcard-revinclude" => ("Observation", SearchParamType.Reference, ["Patient"], "Patient", "_revinclude", "Observation:*"),
+            "sort" => ("Patient", SearchParamType.String, null, "Patient", "_sort", "pending"),
+            "system" => ("Patient", SearchParamType.String, null, null, "pending", "Smith"),
             _ => throw new ArgumentOutOfRangeException(nameof(form), form, "Unknown search form."),
         };
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Direct()
-        {
-            AddHidden("Patient", SearchParamType.String);
-            return ("Patient", [new QueryParameter("pending", "Smith")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) ForwardChain()
+        if (form is "forward-chain" or "reverse-chain")
         {
             context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
-            AddHidden("Patient", SearchParamType.String);
-            return ("Observation", [new QueryParameter("subject:Patient.pending", "Smith")]);
         }
 
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) ReverseChain()
-        {
-            context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
-            AddHidden("Observation", SearchParamType.String);
-            return ("Patient", [new QueryParameter("_has:Observation:subject:pending", "Smith")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Include()
-        {
-            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
-            return ("Observation", [new QueryParameter("_include", "Observation:pending:Patient")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) RevInclude()
-        {
-            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
-            return ("Patient", [new QueryParameter("_revinclude", "Observation:pending:Patient")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) WildcardInclude()
-        {
-            AddHidden("Patient", SearchParamType.Reference, ["Organization"]);
-            return ("Patient", [new QueryParameter("_include", "Patient:*")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) WildcardRevInclude()
-        {
-            AddHidden("Observation", SearchParamType.Reference, ["Patient"]);
-            return ("Patient", [new QueryParameter("_revinclude", "Observation:*")]);
-        }
-
-        (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) Sort()
-        {
-            AddHidden("Patient", SearchParamType.String);
-            return ("Patient", [new QueryParameter("_sort", "pending")]);
-        }
-    }
-
-    private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddSystemPendingParameter(
-        SearchParserTestContext context,
-        bool isSupported)
-    {
-        var pending = context.Add("Patient", "pending", SearchParamType.String);
+        var pending = context.Add(query.HiddenOn, "pending", query.Type, query.Targets);
         pending.IsSearchable = false;
         pending.IsSupported = isSupported;
         pending.IsHiddenByTransition = !isSupported;
-        context.AddCommon(pending, "Patient", "Observation");
+        if (form == "system")
+        {
+            context.AddCommon(pending, "Patient", "Observation");
+            return (null, [new QueryParameter("_type", "Patient,Observation"), new QueryParameter("pending", "Smith")]);
+        }
 
-        return (null, [
-            new QueryParameter("_type", "Patient,Observation"),
-            new QueryParameter("pending", "Smith"),
-        ]);
+        return (query.ResourceType, [new QueryParameter(query.Name, query.Value)]);
     }
 }

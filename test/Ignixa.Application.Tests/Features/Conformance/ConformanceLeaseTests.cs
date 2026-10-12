@@ -1,8 +1,6 @@
 using Ignixa.Application.Features.Conformance;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using NSubstitute;
 using Shouldly;
 using Xunit;
 
@@ -11,17 +9,17 @@ namespace Ignixa.Application.Tests.Features.Conformance;
 public class ConformanceLeaseTests
 {
     [Fact]
-    public void GivenSyncSucceedsAfterWork_WhenLeaseIsRenewed_ThenAgeIncludesTheSyncDuration()
+    public void GivenNoSyncThenOneThatSucceedsAfterWork_WhenLeaseIsRenewed_ThenItIsHeldOnlyWithinMaxStalenessOfTheSyncStart()
     {
         var clock = new ManualTimeProvider();
-        var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
-            clock,
-            NullLogger<ConformanceLease>.Instance);
+        var lease = CreateLease(clock);
+        lease.IsHeld.ShouldBeFalse("no sync has succeeded yet");
+        lease.Age.ShouldBe(TimeSpan.MaxValue);
         var syncStart = lease.CaptureStart();
 
         clock.Advance(TimeSpan.FromSeconds(4));
         lease.Renew(syncStart);
+        lease.IsHeld.ShouldBeTrue();
         clock.Advance(TimeSpan.FromSeconds(7));
 
         lease.IsHeld.ShouldBeFalse();
@@ -29,69 +27,10 @@ public class ConformanceLeaseTests
     }
 
     [Fact]
-    public void GivenNoSuccessfulSync_WhenLeaseIsQueried_ThenItIsNotHeld()
-    {
-        var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
-            new ManualTimeProvider(),
-            NullLogger<ConformanceLease>.Instance);
-
-        lease.IsHeld.ShouldBeFalse();
-        lease.Age.ShouldBe(TimeSpan.MaxValue);
-    }
-
-    [Fact]
-    public void GivenSyncExceedsMaxStaleness_WhenLeaseIsRenewed_ThenTheLossIsObservedWithoutARequest()
-    {
-        var clock = new ManualTimeProvider();
-        var logger = Substitute.For<ILogger<ConformanceLease>>();
-        var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
-            clock,
-            logger);
-        lease.Renew(lease.CaptureStart());
-        var syncStart = lease.CaptureStart();
-
-        clock.Advance(TimeSpan.FromSeconds(11));
-        lease.Renew(syncStart);
-
-        logger.ReceivedCalls()
-            .Count(call => Equals(call.GetArguments()[0], LogLevel.Warning))
-            .ShouldBe(1);
-    }
-
-    [Fact]
-    public void GivenHeldLeaseExpires_WhenObserved_ThenTheLossIsLoggedOnceAndTheRegainIsLogged()
-    {
-        var clock = new ManualTimeProvider();
-        var logger = Substitute.For<ILogger<ConformanceLease>>();
-        var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
-            clock,
-            logger);
-        lease.Renew(lease.CaptureStart());
-        clock.Advance(TimeSpan.FromSeconds(11));
-
-        lease.Observe();
-        lease.Observe();
-        lease.Renew(lease.CaptureStart());
-
-        logger.ReceivedCalls()
-            .Count(call => Equals(call.GetArguments()[0], LogLevel.Warning))
-            .ShouldBe(1);
-        logger.ReceivedCalls()
-            .Count(call => Equals(call.GetArguments()[0], LogLevel.Information))
-            .ShouldBe(1);
-    }
-
-    [Fact]
     public void GivenNewerRenewal_WhenAnOlderStartRenewsLater_ThenTheLeaseKeepsTheNewerStart()
     {
         var clock = new ManualTimeProvider();
-        var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
-            clock,
-            NullLogger<ConformanceLease>.Instance);
+        var lease = CreateLease(clock);
         var olderStart = lease.CaptureStart();
         clock.Advance(TimeSpan.FromSeconds(8));
         var newerStart = lease.CaptureStart();
@@ -115,14 +54,7 @@ public class ConformanceLeaseTests
         bool held,
         bool expectRejected)
     {
-        var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions
-            {
-                MaxStaleness = TimeSpan.FromSeconds(10),
-                SyncIntervalSeconds = 7,
-            }),
-            new ManualTimeProvider(),
-            NullLogger<ConformanceLease>.Instance);
+        var lease = CreateLease(new ManualTimeProvider());
         if (held)
         {
             lease.Renew(lease.CaptureStart());
@@ -139,6 +71,17 @@ public class ConformanceLeaseTests
             exception.ShouldBeNull();
         }
     }
+
+    // Ten seconds of allowed staleness; a stale request is told to retry after one seven-second sync interval.
+    private static ConformanceLease CreateLease(TimeProvider clock) =>
+        new(
+            Options.Create(new ConformanceTransitionOptions
+            {
+                MaxStaleness = TimeSpan.FromSeconds(10),
+                SyncIntervalSeconds = 7,
+            }),
+            clock,
+            NullLogger<ConformanceLease>.Instance);
 
     private sealed class ManualTimeProvider : TimeProvider
     {

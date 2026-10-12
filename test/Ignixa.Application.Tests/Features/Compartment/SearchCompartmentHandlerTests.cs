@@ -50,12 +50,15 @@ public class SearchCompartmentHandlerTests
             _logger);
     }
 
+    // M-L6: compartment membership comes from the searchable snapshot; a hidden member parameter is reported.
     [Theory]
-    [InlineData(HiddenMembershipScenario.Disabling, "is being redefined")]
-    [InlineData(HiddenMembershipScenario.Pending, "is pending reindex")]
-    public async Task GivenAMembershipParameterIsHidden_WhenTheCompartmentIsSearched_ThenTheBundleWarnsNamingIt(
+    [InlineData(HiddenMembershipScenario.Disabling, "Observation", "is being redefined")]
+    [InlineData(HiddenMembershipScenario.Pending, "Observation", "is pending reindex")]
+    [InlineData(HiddenMembershipScenario.Pending, "Condition", null)]
+    public async Task GivenAMembershipParameterIsHidden_WhenTheCompartmentIsSearched_ThenTheBundleWarnsOnlyForTheAffectedType(
         HiddenMembershipScenario scenario,
-        string expectedReason)
+        string resourceType,
+        string? expectedReason)
     {
         SetupDefaultMocks(fhirVersion: "4.0");
         var handler = new SearchCompartmentHandler(
@@ -66,32 +69,21 @@ public class SearchCompartmentHandlerTests
             _logger);
 
         var result = await handler.HandleAsync(
-            new SearchCompartmentQuery("Patient", "123", "Observation", new SearchOptions()),
+            new SearchCompartmentQuery("Patient", "123", resourceType, new SearchOptions()),
             CancellationToken.None);
 
-        var issue = result.SearchOptions.ShouldNotBeNull().BundleIssues.ShouldHaveSingleItem();
+        var issues = result.SearchOptions.ShouldNotBeNull().BundleIssues;
+        if (expectedReason is null)
+        {
+            issues.ShouldBeEmpty();
+            return;
+        }
+
+        var issue = issues.ShouldHaveSingleItem();
         issue.Severity.ShouldBe("warning");
         issue.Code.ShouldBe("incomplete");
         issue.Diagnostics.ShouldContain("'Observation.subject'");
         issue.Diagnostics.ShouldContain(expectedReason);
-    }
-
-    [Fact]
-    public async Task GivenAMembershipParameterIsHiddenOnAnotherMemberType_WhenOneTypeIsSearched_ThenNoWarningIsRaised()
-    {
-        SetupDefaultMocks(fhirVersion: "4.0");
-        var handler = new SearchCompartmentHandler(
-            _partitionStrategy,
-            _executionStrategy,
-            _contextAccessor,
-            await HiddenMembershipFixture.CreateVersionContextAsync(HiddenMembershipScenario.Pending),
-            _logger);
-
-        var result = await handler.HandleAsync(
-            new SearchCompartmentQuery("Patient", "123", "Condition", new SearchOptions()),
-            CancellationToken.None);
-
-        result.SearchOptions.ShouldNotBeNull().BundleIssues.ShouldBeEmpty();
     }
 
     private static readonly int[] SinglePartitionArray = new[] { 1 };

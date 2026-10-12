@@ -41,9 +41,9 @@ public class ConditionalSearchParameterValidationTests
         CriteriaScenario scenario,
         string expectedMessage)
     {
-        var searchOptions = CreateSearchOptions(scenario);
+        var mediator = Substitute.For<IMediator>();
 
-        foreach (var (operation, execute, mediator) in CreateHandlers(searchOptions))
+        foreach (var (operation, execute) in CreateHandlers(CreateSearchOptions(scenario), mediator))
         {
             var exception = await Should.ThrowAsync<BadRequestException>(execute);
 
@@ -72,7 +72,7 @@ public class ConditionalSearchParameterValidationTests
         };
     }
 
-    private static IReadOnlyList<(string Operation, Func<Task> Execute, IMediator Mediator)> CreateHandlers(SearchOptions searchOptions)
+    private static IReadOnlyList<(string Operation, Func<Task> Execute)> CreateHandlers(SearchOptions searchOptions, IMediator mediator)
     {
         var builder = Substitute.For<ISearchOptionsBuilder>();
         builder.Build(Arg.Any<string?>(), Arg.Any<IReadOnlyList<QueryParameter>>(), Arg.Any<ISchema?>(), Arg.Any<IList<ParameterTrace>?>())
@@ -85,63 +85,25 @@ public class ConditionalSearchParameterValidationTests
         parser.Parse(Arg.Any<string>()).Returns([new QueryParameter("pending", "value")]);
 
         var contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
-        contextAccessor.RequestContext.Returns(new FhirRequestContext
-        {
-            TenantId = 1,
-            FhirVersion = FhirVersion.R4,
-        });
+        contextAccessor.RequestContext.Returns(new FhirRequestContext { TenantId = 1, FhirVersion = FhirVersion.R4 });
 
-        var deleteMediator = Substitute.For<IMediator>();
-        var createMediator = Substitute.For<IMediator>();
-        var patchMediator = Substitute.For<IMediator>();
-        var updateMediator = Substitute.For<IMediator>();
-        var repositoryFactory = Substitute.For<IFhirRepositoryFactory>();
+        var repositories = Substitute.For<IFhirRepositoryFactory>();
+        var streams = new RecyclableMemoryStreamManager();
 
         return
         [
-            (
-                "conditional delete",
-                () => new ConditionalDeleteHandler(
-                    deleteMediator,
-                    parser,
-                    factory,
-                    contextAccessor,
-                    NullLogger<ConditionalDeleteHandler>.Instance)
-                    .HandleAsync(new ConditionalDeleteCommand(1, "Patient", "pending=value"), CancellationToken.None),
-                deleteMediator),
-            (
-                "conditional create",
-                () => new ConditionalCreateHandler(
-                    createMediator,
-                    repositoryFactory,
-                    parser,
-                    factory,
-                    new RecyclableMemoryStreamManager(),
-                    contextAccessor,
-                    NullLogger<ConditionalCreateHandler>.Instance)
-                    .HandleAsync(new ConditionalCreateCommand(1, "Patient", "pending=value", null!), CancellationToken.None),
-                createMediator),
-            (
-                "conditional patch",
-                () => new ConditionalPatchHandler(
-                    patchMediator,
-                    parser,
-                    factory,
-                    contextAccessor,
-                    NullLogger<ConditionalPatchHandler>.Instance)
-                    .HandleAsync(new ConditionalPatchCommand(1, "Patient", "pending=value", null!), CancellationToken.None),
-                patchMediator),
-            (
-                "conditional update",
-                () => new ConditionalUpdateHandler(
-                    updateMediator,
-                    repositoryFactory,
-                    parser,
-                    factory,
-                    contextAccessor,
-                    NullLogger<ConditionalUpdateHandler>.Instance)
-                    .HandleAsync(new ConditionalUpdateCommand(1, "Patient", "pending=value", null!), CancellationToken.None),
-                updateMediator),
+            ("conditional delete", () => new ConditionalDeleteHandler(
+                    mediator, parser, factory, contextAccessor, NullLogger<ConditionalDeleteHandler>.Instance)
+                .HandleAsync(new ConditionalDeleteCommand(1, "Patient", "pending=value"), CancellationToken.None)),
+            ("conditional create", () => new ConditionalCreateHandler(
+                    mediator, repositories, parser, factory, streams, contextAccessor, NullLogger<ConditionalCreateHandler>.Instance)
+                .HandleAsync(new ConditionalCreateCommand(1, "Patient", "pending=value", null!), CancellationToken.None)),
+            ("conditional patch", () => new ConditionalPatchHandler(
+                    mediator, parser, factory, contextAccessor, NullLogger<ConditionalPatchHandler>.Instance)
+                .HandleAsync(new ConditionalPatchCommand(1, "Patient", "pending=value", null!), CancellationToken.None)),
+            ("conditional update", () => new ConditionalUpdateHandler(
+                    mediator, repositories, parser, factory, contextAccessor, NullLogger<ConditionalUpdateHandler>.Instance)
+                .HandleAsync(new ConditionalUpdateCommand(1, "Patient", "pending=value", null!), CancellationToken.None)),
         ];
     }
 }

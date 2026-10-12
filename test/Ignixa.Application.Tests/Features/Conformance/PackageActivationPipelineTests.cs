@@ -1,154 +1,116 @@
-using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Search.Definition;
-using Ignixa.Specification.ValueSets.Normative;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
+using static Ignixa.Application.Tests.Features.Conformance.TestPackages;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
 public class PackageActivationPipelineTests
 {
-    private const string BaseCanonical = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
-    private const string OverrideCanonical = "http://example.org/SearchParameter/Patient-identifier";
-
-    [Fact]
-    public async Task GivenInProcessBaseCode_WhenShadowed_ThenBaseIsMaterialisedAndOverrideIsStaged()
+    // B-L2: an override is staged under the base's storage identity, whether or not it names it in derivedFrom.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GivenInProcessBaseCode_WhenShadowed_ThenOverrideIsStagedUnderTheBaseIdentityAndTheHiddenCodeIsReported(bool derivedFrom)
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.override",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource()]);
-        var persistedEvents = new List<SourceEvent>();
-        var eventStore = CreateEventStore(persistedEvents);
-        using var state = new ConformanceState();
-        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            eventStore,
-            state,
-            transitionScheduler,
-            TestConformanceRefresher.Tenants());
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(Shadow(derivedFrom: derivedFrom ? BaseIdentifier : null));
 
-        var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
+        var result = await ActivateAsync(pipeline, "test.override");
 
         result.Success.ShouldBeTrue();
-        var activations = persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>().ToArray();
+        result.PendingReindex.ShouldBeEmpty();
+        var hidden = result.Issues.ShouldHaveSingleItem();
+        hidden.Code.ShouldBe(PackageActivationPipeline.TransitionPendingCode);
+        hidden.Severity.ShouldBe(ActivationIssueSeverity.Warning);
+        hidden.Message.ShouldContain("Patient.identifier");
+        hidden.Message.ShouldContain(TestPackageActivationPipeline.TransitionGrace.ToString());
+        hidden.Message.ShouldContain("reindex");
+        var activations = harness.Activations.ToArray();
         activations.Length.ShouldBe(2);
-        activations[0].Canonical.ShouldBe(BaseCanonical);
-        activations[0].SourcePackage.ShouldBe("hl7.fhir.r4.core@4.0.1");
-        activations[1].Overrides!.OverridesCanonical.ShouldBe(BaseCanonical);
+        activations[0].Canonical.ShouldBe(BaseIdentifier);
+        activations[0].SourcePackage.ShouldBe(CorePackage);
+        activations[1].Overrides!.OverridesCanonical.ShouldBe(BaseIdentifier);
         activations[1].SearchParamId.ShouldBe(activations[0].SearchParamId);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-        await transitionScheduler.Received(1).ScheduleAsync(
-            Arg.Any<long>(),
-            Arg.Any<TimeSpan>(),
-            CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task GivenInProcessBaseCodeWithoutDerivedFrom_WhenShadowed_ThenItUsesTheBaseIdentity()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.override",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource(includeDerivedFrom: false)]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-
-        var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
-
-        result.Success.ShouldBeTrue();
-        var activations = persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>().ToArray();
-        activations.Length.ShouldBe(2);
-        activations[1].Overrides!.OverridesCanonical.ShouldBe(BaseCanonical);
-        activations[1].SearchParamId.ShouldBe(activations[0].SearchParamId);
+        harness.State.FindByCanonical(BaseIdentifier)!.Status.ShouldBe(SearchParameterStatus.Disabling);
+        harness.State.FindByCanonical(Canonical("test.override"))!.Status.ShouldBe(SearchParameterStatus.Staged);
+        await harness.Scheduler.Received(1).ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), CancellationToken.None);
     }
 
     [Fact]
     public async Task GivenBaseWasMaterialisedByEarlierShadowing_WhenShadowedAgain_ThenNoSecondBaseActivationIsEmitted()
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                Arg.Any<string>(),
-                Arg.Any<string>(),
-                Arg.Any<CancellationToken>())
-            .Returns(call => [CreateOverrideResource(
-                packageId: call.ArgAt<string>(0),
-                canonical: $"http://example.org/SearchParameter/{call.ArgAt<string>(0)}",
-                derivedFrom: call.ArgAt<string>(0) == "test.second"
-                    ? "http://example.org/SearchParameter/test.first"
-                    : null)]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(
+            Shadow("test.first", derivedFrom: null),
+            Shadow("test.second", derivedFrom: Canonical("test.first")));
 
-        (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
-        (await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
+        (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
+        (await ActivateAsync(pipeline, "test.second")).Success.ShouldBeTrue();
 
-        persistedEvents.Select(row => row.Data)
-            .OfType<SearchParameterActivated>()
-            .Count(activation => activation.Canonical == BaseCanonical)
-            .ShouldBe(1);
+        harness.Activations.Count(activation => activation.Canonical == BaseIdentifier).ShouldBe(1);
     }
 
-    [Fact]
-    public async Task GivenOneBaseCanonicalOnTwoTypes_WhenEachTypeIsShadowed_ThenBothUseTheSameIdentity()
+    // M-L3: a parameter on several base types resolves one storage identity, including types with no base code.
+    [Theory]
+    [InlineData("_tag", "Resource.meta.tag", "Patient", "Practitioner")]
+    [InlineData("identifier", "Resource.identifier", "Patient", "Binary")]
+    [InlineData("identifier", "Resource.identifier", "Binary", "Patient")]
+    public async Task GivenAMultiBaseShadow_WhenActivated_ThenEveryBaseTypeSharesOneStorageIdentity(
+        string code,
+        string expression,
+        string firstBaseType,
+        string secondBaseType)
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.override",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource(
-                canonical: "http://example.org/SearchParameter/resource-tag",
-                baseTypes: ["Patient", "Practitioner"],
-                code: "_tag",
-                expression: "Resource.meta.tag",
-                includeDerivedFrom: false)]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(SearchParameter(
+            "test.multi-base",
+            Canonical("multi"),
+            code,
+            [firstBaseType, secondBaseType],
+            expression));
 
-        var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
+        var result = await ActivateAsync(pipeline, "test.multi-base");
 
         result.Success.ShouldBeTrue();
-        var overrides = persistedEvents.Select(row => row.Data)
-            .OfType<SearchParameterActivated>()
-            .Where(activation => activation.SourcePackage == "test.override@1.0.0")
-            .ToArray();
-        overrides.Length.ShouldBe(2);
-        overrides.Select(activation => activation.SearchParamId).Distinct().ShouldHaveSingleItem();
+        var shadows = harness.Activations.Where(activation => activation.SourcePackage == "test.multi-base@1.0.0").ToArray();
+        shadows.Length.ShouldBe(2);
+        var identity = shadows.Select(activation => activation.SearchParamId).Distinct().ShouldHaveSingleItem();
+        harness.Activations.Where(activation => activation.SourcePackage == CorePackage)
+            .ShouldAllBe(activation => activation.SearchParamId == identity);
+    }
+
+    [Theory]
+    [InlineData("Patient", "Practitioner", false)]
+    [InlineData("Patient", "Practitioner", true)]
+    [InlineData("Practitioner", "Patient", true)]
+    public async Task GivenBaseTypesResolveDifferentStorageRoots_WhenActivatedInAnyOrder_ThenMixedBaseShadowIsRejected(
+        string firstBaseType,
+        string secondBaseType,
+        bool patientAlreadyOverridden)
+    {
+        using var harness = new Harness();
+        if (patientAlreadyOverridden)
+        {
+            harness.Seed(Activated(BaseIdentifier, "identifier", 1, package: CorePackage));
+            harness.Seed(Activated(Canonical("existing"), "identifier", 1, BaseIdentifier, "existing.owner@1.0.0"));
+        }
+
+        var pipeline = harness.Pipeline(SearchParameter(
+            "test.multi-base",
+            Canonical("multi"),
+            baseTypes: [firstBaseType, secondBaseType]));
+
+        var result = await ActivateAsync(pipeline, "test.multi-base");
+
+        result.Success.ShouldBeFalse();
+        result.Issues.ShouldContain(issue => issue.Code == "SP_MIXED_BASE_SHADOW");
     }
 
     [Fact]
@@ -157,70 +119,10 @@ public class PackageActivationPipelineTests
         var duringTransition = await ActivateSecondShadowAsync(commitFirstTransition: false);
         var afterTransition = await ActivateSecondShadowAsync(commitFirstTransition: true);
 
-        duringTransition.Success.ShouldBe(afterTransition.Success);
-        duringTransition.Issues.Select(issue => issue.Code)
-            .ShouldBe(afterTransition.Issues.Select(issue => issue.Code));
         duringTransition.Success.ShouldBeFalse();
         duringTransition.Issues.ShouldContain(issue => issue.Code == "SP_CONFLICT");
-    }
-
-    [Theory]
-    [InlineData("Patient", "Binary")]
-    [InlineData("Binary", "Patient")]
-    public async Task GivenSomeBaseTypesHaveNoBaseCode_WhenActivated_ThenAllTypesShareTheResolvedBaseIdentity(
-        string firstBaseType,
-        string secondBaseType)
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.multi-base",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource(
-                packageId: "test.multi-base",
-                canonical: "http://example.org/SearchParameter/multi-identifier",
-                baseTypes: [firstBaseType, secondBaseType],
-                includeDerivedFrom: false)]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-
-        var result = await pipeline.ActivateAsync("test.multi-base", "1.0.0", CancellationToken.None);
-
-        result.Success.ShouldBeTrue();
-        var activations = persistedEvents.Select(row => row.Data).OfType<SearchParameterActivated>().ToArray();
-        var baseActivation = activations.Single(activation => activation.SourcePackage == "hl7.fhir.r4.core@4.0.1");
-        var shadows = activations.Where(activation => activation.SourcePackage == "test.multi-base@1.0.0").ToArray();
-        shadows.Length.ShouldBe(2);
-        shadows.ShouldAllBe(activation => activation.SearchParamId == baseActivation.SearchParamId);
-        shadows.ShouldAllBe(activation => activation.Overrides!.OverridesCanonical == BaseCanonical);
-    }
-
-    [Fact]
-    public async Task GivenBaseTypesResolveDifferentCanonicals_WhenActivated_ThenMixedBaseShadowIsRejected()
-    {
-        var result = await ActivateMultiBaseAsync(["Patient", "Practitioner"]);
-
-        result.Success.ShouldBeFalse();
-        result.Issues.ShouldContain(issue => issue.Code == "SP_MIXED_BASE_SHADOW");
-    }
-
-    [Theory]
-    [InlineData("Patient", "Practitioner")]
-    [InlineData("Practitioner", "Patient")]
-    public async Task GivenOneBaseTypeIsAlreadyOwned_WhenBaseOrderChanges_ThenMixedRootOutcomeIsStable(
-        string firstBaseType,
-        string secondBaseType)
-    {
-        var result = await ActivateMultiBaseAsync([firstBaseType, secondBaseType], preOwnPatient: true);
-
-        result.Success.ShouldBeFalse();
-        result.Issues.ShouldContain(issue => issue.Code == "SP_MIXED_BASE_SHADOW");
+        afterTransition.Success.ShouldBe(duringTransition.Success);
+        afterTransition.Issues.Select(issue => issue.Code).ShouldBe(duringTransition.Issues.Select(issue => issue.Code));
     }
 
     [Fact]
@@ -229,142 +131,70 @@ public class PackageActivationPipelineTests
         var duringRemoval = await ActivateSecondShadowDuringRemovalAsync(commitRestoration: false);
         var afterRemoval = await ActivateSecondShadowDuringRemovalAsync(commitRestoration: true);
 
-        duringRemoval.Success.ShouldBe(
-            afterRemoval.Success,
-            string.Join("; ", duringRemoval.Issues.Select(issue => $"{issue.Code}: {issue.Message}")));
-        duringRemoval.Issues.Select(issue => issue.Code)
-            .ShouldBe(afterRemoval.Issues.Select(issue => issue.Code));
-        afterRemoval.Success.ShouldBeTrue(string.Join("; ", afterRemoval.Issues.Select(issue => $"{issue.Code}: {issue.Message}")));
+        afterRemoval.Success.ShouldBeTrue(Describe(afterRemoval));
+        duringRemoval.Success.ShouldBeTrue(Describe(duringRemoval));
+        duringRemoval.Issues.Select(issue => issue.Code).ShouldBe(afterRemoval.Issues.Select(issue => issue.Code));
     }
 
+    // N4: definitions are partitioned by FHIR version; one code cannot be owned by two versions.
     [Fact]
     public async Task GivenR4PackageOwnsACode_WhenAnR5PackageRedefinesIt_ThenActivationIsRejectedAsAVersionConflict()
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                Arg.Any<string>(),
-                Arg.Any<string>(),
-                Arg.Any<CancellationToken>())
-            .Returns(call => [CreateOverrideResource(
-                packageId: call.ArgAt<string>(0),
-                canonical: $"http://example.org/SearchParameter/{call.ArgAt<string>(0)}",
-                includeDerivedFrom: false,
-                fhirVersion: call.ArgAt<string>(0) == "test.r5" ? "5.0.0" : "4.0.1")]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-        (await pipeline.ActivateAsync("test.r4", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
-        var eventCount = persistedEvents.Count;
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(
+            SearchParameter("test.r4", Canonical("test.r4")),
+            SearchParameter("test.r5", Canonical("test.r5"), fhirVersion: "5.0.0"));
+        (await ActivateAsync(pipeline, "test.r4")).Success.ShouldBeTrue();
+        var eventCount = harness.Log.Events.Count;
 
-        var result = await pipeline.ActivateAsync("test.r5", "1.0.0", CancellationToken.None);
+        var result = await ActivateAsync(pipeline, "test.r5");
 
         result.Success.ShouldBeFalse();
         var issue = result.Issues.ShouldHaveSingleItem();
         issue.Code.ShouldBe("SP_FHIR_VERSION_CONFLICT");
         issue.Message.ShouldContain("FHIR 4.0");
         issue.Message.ShouldContain("FHIR 5.0");
-        persistedEvents.Count.ShouldBe(eventCount);
-        persistedEvents.Select(row => row.Data)
-            .OfType<SearchParameterActivated>()
-            .ShouldAllBe(activation => activation.FhirVersion == "4.0");
+        harness.Log.Events.Count.ShouldBe(eventCount);
+        harness.Activations.ShouldAllBe(activation => activation.FhirVersion == "4.0");
     }
 
     [Fact]
     public async Task GivenUnknownFhirVersionWithSearchParameters_WhenActivated_ThenItIsRejected()
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.future",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource(
-                packageId: "test.future",
-                canonical: "http://example.org/SearchParameter/future-identifier",
-                includeDerivedFrom: false,
-                fhirVersion: "99.0.0")]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(SearchParameter("test.future", Canonical("future"), fhirVersion: "99.0.0"));
 
-        var result = await pipeline.ActivateAsync("test.future", "1.0.0", CancellationToken.None);
+        var result = await ActivateAsync(pipeline, "test.future");
 
         result.Success.ShouldBeFalse();
         result.Issues.ShouldContain(issue => issue.Code == "SP_UNKNOWN_FHIR_VERSION");
-        persistedEvents.ShouldBeEmpty();
+        harness.Log.Events.ShouldBeEmpty();
     }
 
-    [Fact]
-    public async Task GivenUnavailableOwnerWithoutReplacement_WhenAnotherPackageActivates_ThenValidationIsSkipped()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenADeactivatedOwnerLeftInTheLookup_WhenAnotherPackageClaimsItsCode_ThenRootResolutionIgnoresIt(
+        bool deactivationCommitted)
     {
-        var result = await ActivateAgainstDisabledLeftoverAsync(commitDeactivation: false);
+        const string oldCanonical = "http://example.org/SearchParameter/old-custom";
+        using var harness = new Harness();
+        harness.Seed(Activated(oldCanonical, "custom-code", 1, package: "test.old@1.0.0", expression: "Patient.active"));
+        harness.Seed(PackageActivated("test.old", "1.0.0", oldCanonical));
+        harness.Seed(PackageDeactivated("test.old", "1.0.0"));
+        if (deactivationCommitted)
+        {
+            var outgoing = harness.State.GetSearchParameter("Patient", "custom-code")!;
+            harness.Seed(new SearchParameterTransitionCommitted(outgoing.SearchParamId, [], [outgoing.DeactivationEventId!.Value]));
+            harness.State.GetSearchParameter("Patient", "custom-code")!.Status.ShouldBe(SearchParameterStatus.Disabled);
+        }
 
-        result.Success.ShouldBeTrue();
-    }
+        var pipeline = harness.Pipeline(SearchParameter("test.new", Canonical("new-custom"), "custom-code", expression: "Patient.active"));
 
-    [Fact]
-    public async Task GivenDisabledOwnerLeftInLookup_WhenAnotherPackageActivates_ThenRootResolutionIgnoresIt()
-    {
-        var result = await ActivateAgainstDisabledLeftoverAsync(commitDeactivation: true);
+        var result = await ActivateAsync(pipeline, "test.new");
 
-        result.Success.ShouldBeTrue();
-        result.PendingReindex.ShouldContain("Patient");
-    }
-
-    [Fact]
-    public async Task GivenActivationCreatesPendingParameter_WhenActivated_ThenAutomaticReindexOutcomeIsReturned()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.custom",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateCustomResource()]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                0,
-                Arg.Any<CancellationToken>())
-            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
-                .Select((sourceEvent, index) => new SourceEvent(
-                    index + 1,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray());
-        using var state = new ConformanceState();
-        var trigger = Substitute.For<IReindexTrigger>();
-        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new ReindexTriggerResult("job-1", false, null));
-        var refreshTenants = TestConformanceRefresher.Tenants();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            eventStore,
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            refreshTenants,
-            reindexTrigger: trigger);
-
-        var result = await pipeline.ActivateAsync(
-            "test.custom",
-            "1.0.0",
-            CancellationToken.None);
-
-        result.PendingReindex.ShouldNotBeEmpty();
-        result.ReindexJobId.ShouldBe("job-1");
-        await trigger.Received(1).RequestReindexAsync(
-            Arg.Is<string>(value => value.Contains("test.custom", StringComparison.Ordinal)),
-            CancellationToken.None);
+        result.Success.ShouldBeTrue(Describe(result));
+        result.PendingReindex.ShouldBe(deactivationCommitted ? ["Patient"] : []);
     }
 
     public enum FollowUpFailure
@@ -377,6 +207,7 @@ public class PackageActivationPipelineTests
         TransitionSchedulerProgrammerError,
     }
 
+    // N2: once the activation is durable, an operational follow-up failure is a warning, not a lost activation.
     [Theory]
     [InlineData(FollowUpFailure.ReindexTriggerDeferred, PackageActivationPipeline.ReindexTriggerDeferredCode)]
     [InlineData(FollowUpFailure.RefreshDependencyUnavailable, PackageActivationPipeline.RefreshDeferredCode)]
@@ -385,20 +216,21 @@ public class PackageActivationPipelineTests
         FollowUpFailure failure,
         string expectedCode)
     {
-        using var state = new ConformanceState();
+        using var harness = new Harness();
         var lease = TestConformanceLease.NotHeld();
-        var (pipeline, packageId) = CreatePipelineFailingAfterAppend(failure, state, lease);
+        var (pipeline, packageId) = CreatePipelineFailingAfterAppend(harness, failure, lease);
 
-        var result = await pipeline.ActivateAsync(packageId, "1.0.0", CancellationToken.None);
+        var result = await ActivateAsync(pipeline, packageId);
 
         result.Success.ShouldBeTrue();
         result.Issues.ShouldContain(issue =>
             issue.Code == expectedCode &&
             issue.Severity == ActivationIssueSeverity.Warning);
-        state.LastProcessedEventId.ShouldBeGreaterThan(0);
+        harness.State.LastProcessedEventId.ShouldBeGreaterThan(0);
         lease.IsHeld.ShouldBe(failure != FollowUpFailure.RefreshDependencyUnavailable);
     }
 
+    // N2: an unexpected follow-up failure is surfaced, never reported as success.
     [Theory]
     [InlineData(FollowUpFailure.ReindexTriggerProgrammerError, typeof(InvalidOperationException))]
     [InlineData(FollowUpFailure.RefreshIndependentlyCancelled, typeof(OperationCanceledException))]
@@ -407,691 +239,229 @@ public class PackageActivationPipelineTests
         FollowUpFailure failure,
         Type expectedException)
     {
-        using var state = new ConformanceState();
-        var (pipeline, packageId) = CreatePipelineFailingAfterAppend(failure, state, TestConformanceLease.NotHeld());
+        using var harness = new Harness();
+        var (pipeline, packageId) = CreatePipelineFailingAfterAppend(harness, failure, TestConformanceLease.NotHeld());
 
-        var exception = await Record.ExceptionAsync(() =>
-            pipeline.ActivateAsync(packageId, "1.0.0", CancellationToken.None));
+        var exception = await Record.ExceptionAsync(() => ActivateAsync(pipeline, packageId));
 
         exception.ShouldBeOfType(expectedException);
-        state.LastProcessedEventId.ShouldBeGreaterThan(0);
+        harness.State.LastProcessedEventId.ShouldBeGreaterThan(0);
     }
 
     [Fact]
-    public async Task GivenUnexpectedRefreshFailureAfterDurableOverrideActivation_WhenActivated_ThenItSurfacesTheFailure()
+    public async Task GivenTheCallerCancelsAfterTheDurableAppend_WhenTheRefreshFails_ThenTheTransitionIsStillScheduledAndTheFailureSurfaces()
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.override",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource()]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        var cancellationSource = new CancellationTokenSource();
-        IReadOnlyList<SourceEvent> persistedEvents = [];
-        eventStore.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                1,
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                persistedEvents = callInfo.ArgAt<IEnumerable<NewSourceEvent>>(0)
-                    .Select((sourceEvent, index) => new SourceEvent(
-                        index + 2,
-                        sourceEvent.StreamId,
-                        sourceEvent.EventType,
-                        sourceEvent.Data,
-                        DateTimeOffset.UtcNow))
-                    .ToArray();
-                cancellationSource.Cancel();
-                return Task.FromResult(persistedEvents);
-            });
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(CreateBaseActivation());
-        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        var refreshTenants = TestConformanceRefresher.FailingTenants(
-            new InvalidOperationException("Injected refresh failure."));
+        using var harness = new Harness();
+        harness.Seed(Activated(BaseIdentifier, "identifier", 1, package: CorePackage));
+        using var caller = new CancellationTokenSource();
+        harness.Log.AfterAppend = caller.Cancel;
         var lease = TestConformanceLease.NotHeld();
-        var pipeline = TestPackageActivationPipeline.Create(
-            packageRepository,
-            eventStore,
-            state,
-            transitionScheduler,
-            refreshTenants,
+        var pipeline = harness.Pipeline(
+            [Shadow()],
+            tenants: TestConformanceRefresher.FailingTenants(new InvalidOperationException("Injected refresh failure.")),
             lease: lease);
 
-        await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
-            "test.override",
-            "1.0.0",
-            cancellationSource.Token));
+        await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync("test.override", "1.0.0", caller.Token));
 
-        persistedEvents.Count.ShouldBe(2);
-        state.LastProcessedEventId.ShouldBe(persistedEvents[^1].EventId);
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-        await transitionScheduler.Received(1).ScheduleAsync(
-            persistedEvents[^1].EventId,
-            TimeSpan.FromSeconds(1),
+        harness.State.LastProcessedEventId.ShouldBe(harness.Log.LastEventId);
+        harness.State.FindByCanonical(Canonical("test.override"))!.Status.ShouldBe(SearchParameterStatus.Staged);
+        await harness.Scheduler.Received(1).ScheduleAsync(
+            harness.Log.LastEventId,
+            TestPackageActivationPipeline.TransitionGrace,
             CancellationToken.None);
-        await refreshTenants.Received(1).GetAllTenantsAsync(CancellationToken.None);
         lease.IsHeld.ShouldBeFalse();
     }
 
-    [Fact]
-    public async Task GivenAnotherWriterAppendsFirst_WhenActivated_ThenItCatchesUpAndActivatesAfterTheWinner()
+    // §9: an append lost to another writer catches up and retries against the winner, a bounded number of times.
+    [Theory]
+    [InlineData(1, true, 2)]
+    [InlineData(5, false, 3)]
+    public async Task GivenOtherWritersWinTheAppend_WhenActivated_ThenItCatchesUpAndRetriesUpToTheBoundBeforeAConformanceConflict(
+        int lostAppends,
+        bool expectActivated,
+        int expectedAttempts)
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync("test.custom", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns([CreateCustomResource()]);
-        var winner = new SourceEvent(
-            1,
-            "package:other@1.0.0",
-            nameof(PackageActivated),
-            new PackageActivated("other", "1.0.0", []),
-            DateTimeOffset.UtcNow);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(EmptyEvents(), Events(winner), EmptyEvents());
-        eventStore.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 0, Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<SourceEvent>>(new SourceEventConcurrencyException(0, 1)));
-        eventStore.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 1, Arg.Any<CancellationToken>())
-            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(call.Arg<IEnumerable<NewSourceEvent>>()
-                .Select((sourceEvent, index) => new SourceEvent(
-                    index + 2,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray()));
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            eventStore,
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
+        using var harness = new Harness();
+        foreach (var index in Enumerable.Range(1, lostAppends))
+        {
+            harness.Log.OtherWriters.Enqueue(PackageActivated($"other-{index}"));
+        }
 
-        var result = await pipeline.ActivateAsync("test.custom", "1.0.0", CancellationToken.None);
+        var result = await ActivateAsync(harness.Pipeline(Custom()), "test.custom");
 
-        result.Success.ShouldBeTrue(string.Join("; ", result.Issues.Select(issue => $"{issue.Code}: {issue.Message}")));
-        state.Packages.ShouldContainKey("other@1.0.0");
-        state.Packages.ShouldContainKey("test.custom@1.0.0");
-        await eventStore.Received(1).AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 1, Arg.Any<CancellationToken>());
+        result.Success.ShouldBe(expectActivated, Describe(result));
+        result.Issues.Any(issue => issue.Code == "CONFORMANCE_CONFLICT").ShouldBe(!expectActivated);
+        harness.State.Packages.ShouldContainKey("other-1@1.0.0");
+        harness.State.Packages.ContainsKey("test.custom@1.0.0").ShouldBe(expectActivated);
+        harness.Log.AppendAttempts.ShouldBe(expectedAttempts);
     }
 
-    [Fact]
-    public async Task GivenEveryAppendLosesTheRace_WhenActivated_ThenItFailsWithAConformanceConflictAfterBoundedRetries()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync("test.custom", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns([CreateCustomResource()]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(_ => EmptyEvents());
-        eventStore.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<SourceEvent>>(new SourceEventConcurrencyException(0, 1)));
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            eventStore,
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-
-        var result = await pipeline.ActivateAsync("test.custom", "1.0.0", CancellationToken.None);
-
-        result.Success.ShouldBeFalse();
-        result.Issues.ShouldContain(issue => issue.Code == "CONFORMANCE_CONFLICT");
-        state.Packages.ShouldNotContainKey("test.custom@1.0.0");
-        await eventStore.Received(3).AppendAsync(
-            Arg.Any<IEnumerable<NewSourceEvent>>(),
-            Arg.Any<long>(),
-            Arg.Any<CancellationToken>());
-    }
-
+    // N6: one package activation is one phase-two transition, however many codes it hides.
     [Fact]
     public async Task GivenPackageShadowsSeventyCodes_WhenActivated_ThenOneTransitionIsScheduledForThePackageEvent()
     {
         const int shadowCount = 70;
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
+        using var harness = new Harness();
+        var shadows = new List<PackageResource>();
         for (var index = 1; index <= shadowCount; index++)
         {
-            var seeded = new SourceEvent(
-                index,
-                "package:seed@1.0.0",
-                nameof(SearchParameterActivated),
-                new SearchParameterActivated(
-                    $"http://example.org/SearchParameter/seed-{index}",
-                    $"code-{index}",
-                    "Patient",
-                    "Patient.identifier",
-                    SearchParamType.Token,
-                    "seed@1.0.0",
-                    null,
-                    index,
-                    null,
-                    null,
-                    null,
-                    null),
-                DateTimeOffset.UtcNow);
-            persistedEvents.Add(seeded);
-            state.ApplyAndTrack(seeded);
+            harness.Seed(Activated(Canonical($"seed-{index}"), $"code-{index}", index, package: "seed@1.0.0", expression: "Patient.identifier"));
+            shadows.Add(SearchParameter(
+                "test.shadows",
+                Canonical($"shadow-{index}"),
+                $"code-{index}",
+                expression: "Patient.identifier",
+                derivedFrom: Canonical($"seed-{index}")));
         }
 
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync("test.shadows", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns(Enumerable.Range(1, shadowCount)
-                .Select(index => CreateOverrideResource(
-                    packageId: "test.shadows",
-                    canonical: $"http://example.org/SearchParameter/shadow-{index}",
-                    code: $"code-{index}",
-                    expression: "Patient.identifier",
-                    derivedFrom: $"http://example.org/SearchParameter/seed-{index}"))
-                .ToArray());
-        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            transitionScheduler,
-            TestConformanceRefresher.Tenants());
+        var pipeline = harness.Pipeline([.. shadows]);
 
-        var result = await pipeline.ActivateAsync("test.shadows", "1.0.0", CancellationToken.None);
+        var result = await ActivateAsync(pipeline, "test.shadows");
 
-        result.Success.ShouldBeTrue(string.Join("; ", result.Issues.Select(issue => $"{issue.Code}: {issue.Message}")));
-        var packageEventId = persistedEvents.Single(row => row.Data is PackageActivated { PackageId: "test.shadows" }).EventId;
-        transitionScheduler.ReceivedCalls().ShouldHaveSingleItem();
-        await transitionScheduler.Received(1).ScheduleAsync(
+        result.Success.ShouldBeTrue(Describe(result));
+        var packageEventId = harness.Log.Events.Single(row => row.Data is PackageActivated { PackageId: "test.shadows" }).EventId;
+        harness.Scheduler.ReceivedCalls().ShouldHaveSingleItem();
+        await harness.Scheduler.Received(1).ScheduleAsync(
             packageEventId,
-            TimeSpan.FromSeconds(1),
+            TestPackageActivationPipeline.TransitionGrace,
             CancellationToken.None);
-        state.GetTransitionCandidates(packageEventId).Count.ShouldBe(shadowCount);
-    }
-
-    [Fact]
-    public async Task GivenShadowOnlyPackage_WhenActivated_ThenItReportsTheHiddenCodesAndTheirExpectedDelay()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync("test.override", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource()]);
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore([]),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-
-        var result = await pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None);
-
-        result.Success.ShouldBeTrue();
-        result.PendingReindex.ShouldBeEmpty();
-        var hidden = result.Issues.ShouldHaveSingleItem();
-        hidden.Code.ShouldBe(PackageActivationPipeline.TransitionPendingCode);
-        hidden.Severity.ShouldBe(ActivationIssueSeverity.Warning);
-        hidden.Message.ShouldContain("Patient.identifier");
-        hidden.Message.ShouldContain(TestPackageActivationPipeline.TransitionGrace.ToString());
-        hidden.Message.ShouldContain("reindex");
+        harness.State.GetTransitionCandidates(packageEventId).Count.ShouldBe(shadowCount);
     }
 
     [Theory]
-    [InlineData(true, "REINDEX_QUEUED", ActivationIssueSeverity.Information)]
-    [InlineData(false, "REINDEX_NOT_STARTED", ActivationIssueSeverity.Warning)]
-    public async Task GivenTheTriggerDoesNotStartAJob_WhenActivated_ThenTheOutcomeIsAnIssueNotAFlag(
+    [InlineData("job-1", false, null, null, null)]
+    [InlineData("active-job", true, null, "REINDEX_QUEUED", ActivationIssueSeverity.Information)]
+    [InlineData(null, false, "Automatic reindex is disabled.", "REINDEX_NOT_STARTED", ActivationIssueSeverity.Warning)]
+    public async Task GivenPendingParameters_WhenActivated_ThenTheReindexTriggerOutcomeIsReported(
+        string? jobId,
         bool queuedBehindActiveJob,
-        string expectedCode,
-        ActivationIssueSeverity expectedSeverity)
+        string? reason,
+        string? expectedCode,
+        ActivationIssueSeverity? expectedSeverity)
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync("test.custom", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns([CreateCustomResource()]);
-        using var state = new ConformanceState();
+        using var harness = new Harness();
         var trigger = Substitute.For<IReindexTrigger>();
         trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(queuedBehindActiveJob
-                ? new ReindexTriggerResult("active-job", true, null)
-                : new ReindexTriggerResult(null, false, "Automatic reindex is disabled; parameters remain Pending."));
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore([]),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants(),
-            reindexTrigger: trigger);
+            .Returns(new ReindexTriggerResult(jobId, queuedBehindActiveJob, reason));
+        var pipeline = harness.Pipeline([Custom()], trigger);
 
-        var result = await pipeline.ActivateAsync("test.custom", "1.0.0", CancellationToken.None);
+        var result = await ActivateAsync(pipeline, "test.custom");
 
         result.Success.ShouldBeTrue();
         result.PendingReindex.ShouldBe(["Patient"]);
-        result.ReindexJobId.ShouldBe(queuedBehindActiveJob ? "active-job" : null);
-        var issue = result.Issues.ShouldHaveSingleItem();
-        issue.Code.ShouldBe(expectedCode);
-        issue.Severity.ShouldBe(expectedSeverity);
+        result.ReindexJobId.ShouldBe(jobId);
+        result.Issues.Select(issue => (issue.Code, (ActivationIssueSeverity?)issue.Severity))
+            .ShouldBe(expectedCode is null ? [] : [(expectedCode, expectedSeverity)]);
     }
 
-    private static PackageActivationPipeline CreatePipeline(
-        IPackageResourceRepository packageRepository,
-        ISourceEventStore eventStore,
-        ConformanceState state,
-        ISearchParameterTransitionScheduler transitionScheduler,
-        ITenantConfigurationStore refreshTenants,
-        IReindexTrigger? reindexTrigger = null) =>
-        TestPackageActivationPipeline.Create(
-            packageRepository,
-            eventStore,
-            state,
-            transitionScheduler,
-            refreshTenants,
-            reindexTrigger);
+    private static Task<ActivationResult> ActivateAsync(PackageActivationPipeline pipeline, string packageId) =>
+        pipeline.ActivateAsync(packageId, "1.0.0", CancellationToken.None);
+
+    private static string Describe(ActivationResult result) =>
+        string.Join("; ", result.Issues.Select(issue => $"{issue.Code}: {issue.Message}"));
 
     // Custom parameters become Pending and reach the reindex trigger; overrides become Staged and reach the
     // transition scheduler. Either way the activation is durable before the injected failure.
     private static (PackageActivationPipeline Pipeline, string PackageId) CreatePipelineFailingAfterAppend(
+        Harness harness,
         FollowUpFailure failure,
-        ConformanceState state,
         ConformanceLease lease)
     {
-        var reindexTrigger = TestPackageActivationPipeline.NoJobTrigger();
-        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        var refreshTenants = TestConformanceRefresher.Tenants();
-        var packageId = "test.override";
+        var trigger = TestPackageActivationPipeline.NoJobTrigger();
+        var tenants = TestConformanceRefresher.Tenants();
         switch (failure)
         {
             case FollowUpFailure.ReindexTriggerDeferred:
-                packageId = "test.custom";
-                reindexTrigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                    .Returns(new ReindexTriggerResult(
-                        null,
-                        false,
-                        "The automatic reindex trigger failed; periodic reconciliation will retry.",
-                        Deferred: true));
+                trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                    .Returns(new ReindexTriggerResult(null, false, "Reconciliation will retry.", Deferred: true));
                 break;
             case FollowUpFailure.ReindexTriggerProgrammerError:
-                packageId = "test.custom";
-                reindexTrigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                    .Returns<Task<ReindexTriggerResult>>(_ =>
-                        throw new InvalidOperationException("Unsupported trigger result."));
+                trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                    .Returns<Task<ReindexTriggerResult>>(_ => throw new InvalidOperationException("Unsupported trigger result."));
                 break;
             case FollowUpFailure.RefreshDependencyUnavailable:
-                refreshTenants = TestConformanceRefresher.FailingTenants(new IOException("Database unavailable."));
+                tenants = TestConformanceRefresher.FailingTenants(new IOException("Database unavailable."));
                 break;
             case FollowUpFailure.RefreshIndependentlyCancelled:
-                refreshTenants = TestConformanceRefresher.FailingTenants(
-                    new OperationCanceledException("Independent cancellation."));
+                tenants = TestConformanceRefresher.FailingTenants(new OperationCanceledException("Independent cancellation."));
                 break;
             case FollowUpFailure.TransitionSchedulingFailed:
-                transitionScheduler.ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+                harness.Scheduler.ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
                     .Returns(_ => throw new InvalidOperationException("Scheduling failed."));
                 break;
             case FollowUpFailure.TransitionSchedulerProgrammerError:
-                transitionScheduler.ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+                harness.Scheduler.ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
                     .Returns(_ => throw new ArgumentOutOfRangeException(nameof(failure), "Transition grace out of range."));
                 break;
         }
 
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(packageId, "1.0.0", Arg.Any<CancellationToken>())
-            .Returns([packageId == "test.custom" ? CreateCustomResource() : CreateOverrideResource()]);
-        var pipeline = TestPackageActivationPipeline.Create(
-            packageRepository,
-            CreateEventStore([]),
-            state,
-            transitionScheduler,
-            refreshTenants,
-            reindexTrigger,
-            lease);
-        return (pipeline, packageId);
-    }
-
-    private static ISourceEventStore CreateEventStore(List<SourceEvent> persistedEvents)
-    {
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                var nextEventId = persistedEvents.Count + 1;
-                SourceEvent[] appended = call.ArgAt<IEnumerable<NewSourceEvent>>(0)
-                    .Select((sourceEvent, index) => new SourceEvent(
-                        nextEventId + index,
-                        sourceEvent.StreamId,
-                        sourceEvent.EventType,
-                        sourceEvent.Data,
-                        DateTimeOffset.UtcNow))
-                    .ToArray();
-                persistedEvents.AddRange(appended);
-                return Task.FromResult<IReadOnlyList<SourceEvent>>(appended);
-            });
-        return eventStore;
+        var custom = failure is FollowUpFailure.ReindexTriggerDeferred or FollowUpFailure.ReindexTriggerProgrammerError;
+        return (harness.Pipeline([Custom(), Shadow()], trigger, tenants, lease), custom ? "test.custom" : "test.override");
     }
 
     private static async Task<ActivationResult> ActivateSecondShadowAsync(bool commitFirstTransition)
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                Arg.Any<string>(),
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns(call => [CreateOverrideResource(
-                packageId: call.ArgAt<string>(0),
-                canonical: $"http://example.org/SearchParameter/{call.ArgAt<string>(0)}",
-                includeDerivedFrom: false)]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-        (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
-
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null));
+        (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
         if (commitFirstTransition)
         {
-            var staged = state.FindByCanonical("http://example.org/SearchParameter/test.first")!;
-            var outgoing = state.GetSearchParameter("Patient", "identifier")!;
-            var committed = new SourceEvent(
-                persistedEvents.Count + 1,
-                "transition:test",
-                nameof(SearchParameterTransitionCommitted),
-                new SearchParameterTransitionCommitted(
-                    staged.SearchParamId,
-                    [staged.ActivationEventId],
-                    [outgoing.DeactivationEventId!.Value]),
-                DateTimeOffset.UtcNow);
-            persistedEvents.Add(committed);
-            state.ApplyAndTrack(committed);
+            harness.CommitTransitionOf(Canonical("test.first"));
         }
 
-        return await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None);
-    }
-
-    private static async Task<ActivationResult> ActivateMultiBaseAsync(
-        IReadOnlyList<string> baseTypes,
-        bool preOwnPatient = false)
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.multi-base",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource(
-                packageId: "test.multi-base",
-                canonical: "http://example.org/SearchParameter/multi-identifier",
-                baseTypes: baseTypes,
-                includeDerivedFrom: false)]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        if (preOwnPatient)
-        {
-            state.ApplyAndTrack(CreateBaseActivation());
-            state.ApplyAndTrack(new SourceEvent(
-                2,
-                "package:existing.owner@1.0.0",
-                nameof(SearchParameterActivated),
-                new SearchParameterActivated(
-                    "http://example.org/SearchParameter/existing-identifier",
-                    "identifier",
-                    "Patient",
-                    "Patient.identifier",
-                    SearchParamType.Token,
-                    "existing.owner@1.0.0",
-                    new OverrideInfo(BaseCanonical, 1),
-                    1,
-                    null,
-                    null,
-                    null,
-                    null),
-                DateTimeOffset.UtcNow));
-            persistedEvents.AddRange([
-                CreateBaseActivation(),
-                new SourceEvent(
-                    2,
-                    "package:existing.owner@1.0.0",
-                    nameof(SearchParameterActivated),
-                    new SearchParameterActivated(
-                        "http://example.org/SearchParameter/existing-identifier",
-                        "identifier",
-                        "Patient",
-                        "Patient.identifier",
-                        SearchParamType.Token,
-                        "existing.owner@1.0.0",
-                        new OverrideInfo(BaseCanonical, 1),
-                        1,
-                        null,
-                        null,
-                        null,
-                        null),
-                    DateTimeOffset.UtcNow)
-            ]);
-        }
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-
-        return await pipeline.ActivateAsync("test.multi-base", "1.0.0", CancellationToken.None);
+        return await ActivateAsync(pipeline, "test.second");
     }
 
     private static async Task<ActivationResult> ActivateSecondShadowDuringRemovalAsync(bool commitRestoration)
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                Arg.Any<string>(),
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns(call => [CreateOverrideResource(
-                packageId: call.ArgAt<string>(0),
-                canonical: $"http://example.org/SearchParameter/{call.ArgAt<string>(0)}",
-                includeDerivedFrom: false)]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-        (await pipeline.ActivateAsync("test.first", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
-        var first = state.FindByCanonical("http://example.org/SearchParameter/test.first")!;
-        var baseOwner = state.GetSearchParameter("Patient", "identifier")!;
-        ApplyAndRecord(new SearchParameterTransitionCommitted(
-            first.SearchParamId,
-            [first.ActivationEventId],
-            [baseOwner.DeactivationEventId!.Value]));
-        ApplyAndRecord(new SearchParameterReindexStarted(
-            first.Canonical, first.Code, first.ResourceType, "job", ["Patient"], first.ActivationEventId));
-        ApplyAndRecord(new SearchParameterReindexCompleted(
-            first.Canonical, first.Code, first.ResourceType, "job", 0, TimeSpan.Zero, first.ActivationEventId));
-        ApplyAndRecord(new PackageDeactivated("test.first", "1.0.0", "test"));
-        state.GetLatestNonDisabledActivation("Patient", "identifier")!.SourcePackage
-            .ShouldBe("hl7.fhir.r4.core@4.0.1");
-
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null));
+        (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
+        var first = harness.CommitTransitionOf(Canonical("test.first"));
+        harness.Seed(ReindexStarted(first.Canonical, first.Code, first.ActivationEventId, "job"));
+        harness.Seed(ReindexCompleted(first.Canonical, first.Code, first.ActivationEventId, "job"));
+        harness.Seed(PackageDeactivated("test.first", "1.0.0"));
+        harness.State.GetLatestNonDisabledActivation("Patient", "identifier")!.SourcePackage.ShouldBe(CorePackage);
         if (commitRestoration)
         {
-            var restored = state.FindByCanonical(BaseCanonical)!;
-            var outgoing = state.GetSearchParameter("Patient", "identifier")!;
-            ApplyAndRecord(new SearchParameterTransitionCommitted(
-                restored.SearchParamId,
-                [restored.ActivationEventId],
-                [outgoing.DeactivationEventId!.Value]));
+            harness.CommitTransitionOf(BaseIdentifier);
         }
 
-        return await pipeline.ActivateAsync("test.second", "1.0.0", CancellationToken.None);
-
-        void ApplyAndRecord(object data)
-        {
-            var sourceEvent = new SourceEvent(
-                persistedEvents.Count + 1,
-                "lifecycle:test",
-                data.GetType().Name,
-                data,
-                DateTimeOffset.UtcNow);
-            persistedEvents.Add(sourceEvent);
-            state.ApplyAndTrack(sourceEvent);
-        }
+        return await ActivateAsync(pipeline, "test.second");
     }
 
-    private static async Task<ActivationResult> ActivateAgainstDisabledLeftoverAsync(bool commitDeactivation)
+    /// <summary>A real pipeline over an in-memory event log, with a substituted transition scheduler.</summary>
+    private sealed class Harness : IDisposable
     {
-        const string oldCanonical = "http://example.org/SearchParameter/old-custom";
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.new",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource(
-                packageId: "test.new",
-                canonical: "http://example.org/SearchParameter/new-custom",
-                code: "custom-code",
-                expression: "Patient.active",
-                includeDerivedFrom: false)]);
-        var persistedEvents = new List<SourceEvent>();
-        using var state = new ConformanceState();
-        ApplyAndRecord(new SearchParameterActivated(
-            oldCanonical,
-            "custom-code",
-            "Patient",
-            "Patient.active",
-            SearchParamType.Token,
-            "test.old@1.0.0",
-            null,
-            1,
-            null,
-            null,
-            null,
-            null));
-        ApplyAndRecord(new PackageActivated(
-            "test.old",
-            "1.0.0",
-            [new ActivatedResource("Patient", oldCanonical)]));
-        ApplyAndRecord(new PackageDeactivated("test.old", "1.0.0", "test"));
-        if (commitDeactivation)
+        public InMemoryEventLog Log { get; } = new();
+
+        public ConformanceState State { get; } = new();
+
+        public ISearchParameterTransitionScheduler Scheduler { get; } = Substitute.For<ISearchParameterTransitionScheduler>();
+
+        public IEnumerable<SearchParameterActivated> Activations =>
+            Log.Events.Select(row => row.Data).OfType<SearchParameterActivated>();
+
+        public long Seed(object data) => Log.Seed(State, data);
+
+        /// <summary>Commits the transition that swaps Patient.identifier's owner for <paramref name="incoming"/>.</summary>
+        public ActiveSearchParameter CommitTransitionOf(string incoming)
         {
-            var outgoing = state.GetSearchParameter("Patient", "custom-code")!;
-            ApplyAndRecord(new SearchParameterTransitionCommitted(
-                outgoing.SearchParamId,
-                [],
-                [outgoing.DeactivationEventId!.Value]));
-            state.GetSearchParameter("Patient", "custom-code")!.Status.ShouldBe(SearchParameterStatus.Disabled);
+            var staged = State.FindByCanonical(incoming)!;
+            var outgoing = State.GetSearchParameter("Patient", "identifier")!;
+            Seed(new SearchParameterTransitionCommitted(staged.SearchParamId, [staged.ActivationEventId], [outgoing.DeactivationEventId!.Value]));
+            return staged;
         }
 
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore(persistedEvents),
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants());
-        return await pipeline.ActivateAsync("test.new", "1.0.0", CancellationToken.None);
+        public PackageActivationPipeline Pipeline(params PackageResource[] resources) => Pipeline(resources, null);
 
-        void ApplyAndRecord(object data)
-        {
-            var sourceEvent = new SourceEvent(
-                persistedEvents.Count + 1,
-                "lifecycle:test",
-                data.GetType().Name,
-                data,
-                DateTimeOffset.UtcNow);
-            persistedEvents.Add(sourceEvent);
-            state.ApplyAndTrack(sourceEvent);
-        }
-    }
+        public PackageActivationPipeline Pipeline(
+            PackageResource[] resources,
+            IReindexTrigger? trigger = null,
+            ITenantConfigurationStore? tenants = null,
+            ConformanceLease? lease = null) =>
+            TestPackageActivationPipeline.Create(Repository(resources), Log, State, Scheduler, tenants, trigger, lease);
 
-    private static PackageResource CreateOverrideResource(
-        string packageId = "test.override",
-        string canonical = OverrideCanonical,
-        IReadOnlyList<string>? baseTypes = null,
-        string code = "identifier",
-        string expression = "Resource.identifier",
-        bool includeDerivedFrom = true,
-        string? derivedFrom = null,
-        string fhirVersion = "4.0.1")
-    {
-        var resource = new System.Text.Json.Nodes.JsonObject
-        {
-            ["resourceType"] = "SearchParameter",
-            ["id"] = "patient-identifier",
-            ["url"] = canonical,
-            ["code"] = code,
-            ["base"] = new System.Text.Json.Nodes.JsonArray(
-                (baseTypes ?? ["Patient"]).Select(type => System.Text.Json.Nodes.JsonValue.Create(type)).ToArray()),
-            ["type"] = "token",
-            ["expression"] = expression
-        };
-        if (includeDerivedFrom || derivedFrom is not null)
-        {
-            resource["derivedFrom"] = derivedFrom ?? BaseCanonical;
-        }
-
-        return new PackageResource
-        {
-            PackageId = packageId,
-            PackageVersion = "1.0.0",
-            ResourceType = "SearchParameter",
-            ResourceId = "patient-identifier",
-            Canonical = canonical,
-            FhirVersion = fhirVersion,
-            ResourceJson = resource.ToJsonString()
-        };
-    }
-
-    private static PackageResource CreateCustomResource() =>
-        new()
-        {
-            PackageId = "test.custom",
-            PackageVersion = "1.0.0",
-            ResourceType = "SearchParameter",
-            ResourceId = "patient-custom",
-            Canonical = "http://example.org/SearchParameter/patient-custom",
-            FhirVersion = "4.0.1",
-            ResourceJson = """
-                {
-                  "resourceType": "SearchParameter",
-                  "id": "patient-custom",
-                  "url": "http://example.org/SearchParameter/patient-custom",
-                  "code": "custom",
-                  "base": ["Patient"],
-                  "type": "string",
-                  "expression": "Patient.id"
-                }
-                """
-        };
-
-    private static SourceEvent CreateBaseActivation() =>
-        new(
-            1,
-            "package:hl7.fhir.r4.core@4.0.1",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                BaseCanonical,
-                "identifier",
-                "Patient",
-                "Patient.identifier",
-                SearchParamType.Token,
-                "hl7.fhir.r4.core@4.0.1",
-                null,
-                1,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow);
-    private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
-    {
-        await Task.CompletedTask;
-        yield break;
-    }
-
-    private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
-    {
-        await Task.CompletedTask;
-        foreach (var evt in events)
-        {
-            yield return evt;
-        }
+        public void Dispose() => State.Dispose();
     }
 }

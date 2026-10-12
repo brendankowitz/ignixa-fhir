@@ -1,13 +1,8 @@
 using Ignixa.Abstractions;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Events;
-using Ignixa.Conformance.Events.Models;
-using Ignixa.Search.Definition;
+using Ignixa.Application.Tests.Features.Conformance;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
-using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
@@ -31,17 +26,11 @@ public class MultiVersionConformanceSnapshotTests
     public async Task GivenR4PackageShadowsABaseCode_WhenOtherVersionTenantsResolve_ThenTheirBaseDefinitionIsUnchanged(
         int replayedEvents)
     {
-        using var state = new ConformanceState();
-        await state.InitializeFromEventsAsync(TestConformanceRefresher.EmptyEventStore(), CancellationToken.None);
-        foreach (var evt in R4ShadowEvents().Take(replayedEvents))
-        {
-            state.ApplyAndTrack(evt);
-        }
-
-        using var context = CreateContext();
-        Publish(context, state, FhirVersion.R4, R4TenantId);
-        Publish(context, state, FhirVersion.R5, R5TenantId);
-        Publish(context, state, FhirVersion.Stu3, Stu3TenantId);
+        using var state = await ConformanceEvents.InitializedStateAsync([.. R4ShadowEvents().Take(replayedEvents)]);
+        using var context = TestDefinitions.CreateContext()
+            .Publish(state, FhirVersion.R4, R4TenantId)
+            .Publish(state, FhirVersion.R5, R5TenantId)
+            .Publish(state, FhirVersion.Stu3, Stu3TenantId);
 
         foreach (var (version, tenantId) in new[] { (FhirVersion.R5, R5TenantId), (FhirVersion.Stu3, Stu3TenantId) })
         {
@@ -68,40 +57,27 @@ public class MultiVersionConformanceSnapshotTests
             .ShouldBeFalse("the R4 tenant is mid-transition and must stay hidden");
     }
 
-    [Fact]
-    public async Task GivenR5OnlyPackage_WhenR4TenantResolves_ThenItsDefinitionsDoNotIncludeThePackage()
+    // N4: an activation applies to its own FHIR version's tenants; one recorded before versions applies to all.
+    [Theory]
+    [InlineData("5.0", false)]
+    [InlineData(null, true)]
+    public async Task GivenACustomActivation_WhenR4AndR5TenantsResolve_ThenOnlyTenantsOfItsRecordedVersionSeeIt(
+        string? fhirVersion,
+        bool visibleToR4)
     {
-        using var state = new ConformanceState();
-        await state.InitializeFromEventsAsync(TestConformanceRefresher.EmptyEventStore(), CancellationToken.None);
-        state.ApplyAndTrack(CustomActivation(1, "custom-r5", "5.0"));
-        using var context = CreateContext();
-        Publish(context, state, FhirVersion.R4, R4TenantId);
-        Publish(context, state, FhirVersion.R5, R5TenantId);
+        using var state = await ConformanceEvents.InitializedStateAsync(CustomActivation("custom", fhirVersion));
+        using var context = TestDefinitions.CreateContext()
+            .Publish(state, FhirVersion.R4, R4TenantId)
+            .Publish(state, FhirVersion.R5, R5TenantId);
 
         var r4 = context.GetSearchParameterDefinitionManager(FhirVersion.R4, R4TenantId);
         var r5 = context.GetSearchParameterDefinitionManager(FhirVersion.R5, R5TenantId);
 
-        r4.TryGetSearchParameter("Patient", "custom-r5", out _).ShouldBeFalse();
-        r4.AllSearchParameters.ShouldNotContain(parameter => parameter.Code == "custom-r5");
-        r4.TryGetSearchParameter(new Uri("http://example.org/SearchParameter/custom-r5"), out _).ShouldBeFalse();
-        r5.TryGetSearchParameter("Patient", "custom-r5", out _).ShouldBeTrue();
-        r5.AllSearchParameters.ShouldContain(parameter => parameter.Code == "custom-r5");
-    }
-
-    [Fact]
-    public async Task GivenActivationRecordedWithoutAVersion_WhenAnyTenantResolves_ThenItAppliesToEveryVersion()
-    {
-        using var state = new ConformanceState();
-        await state.InitializeFromEventsAsync(TestConformanceRefresher.EmptyEventStore(), CancellationToken.None);
-        state.ApplyAndTrack(CustomActivation(1, "custom-legacy", fhirVersion: null));
-        using var context = CreateContext();
-        Publish(context, state, FhirVersion.R4, R4TenantId);
-        Publish(context, state, FhirVersion.R5, R5TenantId);
-
-        context.GetSearchParameterDefinitionManager(FhirVersion.R4, R4TenantId)
-            .TryGetSearchParameter("Patient", "custom-legacy", out _).ShouldBeTrue();
-        context.GetSearchParameterDefinitionManager(FhirVersion.R5, R5TenantId)
-            .TryGetSearchParameter("Patient", "custom-legacy", out _).ShouldBeTrue();
+        r4.TryGetSearchParameter("Patient", "custom", out _).ShouldBe(visibleToR4);
+        r4.AllSearchParameters.Any(parameter => parameter.Code == "custom").ShouldBe(visibleToR4);
+        r4.TryGetSearchParameter(new Uri("http://example.org/SearchParameter/custom"), out _).ShouldBe(visibleToR4);
+        r5.TryGetSearchParameter("Patient", "custom", out _).ShouldBeTrue();
+        r5.AllSearchParameters.ShouldContain(parameter => parameter.Code == "custom");
     }
 
     private static IReadOnlyCollection<Ignixa.Search.Indexing.SearchIndexEntry> Extract(
@@ -111,97 +87,41 @@ public class MultiVersionConformanceSnapshotTests
     {
         var handle = context.GetDefinitionsHandle(version, tenantId);
         var observation = ResourceJsonNode.Parse(
-            """
-            {
-              "resourceType": "Observation",
-              "status": "final",
-              "code": { "text": "weight" },
-              "subject": { "reference": "Patient/p1" }
-            }
-            """).ToElement(handle.SchemaProvider);
+            """{ "resourceType": "Observation", "status": "final", "code": { "text": "weight" }, "subject": { "reference": "Patient/p1" } }""")
+            .ToElement(handle.SchemaProvider);
         return handle.Indexer.Extract(observation);
     }
 
-    private static FhirVersionContext CreateContext() =>
-        new(
-            NullLoggerFactory.Instance,
-            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
-            NullFhirBaseUriProvider.Instance);
-
-    private static void Publish(FhirVersionContext context, ConformanceState state, FhirVersion version, int tenantId) =>
-        context.PublishConformanceDefinitionsSnapshot(
-            version,
-            tenantId,
-            context.CreateConformanceDefinitionsSnapshot(version, tenantId, state.CreateSnapshot(), state.LastProcessedEventId));
-
     // The events an R4 package activation appends when it shadows Observation.patient: the R4 base owner is
     // materialised, the override is staged under the shared identity, and the transition commits.
-    private static IEnumerable<SourceEvent> R4ShadowEvents()
-    {
-        yield return new SourceEvent(
-            1,
-            "package:r4.shadow@1.0.0",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                BaseCanonical,
-                "patient",
-                "Observation",
-                "Observation.subject.where(resolve() is Patient)",
-                SearchParamType.Reference,
-                "hl7.fhir.r4.core@4.0.1",
-                null,
-                1,
-                ["Patient"],
-                null,
-                "patient",
-                null,
-                "4.0"),
-            DateTimeOffset.UtcNow);
-        yield return new SourceEvent(
-            2,
-            "package:r4.shadow@1.0.0",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                OverrideCanonical,
-                "patient",
-                "Observation",
-                "Observation.subject",
-                SearchParamType.Reference,
-                "r4.shadow@1.0.0",
-                new OverrideInfo(BaseCanonical, 1),
-                1,
-                ["Patient"],
-                null,
-                "patient",
-                null,
-                "4.0"),
-            DateTimeOffset.UtcNow);
-        yield return new SourceEvent(
-            3,
-            "transition:2",
-            nameof(SearchParameterTransitionCommitted),
-            new SearchParameterTransitionCommitted(1, [2], [2]),
-            DateTimeOffset.UtcNow);
-    }
+    private static object[] R4ShadowEvents() =>
+    [
+        ObservationPatient(BaseCanonical, ConformanceEvents.CorePackage, null, "Observation.subject.where(resolve() is Patient)"),
+        ObservationPatient(OverrideCanonical, "r4.shadow@1.0.0", BaseCanonical, "Observation.subject"),
+        ConformanceEvents.Committed(1, 2),
+    ];
 
-    private static SourceEvent CustomActivation(long eventId, string code, string? fhirVersion) =>
-        new(
-            eventId,
-            "package:custom@1.0.0",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                $"http://example.org/SearchParameter/{code}",
-                code,
-                "Patient",
-                "Patient.name",
-                SearchParamType.String,
-                "custom@1.0.0",
-                null,
-                (int)eventId + 100,
-                null,
-                null,
-                null,
-                null,
-                fhirVersion),
-            DateTimeOffset.UtcNow);
+    private static object ObservationPatient(string canonical, string package, string? overrides, string expression) =>
+        ConformanceEvents.Activated(
+            canonical,
+            "patient",
+            1,
+            overrides,
+            package,
+            "Observation",
+            expression,
+            SearchParamType.Reference,
+            ["Patient"],
+            "patient",
+            "4.0");
+
+    private static object CustomActivation(string code, string? fhirVersion) =>
+        ConformanceEvents.Activated(
+            $"http://example.org/SearchParameter/{code}",
+            code,
+            101,
+            package: "custom@1.0.0",
+            expression: "Patient.name",
+            type: SearchParamType.String,
+            fhirVersion: fhirVersion);
 }
