@@ -177,10 +177,11 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
         {
             // This test intentionally blocks a consumer refresh while it proves retry behavior.
             // Keep that transient test window below the lease duration rather than making normal
-            // assertions nondeterministically depend on a one-second polling cadence.
+            // assertions nondeterministically depend on a one-second polling cadence. Host A never polls, so its
+            // lease must also outlive a slow host start under a loaded full-suite run.
             builder.UseSetting("Conformance:SyncIntervalSeconds", pollSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            builder.UseSetting("Conformance:MaxStaleness", "00:00:30");
-            builder.UseSetting("Reindex:BarrierDelay", "00:00:30");
+            builder.UseSetting("Conformance:MaxStaleness", "00:02:00");
+            builder.UseSetting("Reindex:BarrierDelay", "00:02:00");
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
