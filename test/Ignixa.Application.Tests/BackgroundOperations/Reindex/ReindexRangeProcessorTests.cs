@@ -152,8 +152,11 @@ public class ReindexRangeProcessorTests
         await store.DidNotReceiveWithAnyArgs().ReadRangeAsync(default!, default, default, default, default, default);
     }
 
-    [Fact]
-    public async Task GivenRangeIsProcessed_WhenResourcesAreExtracted_ThenTheBackgroundRequestContextIsSetAndRestoredAfterwards()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenACallerContext_WhenARangeIsProcessedOrItsReadThrows_ThenExtractionUsesTheBackgroundContextAndTheCallersIsRestored(
+        bool readThrows)
     {
         var caller = new FhirRequestContext { TenantId = 99 };
         var accessor = new RecordingContextAccessor { RequestContext = caller };
@@ -164,40 +167,33 @@ public class ReindexRangeProcessorTests
             observed.Add(accessor.RequestContext);
             return [];
         });
-        var processor = CreateProcessor(accessor, indexer, SinglePageStore());
+        var store = SinglePageStore();
+        if (readThrows)
+        {
+            store.ReadRangeAsync(default!, default, default, default, default, default)
+                .ReturnsForAnyArgs<IReadOnlyList<ReindexResource>>(_ => throw new InvalidOperationException("read failed"));
+        }
 
-        await processor.ProcessAsync(
+        var processor = CreateProcessor(accessor, indexer, store);
+        var process = () => processor.ProcessAsync(
             new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, 0),
             CancellationToken.None);
 
-        var background = observed.ShouldHaveSingleItem().ShouldNotBeNull();
-        background.ShouldNotBeSameAs(caller);
-        background.IsBackgroundTask.ShouldBeTrue();
-        background.TenantId.ShouldBe(1);
-        background.FhirVersion.ShouldBe(FhirVersion.R4);
-        background.ResourceType.ShouldBe("Patient");
-        accessor.RequestContext.ShouldBeSameAs(caller);
-    }
-
-    [Fact]
-    public async Task GivenReadingTheRangeThrows_WhenRangeIsProcessed_ThenTheCallersRequestContextIsRestored()
-    {
-        var caller = new FhirRequestContext { TenantId = 99 };
-        var accessor = new RecordingContextAccessor { RequestContext = caller };
-        var store = Substitute.For<IReindexStore>();
-        store.ReadRangeAsync(
-                Arg.Any<string>(),
-                Arg.Any<long>(),
-                Arg.Any<long>(),
-                Arg.Any<int>(),
-                Arg.Any<long?>(),
-                Arg.Any<CancellationToken>())
-            .Returns<IReadOnlyList<ReindexResource>>(_ => throw new InvalidOperationException("read failed"));
-        var processor = CreateProcessor(accessor, Substitute.For<ISearchIndexer>(), store);
-
-        await Should.ThrowAsync<InvalidOperationException>(() => processor.ProcessAsync(
-            new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, 0),
-            CancellationToken.None));
+        if (readThrows)
+        {
+            await Should.ThrowAsync<InvalidOperationException>(process);
+            observed.ShouldBeEmpty();
+        }
+        else
+        {
+            await process();
+            var background = observed.ShouldHaveSingleItem().ShouldNotBeNull();
+            background.ShouldNotBeSameAs(caller);
+            background.IsBackgroundTask.ShouldBeTrue();
+            background.TenantId.ShouldBe(1);
+            background.FhirVersion.ShouldBe(FhirVersion.R4);
+            background.ResourceType.ShouldBe("Patient");
+        }
 
         accessor.RequestContext.ShouldBeSameAs(caller);
     }

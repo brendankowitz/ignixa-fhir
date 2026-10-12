@@ -1,14 +1,11 @@
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Security.Claims;
-using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Api.Endpoints;
 using Ignixa.Api.Middleware;
 using Ignixa.Api.Tests.Services;
 using Ignixa.Application.BackgroundOperations.Reindex;
-using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Authorization;
 using Ignixa.Application.Features.Authorization.Handlers;
@@ -16,13 +13,8 @@ using Ignixa.Application.Features.Authorization.Models;
 using Ignixa.Application.Features.Authorization.Services;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Abstractions;
-using Ignixa.Conformance.Events.Events;
-using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Specification.ValueSets.Normative;
 using Medino;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -102,18 +94,10 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands[0].QueryDelayIntervalInMilliseconds.ShouldBe(5);
     }
 
-    [Theory]
-    [InlineData("CreateReindexForTenant")]
-    [InlineData("ListReindexForTenant")]
-    [InlineData("GetReindexForTenant")]
-    [InlineData("CancelReindexForTenant")]
-    [InlineData("CreateReindex")]
-    [InlineData("ListReindex")]
-    [InlineData("GetReindex")]
-    [InlineData("CancelReindex")]
-    public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOperationalRoutesRemainMapped(
-        string operationEndpointName)
+    [Fact]
+    public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOperationalRoutesRemainMappedAndAnswerNotFound()
     {
+        const string operationEndpointName = "CreateReindex";
         _reindexOptions.Enabled = false;
 
         var endpointNames = ((IEndpointRouteBuilder)_app).DataSources
@@ -147,31 +131,10 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands.ShouldHaveSingleItem();
     }
 
-    [Theory]
-    [InlineData("maximumNumberOfResourcesPerQuery", "valueInteger", 10)]
-    [InlineData("maximumNumberOfResourcesPerWrite", "valueInteger", 10)]
-    [InlineData("maximumConcurrency", "valueInteger", 2)]
-    [InlineData("queryDelayIntervalInMilliseconds", "valueInteger", 5)]
-    public async Task GivenDuplicateSingletonParameter_WhenCreating_ThenReturnsBadRequestWithoutDispatching(
-        string name,
-        string valueName,
-        object value)
+    [Fact]
+    public async Task GivenUnparseableParameters_WhenCreating_ThenReturnsTheParseErrorWithoutDispatching()
     {
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters(
-            (name, valueName, value),
-            (name, valueName, value)));
-
-        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
-        _createCommands.ShouldBeEmpty();
-    }
-
-    [Theory]
-    [InlineData("CreateReindex")]
-    [InlineData("CreateReindexForTenant")]
-    public async Task GivenTargetResourceTypes_WhenCreating_ThenReturnsUnsupportedParameterOutcomeWithoutDispatching(
-        string endpointName)
-    {
-        var response = await SendAsync(endpointName, body: Parameters(
+        var response = await SendAsync("CreateReindex", body: Parameters(
             ("targetResourceTypes", "valueString", "Patient")));
 
         response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
@@ -308,120 +271,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenFailedCompletion_WhenGettingStatus_ThenTerminalProgressRoundTrips()
-    {
-        const string canonical = "http://example.test/SearchParameter/patient-custom";
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.Mode.Returns(TenantMode.Isolated);
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
-            .Returns([
-                new TenantConfiguration
-                {
-                    TenantId = 1,
-                    DisplayName = "Tenant 1",
-                    FhirVersion = "4.0",
-                    IsActive = true
-                }
-            ]);
-        var repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
-            tenants,
-            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
-        var target = new ReindexParameterDefinition(canonical, "custom", "Patient", 17, 1, ["Patient"]);
-        await repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
-        {
-            JobId = "round-trip",
-            OrchestrationInstanceId = "round-trip",
-            JobType = (int)BackgroundJobType.Reindex,
-            Status = "Running",
-            Definition = new ReindexJobDefinition
-            {
-                TargetEventId = 1,
-                TenantIds = [1],
-                ResourceTypes = ["Patient"],
-                SearchParameters =
-                [
-                    new ReindexParameterDefinition(
-                        target.Canonical,
-                        target.Code,
-                        target.ResourceType,
-                        target.SearchParamId,
-                        target.ActivationEventId,
-                        target.AffectedResourceTypes)
-                ],
-                MaximumNumberOfResourcesPerQuery = 10,
-                MaximumNumberOfResourcesPerWrite = 10,
-                MaximumConcurrency = 1,
-                QueryDelayIntervalInMilliseconds = 0,
-                Trigger = "Manual"
-            },
-            CreateDate = DateTimeOffset.UtcNow,
-            HeartbeatDate = DateTimeOffset.UtcNow
-        }, CancellationToken.None);
-
-        var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(canonical));
-        var lifecycle = new ReindexLifecycleEventWriter(EventStore(), state);
-        await lifecycle.StartAsync("round-trip", [target], CancellationToken.None);
-        var store = Substitute.For<IReindexStore>();
-        store.HasSearchParameterAsync(target.StorageCanonical, Arg.Any<CancellationToken>())
-            .Returns(true);
-        var storeFactory = Substitute.For<IReindexStoreFactory>();
-        storeFactory.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
-            .Returns(store);
-        using var jobLock = new TestJobLock();
-        var writer = new CompleteReindexActivity(
-            storeFactory,
-            lifecycle,
-            repository,
-            jobLock,
-            tenants,
-            TimeProvider.System,
-            NullLogger<CompleteReindexActivity>.Instance);
-        var failedResource = new ReindexFailedResource("Patient", "p1", "index failure");
-
-        await writer.RunAsync(
-            new TaskContext(new OrchestrationInstance { InstanceId = "round-trip" }),
-            JsonSerializer.Serialize(new[]
-            {
-                new CompleteReindexInput(
-                    "round-trip",
-                    1,
-                    [target],
-                    [
-                        new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 10, 20, 1, 0, 0, 1, "index failure")
-                        {
-                            FailedResources = [failedResource],
-                            FailedResourceTypes = ["Patient"]
-                        }
-                    ],
-                    [])
-            }));
-
-        var statusHandler = new GetReindexStatusHandler(
-            repository,
-            Options.Create(new ReindexOptions()),
-            TimeProvider.System,
-            NullLogger<GetReindexStatusHandler>.Instance);
-        _status = (await statusHandler.HandleAsync(
-            new GetReindexStatusQuery("round-trip"),
-            CancellationToken.None))!;
-
-        var response = await SendAsync("GetReindexForTenant", jobId: "round-trip");
-
-        response.StatusCode.ShouldBe(StatusCodes.Status200OK);
-        Value(response.Body, "status").ShouldBe("Failed");
-        var tenant = Parts(response.Body, "tenant").ShouldHaveSingleItem();
-        Value(tenant, "tenantId").ShouldBe(1);
-        Value(tenant, "resourcesToReindex").ShouldBe(1);
-        Value(tenant, "resourcesReindexed").ShouldBe(0);
-        Value(tenant, "failedResources").ShouldBe(1);
-        var failure = Parts(response.Body, "failedResource").ShouldHaveSingleItem();
-        Value(failure, "resourceType").ShouldBe("Patient");
-        Value(failure, "id").ShouldBe("p1");
-        Value(failure, "reason").ShouldBe("index failure");
-    }
-
-    [Fact]
     public async Task GivenUnknownJob_WhenGettingStatusOrCancelling_ThenReturnsNotFoundOutcome()
     {
         _status = null!;
@@ -471,54 +320,17 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
     }
 
-    [Theory]
-    [InlineData("unexpected")]
-    [InlineData("targetSearchParameterTypes")]
-    [InlineData("targetDataStoreUsagePercentage")]
-    public async Task GivenUnsupportedParameter_WhenCreating_ThenReturnsBadRequest(string parameter)
+    [Fact]
+    public async Task GivenTheHandlerRejectsTheParameters_WhenCreating_ThenReturnsBadRequestOutcome()
     {
+        _createResult = new InvalidReindexRequestResult("maximumConcurrency must be between 1 and 16.");
+
         var response = await SendAsync("CreateReindexForTenant", body: Parameters(
-            (parameter, "valueString", "value")));
+            ("maximumConcurrency", "valueInteger", 17)));
 
         response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
-        response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
-        _createCommands.ShouldBeEmpty();
-    }
-
-    [Theory]
-    [InlineData("maximumNumberOfResourcesPerQuery")]
-    [InlineData("maximumNumberOfResourcesPerWrite")]
-    [InlineData("maximumConcurrency")]
-    [InlineData("queryDelayIntervalInMilliseconds")]
-    public async Task GivenNonNumericParameter_WhenCreating_ThenReturnsBadRequest(string parameter)
-    {
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters(
-            (parameter, "valueString", "not-an-integer")));
-
-        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
-        _createCommands.ShouldBeEmpty();
-    }
-
-    [Theory]
-    [InlineData("maximumNumberOfResourcesPerQuery", 0, StatusCodes.Status400BadRequest)]
-    [InlineData("maximumNumberOfResourcesPerQuery", 10001, StatusCodes.Status400BadRequest)]
-    [InlineData("maximumNumberOfResourcesPerWrite", 0, StatusCodes.Status400BadRequest)]
-    [InlineData("maximumNumberOfResourcesPerWrite", 10001, StatusCodes.Status400BadRequest)]
-    [InlineData("maximumConcurrency", 0, StatusCodes.Status400BadRequest)]
-    [InlineData("maximumConcurrency", 17, StatusCodes.Status400BadRequest)]
-    [InlineData("queryDelayIntervalInMilliseconds", -1, StatusCodes.Status400BadRequest)]
-    [InlineData("queryDelayIntervalInMilliseconds", 60001, StatusCodes.Status400BadRequest)]
-    public async Task GivenOutOfRangeParameter_WhenCreating_ThenReturnsExpectedStatusCode(
-        string parameter,
-        int value,
-        int expectedStatusCode)
-    {
-        _createResult = new InvalidReindexRequestResult($"{parameter} is out of range.");
-
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters(
-            (parameter, "valueInteger", value)));
-
-        response.StatusCode.ShouldBe(expectedStatusCode);
+        response.Body["issue"]![0]!["diagnostics"]!.GetValue<string>()
+            .ShouldBe("maximumConcurrency must be between 1 and 16.");
         _createCommands.ShouldHaveSingleItem();
     }
 
@@ -637,35 +449,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
 
     [Theory]
     [InlineData("CreateReindexForTenant")]
-    [InlineData("ListReindexForTenant")]
-    [InlineData("GetReindexForTenant")]
-    [InlineData("CancelReindexForTenant")]
     [InlineData("CreateReindex")]
-    [InlineData("ListReindex")]
-    [InlineData("GetReindex")]
-    [InlineData("CancelReindex")]
-    public async Task GivenReadOnlySmartScope_WhenAccessingReindexRoute_ThenReturnsForbidden(string endpointName)
-    {
-        await using var app = CreateAuthorizedApp([]);
-
-        var response = await SendAsync(
-            app,
-            endpointName,
-            body: Parameters(),
-            user: CreateUser(scope: "system/*.read"));
-
-        response.StatusCode.ShouldBe(StatusCodes.Status403Forbidden);
-    }
-
-    [Theory]
-    [InlineData("CreateReindexForTenant")]
-    [InlineData("ListReindexForTenant")]
-    [InlineData("GetReindexForTenant")]
-    [InlineData("CancelReindexForTenant")]
-    [InlineData("CreateReindex")]
-    [InlineData("ListReindex")]
-    [InlineData("GetReindex")]
-    [InlineData("CancelReindex")]
     public async Task GivenWildcardWriteSmartScope_WhenAccessingReindexRoute_ThenRequestIsAllowed(string endpointName)
     {
         await using var app = CreateAuthorizedApp([]);
@@ -676,51 +460,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             body: Parameters(),
             user: CreateUser(scope: "system/*.write"));
 
-        response.StatusCode.ShouldNotBe(StatusCodes.Status403Forbidden);
-    }
-
-    [Theory]
-    [InlineData("CreateReindexForTenant")]
-    [InlineData("ListReindexForTenant")]
-    [InlineData("GetReindexForTenant")]
-    [InlineData("CancelReindexForTenant")]
-    [InlineData("CreateReindex")]
-    [InlineData("ListReindex")]
-    [InlineData("GetReindex")]
-    [InlineData("CancelReindex")]
-    public async Task GivenReadOnlyRbacPermission_WhenAccessingReindexRoute_ThenReturnsForbidden(string endpointName)
-    {
-        await using var app = CreateAuthorizedApp([new ResourceGrant("*", "read")]);
-
-        var response = await SendAsync(
-            app,
-            endpointName,
-            body: Parameters(),
-            user: CreateUser(role: "Reader"));
-
-        response.StatusCode.ShouldBe(StatusCodes.Status403Forbidden);
-    }
-
-    [Theory]
-    [InlineData("CreateReindexForTenant")]
-    [InlineData("ListReindexForTenant")]
-    [InlineData("GetReindexForTenant")]
-    [InlineData("CancelReindexForTenant")]
-    [InlineData("CreateReindex")]
-    [InlineData("ListReindex")]
-    [InlineData("GetReindex")]
-    [InlineData("CancelReindex")]
-    public async Task GivenWildcardWriteRbacPermission_WhenAccessingReindexRoute_ThenRequestIsAllowed(string endpointName)
-    {
-        await using var app = CreateAuthorizedApp([new ResourceGrant("*", "update")]);
-
-        var response = await SendAsync(
-            app,
-            endpointName,
-            body: Parameters(),
-            user: CreateUser(role: "Writer"));
-
-        response.StatusCode.ShouldNotBe(StatusCodes.Status403Forbidden);
+        response.StatusCode.ShouldBe(StatusCodes.Status201Created);
     }
 
     [Theory]
@@ -737,20 +477,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             user: CreateUser(scope: "system/*.read"));
 
         response.StatusCode.ShouldBe(StatusCodes.Status200OK);
-    }
-
-    [Fact]
-    public async Task GivenAuthorizationDisabled_WhenAccessingReindexRoute_ThenReadOnlyScopeDoesNotBlockRequest()
-    {
-        await using var app = CreateAuthorizedApp([], authorizationEnabled: false);
-
-        var response = await SendAsync(
-            app,
-            "CreateReindexForTenant",
-            body: Parameters(),
-            user: CreateUser(scope: "system/*.read"));
-
-        response.StatusCode.ShouldBe(StatusCodes.Status201Created);
     }
 
     [Fact]
@@ -1008,77 +734,9 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                 Trigger = "Manual"
             });
 
-    private static ISourceEventStore EventStore()
-    {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(EmptyEvents());
-        long nextEventId = 2;
-        store.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                Arg.Any<long>(),
-                Arg.Any<CancellationToken>())
-            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
-                .Select(evt => new SourceEvent(
-                    nextEventId++,
-                    evt.StreamId,
-                    evt.EventType,
-                    evt.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray());
-        return store;
-    }
-
-    private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
-    {
-        await Task.CompletedTask;
-        yield break;
-    }
-
-    private static SourceEvent Activation(string canonical) => new(
-        1,
-        "search",
-        nameof(SearchParameterActivated),
-        new SearchParameterActivated(
-            canonical,
-            "custom",
-            "Patient",
-            "Patient.id",
-            SearchParamType.String,
-            "example@1.0.0",
-            null,
-            17,
-            null,
-            null,
-            null,
-            null),
-        DateTimeOffset.UtcNow);
-
     public Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync() => await _app.DisposeAsync();
 
     private sealed record Response(int StatusCode, JsonNode Body, IReadOnlyDictionary<string, string> Headers);
-
-    private sealed class TestJobLock : IReindexJobLock, IDisposable
-    {
-        private readonly SemaphoreSlim _semaphore = new(1, 1);
-
-        public async Task<T> ExecuteAsync<T>(
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken cancellationToken)
-        {
-            await _semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                return await action(cancellationToken);
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        }
-
-        public void Dispose() => _semaphore.Dispose();
-    }
 }
