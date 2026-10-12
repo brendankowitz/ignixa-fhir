@@ -458,29 +458,4 @@ public class SqlReindexOrchestrationTests
             base.ConfigureWebHost(builder);
         }
     }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")
-                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL-backed resources.";
-            }
-        }
-
-    }
-
-    private sealed class SqlTheoryAttribute : TheoryAttribute
-    {
-        public SqlTheoryAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")
-                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL Server.";
-            }
-        }
-    }
 }

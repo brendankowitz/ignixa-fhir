@@ -1,4 +1,3 @@
-using System.Data;
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -34,24 +33,8 @@ public class SqlPackageActivationRejectionTests
     [SqlFact]
     public async Task GivenPackageWhoseParameterShadowsDifferentBaseRoots_WhenLoadedThroughTheApi_ThenItReturns422WithTheReason()
     {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var database = $"IgnixaActivationRejection_{Guid.NewGuid():N}";
-        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quoted = names.QuoteIdentifier(database);
-        await ExecuteAsync(master, $"CREATE DATABASE {quoted}");
-        try
-        {
-            await AssertRejectedLoadAsync(connectionString);
-        }
-        finally
-        {
-            using var pool = new SqlConnection(connectionString);
-            SqlConnection.ClearPool(pool);
-            await ExecuteAsync(master, $"DROP DATABASE {quoted}");
-        }
+        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaActivationRejection");
+        await AssertRejectedLoadAsync(database.ConnectionString);
     }
 
     private static async Task AssertRejectedLoadAsync(string connectionString)
@@ -123,15 +106,6 @@ public class SqlPackageActivationRejectionTests
         return (long)(await command.ExecuteScalarAsync())!;
     }
 
-    private static async Task ExecuteAsync(string connectionString, string statement)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand("EXEC sys.sp_executesql @statement", connection);
-        command.Parameters.Add("@statement", SqlDbType.NVarChar, -1).Value = statement;
-        await command.ExecuteNonQueryAsync();
-    }
-
     /// <summary>
     /// Serves the test package from what the test already stored instead of downloading it from NPM.
     /// </summary>
@@ -180,16 +154,5 @@ public class SqlPackageActivationRejectionTests
             string version,
             CancellationToken cancellationToken) =>
             inner.UnloadPackageAsync(tenantId, packageId, version, cancellationToken);
-    }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL-backed conformance activation.";
-            }
-        }
     }
 }

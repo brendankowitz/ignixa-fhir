@@ -36,50 +36,12 @@ public class SqlFreshTenantDefinitionTests(ITestOutputHelper output)
     [SqlFact]
     public async Task GivenPersistedPackageDefinitions_WhenASeparateFreshSqlTenantStarts_ThenItsFirstSearchAndWritesUseAllDefinitions()
     {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var conformanceDatabase = $"IgnixaFreshConformance_{Guid.NewGuid():N}";
-        var resourceDatabase = $"IgnixaFreshResource_{Guid.NewGuid():N}";
-        var conformanceConnection = new SqlConnectionStringBuilder(configured)
-        {
-            InitialCatalog = conformanceDatabase
-        }.ConnectionString;
-        var resourceConnection = new SqlConnectionStringBuilder(configured)
-        {
-            InitialCatalog = resourceDatabase
-        }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quotedConformance = names.QuoteIdentifier(conformanceDatabase);
-        var quotedResource = names.QuoteIdentifier(resourceDatabase);
-        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quotedConformance}");
-        output.WriteLine($"Owned shared conformance catalog: {conformanceDatabase}");
-        try
-        {
-            await PersistDefinitionsAsync(conformanceConnection);
+        await using var conformance = await TemporarySqlDatabase.CreateAsync("IgnixaFreshConformance");
+        await PersistDefinitionsAsync(conformance.ConnectionString);
 
-            // This catalog did not exist during activation: no learned aliases or package reference rows.
-            await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quotedResource}");
-            output.WriteLine($"Owned fresh resource catalog: {resourceDatabase}");
-            try
-            {
-                await AssertFreshTenantAsync(conformanceConnection, resourceConnection);
-            }
-            finally
-            {
-                using var pool = new SqlConnection(resourceConnection);
-                SqlConnection.ClearPool(pool);
-                await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedResource}");
-                output.WriteLine($"Removed owned fresh resource catalog: {resourceDatabase}");
-            }
-        }
-        finally
-        {
-            using var pool = new SqlConnection(conformanceConnection);
-            SqlConnection.ClearPool(pool);
-            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedConformance}");
-            output.WriteLine($"Removed owned shared conformance catalog: {conformanceDatabase}");
-        }
+        // This catalog did not exist during activation: no learned aliases or package reference rows.
+        await using var resource = await TemporarySqlDatabase.CreateAsync("IgnixaFreshResource");
+        await AssertFreshTenantAsync(conformance.ConnectionString, resource.ConnectionString);
     }
 
     private static async Task PersistDefinitionsAsync(string connectionString)
@@ -329,25 +291,5 @@ public class SqlFreshTenantDefinitionTests(ITestOutputHelper output)
         using var freshCommand = new SqlCommand("SELECT COUNT(*) FROM dbo.SourceEvents", fresh);
         Convert.ToInt32(await freshCommand.ExecuteScalarAsync(), CultureInfo.InvariantCulture).ShouldBe(0,
             "Conformance events must remain in tenant 1's shared store, not tenant 2's resource database.");
-    }
-
-    private static async Task ExecuteDatabaseCommandAsync(string connectionString, string statement)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand("EXEC sys.sp_executesql @statement", connection);
-        command.Parameters.Add("@statement", SqlDbType.NVarChar, -1).Value = statement;
-        await command.ExecuteNonQueryAsync();
-    }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires separate SQL resource and shared conformance stores.";
-            }
-        }
     }
 }
