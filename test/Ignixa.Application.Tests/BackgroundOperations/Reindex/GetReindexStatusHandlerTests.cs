@@ -1,4 +1,5 @@
 using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -40,6 +41,43 @@ public class GetReindexStatusHandlerTests
 
         result.ShouldNotBeNull();
         result.IsStale.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(ReindexPhase.BarrierDelay, false)]
+    [InlineData(ReindexPhase.Reindexing, true)]
+    public async Task GivenAnHourWithoutHeartbeat_WhenStatusIsRead_ThenOnlyTheBarrierDelayPhaseAddsTheDelayToTheAllowance(
+        ReindexPhase phase,
+        bool expectedStale)
+    {
+        var now = new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
+        var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
+        repository.GetAsync("job", 1, (int)BackgroundJobType.Reindex, Arg.Any<CancellationToken>())
+            .Returns(new BackgroundJob<ReindexJobDefinition>
+            {
+                JobId = "job",
+                JobType = (int)BackgroundJobType.Reindex,
+                Status = "Running",
+                Definition = ReindexTestHelper.CreateJobDefinition(),
+                Progress = new ReindexProgress(phase).ToJson(),
+                CreateDate = now.AddHours(-1),
+                HeartbeatDate = now.AddHours(-1)
+            });
+        var timeProvider = Substitute.For<TimeProvider>();
+        timeProvider.GetUtcNow().Returns(now);
+        var handler = new GetReindexStatusHandler(
+            repository,
+            Options.Create(new ReindexOptions
+            {
+                StaleJobTimeout = TimeSpan.FromMinutes(30),
+                BarrierDelay = TimeSpan.FromHours(3)
+            }),
+            timeProvider,
+            NullLogger<GetReindexStatusHandler>.Instance);
+
+        var result = await handler.HandleAsync(new GetReindexStatusQuery("job"), CancellationToken.None);
+
+        result!.IsStale.ShouldBe(expectedStale);
     }
 
     [Fact]

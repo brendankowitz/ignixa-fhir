@@ -17,7 +17,6 @@ public class ReindexOptionsValidatorTests
     {
         var result = ReindexOptionsValidator.Validate(new ReindexOptions
         {
-            BarrierDelay = TimeSpan.FromMinutes(15),
             DefaultMaximumNumberOfResourcesPerQuery = 10_001,
             DefaultMaximumNumberOfResourcesPerWrite = 0,
             DefaultMaximumConcurrency = 17,
@@ -34,7 +33,6 @@ public class ReindexOptionsValidatorTests
             "Reindex:DefaultMaximumConcurrency must be between 1 and 16.",
             "Reindex:OrphanGrace must be greater than zero.",
             "Reindex:DrainWarningAfter must be greater than zero.",
-            "Reindex:BarrierDelay must be less than half of Reindex:StaleJobTimeout.",
             "Reindex:ContinueAsNewThreshold must be between 1 and 2147483647."
         ]);
     }

@@ -35,18 +35,24 @@ public sealed class GetReindexJobsHandler(
     internal static ReindexStatusResult ToResult(
         BackgroundJob<ReindexJobDefinition> job,
         ReindexOptions options,
-        TimeProvider timeProvider) =>
-        new(
+        TimeProvider timeProvider)
+    {
+        var progress = ReindexProgress.FromJson(job.Progress);
+        // The barrier delay is one durable wait with no activity to heartbeat, so it does not count as silence.
+        var allowedSilence = options.StaleJobTimeout +
+            (progress?.Phase == ReindexPhase.BarrierDelay ? options.BarrierDelay : TimeSpan.Zero);
+        return new(
             job.JobId,
             job.GetStatus(),
             job.CreateDate,
             job.StartDate,
             job.EndDate,
             job.HeartbeatDate,
-            IsActive(job) && timeProvider.GetUtcNow() - job.HeartbeatDate > options.StaleJobTimeout,
+            IsActive(job) && timeProvider.GetUtcNow() - job.HeartbeatDate > allowedSilence,
             job.ErrorMessage,
-            ReindexProgress.FromJson(job.Progress),
+            progress,
             job.Definition);
+    }
 
     private static bool IsActive(BackgroundJob<ReindexJobDefinition> job) => !job.IsTerminal();
 }
