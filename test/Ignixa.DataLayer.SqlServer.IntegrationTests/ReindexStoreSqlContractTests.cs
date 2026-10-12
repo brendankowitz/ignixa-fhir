@@ -60,8 +60,10 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenVisibilityAdvancedPastAHigherCompletedTransaction_WhenALowerTransactionIsIncomplete_ThenDrainFindsTheLowerTransaction()
+    public async Task GivenVisibilityDisagreesWithCompletion_WhenDraining_ThenOnlyIncompleteTransactionsAreReported()
     {
+        // 200 completes and visibility advances past it; then 100 is allocated late, below the watermark (D1).
+        // 300: completed but not yet visible. 400: still incomplete although marked visible.
         await _database.ExecuteNonQueryAsync(
             """
             INSERT INTO dbo.Transactions
@@ -69,40 +71,23 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             VALUES (200, 200, 1, 0);
 
             EXEC dbo.MergeResourcesAdvanceTransactionVisibility;
-
-            INSERT INTO dbo.Transactions
-                (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
-            VALUES (100, 100, 0, 0);
             """);
-
         (await _store.GetVisibleWatermarkAsync(CancellationToken.None)).ShouldBe(200);
-        var oldest = await _store.GetOldestIncompleteTransactionAsync(200, CancellationToken.None);
-
-        oldest.ShouldNotBeNull();
-        oldest.TransactionId.ShouldBe(100);
-    }
-
-    [Fact]
-    public async Task GivenVisibilityDisagreesWithCompletion_WhenDraining_ThenOnlyIncompleteTransactionsAreReported()
-    {
-        // 300: completed but not yet visible (visibility trails a lower incomplete transaction).
-        // 400: still incomplete although marked visible (the visibility race: a late lower-id allocation).
         await _database.ExecuteNonQueryAsync(
             """
             INSERT INTO dbo.Transactions
                 (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
-            VALUES (300, 300, 1, 0),
+            VALUES (100, 100, 0, 0),
+                   (300, 300, 1, 0),
                    (400, 400, 0, 1);
             """);
 
-        var oldest = await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None);
-
-        oldest.ShouldNotBeNull();
-        oldest.TransactionId.ShouldBe(400);
-
+        (await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None))!.TransactionId.ShouldBe(100);
+        await _database.ExecuteNonQueryAsync(
+            "UPDATE dbo.Transactions SET IsCompleted = 1 WHERE SurrogateIdRangeFirstValue = 100");
+        (await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None))!.TransactionId.ShouldBe(400);
         await _database.ExecuteNonQueryAsync(
             "UPDATE dbo.Transactions SET IsCompleted = 1 WHERE SurrogateIdRangeFirstValue = 400");
-
         (await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None)).ShouldBeNull();
     }
 
