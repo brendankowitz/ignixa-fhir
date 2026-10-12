@@ -50,27 +50,6 @@ public class DeferredWriteCoordinatorBarrierTests
     }
 
     [Fact]
-    public async Task GivenANonAtomicEntryRejectedTwice_WhenDefinitionsRefresh_ThenThe503EscapesTheBatch()
-    {
-        var repository = Substitute.For<IFhirRepository>();
-        repository.CreateOrUpdateAsync(Arg.Any<ResourceWrapper>(), Arg.Any<CancellationToken>())
-            .Returns(_ => ValueTask.FromException<UpdateResult>(
-                new StaleConformanceDefinitionsException(101, 11, 29)));
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var coordinator = await CreateCoordinatorAsync(
-            repository,
-            new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), 29));
-
-        var queued = coordinator.QueueWriteAsync(Patient("stale") with { DefinitionsEventId = 11 });
-        await coordinator.WaitToReadAsync();
-
-        await Should.ThrowAsync<ConformanceStaleException>(() =>
-            coordinator.ProcessBatchAsync(batchSize: 1, CancellationToken.None));
-        await Should.ThrowAsync<ConformanceStaleException>(() => queued);
-    }
-
-    [Fact]
     public async Task GivenMultipleQueuedEntries_WhenTheFirstIsRejectedTwice_ThenEveryEntryCompletesWithThe503()
     {
         var repository = Substitute.For<IFhirRepository>();

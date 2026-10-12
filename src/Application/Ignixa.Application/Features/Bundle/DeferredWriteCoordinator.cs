@@ -117,7 +117,7 @@ public class DeferredWriteCoordinator
                         attempt++;
                         var wrapper = attempt == 1
                             ? operation.Wrapper
-                            : Reextract(operation.Wrapper, ct);
+                            : Reextract(operation.Wrapper, CurrentDefinitions(_fhirVersionContext));
                         return await repository.CreateOrUpdateAsync(wrapper, ct);
                     },
                     cancellationToken);
@@ -165,14 +165,15 @@ public class DeferredWriteCoordinator
         return partition.PartitionIds[0];
     }
 
-    private ResourceWrapper Reextract(ResourceWrapper wrapper, CancellationToken cancellationToken)
+    private DefinitionsHandle CurrentDefinitions(IFhirVersionContext versionContext)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         var context = _contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
-        var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
+        return versionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
+    }
 
-        return wrapper with
+    private static ResourceWrapper Reextract(ResourceWrapper wrapper, DefinitionsHandle definitionsHandle) =>
+        wrapper with
         {
             SearchIndices = wrapper.IsDeleted
                 ? []
@@ -180,7 +181,6 @@ public class DeferredWriteCoordinator
                     (IElement)wrapper.Resource.ToElement(definitionsHandle.SchemaProvider)).ToArray(),
             DefinitionsEventId = definitionsHandle.DefinitionsEventId,
         };
-    }
 
     private async Task<ResourceKey> StageWriteAsync(ResourceWrapper wrapper, int entryIndex, CancellationToken cancellationToken)
     {
@@ -241,22 +241,12 @@ public class DeferredWriteCoordinator
 
     private void ReextractStagedWrites(CancellationToken cancellationToken)
     {
-        var context = _contextAccessor.RequestContext
-            ?? throw new InvalidOperationException("FHIR request context not available");
-        var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
-
+        var definitionsHandle = CurrentDefinitions(_fhirVersionContext);
         for (var index = 0; index < _stagedWrites.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var (entryIndex, wrapper) = _stagedWrites[index];
-            _stagedWrites[index] = (entryIndex, wrapper with
-            {
-                SearchIndices = wrapper.IsDeleted
-                    ? []
-                    : definitionsHandle.Indexer.Extract(
-                        (IElement)wrapper.Resource.ToElement(definitionsHandle.SchemaProvider)).ToArray(),
-                DefinitionsEventId = definitionsHandle.DefinitionsEventId,
-            });
+            _stagedWrites[index] = (entryIndex, Reextract(wrapper, definitionsHandle));
         }
     }
 
@@ -269,9 +259,7 @@ public class DeferredWriteCoordinator
         {
             return;
         }
-        var context = _contextAccessor.RequestContext
-            ?? throw new InvalidOperationException("FHIR request context not available");
-        var definitionsHandle = versionContext.GetDefinitionsHandle(context.FhirVersion, context.TenantId);
+        var definitionsHandle = CurrentDefinitions(versionContext);
         for (var index = 0; index < _stagedWrites.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -281,12 +269,7 @@ public class DeferredWriteCoordinator
                 // Conditional creates may select existing IDs. JSON and reference indexes must both
                 // reflect those final identities before the single core write.
                 wrapper.Resource.InvalidateCaches();
-                _stagedWrites[index] = (entryIndex, wrapper with
-                {
-                    SearchIndices = definitionsHandle.Indexer.Extract(
-                        (IElement)wrapper.Resource.ToElement(definitionsHandle.SchemaProvider)).ToArray(),
-                    DefinitionsEventId = definitionsHandle.DefinitionsEventId
-                });
+                _stagedWrites[index] = (entryIndex, Reextract(wrapper, definitionsHandle));
             }
         }
     }
