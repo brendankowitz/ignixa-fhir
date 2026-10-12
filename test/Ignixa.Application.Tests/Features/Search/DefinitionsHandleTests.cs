@@ -17,9 +17,7 @@ public class DefinitionsHandleTests
     public void GivenPublishedTenantSnapshot_WhenFutureSnapshotBuilds_ThenItUsesADetachedSchemaProvider()
     {
         var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetAllStructureDefinitionsAsync(
-                Arg.Any<string?>(),
-                Arg.Any<CancellationToken>())
+        packageRepository.GetAllStructureDefinitionsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<PackageResource>>([]));
         using var context = new FhirVersionContext(
             NullLoggerFactory.Instance,

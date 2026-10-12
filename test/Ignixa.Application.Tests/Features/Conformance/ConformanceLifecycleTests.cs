@@ -104,30 +104,24 @@ public class ConformanceLifecycleTests
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
     }
 
-    [Fact]
-    public void GivenStagedOverride_WhenItIsDeactivatedBeforeCommit_ThenTheNewHideEventRestoresTheBase()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GivenStagedOverride_WhenItOrItsPackageIsDeactivatedBeforeCommit_ThenTheNewHideEventRestagesAndRestoresTheBase(
+        bool packageDeactivated)
     {
         using var state = CreateStateWithStagedOverride();
 
-        state.Apply(Hide(30, OverrideCanonical));
+        state.Apply(packageDeactivated ? At(30, PackageDeactivated("custom.package")) : Hide(30, OverrideCanonical));
+
+        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
+        state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(30);
+
         state.Apply(Commit(40, 30));
 
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
-        state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(30);
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
-    }
-
-    [Fact]
-    public void GivenStagedOverridePackage_WhenPackageIsDeactivatedBeforeCommit_ThenBaseIsRestaged()
-    {
-        using var state = CreateStateWithStagedOverride();
-
-        state.Apply(At(30, PackageDeactivated("custom.package")));
-
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-        state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(30);
     }
 
     [Fact]

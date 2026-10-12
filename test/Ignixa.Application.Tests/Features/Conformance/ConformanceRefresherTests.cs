@@ -4,143 +4,103 @@ using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure.Caching;
-using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
+/// <summary>
+/// A refresh builds each tenant's definitions, catalogs them, publishes them all, then invalidates capabilities.
+/// Each test asserts that ordered effect timeline.
+/// </summary>
 public class ConformanceRefresherTests
 {
+    private static readonly string[] OneRefresh = ["built 1@1", "cataloged 1", "published 1@1", "invalidated 1"];
+
     [Fact]
     public async Task GivenStateAdvancesWhileDefinitionsBuild_WhenRefreshPublishes_ThenItDiscardsTheStaleGeneration()
     {
-        using var state = ConformanceEvents.State(ConformanceEvents.PackageActivated("first", "1"));
-        var versions = new RecordingVersions();
-        var firstEnumerationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseFirstEnumeration = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var enumerationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseEnumeration = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var enumerations = 0;
-        var tenants = Substitute.For<Ignixa.Domain.Abstractions.ITenantConfigurationStore>();
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
-            .Returns(_ => ++enumerations == 1
-                ? new ValueTask<IReadOnlyList<TenantConfiguration>>(BlockAsync())
-                : new ValueTask<IReadOnlyList<TenantConfiguration>>([CreateTenant(1)]));
-        var capabilities = Substitute.For<ICapabilityCacheInvalidator>();
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: tenants,
-            versions: versions.Context,
-            capabilities: capabilities);
+        using var timeline = new Timeline();
+        timeline.Tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => ++enumerations == 1 ? new ValueTask<IReadOnlyList<TenantConfiguration>>(BlockAsync()) : new([Tenant(1)]));
+        using var refresher = timeline.Refresher();
 
         var refresh = refresher.RefreshAsync(force: false, CancellationToken.None);
-        await firstEnumerationStarted.Task;
-        using (await state.AcquireActivationLockAsync(CancellationToken.None))
+        await enumerationStarted.Task;
+        using (await timeline.State.AcquireActivationLockAsync(CancellationToken.None))
         {
-            state.ApplyAndTrack(ConformanceEvents.At(2, ConformanceEvents.PackageActivated("second", "1")));
+            timeline.State.ApplyAndTrack(At(2, PackageActivated("second", "1")));
         }
 
-        releaseFirstEnumeration.TrySetResult();
-        var publishedGeneration = await refresh;
+        releaseEnumeration.TrySetResult();
 
-        publishedGeneration.ShouldBe(2);
-        versions.Built.ShouldBe([1, 2]);
-        versions.Published.ShouldBe([2]);
-        await capabilities.Received(1).InvalidateForTenantAsync(1, CancellationToken.None);
+        (await refresh).ShouldBe(2);
+        timeline.Events.ShouldBe(["built 1@1", "cataloged 1", "built 1@2", "cataloged 1", "published 1@2", "invalidated 1"]);
 
         async Task<IReadOnlyList<TenantConfiguration>> BlockAsync()
         {
-            firstEnumerationStarted.TrySetResult();
-            await releaseFirstEnumeration.Task;
-            return [CreateTenant(1)];
+            enumerationStarted.TrySetResult();
+            await releaseEnumeration.Task;
+            return [Tenant(1)];
         }
     }
 
     [Theory]
-    [InlineData(false, new long[] { 1 })]
-    [InlineData(true, new long[] { 1, 1 })]
+    [InlineData(false, 1)]
+    [InlineData(true, 2)]
     public async Task GivenCurrentGenerationAlreadyPublished_WhenRefreshedAgain_ThenOnlyAForcedRefreshRebuildsAndRepublishes(
         bool force,
-        long[] expectedGenerations)
+        int expectedRefreshes)
     {
-        using var state = ConformanceEvents.State(ConformanceEvents.PackageActivated("first", "1"));
-        var versions = new RecordingVersions();
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: TestConformanceRefresher.Tenants(CreateTenant(1)),
-            versions: versions.Context);
+        using var timeline = new Timeline(Tenant(1));
+        using var refresher = timeline.Refresher();
 
         await refresher.RefreshAsync(force: false, CancellationToken.None);
-        var generation = await refresher.RefreshAsync(force, CancellationToken.None);
+        (await refresher.RefreshAsync(force, CancellationToken.None)).ShouldBe(1);
 
-        generation.ShouldBe(1);
-        versions.Built.ShouldBe(expectedGenerations);
-        versions.Published.ShouldBe(expectedGenerations);
+        timeline.Events.ShouldBe(Enumerable.Repeat(OneRefresh, expectedRefreshes).SelectMany(refresh => refresh));
     }
 
     [Fact]
     public async Task GivenFailedForcedRefresh_WhenTheNextUnforcedRefreshRuns_ThenItRebuildsAndPublishesTheCurrentGeneration()
     {
-        using var state = ConformanceEvents.State(ConformanceEvents.PackageActivated("first", "1"));
-        var versions = new RecordingVersions();
         var enumerations = 0;
-        var tenants = Substitute.For<Ignixa.Domain.Abstractions.ITenantConfigurationStore>();
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+        using var timeline = new Timeline();
+        timeline.Tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
             .Returns(_ => ++enumerations == 2
                 ? ValueTask.FromException<IReadOnlyList<TenantConfiguration>>(new IOException("Store unavailable."))
-                : new ValueTask<IReadOnlyList<TenantConfiguration>>([CreateTenant(1)]));
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: tenants,
-            versions: versions.Context);
+                : new([Tenant(1)]));
+        using var refresher = timeline.Refresher();
 
         await refresher.RefreshAsync(force: false, CancellationToken.None);
-        await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
-            refresher.RefreshAsync(force: true, CancellationToken.None));
+        await Should.ThrowAsync<ConformanceConsumerRefreshException>(() => refresher.RefreshAsync(force: true, CancellationToken.None));
         await refresher.RefreshAsync(force: false, CancellationToken.None);
 
-        versions.Built.ShouldBe([1, 1]);
-        versions.Published.ShouldBe([1, 1]);
-        enumerations.ShouldBe(3);
+        timeline.Events.ShouldBe([.. OneRefresh, .. OneRefresh]);
     }
 
+    // Published definitions are visible, so the caller's cancellation must not skip the invalidation that follows.
     [Fact]
-    public async Task GivenTheCallerCancelsAtPublication_WhenRefreshCompletes_ThenCapabilitiesAreInvalidatedAfterwardsWithAnUncancelableToken()
+    public async Task GivenTwoTenantsAndTheCallerCancelsAtPublication_WhenRefreshed_ThenEachIsCatalogedBeforePublicationAndInvalidatedAfterUncancelably()
     {
-        using var state = ConformanceEvents.State(ConformanceEvents.PackageActivated("first", "1"));
         using var cancellation = new CancellationTokenSource();
-        var versions = new RecordingVersions();
-        var events = new List<string>();
-        versions.Context
-            .When(context => context.PublishConformanceDefinitionsSnapshot(
-                Arg.Any<FhirVersion>(),
-                Arg.Any<int>(),
-                Arg.Any<ConformanceDefinitionsSnapshot>()))
-            .Do(_ =>
-            {
-                events.Add("published");
-                cancellation.Cancel();
-            });
-        var capabilities = Substitute.For<ICapabilityCacheInvalidator>();
-        capabilities.InvalidateForTenantAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                events.Add(call.ArgAt<CancellationToken>(1).CanBeCanceled ? "invalidated (cancelable)" : "invalidated");
-                return ValueTask.CompletedTask;
-            });
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: TestConformanceRefresher.Tenants(CreateTenant(1)),
-            versions: versions.Context,
-            capabilities: capabilities);
+        using var timeline = new Timeline(Tenant(1), Tenant(2)) { OnPublish = cancellation.Cancel };
+        using var refresher = timeline.Refresher();
 
         await refresher.RefreshAsync(force: false, cancellation.Token).WaitAsync(TimeSpan.FromSeconds(10));
 
-        events.ShouldBe(["published", "invalidated"]);
+        timeline.Events.ShouldBe(
+            ["built 1@1", "cataloged 1", "built 2@1", "cataloged 2", "published 1@1", "published 2@1", "invalidated 1", "invalidated 2"]);
     }
 
     [Theory]
@@ -153,7 +113,6 @@ public class ConformanceRefresherTests
         string failureKind,
         bool expectMapped)
     {
-        using var state = ConformanceEvents.State(ConformanceEvents.PackageActivated("first", "1"));
         Exception failure = failureKind switch
         {
             nameof(IOException) => new IOException("Store unavailable."),
@@ -162,91 +121,29 @@ public class ConformanceRefresherTests
             nameof(OperationCanceledException) => new OperationCanceledException("Independent cancellation."),
             _ => new InvalidOperationException("Programmer error."),
         };
-        var versions = new RecordingVersions();
-        var catalog = Substitute.For<ISearchParameterCatalogSynchronizer>();
-        catalog.SynchronizeAsync(
-                Arg.Any<TenantConfiguration>(),
-                Arg.Any<ISearchParameterDefinitionManager>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromException(failure));
-        var capabilities = Substitute.For<ICapabilityCacheInvalidator>();
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: TestConformanceRefresher.Tenants(CreateTenant(1)),
-            versions: versions.Context,
-            catalog: catalog,
-            capabilities: capabilities);
+        using var timeline = new Timeline(Tenant(1)) { CatalogFailure = failure };
+        using var refresher = timeline.Refresher();
 
-        var exception = await Record.ExceptionAsync(() =>
-            refresher.RefreshAsync(force: false, CancellationToken.None));
+        var exception = await Record.ExceptionAsync(() => refresher.RefreshAsync(force: false, CancellationToken.None));
 
-        if (expectMapped)
-        {
-            exception.ShouldBeOfType<ConformanceConsumerRefreshException>().InnerException.ShouldBeSameAs(failure);
-        }
-        else
-        {
-            exception.ShouldBeSameAs(failure);
-        }
-
-        versions.Published.ShouldBeEmpty();
-        await capabilities.DidNotReceiveWithAnyArgs().InvalidateForTenantAsync(default, default);
+        (expectMapped ? exception.ShouldBeOfType<ConformanceConsumerRefreshException>().InnerException : exception)
+            .ShouldBeSameAs(failure);
+        timeline.Events.ShouldBe(["built 1@1"]);
     }
 
-    [Fact]
-    public async Task GivenMultipleTenants_WhenRefreshed_ThenEachTenantsDefinitionsAreCatalogedBeforePublication()
-    {
-        using var state = ConformanceEvents.State(ConformanceEvents.PackageActivated("first", "1"));
-        var versions = new RecordingVersions();
-        var catalog = Substitute.For<ISearchParameterCatalogSynchronizer>();
-        var catalogedBeforePublication = new List<int>();
-        catalog.SynchronizeAsync(
-                Arg.Any<TenantConfiguration>(),
-                Arg.Any<ISearchParameterDefinitionManager>(),
-                Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                if (versions.Published.Count == 0)
-                {
-                    catalogedBeforePublication.Add(call.Arg<TenantConfiguration>().TenantId);
-                }
-
-                call.Arg<ISearchParameterDefinitionManager>().ShouldBeSameAs(versions.Definitions);
-                return Task.CompletedTask;
-            });
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: TestConformanceRefresher.Tenants(CreateTenant(1), CreateTenant(2)),
-            versions: versions.Context,
-            catalog: catalog);
-
-        await refresher.RefreshAsync(force: false, CancellationToken.None);
-
-        catalogedBeforePublication.ShouldBe([1, 2]);
-        versions.Published.ShouldBe([1, 1]);
-    }
-
+    // F9: an unload republishes the current generation, so every tenant's capabilities are rebuilt.
     [Fact]
     public async Task GivenMultipleTenants_WhenPackageIsUnloaded_ThenItInvalidatesEveryPublishedTenantsCapabilities()
     {
-        using var state = new ConformanceState();
-        var versions = new RecordingVersions();
-        var capabilities = Substitute.For<ICapabilityCacheInvalidator>();
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: TestConformanceRefresher.Tenants(CreateTenant(1), CreateTenant(2)),
-            versions: versions.Context,
-            capabilities: capabilities);
-        var handler = new PackageUnloadedNotificationHandler(
-            refresher,
-            NullLogger<PackageUnloadedNotificationHandler>.Instance);
+        using var timeline = new Timeline(Tenant(1), Tenant(2));
+        using var refresher = timeline.Refresher();
+        await refresher.RefreshAsync(force: false, CancellationToken.None);
+        var handler = new PackageUnloadedNotificationHandler(refresher, NullLogger<PackageUnloadedNotificationHandler>.Instance);
 
-        await handler.HandleAsync(
-            new PackageUnloadedEvent("example.package", "1.0.0", 1, DateTimeOffset.UtcNow),
-            CancellationToken.None);
+        await handler.HandleAsync(new PackageUnloadedEvent("example.package", "1.0.0", 1, DateTimeOffset.UtcNow), CancellationToken.None);
 
-        await capabilities.Received(1).InvalidateForTenantAsync(1, CancellationToken.None);
-        await capabilities.Received(1).InvalidateForTenantAsync(2, CancellationToken.None);
+        timeline.Events.Count(entry => entry == "invalidated 1").ShouldBe(2);
+        timeline.Events.Count(entry => entry == "invalidated 2").ShouldBe(2);
     }
 
     [Theory]
@@ -259,47 +156,30 @@ public class ConformanceRefresherTests
             state,
             tenants: TestConformanceRefresher.FailingTenants(new IOException("Store unavailable.")));
 
-        if (unload)
-        {
-            var handler = new PackageUnloadedNotificationHandler(
-                refresher,
-                NullLogger<PackageUnloadedNotificationHandler>.Instance);
-            await Should.NotThrowAsync(() => handler.HandleAsync(
-                new PackageUnloadedEvent("test", "1", 1, DateTimeOffset.UtcNow),
-                CancellationToken.None));
-        }
-        else
-        {
-            var handler = new PackageLoadedNotificationHandler(
-                refresher,
-                NullLogger<PackageLoadedNotificationHandler>.Instance);
-            await Should.NotThrowAsync(() => handler.HandleAsync(
-                new PackageLoadedEvent("test", "1", 1, DateTimeOffset.UtcNow),
-                CancellationToken.None));
-        }
+        var handle = unload
+            ? new PackageUnloadedNotificationHandler(refresher, NullLogger<PackageUnloadedNotificationHandler>.Instance)
+                .HandleAsync(new PackageUnloadedEvent("test", "1", 1, DateTimeOffset.UtcNow), CancellationToken.None)
+            : new PackageLoadedNotificationHandler(refresher, NullLogger<PackageLoadedNotificationHandler>.Instance)
+                .HandleAsync(new PackageLoadedEvent("test", "1", 1, DateTimeOffset.UtcNow), CancellationToken.None);
+
+        await Should.NotThrowAsync(() => handle);
     }
 
     [Fact]
     public async Task GivenUnseenDurableEvents_WhenSynchronized_ThenTheyAreAppliedAndTheirGenerationIsPublished()
     {
-        using var state = new ConformanceState();
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.ReadFromAsync(0, Arg.Any<CancellationToken>())
-            .Returns(_ => Events(ConformanceEvents.At(7, ConformanceEvents.PackageActivated("remote", "1"))));
-        var versions = new RecordingVersions();
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            eventStore,
-            TestConformanceRefresher.Tenants(CreateTenant(1)),
-            versions.Context);
+        using var timeline = new Timeline(Tenant(1));
+        var log = new InMemoryEventLog();
+        log.Events.AddRange([At(1, PackageActivated("first", "1")), At(7, PackageActivated("remote", "1"))]);
+        using var refresher = timeline.Refresher(log);
 
         await refresher.SynchronizeAsync(CancellationToken.None);
 
-        state.LastProcessedEventId.ShouldBe(7);
-        versions.Published.ShouldBe([7]);
+        timeline.State.LastProcessedEventId.ShouldBe(7);
+        timeline.Events.ShouldContain("published 1@7");
     }
 
-    private static TenantConfiguration CreateTenant(int tenantId) => new()
+    private static TenantConfiguration Tenant(int tenantId) => new()
     {
         TenantId = tenantId,
         DisplayName = $"Tenant {tenantId}",
@@ -307,25 +187,22 @@ public class ConformanceRefresherTests
         Storage = new TenantStorageConfiguration { Type = "FileSystem" },
     };
 
-    private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
-    {
-        foreach (var sourceEvent in events)
-        {
-            yield return sourceEvent;
-        }
-
-        await Task.CompletedTask;
-    }
-
     /// <summary>
-    /// A substituted version context that records which generations were built and published.
+    /// A refresher over substituted consumers that record, in order, "built T@G", "cataloged T",
+    /// "published T@G" and "invalidated T" (suffixed "(cancelable)" if given a cancelable token).
     /// </summary>
-    private sealed class RecordingVersions
+    private sealed class Timeline : IDisposable
     {
-        public RecordingVersions()
+        private readonly ISearchParameterDefinitionManager _definitions = Substitute.For<ISearchParameterDefinitionManager>();
+        private readonly IFhirVersionContext _versions = Substitute.For<IFhirVersionContext>();
+        private readonly ISearchParameterCatalogSynchronizer _catalog = Substitute.For<ISearchParameterCatalogSynchronizer>();
+        private readonly ICapabilityCacheInvalidator _capabilities = Substitute.For<ICapabilityCacheInvalidator>();
+
+        public Timeline(params TenantConfiguration[] tenants)
         {
-            Definitions.AllSearchParameters.Returns([]);
-            Context.CreateConformanceDefinitionsSnapshot(
+            Tenants = TestConformanceRefresher.Tenants(tenants);
+            _definitions.AllSearchParameters.Returns([]);
+            _versions.CreateConformanceDefinitionsSnapshot(
                     Arg.Any<FhirVersion>(),
                     Arg.Any<int>(),
                     Arg.Any<ConformanceStateSnapshot>(),
@@ -333,29 +210,55 @@ public class ConformanceRefresherTests
                 .Returns(call =>
                 {
                     var generation = call.ArgAt<long>(3);
-                    Built.Add(generation);
-                    return new ConformanceDefinitionsSnapshot(
-                        Definitions,
-                        new DefinitionsHandle(
-                            Substitute.For<ISearchIndexer>(),
-                            Substitute.For<IFhirSchemaProvider>(),
-                            generation),
-                        call.ArgAt<ConformanceStateSnapshot>(2));
+                    Events.Add($"built {call.ArgAt<int>(1)}@{generation}");
+                    var handle = new DefinitionsHandle(Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), generation);
+                    return new ConformanceDefinitionsSnapshot(_definitions, handle, call.ArgAt<ConformanceStateSnapshot>(2));
                 });
-            Context
+            _versions
                 .When(context => context.PublishConformanceDefinitionsSnapshot(
                     Arg.Any<FhirVersion>(),
                     Arg.Any<int>(),
                     Arg.Any<ConformanceDefinitionsSnapshot>()))
-                .Do(call => Published.Add(call.Arg<ConformanceDefinitionsSnapshot>().Generation));
+                .Do(call =>
+                {
+                    Events.Add($"published {call.ArgAt<int>(1)}@{call.Arg<ConformanceDefinitionsSnapshot>().Generation}");
+                    OnPublish?.Invoke();
+                });
+            _catalog.SynchronizeAsync(Arg.Any<TenantConfiguration>(), Arg.Any<ISearchParameterDefinitionManager>(), Arg.Any<CancellationToken>())
+                .Returns(call =>
+                {
+                    if (CatalogFailure is not null)
+                    {
+                        return Task.FromException(CatalogFailure);
+                    }
+
+                    call.Arg<ISearchParameterDefinitionManager>().ShouldBeSameAs(_definitions);
+                    Events.Add($"cataloged {call.Arg<TenantConfiguration>().TenantId}");
+                    return Task.CompletedTask;
+                });
+            _capabilities.InvalidateForTenantAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(call =>
+                {
+                    var cancelable = call.ArgAt<CancellationToken>(1).CanBeCanceled ? " (cancelable)" : string.Empty;
+                    Events.Add($"invalidated {call.ArgAt<int>(0)}{cancelable}");
+                    return ValueTask.CompletedTask;
+                });
         }
 
-        public IFhirVersionContext Context { get; } = Substitute.For<IFhirVersionContext>();
-        public ISearchParameterDefinitionManager Definitions { get; } = Substitute.For<ISearchParameterDefinitionManager>();
+        public ConformanceState State { get; } = ConformanceEvents.State(PackageActivated("first", "1"));
 
-        // Built records one entry per tenant per rebuild; tests with one tenant read it as generations.
-        public List<long> Built { get; } = [];
-        public List<long> Published { get; } = [];
+        public ITenantConfigurationStore Tenants { get; }
+
+        public List<string> Events { get; } = [];
+
+        public Action? OnPublish { get; init; }
+
+        public Exception? CatalogFailure { get; init; }
+
+        public ConformanceRefresher Refresher(ISourceEventStore? eventStore = null) =>
+            TestConformanceRefresher.Create(State, eventStore, Tenants, _versions, _catalog, _capabilities);
+
+        public void Dispose() => State.Dispose();
     }
 
     private sealed class TestDbException() : DbException("Database unavailable.");

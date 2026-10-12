@@ -23,8 +23,7 @@ public class ImportDefinitionsEventIdTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task GivenAProductionImportRoute_WhenAllocatingItsBatch_ThenItUsesTheCurrentDefinitionsEventId(
-        bool streaming)
+    public async Task GivenAProductionImportRoute_WhenAllocatingItsBatch_ThenItUsesTheCurrentDefinitionsEventId(bool streaming)
     {
         const long DefinitionsEventId = 73;
         var tenants = Substitute.For<ITenantConfigurationStore>();
@@ -93,8 +92,6 @@ public class ImportDefinitionsEventIdTests
             JsonSerializer.Serialize(new[] { input }));
 
         JsonSerializer.Deserialize<ImportBatchOutput>(json)!.SuccessCount.ShouldBe(1);
-        await repository.Received(1).GetNextTransactionIdAsync(
-            DefinitionsEventId,
-            Arg.Any<CancellationToken>());
+        await repository.Received(1).GetNextTransactionIdAsync(DefinitionsEventId, Arg.Any<CancellationToken>());
     }
 }

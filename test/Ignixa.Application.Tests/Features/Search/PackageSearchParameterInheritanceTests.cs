@@ -1,19 +1,22 @@
 using Ignixa.Abstractions;
-using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
-using Ignixa.Application.Tests.Features.Conformance;
 using Ignixa.Conformance.Events;
+using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
-using Ignixa.Conformance.Events.Models;
-using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Exceptions;
-using Ignixa.Search.Indexing;
-using Ignixa.Serialization.SourceNodes;
+using Ignixa.Search.Models;
 using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 using Shouldly;
+using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.Tests.Features.Conformance;
+using Ignixa.Conformance.Events.Models;
+using Ignixa.Domain.Models;
+using Ignixa.Search.Indexing;
+using Ignixa.Serialization.SourceNodes;
 using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 using static Ignixa.Application.Tests.Features.Search.TestDefinitions;
 using SearchParamInfo = Ignixa.Search.Models.SearchParameterInfo;
@@ -21,12 +24,8 @@ using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType
 
 namespace Ignixa.Application.Tests.Features.Search;
 
-/// <summary>Spec §4.2: which definitions a projection extracts with, and which it lets requests search.</summary>
 public class PackageSearchParameterInheritanceTests
 {
-    private const string PatientName = "http://hl7.org/fhir/SearchParameter/Patient-name";
-    private static readonly string StagedName = TestPackages.Canonical("staged");
-
     [Theory]
     [InlineData(FhirVersion.Stu3)]
     [InlineData(FhirVersion.R4)]
@@ -34,12 +33,20 @@ public class PackageSearchParameterInheritanceTests
     [InlineData(FhirVersion.R5)]
     public async Task GivenPackageParameter_WhenLoadedEagerlyOrLazily_ThenInheritedParametersRemainAvailable(FhirVersion version)
     {
-        var baseManager = BaseManager(version);
-        using var state = await InitializedStateAsync(PackageCustom("Patient"));
+        var baseManager = new SearchParameterDefinitionManager(
+            version.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
 
         foreach (bool eager in new[] { true, false })
         {
-            var manager = await CreateManagerAsync(state, eager, version);
+            var manager = new CompositeSearchParameterDefinitionManager(
+                baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+                new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager });
+            await manager.InitializeAsync();
+
             foreach (string resourceType in new[] { "Patient", "Observation", "Organization", "Bundle" })
             {
                 foreach (string code in new[] { "_id", "_lastUpdated", "_tag" })
@@ -59,19 +66,51 @@ public class PackageSearchParameterInheritanceTests
         }
     }
 
+    [Fact]
+    public async Task GivenPackageOnlyResourceType_WhenLoadedEagerly_ThenItsOwnParameterRemainsAvailable()
+    {
+        var baseManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events("CustomPackageResource"));
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var manager = new CompositeSearchParameterDefinitionManager(
+            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions
+            {
+                EagerLoadPackageSearchParameters = true,
+                FailStartupOnEagerLoadError = true,
+            });
+
+        await manager.InitializeAsync();
+
+        manager.GetSearchParameter("CustomPackageResource", "package-custom").Expression.ShouldBe("CustomPackageResource.active");
+    }
+
     [Theory]
     [InlineData("ViewDefinition", true)]
     [InlineData("ViewDefinition", false)]
     [InlineData("CustomPackageResource", true)]
     [InlineData("CustomPackageResource", false)]
     public async Task GivenPackageResource_WhenLoadedEagerlyOrLazily_ThenOwnAndUniversalParametersSurviveCacheReload(
-        string resourceType,
-        bool eager)
+        string resourceType, bool eager)
     {
-        var baseManager = BaseManager();
-        using var state = await InitializedStateAsync(PackageCustom(resourceType, $"{resourceType}.id"));
-        var manager = await CreateManagerAsync(state, eager);
+        var baseManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events(resourceType, $"{resourceType}.id"));
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var manager = new CompositeSearchParameterDefinitionManager(
+            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions
+            {
+                EagerLoadPackageSearchParameters = eager,
+                FailStartupOnEagerLoadError = true,
+            });
 
+        await manager.InitializeAsync();
         AssertParameters();
         manager.ClearCache();
         AssertParameters();
@@ -95,11 +134,23 @@ public class PackageSearchParameterInheritanceTests
     [InlineData(false)]
     public async Task GivenUnknownTypeWithoutPackageParameters_WhenRequested_ThenTypeRemainsUnsupported(bool eager)
     {
-        using var state = await InitializedStateAsync();
-        var manager = await CreateManagerAsync(state, eager);
+        var baseManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var manager = new CompositeSearchParameterDefinitionManager(
+            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager });
+        await manager.InitializeAsync();
 
-        Should.Throw<SearchResourceNotSupportedException>(() => manager.GetSearchParameters("UnregisteredResource").ToList());
+        Should.Throw<SearchResourceNotSupportedException>(
+            () => manager.GetSearchParameters("UnregisteredResource").ToList());
     }
+
+    private const string PatientName = "http://hl7.org/fhir/SearchParameter/Patient-name";
+    private static readonly string StagedName = TestPackages.Canonical("staged");
 
     [Fact]
     public async Task GivenAPendingParameter_WhenSearchDefinitionsAreResolved_ThenItIsHiddenUnlessPartialIndicesAreRequested()
@@ -322,4 +373,15 @@ public class PackageSearchParameterInheritanceTests
         Activated(PatientName, "name", 3, package: CorePackage, type: SearchParamType.String),
         Activated(StagedName, "name", 3, PatientName, type: SearchParamType.String),
     ];
+
+    private static async IAsyncEnumerable<SourceEvent> Events(string resourceType = "Patient", string? expression = null)
+    {
+        await Task.CompletedTask;
+        yield return new SourceEvent(
+            1, "package-inheritance", nameof(SearchParameterActivated),
+            new SearchParameterActivated(
+                "http://example.org/SearchParameter/package-custom", "package-custom", resourceType,
+                expression ?? $"{resourceType}.active", SearchParamType.Token, "inheritance.package@1.0", null, 1, null, null, null, null),
+            DateTimeOffset.UtcNow);
+    }
 }

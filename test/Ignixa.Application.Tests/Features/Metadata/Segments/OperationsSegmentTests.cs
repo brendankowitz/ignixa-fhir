@@ -263,12 +263,17 @@ public class OperationsSegmentTests
             .ShouldBe("http://hl7.org/fhir/OperationDefinition/Resource-graphql");
     }
 
-    [Fact]
-    public async Task GivenReindexEnabledAndEverySqlTenant_WhenApplyingSegment_ThenAdvertisesReindexOperation()
+    [Theory]
+    [InlineData(true, "SqlServer", true)]
+    [InlineData(false, "SqlServer", false)]
+    [InlineData(true, "SqlServer,FileSystem", false)]
+    public async Task GivenReindexConfigurationAndTenantStorage_WhenApplyingSegment_ThenReindexIsAdvertisedOnlyWhenEnabledAndEveryTenantSupportsIt(
+        bool reindexEnabled,
+        string storageTypes,
+        bool expectAdvertised)
     {
-        var segment = CreateSegment(
-            reindexEnabled: true,
-            ReindexTestHelper.CreateRepositoryFactory(ReindexTestHelper.Tenant(1, "SqlServer")));
+        var tenants = storageTypes.Split(',').Select((type, index) => ReindexTestHelper.Tenant(index + 1, type)).ToArray();
+        var segment = CreateSegment(reindexEnabled, ReindexTestHelper.CreateRepositoryFactory(tenants));
         var statement = new CapabilityStatementJsonNode();
 
         await segment.ApplyAsync(
@@ -276,41 +281,14 @@ public class OperationsSegmentTests
             new CapabilityContext(FhirVersion.R4, TenantId: 1),
             CancellationToken.None);
 
-        SystemOperationNames(statement).ShouldBe(["reindex"]);
-    }
-
-    [Fact]
-    public async Task GivenReindexDisabled_WhenApplyingSegment_ThenOmitsReindexOperation()
-    {
-        var segment = CreateSegment(
-            reindexEnabled: false,
-            ReindexTestHelper.CreateRepositoryFactory(ReindexTestHelper.Tenant(1, "SqlServer")));
-        var statement = new CapabilityStatementJsonNode();
-
-        await segment.ApplyAsync(
-            statement,
-            new CapabilityContext(FhirVersion.R4, TenantId: 1),
-            CancellationToken.None);
-
-        statement.Rest.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public async Task GivenUnavailableReindexProvider_WhenApplyingSegment_ThenOmitsReindexOperation()
-    {
-        var segment = CreateSegment(
-            reindexEnabled: true,
-            ReindexTestHelper.CreateRepositoryFactory(
-                ReindexTestHelper.Tenant(1, "SqlServer"),
-                ReindexTestHelper.Tenant(2, "FileSystem")));
-        var statement = new CapabilityStatementJsonNode();
-
-        await segment.ApplyAsync(
-            statement,
-            new CapabilityContext(FhirVersion.R4, TenantId: 1),
-            CancellationToken.None);
-
-        statement.Rest.ShouldBeEmpty();
+        if (expectAdvertised)
+        {
+            SystemOperationNames(statement).ShouldBe(["reindex"]);
+        }
+        else
+        {
+            statement.Rest.ShouldBeEmpty();
+        }
     }
 
     [Fact]

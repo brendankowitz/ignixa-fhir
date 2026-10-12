@@ -17,7 +17,7 @@ public class PackageActivationPipelineTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task GivenInProcessBaseCode_WhenShadowed_ThenBaseIsMaterialisedAndOverrideIsStagedUnderItsIdentity(bool derivedFrom)
+    public async Task GivenInProcessBaseCode_WhenShadowed_ThenOverrideIsStagedUnderTheBaseIdentityAndTheHiddenCodeIsReported(bool derivedFrom)
     {
         using var harness = new Harness();
         var pipeline = harness.Pipeline(Shadow(derivedFrom: derivedFrom ? BaseIdentifier : null));
@@ -25,6 +25,13 @@ public class PackageActivationPipelineTests
         var result = await ActivateAsync(pipeline, "test.override");
 
         result.Success.ShouldBeTrue();
+        result.PendingReindex.ShouldBeEmpty();
+        var hidden = result.Issues.ShouldHaveSingleItem();
+        hidden.Code.ShouldBe(PackageActivationPipeline.TransitionPendingCode);
+        hidden.Severity.ShouldBe(ActivationIssueSeverity.Warning);
+        hidden.Message.ShouldContain("Patient.identifier");
+        hidden.Message.ShouldContain(TestPackageActivationPipeline.TransitionGrace.ToString());
+        hidden.Message.ShouldContain("reindex");
         var activations = harness.Activations.ToArray();
         activations.Length.ShouldBe(2);
         activations[0].Canonical.ShouldBe(BaseIdentifier);
@@ -329,24 +336,6 @@ public class PackageActivationPipelineTests
             TestPackageActivationPipeline.TransitionGrace,
             CancellationToken.None);
         harness.State.GetTransitionCandidates(packageEventId).Count.ShouldBe(shadowCount);
-    }
-
-    [Fact]
-    public async Task GivenShadowOnlyPackage_WhenActivated_ThenItReportsTheHiddenCodesAndTheirExpectedDelay()
-    {
-        using var harness = new Harness();
-        var pipeline = harness.Pipeline(Shadow());
-
-        var result = await ActivateAsync(pipeline, "test.override");
-
-        result.Success.ShouldBeTrue();
-        result.PendingReindex.ShouldBeEmpty();
-        var hidden = result.Issues.ShouldHaveSingleItem();
-        hidden.Code.ShouldBe(PackageActivationPipeline.TransitionPendingCode);
-        hidden.Severity.ShouldBe(ActivationIssueSeverity.Warning);
-        hidden.Message.ShouldContain("Patient.identifier");
-        hidden.Message.ShouldContain(TestPackageActivationPipeline.TransitionGrace.ToString());
-        hidden.Message.ShouldContain("reindex");
     }
 
     [Theory]

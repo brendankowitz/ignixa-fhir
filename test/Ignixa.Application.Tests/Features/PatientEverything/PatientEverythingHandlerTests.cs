@@ -51,12 +51,15 @@ public class PatientEverythingHandlerTests
             _logger);
     }
 
+    // M-L6: $everything membership comes from the searchable snapshot; a hidden member parameter is reported.
     [Theory]
-    [InlineData(HiddenMembershipScenario.Disabling, "is being redefined")]
-    [InlineData(HiddenMembershipScenario.Pending, "is pending reindex")]
-    public async Task GivenAMembershipParameterIsHidden_WhenEverythingRuns_ThenTheBundleWarnsNamingIt(
+    [InlineData(HiddenMembershipScenario.Disabling, null, "is being redefined")]
+    [InlineData(HiddenMembershipScenario.Pending, null, "is pending reindex")]
+    [InlineData(HiddenMembershipScenario.Pending, "Condition", null)]
+    public async Task GivenAMembershipParameterIsHidden_WhenEverythingRuns_ThenTheBundleWarnsOnlyWhenItsTypeIsIncluded(
         HiddenMembershipScenario scenario,
-        string expectedReason)
+        string? onlyType,
+        string? expectedReason)
     {
         SetupDefaultMocks(fhirVersion: "4.0");
         var handler = new PatientEverythingHandler(
@@ -67,32 +70,22 @@ public class PatientEverythingHandlerTests
             TestConformanceLease.Held(),
             _logger);
 
-        var result = await handler.HandleAsync(new PatientEverythingQuery("123"), CancellationToken.None);
+        var result = await handler.HandleAsync(
+            new PatientEverythingQuery("123", Types: onlyType is null ? null : new HashSet<string> { onlyType }),
+            CancellationToken.None);
 
-        var issue = result.SearchOptions.ShouldNotBeNull().BundleIssues.ShouldHaveSingleItem();
+        var issues = result.SearchOptions.ShouldNotBeNull().BundleIssues;
+        if (expectedReason is null)
+        {
+            issues.ShouldBeEmpty();
+            return;
+        }
+
+        var issue = issues.ShouldHaveSingleItem();
         issue.Severity.ShouldBe("warning");
         issue.Code.ShouldBe("incomplete");
         issue.Diagnostics.ShouldContain("'Observation.subject'");
         issue.Diagnostics.ShouldContain(expectedReason);
-    }
-
-    [Fact]
-    public async Task GivenAMembershipParameterIsHiddenOnAnExcludedType_WhenEverythingRunsWithType_ThenNoWarningIsRaised()
-    {
-        SetupDefaultMocks(fhirVersion: "4.0");
-        var handler = new PatientEverythingHandler(
-            _partitionStrategy,
-            _executionStrategy,
-            _contextAccessor,
-            await HiddenMembershipFixture.CreateVersionContextAsync(HiddenMembershipScenario.Pending),
-            TestConformanceLease.Held(),
-            _logger);
-
-        var result = await handler.HandleAsync(
-            new PatientEverythingQuery("123", Types: new HashSet<string> { "Condition" }),
-            CancellationToken.None);
-
-        result.SearchOptions.ShouldNotBeNull().BundleIssues.ShouldBeEmpty();
     }
 
     #region Setup

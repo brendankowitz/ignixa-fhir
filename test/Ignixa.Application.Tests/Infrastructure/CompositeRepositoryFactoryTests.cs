@@ -69,38 +69,26 @@ public sealed class CompositeRepositoryFactoryTests
     }
 
     [Theory]
-    [InlineData("SqlServer")]
-    [InlineData("SqlEntityFramework")]
-    public async Task GivenStorageTypeSupportingReindex_WhenGettingReindexStore_ThenSqlStoreIsReturned(
-        string storageType)
+    [MemberData(nameof(RecognizedStorageTypes))]
+    public async Task GivenRecognizedStorageType_WhenGettingReindexStore_ThenOnlySqlTenantsGetTheSqlStore(
+        string storageType,
+        bool supportsReindex)
     {
-        var tenant = Tenant(1, storageType);
         var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetTenantConfigurationAsync(tenant.TenantId, Arg.Any<CancellationToken>())
-            .Returns(tenant);
+        tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(Tenant(1, storageType));
         var sqlStore = Substitute.For<IReindexStore>();
         var sqlStores = Substitute.For<IReindexStoreFactory>();
-        sqlStores.GetReindexStoreAsync(tenant.TenantId, Arg.Any<CancellationToken>())
-            .Returns(sqlStore);
+        sqlStores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(sqlStore);
         var factory = CreateFactory(tenants, sqlStores);
 
-        (await factory.GetReindexStoreAsync(tenant.TenantId, CancellationToken.None))
-            .ShouldBeSameAs(sqlStore);
-    }
-
-    [Fact]
-    public async Task GivenFileSystemTenant_WhenGettingReindexStore_ThenNotSupportedIsThrown()
-    {
-        var tenant = Tenant(2, "FileSystem");
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetTenantConfigurationAsync(tenant.TenantId, Arg.Any<CancellationToken>())
-            .Returns(tenant);
-        var sqlStores = Substitute.For<IReindexStoreFactory>();
-        var factory = CreateFactory(tenants, sqlStores);
-
-        await Should.ThrowAsync<NotSupportedException>(
-            () => factory.GetReindexStoreAsync(tenant.TenantId, CancellationToken.None));
-        await sqlStores.DidNotReceive().GetReindexStoreAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
+        if (supportsReindex)
+        {
+            (await factory.GetReindexStoreAsync(1, CancellationToken.None)).ShouldBeSameAs(sqlStore);
+        }
+        else
+        {
+            await Should.ThrowAsync<NotSupportedException>(() => factory.GetReindexStoreAsync(1, CancellationToken.None));
+        }
     }
 
     private static TenantConfiguration Tenant(int tenantId, string storageType = "FileSystem") =>

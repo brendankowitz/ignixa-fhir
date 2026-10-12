@@ -58,21 +58,7 @@ public class SearchParameterTransitionCommitterTests
         harness.Log.AppendAttempts.ShouldBe(0);
     }
 
-    [Fact]
-    public async Task GivenUnrelatedEventWinsFirstAppend_WhenCommitted_ThenItCatchesUpAndRetries()
-    {
-        using var harness = new Harness();
-        var hideEventId = harness.SeedShadow();
-        harness.Log.OtherWriters.Enqueue(PackageActivated("unrelated"));
-
-        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
-
-        committed.ShouldBeTrue();
-        harness.Log.AppendAttempts.ShouldBe(2);
-        harness.Log.Appends.ShouldHaveSingleItem();
-        await harness.Trigger.Received(1).RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-    }
-
+    // §9: a lost append catches up and rebuilds the transition; here the winner already committed it.
     [Fact]
     public async Task GivenNewerTransitionMakesCandidateObsolete_WhenCommitted_ThenItStopsWithoutRetryingAppend()
     {

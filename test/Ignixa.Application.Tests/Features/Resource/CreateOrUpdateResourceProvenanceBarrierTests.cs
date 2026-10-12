@@ -49,9 +49,7 @@ public class CreateOrUpdateResourceProvenanceBarrierTests
         var repositories = Substitute.For<IFhirRepositoryFactory>();
         repositories.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
         var partitions = Substitute.For<IPartitionStrategy>();
-        partitions.DetermineWritePartition(
-                Arg.Any<PartitionResolutionContext>(),
-                Arg.Any<ResourceJsonNode>())
+        partitions.DetermineWritePartition(Arg.Any<PartitionResolutionContext>(), Arg.Any<ResourceJsonNode>())
             .Returns(new RequestPartition { Mode = PartitionMode.Isolated, PartitionIds = [1] });
         var context = Substitute.For<IFhirRequestContext>();
         context.TenantId.Returns(1);

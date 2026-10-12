@@ -1,9 +1,7 @@
-using System.Text.Json.Nodes;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Experimental.Mcp.Tools.PackageManagement;
 using Ignixa.Application.Infrastructure;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Abstractions;
+using Ignixa.Application.Tests.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.PackageManagement.Abstractions;
@@ -22,7 +20,7 @@ public class InstallPackageToolTests
     public async Task GivenStoredPackageIsRejectedByActivation_WhenInstalled_ThenTheToolReturnsAFailureNamingTheIssue()
     {
         using var state = new ConformanceState();
-        var tool = CreateTool(state, ["Patient", "Practitioner"]);
+        var tool = CreateTool(state, TestPackages.SearchParameter(PackageId, TestPackages.Canonical("mixed"), baseTypes: ["Patient", "Practitioner"]));
 
         var result = await tool.InstallPackageAsync(PackageId, Version, tenantId: 1, CancellationToken.None);
 
@@ -38,7 +36,7 @@ public class InstallPackageToolTests
     public async Task GivenActivatablePackage_WhenInstalled_ThenTheToolReportsSuccessWithItsPendingReindex()
     {
         using var state = new ConformanceState();
-        var tool = CreateTool(state, ["Patient"]);
+        var tool = CreateTool(state, TestPackages.Custom(PackageId));
 
         var result = await tool.InstallPackageAsync(PackageId, Version, tenantId: 1, CancellationToken.None);
 
@@ -47,7 +45,7 @@ public class InstallPackageToolTests
         state.Packages.ShouldContainKey($"{PackageId}@{Version}");
     }
 
-    private static InstallPackageTool CreateTool(ConformanceState state, string[] baseTypes)
+    private static InstallPackageTool CreateTool(ConformanceState state, PackageResource parameter)
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
@@ -56,45 +54,11 @@ public class InstallPackageToolTests
         var provider = Substitute.For<IImplementationGuideProvider>();
         provider.LoadPackageAsync("1", PackageId, Version, Arg.Any<CancellationToken>())
             .Returns(new PackageImportResult { PackageId = PackageId, PackageVersion = Version, ImportedResources = 1 });
-        var repository = Substitute.For<IPackageResourceRepository>();
-        repository.GetResourcesForActivationAsync(PackageId, Version, Arg.Any<CancellationToken>())
-            .Returns([CreateParameter(baseTypes)]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(call.Arg<IEnumerable<NewSourceEvent>>()
-                .Select((sourceEvent, index) => new SourceEvent(
-                    index + 1,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray()));
         return new InstallPackageTool(
             Substitute.For<IFhirRequestContextAccessor>(),
             tenants,
             provider,
             Substitute.For<INpmPackageSearchService>(),
-            TestPackageActivationPipeline.Create(repository, eventStore, state));
+            TestPackageActivationPipeline.Create(TestPackages.Repository(parameter), new InMemoryEventLog(), state));
     }
-
-    private static PackageResource CreateParameter(string[] baseTypes) =>
-        new()
-        {
-            PackageId = PackageId,
-            PackageVersion = Version,
-            ResourceType = "SearchParameter",
-            ResourceId = "identifier",
-            Canonical = "http://example.org/SearchParameter/identifier",
-            FhirVersion = "4.0.1",
-            ResourceJson = new JsonObject
-            {
-                ["resourceType"] = "SearchParameter",
-                ["id"] = "identifier",
-                ["url"] = "http://example.org/SearchParameter/identifier",
-                ["code"] = baseTypes.Length > 1 ? "identifier" : "custom-identifier",
-                ["base"] = new JsonArray(baseTypes.Select(type => JsonValue.Create(type)).ToArray<JsonNode?>()),
-                ["type"] = "token",
-                ["expression"] = "Resource.identifier",
-            }.ToJsonString(),
-        };
 }
