@@ -9,6 +9,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
@@ -127,6 +128,71 @@ public class ReindexRangeProcessorTests
         }
 
         accessor.RequestContext.ShouldBeSameAs(caller);
+    }
+
+    // F11: an extraction failure is recorded and skipped; the rest of the page is still written.
+    [Fact]
+    public async Task GivenOneResourceFailsExtraction_WhenRangeIsProcessed_ThenItIsRecordedAndTheOthersAreWritten()
+    {
+        var store = PageStore(3);
+        var indexer = Substitute.For<ISearchIndexer>();
+        indexer.Extract(Arg.Any<IElement>()).Returns(call =>
+            call.Arg<IElement>().Scalar("id") as string == "p2"
+                ? throw new InvalidOperationException("bad expression")
+                : []);
+
+        var result = await CreateProcessor(new FhirRequestContextAccessor(), indexer, store).ProcessAsync(
+            new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, 0),
+            CancellationToken.None);
+
+        result.ResourcesReindexed.ShouldBe(2);
+        result.FailedResourceCount.ShouldBe(1);
+        result.FailedResources.ShouldBe([new ReindexFailedResource("Patient", "p2", "bad expression")]);
+        await store.Received(1).UpdateSearchIndicesAsync(
+            Arg.Is<IReadOnlyList<ReindexResource>>(batch =>
+                string.Join(",", batch.Select(resource => resource.Resource.ResourceId)) == "p1,p3"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GivenMoreFailuresThanTheSample_WhenRangeIsProcessed_ThenAllAreCountedAndTheSampleIsCapped()
+    {
+        var store = PageStore(ReindexTenantProgress.FailedResourceSampleSize + 1);
+        var indexer = Substitute.For<ISearchIndexer>();
+        indexer.Extract(Arg.Any<IElement>()).Returns(_ => throw new InvalidOperationException("bad expression"));
+
+        var result = await CreateProcessor(new FhirRequestContextAccessor(), indexer, store).ProcessAsync(
+            new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 1000, 0),
+            CancellationToken.None);
+
+        result.FailedResourceCount.ShouldBe(ReindexTenantProgress.FailedResourceSampleSize + 1);
+        result.FailedResources.Count.ShouldBe(ReindexTenantProgress.FailedResourceSampleSize);
+        await store.DidNotReceiveWithAnyArgs().UpdateSearchIndicesAsync(default!, default);
+    }
+
+    // Spec 8.4 step 5: with a query delay the worker waits after each page before reading the next one.
+    [Fact]
+    public async Task GivenAQueryDelay_WhenAPageIsWritten_ThenTheWorkerWaitsBeforeTheNextRead()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = PageStore(1);
+        store.UpdateSearchIndicesAsync(Arg.Any<IReadOnlyList<ReindexResource>>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                // Cancelling here makes the wait observable: it can only fail if it was started.
+                cancellation.Cancel();
+                return new SearchIndexUpdateResult(1, 0);
+            });
+        var indexer = Substitute.For<ISearchIndexer>();
+        indexer.Extract(Arg.Any<IElement>()).Returns([]);
+
+        await Should.ThrowAsync<OperationCanceledException>(() =>
+            CreateProcessor(new FhirRequestContextAccessor(), indexer, store).ProcessAsync(
+                new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, int.MaxValue),
+                cancellation.Token));
+
+        await store.Received(1).ReadRangeAsync(
+            Arg.Any<string>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<long?>(), Arg.Any<CancellationToken>());
     }
 
     private static ReindexRangeProcessor CreateProcessor(
