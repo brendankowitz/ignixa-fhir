@@ -3,6 +3,7 @@ using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
+using Microsoft.Data.SqlClient;
 using Shouldly;
 using Xunit;
 
@@ -55,6 +56,29 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
         (await _database.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM dbo.Transactions WHERE IsCompleted = 1 AND IsVisible = 1"))
             .ShouldBe(after);
+    }
+
+    [Fact]
+    public async Task GivenAStandaloneDeleteRejectedByTheServer_WhenItRollsBack_ThenItsAllocationIsCompleted()
+    {
+        await _database.Repository.CreateOrUpdateAsync(Patient("delete-rejected"));
+        await _database.ExecuteNonQueryAsync("""
+            CREATE TRIGGER dbo.RejectTombstone ON dbo.Resource AFTER INSERT AS
+            IF EXISTS (SELECT 1 FROM inserted WHERE RequestMethod = 'DELETE')
+                THROW 50001, 'injected tombstone rejection', 1;
+            """);
+
+        var rejection = await Should.ThrowAsync<SqlException>(async () => await _database.Repository.DeleteAsync(
+            new ResourceKey("Patient", "delete-rejected"),
+            new ResourceRequest("DELETE", "Patient/delete-rejected"),
+            definitionsEventId: 0));
+
+        rejection.Number.ShouldBe(50001);
+        (await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions WHERE IsCompleted = 0"))
+            .ShouldBe(0);
+        (await _database.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.Transactions WHERE IsCompleted = 1 AND FailureReason LIKE '%injected tombstone rejection%'"))
+            .ShouldBe(1);
     }
 
     [Fact]

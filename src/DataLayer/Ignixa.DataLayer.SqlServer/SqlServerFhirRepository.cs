@@ -494,8 +494,11 @@ public class SqlServerFhirRepository(
                 },
                 cancellationToken);
         }
-        catch (ResourceVersionConflictException exception) when (ownsTransaction)
+        catch (Exception exception) when (ownsTransaction &&
+            (exception is ResourceVersionConflictException || IsKnownCoreRollback(exception)))
         {
+            // The SQL transaction rolled back; close the owned allocation so visibility (and the reindex
+            // drain waiting on the oldest incomplete transaction) does not stall behind it.
             await CompleteRejectedTransactionAsync(writeTransactionId.Value, exception);
             throw;
         }

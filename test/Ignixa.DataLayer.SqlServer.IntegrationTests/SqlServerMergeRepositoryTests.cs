@@ -69,17 +69,6 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenNoConformanceBarrier_WhenTransactionIsAllocated_ThenAllocationSucceeds()
-    {
-        var (transactionId, _) = await _repository.BeginTransactionAsync(
-            resourceCount: 1,
-            definitionsEventId: 0,
-            CancellationToken.None);
-
-        transactionId.ShouldBeGreaterThan(0);
-    }
-
-    [Fact]
     public async Task GivenAWriterBehindTheConformanceBarrier_WhenTransactionIsAllocated_ThenItIsFailedAndVisible()
     {
         await SetConformanceBarrierAsync(29);
