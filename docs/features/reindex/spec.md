@@ -725,8 +725,7 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
   `B_t`, `S_t`, `phase`, and counts.
 - **Metrics:** `reindex.resources.processed`, `.conflicts`, and `.failed`; `reindex.ranges.active`;
   `reindex.drain.wait`; `reindex.job.duration`; `conformance.barrier.rejections` (tagged by retry outcome);
-  `conformance.lease.lost`; `conformance.lease.age`; `conformance.transition.pending`;
-  `search.partial_index.requests`.
+  `conformance.lease.lost`; `conformance.lease.age`.
 
 ---
 

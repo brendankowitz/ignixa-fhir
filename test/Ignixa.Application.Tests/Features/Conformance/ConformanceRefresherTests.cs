@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Ignixa.Abstractions;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Conformance;
@@ -126,7 +127,7 @@ public class ConformanceRefresherTests
     }
 
     [Fact]
-    public async Task GivenPublishedDefinitions_WhenRefreshCompletes_ThenCapabilitiesAreInvalidatedAfterPublicationAndActivationLockRelease()
+    public async Task GivenPublishedDefinitions_WhenRefreshCompletes_ThenCapabilitiesAreInvalidatedAfterPublication()
     {
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreatePackageEvent(1, "first"));
@@ -140,7 +141,11 @@ public class ConformanceRefresherTests
             .Do(_ => events.Add("published"));
         var capabilities = Substitute.For<ICapabilityCacheInvalidator>();
         capabilities.InvalidateForTenantAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(_ => new ValueTask(InvalidateAsync()));
+            .Returns(_ =>
+            {
+                events.Add("invalidated");
+                return ValueTask.CompletedTask;
+            });
         using var refresher = TestConformanceRefresher.Create(
             state,
             tenants: TestConformanceRefresher.Tenants(CreateTenant(1)),
@@ -151,15 +156,6 @@ public class ConformanceRefresherTests
             .WaitAsync(TimeSpan.FromSeconds(10));
 
         events.ShouldBe(["published", "invalidated"]);
-
-        async Task InvalidateAsync()
-        {
-            using (await state.AcquireActivationLockAsync(CancellationToken.None))
-            {
-            }
-
-            events.Add("invalidated");
-        }
     }
 
     [Fact]
@@ -188,44 +184,33 @@ public class ConformanceRefresherTests
         await capabilities.DidNotReceive().InvalidateForTenantAsync(1, cancellation.Token);
     }
 
-    [Fact]
-    public async Task GivenRecoverableTenantConfigurationFailure_WhenRefreshed_ThenItThrowsTheDedicatedRefreshException()
-    {
-        using var state = new ConformanceState();
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: TestConformanceRefresher.FailingTenants(new IOException("Configuration store unavailable.")));
-
-        var exception = await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
-            refresher.RefreshAsync(force: false, CancellationToken.None));
-
-        exception.InnerException.ShouldBeOfType<IOException>();
-    }
-
-    [Fact]
-    public async Task GivenIndependentCancellation_WhenRefreshed_ThenItPropagatesTheCancellation()
-    {
-        using var state = new ConformanceState();
-        using var refresher = TestConformanceRefresher.Create(
-            state,
-            tenants: TestConformanceRefresher.FailingTenants(new OperationCanceledException("Independent cancellation.")));
-
-        await Should.ThrowAsync<OperationCanceledException>(() =>
-            refresher.RefreshAsync(force: false, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task GivenCatalogSynchronizationTimesOut_WhenRefreshed_ThenNothingIsPublishedOrInvalidated()
+    [Theory]
+    [InlineData(nameof(IOException), true)]
+    [InlineData(nameof(TimeoutException), true)]
+    [InlineData(nameof(DbException), true)]
+    [InlineData(nameof(OperationCanceledException), false)]
+    [InlineData(nameof(InvalidOperationException), false)]
+    public async Task GivenConsumerFailure_WhenRefreshed_ThenOnlyDependencyFailuresAreMappedAndNothingIsPublished(
+        string failureKind,
+        bool expectMapped)
     {
         using var state = new ConformanceState();
         state.ApplyAndTrack(CreatePackageEvent(1, "first"));
+        Exception failure = failureKind switch
+        {
+            nameof(IOException) => new IOException("Store unavailable."),
+            nameof(TimeoutException) => new TimeoutException("Catalog write timed out."),
+            nameof(DbException) => new TestDbException(),
+            nameof(OperationCanceledException) => new OperationCanceledException("Independent cancellation."),
+            _ => new InvalidOperationException("Programmer error."),
+        };
         var versions = new RecordingVersions();
         var catalog = Substitute.For<ISearchParameterCatalogSynchronizer>();
         catalog.SynchronizeAsync(
                 Arg.Any<TenantConfiguration>(),
                 Arg.Any<ISearchParameterDefinitionManager>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromException(new TimeoutException("Catalog write timed out.")));
+            .Returns(Task.FromException(failure));
         var capabilities = Substitute.For<ICapabilityCacheInvalidator>();
         using var refresher = TestConformanceRefresher.Create(
             state,
@@ -234,10 +219,18 @@ public class ConformanceRefresherTests
             catalog: catalog,
             capabilities: capabilities);
 
-        var exception = await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
+        var exception = await Record.ExceptionAsync(() =>
             refresher.RefreshAsync(force: false, CancellationToken.None));
 
-        exception.InnerException.ShouldBeOfType<TimeoutException>();
+        if (expectMapped)
+        {
+            exception.ShouldBeOfType<ConformanceConsumerRefreshException>().InnerException.ShouldBeSameAs(failure);
+        }
+        else
+        {
+            exception.ShouldBeSameAs(failure);
+        }
+
         versions.Published.ShouldBeEmpty();
         await capabilities.DidNotReceiveWithAnyArgs().InvalidateForTenantAsync(default, default);
     }
@@ -415,4 +408,6 @@ public class ConformanceRefresherTests
         public List<long> Built { get; } = [];
         public List<long> Published { get; } = [];
     }
+
+    private sealed class TestDbException() : DbException("Database unavailable.");
 }

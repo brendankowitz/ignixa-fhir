@@ -11,6 +11,7 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
 using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Application.Tests;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;

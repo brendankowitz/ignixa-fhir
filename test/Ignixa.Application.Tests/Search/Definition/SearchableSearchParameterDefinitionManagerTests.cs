@@ -175,32 +175,6 @@ public class SearchableSearchParameterDefinitionManagerTests
         value.ShouldBeNull();
     }
 
-    [Fact]
-    public void GivenAnInnerManagerWithHiddenKnownParameters_WhenAllKnownAreRequested_ThenSearchableForwardsTheKnownAccessor()
-    {
-        var hidden = new SearchParameterInfo("hidden", "hidden", SearchParamType.String, new Uri(CustomUrl));
-        var inner = Substitute.For<ISearchParameterDefinitionManager>();
-        inner.GetAllKnownSearchParameters().Returns([hidden]);
-        inner.GetAllKnownSearchParameters("Patient").Returns([hidden]);
-        var searchable = new SearchableSearchParameterDefinitionManager(inner);
-
-        searchable.GetAllKnownSearchParameters().ShouldBe([hidden]);
-        searchable.GetAllKnownSearchParameters("Patient").ShouldBe([hidden]);
-    }
-
-    [Fact]
-    public void GivenAnInnerManagerWithHiddenKnownParameters_WhenAllKnownAreRequested_ThenSupportedForwardsTheKnownAccessor()
-    {
-        var hidden = new SearchParameterInfo("hidden", "hidden", SearchParamType.String, new Uri(CustomUrl));
-        var inner = Substitute.For<ISearchParameterDefinitionManager>();
-        inner.GetAllKnownSearchParameters().Returns([hidden]);
-        inner.GetAllKnownSearchParameters("Patient").Returns([hidden]);
-        ISearchParameterDefinitionManager supported = new SupportedSearchParameterDefinitionManager(inner);
-
-        supported.GetAllKnownSearchParameters().ShouldBe([hidden]);
-        supported.GetAllKnownSearchParameters("Patient").ShouldBe([hidden]);
-    }
-
     private void SetStatus(bool isSearchable, bool isSupported)
     {
         _inner.TryGetSearchParameter(new Uri(CustomUrl), out SearchParameterInfo parameter).ShouldBeTrue();

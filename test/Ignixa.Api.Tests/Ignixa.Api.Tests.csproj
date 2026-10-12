@@ -29,5 +29,11 @@
     <ProjectReference Include="..\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Shared with Ignixa.Application.Tests rather than copied. -->
+    <Compile Include="..\Ignixa.Application.Tests\TestConformanceLease.cs" Link="TestConformanceLease.cs" />
+    <Compile Include="..\Ignixa.Application.Tests\TestConformanceRefresher.cs" Link="TestConformanceRefresher.cs" />
+  </ItemGroup>
+
 </Project>
 

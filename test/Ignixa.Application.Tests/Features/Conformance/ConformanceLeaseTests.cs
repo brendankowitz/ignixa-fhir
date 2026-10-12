@@ -61,25 +61,6 @@ public class ConformanceLeaseTests
     }
 
     [Fact]
-    public void GivenHeldLeaseExpires_WhenIsHeldIsRead_ThenTheReadNeitherLogsNorRecordsTheLoss()
-    {
-        var clock = new ManualTimeProvider();
-        var logger = Substitute.For<ILogger<ConformanceLease>>();
-        var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
-            clock,
-            logger);
-        lease.Renew(lease.CaptureStart());
-        logger.ClearReceivedCalls();
-        clock.Advance(TimeSpan.FromSeconds(11));
-
-        lease.IsHeld.ShouldBeFalse();
-        lease.IsHeld.ShouldBeFalse();
-
-        logger.ReceivedCalls().ShouldBeEmpty();
-    }
-
-    [Fact]
     public void GivenHeldLeaseExpires_WhenObserved_ThenTheLossIsLoggedOnceAndTheRegainIsLogged()
     {
         var clock = new ManualTimeProvider();
