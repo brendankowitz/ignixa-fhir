@@ -29,27 +29,7 @@ public sealed class SqlServerReindexStore(
     // A field, not the captured parameter: the row generators below are initialized from it too.
     private readonly SqlServerSearchIndexReferenceDataCache _referenceDataCache = referenceDataCache;
 
-    private readonly TokenSearchParameterRowGenerator _tokenRowGenerator = new(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _referenceRowGenerator = new ReferenceSearchParameterRowGenerator();
-    private readonly ISearchParameterRowGenerator _stringRowGenerator = new StringSearchParameterRowGenerator();
-    private readonly ISearchParameterRowGenerator _numberRowGenerator = new NumberSearchParameterRowGenerator();
-    private readonly ISearchParameterRowGenerator _quantityRowGenerator =
-        new QuantitySearchParameterRowGenerator(referenceDataCache.SystemMappings, referenceDataCache.QuantityCodeMappings);
-    private readonly ISearchParameterRowGenerator _dateTimeRowGenerator = new DateTimeSearchParameterRowGenerator();
-    private readonly UriSearchParameterRowGenerator _uriRowGenerator = new();
-    private readonly ISearchParameterRowGenerator _tokenTextRowGenerator = new TokenTextRowGenerator();
-    private readonly ISearchParameterRowGenerator _refTokenCompositeRowGenerator =
-        new RefTokenCompositeRowGenerator(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _tokenTokenCompositeRowGenerator =
-        new TokenTokenCompositeRowGenerator(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _tokenDateTimeCompositeRowGenerator =
-        new TokenDateTimeCompositeRowGenerator(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _tokenQuantityCompositeRowGenerator =
-        new TokenQuantityCompositeRowGenerator(referenceDataCache.SystemMappings, referenceDataCache.QuantityCodeMappings);
-    private readonly ISearchParameterRowGenerator _tokenStringCompositeRowGenerator =
-        new TokenStringCompositeRowGenerator(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _tokenNumberNumberCompositeRowGenerator =
-        new TokenNumberNumberCompositeRowGenerator(referenceDataCache.SystemMappings);
+    private readonly SearchIndexRowSetBuilder _searchIndexRowSetBuilder = new(referenceDataCache);
 
     public async Task<BarrierCutoff> RaiseBarrierAsync(
         long targetEventId,
@@ -352,34 +332,8 @@ public sealed class SqlServerReindexStore(
 
         var resourceRecords = CreateResourceRecords(resources, resourceTypeIdMap);
         var resourceWriteClaims = await ReadResourceWriteClaimsAsync(resources, cancellationToken);
-        var referenceSearchParams = MaterializeIfNotEmpty(
-            _referenceRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var tokenSearchParams = MaterializeIfNotEmpty(
-            _tokenRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var tokenTexts = MaterializeIfNotEmpty(
-            _tokenTextRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var stringSearchParams = MaterializeIfNotEmpty(
-            _stringRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var uriSearchParams = MaterializeIfNotEmpty(
-            _uriRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var numberSearchParams = MaterializeIfNotEmpty(
-            _numberRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var quantitySearchParams = MaterializeIfNotEmpty(
-            _quantityRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var dateTimeSearchParams = MaterializeIfNotEmpty(
-            _dateTimeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var referenceTokenComposites = MaterializeIfNotEmpty(
-            _refTokenCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var tokenTokenComposites = MaterializeIfNotEmpty(
-            _tokenTokenCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var tokenDateTimeComposites = MaterializeIfNotEmpty(
-            _tokenDateTimeCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var tokenQuantityComposites = MaterializeIfNotEmpty(
-            _tokenQuantityCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var tokenStringComposites = MaterializeIfNotEmpty(
-            _tokenStringCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
-        var tokenNumberNumberComposites = MaterializeIfNotEmpty(
-            _tokenNumberNumberCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
+        var searchIndexRowSets = _searchIndexRowSetBuilder.Build(
+            resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger);
 
         var failedResources = new SqlParameter("@FailedResources", SqlDbType.Int)
         {
@@ -409,20 +363,20 @@ public sealed class SqlServerReindexStore(
         command.Parameters.Add(failedResources);
         AddTableValuedParameter(command, "@Resources", "dbo.ResourceList", resourceRecords);
         AddTableValuedParameter(command, "@ResourceWriteClaims", "dbo.ResourceWriteClaimList", resourceWriteClaims);
-        AddTableValuedParameter(command, "@ReferenceSearchParams", "dbo.ReferenceSearchParamList", referenceSearchParams);
-        AddTableValuedParameter(command, "@TokenSearchParams", "dbo.TokenSearchParamList", tokenSearchParams);
-        AddTableValuedParameter(command, "@TokenTexts", "dbo.TokenTextList", tokenTexts);
-        AddTableValuedParameter(command, "@StringSearchParams", "dbo.StringSearchParamList", stringSearchParams);
-        AddTableValuedParameter(command, "@UriSearchParams", "dbo.UriSearchParamList", uriSearchParams);
-        AddTableValuedParameter(command, "@NumberSearchParams", "dbo.NumberSearchParamList", numberSearchParams);
-        AddTableValuedParameter(command, "@QuantitySearchParams", "dbo.QuantitySearchParamList", quantitySearchParams);
-        AddTableValuedParameter(command, "@DateTimeSearchParams", "dbo.DateTimeSearchParamList", dateTimeSearchParams);
-        AddTableValuedParameter(command, "@ReferenceTokenCompositeSearchParams", "dbo.ReferenceTokenCompositeSearchParamList", referenceTokenComposites);
-        AddTableValuedParameter(command, "@TokenTokenCompositeSearchParams", "dbo.TokenTokenCompositeSearchParamList", tokenTokenComposites);
-        AddTableValuedParameter(command, "@TokenDateTimeCompositeSearchParams", "dbo.TokenDateTimeCompositeSearchParamList", tokenDateTimeComposites);
-        AddTableValuedParameter(command, "@TokenQuantityCompositeSearchParams", "dbo.TokenQuantityCompositeSearchParamList", tokenQuantityComposites);
-        AddTableValuedParameter(command, "@TokenStringCompositeSearchParams", "dbo.TokenStringCompositeSearchParamList", tokenStringComposites);
-        AddTableValuedParameter(command, "@TokenNumberNumberCompositeSearchParams", "dbo.TokenNumberNumberCompositeSearchParamList", tokenNumberNumberComposites);
+        AddTableValuedParameter(command, "@ReferenceSearchParams", "dbo.ReferenceSearchParamList", searchIndexRowSets.Reference);
+        AddTableValuedParameter(command, "@TokenSearchParams", "dbo.TokenSearchParamList", searchIndexRowSets.Token);
+        AddTableValuedParameter(command, "@TokenTexts", "dbo.TokenTextList", searchIndexRowSets.TokenText);
+        AddTableValuedParameter(command, "@StringSearchParams", "dbo.StringSearchParamList", searchIndexRowSets.String);
+        AddTableValuedParameter(command, "@UriSearchParams", "dbo.UriSearchParamList", searchIndexRowSets.Uri);
+        AddTableValuedParameter(command, "@NumberSearchParams", "dbo.NumberSearchParamList", searchIndexRowSets.Number);
+        AddTableValuedParameter(command, "@QuantitySearchParams", "dbo.QuantitySearchParamList", searchIndexRowSets.Quantity);
+        AddTableValuedParameter(command, "@DateTimeSearchParams", "dbo.DateTimeSearchParamList", searchIndexRowSets.DateTime);
+        AddTableValuedParameter(command, "@ReferenceTokenCompositeSearchParams", "dbo.ReferenceTokenCompositeSearchParamList", searchIndexRowSets.ReferenceTokenComposite);
+        AddTableValuedParameter(command, "@TokenTokenCompositeSearchParams", "dbo.TokenTokenCompositeSearchParamList", searchIndexRowSets.TokenTokenComposite);
+        AddTableValuedParameter(command, "@TokenDateTimeCompositeSearchParams", "dbo.TokenDateTimeCompositeSearchParamList", searchIndexRowSets.TokenDateTimeComposite);
+        AddTableValuedParameter(command, "@TokenQuantityCompositeSearchParams", "dbo.TokenQuantityCompositeSearchParamList", searchIndexRowSets.TokenQuantityComposite);
+        AddTableValuedParameter(command, "@TokenStringCompositeSearchParams", "dbo.TokenStringCompositeSearchParamList", searchIndexRowSets.TokenStringComposite);
+        AddTableValuedParameter(command, "@TokenNumberNumberCompositeSearchParams", "dbo.TokenNumberNumberCompositeSearchParamList", searchIndexRowSets.TokenNumberNumberComposite);
 
         try
         {
@@ -436,11 +390,11 @@ public sealed class SqlServerReindexStore(
             // Only resources the procedure actually updated; a conflicted (superseded) resource keeps its rows.
             var updatedResourceSurrogateIdSet = updatedResourceSurrogateIds.ToHashSet();
             var conflicts = Convert.ToInt32(failedResources.Value, CultureInfo.InvariantCulture);
-            var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
+            var tokenExtensions = _searchIndexRowSetBuilder.TokenRowGenerator.ExtractExtensionData(
                     resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger)
                 .Where(extension => updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
                 .ToArray();
-            var uriExtensions = _uriRowGenerator.ExtractExtensionData(
+            var uriExtensions = _searchIndexRowSetBuilder.UriRowGenerator.ExtractExtensionData(
                     resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger)
                 .Where(extension => updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
                 .ToArray();
