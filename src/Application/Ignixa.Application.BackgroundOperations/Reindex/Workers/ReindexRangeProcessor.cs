@@ -19,28 +19,17 @@ public sealed class ReindexRangeProcessor(
 {
     private const int MinimumWriteBatchSize = 10;
 
-    private readonly IReindexStoreFactory _reindexStoreFactory =
-        reindexStoreFactory ?? throw new ArgumentNullException(nameof(reindexStoreFactory));
-    private readonly ITenantConfigurationStore _tenantConfigurationStore =
-        tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
-    private readonly IFhirVersionContext _fhirVersionContext =
-        fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
-    private readonly ConformanceRefresher _conformanceRefresher =
-        conformanceRefresher ?? throw new ArgumentNullException(nameof(conformanceRefresher));
-    private readonly IFhirRequestContextAccessor _fhirContextAccessor =
-        fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
-
     public async Task<ReindexRangeOutput> ProcessAsync(
         ReindexRangeInput input,
         CancellationToken cancellationToken)
     {
-        var tenant = await _tenantConfigurationStore.GetTenantConfigurationAsync(
+        var tenant = await tenantConfigurationStore.GetTenantConfigurationAsync(
             input.TenantId,
             cancellationToken)
             ?? throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive.");
         var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
-        var previousContext = _fhirContextAccessor.RequestContext;
-        _fhirContextAccessor.RequestContext = FhirRequestContextFactory.CreateBackgroundContext(
+        var previousContext = fhirContextAccessor.RequestContext;
+        fhirContextAccessor.RequestContext = FhirRequestContextFactory.CreateBackgroundContext(
             input.TenantId,
             tenant,
             fhirVersion,
@@ -48,18 +37,18 @@ public sealed class ReindexRangeProcessor(
         try
         {
             // Catch up once before giving up on this attempt; the orchestration waits and retries the range.
-            var handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
+            var handle = fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
             if (handle.DefinitionsEventId < input.TargetEventId)
             {
-                await _conformanceRefresher.SynchronizeAsync(cancellationToken);
-                handle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
+                await conformanceRefresher.SynchronizeAsync(cancellationToken);
+                handle = fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
                 if (handle.DefinitionsEventId < input.TargetEventId)
                 {
                     return ReindexRangeOutput.DefinitionsNotReady(handle.DefinitionsEventId);
                 }
             }
 
-            var store = await _reindexStoreFactory.GetReindexStoreAsync(
+            var store = await reindexStoreFactory.GetReindexStoreAsync(
                 input.TenantId,
                 cancellationToken);
 
@@ -151,7 +140,7 @@ public sealed class ReindexRangeProcessor(
         }
         finally
         {
-            _fhirContextAccessor.RequestContext = previousContext;
+            fhirContextAccessor.RequestContext = previousContext;
         }
     }
 }

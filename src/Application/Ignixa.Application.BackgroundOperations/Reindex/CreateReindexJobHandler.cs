@@ -23,19 +23,6 @@ public sealed class CreateReindexJobHandler(
     TimeProvider timeProvider)
     : IRequestHandler<CreateReindexJobCommand, CreateReindexJobResult>
 {
-    private readonly TaskHubClient _taskHubClient =
-        taskHubClient ?? throw new ArgumentNullException(nameof(taskHubClient));
-    private readonly IBackgroundJobRepository<ReindexJobDefinition> _jobRepository =
-        jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
-    private readonly IReindexJobLock _jobLock =
-        jobLock ?? throw new ArgumentNullException(nameof(jobLock));
-    private readonly ReindexTargetResolver _targetResolver =
-        targetResolver ?? throw new ArgumentNullException(nameof(targetResolver));
-    private readonly ReindexOptions _options =
-        options?.Value ?? throw new ArgumentNullException(nameof(options));
-    private readonly TimeProvider _timeProvider =
-        timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-
     public async Task<CreateReindexJobResult> HandleAsync(
         CreateReindexJobCommand request,
         CancellationToken cancellationToken)
@@ -45,11 +32,11 @@ public sealed class CreateReindexJobHandler(
         {
             parameters = ReindexJobParameters.Create(
                 request.MaximumNumberOfResourcesPerQuery
-                    ?? _options.DefaultMaximumNumberOfResourcesPerQuery,
+                    ?? options.Value.DefaultMaximumNumberOfResourcesPerQuery,
                 request.MaximumNumberOfResourcesPerWrite
-                    ?? _options.DefaultMaximumNumberOfResourcesPerWrite,
+                    ?? options.Value.DefaultMaximumNumberOfResourcesPerWrite,
                 request.MaximumConcurrency
-                    ?? _options.DefaultMaximumConcurrency,
+                    ?? options.Value.DefaultMaximumConcurrency,
                 request.QueryDelayIntervalInMilliseconds ?? 0);
         }
         catch (ReindexValidationException ex)
@@ -57,7 +44,7 @@ public sealed class CreateReindexJobHandler(
             return new InvalidReindexRequestResult(ex.Message);
         }
 
-        return await _jobLock.ExecuteAsync(
+        return await jobLock.ExecuteAsync(
             ct => StartUnderLockAsync(request, parameters, ct),
             cancellationToken);
     }
@@ -67,7 +54,7 @@ public sealed class CreateReindexJobHandler(
         ReindexJobParameters parameters,
         CancellationToken cancellationToken)
     {
-        var active = await _jobRepository.GetActiveAsync(
+        var active = await jobRepository.GetActiveAsync(
             (int)BackgroundJobType.Reindex,
             cancellationToken);
         if (active is not null)
@@ -75,7 +62,7 @@ public sealed class CreateReindexJobHandler(
             return new ActiveReindexJobResult(active.JobId);
         }
 
-        var plan = await _targetResolver.ResolveAsync(cancellationToken);
+        var plan = await targetResolver.ResolveAsync(cancellationToken);
         if (plan.TenantIds.Count == 0)
         {
             return new NoReindexWorkResult("No active tenant is configured for reindexing.");
@@ -109,8 +96,8 @@ public sealed class CreateReindexJobHandler(
             QueryDelayIntervalInMilliseconds = parameters.QueryDelayIntervalInMilliseconds,
             Trigger = request.Trigger.ToString()
         };
-        var now = _timeProvider.GetUtcNow();
-        await _jobRepository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
+        var now = timeProvider.GetUtcNow();
+        await jobRepository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
         {
             JobId = jobId,
             OrchestrationInstanceId = jobId,
@@ -124,26 +111,26 @@ public sealed class CreateReindexJobHandler(
 
         try
         {
-            await _taskHubClient.CreateOrchestrationInstanceAsync(
+            await taskHubClient.CreateOrchestrationInstanceAsync(
                 typeof(ReindexOrchestration),
                 jobId,
                 new ReindexOrchestrationInput(
                     jobId,
                     plan.TargetEventId,
-                    _options.BarrierDelay,
+                    options.Value.BarrierDelay,
                     definition.TenantIds,
                     definition.ResourceTypes,
                     plan.Targets,
                     parameters,
-                    _options.DrainWarningAfter,
-                    _options.StaleJobTimeout,
-                    _options.ContinueAsNewThreshold));
+                    options.Value.DrainWarningAfter,
+                    options.Value.StaleJobTimeout,
+                    options.Value.ContinueAsNewThreshold));
         }
         catch
         {
             // A row without an orchestration must not survive: as the latest finished job it would block
             // the next automatic start, and as an active job it would answer every $reindex with 409.
-            await _jobRepository.DeleteAsync(jobId, SystemConstants.GlobalTenantId, CancellationToken.None);
+            await jobRepository.DeleteAsync(jobId, SystemConstants.GlobalTenantId, CancellationToken.None);
             throw;
         }
 
@@ -151,5 +138,5 @@ public sealed class CreateReindexJobHandler(
     }
 
     private Task<BackgroundJob<ReindexJobDefinition>?> GetLatestFinishedAsync(CancellationToken cancellationToken) =>
-        _jobRepository.GetLatestAsync((int)BackgroundJobType.Reindex, ReindexJobs.FinishedStatuses, cancellationToken);
+        jobRepository.GetLatestAsync((int)BackgroundJobType.Reindex, ReindexJobs.FinishedStatuses, cancellationToken);
 }
