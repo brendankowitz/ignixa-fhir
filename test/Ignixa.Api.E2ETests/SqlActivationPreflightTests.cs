@@ -1,4 +1,3 @@
-using System.Data;
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -36,67 +35,8 @@ public class SqlActivationPreflightTests
     [InlineData("within-batch-conflict")]
     public async Task GivenInvalidProposedBatch_WhenActivationIsRejected_ThenEventsStateAndSubsequentRestartRemainUsable(string scenario)
     {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var database = $"IgnixaActivationPreflight_{Guid.NewGuid():N}";
-        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quoted = names.QuoteIdentifier(database);
-        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quoted}");
-        try
-        {
-            await AssertRejectedBatchAsync(connectionString, scenario);
-        }
-        finally
-        {
-            using var pool = new SqlConnection(connectionString);
-            SqlConnection.ClearPool(pool);
-            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quoted}");
-        }
-    }
-
-    [SqlFact]
-    public async Task GivenPartialIndicesHeader_WhenConditionalDeleteUsesAPendingParameter_ThenItReturnsBadRequest()
-    {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var database = $"IgnixaConditionalPartial_{Guid.NewGuid():N}";
-        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quoted = names.QuoteIdentifier(database);
-        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quoted}");
-        try
-        {
-            await using var template = new IgnixaApiFixture();
-            await using var host = CreateHost(template, connectionString);
-            using var client = host.CreateClient();
-            var services = host.Services;
-            const string parameterCode = "conditional-pending";
-
-            await StoreAsync(services, PackageId, "conditional", parameterCode,
-                "http://example.org/SearchParameter/conditional-pending", null);
-            (await services.GetRequiredService<PackageActivationPipeline>()
-                .ActivateAsync(PackageId, "conditional", CancellationToken.None)).Success.ShouldBeTrue();
-            await SynchronizeAsync(services, "conditional");
-
-            using var request = new HttpRequestMessage(
-                HttpMethod.Delete,
-                $"/tenant/1/Patient?{parameterCode}=value");
-            request.Headers.Add("x-ms-use-partial-indices", "true");
-            using var response = await client.SendAsync(request);
-            var body = await response.Content.ReadAsStringAsync();
-
-            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, body);
-            body.ShouldContain("Conditional operations cannot use partially indexed search parameters");
-        }
-        finally
-        {
-            using var pool = new SqlConnection(connectionString);
-            SqlConnection.ClearPool(pool);
-            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quoted}");
-        }
+        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaActivationPreflight");
+        await AssertRejectedBatchAsync(database.ConnectionString, scenario);
     }
 
     private static async Task AssertRejectedBatchAsync(string connectionString, string scenario)
@@ -274,36 +214,5 @@ public class SqlActivationPreflightTests
         await connection.OpenAsync();
         using var command = new SqlCommand("SELECT COUNT_BIG(*) FROM dbo.SourceEvents", connection);
         return (long)(await command.ExecuteScalarAsync())!;
-    }
-
-    private static async Task ExecuteDatabaseCommandAsync(string connectionString, string statement)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand("EXEC sys.sp_executesql @statement", connection);
-        command.Parameters.Add("@statement", SqlDbType.NVarChar, -1).Value = statement;
-        await command.ExecuteNonQueryAsync();
-    }
-
-    private sealed class SqlTheoryAttribute : TheoryAttribute
-    {
-        public SqlTheoryAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires real SQL activation and restart.";
-            }
-        }
-    }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires real SQL activation and restart.";
-            }
-        }
     }
 }

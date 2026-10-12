@@ -14,16 +14,21 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class ReindexProgressReporterTests
 {
     [Theory]
+    [InlineData(null)]
     [InlineData("Completed")]
     [InlineData("Failed")]
     [InlineData("Cancelled")]
-    public async Task GivenClosedJob_WhenLateProgressOrHeartbeatIsReported_ThenNoOpReportsClosedAndPreservesJob(string status)
+    public async Task GivenMissingOrClosedJob_WhenLateProgressOrHeartbeatIsReported_ThenNoOpReportsClosedAndPreservesJob(string? status)
     {
         var repository = CreateRepository();
-        var job = CreateJob();
-        job.Status = status;
-        job.HeartbeatDate = DateTimeOffset.UtcNow.AddMinutes(-1);
-        await repository.CreateAsync(job, CancellationToken.None);
+        if (status is not null)
+        {
+            var job = CreateJob();
+            job.Status = status;
+            job.HeartbeatDate = DateTimeOffset.UtcNow.AddMinutes(-1);
+            await repository.CreateAsync(job, CancellationToken.None);
+        }
+
         var reporter = CreateReporter(repository);
         var before = JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None));
 
@@ -31,15 +36,6 @@ public class ReindexProgressReporterTests
         (await reporter.HeartbeatAsync("job", CancellationToken.None)).ShouldBeFalse();
 
         JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None)).ShouldBe(before);
-    }
-
-    [Fact]
-    public async Task GivenMissingJob_WhenProgressIsReported_ThenItIsReportedClosed()
-    {
-        var reporter = CreateReporter(CreateRepository());
-
-        (await reporter.ReportAsync("job", Snapshot(10), CancellationToken.None)).ShouldBeFalse();
-        (await reporter.HeartbeatAsync("job", CancellationToken.None)).ShouldBeFalse();
     }
 
     [Fact]
@@ -124,16 +120,14 @@ public class ReindexProgressReporterTests
             ]
         };
 
-    private static BackgroundJob<ReindexJobDefinition> CreateJob() =>
-        new()
-        {
-            JobId = "job", JobType = 4, Status = "Running", Definition = ReindexTestHelper.CreateJobDefinition(),
-            Progress = new JsonObject()
-        };
+    private static BackgroundJob<ReindexJobDefinition> CreateJob()
+    {
+        var job = ReindexTestHelper.Job("Running");
+        job.Progress = new JsonObject();
+        return job;
+    }
 
-    private static InMemoryBackgroundJobRepository<ReindexJobDefinition> CreateRepository() =>
-        new(Substitute.For<ITenantConfigurationStore>(),
-            NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+    private static InMemoryBackgroundJobRepository<ReindexJobDefinition> CreateRepository() => ReindexTestHelper.JobRepository();
 
     private static ReindexProgressReporter CreateReporter(IBackgroundJobRepository<ReindexJobDefinition> repository) =>
         new(repository, TimeProvider.System);

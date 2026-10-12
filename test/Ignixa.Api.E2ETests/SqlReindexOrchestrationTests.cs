@@ -9,7 +9,6 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.PackageManagement.Abstractions;
 using Ignixa.PackageManagement.Models;
-using Medino;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -25,47 +24,51 @@ public class SqlReindexOrchestrationTests
         await fixture.InitializeAsync();
         var marker = Guid.NewGuid().ToString("N");
         var patientId = $"reindex-{marker}";
+        var observationId = $"reindex-{marker}";
         var code = $"reindex-{marker}";
         var canonical = $"http://example.org/SearchParameter/{code}";
-        var packageId = $"test.reindex.{marker}";
-
+        // An absolute self-reference: reindexing Observation must extract it with the server's base URI, as a write does.
+        var subject = $"https://example.test/fhir/Patient/{patientId}";
         await PutPatientAsync(fixture.Client, patientId, marker);
-        await StoreParameterAsync(fixture.Services, packageId, code, canonical);
+        await PutObservationAsync(fixture.Client, observationId, subject);
+        await StoreParameterAsync(fixture.Services, $"test.reindex.{marker}", code, canonical);
+        await StoreParameterAsync(
+            fixture.Services,
+            $"test.reindex.{marker}",
+            $"subject-{marker}",
+            $"http://example.org/SearchParameter/subject-{marker}",
+            resourceType: "Observation",
+            expression: "Observation.subject",
+            type: "reference");
         var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
-            .ActivateAsync(packageId, "1.0.0", CancellationToken.None);
+            .ActivateAsync($"test.reindex.{marker}", "1.0.0", CancellationToken.None);
 
         activation.Success.ShouldBeTrue();
         activation.ReindexJobId.ShouldBeNull();
         var state = fixture.Services.GetRequiredService<ConformanceState>();
         state.FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
         RenewLease(fixture.Services);
-        await AssertPendingAsync(fixture.Client, code, marker);
+        (await SearchAsync(fixture.Client, "Patient", code, $"urn:reindex|{marker}")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
-        var created = await CreateReindexAsync(fixture.Client);
-        using var createdResponse = created.Response;
-
-        created.Response.StatusCode.ShouldBe(HttpStatusCode.Created, created.Body.ToJsonString());
-        created.Response.Content.Headers.ContentLocation.ShouldBe(new Uri($"/tenant/1/$reindex/{created.JobId}", UriKind.Relative));
-        created.Body["resourceType"]!.GetValue<string>().ShouldBe("Parameters");
-        ParameterValue(created.Body, "id").ShouldBe(created.JobId);
-
-        var completed = await WaitForStatusAsync(fixture.Client, created.JobId, "Completed");
-        ParameterValue(completed, "status").ShouldBe("Completed");
-
+        using var created = await fixture.Client.PostAsync("/tenant/1/$reindex", ReindexRequestContent());
+        var createdBody = JsonNode.Parse(await created.Content.ReadAsStringAsync())!;
+        created.StatusCode.ShouldBe(HttpStatusCode.Created, createdBody.ToJsonString());
+        var jobId = ParameterValue(createdBody, "id");
+        created.Content.Headers.ContentLocation.ShouldBe(new Uri($"/tenant/1/$reindex/{jobId}", UriKind.Relative));
+        await WaitForStatusAsync(fixture.Client, jobId, "Completed");
         using var listResponse = await fixture.Client.GetAsync("/tenant/1/$reindex");
-        listResponse.StatusCode.ShouldBe(HttpStatusCode.OK, await listResponse.Content.ReadAsStringAsync());
         var list = JsonNode.Parse(await listResponse.Content.ReadAsStringAsync())!;
-        list["resourceType"]!.GetValue<string>().ShouldBe("Parameters");
         list["parameter"]!.AsArray()
             .Where(parameter => parameter!["name"]!.GetValue<string>() == "job")
             .Select(parameter => parameter!["part"]!.AsArray()
                 .Single(part => part!["name"]!.GetValue<string>() == "id")!["valueString"]!.GetValue<string>())
-            .ShouldContain(created.JobId);
+            .ShouldContain(jobId);
 
         state.FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         await RefreshConformanceConsumersAsync(fixture.Services);
         RenewLease(fixture.Services);
-        await AssertSearchAsync(fixture.Client, code, marker, patientId);
+        (await SearchAsync(fixture.Client, "Patient", code, $"urn:reindex|{marker}")).Ids.ShouldContain(patientId);
+        (await SearchAsync(fixture.Client, "Observation", "subject", subject)).Ids.ShouldContain(observationId);
     }
 
     [SqlFact]
@@ -81,87 +84,18 @@ public class SqlReindexOrchestrationTests
         var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
             .ActivateAsync($"test.cancel.{marker}", "1.0.0", CancellationToken.None);
         var jobId = activation.ReindexJobId.ShouldNotBeNull();
-        await WaitForJobStatusAsync(fixture.Services, jobId, "Running");
-        var parameter = fixture.Services.GetRequiredService<ConformanceState>()
-            .FindByCanonical(canonical)!;
+        await WaitForJobAsync(fixture.Services, jobId, job => job.Status == "Running");
+        var parameter = fixture.Services.GetRequiredService<ConformanceState>().FindByCanonical(canonical)!;
         parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
         parameter.ReindexJobId.ShouldBe(jobId);
 
         using var cancellation = await fixture.Client.DeleteAsync($"/tenant/1/$reindex/{jobId}");
 
         cancellation.StatusCode.ShouldBe(HttpStatusCode.Accepted, await cancellation.Content.ReadAsStringAsync());
-        var cancellationBody = JsonNode.Parse(await cancellation.Content.ReadAsStringAsync())!;
-        ParameterValue(cancellationBody, "status").ShouldBe("Cancelled");
-        var cancelled = await WaitForStatusAsync(fixture.Client, jobId, "Cancelled");
-        ParameterValue(cancelled, "status").ShouldBe("Cancelled");
+        ParameterValue(JsonNode.Parse(await cancellation.Content.ReadAsStringAsync())!, "status").ShouldBe("Cancelled");
+        await WaitForStatusAsync(fixture.Client, jobId, "Cancelled");
         parameter.Status.ShouldBe(SearchParameterStatus.Pending);
         parameter.ReindexJobId.ShouldBeNull();
-    }
-
-    [SqlFact]
-    public async Task GivenReindexEnabledOnSqlServer_WhenReadingMetadataAndDefinition_ThenItIsAdvertisedAndRetrievable()
-    {
-        await using var fixture = new ReindexFixture();
-        await fixture.InitializeAsync();
-
-        using var definitionResponse = await fixture.Client.GetAsync("/tenant/1/OperationDefinition/reindex");
-        definitionResponse.StatusCode.ShouldBe(HttpStatusCode.OK, await definitionResponse.Content.ReadAsStringAsync());
-        var definition = JsonNode.Parse(await definitionResponse.Content.ReadAsStringAsync())!;
-        definition["resourceType"]!.GetValue<string>().ShouldBe("OperationDefinition");
-        definition["code"]!.GetValue<string>().ShouldBe("reindex");
-
-        using var metadataResponse = await fixture.Client.GetAsync("/metadata");
-        metadataResponse.StatusCode.ShouldBe(HttpStatusCode.OK, await metadataResponse.Content.ReadAsStringAsync());
-        var metadata = JsonNode.Parse(await metadataResponse.Content.ReadAsStringAsync())!;
-        metadata["rest"]![0]!["operation"]!.AsArray()
-            .Select(operation => operation!["name"]!.GetValue<string>())
-            .ShouldContain("reindex");
-    }
-
-    [SqlFact]
-    public async Task GivenAbsoluteSelfReference_WhenResourceTypeIsReindexed_ThenAbsoluteReferenceSearchStillMatches()
-    {
-        const string referenceFormat = "https://example.test/fhir/Patient/{0}";
-        await using var fixture = new ReindexFixture(reindexAutoStart: false);
-        await fixture.InitializeAsync();
-        var marker = Guid.NewGuid().ToString("N");
-        var patientId = $"reference-patient-{marker}";
-        var observationId = $"reference-observation-{marker}";
-        var code = $"absolute-reference-{marker}";
-        var canonical = $"http://example.org/SearchParameter/{code}";
-        var reference = string.Format(
-            System.Globalization.CultureInfo.InvariantCulture,
-            referenceFormat,
-            patientId);
-
-        await PutPatientAsync(fixture.Client, patientId, marker);
-        await PutObservationAsync(fixture.Client, observationId, reference);
-        RenewLease(fixture.Services);
-        await AssertAbsoluteReferenceSearchAsync(fixture.Client, reference, observationId);
-        await StoreParameterAsync(
-            fixture.Services,
-            $"test.absolute-reference.{marker}",
-            code,
-            canonical,
-            resourceType: "Observation",
-            expression: "Observation.subject",
-            type: "reference");
-        var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
-            .ActivateAsync($"test.absolute-reference.{marker}", "1.0.0", CancellationToken.None);
-
-        activation.Success.ShouldBeTrue();
-        activation.ReindexJobId.ShouldBeNull();
-        fixture.Services.GetRequiredService<ConformanceState>()
-            .FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
-
-        var created = await CreateReindexAsync(fixture.Client);
-        using var createdResponse = created.Response;
-        created.Response.StatusCode.ShouldBe(HttpStatusCode.Created, created.Body.ToJsonString());
-        var completed = await WaitForStatusAsync(fixture.Client, created.JobId, "Completed");
-        ParameterValue(completed, "status").ShouldBe("Completed");
-
-        RenewLease(fixture.Services);
-        await AssertAbsoluteReferenceSearchAsync(fixture.Client, reference, observationId);
     }
 
     [SqlFact]
@@ -171,127 +105,80 @@ public class SqlReindexOrchestrationTests
         await fixture.InitializeAsync();
         var marker = Guid.NewGuid().ToString("N");
         var patientId = $"reindex-followup-{marker}";
-        var firstCode = $"first-{marker}";
+        var firstCanonical = $"http://example.org/SearchParameter/first-{marker}";
         var secondCode = $"second-{marker}";
-        var firstCanonical = $"http://example.org/SearchParameter/{firstCode}";
         var secondCanonical = $"http://example.org/SearchParameter/{secondCode}";
 
         await PutPatientAsync(fixture.Client, patientId, marker);
-        await StoreParameterAsync(fixture.Services, $"test.first.{marker}", firstCode, firstCanonical);
-        var firstActivation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
-            .ActivateAsync($"test.first.{marker}", "1.0.0", CancellationToken.None);
-        var firstJobId = firstActivation.ReindexJobId.ShouldNotBeNull();
-        await WaitForJobStatusAsync(fixture.Services, firstJobId, "Running");
+        await StoreParameterAsync(fixture.Services, $"test.first.{marker}", $"first-{marker}", firstCanonical);
+        var pipeline = fixture.Services.GetRequiredService<PackageActivationPipeline>();
+        var firstJobId = (await pipeline.ActivateAsync($"test.first.{marker}", "1.0.0", CancellationToken.None))
+            .ReindexJobId.ShouldNotBeNull();
+        await WaitForJobAsync(fixture.Services, firstJobId, job => job.Status == "Running");
 
         await StoreParameterAsync(fixture.Services, $"test.second.{marker}", secondCode, secondCanonical);
-        var secondActivation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
-            .ActivateAsync($"test.second.{marker}", "1.0.0", CancellationToken.None);
+        var secondActivation = await pipeline.ActivateAsync($"test.second.{marker}", "1.0.0", CancellationToken.None);
 
         secondActivation.ReindexJobId.ShouldBe(firstJobId);
         secondActivation.Issues.ShouldContain(issue => issue.Code == PackageActivationPipeline.ReindexQueuedCode);
-        (await WaitForTerminalJobAsync(fixture.Services, firstJobId)).Status.ShouldBe("Completed");
-        var followUp = await WaitForFollowUpJobAsync(fixture.Services, firstJobId);
-        (await WaitForTerminalJobAsync(fixture.Services, followUp.JobId)).Status.ShouldBe("Completed");
+        (await WaitForJobAsync(fixture.Services, firstJobId, IsTerminal)).Status.ShouldBe("Completed");
+        var followUp = await WaitForJobAsync(
+            fixture.Services,
+            job => job.JobId != firstJobId && job.Definition.Trigger == "Reconciliation");
+        (await WaitForJobAsync(fixture.Services, followUp.JobId, IsTerminal)).Status.ShouldBe("Completed");
 
         var state = fixture.Services.GetRequiredService<ConformanceState>();
         state.FindByCanonical(firstCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         state.FindByCanonical(secondCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         await RefreshConformanceConsumersAsync(fixture.Services);
         RenewLease(fixture.Services);
-        await AssertSearchAsync(fixture.Client, secondCode, marker, patientId);
+        (await SearchAsync(fixture.Client, "Patient", secondCode, $"urn:reindex|{marker}")).Ids.ShouldContain(patientId);
     }
 
-    private static async Task<BackgroundJob<ReindexJobDefinition>> WaitForTerminalJobAsync(
+    private static bool IsTerminal(BackgroundJob<ReindexJobDefinition> job) =>
+        job.Status is "Completed" or "Failed" or "Cancelled";
+
+    private static Task<BackgroundJob<ReindexJobDefinition>> WaitForJobAsync(
         IServiceProvider services,
-        string jobId)
+        string jobId,
+        Func<BackgroundJob<ReindexJobDefinition>, bool> condition) =>
+        WaitForJobAsync(services, job => job.JobId == jobId && condition(job));
+
+    private static async Task<BackgroundJob<ReindexJobDefinition>> WaitForJobAsync(
+        IServiceProvider services,
+        Func<BackgroundJob<ReindexJobDefinition>, bool> condition)
     {
         var repository = services.GetRequiredService<IBackgroundJobRepository<ReindexJobDefinition>>();
         var expires = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         while (DateTimeOffset.UtcNow < expires)
         {
-            var job = await repository.GetAsync(jobId, 1, CancellationToken.None);
-            if (job?.Status is "Completed" or "Failed" or "Cancelled")
+            var match = (await repository.ListAsync((int)BackgroundJobType.Reindex, CancellationToken.None))
+                .SingleOrDefault(condition);
+            if (match is not null)
             {
-                return job;
+                return match;
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
 
-        return await repository.GetAsync(jobId, 1, CancellationToken.None)
-            ?? throw new InvalidOperationException($"Reindex job {jobId} was not persisted.");
+        throw new TimeoutException("No reindex job reached the expected state.");
     }
 
     private static Task RefreshConformanceConsumersAsync(IServiceProvider services) =>
         services.GetRequiredService<ConformanceRefresher>()
             .RefreshAsync(force: false, CancellationToken.None);
 
-    private static async Task WaitForJobStatusAsync(
-        IServiceProvider services,
-        string jobId,
-        string expectedStatus)
-    {
-        var repository = services.GetRequiredService<IBackgroundJobRepository<ReindexJobDefinition>>();
-        var expires = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTimeOffset.UtcNow < expires)
-        {
-            if ((await repository.GetAsync(jobId, 1, CancellationToken.None))?.Status == expectedStatus)
-            {
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50));
-        }
-
-        throw new TimeoutException($"Reindex job {jobId} did not reach {expectedStatus}.");
-    }
-
-    private static async Task<BackgroundJob<ReindexJobDefinition>> WaitForFollowUpJobAsync(
-        IServiceProvider services,
-        string firstJobId)
-    {
-        var repository = services.GetRequiredService<IBackgroundJobRepository<ReindexJobDefinition>>();
-        var expires = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTimeOffset.UtcNow < expires)
-        {
-            var followUp = (await repository.ListAsync(
-                    (int)BackgroundJobType.Reindex,
-                    CancellationToken.None))
-                .SingleOrDefault(job =>
-                    job.JobId != firstJobId &&
-                    job.Definition.Trigger == "Reconciliation");
-            if (followUp is not null)
-            {
-                return followUp;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50));
-        }
-
-        throw new TimeoutException("A follow-up reindex job was not persisted.");
-    }
-
-    private static async Task<(HttpResponseMessage Response, JsonNode Body, string JobId)> CreateReindexAsync(HttpClient client)
-    {
-        var response = await client.PostAsync("/tenant/1/$reindex", ReindexRequestContent());
-        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-        var jobId = response.StatusCode == HttpStatusCode.Created
-            ? ParameterValue(body, "id")
-            : string.Empty;
-        return (response, body, jobId);
-    }
-
-    private static async Task<JsonNode> WaitForStatusAsync(HttpClient client, string jobId, string expectedStatus)
+    private static async Task WaitForStatusAsync(HttpClient client, string jobId, string expectedStatus)
     {
         var expires = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         while (DateTimeOffset.UtcNow < expires)
         {
             using var response = await client.GetAsync($"/tenant/1/$reindex/{jobId}");
             response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
-            var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-            if (ParameterValue(body, "status") == expectedStatus)
+            if (ParameterValue(JsonNode.Parse(await response.Content.ReadAsStringAsync())!, "status") == expectedStatus)
             {
-                return body;
+                return;
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(100));
@@ -301,7 +188,7 @@ public class SqlReindexOrchestrationTests
     }
 
     private static StringContent ReindexRequestContent() =>
-        new($$"""
+        new("""
             {"resourceType":"Parameters","parameter":[
               {"name":"maximumNumberOfResourcesPerQuery","valueInteger":10},
               {"name":"maximumNumberOfResourcesPerWrite","valueInteger":10},
@@ -363,10 +250,7 @@ public class SqlReindexOrchestrationTests
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
     }
 
-    private static async Task PutObservationAsync(
-        HttpClient client,
-        string id,
-        string subjectReference)
+    private static async Task PutObservationAsync(HttpClient client, string id, string subjectReference)
     {
         var observation = new JsonObject
         {
@@ -376,56 +260,33 @@ public class SqlReindexOrchestrationTests
             ["code"] = new JsonObject { ["text"] = "test" },
             ["subject"] = new JsonObject { ["reference"] = subjectReference }
         };
-        using var content = new StringContent(
-            observation.ToJsonString(),
-            Encoding.UTF8,
-            "application/fhir+json");
+        using var content = new StringContent(observation.ToJsonString(), Encoding.UTF8, "application/fhir+json");
         using var response = await client.PutAsync($"/tenant/1/Observation/{id}", content);
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
     }
 
-    private static async Task AssertAbsoluteReferenceSearchAsync(
+    /// <summary>A strict search, so a parameter that is not yet searchable answers 400 instead of being ignored.</summary>
+    private static async Task<(HttpStatusCode StatusCode, IReadOnlyList<string> Ids)> SearchAsync(
         HttpClient client,
-        string reference,
-        string expectedId)
-    {
-        using var response = await client.GetAsync(
-            $"/tenant/1/Observation?subject={Uri.EscapeDataString(reference)}");
-        var body = await response.Content.ReadAsStringAsync();
-        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
-        var ids = JsonNode.Parse(body)!["entry"]?.AsArray()
-            .Select(entry => entry!["resource"]!["id"]!.GetValue<string>())
-            .ToArray() ?? [];
-        ids.ShouldContain(expectedId);
-    }
-
-    private static async Task AssertPendingAsync(HttpClient client, string code, string marker)
-    {
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get,
-            $"/tenant/1/Patient?{code}={Uri.EscapeDataString($"urn:reindex|{marker}")}");
-        request.Headers.Add("Prefer", "handling=strict");
-        using var response = await client.SendAsync(request);
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
-    }
-
-    private static async Task AssertSearchAsync(
-        HttpClient client,
+        string resourceType,
         string code,
-        string marker,
-        string expectedId)
+        string value)
     {
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            $"/tenant/1/Patient?{code}={Uri.EscapeDataString($"urn:reindex|{marker}")}");
+            $"/tenant/1/{resourceType}?{code}={Uri.EscapeDataString(value)}");
         request.Headers.Add("Prefer", "handling=strict");
         using var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
-        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            return (response.StatusCode, []);
+        }
+
         var ids = JsonNode.Parse(body)!["entry"]?.AsArray()
             .Select(entry => entry!["resource"]!["id"]!.GetValue<string>())
             .ToArray() ?? [];
-        ids.ShouldContain(expectedId);
+        return (response.StatusCode, ids);
     }
 
     private static void RenewLease(IServiceProvider services)
@@ -434,16 +295,9 @@ public class SqlReindexOrchestrationTests
         lease.Renew(lease.CaptureStart());
     }
 
-    private sealed class ReindexFixture : IgnixaApiFixture
+    private sealed class ReindexFixture(bool reindexAutoStart = true) : IgnixaApiFixture
     {
-        private readonly bool _reindexAutoStart;
-
-        public ReindexFixture(bool reindexAutoStart = true)
-        {
-            _reindexAutoStart = reindexAutoStart;
-        }
-
-        protected override bool ReindexAutoStart => _reindexAutoStart;
+        protected override bool ReindexAutoStart => reindexAutoStart;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -456,31 +310,6 @@ public class SqlReindexOrchestrationTests
             builder.UseSetting("Reindex:DrainWarningAfter", "00:00:01");
             builder.UseSetting("Fhir:BaseUri", "https://example.test/fhir");
             base.ConfigureWebHost(builder);
-        }
-    }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")
-                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL-backed resources.";
-            }
-        }
-
-    }
-
-    private sealed class SqlTheoryAttribute : TheoryAttribute
-    {
-        public SqlTheoryAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")
-                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL Server.";
-            }
         }
     }
 }

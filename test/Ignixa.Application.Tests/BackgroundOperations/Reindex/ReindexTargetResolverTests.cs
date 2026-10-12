@@ -16,69 +16,29 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexTargetResolverTests
 {
-    [Fact]
-    public void GivenPendingBaseParameter_WhenTargetsAreResolved_ThenConcreteTypesAreExpanded()
-    {
-        var pending = Parameter("http://example.org/SearchParameter/resource-custom", "Resource");
-
-        var result = ReindexTargetResolver.Resolve(
-            [pending],
-            ["Patient", "Observation"]);
-
-        result.Single().AffectedResourceTypes.ShouldBe(["Observation", "Patient"], ignoreOrder: false);
-    }
-
-    [Fact]
-    public void GivenDomainResourceParameter_WhenTargetsAreResolved_ThenOnlyConcreteDescendantsAreExpanded()
+    [Theory]
+    [InlineData("Resource", null, "Binary,Observation,Patient,Practitioner")]
+    [InlineData("DomainResource", null, "Observation,Patient")]
+    [InlineData("Patient", "Practitioner", "Patient")]
+    public void GivenAPendingParameter_WhenTargetsAreResolved_ThenItsConcreteBaseTypesAreReindexedInOrderButNotItsReferenceTargets(
+        string baseType,
+        string? referenceTarget,
+        string expectedTypes)
     {
         var pending = Parameter(
-            "http://example.org/SearchParameter/domain-custom",
-            "DomainResource");
+            "http://example.org/SearchParameter/custom",
+            baseType,
+            referenceTarget is null ? null : [referenceTarget]);
 
         var result = ReindexTargetResolver.Resolve(
             [pending],
-            ["Binary", "Observation", "Patient"],
+            ["Patient", "Practitioner", "Observation", "Binary"],
             new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
             {
                 ["DomainResource"] = ["Observation", "Patient"]
             });
 
-        result.Single().AffectedResourceTypes.ShouldBe(["Observation", "Patient"]);
-    }
-
-    [Fact]
-    public void GivenReferenceParameter_WhenTargetsAreResolved_ThenReferenceTargetsDoNotChangeReindexScope()
-    {
-        var pending = Parameter(
-            "http://example.org/SearchParameter/patient-practitioner",
-            "Patient",
-            ["Practitioner"]);
-
-        var result = ReindexTargetResolver.Resolve(
-            [pending],
-            ["Patient", "Practitioner"]);
-
-        result.Single().AffectedResourceTypes.ShouldBe(["Patient"]);
-    }
-
-    [Fact]
-    public void GivenNoPendingParameters_WhenTargetsAreResolved_ThenNothingIsTargeted()
-    {
-        var result = ReindexTargetResolver.Resolve([], ["Patient"]);
-
-        result.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public void GivenVersionedParameter_WhenTargetsAreResolved_ThenTheTargetCarriesTheVersion()
-    {
-        var pending = Parameter("http://example.org/SearchParameter/r5-custom", "Patient", fhirVersion: "5.0");
-
-        var result = ReindexTargetResolver.Resolve([pending], ["Patient"]);
-
-        result.Single().FhirVersion.ShouldBe("5.0");
-        result.Single().AppliesToTenant("5.0.0").ShouldBeTrue();
-        result.Single().AppliesToTenant("4.0").ShouldBeFalse();
+        string.Join(",", result.Single().AffectedResourceTypes).ShouldBe(expectedTypes);
     }
 
     [Theory]

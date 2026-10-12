@@ -83,16 +83,4 @@ public class VersionReadTenantIsolationTests(IgnixaApiFixture fixture)
             await drop.ExecuteNonQueryAsync();
         }
     }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")
-                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL-backed resources.";
-            }
-        }
-    }
 }

@@ -31,24 +31,8 @@ public class SqlOverrideRestartTests
     [SqlFact]
     public async Task GivenPersistedOverride_WhenTheWebHostRestarts_ThenItsFirstQueryAndNewWritesUseTheOriginalIdentity()
     {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var database = $"IgnixaSqlOverrideRestart_{Guid.NewGuid():N}";
-        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quotedDatabase = names.QuoteIdentifier(database);
-        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quotedDatabase}");
-        try
-        {
-            await AssertRestartAsync(connectionString);
-        }
-        finally
-        {
-            using var pool = new SqlConnection(connectionString);
-            SqlConnection.ClearPool(pool);
-            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedDatabase}");
-        }
+        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaSqlOverrideRestart");
+        await AssertRestartAsync(database.ConnectionString);
     }
 
     private static async Task AssertRestartAsync(string connectionString)
@@ -138,15 +122,6 @@ public class SqlOverrideRestartTests
                     ["Tenants:Configurations:0:Storage:Type"] = "SqlServer"
                 })));
 
-    private static async Task ExecuteDatabaseCommandAsync(string connectionString, string statement)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand("EXEC sys.sp_executesql @statement", connection);
-        command.Parameters.Add("@statement", SqlDbType.NVarChar, -1).Value = statement;
-        await command.ExecuteNonQueryAsync();
-    }
-
     private static async Task PutPatientAsync(HttpClient client, string id, string identifier)
     {
         using var content = new StringContent($$"""
@@ -184,16 +159,5 @@ public class SqlOverrideRestartTests
         response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
         var entries = JsonNode.Parse(body)!["entry"]!.AsArray();
         entries.Select(entry => entry!["resource"]!["id"]!.GetValue<string>()).ShouldContain(id);
-    }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires SQL Server startup and persisted reference identities.";
-            }
-        }
     }
 }

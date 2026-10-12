@@ -3,6 +3,7 @@ using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Tests;
+using Ignixa.Application.Tests.BackgroundOperations.Reindex;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -15,7 +16,6 @@ using Medino;
 using NSubstitute;
 using Shouldly;
 using Xunit;
-using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Api.Tests.Services;
 
@@ -27,12 +27,7 @@ public class ConformanceStateSyncServiceTests
         var store = Substitute.For<ISourceEventStore>();
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(
-            Events(new SourceEvent(
-                1,
-                "package:test@1.0.0",
-                nameof(PackageActivated),
-                new PackageActivated("test", "1.0.0", []),
-                DateTimeOffset.UtcNow)));
+            Events(new SourceEvent(1, "package:test@1.0.0", nameof(PackageActivated), new PackageActivated("test", "1.0.0", []), DateTimeOffset.UtcNow)));
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
         var lease = TestConformanceLease.NotHeld();
@@ -85,24 +80,7 @@ public class ConformanceStateSyncServiceTests
         var store = Substitute.For<ISourceEventStore>();
         store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
-        state.ApplyAndTrack(new SourceEvent(
-            10,
-            "package:custom@1.0.0",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                "http://example.org/SearchParameter/Patient-custom",
-                "custom",
-                "Patient",
-                "Patient.name",
-                SearchParamType.String,
-                "custom@1.0.0",
-                null,
-                2,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow));
+        state.ApplyAndTrack(ReindexTestHelper.Activation(eventId: 10));
         var mediator = Substitute.For<IMediator>();
         mediator.SendAsync(
                 Arg.Any<CreateReindexJobCommand>(),
@@ -144,20 +122,15 @@ public class ConformanceStateSyncServiceTests
         lease.IsHeld.ShouldBeTrue();
     }
 
-    private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
-    {
-        await Task.CompletedTask;
-        yield break;
-    }
+    private static IAsyncEnumerable<SourceEvent> EmptyEvents() => Events();
 
     private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
     {
+        await Task.CompletedTask;
         foreach (var sourceEvent in events)
         {
             yield return sourceEvent;
         }
-
-        await Task.CompletedTask;
     }
 
     private static ReindexTrigger CreateReindexTrigger(
