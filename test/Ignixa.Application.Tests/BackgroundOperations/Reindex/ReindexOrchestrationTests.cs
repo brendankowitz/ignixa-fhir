@@ -7,6 +7,7 @@ using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 using Ignixa.Domain.Models;
 using Shouldly;
+using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
@@ -16,10 +17,8 @@ public class ReindexOrchestrationTests
     public async Task GivenProgressPersistenceFails_WhenRetried_ThenOnlyProgressIsRetriedNotRanges()
     {
         var context = new ExecutingContext(failProgressOnce: true);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
 
-        var result = await new ReindexOrchestration().RunTask(context, input);
+        var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         result.Success.ShouldBeTrue();
         context.ProgressFailures.ShouldBe(1);
@@ -32,10 +31,8 @@ public class ReindexOrchestrationTests
     public async Task GivenJobClosedElsewhere_WhenProgressIsPersistedAtAPhaseBoundary_ThenOrchestrationStopsWithoutCompleting()
     {
         var context = new ExecutingContext(jobClosed: true);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
 
-        var result = await new ReindexOrchestration().RunTask(context, input);
+        var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         result.Success.ShouldBeFalse();
         context.ProgressCalls.ShouldBe(1);
@@ -49,10 +46,8 @@ public class ReindexOrchestrationTests
     public async Task GivenDefinitionsBehindTargetForThreeWaves_WhenRangesReportNotReady_ThenTenantWaitsWithBackoffAndCompletes()
     {
         var context = new ExecutingContext(definitionsNotReadyAttempts: 6);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
 
-        var result = await new ReindexOrchestration().RunTask(context, input);
+        var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         result.Success.ShouldBeTrue();
         context.RangeCalls.ShouldBe(9);
@@ -65,12 +60,7 @@ public class ReindexOrchestrationTests
     public async Task GivenDefinitionsNeverCatchUp_WhenStaleJobTimeoutElapses_ThenTenantFailsWithoutAnExceptionCrossingTheActivityBoundary()
     {
         var context = new ExecutingContext(definitionsNotReadyAttempts: int.MaxValue);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]) with
-        {
-            StaleJobTimeout = TimeSpan.FromSeconds(10),
-            ContinueAsNewThreshold = 100
-        };
+        var input = CreateOrchestrationInput() with { StaleJobTimeout = TimeSpan.FromSeconds(10), ContinueAsNewThreshold = 100 };
 
         var result = await new ReindexOrchestration().RunTask(context, input);
 
@@ -106,14 +96,7 @@ public class ReindexOrchestrationTests
     public async Task GivenContinueAsNew_WhenRequested_ThenCurrentStateIsCarriedAndNoMoreWorkIsScheduled()
     {
         var context = new ExecutingContext();
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job",
-            targetEventId: 42,
-            barrierDelay: TimeSpan.Zero,
-            tenantIds: [1]) with
-        {
-            ContinueAsNewThreshold = 1
-        };
+        var input = CreateOrchestrationInput() with { ContinueAsNewThreshold = 1 };
 
         await new ReindexOrchestration().RunTask(context, input);
 
@@ -126,17 +109,13 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
-    public async Task GivenBarrierCutoffs_WhenOrchestrated_ThenPlanningRangesAndDrainingUseTheCorrectWatermarks()
+    public async Task GivenBarrierDelayAndCutoffs_WhenOrchestrated_ThenTheBarrierWaitsAndPlanningRangesAndDrainingUseTheCorrectWatermarks()
     {
         var context = new ExecutingContext(useBarrierCutoffForRanges: true);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job",
-            targetEventId: 42,
-            barrierDelay: TimeSpan.Zero,
-            tenantIds: [1]);
 
-        await new ReindexOrchestration().RunTask(context, input);
+        await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput(barrierDelay: TimeSpan.FromSeconds(30)));
 
+        context.TimerDelays[0].ShouldBe(30);
         context.PlanInputs.ShouldAllBe(plan => plan.CutoffSurrogateId == 30);
         context.RangeInputs.ShouldAllBe(range => range.EndSurrogateId <= 30);
         context.RangeInputs.Select(range => range.EndSurrogateId).ShouldContain(30);
@@ -147,14 +126,7 @@ public class ReindexOrchestrationTests
     public async Task GivenContinuationAfterBarrier_WhenSerialized_ThenTypedStateRoundTripsWithReadableEnums()
     {
         var context = new ExecutingContext();
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job",
-            targetEventId: 42,
-            barrierDelay: TimeSpan.Zero,
-            tenantIds: [1]) with
-        {
-            ContinueAsNewThreshold = 3
-        };
+        var input = CreateOrchestrationInput() with { ContinueAsNewThreshold = 3 };
 
         await new ReindexOrchestration().RunTask(context, input);
 
@@ -180,34 +152,10 @@ public class ReindexOrchestrationTests
     }
 
     [Fact]
-    public async Task GivenJob_WhenOrchestrated_ThenLifecycleDelayTenantWorkAndCompletionAreOrdered()
-    {
-        var context = new ExecutingContext();
-
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job",
-            targetEventId: 42,
-            barrierDelay: TimeSpan.FromSeconds(30),
-            tenantIds: [1]);
-
-        var result = await new ReindexOrchestration().RunTask(context, input);
-
-        result.Success.ShouldBeTrue();
-        context.StartCalls.ShouldBe(1);
-        context.BarrierCalls.ShouldBe(1);
-        context.TimerCalls.ShouldBe(1);
-        context.CompletionCalls.ShouldBe(1);
-    }
-
-    [Fact]
     public async Task GivenFailureSampleIsFull_WhenLaterResourceTypeFails_ThenEveryFailedTypeReachesCompletion()
     {
         var context = new ExecutingContext(includeResourceFailures: true);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job",
-            targetEventId: 42,
-            barrierDelay: TimeSpan.Zero,
-            tenantIds: [1]) with
+        var input = CreateOrchestrationInput() with
         {
             ResourceTypes = ["Observation", "Patient"],
             ContinueAsNewThreshold = 100
@@ -222,13 +170,8 @@ public class ReindexOrchestrationTests
     public async Task GivenStartActivityFailsAfterRetries_WhenOrchestrated_ThenJobIsFinalizedFailed()
     {
         var context = new ExecutingContext(failStart: true);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job",
-            targetEventId: 42,
-            barrierDelay: TimeSpan.Zero,
-            tenantIds: [1]);
 
-        var output = await new ReindexOrchestration().RunTask(context, input);
+        var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         output.Success.ShouldBeFalse();
         context.CompletionCalls.ShouldBe(1);
@@ -239,13 +182,8 @@ public class ReindexOrchestrationTests
     public async Task GivenStartActivityFindsClosedJob_WhenOrchestrated_ThenNoTenantOrCompletionWorkRuns()
     {
         var context = new ExecutingContext(startShouldContinue: false);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job",
-            targetEventId: 42,
-            barrierDelay: TimeSpan.Zero,
-            tenantIds: [1]);
 
-        var output = await new ReindexOrchestration().RunTask(context, input);
+        var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         output.Success.ShouldBeFalse();
         context.BarrierCalls.ShouldBe(0);
@@ -257,8 +195,7 @@ public class ReindexOrchestrationTests
     public async Task GivenDrainNeverCompletes_WhenStaleJobTimeoutElapses_ThenTenantFails()
     {
         var context = new ExecutingContext(drainNeverCompletes: true);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]) with
+        var input = CreateOrchestrationInput() with
         {
             State = DrainingState(context.CurrentUtcDateTime),
             StaleJobTimeout = TimeSpan.FromSeconds(2),
@@ -279,10 +216,8 @@ public class ReindexOrchestrationTests
     public async Task GivenOneTenantStillDraining_WhenAnotherReindexes_ThenTheReindexingTenantIsNotHeldByTheDrainPoll()
     {
         var context = new ExecutingContext(drainPollsBeforeDrained: 2, slowDrainTenantId: 2);
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1, 2]);
 
-        var output = await new ReindexOrchestration().RunTask(context, input);
+        var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput(tenantIds: [1, 2]));
 
         output.Success.ShouldBeTrue();
         output.Tenants.Count.ShouldBe(2);
@@ -300,10 +235,8 @@ public class ReindexOrchestrationTests
     public async Task GivenJob_WhenOrchestrated_ThenEveryActivityIncludingDrainAndPlanIsScheduledWithRetry()
     {
         var context = new ExecutingContext();
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job", targetEventId: 42, barrierDelay: TimeSpan.Zero, tenantIds: [1]);
 
-        var result = await new ReindexOrchestration().RunTask(context, input);
+        var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         result.Success.ShouldBeTrue();
         context.DirectSchedules.ShouldBeEmpty();
@@ -333,14 +266,7 @@ public class ReindexOrchestrationTests
         int continueAsNewThreshold)
     {
         var context = new ExecutingContext();
-        var input = ReindexTestHelper.CreateOrchestrationInput(
-            "job",
-            targetEventId: 42,
-            barrierDelay: TimeSpan.Zero,
-            tenantIds: [1]) with
-        {
-            ContinueAsNewThreshold = continueAsNewThreshold
-        };
+        var input = CreateOrchestrationInput() with { ContinueAsNewThreshold = continueAsNewThreshold };
 
         while (true)
         {
@@ -449,33 +375,21 @@ public class ReindexOrchestrationTests
             return Task.FromResult(state);
         }
 
-        public override Task<T> CreateTimer<T>(
-            DateTime fireAt,
-            T state,
-            CancellationToken cancellationToken) => CreateTimer(fireAt, state);
+        public override Task<T> CreateTimer<T>(DateTime fireAt, T state, CancellationToken cancellationToken) =>
+            CreateTimer(fireAt, state);
+
+        public override Task<T> CreateSubOrchestrationInstance<T>(string name, string version, object input) =>
+            throw new NotSupportedException();
+
+        public override Task<T> CreateSubOrchestrationInstance<T>(string name, string version, string instanceId, object input) =>
+            throw new NotSupportedException();
 
         public override Task<T> CreateSubOrchestrationInstance<T>(
-            string name,
-            string version,
-            object input) => throw new NotSupportedException();
+            string name, string version, string instanceId, object input, IDictionary<string, string> tags) =>
+            throw new NotSupportedException();
 
-        public override Task<T> CreateSubOrchestrationInstance<T>(
-            string name,
-            string version,
-            string instanceId,
-            object input) => throw new NotSupportedException();
-
-        public override Task<T> CreateSubOrchestrationInstance<T>(
-            string name,
-            string version,
-            string instanceId,
-            object input,
-            IDictionary<string, string> tags) => throw new NotSupportedException();
-
-        public override void SendEvent(
-            OrchestrationInstance orchestrationInstance,
-            string eventName,
-            object eventData) => throw new NotSupportedException();
+        public override void SendEvent(OrchestrationInstance orchestrationInstance, string eventName, object eventData) =>
+            throw new NotSupportedException();
 
         public override void ContinueAsNew(object input)
         {

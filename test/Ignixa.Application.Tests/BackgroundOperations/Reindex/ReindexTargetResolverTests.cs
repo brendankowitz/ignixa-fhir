@@ -61,26 +61,6 @@ public class ReindexTargetResolverTests
         result.Single().AffectedResourceTypes.ShouldBe(["Patient"]);
     }
 
-    [Fact]
-    public void GivenNoPendingParameters_WhenTargetsAreResolved_ThenNothingIsTargeted()
-    {
-        var result = ReindexTargetResolver.Resolve([], ["Patient"]);
-
-        result.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public void GivenVersionedParameter_WhenTargetsAreResolved_ThenTheTargetCarriesTheVersion()
-    {
-        var pending = Parameter("http://example.org/SearchParameter/r5-custom", "Patient", fhirVersion: "5.0");
-
-        var result = ReindexTargetResolver.Resolve([pending], ["Patient"]);
-
-        result.Single().FhirVersion.ShouldBe("5.0");
-        result.Single().AppliesToTenant("5.0.0").ShouldBeTrue();
-        result.Single().AppliesToTenant("4.0").ShouldBeFalse();
-    }
-
     [Theory]
     [InlineData("4.0", new[] { 1 })]
     [InlineData("5.0", new[] { 2 })]

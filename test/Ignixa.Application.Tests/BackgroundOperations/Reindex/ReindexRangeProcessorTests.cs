@@ -6,6 +6,7 @@ using Ignixa.Application.BackgroundOperations.Reindex.Workers;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
@@ -22,66 +23,21 @@ public class ReindexRangeProcessorTests
     [Fact]
     public async Task GivenWriteTimeout_WhenRangeIsProcessed_ThenBatchSizeIsHalvedAndRetried()
     {
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
-            .Returns(new TenantConfiguration
-            {
-                TenantId = 1,
-                DisplayName = "Tenant",
-                FhirVersion = "4.0"
-            });
-        var store = Substitute.For<IReindexStore>();
-        var resources = Enumerable.Range(1, 20)
-            .Select(index => new ReindexResource(
-                new ResourceWrapper(
-                    "Patient",
-                    $"p{index}",
-                    "1",
-                    DateTimeOffset.UtcNow,
-                    ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"p{{index}}"}"""),
-                    new ResourceRequest("PUT", $"Patient/p{index}")),
-                index))
-            .ToArray();
-        store.ReadRangeAsync(
-                "Patient",
-                1,
-                20,
-                Arg.Any<int>(),
-                Arg.Any<long?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(call => call.ArgAt<long?>(4).HasValue ? [] : resources);
+        var store = PageStore(20);
         var writeSizes = new List<int>();
-        var writeAttempt = 0;
-        store.UpdateSearchIndicesAsync(
-                Arg.Any<IReadOnlyList<ReindexResource>>(),
-                Arg.Any<CancellationToken>())
+        store.UpdateSearchIndicesAsync(Arg.Any<IReadOnlyList<ReindexResource>>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 var count = call.Arg<IReadOnlyList<ReindexResource>>().Count;
                 writeSizes.Add(count);
-                if (Interlocked.Increment(ref writeAttempt) == 1)
-                {
-                    throw new TimeoutException("SQL command timed out.");
-                }
-
-                return new SearchIndexUpdateResult(count, 0);
+                return writeSizes.Count == 1
+                    ? throw new TimeoutException("SQL command timed out.")
+                    : new SearchIndexUpdateResult(count, 0);
             });
-        var stores = Substitute.For<IReindexStoreFactory>();
-        stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
-            .Returns(store);
         var indexer = Substitute.For<ISearchIndexer>();
         indexer.Extract(Arg.Any<IElement>()).Returns([]);
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(indexer, FhirVersion.R4.GetSchemaProvider(), 42));
-        var processor = new ReindexRangeProcessor(
-            stores,
-            tenants,
-            versions,
-            TestConformanceRefresher.Create(new ConformanceState()),
-            new FhirRequestContextAccessor());
 
-        var result = await processor.ProcessAsync(
+        var result = await CreateProcessor(new FhirRequestContextAccessor(), indexer, store).ProcessAsync(
             new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, 0),
             CancellationToken.None);
 
@@ -92,40 +48,15 @@ public class ReindexRangeProcessorTests
     [Fact]
     public async Task GivenDefinitionsBehindTargetEvent_WhenRangeIsProcessed_ThenDefinitionsAreRefreshed()
     {
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
-            .Returns(new TenantConfiguration
-            {
-                TenantId = 1,
-                DisplayName = "Tenant",
-                FhirVersion = "4.0"
-            });
-        var repository = Substitute.For<IReindexStore>();
-        var stores = Substitute.For<IReindexStoreFactory>();
-        stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>())
-            .Returns(repository);
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetDefinitionsHandle(Arg.Any<FhirVersion>(), 1)
             .Returns(
-                new DefinitionsHandle(
-                    Substitute.For<ISearchIndexer>(),
-                    Substitute.For<IFhirSchemaProvider>(),
-                    41),
-                new DefinitionsHandle(
-                    Substitute.For<ISearchIndexer>(),
-                    Substitute.For<IFhirSchemaProvider>(),
-                    42));
+                new DefinitionsHandle(Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 41),
+                new DefinitionsHandle(Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 42));
         var eventStore = TestConformanceRefresher.EmptyEventStore();
-        var processor = new ReindexRangeProcessor(
-            stores,
-            tenants,
-            versions,
-            TestConformanceRefresher.Create(new ConformanceState(), eventStore),
-            new FhirRequestContextAccessor());
 
-        var result = await processor.ProcessAsync(
-            new ReindexRangeInput("job", 1, "Patient", 1, 100, 42, 1000, 0),
-            CancellationToken.None);
+        var result = await CreateProcessor(new FhirRequestContextAccessor(), Substitute.For<IReindexStore>(), versions, eventStore)
+            .ProcessAsync(new ReindexRangeInput("job", 1, "Patient", 1, 100, 42, 1000, 0), CancellationToken.None);
 
         result.ResourcesReindexed.ShouldBe(0);
         _ = eventStore.Received(1).ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
@@ -212,46 +143,40 @@ public class ReindexRangeProcessorTests
     private static ReindexRangeProcessor CreateProcessor(
         IFhirRequestContextAccessor accessor,
         IReindexStore store,
-        IFhirVersionContext versions)
+        IFhirVersionContext versions,
+        ISourceEventStore? eventStore = null)
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
-            .Returns(new TenantConfiguration
-            {
-                TenantId = 1,
-                DisplayName = "Tenant",
-                FhirVersion = "4.0"
-            });
+        tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(ReindexTestHelper.Tenant(1));
         var stores = Substitute.For<IReindexStoreFactory>();
         stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
         return new ReindexRangeProcessor(
             stores,
             tenants,
             versions,
-            TestConformanceRefresher.Create(new ConformanceState()),
+            TestConformanceRefresher.Create(new ConformanceState(), eventStore),
             accessor);
     }
 
-    private static IReindexStore SinglePageStore()
+    private static IReindexStore SinglePageStore() => PageStore(1);
+
+    /// <summary>A store whose range 1..20 holds one page of <paramref name="count"/> patients, all written.</summary>
+    private static IReindexStore PageStore(int count)
     {
         var store = Substitute.For<IReindexStore>();
-        var resource = new ReindexResource(
-            new ResourceWrapper(
-                "Patient",
-                "p1",
-                "1",
-                DateTimeOffset.UtcNow,
-                ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1"}"""),
-                new ResourceRequest("PUT", "Patient/p1")),
-            1);
-        store.ReadRangeAsync(
-                "Patient",
-                1,
-                20,
-                Arg.Any<int>(),
-                Arg.Any<long?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(call => call.ArgAt<long?>(4).HasValue ? [] : [resource]);
+        var resources = Enumerable.Range(1, count)
+            .Select(index => new ReindexResource(
+                new ResourceWrapper(
+                    "Patient",
+                    $"p{index}",
+                    "1",
+                    DateTimeOffset.UtcNow,
+                    ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"p{{index}}"}"""),
+                    new ResourceRequest("PUT", $"Patient/p{index}")),
+                index))
+            .ToArray();
+        store.ReadRangeAsync("Patient", 1, 20, Arg.Any<int>(), Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.ArgAt<long?>(4).HasValue ? [] : resources);
         store.UpdateSearchIndicesAsync(Arg.Any<IReadOnlyList<ReindexResource>>(), Arg.Any<CancellationToken>())
             .Returns(call => new SearchIndexUpdateResult(call.Arg<IReadOnlyList<ReindexResource>>().Count, 0));
         return store;

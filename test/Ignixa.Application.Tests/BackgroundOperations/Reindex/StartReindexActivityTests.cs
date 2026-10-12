@@ -4,33 +4,44 @@ using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
-using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Specification.ValueSets.Normative;
-using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
-public class StartReindexActivityTests
+public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
 {
+    private readonly ConformanceState _state = new();
+    private readonly TestSourceEventStore _events = new();
+    private readonly TestReindexJobLock _jobLock = new();
+    private readonly InMemoryBackgroundJobRepository<ReindexJobDefinition> _jobs = JobRepository();
+    private readonly ReindexLifecycleEventWriter _lifecycle;
+
+    public StartReindexActivityTests()
+    {
+        _state.ApplyAndTrack(Activation());
+        _lifecycle = new ReindexLifecycleEventWriter(_events, _state);
+    }
+
+    public Task InitializeAsync() => _jobs.CreateAsync(Job("Queued"), CancellationToken.None);
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    public void Dispose() => _state.Dispose();
+
     [Fact]
     public async Task GivenQueuedJob_WhenStartRuns_ThenTargetsAreStartedAndTheJobRuns()
     {
-        using var fixture = new Fixture();
-        await fixture.InitializeAsync();
-
-        var output = JsonSerializer.Deserialize<StartReindexOutput>(await fixture.StartAsync())!;
+        var output = JsonSerializer.Deserialize<StartReindexOutput>(await StartAsync())!;
 
         output.ShouldContinue.ShouldBeTrue();
-        fixture.Events.Count(evt => evt.Data is SearchParameterReindexStarted).ShouldBe(1);
-        var started = (await fixture.Repository.GetAsync("job", 1, CancellationToken.None))!;
+        _events.Appended.Count(evt => evt.Data is SearchParameterReindexStarted).ShouldBe(1);
+        var started = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
         started.Status.ShouldBe("Running");
         started.StartDate.ShouldNotBeNull();
     }
@@ -43,48 +54,49 @@ public class StartReindexActivityTests
         string decision,
         SearchParameterStatus expectedStatus)
     {
-        using var fixture = new Fixture();
-        await fixture.InitializeAsync();
-        await fixture.Lifecycle.StartAsync("job", [fixture.Target], CancellationToken.None);
-        await fixture.Lifecycle.CompleteAsync(
+        await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
+        await _lifecycle.CompleteAsync(
             "job",
-            [new ReindexTargetCompletion(fixture.Target, decision == "Completed", 0, "terminated")],
+            [new ReindexTargetCompletion(Target(), decision == "Completed", 0, "terminated")],
             TimeSpan.Zero,
             CancellationToken.None);
-        var finished = (await fixture.Repository.GetAsync("job", 1, CancellationToken.None))!;
+        var finished = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
         finished.Status = decision;
-        await fixture.Repository.UpdateAsync(finished, 1, CancellationToken.None);
-        var before = JsonSerializer.Serialize(await fixture.Repository.GetAsync("job", 1, CancellationToken.None));
+        await _jobs.UpdateAsync(finished, 1, CancellationToken.None);
+        var before = JsonSerializer.Serialize(await _jobs.GetAsync("job", 1, CancellationToken.None));
 
-        var output = JsonSerializer.Deserialize<StartReindexOutput>(await fixture.StartAsync())!;
+        var output = JsonSerializer.Deserialize<StartReindexOutput>(await StartAsync())!;
 
         output.ShouldContinue.ShouldBeFalse();
-        fixture.State.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(expectedStatus);
-        JsonSerializer.Serialize(await fixture.Repository.GetAsync("job", 1, CancellationToken.None))
-            .ShouldBe(before);
-        fixture.Events.Count(evt => evt.Data is SearchParameterReindexStarted).ShouldBe(1);
+        _state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(expectedStatus);
+        JsonSerializer.Serialize(await _jobs.GetAsync("job", 1, CancellationToken.None)).ShouldBe(before);
+        _events.Appended.Count(evt => evt.Data is SearchParameterReindexStarted).ShouldBe(1);
     }
 
     [Fact]
     public async Task GivenStartIsAppending_WhenCancellationArrives_ThenCancellationWaitsForTheStartToCommit()
     {
-        using var fixture = new Fixture();
-        await fixture.InitializeAsync();
         var appending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseStart = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.BeforeAppend = async () =>
+        _events.BeforeAppend = async () =>
         {
             appending.SetResult();
             await releaseStart.Task;
         };
-        var starting = fixture.StartAsync();
+        var starting = StartAsync();
         await appending.Task;
-        fixture.BeforeAppend = null;
-        var cancelling = fixture.CancelAsync("cancelled");
+        _events.BeforeAppend = null;
+        var cancelling = new CancelReindexHandler(
+                new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()),
+                _jobs,
+                _lifecycle,
+                _jobLock,
+                TimeProvider.System)
+            .HandleAsync(new CancelReindexCommand("job", "cancelled"), CancellationToken.None);
         string statusWhileStarting;
         try
         {
-            statusWhileStarting = (await fixture.Repository.GetAsync("job", 1, CancellationToken.None))!.Status;
+            statusWhileStarting = (await _jobs.GetAsync("job", 1, CancellationToken.None))!.Status;
         }
         finally
         {
@@ -97,110 +109,14 @@ public class StartReindexActivityTests
         statusWhileStarting.ShouldBe("Queued");
         startError.ShouldBeNull();
         cancelled.ShouldBeOfType<ReindexCancelledResult>();
-        var job = await fixture.Repository.GetAsync("job", 1, CancellationToken.None);
+        var job = await _jobs.GetAsync("job", 1, CancellationToken.None);
         job!.Status.ShouldBe("Cancelled");
         job.StartDate.ShouldNotBeNull();
-        fixture.State.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
+        _state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
-    private sealed class Fixture : IDisposable
-    {
-        private readonly TestJobLock _jobLock = new();
-
-        public Fixture()
-        {
-            var tenants = Substitute.For<ITenantConfigurationStore>();
-            tenants.Mode.Returns(TenantMode.Isolated);
-            Repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
-                tenants,
-                NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
-            State.ApplyAndTrack(new SourceEvent(
-                1,
-                "search",
-                nameof(SearchParameterActivated),
-                new SearchParameterActivated(
-                    Target.Canonical, "custom", "Patient", "Patient.id", SearchParamType.String,
-                    "example@1.0.0", null, 17, null, null, null, null),
-                DateTimeOffset.UtcNow));
-            var eventStore = Substitute.For<ISourceEventStore>();
-            eventStore.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-                .Returns(AsyncEnumerable.Empty<SourceEvent>());
-            eventStore.AppendAsync(
-                    Arg.Any<IEnumerable<NewSourceEvent>>(),
-                    Arg.Any<long>(),
-                    Arg.Any<CancellationToken>())
-                .Returns(async call =>
-                {
-                    if (BeforeAppend is { } beforeAppend)
-                    {
-                        await beforeAppend();
-                    }
-
-                    var committed = call.Arg<IEnumerable<NewSourceEvent>>()
-                        .Select((evt, index) => new SourceEvent(
-                            Events.Count + index + 2, evt.StreamId, evt.EventType, evt.Data, DateTimeOffset.UtcNow))
-                        .ToArray();
-                    Events.AddRange(committed);
-                    return (IReadOnlyList<SourceEvent>)committed;
-                });
-            Lifecycle = new ReindexLifecycleEventWriter(eventStore, State);
-        }
-
-        public InMemoryBackgroundJobRepository<ReindexJobDefinition> Repository { get; }
-        public ConformanceState State { get; } = new();
-        public List<SourceEvent> Events { get; } = [];
-        public Func<Task>? BeforeAppend { get; set; }
-        public ReindexParameterDefinition Target { get; } =
-            new("http://example.org/SearchParameter/patient-custom", "custom", "Patient", 17, 1, ["Patient"]);
-        public ReindexLifecycleEventWriter Lifecycle { get; }
-
-        public Task InitializeAsync() =>
-            Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
-            {
-                JobId = "job",
-                JobType = (int)BackgroundJobType.Reindex,
-                Status = "Queued",
-                Definition = ReindexTestHelper.CreateJobDefinition(),
-                CreateDate = DateTimeOffset.UtcNow,
-                HeartbeatDate = DateTimeOffset.UtcNow
-            }, CancellationToken.None);
-
-        public Task<string> StartAsync() =>
-            new StartReindexActivity(Lifecycle, Repository, _jobLock, TimeProvider.System).RunAsync(
-                new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
-                JsonSerializer.Serialize(new[] { new StartReindexInput("job", 1, [Target], [1]) }));
-
-        public Task<CancelReindexResult> CancelAsync(string reason) =>
-            new CancelReindexHandler(
-                    new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()),
-                    Repository,
-                    Lifecycle,
-                    _jobLock,
-                    TimeProvider.System)
-                .HandleAsync(new CancelReindexCommand("job", reason), CancellationToken.None);
-
-        public void Dispose() => _jobLock.Dispose();
-    }
-
-    private sealed class TestJobLock : IReindexJobLock, IDisposable
-    {
-        private readonly SemaphoreSlim _semaphore = new(1, 1);
-
-        public async Task<T> ExecuteAsync<T>(
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken cancellationToken)
-        {
-            await _semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                return await action(cancellationToken);
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        }
-
-        public void Dispose() => _semaphore.Dispose();
-    }
+    private Task<string> StartAsync() =>
+        new StartReindexActivity(_lifecycle, _jobs, _jobLock, TimeProvider.System).RunAsync(
+            ActivityContext(),
+            JsonSerializer.Serialize(new[] { new StartReindexInput("job", 1, [Target()], [1]) }));
 }

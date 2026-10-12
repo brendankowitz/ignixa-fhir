@@ -1,24 +1,33 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Abstractions;
-using Ignixa.Conformance.Events.Events;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
-using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Specification.ValueSets.Normative;
 using Medino;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
+using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
-public sealed class ReindexTriggerTests
+public sealed class ReindexTriggerTests : IDisposable
 {
-    private static readonly DateTimeOffset Now = new(2026, 10, 7, 20, 0, 0, TimeSpan.Zero);
+    private readonly IMediator _mediator = Substitute.For<IMediator>();
+    private readonly IOrchestrationServiceClient _runtime = Substitute.For<IOrchestrationServiceClient>();
+    private readonly InMemoryBackgroundJobRepository<ReindexJobDefinition> _jobs = JobRepository();
+    private ConformanceState _state = new();
+    private readonly TestReindexJobLock _jobLock = new();
+
+    public ReindexTriggerTests()
+    {
+        _state.ApplyAndTrack(Activation(eventId: 42));
+        _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
+            .Returns(new NoReindexWorkResult("No resources need reindexing."));
+    }
+
+    public void Dispose() => _state.Dispose();
 
     [Theory]
     [InlineData(false, true, false, "Automatic reindex is disabled; parameters remain Pending.")]
@@ -30,19 +39,15 @@ public sealed class ReindexTriggerTests
         bool withFileSystemTenant,
         string expectedMessage)
     {
-        var fixture = new Fixture(
+        var trigger = CreateTrigger(
             autoStart: autoStart,
             enabled: enabled,
-            tenants: withFileSystemTenant
-                ? [ReindexTestHelper.Tenant(1, "SqlServer"), ReindexTestHelper.Tenant(3, "FileSystem")]
-                : null);
+            tenants: withFileSystemTenant ? [Tenant(1, "SqlServer"), Tenant(3, "FileSystem")] : []);
 
-        var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
+        var result = await trigger.RequestReindexAsync("activation", CancellationToken.None);
 
         result.ShouldBe(new ReindexTriggerResult(null, false, expectedMessage));
-        await fixture.Mediator.DidNotReceive().SendAsync(
-            Arg.Any<CreateReindexJobCommand>(),
-            Arg.Any<CancellationToken>());
+        await AssertNoJobRequestedAsync();
     }
 
     [Theory]
@@ -50,16 +55,13 @@ public sealed class ReindexTriggerTests
     [InlineData(true)]
     public async Task GivenACreatedOrActiveJob_WhenActivationTriggers_ThenItsIdIsReported(bool alreadyActive)
     {
-        var fixture = new Fixture();
-        fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
+        _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
             .Returns(alreadyActive ? new ActiveReindexJobResult("job-1") : new ReindexJobCreatedResult("job-1"));
 
-        var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
+        var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
 
         result.ShouldBe(new ReindexTriggerResult("job-1", alreadyActive, null));
-        await fixture.Mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Activation),
-            CancellationToken.None);
+        await AssertJobRequestedAsync(ReindexTriggerKind.Activation);
     }
 
     [Theory]
@@ -67,12 +69,9 @@ public sealed class ReindexTriggerTests
     [InlineData(typeof(TimeoutException))]
     public async Task GivenOperationalFailure_WhenActivationTriggers_ThenResultIsDeferred(Type failure)
     {
-        var fixture = new Fixture();
-        fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-            .Returns<Task<CreateReindexJobResult>>(_ =>
-                throw (Exception)Activator.CreateInstance(failure, "Storage unavailable.")!);
+        FailJobRequests(failure);
 
-        var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
+        var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
 
         result.Deferred.ShouldBeTrue();
         result.JobId.ShouldBeNull();
@@ -85,13 +84,10 @@ public sealed class ReindexTriggerTests
     [InlineData(typeof(NullReferenceException))]
     public async Task GivenProgrammerError_WhenActivationTriggers_ThenItPropagates(Type failure)
     {
-        var fixture = new Fixture();
-        fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-            .Returns<Task<CreateReindexJobResult>>(_ =>
-                throw (Exception)Activator.CreateInstance(failure, "Bug in the trigger.")!);
+        FailJobRequests(failure);
 
         var exception = await Should.ThrowAsync<Exception>(() =>
-            fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None));
+            CreateTrigger().RequestReindexAsync("activation", CancellationToken.None));
 
         exception.ShouldBeOfType(failure);
     }
@@ -101,23 +97,21 @@ public sealed class ReindexTriggerTests
     {
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-        var fixture = new Fixture();
-        fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
+        _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
             .Returns<Task<CreateReindexJobResult>>(_ => throw new OperationCanceledException(cancellation.Token));
 
         await Should.ThrowAsync<OperationCanceledException>(() =>
-            fixture.Trigger.RequestReindexAsync("activation", cancellation.Token));
+            CreateTrigger().RequestReindexAsync("activation", cancellation.Token));
     }
 
     [Fact]
     public async Task GivenUnsupportedResult_WhenActivationTriggers_ThenItFailsFast()
     {
-        var fixture = new Fixture();
-        fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
+        _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
             .Returns(new UnsupportedReindexResult());
 
         var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
-            fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None));
+            CreateTrigger().RequestReindexAsync("activation", CancellationToken.None));
 
         exception.Message.ShouldContain(nameof(UnsupportedReindexResult));
     }
@@ -129,223 +123,132 @@ public sealed class ReindexTriggerTests
     [InlineData("Completed")]
     public async Task GivenNothingNewerThanTheLatestFinishedJob_WhenTickRuns_ThenNeitherLockNorRequestHappens(string? status)
     {
-        var fixture = new Fixture(withPendingParameter: status is not null);
-        if (status is not null)
+        if (status is null)
         {
-            await fixture.CreateJobAsync("finished", status, targetEventId: 42);
+            _state.Dispose();
+            _state = new ConformanceState();
+        }
+        else
+        {
+            await _jobs.CreateAsync(Job(status, definition: CreateJobDefinition(targetEventId: 42)), CancellationToken.None);
         }
 
-        await fixture.Trigger.ReconcileAsync(CancellationToken.None);
+        await CreateTrigger().ReconcileAsync(CancellationToken.None);
 
-        fixture.JobLock.Acquisitions.ShouldBe(0);
-        await fixture.Mediator.DidNotReceive().SendAsync(
-            Arg.Any<CreateReindexJobCommand>(),
-            Arg.Any<CancellationToken>());
+        _jobLock.Acquisitions.ShouldBe(0);
+        await AssertNoJobRequestedAsync();
     }
 
     [Fact]
     public async Task GivenActivationNewerThanFailedJob_WhenTickRuns_ThenReconciliationJobIsRequested()
     {
-        var fixture = new Fixture();
-        await fixture.CreateJobAsync("failed", "Failed", targetEventId: 41);
+        await _jobs.CreateAsync(Job("Failed", definition: CreateJobDefinition(targetEventId: 41)), CancellationToken.None);
 
-        await fixture.Trigger.ReconcileAsync(CancellationToken.None);
+        await CreateTrigger().ReconcileAsync(CancellationToken.None);
 
-        await fixture.Mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Reconciliation),
-            CancellationToken.None);
+        await AssertJobRequestedAsync(ReindexTriggerKind.Reconciliation);
     }
 
     [Fact]
     public async Task GivenActivationArrivesWhileJobRuns_WhenJobFinishes_ThenFollowUpIsRequestedOnTheNextTick()
     {
-        var fixture = new Fixture();
-        await fixture.CreateJobAsync("running", "Running", targetEventId: 41);
+        await _jobs.CreateAsync(Job("Running", definition: CreateJobDefinition(targetEventId: 41)), CancellationToken.None);
+        var trigger = CreateTrigger();
 
-        await fixture.Trigger.ReconcileAsync(CancellationToken.None);
-        await fixture.Mediator.DidNotReceive().SendAsync(
-            Arg.Any<CreateReindexJobCommand>(),
-            Arg.Any<CancellationToken>());
-
-        var running = (await fixture.Repository.GetAsync("running", 1, CancellationToken.None))!;
+        await trigger.ReconcileAsync(CancellationToken.None);
+        await AssertNoJobRequestedAsync();
+        var running = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
         running.Status = "Completed";
-        await fixture.Repository.UpdateAsync(running, 1, CancellationToken.None);
-        await fixture.Trigger.ReconcileAsync(CancellationToken.None);
+        await _jobs.UpdateAsync(running, 1, CancellationToken.None);
+        await trigger.ReconcileAsync(CancellationToken.None);
 
-        await fixture.Mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Reconciliation),
+        await AssertJobRequestedAsync(ReindexTriggerKind.Reconciliation);
+    }
+
+    [Fact]
+    public async Task GivenAutoStartIsFalse_WhenTickFindsOrphanedJob_ThenItIsRecoveredButNoJobIsRequested()
+    {
+        await _jobs.CreateAsync(
+            Job("Running", definition: CreateJobDefinition(targetEventId: 42), observed: Now - TimeSpan.FromMinutes(10)),
             CancellationToken.None);
-    }
+        _runtime.GetOrchestrationStateAsync("job", false).Returns([]);
 
-    [Fact]
-    public async Task GivenAutoStartIsFalse_WhenTickRuns_ThenNoJobIsRequested()
-    {
-        var fixture = new Fixture(autoStart: false);
+        await CreateTrigger(autoStart: false).ReconcileAsync(CancellationToken.None);
 
-        await fixture.Trigger.ReconcileAsync(CancellationToken.None);
-
-        await fixture.Mediator.DidNotReceive().SendAsync(
-            Arg.Any<CreateReindexJobCommand>(),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task GivenAutoStartIsFalse_WhenTickFindsOrphanedJob_ThenItIsStillRecovered()
-    {
-        var fixture = new Fixture(autoStart: false);
-        await fixture.CreateJobAsync("orphan", "Running", targetEventId: 42, lastObserved: Now - TimeSpan.FromMinutes(10));
-        fixture.Runtime.GetOrchestrationStateAsync("orphan", false).Returns([]);
-
-        await fixture.Trigger.ReconcileAsync(CancellationToken.None);
-
-        (await fixture.Repository.GetAsync("orphan", 1, CancellationToken.None))!.Status.ShouldBe("Failed");
+        (await _jobs.GetAsync("job", 1, CancellationToken.None))!.Status.ShouldBe("Failed");
+        await AssertNoJobRequestedAsync();
     }
 
     [Fact]
     public async Task GivenActivationLockIsHeld_WhenTickRuns_ThenPendingParametersAreReadOnlyAfterItIsReleased()
     {
-        var fixture = new Fixture();
-        var held = await fixture.State.AcquireActivationLockAsync(CancellationToken.None);
-        var tick = fixture.Trigger.ReconcileAsync(CancellationToken.None);
+        var held = await _state.AcquireActivationLockAsync(CancellationToken.None);
+        var tick = CreateTrigger().ReconcileAsync(CancellationToken.None);
         await Task.Yield();
 
         tick.IsCompleted.ShouldBeFalse();
-        await fixture.Mediator.DidNotReceive().SendAsync(
-            Arg.Any<CreateReindexJobCommand>(),
-            Arg.Any<CancellationToken>());
+        await AssertNoJobRequestedAsync();
         held.Dispose();
         await tick;
 
-        await fixture.Mediator.Received(1).SendAsync(
-            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Reconciliation),
+        await AssertJobRequestedAsync(ReindexTriggerKind.Reconciliation);
+    }
+
+    [Theory]
+    [InlineData(typeof(IOException), false)]
+    [InlineData(typeof(InvalidOperationException), true)]
+    public async Task GivenAFailedJobRequest_WhenTickRuns_ThenOnlyAProgrammerErrorPropagates(Type failure, bool propagates)
+    {
+        FailJobRequests(failure);
+
+        var exception = await Record.ExceptionAsync(() => CreateTrigger().ReconcileAsync(CancellationToken.None));
+
+        if (propagates)
+        {
+            exception.ShouldBeOfType(failure);
+        }
+        else
+        {
+            exception.ShouldBeNull();
+        }
+    }
+
+    private ReindexTrigger CreateTrigger(bool autoStart = true, bool enabled = true, TenantConfiguration[]? tenants = null)
+    {
+        var options = Options.Create(new ReindexOptions
+        {
+            Enabled = enabled,
+            AutoStart = autoStart,
+            OrphanGrace = TimeSpan.FromMinutes(2)
+        });
+        return new ReindexTrigger(
+            _mediator,
+            _jobs,
+            _state,
+            new ReindexJobReconciler(
+                new TaskHubClient(_runtime),
+                _jobs,
+                new ReindexLifecycleEventWriter(new TestSourceEventStore(), _state),
+                _jobLock,
+                options,
+                new FixedTimeProvider(Now),
+                NullLogger<ReindexJobReconciler>.Instance),
+            CreateRepositoryFactory(tenants ?? []),
+            options,
+            NullLogger<ReindexTrigger>.Instance);
+    }
+
+    private void FailJobRequests(Type failure) =>
+        _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
+            .Returns<Task<CreateReindexJobResult>>(_ => throw (Exception)Activator.CreateInstance(failure, "Failure.")!);
+
+    private Task AssertNoJobRequestedAsync() =>
+        _mediator.DidNotReceive().SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>());
+
+    private Task AssertJobRequestedAsync(ReindexTriggerKind trigger) =>
+        _mediator.Received(1).SendAsync(
+            Arg.Is<CreateReindexJobCommand>(command => command.Trigger == trigger),
             CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task GivenOperationalFailure_WhenTickRuns_ThenItIsDeferredToTheNextTick()
-    {
-        var fixture = new Fixture();
-        fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-            .Returns<Task<CreateReindexJobResult>>(_ => throw new IOException("Database unavailable."));
-
-        await fixture.Trigger.ReconcileAsync(CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task GivenProgrammerError_WhenTickRuns_ThenItPropagates()
-    {
-        var fixture = new Fixture();
-        fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-            .Returns<Task<CreateReindexJobResult>>(_ => throw new InvalidOperationException("Bug."));
-
-        await Should.ThrowAsync<InvalidOperationException>(() =>
-            fixture.Trigger.ReconcileAsync(CancellationToken.None));
-    }
 
     private sealed record UnsupportedReindexResult : CreateReindexJobResult;
-
-    private sealed class Fixture
-    {
-        public Fixture(
-            bool autoStart = true,
-            bool withPendingParameter = true,
-            bool enabled = true,
-            TenantConfiguration[]? tenants = null)
-        {
-            var jobTenants = Substitute.For<ITenantConfigurationStore>();
-            jobTenants.Mode.Returns(TenantMode.Isolated);
-            Repository = new InMemoryBackgroundJobRepository<ReindexJobDefinition>(
-                jobTenants,
-                NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
-            if (withPendingParameter)
-            {
-                State.ApplyAndTrack(new SourceEvent(
-                    42,
-                    "search",
-                    nameof(SearchParameterActivated),
-                    new SearchParameterActivated(
-                        "http://example.org/SearchParameter/patient-custom", "custom", "Patient", "Patient.id",
-                        SearchParamType.String, "example@1.0.0", null, 17, null, null, null, null),
-                    DateTimeOffset.UtcNow));
-            }
-
-            Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-                .Returns(new NoReindexWorkResult("No resources need reindexing."));
-            var eventStore = Substitute.For<ISourceEventStore>();
-            eventStore.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-                .Returns(AsyncEnumerable.Empty<SourceEvent>());
-            var options = Options.Create(new ReindexOptions
-            {
-                Enabled = enabled,
-                AutoStart = autoStart,
-                OrphanGrace = TimeSpan.FromMinutes(2)
-            });
-            Trigger = new ReindexTrigger(
-                Mediator,
-                Repository,
-                State,
-                new ReindexJobReconciler(
-                    new TaskHubClient(Runtime),
-                    Repository,
-                    new ReindexLifecycleEventWriter(eventStore, State),
-                    JobLock,
-                    options,
-                    new FixedTimeProvider(Now),
-                    NullLogger<ReindexJobReconciler>.Instance),
-                ReindexTestHelper.CreateRepositoryFactory(tenants ?? []),
-                options,
-                NullLogger<ReindexTrigger>.Instance);
-        }
-
-        public ReindexTrigger Trigger { get; }
-        public IMediator Mediator { get; } = Substitute.For<IMediator>();
-        public IOrchestrationServiceClient Runtime { get; } = Substitute.For<IOrchestrationServiceClient>();
-        public InMemoryBackgroundJobRepository<ReindexJobDefinition> Repository { get; }
-        public ConformanceState State { get; } = new();
-        public CountingJobLock JobLock { get; } = new();
-
-        public Task CreateJobAsync(
-            string jobId,
-            string status,
-            long targetEventId,
-            DateTimeOffset? lastObserved = null) =>
-            Repository.CreateAsync(new BackgroundJob<ReindexJobDefinition>
-            {
-                JobId = jobId,
-                OrchestrationInstanceId = jobId,
-                JobType = (int)BackgroundJobType.Reindex,
-                Status = status,
-                Definition = new ReindexJobDefinition
-                {
-                    TargetEventId = targetEventId,
-                    TenantIds = [1],
-                    ResourceTypes = ["Patient"],
-                    SearchParameters = [],
-                    MaximumNumberOfResourcesPerQuery = 10_000,
-                    MaximumNumberOfResourcesPerWrite = 1_000,
-                    MaximumConcurrency = 4,
-                    QueryDelayIntervalInMilliseconds = 0,
-                    Trigger = "Manual"
-                },
-                CreateDate = lastObserved ?? Now,
-                HeartbeatDate = lastObserved ?? Now,
-                EndDate = status is "Completed" or "Failed" or "Cancelled" ? Now : null
-            }, CancellationToken.None);
-    }
-
-    private sealed class CountingJobLock : IReindexJobLock
-    {
-        public int Acquisitions { get; private set; }
-
-        public Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken cancellationToken)
-        {
-            Acquisitions++;
-            return action(cancellationToken);
-        }
-    }
-
-    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-    }
 }
