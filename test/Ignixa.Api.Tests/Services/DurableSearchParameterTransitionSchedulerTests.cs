@@ -26,7 +26,7 @@ public class DurableSearchParameterTransitionSchedulerTests
         await orchestrationService.Received(1).CreateTaskOrchestrationAsync(
             Arg.Is<TaskMessage>(message =>
                 ((ExecutionStartedEvent)message.Event).OrchestrationInstance.InstanceId ==
-                DurableSearchParameterTransitionScheduler.GetInstanceId(20)),
+                "search-parameter-transition-20"),
             Arg.Is<OrchestrationStatus[]>(statuses =>
                 statuses.Length == 3 &&
                 statuses[0] == OrchestrationStatus.Running &&
