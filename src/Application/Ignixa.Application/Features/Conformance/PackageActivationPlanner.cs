@@ -156,14 +156,9 @@ public sealed class PackageActivationPlanner(
             }
 
             var storageRoot = storageRoots.SingleOrDefault() ?? sp.Canonical;
-            int? sharedSearchParamId = existingOwners.Values
-                .FirstOrDefault(owner =>
-                    owner is not null &&
-                    string.Equals(
-                        owner.OverridesCanonical ?? owner.Canonical,
-                        storageRoot,
-                        StringComparison.Ordinal))
-                ?.SearchParamId;
+
+            // Owned and base-backed types go first: activating sp on one binds sp.Canonical to the root's
+            // SearchParamId, so the unowned types that follow resolve the same identity from the canonical.
             var orderedResourceTypes = sp.BaseResourceTypes
                 .OrderByDescending(resourceType =>
                     existingOwners[resourceType] is not null || baseParameters.ContainsKey(resourceType))
@@ -219,7 +214,6 @@ public sealed class PackageActivationPlanner(
                     }
                     events.Add(baseActivation);
                     existing = staged.GetSearchParameter(resourceType, sp.Code);
-                    sharedSearchParamId ??= baseSearchParamId;
                 }
 
                 OverrideInfo? overrides = null;
@@ -247,11 +241,12 @@ public sealed class PackageActivationPlanner(
                     }
                 }
 
+                // ConformanceState rejects an override whose id differs from its root's, so a wrong id fails
+                // the activation (SP_STORAGE_IDENTITY) rather than splitting storage.
+                var searchParamId = staged.GetSearchParamIdForActivation(sp.Canonical, existing);
                 if (!string.Equals(storageRoot, sp.Canonical, StringComparison.Ordinal))
                 {
-                    var resolvedSharedSearchParamId = sharedSearchParamId ?? throw new InvalidOperationException(
-                        $"Shared storage root '{storageRoot}' must have a SearchParamId before activating {sp.Canonical}.");
-                    overrides = new OverrideInfo(storageRoot, resolvedSharedSearchParamId);
+                    overrides = new OverrideInfo(storageRoot, searchParamId);
                 }
                 else if (existing is not null)
                 {
@@ -259,9 +254,6 @@ public sealed class PackageActivationPlanner(
                         existing.OverridesCanonical ?? existing.Canonical,
                         existing.SearchParamId);
                 }
-
-                var searchParamId = sharedSearchParamId ??
-                    staged.GetSearchParamIdForActivation(sp.Canonical, existing);
 
                 var componentData = sp.Components?.Select(c =>
                     new SearchParameterComponentData(c.DefinitionUrl, c.Expression)).ToList();

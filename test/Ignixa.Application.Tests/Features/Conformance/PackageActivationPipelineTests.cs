@@ -86,6 +86,45 @@ public class PackageActivationPipelineTests
             .ShouldAllBe(activation => activation.SearchParamId == identity);
     }
 
+    // B-L2: when one base type is already owned (by the base or by an override of it) and another is not, the
+    // unowned type's base and the package's activations all take the owned root's existing identity, not a fresh one.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenAMultiBaseShadowWithOnlyOneBaseTypeOwned_WhenActivated_ThenEveryActivationTakesTheOwnedIdentity(
+        bool ownedByAnOverride)
+    {
+        const string baseTag = "http://hl7.org/fhir/SearchParameter/Resource-tag";
+        const int ownedId = 7;
+        using var harness = new Harness();
+        harness.Seed(Activated(baseTag, "_tag", ownedId, package: CorePackage, expression: "Resource.meta.tag"));
+        if (ownedByAnOverride)
+        {
+            harness.Seed(Activated(Canonical("existing"), "_tag", ownedId, baseTag, "existing.owner@1.0.0", expression: "Resource.meta.tag"));
+        }
+
+        var pipeline = harness.Pipeline(SearchParameter(
+            "test.multi-base",
+            Canonical("multi"),
+            "_tag",
+            ["Practitioner", "Patient"],
+            "Resource.meta.tag",
+            derivedFrom: ownedByAnOverride ? Canonical("existing") : null));
+
+        var result = await ActivateAsync(pipeline, "test.multi-base");
+
+        result.Success.ShouldBeTrue(Describe(result));
+        var practitionerBase = harness.Activations.Where(activation =>
+            activation.SourcePackage == CorePackage && activation.ResourceType == "Practitioner").ShouldHaveSingleItem();
+        practitionerBase.SearchParamId.ShouldBe(ownedId);
+        var shadows = harness.Activations.Where(activation => activation.SourcePackage == "test.multi-base@1.0.0").ToArray();
+        shadows.Select(activation => activation.ResourceType).ShouldBe(["Patient", "Practitioner"], ignoreOrder: true);
+        shadows.ShouldAllBe(activation =>
+            activation.SearchParamId == ownedId &&
+            activation.Overrides!.OverridesCanonical == baseTag &&
+            activation.Overrides.InheritedParamId == ownedId);
+    }
+
     [Theory]
     [InlineData("Patient", "Practitioner", false)]
     [InlineData("Patient", "Practitioner", true)]
