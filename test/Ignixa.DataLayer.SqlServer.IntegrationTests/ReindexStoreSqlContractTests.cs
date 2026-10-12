@@ -33,67 +33,6 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         _store = _database.ReindexStore;
     }
 
-    /// <summary>
-    /// Captures a copy of the last reader command that binds <paramref name="parameterName"/>, so its plan can be read.
-    /// </summary>
-    private sealed class CommandCaptureSqlExecutionService(ISqlExecutionService inner, string parameterName) : ISqlExecutionService
-    {
-        private readonly ISqlExecutionService _inner = inner;
-
-        public SqlCommand? Command { get; private set; }
-
-        public Task<int> ExecuteNonQueryAsync(
-            int tenantId,
-            SqlCommand command,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent) =>
-            _inner.ExecuteNonQueryAsync(tenantId, command, cancellationToken, idempotency);
-
-        public Task<IReadOnlyList<T>> ExecuteReaderAsync<T>(
-            int tenantId,
-            SqlCommand command,
-            Func<SqlDataReader, T> readRow,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
-        {
-            if (command.Parameters.Contains(parameterName))
-            {
-                Command = Clone(command);
-            }
-
-            return _inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken, idempotency);
-        }
-
-        public Task<T> ExecuteInTransactionAsync<T>(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task<T>> work,
-            CancellationToken cancellationToken) =>
-            _inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
-
-        public Task ExecuteInTransactionAsync(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task> work,
-            CancellationToken cancellationToken) =>
-            _inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
-
-        private static SqlCommand Clone(SqlCommand command)
-        {
-            // The captured SQL comes from SqlServerReindexStore, and only its bound parameters are varied.
-#pragma warning disable CA2100
-            var clone = new SqlCommand(command.CommandText);
-#pragma warning restore CA2100
-            foreach (SqlParameter parameter in command.Parameters)
-            {
-                clone.Parameters.Add(new SqlParameter(parameter.ParameterName, parameter.SqlDbType, parameter.Size)
-                {
-                    Value = parameter.Value,
-                });
-            }
-
-            return clone;
-        }
-    }
-
     public Task DisposeAsync() => _database.DisposeAsync();
 
     [Fact]
@@ -231,13 +170,23 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
 
             UPDATE STATISTICS dbo.Transactions WITH FULLSCAN;
             """);
-        var (store, commands, cache) = await CreateCommandCapturingReindexStoreAsync("@CutoffTransactionId");
+        SqlCommand? drainQuery = null;
+        var capturing = new InterceptingSqlExecutionService(_database.SqlExecutionService, command =>
+        {
+            if (command.Parameters.Contains("@CutoffTransactionId"))
+            {
+                drainQuery = InterceptingSqlExecutionService.Clone(command);
+            }
+
+            return Task.CompletedTask;
+        });
+        var (store, cache) = await CreateStoreAsync(capturing);
         using (cache)
         {
             (await store.GetOldestIncompleteTransactionAsync(20_000, CancellationToken.None)).ShouldBeNull();
         }
 
-        var plan = (await CaptureShowPlanXmlAsync(commands.Command!)).ShouldHaveSingleItem();
+        var plan = (await CaptureShowPlanXmlAsync(drainQuery!)).ShouldHaveSingleItem();
         var showPlanNamespace = XNamespace.Get("http://schemas.microsoft.com/sqlserver/2004/07/showplan");
         var transactionOperators = XDocument.Parse(plan)
             .Descendants(showPlanNamespace + "RelOp")
@@ -448,15 +397,9 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
 
         (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
 
-        (await _database.ExecuteScalarAsync<int>(
-            $"SELECT COUNT(*) FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {resource.ResourceSurrogateId}"))
-            .ShouldBe(2);
         (await _database.ExecuteScalarAsync<string>(
-            $"SELECT ClaimValue FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {resource.ResourceSurrogateId} AND ClaimTypeId = 1"))
-            .ShouldBe("alpha");
-        (await _database.ExecuteScalarAsync<string>(
-            $"SELECT ClaimValue FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {resource.ResourceSurrogateId} AND ClaimTypeId = 2"))
-            .ShouldBe("beta");
+            $"SELECT STRING_AGG(CONCAT(ClaimTypeId, '=', ClaimValue), ',') WITHIN GROUP (ORDER BY ClaimTypeId) FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {resource.ResourceSurrogateId}"))
+            .ShouldBe("1=alpha,2=beta");
     }
 
     [Theory]
@@ -566,14 +509,24 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
              """);
 
         var logger = new RecordingLogger<SqlServerPostMergeExtensionUpdater>();
-        var (gate, store, cache) = await CreateGatedReindexStoreAsync(logger);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new InterceptingSqlExecutionService(_database.SqlExecutionService, async command =>
+        {
+            if (command.CommandText.Contains("EXEC dbo.UpdateResourceSearchParams", StringComparison.Ordinal))
+            {
+                entered.TrySetResult();
+                await release.Task;
+            }
+        });
+        var (store, cache) = await CreateStoreAsync(gate, logger);
         using (cache)
         {
             var update = store.UpdateSearchIndicesAsync(stale, CancellationToken.None);
-            await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
             await _database.Repository.CreateOrUpdateAsync(
                 Patient(conflicted.ResourceId) with { VersionId = "2", DefinitionsEventId = 65 });
-            gate.Release.SetResult();
+            release.SetResult();
 
             (await update).ShouldBe(new SearchIndexUpdateResult(1, 1));
             await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(
@@ -595,35 +548,17 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         await _database.Repository.CreateOrUpdateAsync(Patient("idempotent"));
         var (_, cutoff) = await _store.RaiseBarrierAsync(70, CancellationToken.None);
         var resource = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None)).Single();
-        var version = await _database.ExecuteScalarAsync<int>(
-            "SELECT Version FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0");
-        var transactionId = await _database.ExecuteScalarAsync<long>(
-            "SELECT TransactionId FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0");
-        var rawResource = await _database.ExecuteScalarBytesAsync(
-            "SELECT RawResource FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0");
-        var isHistory = await _database.ExecuteScalarAsync<bool>(
-            "SELECT IsHistory FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0");
-        var historyCount = await _database.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 1");
+        const string snapshot = """
+            SELECT CONCAT(Version, '|', TransactionId, '|', CONVERT(varchar(max), RawResource, 1), '|', IsHistory, '|',
+                (SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 1))
+            FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0
+            """;
+        var before = await _database.ExecuteScalarAsync<string>(snapshot);
 
         (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
         (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
 
-        (await _database.ExecuteScalarAsync<int>(
-            "SELECT Version FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0"))
-            .ShouldBe(version);
-        (await _database.ExecuteScalarAsync<long>(
-            "SELECT TransactionId FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0"))
-            .ShouldBe(transactionId);
-        (await _database.ExecuteScalarBytesAsync(
-            "SELECT RawResource FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0"))
-            .ShouldBe(rawResource);
-        (await _database.ExecuteScalarAsync<bool>(
-            "SELECT IsHistory FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 0"))
-            .ShouldBe(isHistory);
-        (await _database.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 1"))
-            .ShouldBe(historyCount);
+        (await _database.ExecuteScalarAsync<string>(snapshot)).ShouldBe(before);
     }
 
     [Fact]
@@ -667,20 +602,17 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
                 .ShouldBe(expectedCount, $"dbo.{table} must be restored to its pre-drift row count.");
         }
 
-        var identifierTypeSystemId = await _database.ExecuteScalarAsync<int>(
-            $"SELECT TOP (1) IdentifierTypeSystemId FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId} AND IdentifierTypeCode = 'MR'");
-        var expectedIdentifierTypeSystemId = await _database.ExecuteScalarAsync<int>(
-            "SELECT SystemId FROM dbo.System WHERE Value = 'http://terminology.hl7.org/CodeSystem/v2-0203'");
-        identifierTypeSystemId.ShouldBe(expectedIdentifierTypeSystemId);
         (await _database.ExecuteScalarAsync<string>(
-            $"SELECT TOP (1) IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId}"))
-            .ShouldBe("MR");
-        (await _database.ExecuteScalarAsync<string>(
-            $"SELECT TOP (1) Version FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId}"))
-            .ShouldBe("1.0");
-        (await _database.ExecuteScalarAsync<string>(
-            $"SELECT TOP (1) Fragment FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {resourceSurrogateId}"))
-            .ShouldBe("fragment");
+            $"""
+             SELECT CONCAT(system.Value COLLATE DATABASE_DEFAULT, '|', token.IdentifierTypeCode COLLATE DATABASE_DEFAULT, '|',
+                 uri.Version COLLATE DATABASE_DEFAULT, '|', uri.Fragment COLLATE DATABASE_DEFAULT)
+             FROM (SELECT TOP (1) IdentifierTypeSystemId, IdentifierTypeCode FROM dbo.TokenSearchParam
+                   WHERE ResourceSurrogateId = {resourceSurrogateId}) AS token
+             JOIN dbo.System AS system ON system.SystemId = token.IdentifierTypeSystemId
+             CROSS JOIN (SELECT TOP (1) Version, Fragment FROM dbo.UriSearchParam
+                         WHERE ResourceSurrogateId = {resourceSurrogateId}) AS uri
+             """))
+            .ShouldBe("http://terminology.hl7.org/CodeSystem/v2-0203|MR|1.0|fragment");
     }
 
     private static IReadOnlyList<object> BuildSearchIndicesWithExtensions(string referenceTargetId) =>
@@ -758,44 +690,24 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         throw new TimeoutException($"Visible watermark did not advance past failed transaction {transactionId}.");
     }
 
-    private async Task<(UpdateResourceSearchParamsGate Gate, IReindexStore Store, SqlServerSearchIndexReferenceDataCache Cache)> CreateGatedReindexStoreAsync(
+    /// <summary>A store whose commands run through <paramref name="sql"/>; dispose the returned cache.</summary>
+    private async Task<(IReindexStore Store, SqlServerSearchIndexReferenceDataCache Cache)> CreateStoreAsync(
+        ISqlExecutionService sql,
         ILogger<SqlServerPostMergeExtensionUpdater>? extensionLogger = null)
     {
-        var gate = new UpdateResourceSearchParamsGate(_database.SqlExecutionService);
         var cache = new SqlServerSearchIndexReferenceDataCache(
-            gate, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
+            sql, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
         await cache.PreloadResourceTypesAsync(CancellationToken.None);
-        var compressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
         var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
-            gate,
+            sql, _database.TenantId, extensionLogger ?? NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
+        var store = new SqlServerReindexStore(
+            sql,
             _database.TenantId,
-            extensionLogger ?? NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
-        return (gate, new SqlServerReindexStore(
-            gate,
-            _database.TenantId,
-            compressor,
+            new GzipResourceCompressor(new RecyclableMemoryStreamManager()),
             cache,
             extensionUpdater,
-            NullLogger.Instance), cache);
-    }
-
-    private async Task<(IReindexStore Store, CommandCaptureSqlExecutionService Commands, SqlServerSearchIndexReferenceDataCache Cache)> CreateCommandCapturingReindexStoreAsync(
-        string parameterName)
-    {
-        var commands = new CommandCaptureSqlExecutionService(_database.SqlExecutionService, parameterName);
-        var cache = new SqlServerSearchIndexReferenceDataCache(
-            commands, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
-        await cache.PreloadResourceTypesAsync(CancellationToken.None);
-        var compressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
-        var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
-            commands, _database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
-        return (new SqlServerReindexStore(
-            commands,
-            _database.TenantId,
-            compressor,
-            cache,
-            extensionUpdater,
-            NullLogger.Instance), commands, cache);
+            NullLogger.Instance);
+        return (store, cache);
     }
 
     private async Task<IReadOnlyList<string>> CaptureShowPlanXmlAsync(SqlCommand command)
@@ -830,59 +742,6 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             await using var disableStatisticsXml = connection.CreateCommand();
             disableStatisticsXml.CommandText = "SET STATISTICS XML OFF;";
             await disableStatisticsXml.ExecuteNonQueryAsync();
-        }
-    }
-
-    private sealed class UpdateResourceSearchParamsGate(ISqlExecutionService inner) : ISqlExecutionService
-    {
-        private readonly ISqlExecutionService _inner = inner;
-
-        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public async Task<int> ExecuteNonQueryAsync(
-            int tenantId,
-            SqlCommand command,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
-        {
-            await WaitForUpdateResourceSearchParamsAsync(command, cancellationToken);
-            return await _inner.ExecuteNonQueryAsync(tenantId, command, cancellationToken, idempotency);
-        }
-
-        public async Task<IReadOnlyList<T>> ExecuteReaderAsync<T>(
-            int tenantId,
-            SqlCommand command,
-            Func<SqlDataReader, T> readRow,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
-        {
-            await WaitForUpdateResourceSearchParamsAsync(command, cancellationToken);
-            return await _inner.ExecuteReaderAsync(tenantId, command, readRow, cancellationToken, idempotency);
-        }
-
-        public Task<T> ExecuteInTransactionAsync<T>(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task<T>> work,
-            CancellationToken cancellationToken) =>
-            _inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
-
-        public Task ExecuteInTransactionAsync(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task> work,
-            CancellationToken cancellationToken) =>
-            _inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
-
-        private async Task WaitForUpdateResourceSearchParamsAsync(
-            SqlCommand command,
-            CancellationToken cancellationToken)
-        {
-            if (command.CommandText.Contains("EXEC dbo.UpdateResourceSearchParams", StringComparison.Ordinal))
-            {
-                Entered.TrySetResult();
-                await Release.Task.WaitAsync(cancellationToken);
-            }
         }
     }
 

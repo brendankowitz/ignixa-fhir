@@ -275,51 +275,6 @@ public class SchemaDeployerUpgradeTests
     }
 
     [SkippableFact]
-    public async Task GivenAVersionTwoTenantWithEmptyLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenRetiresOnlyLegacyObjects()
-    {
-        var databaseName = $"SchemaDeployerReindexRetirementTest_{Guid.NewGuid():N}";
-        var connectionString = BuildConnectionStringForDatabase(databaseName);
-        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
-
-        try
-        {
-            await DeployVersionTwoSchemaAsync(connectionString, databaseName, CancellationToken.None);
-            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
-                .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
-
-            await using (var connection = new SqlConnection(connectionString))
-            {
-                await connection.OpenAsync(CancellationToken.None);
-                await using var command = connection.CreateCommand();
-                command.CommandText = """
-                    CREATE TABLE dbo.UnmanagedUpgradeMarker (Id INT NOT NULL PRIMARY KEY);
-                    INSERT dbo.UnmanagedUpgradeMarker (Id) VALUES (1);
-                    """;
-                await command.ExecuteNonQueryAsync(CancellationToken.None);
-            }
-
-            var deployer = CreateDeployer(connectionString);
-            await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
-
-            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None)).ShouldBeEmpty();
-            var reindexObjects = await GetReindexObjectStateAsync(connectionString, CancellationToken.None);
-            reindexObjects.HasLastValueIndex.ShouldBeTrue();
-            reindexObjects.ReturnsUpdatedSurrogates.ShouldBeTrue();
-            reindexObjects.HasIncompleteDrainIndex.ShouldBeTrue();
-
-            await using var verifyConnection = new SqlConnection(connectionString);
-            await verifyConnection.OpenAsync(CancellationToken.None);
-            await using var verifyCommand = verifyConnection.CreateCommand();
-            verifyCommand.CommandText = "SELECT COUNT(*) FROM dbo.UnmanagedUpgradeMarker";
-            ((int)(await verifyCommand.ExecuteScalarAsync(CancellationToken.None))!).ShouldBe(1);
-        }
-        finally
-        {
-            await DropDatabaseAsync(databaseName, CancellationToken.None);
-        }
-    }
-
-    [SkippableFact]
     public async Task GivenAVersionTwoTenantWithPopulatedLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenFailsWithoutDroppingLegacyObjectsOrStampingAndARetryAfterDeletingTheRowsSucceeds()
     {
         var databaseName = $"SchemaDeployerReindexRetirementRowsTest_{Guid.NewGuid():N}";
@@ -363,6 +318,7 @@ public class SchemaDeployerUpgradeTests
 
             (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None)).ShouldBeEmpty();
             (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(SchemaVersionConstants.CurrentVersion);
+            (await GetReindexObjectStateAsync(connectionString, CancellationToken.None)).ShouldBe((true, true, true));
         }
         finally
         {
