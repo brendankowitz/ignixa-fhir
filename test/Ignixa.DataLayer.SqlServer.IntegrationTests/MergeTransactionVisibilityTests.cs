@@ -41,24 +41,6 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenAStandaloneDelete_WhenTheTombstoneIsWritten_ThenItUsesACompletedVisibleAllocation()
-    {
-        await _database.Repository.CreateOrUpdateAsync(Patient("delete-allocation"));
-        var before = await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions");
-
-        await _database.Repository.DeleteAsync(
-            new ResourceKey("Patient", "delete-allocation"),
-            new ResourceRequest("DELETE", "Patient/delete-allocation"),
-            definitionsEventId: 0);
-
-        var after = await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Transactions");
-        after.ShouldBe(before + 1);
-        (await _database.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM dbo.Transactions WHERE IsCompleted = 1 AND IsVisible = 1"))
-            .ShouldBe(after);
-    }
-
-    [Fact]
     public async Task GivenAStandaloneDeleteRejectedByTheServer_WhenItRollsBack_ThenItsAllocationIsCompleted()
     {
         await _database.Repository.CreateOrUpdateAsync(Patient("delete-rejected"));
@@ -105,6 +87,9 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
             new ResourceRequest("DELETE", "Patient/allocation-create"),
             definitionsEventId: 0);
         await AssertTransactionCountAsync(++transactionCount);
+        (await _database.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.Transactions WHERE IsCompleted = 1 AND IsVisible = 1"))
+            .ShouldBe(transactionCount);
     }
 
     private async Task AssertTransactionCountAsync(int expected) =>
