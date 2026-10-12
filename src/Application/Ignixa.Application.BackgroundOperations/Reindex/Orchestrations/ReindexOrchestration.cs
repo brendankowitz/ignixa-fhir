@@ -275,7 +275,7 @@ public sealed class ReindexOrchestration
                 state.TenantId,
                 state.RequireCutoff().TransactionId,
                 wait.StartedUtc,
-                input.DrainWarningAfter ?? TimeSpan.FromMinutes(5)));
+                input.DrainWarningAfter));
         if (drained)
         {
             return new TenantAdvance(
@@ -326,7 +326,7 @@ public sealed class ReindexOrchestration
                     state.PlannerCursor,
                     state.RequireCutoff().SurrogateId,
                     input.Parameters.MaximumNumberOfResourcesPerQuery,
-                    Math.Max(1, input.Parameters.MaximumConcurrency)));
+                    input.Parameters.MaximumConcurrency));
             var planned = state with
             {
                 PendingRanges = plan.Ranges,
@@ -449,7 +449,7 @@ public sealed class ReindexOrchestration
         ReindexOrchestrationState state,
         int scheduledActivities)
     {
-        if (scheduledActivities < Math.Max(1, input.ContinueAsNewThreshold) ||
+        if (scheduledActivities < input.ContinueAsNewThreshold ||
             state.AllTenantsCompleted)
         {
             return false;

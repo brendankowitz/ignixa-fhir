@@ -10,9 +10,7 @@ public sealed record ReindexOrchestrationInput(
     IReadOnlyList<string> ResourceTypes,
     IReadOnlyList<ReindexParameterDefinition> Targets,
     ReindexJobParameters Parameters,
-    TimeSpan? DrainWarningAfter = null,
-    int ContinueAsNewThreshold = 2_000,
-    ReindexOrchestrationState? State = null)
-{
-    public TimeSpan StaleJobTimeout { get; init; } = TimeSpan.FromMinutes(30);
-}
+    TimeSpan DrainWarningAfter,
+    TimeSpan StaleJobTimeout,
+    int ContinueAsNewThreshold,
+    ReindexOrchestrationState? State = null);

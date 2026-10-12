@@ -136,10 +136,8 @@ public sealed class CreateReindexJobHandler(
                     plan.Resolution.Targets,
                     parameters,
                     _options.DrainWarningAfter,
-                    _options.ContinueAsNewThreshold)
-                {
-                    StaleJobTimeout = _options.StaleJobTimeout
-                });
+                    _options.StaleJobTimeout,
+                    _options.ContinueAsNewThreshold));
         }
         catch
         {
