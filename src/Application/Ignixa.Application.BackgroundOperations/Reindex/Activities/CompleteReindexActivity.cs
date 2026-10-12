@@ -66,9 +66,11 @@ public sealed class CompleteReindexActivity(
             missingTenantIds.Length == 0 &&
             input.Tenants.All(tenant => tenant.Success) &&
             completions.All(completion => completion.Success);
-        var ignored = await lifecycle.CompleteAsync(input.JobId, completions, cancellationToken);
-
         var completedAt = timeProvider.GetUtcNow();
+        // A job that never started owns no targets, so its completion appends no event to carry a duration.
+        var duration = job.StartDate is { } startDate ? completedAt - startDate : TimeSpan.Zero;
+        var ignored = await lifecycle.CompleteAsync(input.JobId, completions, duration, cancellationToken);
+
         job.SetStatus(success ? ReindexJobStatus.Completed : ReindexJobStatus.Failed);
         job.EndDate = completedAt;
         job.HeartbeatDate = completedAt;
@@ -85,7 +87,7 @@ public sealed class CompleteReindexActivity(
 
         if (job.StartDate.HasValue)
         {
-            ReindexMetrics.RecordJobDuration(completedAt - job.StartDate.Value);
+            ReindexMetrics.RecordJobDuration(duration);
         }
 
         return new CompleteReindexOutput(success, ignored);
@@ -150,7 +152,6 @@ public sealed class CompleteReindexActivity(
             target,
             errors.Count == 0,
             resourcesIndexed,
-            TimeSpan.Zero,
             errors.Count == 0 ? null : string.Join(" ", errors));
     }
 

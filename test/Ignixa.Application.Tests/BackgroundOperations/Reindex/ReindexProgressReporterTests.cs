@@ -137,7 +137,6 @@ public class ReindexProgressReporterTests
                 {
                     Status = ReindexTenantStatus.Reindexing,
                     ResourcesToReindex = 15,
-                    ResourcesRead = count,
                     ResourcesReindexed = count
                 }
             ]

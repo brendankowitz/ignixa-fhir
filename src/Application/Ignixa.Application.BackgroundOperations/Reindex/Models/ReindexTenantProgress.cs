@@ -11,7 +11,6 @@ public sealed record ReindexTenantProgress(
     long? CutoffTransactionId,
     long? CutoffSurrogateId,
     long ResourcesToReindex,
-    long ResourcesRead,
     long ResourcesReindexed,
     long Conflicts,
     long FailedResourceCount,
@@ -24,7 +23,7 @@ public sealed record ReindexTenantProgress(
     public IReadOnlyList<string> FailedResourceTypes { get; init; } = [];
 
     public static ReindexTenantProgress Create(int tenantId) =>
-        new(tenantId, ReindexTenantStatus.BarrierDelay, null, null, 0, 0, 0, 0, 0, null);
+        new(tenantId, ReindexTenantStatus.BarrierDelay, null, null, 0, 0, 0, 0, null);
 
     [Newtonsoft.Json.JsonIgnore]
     [System.Text.Json.Serialization.JsonIgnore]
@@ -39,15 +38,17 @@ public sealed record ReindexTenantProgress(
         FailedResources.Count == 0 &&
         ErrorMessage is null;
 
-    public ReindexTenantProgress Add(ReindexRangeOutput output) =>
+    /// <summary>Adds one range's counts; a range with any failed resource fails its type.</summary>
+    public ReindexTenantProgress Add(string resourceType, ReindexRangeOutput output) =>
         this with
         {
-            ResourcesRead = ResourcesRead + output.ResourcesRead,
             ResourcesReindexed = ResourcesReindexed + output.ResourcesReindexed,
             Conflicts = Conflicts + output.Conflicts,
             FailedResourceCount = FailedResourceCount + output.FailedResourceCount,
             FailedResources = Sample(FailedResources.Concat(output.FailedResources)),
-            FailedResourceTypes = Union(FailedResourceTypes, output.FailedResourceTypes)
+            FailedResourceTypes = output.FailedResourceCount == 0
+                ? FailedResourceTypes
+                : Union(FailedResourceTypes, [resourceType])
         };
 
     /// <summary>Records a range activity that failed after its retries: the whole type counts as failed.</summary>

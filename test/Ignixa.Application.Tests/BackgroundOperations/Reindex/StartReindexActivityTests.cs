@@ -91,7 +91,8 @@ public class StartReindexActivityTests
         await fixture.Lifecycle.StartAsync("job", [fixture.Target], CancellationToken.None);
         await fixture.Lifecycle.CompleteAsync(
             "job",
-            [new ReindexTargetCompletion(fixture.Target, decision == "Completed", 0, TimeSpan.Zero, "terminated")],
+            [new ReindexTargetCompletion(fixture.Target, decision == "Completed", 0, "terminated")],
+            TimeSpan.Zero,
             CancellationToken.None);
         var finished = (await fixture.Repository.GetAsync("job", 1, CancellationToken.None))!;
         finished.Status = decision;

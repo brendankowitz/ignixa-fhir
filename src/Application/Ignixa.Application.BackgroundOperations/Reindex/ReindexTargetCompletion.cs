@@ -6,5 +6,4 @@ public sealed record ReindexTargetCompletion(
     ReindexParameterDefinition Target,
     bool Success,
     long ResourcesIndexed,
-    TimeSpan Duration,
     string? ErrorMessage);

@@ -93,7 +93,8 @@ public class ReindexJobReconcilerTests
         await fixture.Lifecycle.StartAsync("job", [fixture.Target], CancellationToken.None);
         await fixture.Lifecycle.CompleteAsync(
             "job",
-            [new ReindexTargetCompletion(fixture.Target, true, 12, TimeSpan.Zero, null)],
+            [new ReindexTargetCompletion(fixture.Target, true, 12, null)],
+            TimeSpan.Zero,
             CancellationToken.None);
         var job = await fixture.CreateJobAsync("Running", lastObserved: Now - TimeSpan.FromMinutes(10));
         fixture.Runtime.GetOrchestrationStateAsync("job", false)
@@ -118,7 +119,8 @@ public class ReindexJobReconcilerTests
         await fixture.Lifecycle.StartAsync("job", [fixture.Target], CancellationToken.None);
         await fixture.Lifecycle.CompleteAsync(
             "job",
-            [new ReindexTargetCompletion(fixture.Target, false, 0, TimeSpan.Zero, "worker failed")],
+            [new ReindexTargetCompletion(fixture.Target, false, 0, "worker failed")],
+            TimeSpan.Zero,
             CancellationToken.None);
         var job = await fixture.CreateJobAsync("Running", lastObserved: Now - TimeSpan.FromMinutes(10));
         fixture.Runtime.GetOrchestrationStateAsync("job", false)

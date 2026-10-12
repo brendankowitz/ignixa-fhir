@@ -29,9 +29,11 @@ public sealed class ReindexLifecycleEventWriter(
             requireOwnership: false,
             cancellationToken);
 
+    /// <param name="duration">How long the job ran; recorded on every completed event.</param>
     public Task<IReadOnlyList<string>> CompleteAsync(
         string jobId,
         IReadOnlyList<ReindexTargetCompletion> completions,
+        TimeSpan duration,
         CancellationToken cancellationToken) =>
         AppendAsync(
             completions.Select(completion => completion.Target).ToArray(),
@@ -45,7 +47,7 @@ public sealed class ReindexLifecycleEventWriter(
                         target.ResourceType,
                         jobId,
                         completion.ResourcesIndexed,
-                        completion.Duration,
+                        duration,
                         target.ActivationEventId)
                     : new SearchParameterReindexFailed(
                         target.Canonical,

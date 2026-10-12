@@ -1,6 +1,7 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 
@@ -291,7 +292,7 @@ public sealed class ReindexOrchestration
         ReindexOrchestrationInput input,
         ReindexTenantState state)
     {
-        var cutoff = await context.ScheduleWithRetry<RaiseBarrierOutput>(
+        var cutoff = await context.ScheduleWithRetry<BarrierCutoff>(
             typeof(RaiseBarrierActivity),
             CreateRetryOptions(),
             new RaiseBarrierInput(input.JobId, state.TenantId, input.TargetEventId));
@@ -301,8 +302,8 @@ public sealed class ReindexOrchestration
                 Progress = state.Progress with
                 {
                     Status = ReindexTenantStatus.Draining,
-                    CutoffTransactionId = cutoff.CutoffTransactionId,
-                    CutoffSurrogateId = cutoff.CutoffSurrogateId
+                    CutoffTransactionId = cutoff.TransactionId,
+                    CutoffSurrogateId = cutoff.SurrogateId
                 },
                 Wait = ReindexWait.Begin(context.CurrentUtcDateTime)
             },
@@ -318,7 +319,7 @@ public sealed class ReindexOrchestration
     {
         var wait = state.Wait ?? ReindexWait.Begin(now);
         var drainElapsed = wait.Elapsed(now);
-        var drain = await context.ScheduleWithRetry<AwaitDrainOutput>(
+        var drained = await context.ScheduleWithRetry<bool>(
             typeof(AwaitDrainActivity),
             CreateRetryOptions(),
             new AwaitDrainInput(
@@ -326,16 +327,13 @@ public sealed class ReindexOrchestration
                 state.TenantId,
                 state.RequireCutoff().TransactionId,
                 wait.StartedUtc,
-                input.DrainWarningAfter ?? TimeSpan.FromMinutes(5),
-                drainElapsed,
-                input.StaleJobTimeout));
-        if (drain.IsDrained)
+                input.DrainWarningAfter ?? TimeSpan.FromMinutes(5)));
+        if (drained)
         {
             return new TenantAdvance(
                 state with
                 {
                     Progress = state.Progress with { Status = ReindexTenantStatus.Reindexing },
-                    VisibleWatermark = drain.VisibleWatermark,
                     Wait = null
                 },
                 1,
@@ -349,11 +347,7 @@ public sealed class ReindexOrchestration
         }
 
         return new TenantAdvance(
-            state with
-            {
-                VisibleWatermark = drain.VisibleWatermark,
-                Wait = wait.Backoff(context.CurrentUtcDateTime)
-            },
+            state with { Wait = wait.Backoff(context.CurrentUtcDateTime) },
             1,
             false);
     }
@@ -374,7 +368,7 @@ public sealed class ReindexOrchestration
         var resourceType = input.ResourceTypes[state.ResourceTypeIndex];
         if (state.PendingRanges.Count == 0)
         {
-            var plan = await context.ScheduleWithRetry<PlanReindexOutput>(
+            var plan = await context.ScheduleWithRetry<SurrogateIdRangePage>(
                 typeof(PlanReindexActivity),
                 CreateRetryOptions(),
                 new PlanReindexInput(
@@ -408,7 +402,7 @@ public sealed class ReindexOrchestration
             .ToArray();
         var attempts = await Task.WhenAll(wave.Select(range => RunRangeAsync(context, input, state, resourceType, range)));
         var progress = state.Progress;
-        var notReady = new List<ReindexRange>();
+        var notReady = new List<SurrogateIdRange>();
         foreach (var (range, attempt) in wave.Zip(attempts))
         {
             if (attempt.Output is { IsDefinitionsNotReady: true })
@@ -418,7 +412,7 @@ public sealed class ReindexOrchestration
             else
             {
                 progress = attempt.Output is not null
-                    ? progress.Add(attempt.Output)
+                    ? progress.Add(resourceType, attempt.Output)
                     : progress.AddRangeFailure(resourceType, attempt.Error!.Message);
             }
         }
@@ -456,7 +450,7 @@ public sealed class ReindexOrchestration
         ReindexOrchestrationInput input,
         ReindexTenantState state,
         string resourceType,
-        ReindexRange range)
+        SurrogateIdRange range)
     {
         try
         {

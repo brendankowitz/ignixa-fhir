@@ -42,7 +42,7 @@ public class ReindexRangeActivityTests
         var result = await fixture.Activity.RunAsync(null!, JsonSerializer.Serialize(
             new[] { new ReindexRangeInput("job", 1, "Patient", 1, 10, 42, 10, 0) }));
 
-        JsonSerializer.Deserialize<ReindexRangeOutput>(result)!.ResourcesRead.ShouldBe(0);
+        JsonSerializer.Deserialize<ReindexRangeOutput>(result)!.ResourcesReindexed.ShouldBe(0);
         fixture.HeartbeatAttempts.ShouldBe(2);
     }
 
@@ -57,7 +57,7 @@ public class ReindexRangeActivityTests
         var output = JsonSerializer.Deserialize<ReindexRangeOutput>(result)!;
         output.IsDefinitionsNotReady.ShouldBeTrue();
         output.StaleDefinitionsEventId.ShouldBe(41);
-        output.ResourcesRead.ShouldBe(0);
+        output.ResourcesReindexed.ShouldBe(0);
         fixture.RangeReads.ShouldBe(0);
     }
 

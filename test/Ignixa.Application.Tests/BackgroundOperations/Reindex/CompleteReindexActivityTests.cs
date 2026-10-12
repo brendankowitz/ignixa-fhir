@@ -53,7 +53,8 @@ public class CompleteReindexActivityTests
         await activity.RunAsync(context, input);
 
         (await jobs.GetAsync("job", 1, CancellationToken.None))!.Status.ShouldBe("Completed");
-        events.Count(evt => evt.Data is SearchParameterReindexCompleted).ShouldBe(1);
+        events.Select(evt => evt.Data).OfType<SearchParameterReindexCompleted>().ShouldHaveSingleItem()
+            .Duration.ShouldBeGreaterThanOrEqualTo(TimeSpan.FromHours(1));
     }
 
     [Fact]
@@ -82,7 +83,7 @@ public class CompleteReindexActivityTests
                 "job",
                 1,
                 [target],
-                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
+                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 0, null)],
                 [])
             {
                 FailureMessage = "Reindex orchestration failed: worker crashed"
@@ -189,7 +190,7 @@ public class CompleteReindexActivityTests
                     "job",
                     1,
                     [target],
-                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
+                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 0, null)],
                     [])
             }));
 
@@ -316,7 +317,7 @@ public class CompleteReindexActivityTests
                     "job",
                     1,
                     [],
-                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
+                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 0, null)],
                     [])
             }));
 
@@ -375,7 +376,7 @@ public class CompleteReindexActivityTests
                     "job",
                     1,
                     [],
-                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
+                    [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 0, null)],
                     [])
             }));
 
@@ -444,7 +445,7 @@ public class CompleteReindexActivityTests
                 "job",
                 1,
                 [target],
-                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 153, null)],
+                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 153, null)],
                 [])
             }));
 
@@ -499,6 +500,7 @@ public class CompleteReindexActivityTests
             Status = "Running",
             Definition = ReindexTestHelper.CreateJobDefinition(targets ?? []),
             CreateDate = DateTimeOffset.UtcNow,
+            StartDate = DateTimeOffset.UtcNow.AddHours(-1),
             HeartbeatDate = DateTimeOffset.UtcNow
         }, CancellationToken.None);
         return (jobs, tenants);
@@ -521,7 +523,7 @@ public class CompleteReindexActivityTests
                 "job",
                 1,
                 [target],
-                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 1, 0, 0, null)],
+                [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 0, null)],
                 [])
         });
 

@@ -47,7 +47,8 @@ public class ReindexLifecycleEventWriterTests
 
         var ignored = await writer.CompleteAsync(
             "job",
-            [new ReindexTargetCompletion(target, false, 0, TimeSpan.Zero, "Cancelled: operator request")],
+            [new ReindexTargetCompletion(target, false, 0, "Cancelled: operator request")],
+            TimeSpan.Zero,
             CancellationToken.None);
 
         ignored.ShouldBeEmpty();
@@ -86,9 +87,10 @@ public class ReindexLifecycleEventWriterTests
         var ignored = await writer.CompleteAsync(
             "job",
             [
-                new ReindexTargetCompletion(patient, true, 10, TimeSpan.Zero, null),
-                new ReindexTargetCompletion(observation, true, 20, TimeSpan.Zero, null)
+                new ReindexTargetCompletion(patient, true, 10, null),
+                new ReindexTargetCompletion(observation, true, 20, null)
             ],
+            TimeSpan.Zero,
             CancellationToken.None);
 
         ignored.ShouldBeEmpty();

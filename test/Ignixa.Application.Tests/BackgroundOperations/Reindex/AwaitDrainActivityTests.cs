@@ -38,9 +38,7 @@ public sealed class AwaitDrainActivityTests
             TimeSpan.FromMinutes(5));
 
         var json = await activity.RunAsync(null!, JsonSerializer.Serialize(new[] { input }));
-        var result = JsonSerializer.Deserialize<AwaitDrainOutput>(json)!;
 
-        result.IsDrained.ShouldBeFalse();
-        result.VisibleWatermark.ShouldBe(100);
+        JsonSerializer.Deserialize<bool>(json).ShouldBeFalse();
     }
 }

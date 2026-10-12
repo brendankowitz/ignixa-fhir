@@ -63,7 +63,6 @@ public sealed class ReindexRangeProcessor(
                 input.TenantId,
                 cancellationToken);
 
-            long resourcesRead = 0;
             long resourcesReindexed = 0;
             long conflicts = 0;
             long? afterSurrogateId = null;
@@ -84,7 +83,6 @@ public sealed class ReindexRangeProcessor(
                     break;
                 }
 
-                resourcesRead += page.Count;
                 var extracted = new List<ReindexResource>(page.Count);
                 foreach (var resource in page)
                 {
@@ -146,14 +144,9 @@ public sealed class ReindexRangeProcessor(
                 }
             }
 
-            return new ReindexRangeOutput(
-                resourcesRead,
-                resourcesReindexed,
-                conflicts,
-                failures)
+            return new ReindexRangeOutput(resourcesReindexed, conflicts, failures)
             {
-                FailedResourceCount = failedResourceCount,
-                FailedResourceTypes = failedResourceCount == 0 ? [] : [input.ResourceType]
+                FailedResourceCount = failedResourceCount
             };
         }
         finally

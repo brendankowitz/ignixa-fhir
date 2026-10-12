@@ -126,7 +126,7 @@ public class ReindexRangeProcessorTests
             new ReindexRangeInput("job", 1, "Patient", 1, 100, 42, 1000, 0),
             CancellationToken.None);
 
-        result.ResourcesRead.ShouldBe(0);
+        result.ResourcesReindexed.ShouldBe(0);
         _ = eventStore.Received(1).ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
         versions.Received(2).GetDefinitionsHandle(FhirVersion.R4, 1);
     }

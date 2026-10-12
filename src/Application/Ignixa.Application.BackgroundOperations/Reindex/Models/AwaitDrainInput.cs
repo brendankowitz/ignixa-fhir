@@ -5,6 +5,4 @@ public sealed record AwaitDrainInput(
     int TenantId,
     long CutoffTransactionId,
     DateTime DrainStartedUtc,
-    TimeSpan DrainWarningAfter,
-    TimeSpan DrainElapsed = default,
-    TimeSpan StaleJobTimeout = default);
+    TimeSpan DrainWarningAfter);

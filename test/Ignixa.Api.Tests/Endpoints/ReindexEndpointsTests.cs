@@ -207,7 +207,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                         largeValue,
                         largeValue,
                         largeValue,
-                        largeValue,
                         null)
                 ]
             },
@@ -387,7 +386,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                     1,
                     [target],
                     [
-                        new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 10, 20, 1, 1, 0, 0, 1, "index failure")
+                        new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 10, 20, 1, 0, 0, 1, "index failure")
                         {
                             FailedResources = [failedResource],
                             FailedResourceTypes = ["Patient"]
@@ -958,11 +957,11 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                 IgnoredLifecycleEvents = ["http://example.test/SearchParameter/ignored"],
                 Tenants =
                 [
-                    new ReindexTenantProgress(1, ReindexTenantStatus.Reindexing, 10, 20, 5, 3, 3, 1, 1, null)
+                    new ReindexTenantProgress(1, ReindexTenantStatus.Reindexing, 10, 20, 5, 3, 1, 1, null)
                     {
                         FailedResources = [new ReindexFailedResource("Patient", "first", "first failure")]
                     },
-                    new ReindexTenantProgress(2, ReindexTenantStatus.Reindexing, 11, 21, 5, 4, 4, 1, 1, null)
+                    new ReindexTenantProgress(2, ReindexTenantStatus.Reindexing, 11, 21, 5, 4, 1, 1, null)
                     {
                         FailedResources = [new ReindexFailedResource("Observation", "second", "second failure")]
                     }

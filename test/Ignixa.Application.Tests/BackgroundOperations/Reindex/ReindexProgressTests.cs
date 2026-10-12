@@ -43,8 +43,8 @@ public class ReindexProgressTests
             IgnoredLifecycleEvents = ["http://example.org/ignored"],
             Tenants =
             [
-                new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 10, 20, 5, 5, 5, 1, 0, null),
-                new ReindexTenantProgress(2, ReindexTenantStatus.Failed, 11, 21, 5, 5, 4, 2, 1, "one failed")
+                new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 10, 20, 5, 5, 1, 0, null),
+                new ReindexTenantProgress(2, ReindexTenantStatus.Failed, 11, 21, 5, 4, 2, 1, "one failed")
                 {
                     FailedResources = [new ReindexFailedResource("Patient", "p1", "boom")],
                     FailedResourceTypes = ["Patient"]
@@ -64,5 +64,34 @@ public class ReindexProgressTests
         restored.FailedResources.ShouldHaveSingleItem().Id.ShouldBe("p1");
         restored.Tenants[0].Success.ShouldBeTrue();
         restored.Tenants[1].Success.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenProgressPersistedWithRetiredTenantFields_WhenRead_ThenTheRemainingFieldsDeserialize()
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse("""
+            {
+              "phase": "Reindexing",
+              "tenants": [
+                {
+                  "tenantId": 1,
+                  "status": "Reindexing",
+                  "cutoffTransactionId": 10,
+                  "cutoffSurrogateId": 20,
+                  "resourcesToReindex": 5,
+                  "resourcesRead": 4,
+                  "resourcesReindexed": 3,
+                  "conflicts": 1,
+                  "failedResourceCount": 0
+                }
+              ]
+            }
+            """);
+
+        var tenant = ReindexProgress.FromJson(json)!.Tenants.ShouldHaveSingleItem();
+
+        tenant.ResourcesToReindex.ShouldBe(5);
+        tenant.ResourcesReindexed.ShouldBe(3);
+        tenant.Conflicts.ShouldBe(1);
     }
 }

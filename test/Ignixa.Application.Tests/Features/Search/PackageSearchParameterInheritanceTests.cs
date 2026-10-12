@@ -465,7 +465,8 @@ public class PackageSearchParameterInheritanceTests
         (await lifecycle.StartAsync("job", [target], CancellationToken.None)).ShouldBeEmpty();
         (await lifecycle.CompleteAsync(
             "job",
-            [new ReindexTargetCompletion(target, true, 1, TimeSpan.Zero, null)],
+            [new ReindexTargetCompletion(target, true, 1, null)],
+            TimeSpan.Zero,
             CancellationToken.None)).ShouldBeEmpty();
         state.FindByCanonical(overrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         return store.Events.ToArray();

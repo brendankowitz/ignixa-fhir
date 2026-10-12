@@ -5,6 +5,7 @@ using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
+using Ignixa.Domain.Models;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
@@ -346,7 +347,6 @@ public class ReindexOrchestrationTests
         output.Success.ShouldBeTrue();
         context.DrainInputs.Count.ShouldBe(8);
         context.TimerDelays.ShouldBe([1, 2, 4, 8, 16, 30, 30]);
-        context.DrainInputs.Last().DrainElapsed.ShouldBe(TimeSpan.FromSeconds(91));
     }
 
     [Fact]
@@ -582,7 +582,7 @@ public class ReindexOrchestrationTests
             };
         }
 
-        private RaiseBarrierOutput Barrier(RaiseBarrierInput input)
+        private BarrierCutoff Barrier(RaiseBarrierInput input)
         {
             BarrierCalls++;
             if (failBarrierOnce && BarrierCalls == 1)
@@ -590,32 +590,32 @@ public class ReindexOrchestrationTests
                 throw new InvalidOperationException("transient barrier failure");
             }
 
-            return new RaiseBarrierOutput(input.TenantId, 10, 30);
+            return new BarrierCutoff(10, 30);
         }
 
-        private PlanReindexOutput Plan(PlanReindexInput input)
+        private SurrogateIdRangePage Plan(PlanReindexInput input)
         {
             PlanInputs.Add(input);
             if (useBarrierCutoffForRanges)
             {
                 return input.StartAfterSurrogateId is null
-                    ? new PlanReindexOutput(
-                        [new ReindexRange(1, 10, 10), new ReindexRange(11, 20, 10)],
+                    ? new SurrogateIdRangePage(
+                        [new SurrogateIdRange(1, 10, 10), new SurrogateIdRange(11, 20, 10)],
                         20)
                     : input.StartAfterSurrogateId < input.CutoffSurrogateId
-                        ? new PlanReindexOutput(
-                            [new ReindexRange(21, input.CutoffSurrogateId, 10)],
+                        ? new SurrogateIdRangePage(
+                            [new SurrogateIdRange(21, input.CutoffSurrogateId, 10)],
                             null)
-                        : new PlanReindexOutput([], null);
+                        : new SurrogateIdRangePage([], null);
             }
 
             // Pages of rangesPerPage ranges of ten resources each; the last page ends the type.
             var page = (int)((input.StartAfterSurrogateId ?? 0) / (rangesPerPage * 10));
             var first = (input.StartAfterSurrogateId ?? 0) + 1;
             var ranges = Enumerable.Range(0, page == pages - 1 ? Math.Max(1, rangesPerPage - 1) : rangesPerPage)
-                .Select(index => new ReindexRange(first + index * 10, first + index * 10 + 9, 10))
+                .Select(index => new SurrogateIdRange(first + index * 10, first + index * 10 + 9, 10))
                 .ToArray();
-            return new PlanReindexOutput(ranges, page == pages - 1 ? null : ranges[^1].End);
+            return new SurrogateIdRangePage(ranges, page == pages - 1 ? null : ranges[^1].End);
         }
 
         private ReindexRangeOutput Range(ReindexRangeInput input)
@@ -630,12 +630,11 @@ public class ReindexOrchestrationTests
 
             if (!includeResourceFailures)
             {
-                return new(10, 10, input.StartSurrogateId == 11 ? 1 : 0, []);
+                return new(10, input.StartSurrogateId == 11 ? 1 : 0, []);
             }
 
             var count = input.ResourceType == "Observation" ? 101 : 1;
             return new ReindexRangeOutput(
-                10,
                 10 - count,
                 0,
                 Enumerable.Range(0, count)
@@ -646,14 +645,14 @@ public class ReindexOrchestrationTests
                     .ToArray());
         }
 
-        private AwaitDrainOutput Drain(AwaitDrainInput input)
+        private bool Drain(AwaitDrainInput input)
         {
             DrainInputs.Add(input);
             Log.Add($"drain:{input.TenantId}");
             var polls = DrainInputs.Count(drain => drain.TenantId == input.TenantId);
             var isSlow = slowDrainTenantId is null || slowDrainTenantId == input.TenantId;
             var pending = drainNeverCompletes || isSlow && polls <= drainPollsBeforeDrained;
-            return new AwaitDrainOutput(input.TenantId, !pending, 10);
+            return !pending;
         }
 
         private bool Progress(PersistReindexProgressInput input)
