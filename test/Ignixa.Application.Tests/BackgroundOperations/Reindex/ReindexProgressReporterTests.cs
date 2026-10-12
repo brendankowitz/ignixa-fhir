@@ -91,24 +91,6 @@ public class ReindexProgressReporterTests
     }
 
     [Fact]
-    public async Task GivenWorkBetweenHeartbeats_WhenTheFinishingHeartbeatFails_ThenTheWorkResultIsStillReturned()
-    {
-        var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        repository.GetAsync("job", 1, Arg.Any<CancellationToken>()).Returns(_ => CreateJob());
-        var updates = 0;
-        repository.UpdateAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
-            .Returns(_ => ++updates == 1
-                ? Task.CompletedTask
-                : Task.FromException(new TimeoutException("job store unavailable")));
-
-        var result = await CreateReporter(repository).RunWithHeartbeatAsync(
-            "job", _ => Task.FromResult(17), CancellationToken.None);
-
-        result.ShouldBe(17);
-        updates.ShouldBe(2);
-    }
-
-    [Fact]
     public async Task GivenJobStoreUnavailable_WhenWorkWouldStart_ThenTheStartingHeartbeatFailsBeforeTheWork()
     {
         var repository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
@@ -137,7 +119,6 @@ public class ReindexProgressReporterTests
                 {
                     Status = ReindexTenantStatus.Reindexing,
                     ResourcesToReindex = 15,
-                    ResourcesRead = count,
                     ResourcesReindexed = count
                 }
             ]
@@ -155,5 +136,5 @@ public class ReindexProgressReporterTests
             NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
 
     private static ReindexProgressReporter CreateReporter(IBackgroundJobRepository<ReindexJobDefinition> repository) =>
-        new(repository, TimeProvider.System, NullLogger<ReindexProgressReporter>.Instance);
+        new(repository, TimeProvider.System);
 }

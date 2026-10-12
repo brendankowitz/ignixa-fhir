@@ -20,76 +20,46 @@ public sealed class ReindexTriggerTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 7, 20, 0, 0, TimeSpan.Zero);
 
-    [Fact]
-    public async Task GivenAutoStartIsFalse_WhenActivationTriggers_ThenRequestIsNotSent()
+    [Theory]
+    [InlineData(false, true, false, "Automatic reindex is disabled; parameters remain Pending.")]
+    [InlineData(true, false, false, "Reindex is unavailable because the feature is disabled; parameters remain Pending.")]
+    [InlineData(true, true, true, "Reindex is unavailable for tenant 3; parameters remain Pending.")]
+    public async Task GivenAutomaticReindexCannotRun_WhenActivationTriggers_ThenThePendingReasonIsReportedWithoutARequest(
+        bool autoStart,
+        bool enabled,
+        bool withFileSystemTenant,
+        string expectedMessage)
     {
-        var fixture = new Fixture(autoStart: false);
+        var fixture = new Fixture(
+            autoStart: autoStart,
+            enabled: enabled,
+            tenants: withFileSystemTenant
+                ? [ReindexTestHelper.Tenant(1, "SqlServer"), ReindexTestHelper.Tenant(3, "FileSystem")]
+                : null);
 
         var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
 
-        result.JobId.ShouldBeNull();
-        result.Message.ShouldContain("disabled");
+        result.ShouldBe(new ReindexTriggerResult(null, false, expectedMessage));
         await fixture.Mediator.DidNotReceive().SendAsync(
             Arg.Any<CreateReindexJobCommand>(),
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task GivenReindexIsDisabled_WhenActivationTriggers_ThenPendingStateIsExplicit()
-    {
-        var fixture = new Fixture(enabled: false);
-
-        var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
-
-        result.JobId.ShouldBeNull();
-        result.Message.ShouldContain("disabled");
-        result.Message.ShouldContain("Pending");
-        await fixture.Mediator.DidNotReceive().SendAsync(
-            Arg.Any<CreateReindexJobCommand>(),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task GivenProviderIsUnavailable_WhenActivationTriggers_ThenPendingStateIsExplicit()
-    {
-        var fixture = new Fixture(tenants:
-        [
-            ReindexTestHelper.Tenant(1, "SqlServer"),
-            ReindexTestHelper.Tenant(3, "FileSystem")
-        ]);
-
-        var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
-
-        result.JobId.ShouldBeNull();
-        result.Message.ShouldContain("tenant 3");
-        result.Message.ShouldContain("Pending");
-    }
-
-    [Fact]
-    public async Task GivenJobIsCreated_WhenActivationTriggers_ThenJobIdIsReturned()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenACreatedOrActiveJob_WhenActivationTriggers_ThenItsIdIsReported(bool alreadyActive)
     {
         var fixture = new Fixture();
         fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-            .Returns(new ReindexJobCreatedResult("job-1"));
+            .Returns(alreadyActive ? new ActiveReindexJobResult("job-1") : new ReindexJobCreatedResult("job-1"));
 
         var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
 
-        result.ShouldBe(new ReindexTriggerResult("job-1", false, null));
+        result.ShouldBe(new ReindexTriggerResult("job-1", alreadyActive, null));
         await fixture.Mediator.Received(1).SendAsync(
             Arg.Is<CreateReindexJobCommand>(command => command.Trigger == ReindexTriggerKind.Activation),
             CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task GivenJobIsActive_WhenActivationTriggers_ThenTheActiveJobIsReported()
-    {
-        var fixture = new Fixture();
-        fixture.Mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-            .Returns(new ActiveReindexJobResult("active-job"));
-
-        var result = await fixture.Trigger.RequestReindexAsync("activation", CancellationToken.None);
-
-        result.ShouldBe(new ReindexTriggerResult("active-job", true, null));
     }
 
     [Theory]
@@ -152,27 +122,18 @@ public sealed class ReindexTriggerTests
         exception.Message.ShouldContain(nameof(UnsupportedReindexResult));
     }
 
-    [Fact]
-    public async Task GivenIdleServer_WhenTickRuns_ThenNeitherLockNorRequestHappens()
-    {
-        var fixture = new Fixture(withPendingParameter: false);
-
-        await fixture.Trigger.ReconcileAsync(CancellationToken.None);
-
-        fixture.JobLock.Acquisitions.ShouldBe(0);
-        await fixture.Mediator.DidNotReceive().SendAsync(
-            Arg.Any<CreateReindexJobCommand>(),
-            Arg.Any<CancellationToken>());
-    }
-
     [Theory]
+    [InlineData(null)]
     [InlineData("Failed")]
     [InlineData("Cancelled")]
     [InlineData("Completed")]
-    public async Task GivenFinishedJobCoversPendingParameters_WhenTickRuns_ThenNeitherLockNorRequestHappens(string status)
+    public async Task GivenNothingNewerThanTheLatestFinishedJob_WhenTickRuns_ThenNeitherLockNorRequestHappens(string? status)
     {
-        var fixture = new Fixture();
-        await fixture.CreateJobAsync("finished", status, targetEventId: 42);
+        var fixture = new Fixture(withPendingParameter: status is not null);
+        if (status is not null)
+        {
+            await fixture.CreateJobAsync("finished", status, targetEventId: 42);
+        }
 
         await fixture.Trigger.ReconcileAsync(CancellationToken.None);
 

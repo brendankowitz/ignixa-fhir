@@ -1,6 +1,5 @@
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
-using Microsoft.Extensions.Options;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
@@ -14,44 +13,29 @@ public class ReindexOptionsValidatorTests
     }
 
     [Fact]
-    public void GivenInvalidLimits_WhenValidated_ThenAllInvalidKeysAreReported()
+    public void GivenEveryKeyOutOfRange_WhenValidated_ThenEachIsReportedWithItsRange()
     {
         var result = ReindexOptionsValidator.Validate(new ReindexOptions
         {
-            DefaultMaximumNumberOfResourcesPerQuery = 0,
-            DefaultMaximumNumberOfResourcesPerWrite = 10_001,
-            DefaultMaximumConcurrency = 17,
-            OrphanGrace = TimeSpan.Zero,
-            StaleJobTimeout = TimeSpan.Zero,
-            DrainWarningAfter = TimeSpan.Zero,
-            ContinueAsNewThreshold = 0
-        });
-
-        result.Failed.ShouldBeTrue();
-        result.Failures.ShouldContain(message => message.Contains("DefaultMaximumNumberOfResourcesPerQuery", StringComparison.Ordinal));
-        result.Failures.ShouldContain(message => message.Contains("DefaultMaximumNumberOfResourcesPerWrite", StringComparison.Ordinal));
-        result.Failures.ShouldContain(message => message.Contains("DefaultMaximumConcurrency", StringComparison.Ordinal));
-        result.Failures.ShouldContain(message => message.Contains("OrphanGrace", StringComparison.Ordinal));
-        result.Failures.ShouldContain(message => message.Contains("StaleJobTimeout", StringComparison.Ordinal));
-        result.Failures.ShouldContain(message => message.Contains("DrainWarningAfter", StringComparison.Ordinal));
-        result.Failures.ShouldContain(message => message.Contains("ContinueAsNewThreshold", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void GivenOutOfRangeDefaults_WhenValidated_ThenMessagesNameTheOptionAndItsRange()
-    {
-        var result = ReindexOptionsValidator.Validate(new ReindexOptions
-        {
+            BarrierDelay = TimeSpan.FromMinutes(15),
             DefaultMaximumNumberOfResourcesPerQuery = 10_001,
             DefaultMaximumNumberOfResourcesPerWrite = 0,
-            DefaultMaximumConcurrency = 17
+            DefaultMaximumConcurrency = 17,
+            OrphanGrace = TimeSpan.Zero,
+            StaleJobTimeout = TimeSpan.FromMinutes(30),
+            DrainWarningAfter = TimeSpan.Zero,
+            ContinueAsNewThreshold = 0
         });
 
         result.Failures.ShouldBe(
         [
             "Reindex:DefaultMaximumNumberOfResourcesPerQuery must be between 1 and 10000.",
             "Reindex:DefaultMaximumNumberOfResourcesPerWrite must be between 1 and 10000.",
-            "Reindex:DefaultMaximumConcurrency must be between 1 and 16."
+            "Reindex:DefaultMaximumConcurrency must be between 1 and 16.",
+            "Reindex:OrphanGrace must be greater than zero.",
+            "Reindex:DrainWarningAfter must be greater than zero.",
+            "Reindex:BarrierDelay must be less than half of Reindex:StaleJobTimeout.",
+            "Reindex:ContinueAsNewThreshold must be between 1 and 2147483647."
         ]);
     }
 }

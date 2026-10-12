@@ -8,8 +8,6 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Models;
 /// </summary>
 public sealed record ReindexTenantState(ReindexTenantProgress Progress)
 {
-    public long? VisibleWatermark { get; init; }
-
     public ReindexWait? Wait { get; init; }
 
     public int ResourceTypeIndex { get; init; }
@@ -19,7 +17,7 @@ public sealed record ReindexTenantState(ReindexTenantProgress Progress)
 
     public long? NextPlannerCursor { get; init; }
 
-    public IReadOnlyList<ReindexRange> PendingRanges { get; init; } = [];
+    public IReadOnlyList<SurrogateIdRange> PendingRanges { get; init; } = [];
 
     public static ReindexTenantState Create(int tenantId) => new(ReindexTenantProgress.Create(tenantId));
 

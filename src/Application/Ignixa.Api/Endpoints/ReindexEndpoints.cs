@@ -6,7 +6,6 @@ using Ignixa.Api.Http;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Reindex;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
@@ -60,17 +59,9 @@ public static class ReindexEndpoints
         return endpoints;
     }
 
-    private static Task<IResult> CreateAsync(
-        HttpContext context,
-        int? tenantId,
-        IMediator mediator,
-        CancellationToken cancellationToken) =>
-        ResolveTenantAsync(
-            context,
-            tenantId,
-            _ => CreateJobAsync(context, mediator, cancellationToken));
-
-    private static async Task<IResult> CreateJobAsync(
+    // Tenant routing, including the reserved partition 0, is enforced by TenantResolutionMiddleware before
+    // these handlers run; a job is server-wide, so no handler needs the tenant id.
+    private static async Task<IResult> CreateAsync(
         HttpContext context,
         IMediator mediator,
         CancellationToken cancellationToken)
@@ -83,18 +74,12 @@ public static class ReindexEndpoints
 
         using var reader = new StreamReader(context.Request.Body, leaveOpen: true);
         var requestBody = await reader.ReadToEndAsync(cancellationToken);
-        if (!ReindexRequestParser.TryParse(requestBody, out var request, out var error))
+        if (!ReindexRequestParser.TryParse(requestBody, out var command, out var error))
         {
-            return Error(StatusCodes.Status400BadRequest, error!);
+            return Error(StatusCodes.Status400BadRequest, error);
         }
 
-        var result = await mediator.SendAsync(new CreateReindexJobCommand
-        {
-            MaximumNumberOfResourcesPerQuery = request!.MaximumNumberOfResourcesPerQuery,
-            MaximumNumberOfResourcesPerWrite = request.MaximumNumberOfResourcesPerWrite,
-            MaximumConcurrency = request.MaximumConcurrency,
-            QueryDelayIntervalInMilliseconds = request.QueryDelayIntervalInMilliseconds
-        }, cancellationToken);
+        var result = await mediator.SendAsync(command, cancellationToken);
         switch (result)
         {
             case ReindexJobCreatedResult created:
@@ -102,21 +87,12 @@ public static class ReindexEndpoints
                 var statusUrl = GetStatusUrl(context, created.JobId);
                 var status = await mediator.SendAsync(
                     new GetReindexStatusQuery(created.JobId),
-                    cancellationToken);
+                    cancellationToken)
+                    ?? throw new InvalidOperationException($"Reindex job {created.JobId} was created but cannot be read.");
                 context.Response.Headers["Content-Location"] = statusUrl;
                 return new FhirResult(
                     StatusCodes.Status201Created,
-                    Encoding.UTF8.GetBytes(BuildJobParameters(status ?? new ReindexStatusResult(
-                        created.JobId,
-                        ReindexJobStatus.Queued,
-                        DateTimeOffset.UtcNow,
-                        null,
-                        null,
-                        DateTimeOffset.UtcNow,
-                        false,
-                        null,
-                        null),
-                        GetFhirVersion(context)).ToJsonString()));
+                    Encoding.UTF8.GetBytes(BuildJobParameters(status, GetFhirVersion(context)).ToJsonString()));
             }
             case ActiveReindexJobResult active:
                 context.Response.Headers["Content-Location"] = GetStatusUrl(context, active.ActiveJobId);
@@ -130,17 +106,7 @@ public static class ReindexEndpoints
         }
     }
 
-    private static Task<IResult> ListAsync(
-        HttpContext context,
-        int? tenantId,
-        IMediator mediator,
-        CancellationToken cancellationToken) =>
-        ResolveTenantAsync(
-            context,
-            tenantId,
-            _ => ListJobsAsync(context, mediator, cancellationToken));
-
-    private static async Task<IResult> ListJobsAsync(
+    private static async Task<IResult> ListAsync(
         HttpContext context,
         IMediator mediator,
         CancellationToken cancellationToken)
@@ -156,18 +122,7 @@ public static class ReindexEndpoints
         return FhirResults.Ok(Encoding.UTF8.GetBytes(parameters.ToJsonString()));
     }
 
-    private static Task<IResult> GetAsync(
-        HttpContext context,
-        int? tenantId,
-        string jobId,
-        IMediator mediator,
-        CancellationToken cancellationToken) =>
-        ResolveTenantAsync(
-            context,
-            tenantId,
-            _ => GetJobAsync(context, jobId, mediator, cancellationToken));
-
-    private static async Task<IResult> GetJobAsync(
+    private static async Task<IResult> GetAsync(
         HttpContext context,
         string jobId,
         IMediator mediator,
@@ -180,18 +135,7 @@ public static class ReindexEndpoints
                 BuildJobParameters(status, GetFhirVersion(context)).ToJsonString()));
     }
 
-    private static Task<IResult> CancelAsync(
-        HttpContext context,
-        int? tenantId,
-        string jobId,
-        IMediator mediator,
-        CancellationToken cancellationToken) =>
-        ResolveTenantAsync(
-            context,
-            tenantId,
-            _ => CancelJobAsync(context, jobId, mediator, cancellationToken));
-
-    private static async Task<IResult> CancelJobAsync(
+    private static async Task<IResult> CancelAsync(
         HttpContext context,
         string jobId,
         IMediator mediator,
@@ -265,6 +209,7 @@ public static class ReindexEndpoints
         AddValue(values, "startTime", "valueDateTime", status.StartTime);
         AddValue(values, "endTime", "valueDateTime", status.EndTime);
         AddValue(values, "lastModified", "valueDateTime", status.LastModified);
+        AddValue(values, "stale", "valueBoolean", status.IsStale ? true : null);
 
         if (status.Progress is { } progress)
         {
@@ -434,23 +379,6 @@ public static class ReindexEndpoints
         Error(
             StatusCodes.Status501NotImplemented,
             "The $reindex operation is not supported by all active tenant providers.");
-
-    private static Task<IResult> ResolveTenantAsync(
-        HttpContext context,
-        int? routeTenantId,
-        Func<int, Task<IResult>> next) =>
-        routeTenantId is int tenantId
-            ? ValidateTenantAsync(tenantId, () => next(tenantId))
-            : context.Items.TryGetValue("TenantId", out var tenant) && tenant is int resolvedTenantId
-            ? ValidateTenantAsync(resolvedTenantId, () => next(resolvedTenantId))
-            : Task.FromResult<IResult>(Error(
-                StatusCodes.Status400BadRequest,
-                "Unable to determine tenant from request context."));
-
-    private static Task<IResult> ValidateTenantAsync(int tenantId, Func<Task<IResult>> next) =>
-        tenantId == 0
-            ? Task.FromResult<IResult>(Error(StatusCodes.Status404NotFound, "Tenant 0 is reserved for system operations."))
-            : next();
 
     private static FhirVersion GetFhirVersion(HttpContext context) =>
         context.Items["TenantConfiguration"] is TenantConfiguration tenantConfiguration

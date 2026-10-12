@@ -1,6 +1,7 @@
 using DurableTask.Core;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
+using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 
@@ -15,7 +16,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 public sealed class ReindexOrchestration
     : TaskOrchestration<ReindexOrchestrationOutput, ReindexOrchestrationInput>
 {
-    internal const int WavesPerProgressSnapshot = 5;
+    private const int WavesPerProgressSnapshot = 5;
 
     public override async Task<ReindexOrchestrationOutput> RunTask(
         OrchestrationContext context,
@@ -36,7 +37,7 @@ public sealed class ReindexOrchestration
             }
             catch (Exception ex)
             {
-                return await CompleteFailureAsync(context, input, state, ex);
+                return await CompleteAsync(context, input, state, ex);
             }
 
             scheduledActivities++;
@@ -50,17 +51,6 @@ public sealed class ReindexOrchestration
                 Started = true,
                 IgnoredLifecycleEvents = started.IgnoredLifecycleEvents
             };
-            if (started.TargetEventId.HasValue &&
-                started.ResourceTypes is not null &&
-                started.Targets is not null)
-            {
-                input = input with
-                {
-                    TargetEventId = started.TargetEventId.Value,
-                    ResourceTypes = started.ResourceTypes,
-                    Targets = started.Targets
-                };
-            }
             if (ContinueIfNeeded(context, input, state, scheduledActivities))
             {
                 return default!;
@@ -69,33 +59,9 @@ public sealed class ReindexOrchestration
 
         if (state.Phase == ReindexPhase.BarrierDelay)
         {
-            try
-            {
-                // A long delay is split so the job's heartbeat stays fresher than the stale-job timeout.
-                var remaining = input.BarrierDelay;
-                var longestWait = input.StaleJobTimeout / 2;
-                do
-                {
-                    var delay = remaining > longestWait ? longestWait : remaining;
-                    await context.CreateTimer(context.CurrentUtcDateTime.Add(delay), true);
-                    remaining -= delay;
-                    if (remaining > TimeSpan.Zero)
-                    {
-                        if (!await PersistProgressAsync(context, input, state))
-                        {
-                            return Stopped(state);
-                        }
-
-                        scheduledActivities++;
-                    }
-                }
-                while (remaining > TimeSpan.Zero);
-            }
-            catch (Exception ex)
-            {
-                return await CompleteFailureAsync(context, input, state, ex);
-            }
-
+            // Startup validation keeps the delay under half the stale-job timeout, so the heartbeat written by the
+            // start stays fresh through it.
+            await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
             state = state with { Phase = ReindexPhase.Draining };
             if (!await PersistProgressAsync(context, input, state))
             {
@@ -132,7 +98,7 @@ public sealed class ReindexOrchestration
                 }
                 catch (Exception ex)
                 {
-                    return await CompleteFailureAsync(context, input, state, ex);
+                    return await CompleteAsync(context, input, state, ex);
                 }
 
                 if (!open)
@@ -152,32 +118,15 @@ public sealed class ReindexOrchestration
             await WaitForNextPollAsync(context, state);
         }
 
-        var tenants = state.Tenants.Select(tenant => tenant.Progress).ToArray();
-
-        var completed = await context.ScheduleWithRetry<CompleteReindexOutput>(
-            typeof(CompleteReindexActivity),
-            CreateRetryOptions(),
-            new CompleteReindexInput(
-                input.JobId,
-                input.TargetEventId,
-                input.Targets,
-                tenants,
-                state.IgnoredLifecycleEvents));
-
-        return new ReindexOrchestrationOutput(
-            completed.Success,
-            tenants,
-            state.IgnoredLifecycleEvents
-                .Concat(completed.IgnoredLifecycleEvents)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray());
+        return await CompleteAsync(context, input, state, error: null);
     }
 
-    private static async Task<ReindexOrchestrationOutput> CompleteFailureAsync(
+    /// <summary>Finalizes the job; an orchestration-level <paramref name="error"/> fails it with that message.</summary>
+    private static async Task<ReindexOrchestrationOutput> CompleteAsync(
         OrchestrationContext context,
         ReindexOrchestrationInput input,
         ReindexOrchestrationState state,
-        Exception error)
+        Exception? error)
     {
         var tenants = state.Tenants.Select(tenant => tenant.Progress).ToArray();
         var completed = await context.ScheduleWithRetry<CompleteReindexOutput>(
@@ -190,7 +139,7 @@ public sealed class ReindexOrchestration
                 tenants,
                 state.IgnoredLifecycleEvents)
             {
-                FailureMessage = $"Reindex orchestration failed: {error.Message}"
+                FailureMessage = error is null ? null : $"Reindex orchestration failed: {error.Message}"
             });
         return new ReindexOrchestrationOutput(
             completed.Success,
@@ -291,7 +240,7 @@ public sealed class ReindexOrchestration
         ReindexOrchestrationInput input,
         ReindexTenantState state)
     {
-        var cutoff = await context.ScheduleWithRetry<RaiseBarrierOutput>(
+        var cutoff = await context.ScheduleWithRetry<BarrierCutoff>(
             typeof(RaiseBarrierActivity),
             CreateRetryOptions(),
             new RaiseBarrierInput(input.JobId, state.TenantId, input.TargetEventId));
@@ -301,8 +250,8 @@ public sealed class ReindexOrchestration
                 Progress = state.Progress with
                 {
                     Status = ReindexTenantStatus.Draining,
-                    CutoffTransactionId = cutoff.CutoffTransactionId,
-                    CutoffSurrogateId = cutoff.CutoffSurrogateId
+                    CutoffTransactionId = cutoff.TransactionId,
+                    CutoffSurrogateId = cutoff.SurrogateId
                 },
                 Wait = ReindexWait.Begin(context.CurrentUtcDateTime)
             },
@@ -318,7 +267,7 @@ public sealed class ReindexOrchestration
     {
         var wait = state.Wait ?? ReindexWait.Begin(now);
         var drainElapsed = wait.Elapsed(now);
-        var drain = await context.ScheduleWithRetry<AwaitDrainOutput>(
+        var drained = await context.ScheduleWithRetry<bool>(
             typeof(AwaitDrainActivity),
             CreateRetryOptions(),
             new AwaitDrainInput(
@@ -326,16 +275,13 @@ public sealed class ReindexOrchestration
                 state.TenantId,
                 state.RequireCutoff().TransactionId,
                 wait.StartedUtc,
-                input.DrainWarningAfter ?? TimeSpan.FromMinutes(5),
-                drainElapsed,
-                input.StaleJobTimeout));
-        if (drain.IsDrained)
+                input.DrainWarningAfter));
+        if (drained)
         {
             return new TenantAdvance(
                 state with
                 {
                     Progress = state.Progress with { Status = ReindexTenantStatus.Reindexing },
-                    VisibleWatermark = drain.VisibleWatermark,
                     Wait = null
                 },
                 1,
@@ -349,11 +295,7 @@ public sealed class ReindexOrchestration
         }
 
         return new TenantAdvance(
-            state with
-            {
-                VisibleWatermark = drain.VisibleWatermark,
-                Wait = wait.Backoff(context.CurrentUtcDateTime)
-            },
+            state with { Wait = wait.Backoff(context.CurrentUtcDateTime) },
             1,
             false);
     }
@@ -374,7 +316,7 @@ public sealed class ReindexOrchestration
         var resourceType = input.ResourceTypes[state.ResourceTypeIndex];
         if (state.PendingRanges.Count == 0)
         {
-            var plan = await context.ScheduleWithRetry<PlanReindexOutput>(
+            var plan = await context.ScheduleWithRetry<SurrogateIdRangePage>(
                 typeof(PlanReindexActivity),
                 CreateRetryOptions(),
                 new PlanReindexInput(
@@ -384,7 +326,7 @@ public sealed class ReindexOrchestration
                     state.PlannerCursor,
                     state.RequireCutoff().SurrogateId,
                     input.Parameters.MaximumNumberOfResourcesPerQuery,
-                    Math.Max(1, input.Parameters.MaximumConcurrency)));
+                    input.Parameters.MaximumConcurrency));
             var planned = state with
             {
                 PendingRanges = plan.Ranges,
@@ -408,7 +350,7 @@ public sealed class ReindexOrchestration
             .ToArray();
         var attempts = await Task.WhenAll(wave.Select(range => RunRangeAsync(context, input, state, resourceType, range)));
         var progress = state.Progress;
-        var notReady = new List<ReindexRange>();
+        var notReady = new List<SurrogateIdRange>();
         foreach (var (range, attempt) in wave.Zip(attempts))
         {
             if (attempt.Output is { IsDefinitionsNotReady: true })
@@ -418,7 +360,7 @@ public sealed class ReindexOrchestration
             else
             {
                 progress = attempt.Output is not null
-                    ? progress.Add(attempt.Output)
+                    ? progress.Add(resourceType, attempt.Output)
                     : progress.AddRangeFailure(resourceType, attempt.Error!.Message);
             }
         }
@@ -456,7 +398,7 @@ public sealed class ReindexOrchestration
         ReindexOrchestrationInput input,
         ReindexTenantState state,
         string resourceType,
-        ReindexRange range)
+        SurrogateIdRange range)
     {
         try
         {
@@ -507,7 +449,7 @@ public sealed class ReindexOrchestration
         ReindexOrchestrationState state,
         int scheduledActivities)
     {
-        if (scheduledActivities < Math.Max(1, input.ContinueAsNewThreshold) ||
+        if (scheduledActivities < input.ContinueAsNewThreshold ||
             state.AllTenantsCompleted)
         {
             return false;

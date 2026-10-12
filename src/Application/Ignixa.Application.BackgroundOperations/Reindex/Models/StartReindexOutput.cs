@@ -1,11 +1,7 @@
-using Ignixa.Domain.Models;
-
 namespace Ignixa.Application.BackgroundOperations.Reindex.Models;
 
-public sealed record StartReindexOutput(IReadOnlyList<string> IgnoredLifecycleEvents)
-{
-    public bool ShouldContinue { get; init; } = true;
-    public long? TargetEventId { get; init; }
-    public IReadOnlyList<string>? ResourceTypes { get; init; }
-    public IReadOnlyList<ReindexParameterDefinition>? Targets { get; init; }
-}
+/// <summary>
+/// The start's outcome: whether the job was still open and moved to Running, and the targets whose
+/// activation had moved on so they were not started.
+/// </summary>
+public sealed record StartReindexOutput(bool ShouldContinue, IReadOnlyList<string> IgnoredLifecycleEvents);

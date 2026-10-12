@@ -23,8 +23,7 @@ public sealed class AwaitDrainActivityTests
         var stores = Substitute.For<IReindexStoreFactory>();
         stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
         var jobRepository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        var progress = new ReindexProgressReporter(
-            jobRepository, TimeProvider.System, NullLogger<ReindexProgressReporter>.Instance);
+        var progress = new ReindexProgressReporter(jobRepository, TimeProvider.System);
         var activity = new AwaitDrainActivity(
             stores,
             TimeProvider.System,
@@ -38,9 +37,7 @@ public sealed class AwaitDrainActivityTests
             TimeSpan.FromMinutes(5));
 
         var json = await activity.RunAsync(null!, JsonSerializer.Serialize(new[] { input }));
-        var result = JsonSerializer.Deserialize<AwaitDrainOutput>(json)!;
 
-        result.IsDrained.ShouldBeFalse();
-        result.VisibleWatermark.ShouldBe(100);
+        JsonSerializer.Deserialize<bool>(json).ShouldBeFalse();
     }
 }

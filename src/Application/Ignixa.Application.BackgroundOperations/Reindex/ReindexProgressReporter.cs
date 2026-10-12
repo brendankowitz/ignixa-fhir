@@ -1,10 +1,8 @@
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
-using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
@@ -15,8 +13,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 /// </summary>
 public sealed class ReindexProgressReporter(
     IBackgroundJobRepository<ReindexJobDefinition> repository,
-    TimeProvider timeProvider,
-    ILogger<ReindexProgressReporter> logger)
+    TimeProvider timeProvider)
 {
     /// <summary>Refreshes <c>HeartbeatDate</c>, which is what stale-job detection reads.</summary>
     public Task<bool> HeartbeatAsync(string jobId, CancellationToken cancellationToken) =>
@@ -27,8 +24,8 @@ public sealed class ReindexProgressReporter(
         UpdateAsync(jobId, job => job.Progress = progress.ToJson(), cancellationToken);
 
     /// <summary>
-    /// Runs one activity's work between two heartbeats. The job store must be reachable to start; a heartbeat
-    /// that fails after the work is done is logged and metered rather than throwing the finished work away.
+    /// Refreshes the heartbeat, then runs one activity's work. The job store must be reachable to start; the
+    /// next activity or progress snapshot refreshes the heartbeat after the work.
     /// </summary>
     public async Task<T> RunWithHeartbeatAsync<T>(
         string jobId,
@@ -36,20 +33,7 @@ public sealed class ReindexProgressReporter(
         CancellationToken cancellationToken)
     {
         await HeartbeatAsync(jobId, cancellationToken);
-        var result = await work(cancellationToken);
-        try
-        {
-            await HeartbeatAsync(jobId, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            ReindexMetrics.ProgressPersistenceFailed();
-            logger.LogWarning(ex,
-                "Reindex job {JobId} heartbeat failed after an activity finished; the next activity or snapshot refreshes it",
-                jobId);
-        }
-
-        return result;
+        return await work(cancellationToken);
     }
 
     private async Task<bool> UpdateAsync(

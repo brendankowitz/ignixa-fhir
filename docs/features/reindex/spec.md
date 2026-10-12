@@ -418,6 +418,8 @@ Ignixa additions:
 - `phase`: `BarrierDelay`, `Draining`, `Reindexing`, or `Completing`
 - `cancellationReason`
 - `conflicts`
+- `stale` (`valueBoolean`, only when `true`): an unfinished job whose heartbeat is older than
+  `Reindex:StaleJobTimeout` (§8.6)
 - `tenant` (repeating), with parts `tenantId`, `cutoffTransactionId` (B_t), `cutoffSurrogateId` (S_t), `status`,
   `resourcesToReindex`, `resourcesReindexed`, `conflicts`, and `failedResources`
 - `failedResource` (repeating, ≤ 100), with parts `resourceType`, `id`, and `reason`
@@ -597,12 +599,14 @@ authoritative, so a delayed activity cannot reopen a finalized job or its parame
   job ends `Failed`. Unlike MS, one bad range does not abort healthy tenants.
 - **Progress storage failures:** logged and metered as `reindex.progress.persistence_failures`; the dedicated
   persistence activity retries with bounded durable backoff without repeating ranges, and the job fails visibly
-  once that is exhausted. A heartbeat that fails after an activity's work is done is logged and metered rather
-  than throwing the work away; a heartbeat that fails before the work fails the activity, which DurableTask retries.
+  once that is exhausted. A heartbeat that fails before an activity's work fails the activity, which DurableTask
+  retries.
 - **Liveness:** every barrier, drain, planning and range activity refreshes the `BackgroundJob` heartbeat when it
-  starts and when it finishes, and each progress snapshot refreshes it too. A barrier delay longer than
-  `StaleJobTimeout / 2` is split into durable waits of that length with a heartbeat between them. A job that is
-  `Running` with a heartbeat older than `Reindex:StaleJobTimeout` is flagged in status and logged at error level.
+  starts, and each progress snapshot refreshes it too. The start writes the heartbeat before the barrier delay,
+  which startup validation keeps under `StaleJobTimeout / 2`, and the orchestration's other waits are at most
+  30 seconds, so a live job's heartbeat is never older than its longest activity plus that wait. A job that is
+  `Running` with a heartbeat older than `Reindex:StaleJobTimeout` is flagged in status (`stale`, §6.3) and logged
+  at error level.
   A drain still waiting beyond `Reindex:DrainWarningAfter` logs the oldest incomplete transaction; one still
   waiting at `StaleJobTimeout` fails the tenant. `TransactionWatcher` already recovers stalled transactions, so
   the drain does not wait forever.
@@ -711,7 +715,7 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
 |---|---|---|
 | `Enabled` | `true` | Registers the endpoints and the orchestration |
 | `AutoStart` | `true` | Activation-triggered jobs (§7) |
-| `BarrierDelay` | `3 × Conformance:SyncIntervalSeconds` | Advisory catch-up time before the barrier (§5.2); must be `≥ MaxStaleness` |
+| `BarrierDelay` | `3 × Conformance:SyncIntervalSeconds` | Advisory catch-up time before the barrier (§5.2); must be `≥ MaxStaleness` and `< StaleJobTimeout / 2` |
 | `DefaultMaximumNumberOfResourcesPerQuery` | `10000` | §6.1 |
 | `DefaultMaximumNumberOfResourcesPerWrite` | `100` | §6.1 |
 | `DefaultMaximumConcurrency` | `4` | §6.1 |

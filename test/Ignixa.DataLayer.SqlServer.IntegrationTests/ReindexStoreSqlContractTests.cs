@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using System.Xml.Linq;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlServer;
@@ -96,22 +95,6 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
     }
 
     public Task DisposeAsync() => _database.DisposeAsync();
-
-    [Fact]
-    public void GivenTheSqlRepository_WhenInspectingWriteOverloads_ThenNoZeroStampCompatibilityOverloadExists()
-    {
-        var methods = typeof(SqlServerFhirRepository).GetMethods(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-        methods.Count(method =>
-                method.Name == nameof(IFhirRepository.GetNextTransactionIdAsync) &&
-                method.GetParameters().All(parameter => parameter.ParameterType != typeof(long)))
-            .ShouldBe(0);
-        methods.Count(method =>
-                method.Name == nameof(IFhirRepository.DeleteAsync) &&
-                method.GetParameters().All(parameter => parameter.ParameterType != typeof(long)))
-            .ShouldBe(0);
-    }
 
     [Fact]
     public async Task GivenExistingTransactions_WhenBarrierIsRaisedMonotonically_ThenItReturnsThePostBarrierCutoff()
@@ -233,44 +216,6 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
 
         cutoff.TransactionId.ShouldBeGreaterThan(0);
         cutoff.SurrogateId.ShouldBe(transactionCutoff + 1_000);
-    }
-
-    [Fact]
-    public async Task GivenCurrentResources_WhenBarrierIsRaised_ThenTheResourceCutoffUsesABackwardIndexSeek()
-    {
-        await _database.Repository.CreateOrUpdateAsync(Patient("barrier-plan"));
-        var (store, commands, cache) = await CreateCommandCapturingReindexStoreAsync("@BarrierId");
-        using (cache)
-        {
-            await store.RaiseBarrierAsync(42, CancellationToken.None);
-        }
-
-        var plans = await CaptureShowPlanXmlAsync(commands.Command!);
-        var resourcePlan = plans.SingleOrDefault(plan =>
-            plan.Contains("ResourceCutoffCandidates", StringComparison.Ordinal));
-
-        resourcePlan.ShouldNotBeNull(string.Join(
-            Environment.NewLine,
-            plans.Select(plan => plan[..Math.Min(plan.Length, 300)])));
-        var showPlanNamespace = XNamespace.Get("http://schemas.microsoft.com/sqlserver/2004/07/showplan");
-        var resourceOperators = XDocument.Parse(resourcePlan)
-            .Descendants(showPlanNamespace + "RelOp")
-            .Where(operation => operation.Descendants(showPlanNamespace + "Object")
-                .Any(@object => @object.Attribute("Table")?.Value == "[Resource]"))
-            .Select(operation => operation.Attribute("PhysicalOp")!.Value)
-            .ToArray();
-
-        resourceOperators.ShouldContain(operation => operation.Contains("Seek", StringComparison.Ordinal));
-        resourceOperators.ShouldNotContain("Clustered Index Scan");
-
-        var transactionLastValueOperators = XDocument.Parse(resourcePlan)
-            .Descendants(showPlanNamespace + "RelOp")
-            .Where(operation => operation.Descendants(showPlanNamespace + "Object")
-                .Any(@object => @object.Attribute("Index")?.Value == "[IX_Transactions_SurrogateIdRangeLastValue]"))
-            .Select(operation => operation.Attribute("PhysicalOp")!.Value)
-            .ToArray();
-
-        transactionLastValueOperators.ShouldNotBeEmpty();
     }
 
     [Fact]

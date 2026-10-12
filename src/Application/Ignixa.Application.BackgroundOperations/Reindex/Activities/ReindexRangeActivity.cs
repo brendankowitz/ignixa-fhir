@@ -19,7 +19,7 @@ public sealed class ReindexRangeActivity(
         {
             var output = await progress.RunWithHeartbeatAsync(
                 input.JobId, cancellationToken => processor.ProcessAsync(input, cancellationToken), CancellationToken.None);
-            ReindexMetrics.RangeCompleted(output.ResourcesReindexed, output.Conflicts, output.FailedResources.Count);
+            ReindexMetrics.RangeCompleted(output.ResourcesReindexed, output.Conflicts, output.FailedResourceCount);
             return output;
         }
         catch

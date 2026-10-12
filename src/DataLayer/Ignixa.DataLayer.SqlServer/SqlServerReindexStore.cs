@@ -26,17 +26,8 @@ public sealed class SqlServerReindexStore(
 {
     private const string BarrierParameterId = "Conformance.MinAcceptedDefinitionsEventId";
 
-    private readonly ISqlExecutionService _sqlExecutionService =
-        sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
-    private readonly int _tenantId = tenantId;
-    private readonly GzipResourceCompressor _compressor =
-        compressor ?? throw new ArgumentNullException(nameof(compressor));
-    private readonly SqlServerSearchIndexReferenceDataCache _referenceDataCache =
-        referenceDataCache ?? throw new ArgumentNullException(nameof(referenceDataCache));
-    private readonly SqlServerPostMergeExtensionUpdater _extensionUpdater =
-        extensionUpdater ?? throw new ArgumentNullException(nameof(extensionUpdater));
-    private readonly ILogger _logger =
-        logger ?? throw new ArgumentNullException(nameof(logger));
+    // A field, not the captured parameter: the row generators below are initialized from it too.
+    private readonly SqlServerSearchIndexReferenceDataCache _referenceDataCache = referenceDataCache;
 
     private readonly TokenSearchParameterRowGenerator _tokenRowGenerator = new(referenceDataCache.SystemMappings);
     private readonly ISearchParameterRowGenerator _referenceRowGenerator = new ReferenceSearchParameterRowGenerator();
@@ -113,8 +104,8 @@ public sealed class SqlServerReindexStore(
         command.Parameters.Add("@TargetEventId", SqlDbType.BigInt).Value = targetEventId;
         command.Parameters.Add("@BarrierId", SqlDbType.VarChar, 128).Value = BarrierParameterId;
 
-        var rows = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId,
+        var rows = await sqlExecutionService.ExecuteReaderAsync(
+            tenantId,
             command,
             static reader => new BarrierCutoff(reader.GetInt64(0), reader.GetInt64(1)),
             cancellationToken,
@@ -133,8 +124,8 @@ public sealed class SqlServerReindexStore(
                 WHERE IsVisible = 1
                 ORDER BY SurrogateIdRangeFirstValue DESC), -1);
             """);
-        var values = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId, command, static reader => reader.GetInt64(0), cancellationToken);
+        var values = await sqlExecutionService.ExecuteReaderAsync(
+            tenantId, command, static reader => reader.GetInt64(0), cancellationToken);
         return values.Single();
     }
 
@@ -151,8 +142,8 @@ public sealed class SqlServerReindexStore(
             ORDER BY SurrogateIdRangeFirstValue;
             """);
         command.Parameters.Add("@CutoffTransactionId", SqlDbType.BigInt).Value = cutoffTransactionId;
-        var rows = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId,
+        var rows = await sqlExecutionService.ExecuteReaderAsync(
+            tenantId,
             command,
             static reader => new IncompleteTransaction(
                 reader.GetInt64(0),
@@ -208,8 +199,8 @@ public sealed class SqlServerReindexStore(
             nextRangeCommand.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
             nextRangeCommand.Parameters.Add("@TargetRangeSize", SqlDbType.Int).Value = targetRangeSize;
             nextRangeCommand.Parameters.Add("@Cursor", SqlDbType.BigInt).Value = cursor;
-            var rangeEnds = await _sqlExecutionService.ExecuteReaderAsync(
-                _tenantId,
+            var rangeEnds = await sqlExecutionService.ExecuteReaderAsync(
+                tenantId,
                 nextRangeCommand,
                 static reader => (
                     Start: reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0),
@@ -254,8 +245,8 @@ public sealed class SqlServerReindexStore(
                 continuationCommand.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
                 continuationCommand.Parameters.Add("@UpperBoundSurrogateId", SqlDbType.BigInt).Value = upperBoundSurrogateId;
                 continuationCommand.Parameters.Add("@Cursor", SqlDbType.BigInt).Value = end.Value;
-                var hasMore = await _sqlExecutionService.ExecuteReaderAsync(
-                    _tenantId,
+                var hasMore = await sqlExecutionService.ExecuteReaderAsync(
+                    tenantId,
                     continuationCommand,
                     static reader => reader.GetBoolean(0),
                     cancellationToken);
@@ -316,8 +307,8 @@ public sealed class SqlServerReindexStore(
         command.Parameters.Add("@AfterSurrogateId", SqlDbType.BigInt).Value =
             afterSurrogateId ?? (object)DBNull.Value;
 
-        var rows = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId,
+        var rows = await sqlExecutionService.ExecuteReaderAsync(
+            tenantId,
             command,
             static reader => new ReindexResourceRow(
                 reader.GetString(0),
@@ -336,7 +327,7 @@ public sealed class SqlServerReindexStore(
                 row.ResourceId,
                 row.Version.ToString(CultureInfo.InvariantCulture),
                 row.LastModified,
-                ResourceJsonNode.Parse(Encoding.UTF8.GetString(_compressor.DecompressBytes(row.RawResource).Span)),
+                ResourceJsonNode.Parse(Encoding.UTF8.GetString(compressor.DecompressBytes(row.RawResource).Span)),
                 new ResourceRequest(row.RequestMethod, $"{resourceType}/{row.ResourceId}")),
             row.ResourceSurrogateId)).ToArray();
     }
@@ -362,33 +353,33 @@ public sealed class SqlServerReindexStore(
         var resourceRecords = CreateResourceRecords(resources, resourceTypeIdMap);
         var resourceWriteClaims = await ReadResourceWriteClaimsAsync(resources, cancellationToken);
         var referenceSearchParams = MaterializeIfNotEmpty(
-            _referenceRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _referenceRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var tokenSearchParams = MaterializeIfNotEmpty(
-            _tokenRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _tokenRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var tokenTexts = MaterializeIfNotEmpty(
-            _tokenTextRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _tokenTextRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var stringSearchParams = MaterializeIfNotEmpty(
-            _stringRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _stringRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var uriSearchParams = MaterializeIfNotEmpty(
-            _uriRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _uriRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var numberSearchParams = MaterializeIfNotEmpty(
-            _numberRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _numberRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var quantitySearchParams = MaterializeIfNotEmpty(
-            _quantityRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _quantityRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var dateTimeSearchParams = MaterializeIfNotEmpty(
-            _dateTimeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _dateTimeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var referenceTokenComposites = MaterializeIfNotEmpty(
-            _refTokenCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _refTokenCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var tokenTokenComposites = MaterializeIfNotEmpty(
-            _tokenTokenCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _tokenTokenCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var tokenDateTimeComposites = MaterializeIfNotEmpty(
-            _tokenDateTimeCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _tokenDateTimeCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var tokenQuantityComposites = MaterializeIfNotEmpty(
-            _tokenQuantityCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _tokenQuantityCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var tokenStringComposites = MaterializeIfNotEmpty(
-            _tokenStringCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _tokenStringCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
         var tokenNumberNumberComposites = MaterializeIfNotEmpty(
-            _tokenNumberNumberCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+            _tokenNumberNumberCompositeRowGenerator.GenerateSqlDataRecords(resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger));
 
         var failedResources = new SqlParameter("@FailedResources", SqlDbType.Int)
         {
@@ -435,8 +426,8 @@ public sealed class SqlServerReindexStore(
 
         try
         {
-            var updatedResourceSurrogateIds = await _sqlExecutionService.ExecuteReaderAsync(
-                _tenantId,
+            var updatedResourceSurrogateIds = await sqlExecutionService.ExecuteReaderAsync(
+                tenantId,
                 command,
                 static reader => reader.GetInt64(0),
                 cancellationToken,
@@ -446,25 +437,25 @@ public sealed class SqlServerReindexStore(
             var updatedResourceSurrogateIdSet = updatedResourceSurrogateIds.ToHashSet();
             var conflicts = Convert.ToInt32(failedResources.Value, CultureInfo.InvariantCulture);
             var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
-                    resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger)
+                    resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger)
                 .Where(extension => updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
                 .ToArray();
             var uriExtensions = _uriRowGenerator.ExtractExtensionData(
-                    resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger)
+                    resourceWrappers, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, logger)
                 .Where(extension => updatedResourceSurrogateIdSet.Contains(extension.ResourceSurrogateId))
                 .ToArray();
             if (tokenExtensions.Length > 0 || uriExtensions.Length > 0)
             {
                 try
                 {
-                    await _extensionUpdater.UpdateAllExtensionsAsync(tokenExtensions, uriExtensions, cancellationToken);
+                    await extensionUpdater.UpdateAllExtensionsAsync(tokenExtensions, uriExtensions, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(
+                    logger.LogError(
                         ex,
                         "Failed to update extension columns after reindex (TenantId={TenantId}, ResourceCount={ResourceCount}, TokenExtensionCount={TokenExtensionCount}, UriExtensionCount={UriExtensionCount}). Core search indices were successfully updated; extension columns remain NULL.",
-                        _tenantId,
+                        tenantId,
                         resources.Count,
                         tokenExtensions.Length,
                         uriExtensions.Length);
@@ -501,8 +492,8 @@ public sealed class SqlServerReindexStore(
             """);
         command.Parameters.Add("@ResourceSurrogateIds", SqlDbType.NVarChar, -1).Value =
             System.Text.Json.JsonSerializer.Serialize(resources.Select(resource => resource.ResourceSurrogateId));
-        var claims = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId,
+        var claims = await sqlExecutionService.ExecuteReaderAsync(
+            tenantId,
             command,
             static reader => (
                 ResourceSurrogateId: reader.GetInt64(0),

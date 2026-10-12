@@ -400,7 +400,8 @@ supported and are rejected, not silently ignored.
   automatically once the running one finishes. It never cancels or restarts the running one.
 - `status` is `Queued`, `Running`, `Completed`, `Failed` or `Cancelled`. A `Parameters` job body
   reports progress, per-tenant counts, resource ids that failed (at most 100), and the target event
-  and trigger.
+  and trigger. An unfinished job whose heartbeat is older than `Reindex:StaleJobTimeout` also carries
+  `stale` = `true`.
 - A job covers **every tenant**: a parameter becomes searchable only when all of them finish with no
   failed resources. Status therefore resolves from any tenant route.
 - `DELETE` returns `202 Accepted`, `404` for an unknown job, or `409` if the job already finished.

@@ -35,7 +35,10 @@ internal static class ReindexTestHelper
             tenantIds,
             ["Patient"],
             [],
-            ReindexJobParameters.Create());
+            ReindexJobParameters.Create(),
+            DrainWarningAfter: TimeSpan.FromMinutes(5),
+            StaleJobTimeout: TimeSpan.FromMinutes(30),
+            ContinueAsNewThreshold: 2_000);
 
     /// <summary>
     /// A repository factory whose tenant store lists <paramref name="tenants"/>; by default one SQL Server

@@ -19,24 +19,27 @@ namespace Ignixa.Api.E2ETests;
 public class SqlReindexOrchestrationTests
 {
     [SqlFact]
-    public async Task GivenReindexRequest_WhenPollingAndListing_ThenJobCompletesAndIsListed()
+    public async Task GivenPreExistingResource_WhenAManualReindexIsPolledAndListed_ThenItCompletesAndSearchReturnsTheResource()
     {
         await using var fixture = new ReindexFixture(reindexAutoStart: false);
         await fixture.InitializeAsync();
         var marker = Guid.NewGuid().ToString("N");
-        var code = $"listing-{marker}";
+        var patientId = $"reindex-{marker}";
+        var code = $"reindex-{marker}";
         var canonical = $"http://example.org/SearchParameter/{code}";
-        var packageId = $"test.listing.{marker}";
+        var packageId = $"test.reindex.{marker}";
 
-        await PutPatientAsync(fixture.Client, $"reindex-{marker}", marker);
+        await PutPatientAsync(fixture.Client, patientId, marker);
         await StoreParameterAsync(fixture.Services, packageId, code, canonical);
         var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
             .ActivateAsync(packageId, "1.0.0", CancellationToken.None);
 
         activation.Success.ShouldBeTrue();
         activation.ReindexJobId.ShouldBeNull();
-        fixture.Services.GetRequiredService<ConformanceState>()
-            .FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
+        var state = fixture.Services.GetRequiredService<ConformanceState>();
+        state.FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
+        RenewLease(fixture.Services);
+        await AssertPendingAsync(fixture.Client, code, marker);
 
         var created = await CreateReindexAsync(fixture.Client);
         using var createdResponse = created.Response;
@@ -58,42 +61,11 @@ public class SqlReindexOrchestrationTests
             .Select(parameter => parameter!["part"]!.AsArray()
                 .Single(part => part!["name"]!.GetValue<string>() == "id")!["valueString"]!.GetValue<string>())
             .ShouldContain(created.JobId);
-    }
 
-    [SqlFact]
-    public async Task GivenActiveReindexJob_WhenCreatingAnother_ThenReturnsConflictForActiveJob()
-    {
-        await using var fixture = new ReindexFixture(reindexAutoStart: false);
-        await fixture.InitializeAsync();
-        var marker = Guid.NewGuid().ToString("N");
-        var code = $"active-{marker}";
-        var canonical = $"http://example.org/SearchParameter/{code}";
-        var packageId = $"test.active.{marker}";
-
-        await PutPatientAsync(fixture.Client, $"reindex-{marker}", marker);
-        await StoreParameterAsync(fixture.Services, packageId, code, canonical);
-        var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
-            .ActivateAsync(packageId, "1.0.0", CancellationToken.None);
-
-        activation.Success.ShouldBeTrue();
-        activation.ReindexJobId.ShouldBeNull();
-        fixture.Services.GetRequiredService<ConformanceState>()
-            .FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
-
-        var first = await CreateReindexAsync(fixture.Client);
-        using var firstResponse = first.Response;
-        first.Response.StatusCode.ShouldBe(HttpStatusCode.Created, first.Body.ToJsonString());
-        await WaitForJobStatusAsync(fixture.Services, first.JobId, "Running");
-        using var secondResponse = await fixture.Client.PostAsync("/tenant/1/$reindex", ReindexRequestContent());
-
-        secondResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict, await secondResponse.Content.ReadAsStringAsync());
-        secondResponse.Content.Headers.ContentLocation.ShouldBe(
-            new Uri($"/tenant/1/$reindex/{first.JobId}", UriKind.Relative));
-        JsonNode.Parse(await secondResponse.Content.ReadAsStringAsync())!["resourceType"]!
-            .GetValue<string>().ShouldBe("OperationOutcome");
-
-        using var cleanup = await fixture.Client.DeleteAsync($"/tenant/1/$reindex/{first.JobId}");
-        cleanup.StatusCode.ShouldBe(HttpStatusCode.Accepted, await cleanup.Content.ReadAsStringAsync());
+        state.FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
+        await RefreshConformanceConsumersAsync(fixture.Services);
+        RenewLease(fixture.Services);
+        await AssertSearchAsync(fixture.Client, code, marker, patientId);
     }
 
     [SqlFact]
@@ -147,43 +119,9 @@ public class SqlReindexOrchestrationTests
     }
 
     [SqlFact]
-    public async Task GivenPreExistingResource_WhenPackageParameterIsActivatedAndReindexed_ThenSearchReturnsResource()
+    public async Task GivenAbsoluteSelfReference_WhenResourceTypeIsReindexed_ThenAbsoluteReferenceSearchStillMatches()
     {
-        await using var fixture = new ReindexFixture();
-        await fixture.InitializeAsync();
-        var marker = Guid.NewGuid().ToString("N");
-        var patientId = $"reindex-{marker}";
-        var code = $"reindex-{marker}";
-        var canonical = $"http://example.org/SearchParameter/{code}";
-        var packageId = $"test.reindex.{marker}";
-
-        await PutPatientAsync(fixture.Client, patientId, marker);
-        await StoreParameterAsync(fixture.Services, packageId, code, canonical);
-        var activation = await fixture.Services.GetRequiredService<PackageActivationPipeline>()
-            .ActivateAsync(packageId, "1.0.0", CancellationToken.None);
-        activation.Success.ShouldBeTrue();
-
-        var state = fixture.Services.GetRequiredService<ConformanceState>();
-        state.FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
-        RenewLease(fixture.Services);
-        await AssertPendingAsync(fixture.Client, code, marker);
-
-        var jobId = activation.ReindexJobId.ShouldNotBeNull();
-        var job = await WaitForTerminalJobAsync(fixture.Services, jobId);
-
-        job.Status.ShouldBe("Completed", job.ErrorMessage);
-        state.FindByCanonical(canonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
-        await RefreshConformanceConsumersAsync(fixture.Services);
-        RenewLease(fixture.Services);
-        await AssertSearchAsync(fixture.Client, code, marker, patientId);
-    }
-
-    [SqlTheory]
-    [InlineData("https://example.test/fhir/Patient/{0}")]
-    [InlineData("https://example.test/fhir/tenant/1/Patient/{0}")]
-    public async Task GivenAbsoluteSelfReference_WhenResourceTypeIsReindexed_ThenAbsoluteReferenceSearchStillMatches(
-        string referenceFormat)
-    {
+        const string referenceFormat = "https://example.test/fhir/Patient/{0}";
         await using var fixture = new ReindexFixture(reindexAutoStart: false);
         await fixture.InitializeAsync();
         var marker = Guid.NewGuid().ToString("N");

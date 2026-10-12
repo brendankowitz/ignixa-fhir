@@ -17,8 +17,6 @@ namespace Ignixa.DataLayer.SqlServer;
 public sealed class ReindexJobLock(ISqlExecutionService sqlExecutionService) : IReindexJobLock
 {
     private const string ResourceName = "Ignixa.Reindex.Singleton";
-    private readonly ISqlExecutionService _sqlExecutionService =
-        sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
 
     public async Task<T> ExecuteAsync<T>(
         Func<CancellationToken, Task<T>> action,
@@ -26,7 +24,7 @@ public sealed class ReindexJobLock(ISqlExecutionService sqlExecutionService) : I
     {
         ArgumentNullException.ThrowIfNull(action);
         ExceptionDispatchInfo? actionFailure = null;
-        var result = await _sqlExecutionService.ExecuteInTransactionAsync(
+        var result = await sqlExecutionService.ExecuteInTransactionAsync(
             SystemConstants.GlobalTenantId,
             async (transaction, ct) =>
             {
