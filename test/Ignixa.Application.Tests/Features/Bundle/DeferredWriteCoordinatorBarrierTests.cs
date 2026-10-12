@@ -58,7 +58,7 @@ public class DeferredWriteCoordinatorBarrierTests
         await Should.ThrowAsync<ConformanceStaleException>(() =>
             coordinator.ProcessBatchAsync(batchSize: 2, CancellationToken.None));
         await Should.ThrowAsync<ConformanceStaleException>(() => first);
-        await Should.ThrowAsync<ConformanceStaleException>(() => second);
+        await Should.ThrowAsync<ConformanceStaleException>(() => second.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     private static Task<DeferredWriteCoordinator> CreateCoordinatorAsync(

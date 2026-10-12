@@ -219,6 +219,20 @@ public class ConformanceLifecycleTests
         parameter.ReindexJobId.ShouldBeNull();
     }
 
+    // Started guard: a Pending owner only starts a reindex for its own activation.
+    [Fact]
+    public void GivenPendingOwner_WhenReindexStartHasWrongActivation_ThenOwnerRemainsPending()
+    {
+        using var state = new ConformanceState();
+        state.Apply(Custom(10));
+
+        state.Apply(Started(20, 9, "wrong-activation"));
+
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
+        parameter.ReindexJobId.ShouldBeNull();
+    }
+
     public enum ReindexEventKind
     {
         Started,
@@ -226,7 +240,7 @@ public class ConformanceLifecycleTests
         Failed,
     }
 
-    // Started / Completed / Failed guards: an event for another activation or job never moves the running job.
+    // Completed / Failed guards (and Started on a running job): an event for another activation or job never moves it.
     [Theory]
     [InlineData(ReindexEventKind.Started, 9L, "other")]
     [InlineData(ReindexEventKind.Started, null, "legacy-other-job")]
