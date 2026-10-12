@@ -62,21 +62,14 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     {
         _status = CreateStatus("created-job");
 
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters(
-            ("maximumNumberOfResourcesPerQuery", "valueInteger", 50),
-            ("maximumNumberOfResourcesPerWrite", "valueInteger", 25),
-            ("maximumConcurrency", "valueInteger", 2),
-            ("queryDelayIntervalInMilliseconds", "valueInteger", 5)));
+        var response = await SendAsync("CreateReindexForTenant", body: Parameters(("maximumConcurrency", "valueInteger", 2)));
 
         response.StatusCode.ShouldBe(StatusCodes.Status201Created);
         response.Headers["Content-Location"].ShouldBe("/tenant/1/$reindex/created-job");
         response.Body["resourceType"]!.GetValue<string>().ShouldBe("Parameters");
-        Value(response.Body, "id").ShouldBe("created-job");
-        _createCommands.ShouldHaveSingleItem();
-        _createCommands[0].MaximumNumberOfResourcesPerQuery.ShouldBe(50);
-        _createCommands[0].MaximumNumberOfResourcesPerWrite.ShouldBe(25);
-        _createCommands[0].MaximumConcurrency.ShouldBe(2);
-        _createCommands[0].QueryDelayIntervalInMilliseconds.ShouldBe(5);
+        Describe(response.Body).ShouldContain("id[valueString]=\"created-job\"");
+        // The request parser's own tests pin every parameter; this pins that the parsed command is dispatched.
+        _createCommands.ShouldHaveSingleItem().MaximumConcurrency.ShouldBe(2);
     }
 
     [Fact]
@@ -166,18 +159,15 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             fhirVersion: fhirVersion);
 
         response.StatusCode.ShouldBe(StatusCodes.Status200OK);
-        ValueProperty(response.Body, "totalResourcesToReindex").ShouldBe(countValueName);
-        ValueProperty(response.Body, "resourcesSuccessfullyReindexed").ShouldBe(countValueName);
-        ValueProperty(response.Body, "conflicts").ShouldBe(countValueName);
-        ValueProperty(response.Body, "targetEventId").ShouldBe(identifierValueName);
-
-        var tenant = Parts(response.Body, "tenant").ShouldHaveSingleItem();
-        ValueProperty(tenant, "cutoffTransactionId").ShouldBe(identifierValueName);
-        ValueProperty(tenant, "cutoffSurrogateId").ShouldBe(identifierValueName);
-        ValueProperty(tenant, "resourcesToReindex").ShouldBe(countValueName);
-        ValueProperty(tenant, "resourcesReindexed").ShouldBe(countValueName);
-        ValueProperty(tenant, "conflicts").ShouldBe(countValueName);
-        ValueProperty(tenant, "failedResources").ShouldBe(countValueName);
+        var lines = Describe(response.Body);
+        string[] counts =
+        [
+            "totalResourcesToReindex", "resourcesSuccessfullyReindexed", "conflicts", "tenant.resourcesToReindex",
+            "tenant.resourcesReindexed", "tenant.conflicts", "tenant.failedResources"
+        ];
+        string[] identifiers = ["targetEventId", "tenant.cutoffTransactionId", "tenant.cutoffSurrogateId"];
+        counts.ShouldAllBe(name => lines.Any(line => line.StartsWith($"{name}[{countValueName}]=", StringComparison.Ordinal)));
+        identifiers.ShouldAllBe(name => lines.Any(line => line.StartsWith($"{name}[{identifierValueName}]=", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -189,46 +179,54 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
 
         response.StatusCode.ShouldBe(StatusCodes.Status200OK);
         response.Body["resourceType"]!.GetValue<string>().ShouldBe("Parameters");
-        Value(response.Body, "id").ShouldBe("complete-fields");
-        Value(response.Body, "status").ShouldBe("Running");
-        Value(response.Body, "queuedTime").ShouldBeOfType<string>();
-        Value(response.Body, "startTime").ShouldBeOfType<string>();
-        Value(response.Body, "endTime").ShouldBeOfType<string>();
-        Value(response.Body, "lastModified").ShouldBeOfType<string>();
-        Value(response.Body, "stale").ShouldBe(true);
-        Value(response.Body, "totalResourcesToReindex").ShouldBe(10);
-        Value(response.Body, "resourcesSuccessfullyReindexed").ShouldBe(7);
-        Convert.ToDouble(Value(response.Body, "progress"), System.Globalization.CultureInfo.InvariantCulture)
-            .ShouldBe(70d);
-        Value(response.Body, "phase").ShouldBe("Reindexing");
-        Value(response.Body, "cancellationReason").ShouldBe("Operator request");
-        Value(response.Body, "conflicts").ShouldBe(2);
-        Value(response.Body, "failureDetails").ShouldBe("failure detail");
-        Value(response.Body, "maximumNumberOfResourcesPerQuery").ShouldBe(50);
-        Value(response.Body, "maximumNumberOfResourcesPerWrite").ShouldBe(25);
-        Value(response.Body, "maximumConcurrency").ShouldBe(2);
-        Value(response.Body, "queryDelayIntervalInMilliseconds").ShouldBe(5);
-        Value(response.Body, "trigger").ShouldBe("Manual");
-        Value(response.Body, "targetEventId").ShouldBe("42");
-        Values(response.Body, "resources").ShouldBe(["Patient", "Observation"]);
-        Values(response.Body, "searchParams").ShouldBe(["http://example.test/SearchParameter/name"]);
-        Values(response.Body, "notCovered").ShouldBeEmpty();
-        Values(response.Body, "ignoredLifecycleEvents").ShouldBe(["http://example.test/SearchParameter/ignored"]);
-
-        var tenants = Parts(response.Body, "tenant");
-        tenants.Count.ShouldBe(2);
-        Value(tenants[0], "tenantId").ShouldBe(1);
-        Value(tenants[0], "cutoffTransactionId").ShouldBe("10");
-        Value(tenants[0], "cutoffSurrogateId").ShouldBe("20");
-        Value(tenants[0], "resourcesToReindex").ShouldBe(5);
-        Value(tenants[1], "tenantId").ShouldBe(2);
-
-        var failures = Parts(response.Body, "failedResource");
-        failures.Count.ShouldBe(2);
-        Value(failures[0], "resourceType").ShouldBe("Patient");
-        Value(failures[0], "id").ShouldBe("first");
-        Value(failures[0], "reason").ShouldBe("first failure");
-        Value(failures[1], "id").ShouldBe("second");
+        string.Join('\n', Describe(response.Body)).ShouldBe("""
+            id[valueString]="complete-fields"
+            status[valueString]="Running"
+            queuedTime[valueDateTime]="2026-10-07T00:00:00+00:00"
+            startTime[valueDateTime]="2026-10-07T00:01:00+00:00"
+            endTime[valueDateTime]="2026-10-07T00:03:00+00:00"
+            lastModified[valueDateTime]="2026-10-07T00:02:00+00:00"
+            stale[valueBoolean]=true
+            totalResourcesToReindex[valueDecimal]=10
+            resourcesSuccessfullyReindexed[valueDecimal]=7
+            progress[valueDecimal]=70
+            phase[valueString]="Reindexing"
+            cancellationReason[valueString]="Operator request"
+            conflicts[valueDecimal]=2
+            failureDetails[valueString]="failure detail"
+            maximumNumberOfResourcesPerQuery[valueInteger]=50
+            maximumNumberOfResourcesPerWrite[valueInteger]=25
+            maximumConcurrency[valueInteger]=2
+            queryDelayIntervalInMilliseconds[valueInteger]=5
+            trigger[valueString]="Manual"
+            targetEventId[valueString]="42"
+            resources[valueString]="Patient"
+            resources[valueString]="Observation"
+            searchParams[valueString]="http://example.test/SearchParameter/name"
+            ignoredLifecycleEvents[valueString]="http://example.test/SearchParameter/ignored"
+            tenant.tenantId[valueInteger]=1
+            tenant.cutoffTransactionId[valueString]="10"
+            tenant.cutoffSurrogateId[valueString]="20"
+            tenant.status[valueString]="Reindexing"
+            tenant.resourcesToReindex[valueDecimal]=5
+            tenant.resourcesReindexed[valueDecimal]=3
+            tenant.conflicts[valueDecimal]=1
+            tenant.failedResources[valueDecimal]=1
+            tenant.tenantId[valueInteger]=2
+            tenant.cutoffTransactionId[valueString]="11"
+            tenant.cutoffSurrogateId[valueString]="21"
+            tenant.status[valueString]="Reindexing"
+            tenant.resourcesToReindex[valueDecimal]=5
+            tenant.resourcesReindexed[valueDecimal]=4
+            tenant.conflicts[valueDecimal]=1
+            tenant.failedResources[valueDecimal]=1
+            failedResource.resourceType[valueString]="Patient"
+            failedResource.id[valueString]="first"
+            failedResource.reason[valueString]="first failure"
+            failedResource.resourceType[valueString]="Observation"
+            failedResource.id[valueString]="second"
+            failedResource.reason[valueString]="second failure"
+            """);
     }
 
     [Theory]
@@ -273,7 +271,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
 
         if (outcome == "cancelled")
         {
-            Value(response.Body, "status").ShouldBe("Cancelled");
+            Describe(response.Body).ShouldContain("status[valueString]=\"Cancelled\"");
         }
     }
 
@@ -541,69 +539,24 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             }).ToArray())
         }.ToJsonString();
 
-    private static object Value(JsonNode parameters, string name) =>
-        ConvertValue(ValueNode(parameters, name));
+    /// <summary>
+    /// Each Parameters value as <c>name[valueType]=json</c>, with part names joined by dots, in document order.
+    /// </summary>
+    private static readonly System.Text.Json.JsonSerializerOptions RelaxedJson =
+        new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    private static IReadOnlyList<object> Values(JsonNode parameters, string name) =>
-        ParameterArray(parameters)
-            .Where(parameter => parameter!["name"]!.GetValue<string>() == name)
-            .Select(parameter => ConvertValue(ValueNode(parameter!)))
-            .ToArray();
+    private static List<string> Describe(JsonNode parameters) => Describe(parameters["parameter"]!.AsArray(), "").ToList();
 
-    private static IReadOnlyList<JsonNode> Parts(JsonNode parameters, string name) =>
-        ParameterArray(parameters)
-            .Where(parameter => parameter!["name"]!.GetValue<string>() == name)
-            .Select(parameter => parameter!["part"]!)
-            .ToArray();
-
-    private static JsonArray ParameterArray(JsonNode parameters) =>
-        parameters as JsonArray
-        ?? parameters["parameter"] as JsonArray
-        ?? throw new InvalidOperationException("Expected a Parameters.parameter array.");
-
-    private static JsonNode ValueNode(JsonNode parameters, string name) =>
-        ValueNode(ParameterArray(parameters)
-            .Single(parameter => parameter!["name"]!.GetValue<string>() == name)!);
-
-    private static JsonNode ValueNode(JsonNode parameter) =>
-        parameter.AsObject()
-            .Single(property => property.Key.StartsWith("value", StringComparison.Ordinal))
-            .Value
-        ?? throw new InvalidOperationException("Expected a Parameters value.");
-
-    private static string ValueProperty(JsonNode parameters, string name) =>
-        ParameterArray(parameters)
-            .Single(parameter => parameter!["name"]!.GetValue<string>() == name)!
-            .AsObject()
-            .Single(property => property.Key.StartsWith("value", StringComparison.Ordinal))
-            .Key;
-
-    private static object ConvertValue(JsonNode value)
-    {
-        var jsonValue = value.AsValue();
-        if (jsonValue.TryGetValue<bool>(out var boolValue))
+    private static IEnumerable<string> Describe(JsonArray parameters, string prefix) =>
+        parameters.SelectMany(parameter =>
         {
-            return boolValue;
-        }
-        if (jsonValue.TryGetValue<string>(out var stringValue))
-        {
-            return stringValue;
-        }
-        if (jsonValue.TryGetValue<int>(out var intValue))
-        {
-            return intValue;
-        }
-        if (jsonValue.TryGetValue<long>(out var longValue))
-        {
-            return longValue;
-        }
-        if (jsonValue.TryGetValue<double>(out var doubleValue))
-        {
-            return doubleValue;
-        }
-
-        throw new InvalidOperationException($"Unsupported Parameters value {value}.");
-    }
+            var name = prefix + parameter!["name"]!.GetValue<string>();
+            return parameter["part"] is JsonArray parts
+                ? Describe(parts, name + ".")
+                : parameter.AsObject()
+                    .Where(property => property.Key.StartsWith("value", StringComparison.Ordinal))
+                    .Select(property => $"{name}[{property.Key}]={property.Value!.ToJsonString(RelaxedJson)}");
+        });
 
     private static ReindexStatusResult CreateStatus(string jobId = "complete-fields") =>
         new(
