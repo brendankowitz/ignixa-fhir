@@ -265,6 +265,29 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         }
     }
 
+    // dbo.ResourceType grows as types are first written, by any instance; a store whose cache was loaded
+    // before that must still find the type, or the reindex skips its rows and enables the parameter anyway.
+    [Fact]
+    public async Task GivenATypeFirstWrittenAfterTheStoreLoadedItsTypes_WhenRangesArePlannedAndRead_ThenItsResourcesAreIncluded()
+    {
+        var (store, cache) = await CreateStoreAsync(_database.SqlExecutionService);
+        using (cache)
+        {
+            (await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.ResourceType WHERE Name = 'Observation'"))
+                .ShouldBe(0);
+            await _database.Repository.CreateOrUpdateAsync(Observation("late-type"));
+            var (_, cutoff) = await store.RaiseBarrierAsync(50, CancellationToken.None);
+
+            var (ranges, _) = await store.GetSurrogateIdRangesAsync(
+                "Observation", -1, cutoff, 10, 10, CancellationToken.None);
+            var range = ranges.ShouldHaveSingleItem();
+            var page = await store.ReadRangeAsync("Observation", range.Start, range.End, 10, null, CancellationToken.None);
+
+            range.ResourceCount.ShouldBe(1);
+            page.ShouldHaveSingleItem().Resource.ResourceId.ShouldBe("late-type");
+        }
+    }
+
     [Fact]
     public async Task GivenNoCurrentResources_WhenRangesArePlanned_ThenThePageIsEmptyAndHasNoContinuation()
     {
@@ -737,4 +760,12 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         DateTimeOffset.UtcNow,
         ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{id}}"}"""),
         new ResourceRequest("PUT", $"Patient/{id}"));
+
+    private static ResourceWrapper Observation(string id) => new(
+        "Observation",
+        id,
+        "1",
+        DateTimeOffset.UtcNow,
+        ResourceJsonNode.Parse($$"""{"resourceType":"Observation","id":"{{id}}","status":"final"}"""),
+        new ResourceRequest("PUT", $"Observation/{id}"));
 }

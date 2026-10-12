@@ -479,13 +479,10 @@ public sealed class SqlServerReindexStore(
         return records;
     }
 
-    private async Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
-    {
-        await _referenceDataCache.EnsureResourceTypesPreloadedAsync(cancellationToken);
-        return _referenceDataCache.ResourceTypeMappings.TryGetValue(resourceType, out var resourceTypeId)
-            ? resourceTypeId
-            : null;
-    }
+    // Types are added to dbo.ResourceType as any instance first writes them, so a miss in the preloaded
+    // snapshot is checked against the table; only a type that was never written has no rows to reindex.
+    private Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken) =>
+        _referenceDataCache.GetResourceTypeIdAsync(resourceType, cancellationToken);
 
     private static void AddTableValuedParameter(
         SqlCommand command,
@@ -497,12 +494,6 @@ public sealed class SqlServerReindexStore(
             TypeName = typeName,
             Value = records,
         });
-
-    private static IList<SqlDataRecord>? MaterializeIfNotEmpty(IEnumerable<SqlDataRecord> records)
-    {
-        var list = records as IList<SqlDataRecord> ?? records.ToList();
-        return list.Count == 0 ? null : list;
-    }
 
     private static IList<SqlDataRecord> CreateResourceRecords(
         IReadOnlyList<ReindexResource> resources,
