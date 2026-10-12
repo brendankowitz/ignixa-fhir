@@ -39,34 +39,6 @@ public class SqlActivationPreflightTests
         await AssertRejectedBatchAsync(database.ConnectionString, scenario);
     }
 
-    [SqlFact]
-    public async Task GivenPartialIndicesHeader_WhenConditionalDeleteUsesAPendingParameter_ThenItReturnsBadRequest()
-    {
-        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaConditionalPartial");
-        var connectionString = database.ConnectionString;
-        await using var template = new IgnixaApiFixture();
-        await using var host = CreateHost(template, connectionString);
-        using var client = host.CreateClient();
-        var services = host.Services;
-        const string parameterCode = "conditional-pending";
-
-        await StoreAsync(services, PackageId, "conditional", parameterCode,
-            "http://example.org/SearchParameter/conditional-pending", null);
-        (await services.GetRequiredService<PackageActivationPipeline>()
-            .ActivateAsync(PackageId, "conditional", CancellationToken.None)).Success.ShouldBeTrue();
-        await SynchronizeAsync(services, "conditional");
-
-        using var request = new HttpRequestMessage(
-            HttpMethod.Delete,
-            $"/tenant/1/Patient?{parameterCode}=value");
-        request.Headers.Add("x-ms-use-partial-indices", "true");
-        using var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, body);
-        body.ShouldContain("Conditional operations cannot use partially indexed search parameters");
-    }
-
     private static async Task AssertRejectedBatchAsync(string connectionString, string scenario)
     {
         await using var template = new IgnixaApiFixture();

@@ -141,13 +141,14 @@ public class SqlOverrideActivationLifecycleTests
         var searchable = searchableDefinitions.GetSearchParameter("Patient", "identifier");
         searchable.OverridesUrl.ShouldBe(new Uri(BaseUrl));
         (await resolver.GetSearchParamIdAsync(searchable, CancellationToken.None)).ShouldBe(baseId);
-        var packageId = await cache.GetSearchParamIdAsync(PackageUrl, CancellationToken.None);
+        // Every current token row for the shared value is stored under the base identity, none under the package's own.
         await using (var connection = new SqlConnection(connectionString))
         {
             await connection.OpenAsync();
             using var command = new SqlCommand(
                 """
-                SELECT token.SearchParamId, resource.ResourceId
+                SELECT STRING_AGG(CONCAT(token.SearchParamId, ':', resource.ResourceId), ',')
+                       WITHIN GROUP (ORDER BY resource.ResourceId)
                 FROM dbo.TokenSearchParam token
                 JOIN dbo.System system ON system.SystemId = token.SystemId
                 JOIN dbo.Resource resource
@@ -160,24 +161,8 @@ public class SqlOverrideActivationLifecycleTests
                 connection);
             command.Parameters.Add("@Code", SqlDbType.NVarChar, 256).Value = "shared-identity";
             command.Parameters.Add("@System", SqlDbType.NVarChar, 256).Value = System;
-            await using var reader = await command.ExecuteReaderAsync();
-            var idsBySearchParamId = new Dictionary<short, List<string>>();
-            while (await reader.ReadAsync())
-            {
-                var searchParamId = reader.GetInt16(0);
-                if (!idsBySearchParamId.TryGetValue(searchParamId, out var ids))
-                {
-                    ids = [];
-                    idsBySearchParamId[searchParamId] = ids;
-                }
-                ids.Add(reader.GetString(1));
-            }
-            idsBySearchParamId[baseId].ShouldContain(beforeId);
-            idsBySearchParamId[baseId].ShouldContain(afterId);
-            if (packageId is { } physicalPackageId)
-            {
-                idsBySearchParamId.ShouldNotContainKey(physicalPackageId);
-            }
+            ((string)(await command.ExecuteScalarAsync())!).ShouldBe(
+                string.Join(",", new[] { afterId, beforeId }.Order(StringComparer.Ordinal).Select(id => $"{baseId}:{id}")));
         }
 
         RenewLease(host.Services);
