@@ -56,6 +56,15 @@ public sealed class CancelReindexHandlerTests : IDisposable
         await _runtime.Received(1).ForceTerminateTaskOrchestrationAsync("job", "operator request");
     }
 
+    [Fact]
+    public async Task GivenNoSuchJob_WhenCancellationIsRequested_ThenItIsReportedNotFound()
+    {
+        var result = await CancelAsync();
+
+        result.ShouldBeOfType<ReindexJobNotFoundResult>();
+        await _runtime.DidNotReceiveWithAnyArgs().ForceTerminateTaskOrchestrationAsync(default!, default!);
+    }
+
     private Task<CancelReindexResult> CancelAsync() =>
         new CancelReindexHandler(new TaskHubClient(_runtime), _jobs, _lifecycle, new TestReindexJobLock(), TimeProvider.System)
             .HandleAsync(new CancelReindexCommand("job", "operator request"), CancellationToken.None);

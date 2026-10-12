@@ -64,6 +64,30 @@ public sealed class ReindexTriggerTests : IDisposable
         await AssertJobRequestedAsync(ReindexTriggerKind.Activation);
     }
 
+    [Fact]
+    public async Task GivenNoReindexWork_WhenActivationTriggers_ThenTheReasonIsReportedWithoutDeferral()
+    {
+        var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
+
+        result.ShouldBe(new ReindexTriggerResult(null, false, "No resources need reindexing."));
+    }
+
+    // A due job is not requested while reindex cannot run; parameters stay Pending without a request each tick.
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task GivenReindexIsUnavailable_WhenTickFindsAPendingActivation_ThenNoJobIsRequested(
+        bool enabled,
+        bool withFileSystemTenant)
+    {
+        await CreateTrigger(
+                enabled: enabled,
+                tenants: withFileSystemTenant ? [Tenant(1, "SqlServer"), Tenant(3, "FileSystem")] : [])
+            .ReconcileAsync(CancellationToken.None);
+
+        await AssertNoJobRequestedAsync();
+    }
+
     [Theory]
     [InlineData(typeof(IOException))]
     [InlineData(typeof(TimeoutException))]

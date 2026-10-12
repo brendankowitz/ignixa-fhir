@@ -39,6 +39,17 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task GivenNoActiveTenant_WhenAJobIsRequested_ThenNothingToDoNamesTheMissingTenant()
+    {
+        var result = await CreateHandler(withPendingParameter: true, tenants: []).HandleAsync(
+            new CreateReindexJobCommand { Trigger = ReindexTriggerKind.Manual },
+            CancellationToken.None);
+
+        result.ShouldBeOfType<NoReindexWorkResult>().ErrorMessage.ShouldBe("No active tenant is configured for reindexing.");
+        (await _jobs.ListAsync()).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenRemoteCompletionAfterPollCatchUp_WhenReconciliationAcquiresJobLock_ThenNoRedundantJobIsCreated()
     {
         var handler = CreateHandler(withPendingParameter: true);
@@ -186,7 +197,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
     private async Task<BackgroundJob<ReindexJobDefinition>> CreatedJobAsync(CreateReindexJobResult result) =>
         (await _jobs.GetAsync(result.ShouldBeOfType<ReindexJobCreatedResult>().JobId, 1, CancellationToken.None))!;
 
-    private CreateReindexJobHandler CreateHandler(bool withPendingParameter = false)
+    private CreateReindexJobHandler CreateHandler(bool withPendingParameter = false, TenantConfiguration[]? tenants = null)
     {
         if (withPendingParameter)
         {
@@ -204,7 +215,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
             new TaskHubClient(_runtime),
             _jobs,
             _jobLock,
-            new ReindexTargetResolver(TenantStore(Tenant(1)), versions, _state, _events),
+            new ReindexTargetResolver(TenantStore(tenants ?? [Tenant(1)]), versions, _state, _events),
             Options.Create(new ReindexOptions { BarrierDelay = TimeSpan.Zero }),
             new FixedTimeProvider(Now));
     }
