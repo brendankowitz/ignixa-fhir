@@ -100,6 +100,38 @@ public class SqlServerBackgroundJobTerminalStateTests(SqlPersistenceContractFixt
         error.GetType().FullName.ShouldNotBe(ConflictType);
     }
 
+    [Fact]
+    public async Task GivenJobsInEveryStatus_WhenTheActiveAndLatestFinishedJobsAreRead_ThenOnlyRequestedStatusesMatch()
+    {
+        // A job type no other test uses, because the fixture database is shared.
+        const int jobType = 97;
+        var repository = CreateRepository();
+        var start = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        string[] statuses = ["Running", "Failed", "Completed", "Cancelled", "Queued"];
+        var jobs = statuses.Select((status, index) =>
+        {
+            var job = NewJob();
+            job.JobType = jobType;
+            job.CreateDate = start.AddMinutes(index);
+            return job;
+        }).ToArray();
+        foreach (var (job, status) in jobs.Zip(statuses))
+        {
+            await repository.CreateAsync(job);
+            if (status != "Queued")
+            {
+                var stored = (await repository.GetAsync(job.JobId, 1))!;
+                stored.Status = status;
+                stored.EndDate = status == "Running" ? null : stored.CreateDate;
+                await repository.UpdateAsync(stored, 1);
+            }
+        }
+
+        (await repository.GetActiveAsync(jobType))!.JobId.ShouldBe(jobs[4].JobId);
+        (await repository.GetLatestAsync(jobType, ["Failed", "Completed"]))!.JobId.ShouldBe(jobs[2].JobId);
+        (await repository.GetLatestAsync(jobType, ["Failed"]))!.JobId.ShouldBe(jobs[1].JobId);
+    }
+
     private SqlServerBackgroundJobRepository<ExportJobDefinition> CreateRepository(
         ISqlExecutionService? sql = null, TenantMode mode = TenantMode.Isolated)
         => new(sql ?? fixture.Database.SqlExecutionService, fixture.Database.TenantId,

@@ -80,7 +80,7 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
             _cacheRegistry,
             NullLogger<SqlServerTenantInitializer>.Instance);
         var factory = new SqlServerTenantServiceFactory(
-            new SingleTenantStore(),
+            SingleTenantStore(),
             NullLoggerFactory.Instance,
             new RecyclableMemoryStreamManager(),
             initializer,
@@ -108,9 +108,9 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
         return _sql.LastCommandText.ShouldNotBeNull();
     }
 
-    private sealed class SingleTenantStore : ITenantConfigurationStore
+    private static ITenantConfigurationStore SingleTenantStore()
     {
-        private readonly TenantConfiguration _tenant = new()
+        var tenant = new TenantConfiguration
         {
             TenantId = TenantId,
             DisplayName = "Test Tenant",
@@ -121,24 +121,14 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
                 ConnectionString = "Server=localhost;Database=Ignixa;Integrated Security=true;",
             },
         };
-
-        public TenantMode Mode => TenantMode.Isolated;
-
-        public ValueTask<TenantConfiguration?> GetTenantConfigurationAsync(
-            int tenantId,
-            CancellationToken ct = default) =>
-            new(tenantId == TenantId ? _tenant : null);
-
-        public ValueTask<IReadOnlyList<TenantConfiguration>> GetAllTenantsAsync(
-            CancellationToken ct = default) =>
-            new((IReadOnlyList<TenantConfiguration>)[_tenant]);
-
-        public ValueTask<TenantConfiguration?> ResolveByHostAsync(
-            string host,
-            CancellationToken cancellationToken = default) =>
-            new((TenantConfiguration?)null);
+        var store = Substitute.For<ITenantConfigurationStore>();
+        store.Mode.Returns(TenantMode.Isolated);
+        store.GetTenantConfigurationAsync(TenantId, Arg.Any<CancellationToken>()).Returns(tenant);
+        store.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([tenant]);
+        return store;
     }
 
+    /// <summary>Records the last reader command and answers it with no rows.</summary>
     private sealed class EmptySqlExecutionService : ISqlExecutionService
     {
         public string? LastCommandText { get; private set; }
@@ -155,22 +145,15 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
         }
 
         public Task<int> ExecuteNonQueryAsync(
-            int tenantId,
-            SqlCommand command,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent) =>
+            int tenantId, SqlCommand command, CancellationToken cancellationToken, SqlCommandIdempotency idempotency) =>
             Task.FromResult(0);
 
         public Task<TResult> ExecuteInTransactionAsync<TResult>(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
-            CancellationToken cancellationToken) =>
+            int tenantId, Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task ExecuteInTransactionAsync(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task> work,
-            CancellationToken cancellationToken) =>
+            int tenantId, Func<ISqlTransactionContext, CancellationToken, Task> work, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 }

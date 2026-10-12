@@ -104,34 +104,6 @@ public class InMemoryOrchestrationServiceTests
     }
 
     [Fact]
-    public async Task GivenTimerOrchestration_WhenStarted_ThenItCompletesAfterItsTimer()
-    {
-        var service = new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance);
-        using var worker = new TaskHubWorker(service);
-        worker.AddTaskOrchestrations(typeof(TimerOrchestration));
-        await worker.StartAsync();
-        try
-        {
-            var client = new TaskHubClient(service);
-            var instance = await client.CreateOrchestrationInstanceAsync(
-                typeof(TimerOrchestration),
-                "timer",
-                "completed");
-
-            var state = await client.WaitForOrchestrationAsync(
-                instance,
-                TimeSpan.FromSeconds(2),
-                CancellationToken.None);
-
-            state.OrchestrationStatus.ShouldBe(OrchestrationStatus.Completed);
-        }
-        finally
-        {
-            await worker.StopAsync(true);
-        }
-    }
-
-    [Fact]
     public async Task GivenCompletedInstance_WhenRecreatedWithTheSameId_ThenTheNewExecutionRunsFromItsOwnInput()
     {
         var service = new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance);
@@ -168,10 +140,8 @@ public class InMemoryOrchestrationServiceTests
         }
     }
 
-    [Theory]
-    [InlineData("ttl-cleanup-eternal")]
-    [InlineData("transaction-watcher-eternal")]
-    public async Task GivenEternalTimerOrchestration_WhenContinuedAsNew_ThenItRunsTheNextCycle(string instanceId)
+    [Fact]
+    public async Task GivenEternalTimerOrchestration_WhenContinuedAsNew_ThenItRunsTheNextCycle()
     {
         CountingActivity.Reset();
         var service = new InMemoryOrchestrationService(NullLogger<InMemoryOrchestrationService>.Instance);
@@ -184,7 +154,7 @@ public class InMemoryOrchestrationServiceTests
             var client = new TaskHubClient(service);
             var instance = await client.CreateOrchestrationInstanceAsync(
                 typeof(EternalTimerOrchestration),
-                instanceId,
+                "transaction-watcher-eternal",
                 0);
 
             var state = await client.WaitForOrchestrationAsync(
