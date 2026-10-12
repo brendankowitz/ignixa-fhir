@@ -627,7 +627,7 @@ serve wrong results:
 - `SyncIntervalSeconds`, `MaxStaleness`, `TransitionGrace` and `TransitionSafetyMargin` must be
   positive.
 - `TransitionGrace` must be at least `MaxStaleness + TransitionSafetyMargin`.
-- `BarrierDelay` must be at least `MaxStaleness`.
+- `BarrierDelay` must be at least `MaxStaleness` and less than half of `Reindex:StaleJobTimeout`.
 - `Reindex:DefaultMaximumNumberOfResourcesPerQuery` and `...PerWrite` must be `1`–`10000`, and
   `Reindex:DefaultMaximumConcurrency` must be `1`–`16`, the same ranges the `$reindex` request
   parameters accept.

@@ -54,4 +54,16 @@ public class ReindexOptionsValidatorTests
             "Reindex:DefaultMaximumConcurrency must be between 1 and 16."
         ]);
     }
+
+    [Fact]
+    public void GivenBarrierDelayOfHalfTheStaleJobTimeout_WhenValidated_ThenItIsRejected()
+    {
+        var result = ReindexOptionsValidator.Validate(new ReindexOptions
+        {
+            BarrierDelay = TimeSpan.FromMinutes(15),
+            StaleJobTimeout = TimeSpan.FromMinutes(30)
+        });
+
+        result.Failures.ShouldBe(["Reindex:BarrierDelay must be less than half of Reindex:StaleJobTimeout."]);
+    }
 }

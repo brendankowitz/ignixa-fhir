@@ -1,3 +1,4 @@
+using DurableTask.Core.Serializing;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
@@ -132,6 +133,26 @@ public class ReindexRangeProcessorTests
     }
 
     [Fact]
+    public async Task GivenDefinitionsStillBehindAfterRefresh_WhenRangeIsProcessed_ThenItReturnsNotReadyWithoutReadingOrThrowing()
+    {
+        var store = SinglePageStore();
+        var versions = Substitute.For<IFhirVersionContext>();
+        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
+            .Returns(new DefinitionsHandle(Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 41));
+        var processor = CreateProcessor(new FhirRequestContextAccessor(), store, versions);
+
+        var result = await processor.ProcessAsync(
+            new ReindexRangeInput("job", 1, "Patient", 1, 100, 42, 1000, 0),
+            CancellationToken.None);
+
+        // The not-ready signal must survive the converter DurableTask uses at the activity boundary.
+        var crossed = JsonDataConverter.Default.Deserialize<ReindexRangeOutput>(JsonDataConverter.Default.Serialize(result));
+        crossed.IsDefinitionsNotReady.ShouldBeTrue();
+        crossed.StaleDefinitionsEventId.ShouldBe(41);
+        await store.DidNotReceiveWithAnyArgs().ReadRangeAsync(default!, default, default, default, default, default);
+    }
+
+    [Fact]
     public async Task GivenRangeIsProcessed_WhenResourcesAreExtracted_ThenTheBackgroundRequestContextIsSetAndRestoredAfterwards()
     {
         var caller = new FhirRequestContext { TenantId = 99 };
@@ -186,6 +207,17 @@ public class ReindexRangeProcessorTests
         ISearchIndexer indexer,
         IReindexStore store)
     {
+        var versions = Substitute.For<IFhirVersionContext>();
+        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
+            .Returns(new DefinitionsHandle(indexer, FhirVersion.R4.GetSchemaProvider(), 42));
+        return CreateProcessor(accessor, store, versions);
+    }
+
+    private static ReindexRangeProcessor CreateProcessor(
+        IFhirRequestContextAccessor accessor,
+        IReindexStore store,
+        IFhirVersionContext versions)
+    {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
             .Returns(new TenantConfiguration
@@ -196,9 +228,6 @@ public class ReindexRangeProcessorTests
             });
         var stores = Substitute.For<IReindexStoreFactory>();
         stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(indexer, FhirVersion.R4.GetSchemaProvider(), 42));
         return new ReindexRangeProcessor(
             stores,
             tenants,

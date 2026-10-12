@@ -16,7 +16,7 @@ namespace Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 public sealed class ReindexOrchestration
     : TaskOrchestration<ReindexOrchestrationOutput, ReindexOrchestrationInput>
 {
-    internal const int WavesPerProgressSnapshot = 5;
+    private const int WavesPerProgressSnapshot = 5;
 
     public override async Task<ReindexOrchestrationOutput> RunTask(
         OrchestrationContext context,
@@ -37,7 +37,7 @@ public sealed class ReindexOrchestration
             }
             catch (Exception ex)
             {
-                return await CompleteFailureAsync(context, input, state, ex);
+                return await CompleteAsync(context, input, state, ex);
             }
 
             scheduledActivities++;
@@ -59,33 +59,9 @@ public sealed class ReindexOrchestration
 
         if (state.Phase == ReindexPhase.BarrierDelay)
         {
-            try
-            {
-                // A long delay is split so the job's heartbeat stays fresher than the stale-job timeout.
-                var remaining = input.BarrierDelay;
-                var longestWait = input.StaleJobTimeout / 2;
-                do
-                {
-                    var delay = remaining > longestWait ? longestWait : remaining;
-                    await context.CreateTimer(context.CurrentUtcDateTime.Add(delay), true);
-                    remaining -= delay;
-                    if (remaining > TimeSpan.Zero)
-                    {
-                        if (!await PersistProgressAsync(context, input, state))
-                        {
-                            return Stopped(state);
-                        }
-
-                        scheduledActivities++;
-                    }
-                }
-                while (remaining > TimeSpan.Zero);
-            }
-            catch (Exception ex)
-            {
-                return await CompleteFailureAsync(context, input, state, ex);
-            }
-
+            // Startup validation keeps the delay under half the stale-job timeout, so the heartbeat written by the
+            // start stays fresh through it.
+            await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
             state = state with { Phase = ReindexPhase.Draining };
             if (!await PersistProgressAsync(context, input, state))
             {
@@ -122,7 +98,7 @@ public sealed class ReindexOrchestration
                 }
                 catch (Exception ex)
                 {
-                    return await CompleteFailureAsync(context, input, state, ex);
+                    return await CompleteAsync(context, input, state, ex);
                 }
 
                 if (!open)
@@ -142,32 +118,15 @@ public sealed class ReindexOrchestration
             await WaitForNextPollAsync(context, state);
         }
 
-        var tenants = state.Tenants.Select(tenant => tenant.Progress).ToArray();
-
-        var completed = await context.ScheduleWithRetry<CompleteReindexOutput>(
-            typeof(CompleteReindexActivity),
-            CreateRetryOptions(),
-            new CompleteReindexInput(
-                input.JobId,
-                input.TargetEventId,
-                input.Targets,
-                tenants,
-                state.IgnoredLifecycleEvents));
-
-        return new ReindexOrchestrationOutput(
-            completed.Success,
-            tenants,
-            state.IgnoredLifecycleEvents
-                .Concat(completed.IgnoredLifecycleEvents)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray());
+        return await CompleteAsync(context, input, state, error: null);
     }
 
-    private static async Task<ReindexOrchestrationOutput> CompleteFailureAsync(
+    /// <summary>Finalizes the job; an orchestration-level <paramref name="error"/> fails it with that message.</summary>
+    private static async Task<ReindexOrchestrationOutput> CompleteAsync(
         OrchestrationContext context,
         ReindexOrchestrationInput input,
         ReindexOrchestrationState state,
-        Exception error)
+        Exception? error)
     {
         var tenants = state.Tenants.Select(tenant => tenant.Progress).ToArray();
         var completed = await context.ScheduleWithRetry<CompleteReindexOutput>(
@@ -180,7 +139,7 @@ public sealed class ReindexOrchestration
                 tenants,
                 state.IgnoredLifecycleEvents)
             {
-                FailureMessage = $"Reindex orchestration failed: {error.Message}"
+                FailureMessage = error is null ? null : $"Reindex orchestration failed: {error.Message}"
             });
         return new ReindexOrchestrationOutput(
             completed.Success,
