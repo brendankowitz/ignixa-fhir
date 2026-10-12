@@ -226,7 +226,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             failedResource.resourceType[valueString]="Observation"
             failedResource.id[valueString]="second"
             failedResource.reason[valueString]="second failure"
-            """);
+            """.ReplaceLineEndings("\n"));
     }
 
     [Theory]
