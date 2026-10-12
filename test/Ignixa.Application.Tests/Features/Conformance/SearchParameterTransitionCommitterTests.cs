@@ -1,285 +1,200 @@
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Abstractions;
-using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
-using Ignixa.Search.Definition;
-using Microsoft.Extensions.Logging.Abstractions;
+using Ignixa.Domain.Abstractions;
 using NSubstitute;
 using Shouldly;
-using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
+using static Ignixa.Application.Tests.Features.Conformance.TestPackages;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
+/// <summary>Spec §4.4 phase two, and §9 concurrent writers of the conformance stream.</summary>
 public class SearchParameterTransitionCommitterTests
 {
+    private const int ShadowCount = 70;
+    private static readonly string OverrideCanonical = Canonical("Patient-identifier");
+
     [Fact]
     public async Task GivenMatchingStagedTransition_WhenCommitted_ThenItPromotesTheParameterAndRequestsReindex()
     {
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
-        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 20, Arg.Any<CancellationToken>())
-            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(
-                [new SourceEvent(
-                    30,
-                    "transition:20",
-                    nameof(SearchParameterTransitionCommitted),
-                    call.Arg<IEnumerable<NewSourceEvent>>().Single().Data,
-                    DateTimeOffset.UtcNow)]));
-        var trigger = Substitute.For<IReindexTrigger>();
-        var committer = new SearchParameterTransitionCommitter(
-            store,
-            state,
-            trigger,
-            TestConformanceRefresher.Create(state));
+        using var harness = new Harness();
+        var hideEventId = harness.SeedShadow();
 
-        var committed = await committer.CommitAsync(20, CancellationToken.None);
+        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
 
         committed.ShouldBeTrue();
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe("http://example.org/SearchParameter/Patient-identifier");
-        state.GetSearchParameter("Patient", "identifier")!.Status.ShouldBe(SearchParameterStatus.Pending);
-        await trigger.Received(1).RequestReindexAsync("Search parameter transition 20 committed", Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task GivenAStagedOverrideIsRemovedBeforeCommit_WhenTheNewHideEventIsCommitted_ThenTheBaseIsRestored()
-    {
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(
-            10,
-            "http://hl7.org/fhir/SearchParameter/Patient-identifier",
-            null,
-            "hl7.fhir.r4.core@4.0.1"));
-        state.ApplyAndTrack(Activation(
-            20,
-            "http://example.org/SearchParameter/Patient-identifier",
-            "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
-        state.ApplyAndTrack(Deactivation(30, "http://example.org/SearchParameter/Patient-identifier"));
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 30, Arg.Any<CancellationToken>())
-            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(
-                [new SourceEvent(
-                    40,
-                    "transition:30",
-                    nameof(SearchParameterTransitionCommitted),
-                    call.Arg<IEnumerable<NewSourceEvent>>().Single().Data,
-                    DateTimeOffset.UtcNow)]));
-        var committer = new SearchParameterTransitionCommitter(
-            store,
-            state,
-            Substitute.For<IReindexTrigger>(),
-            TestConformanceRefresher.Create(state));
-
-        var committed = await committer.CommitAsync(30, CancellationToken.None);
-
-        committed.ShouldBeTrue();
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(
-            "http://hl7.org/fhir/SearchParameter/Patient-identifier");
-        state.GetSearchParameter("Patient", "identifier")!.Status.ShouldBe(SearchParameterStatus.Pending);
+        var owner = harness.State.GetSearchParameter("Patient", "identifier")!;
+        owner.Canonical.ShouldBe(OverrideCanonical);
+        owner.Status.ShouldBe(SearchParameterStatus.Pending);
+        await harness.Trigger.Received(1).RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task GivenAlreadyCommittedTransition_WhenCommittedAgain_ThenItCompletesWithoutAppendingOrTriggering()
     {
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
-        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
-        state.ApplyAndTrack(new SourceEvent(
-            30,
-            "transition:20",
-            nameof(SearchParameterTransitionCommitted),
-            new SearchParameterTransitionCommitted(1, [20], [20]),
-            DateTimeOffset.UtcNow));
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        var trigger = Substitute.For<IReindexTrigger>();
-        var committer = new SearchParameterTransitionCommitter(
-            store,
-            state,
-            trigger,
-            TestConformanceRefresher.Create(state));
+        using var harness = new Harness();
+        var hideEventId = harness.SeedShadow();
+        harness.Seed(Committed(1, hideEventId));
 
-        var committed = await committer.CommitAsync(20, CancellationToken.None);
+        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
 
         committed.ShouldBeFalse();
-        await store.DidNotReceive().AppendAsync(
-            Arg.Any<IEnumerable<NewSourceEvent>>(),
-            Arg.Any<long>(),
-            Arg.Any<CancellationToken>());
-        await trigger.DidNotReceive().RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        harness.Log.AppendAttempts.ShouldBe(0);
+        await harness.Trigger.DidNotReceiveWithAnyArgs().RequestReindexAsync(default!, default);
     }
 
     [Fact]
     public async Task GivenAStaleCandidateThatWouldBeIgnored_WhenCommitted_ThenItDoesNotAppendANoOpEvent()
     {
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
-        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
-        state.FindByCanonical("http://hl7.org/fhir/SearchParameter/Patient-identifier")!
-            .DeactivationEventId = 30;
-        state.GetTransitionCandidates(20).Count.ShouldBe(1);
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 20, Arg.Any<CancellationToken>())
-            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(
-                [new SourceEvent(
-                    30,
-                    "transition:20",
-                    nameof(SearchParameterTransitionCommitted),
-                    call.Arg<IEnumerable<NewSourceEvent>>().Single().Data,
-                    DateTimeOffset.UtcNow)]));
-        var committer = new SearchParameterTransitionCommitter(
-            store,
-            state,
-            Substitute.For<IReindexTrigger>(),
-            TestConformanceRefresher.Create(state));
+        using var harness = new Harness();
+        var hideEventId = harness.SeedShadow();
+        harness.State.FindByCanonical(BaseIdentifier)!.DeactivationEventId = hideEventId + 1;
+        harness.State.GetTransitionCandidates(hideEventId).Count.ShouldBe(1);
 
-        var committed = await committer.CommitAsync(20, CancellationToken.None);
+        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
 
         committed.ShouldBeFalse();
-        await store.DidNotReceive().AppendAsync(
-            Arg.Any<IEnumerable<NewSourceEvent>>(),
-            Arg.Any<long>(),
-            Arg.Any<CancellationToken>());
+        harness.Log.AppendAttempts.ShouldBe(0);
     }
 
     [Fact]
     public async Task GivenUnrelatedEventWinsFirstAppend_WhenCommitted_ThenItCatchesUpAndRetries()
     {
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
-        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(
-                EmptyEvents(),
-                EmptyEvents(),
-                Events(new SourceEvent(30, "unrelated", "Unrelated", new object(), DateTimeOffset.UtcNow)));
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 20, Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<SourceEvent>>(new SourceEventConcurrencyException(20, 30)));
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 30, Arg.Any<CancellationToken>())
-            .Returns(call => Task.FromResult<IReadOnlyList<SourceEvent>>(
-                [new SourceEvent(
-                    40,
-                    "transition:20",
-                    nameof(SearchParameterTransitionCommitted),
-                    call.Arg<IEnumerable<NewSourceEvent>>().Single().Data,
-                    DateTimeOffset.UtcNow)]));
-        var trigger = Substitute.For<IReindexTrigger>();
-        var committer = new SearchParameterTransitionCommitter(
-            store,
-            state,
-            trigger,
-            TestConformanceRefresher.Create(state));
+        using var harness = new Harness();
+        var hideEventId = harness.SeedShadow();
+        harness.Log.OtherWriters.Enqueue(PackageActivated("unrelated"));
 
-        var committed = await committer.CommitAsync(20, CancellationToken.None);
+        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
 
         committed.ShouldBeTrue();
-        await store.Received(1).AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 30, Arg.Any<CancellationToken>());
-        await trigger.Received(1).RequestReindexAsync("Search parameter transition 20 committed", Arg.Any<CancellationToken>());
+        harness.Log.AppendAttempts.ShouldBe(2);
+        harness.Log.Appends.ShouldHaveSingleItem();
+        await harness.Trigger.Received(1).RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task GivenNewerTransitionMakesCandidateObsolete_WhenCommitted_ThenItStopsWithoutRetryingAppend()
     {
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
-        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(
-                EmptyEvents(),
-                Events(new SourceEvent(
-                    30,
-                    "transition:20",
-                    nameof(SearchParameterTransitionCommitted),
-                    new SearchParameterTransitionCommitted(1, [20], [20]),
-                    DateTimeOffset.UtcNow)));
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 20, Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<SourceEvent>>(new SourceEventConcurrencyException(20, 30)));
-        var trigger = Substitute.For<IReindexTrigger>();
-        var committer = new SearchParameterTransitionCommitter(
-            store,
-            state,
-            trigger,
-            TestConformanceRefresher.Create(state));
+        using var harness = new Harness();
+        var hideEventId = harness.SeedShadow();
+        harness.Log.OtherWriters.Enqueue(Committed(1, hideEventId));
 
-        var committed = await committer.CommitAsync(20, CancellationToken.None);
+        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
 
         committed.ShouldBeFalse();
-        await store.Received(1).AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), 20, Arg.Any<CancellationToken>());
-        await trigger.DidNotReceive().RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        harness.Log.AppendAttempts.ShouldBe(1);
+        harness.Log.Appends.ShouldBeEmpty();
+        await harness.Trigger.DidNotReceiveWithAnyArgs().RequestReindexAsync(default!, default);
     }
 
     [Fact]
     public async Task GivenPersistentConcurrencyConflicts_WhenCommitted_ThenItThrowsAfterBoundedRetries()
     {
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(Activation(10, "http://hl7.org/fhir/SearchParameter/Patient-identifier", null, "hl7.fhir.r4.core@4.0.1"));
-        state.ApplyAndTrack(Activation(20, "http://example.org/SearchParameter/Patient-identifier", "http://hl7.org/fhir/SearchParameter/Patient-identifier"));
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        store.AppendAsync(Arg.Any<IEnumerable<NewSourceEvent>>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<SourceEvent>>(new SourceEventConcurrencyException(20, 30)));
-        var committer = new SearchParameterTransitionCommitter(
-            store,
-            state,
-            Substitute.For<IReindexTrigger>(),
-            TestConformanceRefresher.Create(state));
-
-        await Should.ThrowAsync<SourceEventConcurrencyException>(() => committer.CommitAsync(20, CancellationToken.None));
-
-        await store.Received(3).AppendAsync(
-            Arg.Any<IEnumerable<NewSourceEvent>>(),
-            Arg.Any<long>(),
-            Arg.Any<CancellationToken>());
-    }
-
-    private static SourceEvent Activation(long eventId, string canonical, string? overrides, string sourcePackage = "custom.package@1.0") =>
-        new(
-            eventId,
-            "transition-test",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                canonical,
-                "identifier",
-                "Patient",
-                "Patient.identifier",
-                SearchParamType.Token,
-                sourcePackage,
-                overrides is null ? null : new OverrideInfo(overrides, 1),
-                1,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow);
-
-    private static SourceEvent Deactivation(long eventId, string canonical) =>
-        new(
-            eventId,
-            "transition-test",
-            nameof(SearchParameterDeactivated),
-            new SearchParameterDeactivated(canonical, "identifier", "Patient", "test"),
-            DateTimeOffset.UtcNow);
-
-    private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
-    {
-        await Task.CompletedTask;
-        yield break;
-    }
-
-    private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
-    {
-        foreach (var evt in events)
+        using var harness = new Harness();
+        var hideEventId = harness.SeedShadow();
+        foreach (var index in Enumerable.Range(1, 5))
         {
-            yield return evt;
+            harness.Log.OtherWriters.Enqueue(PackageActivated($"unrelated-{index}"));
         }
 
-        await Task.CompletedTask;
+        await Should.ThrowAsync<SourceEventConcurrencyException>(() =>
+            harness.Committer().CommitAsync(hideEventId, CancellationToken.None));
+
+        harness.Log.AppendAttempts.ShouldBe(3);
+    }
+
+    // N6: one package activation is one phase-two transition, however many codes it hides.
+    [Fact]
+    public async Task GivenSeventyShadowsInOneActivation_WhenTheBatchIsCommitted_ThenOneAppendOneReindexRequestAndOneRefreshCommitThemAll()
+    {
+        using var harness = new Harness();
+        harness.SeedPackage("seed", shadowsSeed: false);
+        var batchId = harness.SeedPackage("shadow", shadowsSeed: true);
+
+        var committed = await harness.Committer().CommitAsync(batchId, CancellationToken.None);
+
+        committed.ShouldBeTrue();
+        harness.Log.Appends.ShouldHaveSingleItem().Count.ShouldBe(ShadowCount);
+        Enumerable.Range(1, ShadowCount).ShouldAllBe(index =>
+            harness.State.GetSearchParameter("Patient", Code(index))!.Canonical == Canonical($"shadow-{index}") &&
+            harness.State.GetSearchParameter("Patient", Code(index))!.Status == SearchParameterStatus.Pending);
+        await harness.Trigger.Received(1).RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await harness.Tenants.Received(1).GetAllTenantsAsync(Arg.Any<CancellationToken>());
+        harness.State.GetTransitionHideEventIds().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenALaterActivationShadowsACodeOfAnUncommittedBatch_WhenBothBatchesCommit_ThenEachCommitsOnlyTheCodesItStillHides(
+        bool laterBatchCommitsFirst)
+    {
+        using var harness = new Harness();
+        harness.SeedPackage("seed", shadowsSeed: false, count: 2);
+        var firstBatch = harness.SeedPackage("first", shadowsSeed: true, count: 2);
+        var secondBatch = harness.SeedPackage("second", shadowsSeed: true, count: 1);
+        var committer = harness.Committer();
+
+        harness.State.GetTransitionParameters(firstBatch).Select(parameter => parameter.Code).Distinct().ShouldBe([Code(2)]);
+        harness.State.GetTransitionParameters(secondBatch).Select(parameter => parameter.Code).Distinct().ShouldBe([Code(1)]);
+        foreach (var batch in laterBatchCommitsFirst ? new[] { secondBatch, firstBatch } : [firstBatch, secondBatch])
+        {
+            (await committer.CommitAsync(batch, CancellationToken.None)).ShouldBeTrue();
+        }
+
+        harness.Log.Appends.Count.ShouldBe(2);
+        harness.Log.Appends.ShouldAllBe(append => append.Count == 1);
+        harness.State.GetSearchParameter("Patient", Code(1))!.Canonical.ShouldBe(Canonical("second-1"));
+        harness.State.GetSearchParameter("Patient", Code(2))!.Canonical.ShouldBe(Canonical("first-2"));
+        harness.State.GetSearchParameter("Patient", Code(1))!.Status.ShouldBe(SearchParameterStatus.Pending);
+        harness.State.GetSearchParameter("Patient", Code(2))!.Status.ShouldBe(SearchParameterStatus.Pending);
+        harness.State.FindByCanonical(Canonical("first-1"))!.Status.ShouldBe(SearchParameterStatus.Disabled);
+        harness.State.GetTransitionHideEventIds().ShouldBeEmpty();
+    }
+
+    private static string Code(int index) => $"code-{index}";
+
+    private sealed class Harness : IDisposable
+    {
+        public InMemoryEventLog Log { get; } = new();
+
+        public ConformanceState State { get; } = new();
+
+        public IReindexTrigger Trigger { get; } = Substitute.For<IReindexTrigger>();
+
+        public ITenantConfigurationStore Tenants { get; } = TestConformanceRefresher.Tenants();
+
+        public SearchParameterTransitionCommitter Committer() =>
+            new(Log, State, Trigger, TestConformanceRefresher.Create(State, tenants: Tenants));
+
+        public long Seed(object data) => Log.Seed(State, data);
+
+        /// <summary>Seeds the base Patient.identifier and an override staged against it; returns its hide event id.</summary>
+        public long SeedShadow()
+        {
+            Seed(Activated(BaseIdentifier, "identifier", 1, package: CorePackage));
+            return Seed(Activated(OverrideCanonical, "identifier", 1, BaseIdentifier));
+        }
+
+        /// <summary>Seeds one package activation of <paramref name="count"/> codes; returns its PackageActivated id.</summary>
+        public long SeedPackage(string package, bool shadowsSeed, int count = ShadowCount)
+        {
+            var canonicals = Enumerable.Range(1, count).Select(index => Canonical($"{package}-{index}")).ToArray();
+            for (var index = 1; index <= count; index++)
+            {
+                Seed(Activated(
+                    canonicals[index - 1],
+                    Code(index),
+                    index,
+                    shadowsSeed ? Canonical($"seed-{index}") : null,
+                    $"{package}@1.0.0",
+                    expression: "Patient.identifier"));
+            }
+
+            return Seed(PackageActivated(package, "1.0.0", canonicals));
+        }
+
+        public void Dispose() => State.Dispose();
     }
 }
