@@ -25,8 +25,7 @@ public class ReindexTargetResolverTests
             [pending],
             ["Patient", "Observation"]);
 
-        result.Targets.Single().AffectedResourceTypes.ShouldBe(["Observation", "Patient"], ignoreOrder: false);
-        result.ResourceTypes.ShouldBe(["Observation", "Patient"], ignoreOrder: false);
+        result.Single().AffectedResourceTypes.ShouldBe(["Observation", "Patient"], ignoreOrder: false);
     }
 
     [Fact]
@@ -44,8 +43,7 @@ public class ReindexTargetResolverTests
                 ["DomainResource"] = ["Observation", "Patient"]
             });
 
-        result.Targets.Single().AffectedResourceTypes.ShouldBe(["Observation", "Patient"]);
-        result.ResourceTypes.ShouldBe(["Observation", "Patient"]);
+        result.Single().AffectedResourceTypes.ShouldBe(["Observation", "Patient"]);
     }
 
     [Fact]
@@ -60,16 +58,15 @@ public class ReindexTargetResolverTests
             [pending],
             ["Patient", "Practitioner"]);
 
-        result.Targets.Single().AffectedResourceTypes.ShouldBe(["Patient"]);
-        result.ResourceTypes.ShouldBe(["Patient"]);
+        result.Single().AffectedResourceTypes.ShouldBe(["Patient"]);
     }
 
     [Fact]
-    public void GivenNoPendingParametersAndNoMaintenanceTypes_WhenTargetsAreResolved_ThenNothingToDoIsReturned()
+    public void GivenNoPendingParameters_WhenTargetsAreResolved_ThenNothingIsTargeted()
     {
         var result = ReindexTargetResolver.Resolve([], ["Patient"]);
 
-        result.HasWork.ShouldBeFalse();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -79,9 +76,9 @@ public class ReindexTargetResolverTests
 
         var result = ReindexTargetResolver.Resolve([pending], ["Patient"]);
 
-        result.Targets.Single().FhirVersion.ShouldBe("5.0");
-        result.Targets.Single().AppliesToTenant("5.0.0").ShouldBeTrue();
-        result.Targets.Single().AppliesToTenant("4.0").ShouldBeFalse();
+        result.Single().FhirVersion.ShouldBe("5.0");
+        result.Single().AppliesToTenant("5.0.0").ShouldBeTrue();
+        result.Single().AppliesToTenant("4.0").ShouldBeFalse();
     }
 
     [Theory]
@@ -100,7 +97,7 @@ public class ReindexTargetResolverTests
         var plan = await resolver.ResolveAsync(CancellationToken.None);
 
         plan.TenantIds.ShouldBe(expectedTenantIds);
-        var target = plan.Resolution.Targets.ShouldHaveSingleItem();
+        var target = plan.Targets.ShouldHaveSingleItem();
         target.FhirVersion.ShouldBe(fhirVersion);
         // ActorDefinition exists only from R5: an R4 parameter must not reach it, an R5 one must.
         target.AffectedResourceTypes.Contains("ActorDefinition").ShouldBe(fhirVersion != "4.0");
@@ -121,13 +118,13 @@ public class ReindexTargetResolverTests
         var plan = await resolver.ResolveAsync(CancellationToken.None);
 
         plan.TenantIds.ShouldBe([1, 2]);
-        plan.Resolution.Targets.Count.ShouldBe(2);
-        plan.Resolution.Targets.Single(target => target.FhirVersion == "4.0")
+        plan.Targets.Count.ShouldBe(2);
+        plan.Targets.Single(target => target.FhirVersion == "4.0")
             .AffectedResourceTypes.ShouldNotContain("ActorDefinition");
-        plan.Resolution.Targets.Single(target => target.FhirVersion == "5.0")
+        plan.Targets.Single(target => target.FhirVersion == "5.0")
             .AffectedResourceTypes.ShouldBe(["ActorDefinition"]);
-        plan.Resolution.ResourceTypes.ShouldContain("ActorDefinition");
-        plan.Resolution.ResourceTypes.ShouldContain("Patient");
+        plan.ResourceTypes.ShouldContain("ActorDefinition");
+        plan.ResourceTypes.ShouldContain("Patient");
     }
 
     private static ReindexTargetResolver CreateResolver(

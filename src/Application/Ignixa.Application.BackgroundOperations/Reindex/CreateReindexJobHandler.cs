@@ -81,7 +81,7 @@ public sealed class CreateReindexJobHandler(
             return new NoReindexWorkResult("No active tenant is configured for reindexing.");
         }
 
-        if (!plan.Resolution.HasWork)
+        if (!plan.HasWork)
         {
             return new NoReindexWorkResult("No resources need reindexing.");
         }
@@ -89,7 +89,7 @@ public sealed class CreateReindexJobHandler(
         if (request.IsAutomatic &&
             await GetLatestFinishedAsync(cancellationToken) is { } finished &&
             !ReindexStartRule.RequiresJob(
-                plan.Resolution.Targets.Select(target => target.ActivationEventId),
+                plan.Targets.Select(target => target.ActivationEventId),
                 finished.Definition.TargetEventId))
         {
             return new NoReindexWorkResult(
@@ -101,8 +101,8 @@ public sealed class CreateReindexJobHandler(
         {
             TargetEventId = plan.TargetEventId,
             TenantIds = plan.TenantIds,
-            ResourceTypes = plan.Resolution.ResourceTypes,
-            SearchParameters = plan.Resolution.Targets,
+            ResourceTypes = plan.ResourceTypes,
+            SearchParameters = plan.Targets,
             MaximumNumberOfResourcesPerQuery = parameters.MaximumNumberOfResourcesPerQuery,
             MaximumNumberOfResourcesPerWrite = parameters.MaximumNumberOfResourcesPerWrite,
             MaximumConcurrency = parameters.MaximumConcurrency,
@@ -133,7 +133,7 @@ public sealed class CreateReindexJobHandler(
                     _options.BarrierDelay,
                     definition.TenantIds,
                     definition.ResourceTypes,
-                    plan.Resolution.Targets,
+                    plan.Targets,
                     parameters,
                     _options.DrainWarningAfter,
                     _options.StaleJobTimeout,

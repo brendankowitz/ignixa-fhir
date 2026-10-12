@@ -1,3 +1,5 @@
+using Ignixa.Domain.Models;
+
 namespace Ignixa.Application.BackgroundOperations.Reindex;
 
 /// <summary>
@@ -7,4 +9,13 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 public sealed record ReindexTargetPlan(
     IReadOnlyList<int> TenantIds,
     long TargetEventId,
-    ReindexTargetResolution Resolution);
+    IReadOnlyList<ReindexParameterDefinition> Targets)
+{
+    /// <summary>Every type a target affects, once each, in ordinal order.</summary>
+    public IReadOnlyList<string> ResourceTypes { get; } = Targets.SelectMany(target => target.AffectedResourceTypes)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.Ordinal)
+        .ToArray();
+
+    public bool HasWork => Targets.Count > 0;
+}

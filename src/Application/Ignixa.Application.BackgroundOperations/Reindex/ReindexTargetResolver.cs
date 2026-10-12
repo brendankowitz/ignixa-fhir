@@ -48,29 +48,26 @@ public sealed class ReindexTargetResolver(
                 targets.AddRange(Resolve(
                     parameters.Where(parameter => parameter.FhirVersion is not null && parameter.AppliesTo(version)),
                     schema.ConcreteResourceTypes,
-                    schema.Expansions).Targets);
+                    schema.Expansions));
             }
 
             targets.AddRange(Resolve(
                 parameters.Where(parameter => parameter.FhirVersion is null),
                 schemas.Values.SelectMany(schema => schema.ConcreteResourceTypes).ToHashSet(StringComparer.OrdinalIgnoreCase),
-                Union(schemas.Values.Select(schema => schema.Expansions))).Targets);
+                Union(schemas.Values.Select(schema => schema.Expansions))));
 
             var targetedTenants = targets.Count == 0
                 ? tenants
                 : tenants.Where(tenant => targets.Any(target => target.AppliesToTenant(tenant.FhirVersion))).ToArray();
-            var resourceTypes = targets.SelectMany(target => target.AffectedResourceTypes)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Order(StringComparer.Ordinal)
-                .ToArray();
             return new ReindexTargetPlan(
                 targetedTenants.Select(tenant => tenant.TenantId).ToArray(),
                 conformanceState.LastProcessedEventId,
-                new ReindexTargetResolution(targets, resourceTypes));
+                targets);
         }
     }
 
-    public static ReindexTargetResolution Resolve(
+    /// <summary>The Pending parameters among <paramref name="parameters"/>, with their affected concrete types.</summary>
+    public static IReadOnlyList<ReindexParameterDefinition> Resolve(
         IEnumerable<ActiveSearchParameter> parameters,
         IReadOnlyCollection<string> concreteResourceTypes,
         IReadOnlyDictionary<string, IReadOnlyCollection<string>>? abstractResourceTypeExpansions = null)
@@ -81,7 +78,7 @@ public sealed class ReindexTargetResolver(
         var concrete = concreteResourceTypes
             .Order(StringComparer.Ordinal)
             .ToArray();
-        var targets = parameters
+        return parameters
             .Where(parameter => parameter.Status == SearchParameterStatus.Pending)
             .Select(parameter =>
             {
@@ -111,13 +108,6 @@ public sealed class ReindexTargetResolver(
                         parameter.FhirVersion);
             })
             .ToArray();
-
-        var resourceTypes = targets.SelectMany(target => target.AffectedResourceTypes)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        return new ReindexTargetResolution(targets, resourceTypes);
     }
 
     // The concrete types of one version, across its tenants' schemas (a tenant's packages may add types).
