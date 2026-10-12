@@ -240,7 +240,7 @@ public class PackageSearchParameterInheritanceTests
     [Fact]
     public async Task GivenLaggingInstancesAtEachShadowTransitionCut_WhenDefinitionsReplay_ThenNoPairBindsDifferentStorageIdentity()
     {
-        var overrideCanonical = TestPackages.Canonical("shadow-identifier");
+        var overrideCanonical = TestPackages.Canonical("shadow.package");
         var events = await RecordShadowLifecycleAsync(overrideCanonical);
         events.Select(row => row.Data.GetType().Name).ShouldBe(
         [
@@ -304,14 +304,7 @@ public class PackageSearchParameterInheritanceTests
         var log = new InMemoryEventLog();
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(log, CancellationToken.None);
-        var pipeline = TestPackageActivationPipeline.Create(
-            TestPackages.Repository(TestPackages.SearchParameter(
-                "shadow.package",
-                overrideCanonical,
-                expression: "Patient.identifier",
-                derivedFrom: TestPackages.BaseIdentifier)),
-            log,
-            state);
+        var pipeline = TestPackageActivationPipeline.Create(TestPackages.Repository(TestPackages.Shadow("shadow.package")), log, state);
         (await pipeline.ActivateAsync("shadow.package", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
 
         var transitionId = log.Events.Single(row => row.Data is PackageActivated).EventId;

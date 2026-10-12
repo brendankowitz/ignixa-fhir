@@ -272,38 +272,28 @@ public class PackageActivationPipelineTests
         lease.IsHeld.ShouldBeFalse();
     }
 
-    [Fact]
-    public async Task GivenAnotherWriterAppendsFirst_WhenActivated_ThenItCatchesUpAndActivatesAfterTheWinner()
+    // §9: an append lost to another writer catches up and retries against the winner, a bounded number of times.
+    [Theory]
+    [InlineData(1, true, 2)]
+    [InlineData(5, false, 3)]
+    public async Task GivenOtherWritersWinTheAppend_WhenActivated_ThenItCatchesUpAndRetriesUpToTheBoundBeforeAConformanceConflict(
+        int lostAppends,
+        bool expectActivated,
+        int expectedAttempts)
     {
         using var harness = new Harness();
-        harness.Log.OtherWriters.Enqueue(PackageActivated("other"));
-        var pipeline = harness.Pipeline(Custom());
-
-        var result = await ActivateAsync(pipeline, "test.custom");
-
-        result.Success.ShouldBeTrue(Describe(result));
-        harness.State.Packages.ShouldContainKey("other@1.0.0");
-        harness.State.Packages.ShouldContainKey("test.custom@1.0.0");
-        harness.Log.AppendAttempts.ShouldBe(2);
-    }
-
-    [Fact]
-    public async Task GivenEveryAppendLosesTheRace_WhenActivated_ThenItFailsWithAConformanceConflictAfterBoundedRetries()
-    {
-        using var harness = new Harness();
-        foreach (var index in Enumerable.Range(1, 5))
+        foreach (var index in Enumerable.Range(1, lostAppends))
         {
             harness.Log.OtherWriters.Enqueue(PackageActivated($"other-{index}"));
         }
 
-        var pipeline = harness.Pipeline(Custom());
+        var result = await ActivateAsync(harness.Pipeline(Custom()), "test.custom");
 
-        var result = await ActivateAsync(pipeline, "test.custom");
-
-        result.Success.ShouldBeFalse();
-        result.Issues.ShouldContain(issue => issue.Code == "CONFORMANCE_CONFLICT");
-        harness.State.Packages.ShouldNotContainKey("test.custom@1.0.0");
-        harness.Log.AppendAttempts.ShouldBe(3);
+        result.Success.ShouldBe(expectActivated, Describe(result));
+        result.Issues.Any(issue => issue.Code == "CONFORMANCE_CONFLICT").ShouldBe(!expectActivated);
+        harness.State.Packages.ShouldContainKey("other-1@1.0.0");
+        harness.State.Packages.ContainsKey("test.custom@1.0.0").ShouldBe(expectActivated);
+        harness.Log.AppendAttempts.ShouldBe(expectedAttempts);
     }
 
     // N6: one package activation is one phase-two transition, however many codes it hides.

@@ -66,57 +66,29 @@ public class ConformanceLifecycleTests
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
     }
 
-    [Fact]
-    public void GivenActiveOverride_WhenDeactivatedAndCommitted_ThenBaseIsStagedThenRestoredAsPending()
+    // Removing an override is itself two-phase: the base is restaged by the new hide event, and the outgoing owner
+    // keeps extraction until that event's transition commits.
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public void GivenAnOverride_WhenItOrItsPackageIsDeactivatedAndCommitted_ThenTheBaseIsRestagedThenRestoredAsPending(
+        bool overrideEnabled,
+        bool packageDeactivated)
     {
-        using var state = CreateStateWithEnabledOverride();
+        using var state = overrideEnabled ? CreateStateWithEnabledOverride() : CreateStateWithStagedOverride();
 
-        state.Apply(Hide(40, OverrideCanonical));
+        state.Apply(packageDeactivated ? At(40, PackageDeactivated("custom.package")) : Hide(40, OverrideCanonical));
 
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
         state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(40);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(OverrideCanonical);
+        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(overrideEnabled ? OverrideCanonical : BaseCanonical);
 
         state.Apply(Commit(50, 40));
 
         state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
         state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void GivenStagedOverride_WhenItOrItsPackageIsDeactivatedBeforeCommit_ThenTheNewHideEventRestagesAndRestoresTheBase(
-        bool packageDeactivated)
-    {
-        using var state = CreateStateWithStagedOverride();
-
-        state.Apply(packageDeactivated ? At(30, PackageDeactivated("custom.package")) : Hide(30, OverrideCanonical));
-
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-        state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(30);
-
-        state.Apply(Commit(40, 30));
-
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
-    }
-
-    [Fact]
-    public void GivenThreeLevelOverride_WhenMiddlePackageIsDeactivatedBeforeTop_ThenMiddleIsNotRestored()
-    {
-        using var state = CreateStateWithEnabledThreeLevelOverride();
-
-        state.Apply(At(50, PackageDeactivated("middle.package")));
-        state.Apply(Hide(60, TopCanonical));
-
-        state.FindByCanonical(TopCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        var restored = state.FindByCanonical(BaseCanonical)!;
-        restored.Status.ShouldBe(SearchParameterStatus.Staged);
-        restored.ActivationEventId.ShouldBe(60);
     }
 
     [Fact]
@@ -136,46 +108,52 @@ public class ConformanceLifecycleTests
         state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(MiddleCanonical);
     }
 
-    [Fact]
-    public void GivenThreeLevelOverride_WhenTopPackageIsDeactivated_ThenMiddleIsRestored()
+    // Removing the top of base <- middle <- top restores the highest definition still installed.
+    [Theory]
+    [InlineData(false, MiddleCanonical, 50)]
+    [InlineData(true, BaseCanonical, 60)]
+    public void GivenThreeLevelOverride_WhenTheTopIsRemoved_ThenTheHighestRemainingDefinitionIsRestaged(
+        bool middlePackageRemovedFirst,
+        string expectedRestored,
+        long expectedActivationEventId)
     {
         using var state = CreateStateWithEnabledThreeLevelOverride();
 
-        state.Apply(At(50, PackageDeactivated("top.package")));
+        if (middlePackageRemovedFirst)
+        {
+            state.Apply(At(50, PackageDeactivated("middle.package")));
+            state.Apply(Hide(60, TopCanonical));
+        }
+        else
+        {
+            state.Apply(At(50, PackageDeactivated("top.package")));
+        }
 
         state.FindByCanonical(TopCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        var restored = state.FindByCanonical(MiddleCanonical)!;
+        var restored = state.FindByCanonical(expectedRestored)!;
         restored.Status.ShouldBe(SearchParameterStatus.Staged);
-        restored.ActivationEventId.ShouldBe(50);
+        restored.ActivationEventId.ShouldBe(expectedActivationEventId);
     }
 
+    // Disabling -> Disabled: a repeated deactivation keeps the original hide event, which the commit must name.
     [Fact]
-    public void GivenPlainParameter_WhenDeactivatedAndCommitted_ThenItMovesThroughDisablingToDisabled()
+    public void GivenPlainParameter_WhenDeactivatedTwiceAndCommitted_ThenItMovesThroughDisablingToDisabledOnTheFirstHideEvent()
     {
         using var state = new ConformanceState();
         state.Apply(Custom(10));
 
         state.Apply(Hide(20, OverrideCanonical, "custom"));
-
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabling);
-
-        state.Apply(At(30, new SearchParameterTransitionCommitted(7, [], [20])));
-
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabled);
-    }
-
-    [Fact]
-    public void GivenAnOwnerAlreadyDisabling_WhenItIsDeactivatedAgain_ThenTheOriginalHideEventIsPreserved()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Custom(10));
-        state.Apply(Hide(20, OverrideCanonical, "custom"));
-
         state.Apply(Hide(30, OverrideCanonical, "custom"));
 
-        state.GetSearchParameter("Patient", "custom")!.DeactivationEventId.ShouldBe(20);
+        var parameter = state.GetSearchParameter("Patient", "custom")!;
+        parameter.Status.ShouldBe(SearchParameterStatus.Disabling);
+        parameter.DeactivationEventId.ShouldBe(20);
         state.GetTransitionCandidates(20).Count.ShouldBe(1);
         state.GetTransitionCandidates(30).ShouldBeEmpty();
+
+        state.Apply(At(40, new SearchParameterTransitionCommitted(7, [], [20])));
+
+        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabled);
     }
 
     [Fact]
