@@ -5,7 +5,6 @@
 
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.BackgroundOperations.Reindex;
-using Ignixa.Conformance.Events.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Services;
@@ -15,7 +14,6 @@ namespace Ignixa.Api.Services;
 /// to enable multi-instance (webfarm) consistency. Polls for new events every N seconds.
 /// </summary>
 public class ConformanceStateSyncService(
-    ISourceEventStore eventStore,
     ConformanceState conformanceState,
     ConformanceRefresher conformanceRefresher,
     ConformanceLease conformanceLease,
@@ -68,33 +66,18 @@ public class ConformanceStateSyncService(
     protected async Task SyncAsync(CancellationToken cancellationToken)
     {
         conformanceLease.Observe();
+
+        // The lease start precedes the catch-up read, so the lease never claims freshness the read lacked.
         var syncStart = conformanceLease.CaptureStart();
         var beforeEventId = conformanceState.LastProcessedEventId;
-        long afterEventId;
-
-        using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
+        try
         {
-            await conformanceState.CatchUpWhileActivationLockHeldAsync(eventStore, cancellationToken);
-            afterEventId = conformanceState.LastProcessedEventId;
+            _lastRefreshedEventId = await conformanceRefresher.SynchronizeAsync(cancellationToken);
         }
-
-        if (afterEventId > _lastRefreshedEventId || conformanceRefresher.HasPendingRefresh)
+        catch (ConformanceConsumerRefreshException)
         {
-            try
-            {
-                _lastRefreshedEventId = await conformanceRefresher.RefreshAsync(force: false, cancellationToken);
-            }
-            catch (ConformanceConsumerRefreshException)
-            {
-                ConformanceMetrics.RecordConsumerRefreshFailure("sync");
-                throw;
-            }
-
-            // Applying events and refreshing their consumers are separate checkpoints. In particular,
-            // an empty subsequent poll must retry a failed refresh of an already-applied event.
-            logger.LogInformation(
-                "Refreshed conformance consumers through EventId {EventId}",
-                _lastRefreshedEventId);
+            ConformanceMetrics.RecordConsumerRefreshFailure("sync");
+            throw;
         }
 
         conformanceLease.Renew(syncStart);
@@ -102,18 +85,16 @@ public class ConformanceStateSyncService(
         // The trigger defers its own operational failures; a programmer error fails this tick loudly.
         await reindexTrigger.ReconcileAsync(cancellationToken);
 
-        if (afterEventId > beforeEventId)
+        if (_lastRefreshedEventId > beforeEventId)
         {
-            var eventsApplied = afterEventId - beforeEventId;
             logger.LogInformation(
-                "ConformanceStateSyncService caught up: applied {EventCount} events ({Before} -> {After})",
-                eventsApplied,
+                "ConformanceStateSyncService caught up and refreshed consumers: EventId {Before} -> {After}",
                 beforeEventId,
-                afterEventId);
+                _lastRefreshedEventId);
         }
         else
         {
-            logger.LogDebug("ConformanceStateSyncService: no new events (at EventId {EventId})", afterEventId);
+            logger.LogDebug("ConformanceStateSyncService: no new events (at EventId {EventId})", _lastRefreshedEventId);
         }
     }
 }

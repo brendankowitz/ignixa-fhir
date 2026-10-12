@@ -29,28 +29,26 @@ public sealed class ConformanceRefresher(
 {
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
-    // Guarded by _refreshLock.
-    private long _publishedGeneration = -1;
+    private const long NothingPublished = -1;
 
-    // Written under _refreshLock; read lock-free by the sync tick through HasPendingRefresh.
-    private volatile bool _forcePending;
-
-    /// <summary>
-    /// Gets whether a forced refresh failed and has not yet been retried successfully.
-    /// </summary>
-    public bool HasPendingRefresh => _forcePending;
+    // Guarded by _refreshLock. A failed forced refresh resets it, so the next refresh rebuilds.
+    private long _publishedGeneration = NothingPublished;
 
     /// <summary>
-    /// Applies any events this instance has not seen, then refreshes consumers to the resulting generation.
+    /// Applies any events this instance has not seen, then refreshes consumers to the resulting generation
+    /// and returns that generation.
     /// </summary>
-    public async Task SynchronizeAsync(CancellationToken cancellationToken)
+    /// <exception cref="ConformanceConsumerRefreshException">
+    /// A storage or configuration dependency failed; the applied events stay applied.
+    /// </exception>
+    public async Task<long> SynchronizeAsync(CancellationToken cancellationToken)
     {
         using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
         {
             await conformanceState.CatchUpWhileActivationLockHeldAsync(eventStore, cancellationToken);
         }
 
-        await RefreshAsync(force: false, cancellationToken);
+        return await RefreshAsync(force: false, cancellationToken);
     }
 
     /// <summary>
@@ -74,7 +72,7 @@ public sealed class ConformanceRefresher(
                 using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
                 {
                     generation = conformanceState.LastProcessedEventId;
-                    if (!force && !_forcePending && generation <= _publishedGeneration)
+                    if (!force && generation <= _publishedGeneration)
                     {
                         return generation;
                     }
@@ -89,7 +87,7 @@ public sealed class ConformanceRefresher(
                 }
                 catch when (force)
                 {
-                    _forcePending = true;
+                    _publishedGeneration = NothingPublished;
                     throw;
                 }
 
@@ -113,7 +111,6 @@ public sealed class ConformanceRefresher(
                     }
 
                     _publishedGeneration = generation;
-                    _forcePending = false;
                 }
 
                 // Published definitions are visible; the caller's cancellation must not leave the
@@ -167,22 +164,10 @@ public sealed class ConformanceRefresher(
             cancellationToken.ThrowIfCancellationRequested();
             return definitions;
         }
-        catch (DbException exception)
+        catch (Exception exception) when (exception is DbException or IOException or TimeoutException)
         {
             throw new ConformanceConsumerRefreshException(
-                "A database-backed conformance consumer could not be refreshed.",
-                exception);
-        }
-        catch (IOException exception)
-        {
-            throw new ConformanceConsumerRefreshException(
-                "A file-backed conformance consumer could not be refreshed.",
-                exception);
-        }
-        catch (TimeoutException exception)
-        {
-            throw new ConformanceConsumerRefreshException(
-                "A conformance consumer refresh timed out.",
+                $"A conformance consumer could not be refreshed: {exception.Message}",
                 exception);
         }
     }

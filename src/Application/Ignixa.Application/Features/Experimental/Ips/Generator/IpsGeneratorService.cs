@@ -192,8 +192,7 @@ public class IpsGeneratorService(
         var sectionResources = sections.ToDictionary(s => s, _ => new List<ResourceJsonNode>());
         var resourceTracker = new HashSet<string>(); // Deduplication
 
-        ConformanceSearchGuard.EnsureRequestCanSearch(
-            conformanceLease,
+        conformanceLease.EnsureRequestCanSearch(
             requestOriginated: true,
             requestContext.IsBackgroundTask);
 

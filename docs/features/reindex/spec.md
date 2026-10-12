@@ -229,10 +229,10 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
 
 ### 4.5 Conformance staleness lease
 
-- Each instance records `LeaseStartUtc`: the **start** time, on a monotonic clock, of its most recent sync whose
+- Each instance records the lease start: the **start** time, on a monotonic clock, of its most recent sync whose
   catch-up **and** consumer refresh both succeeded (`ConformanceStateSyncService`, `ConformanceRefresher`).
   Initial state load counts as such a sync, and so does applying a local activation.
-- An instance holds the lease while `now − LeaseStartUtc ≤ Conformance:MaxStaleness`. The default is
+- An instance holds the lease while `now − leaseStart ≤ Conformance:MaxStaleness`. The default is
   `3 × SyncIntervalSeconds`.
 - `TransitionSafetyMargin` defaults to 2 minutes 30 seconds. It covers four 30-second SQL command attempts,
   the three exponential retry delays, and 15 seconds of clock skew, rounded up to the next 30-second boundary.
@@ -246,7 +246,7 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
   `BarrierDelay ≥ MaxStaleness` so barrier rejections stay rare, and fails fast if either does not hold.
 - The lease is checked once when `SearchOptionsBuilderFactory` creates search options for a request. This covers the
   same builder path used by search, includes, compartments, `$everything`, and conditional matching.
-  `ConformanceSearchGuard` bypasses the lease for background `FhirRequestContext`s, so background work decides
+  `ConformanceLease.EnsureRequestCanSearch` bypasses the lease for background `FhirRequestContext`s, so background work decides
   for itself:
   - **`$export` is exempt (deliberate decision).** It is read-only: an export `_typeFilter` is not rejected merely
     because the serving instance's lease is stale; at worst it reads a set selected with an outgoing definition.
@@ -323,8 +323,9 @@ commit.
 `CompositeSearchParameterDefinitionManager`/`ConformanceRefresher` publish immutable definitions snapshots
 and `DefinitionsHandle(ISearchIndexer Indexer, long DefinitionsEventId, long PublicationSequence)`. The event id is
 the position the indexer's definitions were built from, which is the *refreshed* position, not
-`ConformanceState.LastProcessedEventId`. Snapshot slots publish monotonically by generation and use
-`PublicationSequence` as the tie-breaker.
+`ConformanceState.LastProcessedEventId`. `ConformanceRefresher` is the only publisher; it publishes under its
+refresh lock and the activation lock, only while its generation is still current, so publication is in generation
+order without a compare-and-swap. `PublicationSequence` distinguishes a forced republish of the same generation.
 
 - The write pipeline acquires one handle per extraction.
 - Bundles use the **minimum** `DefinitionsEventId` across the handles that produced their final index sets. If an
@@ -622,7 +623,7 @@ authoritative, so a delayed activity cannot reopen a finalized job or its parame
 | `StaleConformanceDefinitionsException` | Handled at the write boundary (refresh, re-extract, one retry, then 503) |
 | Reindex lifecycle events gain `ActivationEventId` (nullable) | §4.3, and registration in `SqlServerSourceEventStore` |
 | `SearchParameterStatus` gains `Staged` and `Disabling`; new event `SearchParameterTransitionCommitted` | §4.4. Apply logic in `ConformanceState`. `CompositeSearchParameterDefinitionManager` extracts `Enabled`, `Pending`, `Reindexing`, and `Disabling`, and **not** `Staged`. |
-| Staleness lease (`LeaseStartUtc`) in `ConformanceStateSyncService`, and a search-entry guard | §4.5. The guard sits where search options are built (`SearchOptionsBuilderFactory`), so search, includes, compartments, and conditional matching all pass through it. |
+| Staleness lease (`ConformanceLease`) in `ConformanceStateSyncService`, and a search-entry guard | §4.5. The guard sits where search options are built (`SearchOptionsBuilderFactory`), so search, includes, compartments, and conditional matching all pass through it. |
 | `UpdateResourceSearchParams.sql` | Reused unchanged. Must be verified against Ignixa's typed tables, including composites. |
 | Extension columns | Reuse `SqlServerPostMergeExtensionUpdater`, following the merge-transaction rule |
 | Retire `ReindexJob` table plus 5 sprocs; `Resource.SearchParamHash` usage, `MatchPageEmitter` hash clause, `SearchPlanOptions.SearchParameterHash` | Unused. Separate cleanup PR. The `ResourceList` TVP column stays (repository rule), so pass `NULL`. |
@@ -724,8 +725,7 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
   `B_t`, `S_t`, `phase`, and counts.
 - **Metrics:** `reindex.resources.processed`, `.conflicts`, and `.failed`; `reindex.ranges.active`;
   `reindex.drain.wait`; `reindex.job.duration`; `conformance.barrier.rejections` (tagged by retry outcome);
-  `conformance.lease.lost`; `conformance.lease.age`; `conformance.transition.pending`;
-  `search.partial_index.requests`.
+  `conformance.lease.lost`; `conformance.lease.age`.
 
 ---
 

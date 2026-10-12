@@ -13,11 +13,15 @@ namespace Ignixa.Application.Features.Conformance;
 /// </remarks>
 public sealed class ConformanceLease
 {
+    private const long NeverRenewed = long.MinValue;
+
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _maxStaleness;
     private readonly ILogger<ConformanceLease> _logger;
     private readonly ObservableGauge<double> _ageGauge;
-    private ConformanceLeaseStart? _start;
+
+    // The monotonic TimeProvider timestamp at which the newest successful synchronization began.
+    private long _start = NeverRenewed;
     // 0 = never held, 1 = held, 2 = lost after being held.
     private int _observedState;
 
@@ -34,24 +38,18 @@ public sealed class ConformanceLease
         _maxStaleness = configuredOptions.MaxStaleness;
         RetryAfter = TimeSpan.FromSeconds(configuredOptions.SyncIntervalSeconds);
         _ageGauge = ConformanceMetrics.CreateLeaseAgeGauge(
-            () => Volatile.Read(ref _start) is null ? 0d : Age.TotalSeconds);
+            () => Interlocked.Read(ref _start) == NeverRenewed ? 0d : Age.TotalSeconds);
     }
 
     /// <summary>
     /// Gets whether this instance may serve request-originated searches.
     /// </summary>
-    public bool IsHeld => IsHeldAt(Volatile.Read(ref _start));
+    public bool IsHeld => IsHeldAt(Interlocked.Read(ref _start));
 
     /// <summary>
     /// Gets the elapsed time since the successful synchronization began.
     /// </summary>
-    public TimeSpan Age => AgeOf(Volatile.Read(ref _start));
-
-    /// <summary>
-    /// Gets the UTC start recorded for observability, or <see langword="null"/> before a successful synchronization.
-    /// Lease enforcement uses the corresponding monotonic timestamp.
-    /// </summary>
-    public DateTimeOffset? LeaseStartUtc => Volatile.Read(ref _start)?.Utc;
+    public TimeSpan Age => AgeOf(Interlocked.Read(ref _start));
 
     /// <summary>
     /// Gets the retry delay clients should use after a stale-lease response.
@@ -59,28 +57,21 @@ public sealed class ConformanceLease
     public TimeSpan RetryAfter { get; }
 
     /// <summary>
-    /// Captures the start of a synchronization or local activation.
+    /// Captures the monotonic start of a synchronization or local activation, to pass to <see cref="Renew"/>.
     /// </summary>
-    public ConformanceLeaseStart CaptureStart() =>
-        new(_timeProvider.GetUtcNow(), _timeProvider.GetTimestamp());
+    public long CaptureStart() => _timeProvider.GetTimestamp();
 
     /// <summary>
     /// Renews the lease after all work in the operation represented by <paramref name="start"/> has succeeded.
     /// A start older than the current one is ignored, so concurrent renewals never move the lease backwards.
     /// </summary>
-    public void Renew(ConformanceLeaseStart start)
+    public void Renew(long start)
     {
-        ArgumentNullException.ThrowIfNull(start);
-
         while (true)
         {
-            var current = Volatile.Read(ref _start);
-            if (current is not null && current.Timestamp >= start.Timestamp)
-            {
-                break;
-            }
-
-            if (ReferenceEquals(Interlocked.CompareExchange(ref _start, start, current), current))
+            var current = Interlocked.Read(ref _start);
+            if (current >= start ||
+                Interlocked.CompareExchange(ref _start, start, current) == current)
             {
                 break;
             }
@@ -90,12 +81,24 @@ public sealed class ConformanceLease
     }
 
     /// <summary>
+    /// Throws when a request-originated search would use stale conformance definitions.
+    /// </summary>
+    /// <exception cref="ConformanceStaleException">The lease is not held.</exception>
+    public void EnsureRequestCanSearch(bool requestOriginated, bool isBackgroundTask)
+    {
+        if (requestOriginated && !isBackgroundTask && !IsHeld)
+        {
+            throw new ConformanceStaleException(RetryAfter);
+        }
+    }
+
+    /// <summary>
     /// Records a lease lost/regained transition since the previous observation. Called by the
     /// synchronization loop so an expiry is reported even when no request reads the lease.
     /// </summary>
     public void Observe()
     {
-        var start = Volatile.Read(ref _start);
+        var start = Interlocked.Read(ref _start);
         if (IsHeldAt(start))
         {
             if (Interlocked.Exchange(ref _observedState, 1) == 2)
@@ -115,9 +118,9 @@ public sealed class ConformanceLease
         }
     }
 
-    private bool IsHeldAt(ConformanceLeaseStart? start) =>
-        start is not null && AgeOf(start) <= _maxStaleness;
+    private bool IsHeldAt(long start) =>
+        start != NeverRenewed && AgeOf(start) <= _maxStaleness;
 
-    private TimeSpan AgeOf(ConformanceLeaseStart? start) =>
-        start is null ? TimeSpan.MaxValue : _timeProvider.GetElapsedTime(start.Timestamp);
+    private TimeSpan AgeOf(long start) =>
+        start == NeverRenewed ? TimeSpan.MaxValue : _timeProvider.GetElapsedTime(start);
 }

@@ -13,8 +13,6 @@ namespace Ignixa.Application.Tests.Features.Search;
 
 public class DefinitionsHandleTests
 {
-    private static readonly ConformanceStateSnapshot EmptyProjection = CreateEmptyProjection();
-
     [Fact]
     public void GivenPublishedTenantSnapshot_WhenFutureSnapshotBuilds_ThenItUsesADetachedSchemaProvider()
     {
@@ -49,72 +47,5 @@ public class DefinitionsHandleTests
             .SchemaProvider.ShouldBeSameAs(generationOne.Handle.SchemaProvider);
         context.GetSchemaProvider(FhirVersion.R4, tenantId: 1)
             .ShouldBeSameAs(generationOne.Handle.SchemaProvider);
-    }
-
-    [Fact]
-    public void GivenAnOlderConsumerSnapshotCompletesAfterANewerSnapshot_WhenPublished_ThenAllConsumersRemainOnTheNewerGeneration()
-    {
-        var olderDefinitions = Substitute.For<ISearchParameterDefinitionManager>();
-        var newerDefinitions = Substitute.For<ISearchParameterDefinitionManager>();
-        var older = new ConformanceDefinitionsSnapshot(
-            olderDefinitions,
-            new DefinitionsHandle(
-                Substitute.For<ISearchIndexer>(),
-                Substitute.For<IFhirSchemaProvider>(),
-                11),
-            EmptyProjection);
-        var newer = new ConformanceDefinitionsSnapshot(
-            newerDefinitions,
-            new DefinitionsHandle(
-                Substitute.For<ISearchIndexer>(),
-                Substitute.For<IFhirSchemaProvider>(),
-                29),
-            EmptyProjection);
-        var slot = new ConformanceDefinitionsSnapshotSlot(older);
-
-        slot.Publish(newer);
-        slot.Publish(new ConformanceDefinitionsSnapshot(
-            olderDefinitions,
-            new DefinitionsHandle(
-                Substitute.For<ISearchIndexer>(),
-                Substitute.For<IFhirSchemaProvider>(),
-                17),
-            EmptyProjection));
-
-        slot.Current.Generation.ShouldBe(29);
-        slot.Current.Definitions.ShouldBeSameAs(newerDefinitions);
-    }
-
-    [Fact]
-    public void GivenSameEventIdRepositoryRebuild_WhenPublished_ThenPublicationSequenceBreaksTheTie()
-    {
-        var definitions = Substitute.For<ISearchParameterDefinitionManager>();
-        var first = new ConformanceDefinitionsSnapshot(
-            definitions,
-            new DefinitionsHandle(
-                Substitute.For<ISearchIndexer>(),
-                Substitute.For<IFhirSchemaProvider>(),
-                29),
-            EmptyProjection,
-            PublicationSequence: 3);
-        var replacement = new ConformanceDefinitionsSnapshot(
-            definitions,
-            new DefinitionsHandle(
-                Substitute.For<ISearchIndexer>(),
-                Substitute.For<IFhirSchemaProvider>(),
-                29),
-            EmptyProjection,
-            PublicationSequence: 4);
-        var slot = new ConformanceDefinitionsSnapshotSlot(first);
-
-        slot.Publish(replacement);
-
-        slot.Current.ShouldBeSameAs(replacement);
-    }
-
-    private static ConformanceStateSnapshot CreateEmptyProjection()
-    {
-        using var state = new ConformanceState();
-        return state.CreateSnapshot();
     }
 }

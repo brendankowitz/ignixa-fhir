@@ -2,6 +2,7 @@ using DurableTask.Core;
 using Ignixa.Api.Services;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Tests;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
@@ -43,7 +44,7 @@ public class ConformanceStateSyncServiceTests
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.RunSyncAsync());
 
-        lease.LeaseStartUtc.ShouldBeNull();
+        lease.IsHeld.ShouldBeFalse();
     }
 
     [Fact]
@@ -64,9 +65,8 @@ public class ConformanceStateSyncServiceTests
             .Returns(_ => ++builds == 2
                 ? ValueTask.FromException<IReadOnlyList<TenantConfiguration>>(new IOException("failed"))
                 : new ValueTask<IReadOnlyList<TenantConfiguration>>([]));
-        using var refresher = TestConformanceRefresher.Create(state, tenants: tenants);
+        using var refresher = TestConformanceRefresher.Create(state, eventStore: store, tenants: tenants);
         using var service = new TestSyncService(
-            store,
             state,
             refresher,
             TestConformanceLease.NotHeld());
@@ -193,18 +193,20 @@ public class ConformanceStateSyncServiceTests
             ITenantConfigurationStore refreshTenants,
             ConformanceLease lease,
             ReindexTrigger? reindexTrigger = null)
-            : this(store, state, TestConformanceRefresher.Create(state, tenants: refreshTenants), lease, reindexTrigger)
+            : this(
+                state,
+                TestConformanceRefresher.Create(state, eventStore: store, tenants: refreshTenants),
+                lease,
+                reindexTrigger)
         {
         }
 
         public TestSyncService(
-            ISourceEventStore store,
             ConformanceState state,
             ConformanceRefresher refresher,
             ConformanceLease lease,
             ReindexTrigger? reindexTrigger = null)
             : base(
-                store,
                 state,
                 refresher,
                 lease,

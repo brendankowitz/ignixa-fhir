@@ -22,13 +22,13 @@ internal static class ConditionalSearchParameterValidator
 
         if (searchOptions.UnsupportedParams.Count > 0)
         {
-            string? pendingReindexDiagnostic = searchOptions.BundleIssues
-                .Select(issue => issue.Diagnostics)
-                .FirstOrDefault(diagnostic => diagnostic?.Contains("pending reindex", StringComparison.OrdinalIgnoreCase) == true);
+            SearchParameterInfo? hidden = searchOptions.UnsupportedParams
+                .Select(name => searchOptions.HiddenSearchParameters.GetValueOrDefault(name))
+                .FirstOrDefault(parameter => parameter is not null);
 
-            throw new BadRequestException(
-                pendingReindexDiagnostic
-                ?? $"Conditional operations cannot use unsupported search parameter '{searchOptions.UnsupportedParams[0]}'.");
+            throw new BadRequestException(hidden is null
+                ? $"Conditional operations cannot use unsupported search parameter '{searchOptions.UnsupportedParams[0]}'."
+                : $"Conditional operations cannot use search parameter '{hidden.Code}' because it {HiddenSearchParameterException.DescribeHiddenState(hidden)}.");
         }
 
         SearchParameterInfo? partiallyIndexed = searchOptions.ResolvedSearchParameters

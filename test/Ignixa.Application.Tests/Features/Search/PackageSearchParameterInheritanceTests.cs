@@ -148,27 +148,6 @@ public class PackageSearchParameterInheritanceTests
     }
 
     [Fact]
-    public async Task GivenAPendingParameter_WhenDefinitionsResolveSearchVisibility_ThenItIsNotSearchableByDefault()
-    {
-        var baseManager = new SearchParameterDefinitionManager(
-            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
-        using var state = new ConformanceState();
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
-        await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        var manager = new CompositeSearchParameterDefinitionManager(
-            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true });
-
-        await manager.InitializeAsync();
-
-        var parameter = manager.GetSearchParameter("Patient", "package-custom");
-
-        parameter.IsSearchable.ShouldBeFalse();
-        parameter.IsSupported.ShouldBeTrue();
-    }
-
-    [Fact]
     public async Task GivenAPendingParameter_WhenSearchDefinitionsAreResolved_ThenItIsHiddenUnlessPartialIndicesAreRequested()
     {
         using var state = new ConformanceState();

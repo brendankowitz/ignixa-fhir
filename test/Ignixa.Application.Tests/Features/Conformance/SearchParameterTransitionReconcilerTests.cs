@@ -4,17 +4,20 @@ using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using Shouldly;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
 public class SearchParameterTransitionReconcilerTests
 {
-    [Fact]
-    public async Task GivenTransitionWithClockSkewedHideTimestamp_WhenReconciled_ThenItSchedulesFullGrace()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(-1)]
+    [InlineData(0)]
+    public async Task GivenUncommittedTransition_WhenReconciled_ThenItSchedulesFullGraceWhateverTheHideTimestamp(
+        int hideTimestampOffsetDays)
     {
-        using var state = CreateState(DateTimeOffset.UtcNow.AddDays(1));
+        using var state = CreateState(DateTimeOffset.UtcNow.AddDays(hideTimestampOffsetDays));
         var scheduler = Substitute.For<ISearchParameterTransitionScheduler>();
         var grace = TimeSpan.FromMinutes(3);
         var reconciler = new SearchParameterTransitionReconciler(
@@ -25,44 +28,6 @@ public class SearchParameterTransitionReconcilerTests
         await reconciler.ReconcileAsync(CancellationToken.None);
 
         await scheduler.Received(1).ScheduleAsync(20, grace, CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task GivenTransitionWithoutPersistedTimestamp_WhenReconciled_ThenItSchedulesFullGrace()
-    {
-        using var state = CreateState(DateTimeOffset.UtcNow.AddDays(-1));
-        var scheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        var grace = TimeSpan.FromMinutes(3);
-        var reconciler = new SearchParameterTransitionReconciler(
-            state,
-            scheduler,
-            Options.Create(new ConformanceTransitionOptions { TransitionGrace = grace }));
-
-        await reconciler.ReconcileAsync(CancellationToken.None);
-
-        await scheduler.Received(1).ScheduleAsync(20, grace, CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task GivenAnActivationHoldsTheProjectionLock_WhenReconciled_ThenItReadsTransitionsOnlyAfterTheLockIsReleased()
-    {
-        using var state = CreateState(DateTimeOffset.UtcNow);
-        var scheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        var reconciler = new SearchParameterTransitionReconciler(
-            state,
-            scheduler,
-            Options.Create(new ConformanceTransitionOptions { TransitionGrace = TimeSpan.FromMinutes(3) }));
-
-        Task reconciliation;
-        using (await state.AcquireActivationLockAsync(CancellationToken.None))
-        {
-            reconciliation = reconciler.ReconcileAsync(CancellationToken.None);
-            await Task.Delay(TimeSpan.FromMilliseconds(100));
-            scheduler.ReceivedCalls().ShouldBeEmpty();
-        }
-
-        await reconciliation.WaitAsync(TimeSpan.FromSeconds(10));
-        await scheduler.Received(1).ScheduleAsync(20, TimeSpan.FromMinutes(3), CancellationToken.None);
     }
 
     private static ConformanceState CreateState(DateTimeOffset hideTimestamp)

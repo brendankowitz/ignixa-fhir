@@ -367,96 +367,54 @@ public class PackageActivationPipelineTests
             CancellationToken.None);
     }
 
-    [Fact]
-    public async Task GivenAutomaticReindexTriggerIsDeferredAfterDurableActivation_WhenActivated_ThenActivationSucceedsDegraded()
+    public enum FollowUpFailure
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.custom",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateCustomResource()]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                0,
-                Arg.Any<CancellationToken>())
-            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
-                .Select((sourceEvent, index) => new SourceEvent(
-                    index + 1,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray());
-        using var state = new ConformanceState();
-        var trigger = Substitute.For<IReindexTrigger>();
-        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new ReindexTriggerResult(
-                null,
-                false,
-                "The automatic reindex trigger failed; periodic reconciliation will retry.",
-                Deferred: true));
-        var pipeline = CreatePipeline(
-            packageRepository,
-            eventStore,
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants(),
-            reindexTrigger: trigger);
-
-        var result = await pipeline.ActivateAsync(
-            "test.custom",
-            "1.0.0",
-            CancellationToken.None);
-
-        result.Success.ShouldBeTrue();
-        result.PendingReindex.ShouldNotBeEmpty();
-        result.Issues.ShouldContain(issue =>
-            issue.Code == PackageActivationPipeline.ReindexTriggerDeferredCode &&
-            issue.Severity == ActivationIssueSeverity.Warning &&
-            issue.Message.Contains("periodic reconciliation", StringComparison.Ordinal));
+        ReindexTriggerDeferred,
+        RefreshDependencyUnavailable,
+        TransitionSchedulingFailed,
+        ReindexTriggerProgrammerError,
+        RefreshIndependentlyCancelled,
+        TransitionSchedulerProgrammerError,
     }
 
-    [Fact]
-    public async Task GivenAutomaticReindexTriggerHasProgrammerError_WhenActivated_ThenTheFailurePropagates()
+    [Theory]
+    [InlineData(FollowUpFailure.ReindexTriggerDeferred, PackageActivationPipeline.ReindexTriggerDeferredCode)]
+    [InlineData(FollowUpFailure.RefreshDependencyUnavailable, PackageActivationPipeline.RefreshDeferredCode)]
+    [InlineData(FollowUpFailure.TransitionSchedulingFailed, PackageActivationPipeline.TransitionScheduleDeferredCode)]
+    public async Task GivenOperationalFollowUpFailureAfterDurableActivation_WhenActivated_ThenItSucceedsWithAWarning(
+        FollowUpFailure failure,
+        string expectedCode)
     {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.custom",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateCustomResource()]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                0,
-                Arg.Any<CancellationToken>())
-            .Returns(call => call.Arg<IEnumerable<NewSourceEvent>>()
-                .Select((sourceEvent, index) => new SourceEvent(
-                    index + 1,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray());
         using var state = new ConformanceState();
-        var trigger = Substitute.For<IReindexTrigger>();
-        trigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns<Task<ReindexTriggerResult>>(_ =>
-                throw new InvalidOperationException("Unsupported trigger result."));
-        var pipeline = CreatePipeline(
-            packageRepository,
-            eventStore,
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            TestConformanceRefresher.Tenants(),
-            reindexTrigger: trigger);
+        var lease = TestConformanceLease.NotHeld();
+        var (pipeline, packageId) = CreatePipelineFailingAfterAppend(failure, state, lease);
 
-        await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync(
-            "test.custom",
-            "1.0.0",
-            CancellationToken.None));
+        var result = await pipeline.ActivateAsync(packageId, "1.0.0", CancellationToken.None);
+
+        result.Success.ShouldBeTrue();
+        result.Issues.ShouldContain(issue =>
+            issue.Code == expectedCode &&
+            issue.Severity == ActivationIssueSeverity.Warning);
+        state.LastProcessedEventId.ShouldBeGreaterThan(0);
+        lease.IsHeld.ShouldBe(failure != FollowUpFailure.RefreshDependencyUnavailable);
+    }
+
+    [Theory]
+    [InlineData(FollowUpFailure.ReindexTriggerProgrammerError, typeof(InvalidOperationException))]
+    [InlineData(FollowUpFailure.RefreshIndependentlyCancelled, typeof(OperationCanceledException))]
+    [InlineData(FollowUpFailure.TransitionSchedulerProgrammerError, typeof(ArgumentOutOfRangeException))]
+    public async Task GivenUnexpectedFollowUpFailureAfterDurableActivation_WhenActivated_ThenTheFailurePropagates(
+        FollowUpFailure failure,
+        Type expectedException)
+    {
+        using var state = new ConformanceState();
+        var (pipeline, packageId) = CreatePipelineFailingAfterAppend(failure, state, TestConformanceLease.NotHeld());
+
+        var exception = await Record.ExceptionAsync(() =>
+            pipeline.ActivateAsync(packageId, "1.0.0", CancellationToken.None));
+
+        exception.ShouldBeOfType(expectedException);
+        state.LastProcessedEventId.ShouldBeGreaterThan(0);
     }
 
     [Fact]
@@ -515,146 +473,7 @@ public class PackageActivationPipelineTests
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
         await refreshTenants.Received(1).GetAllTenantsAsync(CancellationToken.None);
-        lease.LeaseStartUtc.ShouldBeNull();
-    }
-
-    [Fact]
-    public async Task GivenIndependentRefreshCancellationAfterDurableOverrideActivation_WhenActivated_ThenItSurfacesTheCancellation()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.override",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource()]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                1,
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo => Task.FromResult<IReadOnlyList<SourceEvent>>(callInfo
-                .ArgAt<IEnumerable<NewSourceEvent>>(0)
-                .Select((sourceEvent, index) => new SourceEvent(
-                    index + 2,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray()));
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(CreateBaseActivation());
-        var refreshTenants = TestConformanceRefresher.FailingTenants(
-            new OperationCanceledException("Independent cancellation."));
-        var pipeline = CreatePipeline(
-            packageRepository,
-            eventStore,
-            state,
-            Substitute.For<ISearchParameterTransitionScheduler>(),
-            refreshTenants);
-
-        await Should.ThrowAsync<OperationCanceledException>(() => pipeline.ActivateAsync(
-            "test.override",
-            "1.0.0",
-            CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task GivenRecoverableRefreshFailureAfterDurableOverrideActivation_WhenActivated_ThenItReportsDeferredRefreshWithoutRenewingTheLease()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.override",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource()]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                1,
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo => Task.FromResult<IReadOnlyList<SourceEvent>>(callInfo
-                .ArgAt<IEnumerable<NewSourceEvent>>(0)
-                .Select((sourceEvent, index) => new SourceEvent(
-                    index + 2,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray()));
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(CreateBaseActivation());
-        var refreshTenants = TestConformanceRefresher.FailingTenants(new IOException("Database unavailable."));
-        var lease = TestConformanceLease.NotHeld();
-        var pipeline = TestPackageActivationPipeline.Create(
-            packageRepository,
-            eventStore,
-            state,
-            refreshTenants: refreshTenants,
-            lease: lease);
-
-        var result = await pipeline.ActivateAsync(
-            "test.override",
-            "1.0.0",
-            CancellationToken.None);
-
-        result.Success.ShouldBeTrue();
-        result.Issues.ShouldContain(issue =>
-            issue.Code == PackageActivationPipeline.RefreshDeferredCode &&
-            issue.Severity == ActivationIssueSeverity.Warning);
-        lease.LeaseStartUtc.ShouldBeNull();
-    }
-
-    [Fact]
-    public async Task GivenSchedulingFailsAfterDurableOverrideActivation_WhenActivated_ThenItRemainsDurablySuccessful()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync(
-                "test.override",
-                "1.0.0",
-                Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource()]);
-        var eventStore = Substitute.For<ISourceEventStore>();
-        eventStore.AppendAsync(
-                Arg.Any<IEnumerable<NewSourceEvent>>(),
-                1,
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo => Task.FromResult<IReadOnlyList<SourceEvent>>(callInfo
-                .ArgAt<IEnumerable<NewSourceEvent>>(0)
-                .Select((sourceEvent, index) => new SourceEvent(
-                    index + 2,
-                    sourceEvent.StreamId,
-                    sourceEvent.EventType,
-                    sourceEvent.Data,
-                    DateTimeOffset.UtcNow))
-                .ToArray()));
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(CreateBaseActivation());
-        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        transitionScheduler.ScheduleAsync(
-                Arg.Any<long>(),
-                Arg.Any<TimeSpan>(),
-                CancellationToken.None)
-            .Returns(_ => throw new InvalidOperationException("Scheduling failed."));
-        var pipeline = CreatePipeline(
-            packageRepository,
-            eventStore,
-            state,
-            transitionScheduler,
-            TestConformanceRefresher.Tenants());
-
-        var result = await pipeline.ActivateAsync(
-            "test.override",
-            "1.0.0",
-            CancellationToken.None);
-
-        result.Success.ShouldBeTrue();
-        result.Issues.ShouldContain(issue =>
-            issue.Code == PackageActivationPipeline.TransitionScheduleDeferredCode &&
-            issue.Severity == ActivationIssueSeverity.Warning);
-        await transitionScheduler.Received(1).ScheduleAsync(
-            3,
-            TimeSpan.FromSeconds(1),
-            CancellationToken.None);
+        lease.IsHeld.ShouldBeFalse();
     }
 
     [Fact]
@@ -815,27 +634,6 @@ public class PackageActivationPipelineTests
         hidden.Message.ShouldContain("reindex");
     }
 
-    [Fact]
-    public async Task GivenSchedulerHasAProgrammerError_WhenActivated_ThenTheFailurePropagates()
-    {
-        var packageRepository = Substitute.For<IPackageResourceRepository>();
-        packageRepository.GetResourcesForActivationAsync("test.override", "1.0.0", Arg.Any<CancellationToken>())
-            .Returns([CreateOverrideResource()]);
-        using var state = new ConformanceState();
-        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
-        transitionScheduler.ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw new ArgumentOutOfRangeException("transitionGrace"));
-        var pipeline = CreatePipeline(
-            packageRepository,
-            CreateEventStore([]),
-            state,
-            transitionScheduler,
-            TestConformanceRefresher.Tenants());
-
-        await Should.ThrowAsync<ArgumentOutOfRangeException>(() =>
-            pipeline.ActivateAsync("test.override", "1.0.0", CancellationToken.None));
-    }
-
     [Theory]
     [InlineData(true, "REINDEX_QUEUED", ActivationIssueSeverity.Information)]
     [InlineData(false, "REINDEX_NOT_STARTED", ActivationIssueSeverity.Warning)]
@@ -885,6 +683,65 @@ public class PackageActivationPipelineTests
             transitionScheduler,
             refreshTenants,
             reindexTrigger);
+
+    // Custom parameters become Pending and reach the reindex trigger; overrides become Staged and reach the
+    // transition scheduler. Either way the activation is durable before the injected failure.
+    private static (PackageActivationPipeline Pipeline, string PackageId) CreatePipelineFailingAfterAppend(
+        FollowUpFailure failure,
+        ConformanceState state,
+        ConformanceLease lease)
+    {
+        var reindexTrigger = TestPackageActivationPipeline.NoJobTrigger();
+        var transitionScheduler = Substitute.For<ISearchParameterTransitionScheduler>();
+        var refreshTenants = TestConformanceRefresher.Tenants();
+        var packageId = "test.override";
+        switch (failure)
+        {
+            case FollowUpFailure.ReindexTriggerDeferred:
+                packageId = "test.custom";
+                reindexTrigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                    .Returns(new ReindexTriggerResult(
+                        null,
+                        false,
+                        "The automatic reindex trigger failed; periodic reconciliation will retry.",
+                        Deferred: true));
+                break;
+            case FollowUpFailure.ReindexTriggerProgrammerError:
+                packageId = "test.custom";
+                reindexTrigger.RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                    .Returns<Task<ReindexTriggerResult>>(_ =>
+                        throw new InvalidOperationException("Unsupported trigger result."));
+                break;
+            case FollowUpFailure.RefreshDependencyUnavailable:
+                refreshTenants = TestConformanceRefresher.FailingTenants(new IOException("Database unavailable."));
+                break;
+            case FollowUpFailure.RefreshIndependentlyCancelled:
+                refreshTenants = TestConformanceRefresher.FailingTenants(
+                    new OperationCanceledException("Independent cancellation."));
+                break;
+            case FollowUpFailure.TransitionSchedulingFailed:
+                transitionScheduler.ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+                    .Returns(_ => throw new InvalidOperationException("Scheduling failed."));
+                break;
+            case FollowUpFailure.TransitionSchedulerProgrammerError:
+                transitionScheduler.ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+                    .Returns(_ => throw new ArgumentOutOfRangeException(nameof(failure), "Transition grace out of range."));
+                break;
+        }
+
+        var packageRepository = Substitute.For<IPackageResourceRepository>();
+        packageRepository.GetResourcesForActivationAsync(packageId, "1.0.0", Arg.Any<CancellationToken>())
+            .Returns([packageId == "test.custom" ? CreateCustomResource() : CreateOverrideResource()]);
+        var pipeline = TestPackageActivationPipeline.Create(
+            packageRepository,
+            CreateEventStore([]),
+            state,
+            transitionScheduler,
+            refreshTenants,
+            reindexTrigger,
+            lease);
+        return (pipeline, packageId);
+    }
 
     private static ISourceEventStore CreateEventStore(List<SourceEvent> persistedEvents)
     {

@@ -51,8 +51,12 @@ public class CapabilityStatementServiceTests
         (await cache.GetAsync("profiles:1:11:38", CancellationToken.None)).ShouldNotBeNull();
     }
 
-    [Fact]
-    public async Task GivenPublishedDefinitions_WhenCapabilitiesAreCached_ThenThePublicationSequenceIsPartOfTheCacheKey()
+    [Theory]
+    [InlineData(37, 1)]
+    [InlineData(38, 2)]
+    public async Task GivenCachedCapabilities_WhenTheSameGenerationIsRepublished_ThenOnlyANewPublicationRebuildsThem(
+        long secondPublicationSequence,
+        int expectedBuilds)
     {
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var cache = new MemoryCapabilityCache(memoryCache);
@@ -67,12 +71,14 @@ public class CapabilityStatementServiceTests
         tenantStore.GetTenantConfigurationAsync(1, CancellationToken.None).Returns(tenant);
         var schemaProvider = Substitute.For<IFhirSchemaProvider>();
         var versionContext = Substitute.For<IFhirVersionContext>();
+        var indexer = Substitute.For<ISearchIndexer>();
+        long publicationSequence = 37;
         versionContext.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(
-                Substitute.For<ISearchIndexer>(),
+            .Returns(_ => new DefinitionsHandle(
+                indexer,
                 schemaProvider,
                 DefinitionsEventId: 11,
-                PublicationSequence: 37));
+                PublicationSequence: publicationSequence));
         versionContext.GetBaseSchemaProvider(FhirVersion.R4).Returns(schemaProvider);
         var segment = Substitute.For<ICapabilitySegment>();
         segment.SegmentKey.Returns("test");
@@ -98,10 +104,14 @@ public class CapabilityStatementServiceTests
             Substitute.For<IApplicationVersionInfo>(),
             NullLogger<CapabilityStatementService>.Instance);
 
-        await service.GetCapabilityStatementAsync(
-            new CapabilityContext(FhirVersion.R4, TenantId: 1),
-            CancellationToken.None);
+        var context = new CapabilityContext(FhirVersion.R4, TenantId: 1);
 
-        (await cache.GetAsync("capability:R4:1:11:37", CancellationToken.None)).ShouldNotBeNull();
+        await service.GetCapabilityStatementAsync(context, CancellationToken.None);
+        publicationSequence = secondPublicationSequence;
+        await service.GetCapabilityStatementAsync(context, CancellationToken.None);
+
+        segment.ReceivedCalls()
+            .Count(call => call.GetMethodInfo().Name == nameof(ICapabilitySegment.ApplyAsync))
+            .ShouldBe(expectedBuilds);
     }
 }

@@ -18,6 +18,7 @@ public class ConformanceStateInitializerService(
     ConformanceState conformanceState,
     ConformanceRefresher conformanceRefresher,
     ConformanceLease conformanceLease,
+    TimeProvider timeProvider,
     ILogger<ConformanceStateInitializerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -88,7 +89,7 @@ public class ConformanceStateInitializerService(
 
                     try
                     {
-                        await DelayBeforeRetryAsync(delays[attempt], stoppingToken);
+                        await Task.Delay(delays[attempt], timeProvider, stoppingToken);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                     {
@@ -111,7 +112,4 @@ public class ConformanceStateInitializerService(
 
         }
     }
-
-    protected virtual Task DelayBeforeRetryAsync(TimeSpan delay, CancellationToken cancellationToken) =>
-        Task.Delay(delay, cancellationToken);
 }

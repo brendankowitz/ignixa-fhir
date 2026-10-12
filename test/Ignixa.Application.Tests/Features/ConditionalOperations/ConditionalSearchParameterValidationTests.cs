@@ -24,51 +24,52 @@ namespace Ignixa.Application.Tests.Features.ConditionalOperations;
 
 public class ConditionalSearchParameterValidationTests
 {
-    [Fact]
-    public async Task GivenHiddenParameter_WhenConditionalHandlersBuildCriteria_ThenTheyRejectBeforeSendingAnyMutation()
+    public enum CriteriaScenario
     {
-        var searchOptions = new SearchOptions
-        {
-            UnsupportedParams = ["pending"],
-            BundleIssues =
-            [
-                new IssueComponent(
-                    Severity: "warning",
-                    Code: "not-supported",
-                    Diagnostics: "Search parameter 'pending' is pending reindex and was ignored."),
-            ],
-        };
+        PendingReindex,
+        BeingRedefined,
+        PartiallyIndexed,
+        Unsupported,
+    }
+
+    [Theory]
+    [InlineData(CriteriaScenario.PendingReindex, "cannot use search parameter 'pending' because it is pending reindex")]
+    [InlineData(CriteriaScenario.BeingRedefined, "cannot use search parameter 'pending' because it is being redefined")]
+    [InlineData(CriteriaScenario.PartiallyIndexed, "cannot use partially indexed search parameters ('pending')")]
+    [InlineData(CriteriaScenario.Unsupported, "cannot use unsupported search parameter 'pending'")]
+    public async Task GivenCriteriaWithAnUnusableParameter_WhenConditionalHandlersBuildCriteria_ThenTheyRejectBeforeSendingAnyMutation(
+        CriteriaScenario scenario,
+        string expectedMessage)
+    {
+        var searchOptions = CreateSearchOptions(scenario);
 
         foreach (var (operation, execute, mediator) in CreateHandlers(searchOptions))
         {
             var exception = await Should.ThrowAsync<BadRequestException>(execute);
 
-            exception.Message.ShouldContain("Search parameter 'pending' is pending reindex");
+            exception.Message.ShouldContain(expectedMessage, Case.Sensitive, operation);
             mediator.ReceivedCalls().ShouldBeEmpty(operation);
         }
     }
 
-    [Fact]
-    public async Task GivenPartiallyIndexedParameter_WhenConditionalHandlersBuildCriteria_ThenTheyRejectBeforeSendingAnyMutation()
+    private static SearchOptions CreateSearchOptions(CriteriaScenario scenario)
     {
-        var searchOptions = new SearchOptions
+        var parameter = new SearchParameterInfo("pending", "pending", SearchParamType.String)
         {
-            ResolvedSearchParameters =
-            [
-                new SearchParameterInfo("pending", "pending", SearchParamType.String)
-                {
-                    IsSearchable = false,
-                },
-            ],
+            IsSearchable = false,
+            IsHiddenByTransition = scenario == CriteriaScenario.BeingRedefined,
         };
 
-        foreach (var (operation, execute, mediator) in CreateHandlers(searchOptions))
+        return scenario switch
         {
-            var exception = await Should.ThrowAsync<BadRequestException>(execute);
-
-            exception.Message.ShouldContain("Conditional operations cannot use partially indexed search parameters");
-            mediator.ReceivedCalls().ShouldBeEmpty(operation);
-        }
+            CriteriaScenario.PartiallyIndexed => new SearchOptions { ResolvedSearchParameters = [parameter] },
+            CriteriaScenario.Unsupported => new SearchOptions { UnsupportedParams = ["pending"] },
+            _ => new SearchOptions
+            {
+                UnsupportedParams = ["pending"],
+                HiddenSearchParameters = new Dictionary<string, SearchParameterInfo> { ["pending"] = parameter },
+            },
+        };
     }
 
     private static IReadOnlyList<(string Operation, Func<Task> Execute, IMediator Mediator)> CreateHandlers(SearchOptions searchOptions)

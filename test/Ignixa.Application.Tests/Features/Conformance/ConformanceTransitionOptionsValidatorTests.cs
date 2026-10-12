@@ -5,6 +5,26 @@ namespace Ignixa.Application.Tests.Features.Conformance;
 
 public class ConformanceTransitionOptionsValidatorTests
 {
+    private static readonly TimeSpan Ten = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan Thirty = TimeSpan.FromSeconds(30);
+
+    public static TheoryData<string, int, TimeSpan, TimeSpan, TimeSpan, TimeSpan, bool> Cases => new()
+    {
+        { "grace equals staleness plus margin", 30, Ten, TimeSpan.FromSeconds(40), Thirty, Ten, true },
+        { "grace one second short of staleness plus margin", 30, Ten, TimeSpan.FromSeconds(39), Thirty, Ten, false },
+        { "grace below staleness", 30, Ten, TimeSpan.FromSeconds(9), TimeSpan.FromSeconds(1), Ten, false },
+        { "barrier delay equals staleness", 30, Ten, TimeSpan.FromSeconds(40), Thirty, Ten, true },
+        { "barrier delay below staleness", 30, Ten, TimeSpan.FromSeconds(40), Thirty, TimeSpan.FromSeconds(9), false },
+        { "zero sync interval", 0, Ten, TimeSpan.FromSeconds(40), Thirty, Ten, false },
+        { "negative sync interval", -1, Ten, TimeSpan.FromSeconds(40), Thirty, Ten, false },
+        { "zero staleness", 30, TimeSpan.Zero, Thirty, Thirty, TimeSpan.Zero, false },
+        { "negative staleness and barrier delay", 30, TimeSpan.FromSeconds(-2), Thirty, Thirty, TimeSpan.FromSeconds(-1), false },
+        { "zero safety margin", 30, Ten, TimeSpan.FromSeconds(11), TimeSpan.Zero, Ten, false },
+        { "negative safety margin", 30, Ten, TimeSpan.FromSeconds(11), TimeSpan.FromSeconds(-1), Ten, false },
+        { "durations at the maximum", 30, TimeSpan.MaxValue, TimeSpan.MaxValue, TimeSpan.FromSeconds(1), TimeSpan.MaxValue, false },
+        { "negative staleness with maximum grace", 30, TimeSpan.MinValue, TimeSpan.MaxValue, Thirty, TimeSpan.MaxValue, false },
+    };
+
     [Fact]
     public void GivenDefaultTransitionOptions_WhenReadingTheSafetyMargin_ThenItCoversTheSqlExecutionBudget()
     {
@@ -14,166 +34,28 @@ public class ConformanceTransitionOptionsValidatorTests
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void GivenNonPositiveSyncInterval_WhenValidated_ThenItFails(int seconds)
-    {
-        var result = ConformanceTransitionOptionsValidator.Validate(
-            new ConformanceTransitionOptions
-            {
-                SyncIntervalSeconds = seconds,
-                MaxStaleness = TimeSpan.FromSeconds(10),
-                TransitionGrace = TimeSpan.FromSeconds(11),
-            },
-            new ReindexOptions { BarrierDelay = TimeSpan.FromSeconds(10) });
-
-        result.Failed.ShouldBeTrue();
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void GivenNonPositiveMaxStaleness_WhenValidated_ThenItFails(int seconds)
-    {
-        var result = ConformanceTransitionOptionsValidator.Validate(
-            new ConformanceTransitionOptions
-            {
-                MaxStaleness = TimeSpan.FromSeconds(seconds),
-                TransitionGrace = TimeSpan.FromSeconds(11),
-            },
-            new ReindexOptions { BarrierDelay = TimeSpan.FromSeconds(10) });
-
-        result.Failed.ShouldBeTrue();
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void GivenNonPositiveTransitionGrace_WhenValidated_ThenItFails(int seconds)
-    {
-        var result = ConformanceTransitionOptionsValidator.Validate(
-            new ConformanceTransitionOptions
-            {
-                MaxStaleness = TimeSpan.FromSeconds(-2),
-                TransitionGrace = TimeSpan.FromSeconds(seconds),
-            },
-            new ReindexOptions { BarrierDelay = TimeSpan.FromSeconds(0) });
-
-        result.Failed.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void GivenNegativeBarrierDelay_WhenValidated_ThenItFails()
-    {
-        var result = ConformanceTransitionOptionsValidator.Validate(
-            new ConformanceTransitionOptions
-            {
-                MaxStaleness = TimeSpan.FromSeconds(-2),
-                TransitionGrace = TimeSpan.FromSeconds(-1),
-            },
-            new ReindexOptions { BarrierDelay = TimeSpan.FromSeconds(-1) });
-
-        result.Failed.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void GivenNegativeTransitionSafetyMargin_WhenValidated_ThenItFails()
-    {
-        var result = ConformanceTransitionOptionsValidator.Validate(
-            new ConformanceTransitionOptions
-            {
-                MaxStaleness = TimeSpan.FromSeconds(10),
-                TransitionGrace = TimeSpan.FromSeconds(11),
-                TransitionSafetyMargin = TimeSpan.FromSeconds(-1),
-            },
-            new ReindexOptions { BarrierDelay = TimeSpan.FromSeconds(10) });
-
-        result.Failed.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void GivenZeroTransitionSafetyMargin_WhenValidated_ThenItFails()
-    {
-        var result = ConformanceTransitionOptionsValidator.Validate(
-            new ConformanceTransitionOptions
-            {
-                MaxStaleness = TimeSpan.FromSeconds(10),
-                TransitionGrace = TimeSpan.FromSeconds(11),
-                TransitionSafetyMargin = TimeSpan.Zero,
-            },
-            new ReindexOptions { BarrierDelay = TimeSpan.FromSeconds(10) });
-
-        result.Failed.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void GivenGraceBelowMaxStalenessPlusSafetyMargin_WhenValidated_ThenItFails()
+    [MemberData(nameof(Cases))]
+    public void GivenTransitionTimings_WhenValidated_ThenOnlyTimingsThatCoverStalenessSucceed(
+        string scenario,
+        int syncIntervalSeconds,
+        TimeSpan maxStaleness,
+        TimeSpan transitionGrace,
+        TimeSpan transitionSafetyMargin,
+        TimeSpan barrierDelay,
+        bool expectedValid)
     {
         var options = new ConformanceTransitionOptions
         {
-            MaxStaleness = TimeSpan.FromSeconds(10),
-            TransitionGrace = TimeSpan.FromSeconds(39),
-            TransitionSafetyMargin = TimeSpan.FromSeconds(30),
+            SyncIntervalSeconds = syncIntervalSeconds,
+            MaxStaleness = maxStaleness,
+            TransitionGrace = transitionGrace,
+            TransitionSafetyMargin = transitionSafetyMargin,
         };
 
-        var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions
-        {
-            BarrierDelay = TimeSpan.FromSeconds(10),
-        });
+        var result = ConformanceTransitionOptionsValidator.Validate(
+            options,
+            new ReindexOptions { BarrierDelay = barrierDelay });
 
-        result.Failed.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void GivenBarrierDelayBelowMaxStaleness_WhenValidated_ThenItFails()
-    {
-        var options = new ConformanceTransitionOptions
-        {
-            MaxStaleness = TimeSpan.FromSeconds(10),
-            TransitionGrace = TimeSpan.FromSeconds(11),
-        };
-
-        var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions
-        {
-            BarrierDelay = TimeSpan.FromSeconds(9),
-        });
-
-        result.Failed.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void GivenGraceEqualToMaxStalenessPlusSafetyMargin_WhenValidated_ThenItSucceeds()
-    {
-        var options = new ConformanceTransitionOptions
-        {
-            MaxStaleness = TimeSpan.FromSeconds(10),
-            TransitionGrace = TimeSpan.FromSeconds(40),
-            TransitionSafetyMargin = TimeSpan.FromSeconds(30),
-        };
-
-        var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions
-        {
-            BarrierDelay = TimeSpan.FromSeconds(10),
-        });
-
-        result.Succeeded.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void GivenDurationsNearTimeSpanMaximum_WhenValidated_ThenItFailsWithoutOverflowing()
-    {
-        var options = new ConformanceTransitionOptions
-        {
-            MaxStaleness = TimeSpan.MaxValue,
-            TransitionGrace = TimeSpan.MaxValue,
-            TransitionSafetyMargin = TimeSpan.FromSeconds(1),
-        };
-
-        var result = ConformanceTransitionOptionsValidator.Validate(options, new ReindexOptions
-        {
-            BarrierDelay = TimeSpan.MaxValue,
-        });
-
-        result.Failed.ShouldBeTrue();
+        result.Succeeded.ShouldBe(expectedValid, scenario);
     }
 }

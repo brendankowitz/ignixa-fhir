@@ -88,30 +88,11 @@ public sealed class PackageActivationPlanner(
 
     private bool IsValidOverride(SearchParameterInfo newSp, ActiveSearchParameter existing)
     {
-        // Explicit derivedFrom relationship
-        if (newSp.DerivedFrom == existing.Canonical)
-        {
-            return true;
-        }
-
-        // Same canonical URL (version update)
-        if (newSp.Canonical == existing.Canonical)
-        {
-            return true;
-        }
-
-        if (IsBaseFhirPackage(existing.SourcePackage.Split('@')[0]))
-        {
-            return true;
-        }
-
-        // Priority-based override
-        if (HasHigherPriority(newSp.SourcePackageId, existing.SourcePackage.Split('@')[0]))
-        {
-            return true;
-        }
-
-        return false;
+        var existingPackageId = existing.SourcePackage.Split('@')[0];
+        return newSp.DerivedFrom == existing.Canonical ||
+            newSp.Canonical == existing.Canonical ||
+            ConformanceState.IsBaseFhirPackage(existingPackageId) ||
+            HasHigherPriority(newSp.SourcePackageId, existingPackageId);
     }
 
     private bool HasHigherPriority(string newPackageId, string existingPackageId)
@@ -143,9 +124,10 @@ public sealed class PackageActivationPlanner(
 
         // Every definition this package activates, the base owners it materialises included, belongs to the
         // package's FHIR version: tenants on other versions keep their own base definitions.
-        var activationVersion = resources.SearchParameters.Count > 0
-            ? FhirSpecificationExtensions.FromVersionString(fhirVersionString!).ToVersionString()
+        FhirVersion? packageFhirVersion = resources.SearchParameters.Count > 0
+            ? FhirSpecificationExtensions.FromVersionString(fhirVersionString!)
             : null;
+        var activationVersion = packageFhirVersion?.ToVersionString();
 
         // Emit SearchParameter events (non-composite first, then composite)
         foreach (var sp in resources.SearchParameters.OrderBy(sp => sp.Type == SearchParamType.Composite ? 1 : 0))
@@ -155,7 +137,7 @@ public sealed class PackageActivationPlanner(
                 resourceType => staged.GetSearchParameter(resourceType, sp.Code) is { Status: not SearchParameterStatus.Disabled } owner
                     ? owner
                     : null);
-            var baseParameters = ResolveBaseParameters(packageId, fhirVersionString, sp);
+            var baseParameters = ResolveBaseParameters(packageId, packageFhirVersion!.Value, sp);
             var storageRoots = sp.BaseResourceTypes
                 .Select(resourceType =>
                     existingOwners[resourceType]?.OverridesCanonical ??
@@ -210,8 +192,7 @@ public sealed class PackageActivationPlanner(
                 {
                     var baseCanonical = baseParameter.Url.ToString();
                     var baseSearchParamId = staged.GetSearchParamIdForActivation(baseCanonical, null);
-                    var basePackage = GetBasePackageKey(
-                        FhirSpecificationExtensions.FromVersionString(fhirVersionString!));
+                    var basePackage = GetBasePackageKey(packageFhirVersion!.Value);
                     var baseActivation = new NewSourceEvent(
                         streamId,
                         nameof(SearchParameterActivated),
@@ -348,20 +329,14 @@ public sealed class PackageActivationPlanner(
         return (events, null);
     }
 
+    // Only reached for a package whose SearchParameters passed the known-FHIR-version check.
     private IReadOnlyDictionary<string, Ignixa.Search.Models.SearchParameterInfo> ResolveBaseParameters(
         string packageId,
-        string? fhirVersionString,
+        FhirVersion fhirVersion,
         SearchParameterInfo parameter)
     {
-        if (IsBaseFhirPackage(packageId) ||
-            IntrinsicSearchParameters.IsIntrinsicCode(parameter.Code) ||
-            string.IsNullOrWhiteSpace(fhirVersionString))
-        {
-            return new Dictionary<string, Ignixa.Search.Models.SearchParameterInfo>();
-        }
-
-        var fhirVersion = FhirSpecificationExtensions.FromVersionString(fhirVersionString);
-        if (fhirVersion == FhirVersion.Unspecified)
+        if (ConformanceState.IsBaseFhirPackage(packageId) ||
+            IntrinsicSearchParameters.IsIntrinsicCode(parameter.Code))
         {
             return new Dictionary<string, Ignixa.Search.Models.SearchParameterInfo>();
         }
@@ -392,8 +367,4 @@ public sealed class PackageActivationPlanner(
         };
         return $"hl7.fhir.{release}.core@{fhirVersionContext.GetBaseSchemaProvider(fhirVersion).FullVersion}";
     }
-
-    private static bool IsBaseFhirPackage(string packageId) =>
-        packageId.StartsWith("hl7.fhir.r", StringComparison.OrdinalIgnoreCase) &&
-        packageId.EndsWith(".core", StringComparison.OrdinalIgnoreCase);
 }

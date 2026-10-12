@@ -16,7 +16,6 @@ using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
-using ConformanceSearchGuard = Ignixa.Application.Features.Conformance.ConformanceSearchGuard;
 using ConformanceLease = Ignixa.Application.Features.Conformance.ConformanceLease;
 
 namespace Ignixa.Application.Operations.Features.MemberMatch;
@@ -129,8 +128,7 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
             Total = TotalType.Accurate
         };
 
-        ConformanceSearchGuard.EnsureRequestCanSearch(
-            _conformanceLease,
+        _conformanceLease.EnsureRequestCanSearch(
             requestOriginated: true,
             context.IsBackgroundTask);
 

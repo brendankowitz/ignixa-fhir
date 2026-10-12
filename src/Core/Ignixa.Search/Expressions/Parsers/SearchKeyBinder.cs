@@ -147,11 +147,7 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
                     false,
                     next));
             }
-            catch (PartiallyIndexedSearchParameterException)
-            {
-                throw;
-            }
-            catch (TransitionHiddenSearchParameterException)
+            catch (HiddenSearchParameterException)
             {
                 throw;
             }
@@ -185,11 +181,7 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
         {
             return Bind([candidate], next);
         }
-        catch (PartiallyIndexedSearchParameterException)
-        {
-            throw;
-        }
-        catch (TransitionHiddenSearchParameterException)
+        catch (HiddenSearchParameterException)
         {
             throw;
         }

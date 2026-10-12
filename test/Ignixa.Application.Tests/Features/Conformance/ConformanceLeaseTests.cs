@@ -38,7 +38,6 @@ public class ConformanceLeaseTests
 
         lease.IsHeld.ShouldBeFalse();
         lease.Age.ShouldBe(TimeSpan.MaxValue);
-        lease.LeaseStartUtc.ShouldBeNull();
     }
 
     [Fact]
@@ -59,25 +58,6 @@ public class ConformanceLeaseTests
         logger.ReceivedCalls()
             .Count(call => Equals(call.GetArguments()[0], LogLevel.Warning))
             .ShouldBe(1);
-    }
-
-    [Fact]
-    public void GivenHeldLeaseExpires_WhenIsHeldIsRead_ThenTheReadNeitherLogsNorRecordsTheLoss()
-    {
-        var clock = new ManualTimeProvider();
-        var logger = Substitute.For<ILogger<ConformanceLease>>();
-        var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
-            clock,
-            logger);
-        lease.Renew(lease.CaptureStart());
-        logger.ClearReceivedCalls();
-        clock.Advance(TimeSpan.FromSeconds(11));
-
-        lease.IsHeld.ShouldBeFalse();
-        lease.IsHeld.ShouldBeFalse();
-
-        logger.ReceivedCalls().ShouldBeEmpty();
     }
 
     [Fact]
@@ -120,24 +100,44 @@ public class ConformanceLeaseTests
         lease.Renew(olderStart);
         clock.Advance(TimeSpan.FromSeconds(5));
 
-        lease.LeaseStartUtc.ShouldBe(newerStart.Utc);
         lease.Age.ShouldBe(TimeSpan.FromSeconds(5));
         lease.IsHeld.ShouldBeTrue();
     }
 
-    [Fact]
-    public void GivenStaleLeaseForBackgroundWork_WhenSearchGuardRuns_ThenItDoesNotBlockTheWork()
+    [Theory]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, true, false)]
+    public void GivenSearchOrigin_WhenTheLeaseGuardsTheSearch_ThenOnlyAStaleRequestSearchIsRejected(
+        bool requestOriginated,
+        bool isBackgroundTask,
+        bool held,
+        bool expectRejected)
     {
         var lease = new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromSeconds(10) }),
+            Options.Create(new ConformanceTransitionOptions
+            {
+                MaxStaleness = TimeSpan.FromSeconds(10),
+                SyncIntervalSeconds = 7,
+            }),
             new ManualTimeProvider(),
             NullLogger<ConformanceLease>.Instance);
-        lease.IsHeld.ShouldBeFalse();
+        if (held)
+        {
+            lease.Renew(lease.CaptureStart());
+        }
 
-        Should.NotThrow(() => ConformanceSearchGuard.EnsureRequestCanSearch(
-            lease,
-            requestOriginated: true,
-            isBackgroundTask: true));
+        var exception = Record.Exception(() => lease.EnsureRequestCanSearch(requestOriginated, isBackgroundTask));
+
+        if (expectRejected)
+        {
+            exception.ShouldBeOfType<ConformanceStaleException>().RetryAfter.ShouldBe(TimeSpan.FromSeconds(7));
+        }
+        else
+        {
+            exception.ShouldBeNull();
+        }
     }
 
     private sealed class ManualTimeProvider : TimeProvider

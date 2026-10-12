@@ -220,27 +220,41 @@ public class ParameterOutcomeTests
         ]));
     }
 
+    public static TheoryData<string, bool, bool, string> HiddenParameterCases()
+    {
+        const string ignoredPending = "Search parameter 'pending' is pending reindex and was ignored.";
+        const string incompletePending =
+            "Search results may be incomplete because search parameter 'pending' is pending reindex.";
+        const string ignoredRedefined = "Search parameter 'pending' is being redefined and was ignored.";
+        var cases = new TheoryData<string, bool, bool, string>();
+        foreach (var form in new[] { "direct", "forward-chain", "reverse-chain", "include", "revinclude", "sort", "system" })
+        {
+            cases.Add(form, true, false, ignoredPending);
+            cases.Add(form, true, true, incompletePending);
+            cases.Add(form, false, false, ignoredRedefined);
+            cases.Add(form, false, true, ignoredRedefined);
+        }
+
+        foreach (var form in new[] { "wildcard-include", "wildcard-revinclude" })
+        {
+            cases.Add(form, false, false, ignoredRedefined);
+            cases.Add(form, false, true, ignoredRedefined);
+        }
+
+        return cases;
+    }
+
+    // A pending parameter is visible only with the partial-index opt-in; a redefined one never is.
     [Theory]
-    [InlineData("direct", false)]
-    [InlineData("forward-chain", false)]
-    [InlineData("reverse-chain", false)]
-    [InlineData("include", false)]
-    [InlineData("revinclude", false)]
-    [InlineData("sort", false)]
-    [InlineData("system", false)]
-    [InlineData("direct", true)]
-    [InlineData("forward-chain", true)]
-    [InlineData("reverse-chain", true)]
-    [InlineData("include", true)]
-    [InlineData("revinclude", true)]
-    [InlineData("sort", true)]
-    [InlineData("system", true)]
-    public void GivenAPendingParameterInAnyResolvedPosition_WhenBuilt_ThenItReportsTheAppropriatePendingReindexWarning(
+    [MemberData(nameof(HiddenParameterCases))]
+    public void GivenAHiddenParameterInAnyResolvedPosition_WhenBuilt_ThenItReportsTheWarningForItsState(
         string form,
-        bool usePartialIndices)
+        bool isPending,
+        bool usePartialIndices,
+        string expectedDiagnostics)
     {
         var context = new SearchParserTestContext();
-        var (resourceType, parameters) = AddPendingParameter(context, form);
+        var (resourceType, parameters) = AddHiddenParameter(context, form, isSupported: isPending);
         var definitions = new SearchableSearchParameterDefinitionManager(
             context.DefinitionManager,
             () => usePartialIndices);
@@ -250,36 +264,7 @@ public class ParameterOutcomeTests
 
         var options = builder.Build(resourceType, parameters);
 
-        options.BundleIssues.ShouldContain(issue => issue.Diagnostics == (
-            usePartialIndices
-                ? "Search results may be incomplete because search parameter 'pending' is pending reindex."
-                : "Search parameter 'pending' is pending reindex and was ignored."));
-    }
-
-    [Theory]
-    [InlineData("direct")]
-    [InlineData("forward-chain")]
-    [InlineData("reverse-chain")]
-    [InlineData("include")]
-    [InlineData("revinclude")]
-    [InlineData("wildcard-include")]
-    [InlineData("wildcard-revinclude")]
-    [InlineData("sort")]
-    [InlineData("system")]
-    public void GivenARedefinedParameterInAnyResolvedPosition_WhenBuilt_ThenItIsIgnoredWithTheRedefinitionWarning(
-        string form)
-    {
-        var context = new SearchParserTestContext();
-        var (resourceType, parameters) = AddHiddenParameter(context, form, isSupported: false);
-        var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-            definitions);
-
-        var options = builder.Build(resourceType, parameters);
-
-        options.BundleIssues.ShouldContain(issue =>
-            issue.Diagnostics == "Search parameter 'pending' is being redefined and was ignored.");
+        options.BundleIssues.ShouldContain(issue => issue.Diagnostics == expectedDiagnostics);
     }
 
     [Fact]
@@ -321,10 +306,6 @@ public class ParameterOutcomeTests
         trace.KeySyntax!.Kind.ShouldBe("ForwardChain");
         trace.KeySyntax.Children.ShouldHaveSingleItem();
     }
-
-    private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddPendingParameter(
-        SearchParserTestContext context,
-        string form) => AddHiddenParameter(context, form, isSupported: true);
 
     private static (string? ResourceType, IReadOnlyList<QueryParameter> Parameters) AddHiddenParameter(
         SearchParserTestContext context,

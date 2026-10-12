@@ -16,6 +16,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,6 +27,12 @@
     <ProjectReference Include="../../src/Application/Ignixa.Api/Ignixa.Api.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.Validation/Ignixa.Validation.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared with Ignixa.Application.Tests rather than copied. -->
+    <Compile Include="..\Ignixa.Application.Tests\TestConformanceLease.cs" Link="TestConformanceLease.cs" />
+    <Compile Include="..\Ignixa.Application.Tests\TestConformanceRefresher.cs" Link="TestConformanceRefresher.cs" />
   </ItemGroup>
 
 </Project>
