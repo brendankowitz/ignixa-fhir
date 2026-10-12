@@ -100,14 +100,9 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
             return parameter;
         }
 
-        if (parameter.IsHiddenByTransition)
+        if (parameter.IsHiddenByTransition || parameter.IsSupported)
         {
-            throw new TransitionHiddenSearchParameterException(parameter);
-        }
-
-        if (parameter.IsSupported)
-        {
-            throw new PartiallyIndexedSearchParameterException(parameter);
+            throw new HiddenSearchParameterException(parameter);
         }
 
         throw new SearchParameterNotSupportedException(resourceType, code);
@@ -119,14 +114,9 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
         if (IsVisible(parameter, _includePartiallyIndexedSearchParameters())) return parameter;
 
-        if (parameter.IsHiddenByTransition)
+        if (parameter.IsHiddenByTransition || parameter.IsSupported)
         {
-            throw new TransitionHiddenSearchParameterException(parameter);
-        }
-
-        if (parameter.IsSupported)
-        {
-            throw new PartiallyIndexedSearchParameterException(parameter);
+            throw new HiddenSearchParameterException(parameter);
         }
 
         throw new SearchParameterNotSupportedException(definitionUri);

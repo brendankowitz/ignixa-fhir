@@ -58,6 +58,7 @@ public sealed class SearchOptions
         Summary = other.Summary;
         UnsupportedParams = other.UnsupportedParams;
         UnsupportedModifierParams = other.UnsupportedModifierParams;
+        HiddenSearchParameters = other.HiddenSearchParameters;
         BundleIssues = other.BundleIssues;
         ResolvedSearchParameters = other.ResolvedSearchParameters;
         ResourceType = other.ResourceType;
@@ -157,6 +158,13 @@ public sealed class SearchOptions
     /// this layer having to know about headers.
     /// </remarks>
     public IReadOnlyList<string> UnsupportedModifierParams { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets the supported parameters this request could not see, keyed by their ignored entry in
+    /// <see cref="UnsupportedParams"/>: pending reindex without the partial-index opt-in, or being redefined.
+    /// </summary>
+    public IReadOnlyDictionary<string, SearchParameterInfo> HiddenSearchParameters { get; set; } =
+        new Dictionary<string, SearchParameterInfo>();
 
     /// <summary>
     /// Gets or sets issues related to the search (e.g., unsupported parameters).

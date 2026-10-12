@@ -199,6 +199,11 @@ public class SearchOptionsCopyConstructorTests
             return typeof(HashSet<>).MakeGenericType(arguments);
         }
 
+        if (definition == typeof(IReadOnlyDictionary<,>) || definition == typeof(IDictionary<,>))
+        {
+            return typeof(Dictionary<,>).MakeGenericType(arguments);
+        }
+
         return null;
     }
 }
