@@ -14,7 +14,6 @@ CREATE TABLE dbo.BackgroundJobs (
     Worker                  NVARCHAR (256)  NULL,
     ErrorMessage            NVARCHAR (1000) NULL,
     CancelRequested         BIT             NOT NULL,
-    RowVersion              ROWVERSION      NOT NULL,
     CONSTRAINT PK_BackgroundJobs PRIMARY KEY (TenantId, JobId)
 );
 

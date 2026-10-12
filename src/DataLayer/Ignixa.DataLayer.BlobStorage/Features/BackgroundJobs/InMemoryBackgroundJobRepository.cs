@@ -26,7 +26,6 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
     private readonly ConcurrentDictionary<string, BackgroundJob<T>> _jobs = new();
     private readonly ITenantConfigurationStore _tenantConfigStore;
     private readonly ILogger<InMemoryBackgroundJobRepository<T>> _logger;
-    private long _version;
 
     private static partial class Log
     {
@@ -62,7 +61,6 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
         ArgumentNullException.ThrowIfNull(job);
 
         var snapshot = Snapshot(job);
-        snapshot.RowVersion = Interlocked.Increment(ref _version);
         if (!_jobs.TryAdd(snapshot.JobId, snapshot))
         {
             throw new InvalidOperationException($"Background job with ID '{job.JobId}' already exists");
@@ -129,7 +127,6 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
                 throw new BackgroundJobUpdateConflictException(snapshot.JobId, existing.Status);
             }
 
-            snapshot.RowVersion = Interlocked.Increment(ref _version);
             if (_jobs.TryUpdate(snapshot.JobId, snapshot, existing))
             {
                 Log.UpdatedBackgroundJob(_logger, snapshot.JobId, snapshot.Status);

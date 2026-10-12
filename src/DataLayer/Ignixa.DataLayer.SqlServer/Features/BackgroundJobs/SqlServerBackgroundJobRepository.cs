@@ -36,15 +36,13 @@ public sealed class SqlServerBackgroundJobRepository<T>(
 {
     private static readonly TableDescriptor Jobs = SqlCatalog.Default.Table("BackgroundJobs");
 
-    private static readonly string WritableColumns = string.Join(", ",
+    private static readonly string AllColumns = string.Join(", ",
         "TenantId", "JobId", "JobType", "OrchestrationInstanceId", "Status", "Definition", "Progress",
         "Result", "CreateDate", "StartDate", "EndDate", "HeartbeatDate", "Worker", "ErrorMessage",
         "CancelRequested")
         .Split(", ")
         .Select(c => Jobs.Column(c).Name)
         .Aggregate((a, b) => $"{a}, {b}");
-
-    private static readonly string AllColumns = $"{WritableColumns}, CAST({Jobs.Column("RowVersion").Name} AS bigint)";
 
     private static readonly string QualifiedTable = $"{Jobs.SchemaName}.{Jobs.TableName}";
 
@@ -53,7 +51,7 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         ArgumentNullException.ThrowIfNull(job);
 
         using var command = CreateCommand(
-            $"INSERT INTO {QualifiedTable} ({WritableColumns}) VALUES " +
+            $"INSERT INTO {QualifiedTable} ({AllColumns}) VALUES " +
             "(@tenantId, @jobId, @jobType, @orchestrationInstanceId, @status, @definition, @progress, " +
             "@result, @createDate, @startDate, @endDate, @heartbeatDate, @worker, @errorMessage, @cancelRequested)");
 
@@ -339,7 +337,6 @@ public sealed class SqlServerBackgroundJobRepository<T>(
             Worker = reader.IsDBNull(12) ? null : reader.GetString(12),
             ErrorMessage = reader.IsDBNull(13) ? null : reader.GetString(13),
             CancelRequested = reader.GetBoolean(14),
-            RowVersion = reader.GetInt64(15),
         };
     }
 
