@@ -61,7 +61,6 @@ public sealed class ReindexTrigger(
                 ReindexJobCreatedResult created => RecordStarted(ReindexTriggerKind.Activation, created.JobId, reason),
                 ActiveReindexJobResult active => new ReindexTriggerResult(active.ActiveJobId, true, null),
                 NoReindexWorkResult noWork => new ReindexTriggerResult(null, false, noWork.ErrorMessage),
-                InvalidReindexRequestResult invalid => throw new InvalidOperationException(invalid.ErrorMessage),
                 _ => throw new InvalidOperationException(
                     $"Unsupported automatic reindex result {result.GetType().Name}.")
             };

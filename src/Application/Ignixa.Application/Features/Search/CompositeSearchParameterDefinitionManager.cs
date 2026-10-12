@@ -241,21 +241,22 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             searchParamInfo.OverridesUrl = new Uri(asp.OverridesCanonical);
         }
 
+        // Every caller filters through IsListed, so only extracted statuses reach here.
         switch (asp.Status)
         {
+            case SearchParameterStatus.Enabled:
+                break;
             case SearchParameterStatus.Pending:
             case SearchParameterStatus.Reindexing:
                 searchParamInfo.IsSearchable = false;
-                break;
-            case SearchParameterStatus.Staged:
-                searchParamInfo.IsSearchable = false;
-                searchParamInfo.IsSupported = false;
-                searchParamInfo.IsHiddenByTransition = true;
                 break;
             case SearchParameterStatus.Disabling:
                 searchParamInfo.IsSearchable = false;
                 searchParamInfo.IsHiddenByTransition = true;
                 break;
+            default:
+                throw new InvalidOperationException(
+                    $"Search parameter {asp.Canonical} is {asp.Status}, which is never extracted or listed.");
         }
 
         return searchParamInfo;

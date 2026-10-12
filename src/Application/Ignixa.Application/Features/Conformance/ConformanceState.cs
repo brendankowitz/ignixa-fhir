@@ -250,20 +250,6 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         _lastProcessedEventId = evt.EventId;
     }
 
-    public async Task ApplyEventsAsync(
-        IEnumerable<SourceEvent> events,
-        CancellationToken cancellationToken)
-    {
-        using (await AcquireActivationLockAsync(cancellationToken))
-        {
-            foreach (var evt in events)
-            {
-                Apply(evt);
-                _lastProcessedEventId = evt.EventId;
-            }
-        }
-    }
-
     public async Task CatchUpAsync(
         ISourceEventStore store,
         CancellationToken cancellationToken)

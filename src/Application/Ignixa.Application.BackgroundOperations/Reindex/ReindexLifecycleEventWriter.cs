@@ -206,7 +206,7 @@ public sealed class ReindexLifecycleEventWriter(
                 current.Status == SearchParameterStatus.Enabled && current.ReindexJobId is null,
             SearchParameterReindexFailed =>
                 current.Status == SearchParameterStatus.Pending && current.ReindexJobId is null,
-            _ => false
+            _ => throw new InvalidOperationException($"Unexpected reindex lifecycle event {data.GetType().Name}.")
         };
     }
 
