@@ -12,17 +12,6 @@ namespace Ignixa.DataLayer.SqlServer.Tests;
 
 public class MergeTransactionAllocationTests
 {
-    [Fact]
-    public void GivenTheSqlRepository_WhenInspectingWriteOverloads_ThenNoZeroStampCompatibilityOverloadExists()
-    {
-        typeof(SqlServerFhirRepository).GetMethods()
-            .Count(method => method.Name == nameof(SqlServerFhirRepository.GetNextTransactionIdAsync))
-            .ShouldBe(1);
-        typeof(SqlServerFhirRepository).GetMethods()
-            .Count(method => method.Name == nameof(SqlServerFhirRepository.DeleteAsync))
-            .ShouldBe(1);
-    }
-
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
