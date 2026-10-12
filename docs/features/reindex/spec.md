@@ -285,7 +285,7 @@ transition whose grace period has elapsed but which is still uncommitted (§7).
    `Reindex:StaleJobTimeout`, after which the job fails. Startup rejects `Reindex:Enabled = true` when
    `TransactionWatcher:Enabled = false`, because the watcher completes or fails abandoned transactions.
    The poll seeks `IX_Transactions_SurrogateIdRangeFirstValue_Incomplete`, a covering filtered index
-   (`WHERE IsCompleted = 0`, `ONLINE = ON`, schema version 9), so it reads only incomplete rows although
+   (`WHERE IsCompleted = 0`, `ONLINE = ON`, schema version 4), so it reads only incomplete rows although
    `dbo.Transactions` is never pruned. It must not use `IX_IsVisible`: a late lower-id allocation can leave an
    incomplete row behind a watermark that already advanced.
 4. **Cutoff set.** Reindex the current, non-deleted rows of affected types with `ResourceSurrogateId ≤ S_t`.
@@ -624,11 +624,12 @@ authoritative, so a delayed activity cannot reopen a finalized job or its parame
 | Reindex lifecycle events gain `ActivationEventId` (nullable) | §4.3, and registration in `SqlServerSourceEventStore` |
 | `SearchParameterStatus` gains `Staged` and `Disabling`; new event `SearchParameterTransitionCommitted` | §4.4. Apply logic in `ConformanceState`. `CompositeSearchParameterDefinitionManager` extracts `Enabled`, `Pending`, `Reindexing`, and `Disabling`, and **not** `Staged`. |
 | Staleness lease (`ConformanceLease`) in `ConformanceStateSyncService`, and a search-entry guard | §4.5. The guard sits where search options are built (`SearchOptionsBuilderFactory`), so search, includes, compartments, and conditional matching all pass through it. |
-| `UpdateResourceSearchParams.sql` | Reused unchanged. Must be verified against Ignixa's typed tables, including composites. |
+| `UpdateResourceSearchParams.sql` | Reused as the index-only write, changed in schema 4: once its current-resource update rejects a superseded surrogate it skips that row's write-claim and typed-index inserts, and it returns the surrogate ids whose index rows it updated so version conflicts get no post-write extension update. Covers Ignixa's typed tables, including composites. |
 | Extension columns | Reuse `SqlServerPostMergeExtensionUpdater`, following the merge-transaction rule |
-| Retire `ReindexJob` table plus 5 sprocs; `Resource.SearchParamHash` usage, `MatchPageEmitter` hash clause, `SearchPlanOptions.SearchParameterHash` | Unused. Separate cleanup PR. The `ResourceList` TVP column stays (repository rule), so pass `NULL`. |
+| Retire `ReindexJob` table, its 5 sprocs and `BulkReindexResourceTableType_1` | Done in schema 4. `Script.PostDeployment.sql` drops exactly those objects when `ReindexJob` is empty and otherwise fails the upgrade with an actionable error, leaving the rows and the version stamp in place. |
+| `Resource.SearchParamHash` usage, `MatchPageEmitter` hash clause, `SearchPlanOptions.SearchParameterHash` | Unused. Separate cleanup PR. The `ResourceList` TVP column stays (repository rule), so pass `NULL`. |
 | `MergeResources*` procedures and TVPs | **Unchanged** |
-| `dbo.Transactions` indexes (schema 7 and 9) | `IX_Transactions_SurrogateIdRangeLastValue` (barrier cutoff) and the filtered `IX_Transactions_SurrogateIdRangeFirstValue_Incomplete` (drain), both `ONLINE = ON`. An existing tenant gets them from the **lazy upgrade** on its first use by a new build, so on a large `dbo.Transactions` the online build runs inside that upgrade. The deploy options allow 10 minutes per command and 1 hour for long-running commands (`SchemaDeployer.CreateDeployOptions`); a longer build fails the upgrade, which leaves the stamp unchanged and can be rerun, or applied ahead of time with the schema-upgrade CLI. Online index builds need Enterprise, Developer or Azure SQL. |
+| `dbo.Transactions` indexes (schema 4) | `IX_Transactions_SurrogateIdRangeLastValue` (barrier cutoff) and the filtered `IX_Transactions_SurrogateIdRangeFirstValue_Incomplete` (drain), both `ONLINE = ON`. An existing tenant gets them from the **lazy upgrade** on its first use by a new build, so on a large `dbo.Transactions` the online build runs inside that upgrade. The deploy options allow 10 minutes per command and 1 hour for long-running commands (`SchemaDeployer.CreateDeployOptions`); a longer build fails the upgrade, which leaves the stamp unchanged and can be rerun, or applied ahead of time with the schema-upgrade CLI. Online index builds need Enterprise, Developer or Azure SQL. |
 | `IReindexStore.HasSearchParameterAsync(storageCanonical)` | Completion checks the tenant catalog by storage URI (§8.5), not by conformance id. |
 
 ---

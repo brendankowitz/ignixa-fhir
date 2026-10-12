@@ -12,17 +12,6 @@ namespace Ignixa.DataLayer.SqlServer.Tests;
 
 public class MergeTransactionAllocationTests
 {
-    [Fact]
-    public void GivenTheSqlRepository_WhenInspectingWriteOverloads_ThenNoZeroStampCompatibilityOverloadExists()
-    {
-        typeof(SqlServerFhirRepository).GetMethods()
-            .Count(method => method.Name == nameof(SqlServerFhirRepository.GetNextTransactionIdAsync))
-            .ShouldBe(1);
-        typeof(SqlServerFhirRepository).GetMethods()
-            .Count(method => method.Name == nameof(SqlServerFhirRepository.DeleteAsync))
-            .ShouldBe(1);
-    }
-
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
@@ -84,51 +73,5 @@ public class MergeTransactionAllocationTests
 
         exception.ShouldBeSameAs(responseLost);
         observed.ShouldBe(SqlCommandIdempotency.NonIdempotent);
-    }
-
-    [Fact]
-    public async Task GivenAStaleAllocationWhoseFailureCannotBeCompleted_WhenBeginningTransaction_ThenCompletionFailureEscapes()
-    {
-        var sql = Substitute.For<ISqlExecutionService>();
-        var completionFailure = new IOException("Transaction completion failed.");
-        sql.ExecuteReaderAsync(
-                1,
-                Arg.Any<SqlCommand>(),
-                Arg.Any<Func<SqlDataReader, long>>(),
-                Arg.Any<CancellationToken>(),
-                Arg.Any<SqlCommandIdempotency>())
-            .Returns(call =>
-            {
-                var command = (SqlCommand)call[1];
-                command.Parameters["@TransactionId"].Value = 123L;
-                command.Parameters["@SequenceRangeFirstValue"].Value = 0;
-                return (IReadOnlyList<long>)[29];
-            });
-        sql.ExecuteNonQueryAsync(
-                1,
-                Arg.Any<SqlCommand>(),
-                Arg.Any<CancellationToken>(),
-                Arg.Any<SqlCommandIdempotency>())
-            .Returns(Task.FromException<int>(completionFailure));
-        using var cache = new SqlServerSearchIndexReferenceDataCache(
-            sql,
-            1,
-            NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
-        var repository = new SqlServerMergeRepository(
-            sql,
-            1,
-            new GzipResourceCompressor(new RecyclableMemoryStreamManager()),
-            cache,
-            new SqlServerPostMergeExtensionUpdater(
-                sql,
-                1,
-                NullLogger<SqlServerPostMergeExtensionUpdater>.Instance),
-            NullLogger<SqlServerMergeRepository>.Instance);
-
-        var exception = await Should.ThrowAsync<IOException>(() =>
-            repository.BeginTransactionAsync(1, definitionsEventId: 11));
-
-        exception.ShouldBeSameAs(completionFailure);
-        exception.Data["Ignixa.StaleConformanceDefinitions"].ShouldBeOfType<StaleConformanceDefinitionsException>();
     }
 }

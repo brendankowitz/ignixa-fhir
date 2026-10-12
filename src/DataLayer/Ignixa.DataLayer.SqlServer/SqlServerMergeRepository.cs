@@ -135,23 +135,10 @@ public class SqlServerMergeRepository(
                     transactionId,
                     definitionsEventId,
                     barrier);
-                try
-                {
-                    await CommitTransactionAsync(
-                        transactionId,
-                        staleException.Message,
-                        CancellationToken.None);
-                }
-                catch (Exception completionFailure)
-                {
-                    completionFailure.Data["Ignixa.StaleConformanceDefinitions"] = staleException;
-                    _logger.LogError(
-                        completionFailure,
-                        "Failed to complete stale transaction {TransactionId}; reconciliation is required",
-                        transactionId);
-                    throw;
-                }
-
+                await CommitTransactionAsync(
+                    transactionId,
+                    staleException.Message,
+                    CancellationToken.None);
                 throw staleException;
             }
 
@@ -162,11 +149,7 @@ public class SqlServerMergeRepository(
 
             return (transactionId, sequenceStart);
         }
-        catch (StaleConformanceDefinitionsException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not StaleConformanceDefinitionsException)
         {
             _logger.LogError(ex,
                 "Merge transaction allocation failed with an uncertain outcome for tenant {TenantId}; allocation was not replayed and requires transaction reconciliation",

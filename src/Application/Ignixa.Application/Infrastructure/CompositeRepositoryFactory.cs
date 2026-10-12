@@ -5,7 +5,6 @@
 
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
-using Ignixa.Domain.Models;
 
 namespace Ignixa.Application.Infrastructure;
 
@@ -17,13 +16,6 @@ namespace Ignixa.Application.Infrastructure;
 /// </summary>
 public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexStoreFactory
 {
-    private static readonly Dictionary<string, ProviderType> ProviderTypes = new(StringComparer.Ordinal)
-    {
-        ["FileSystem"] = ProviderType.FileSystem,
-        ["SqlEntityFramework"] = ProviderType.SqlEntityFramework,
-        ["SqlServer"] = ProviderType.SqlEntityFramework
-    };
-
     private readonly ITenantConfigurationStore _tenantStore;
     private readonly IFhirRepositoryFactory _fileSystemFactory;
     private readonly IFhirRepositoryFactory _sqlEfFactory;
@@ -58,11 +50,12 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexStoreF
             throw new InvalidOperationException($"Tenant {tenantId} does not exist");
         }
 
-        return ResolveProviderType(tenantConfig.Storage.Type) switch
+        // Route to appropriate factory based on storage type
+        return tenantConfig.Storage.Type switch
         {
-            ProviderType.FileSystem => await _fileSystemFactory.GetRepositoryAsync(tenantId, ct),
-            ProviderType.SqlEntityFramework => await _sqlEfFactory.GetRepositoryAsync(tenantId, ct),
-            _ => throw new InvalidOperationException("Unrecognized provider type")
+            "FileSystem" => await _fileSystemFactory.GetRepositoryAsync(tenantId, ct),
+            "SqlEntityFramework" or "SqlServer" => await _sqlEfFactory.GetRepositoryAsync(tenantId, ct),
+            _ => throw new NotSupportedException($"Storage type '{tenantConfig.Storage.Type}' is not supported")
         };
     }
 
@@ -72,7 +65,7 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexStoreF
         var tenantConfig = await _tenantStore.GetTenantConfigurationAsync(tenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Tenant {tenantId} does not exist");
 
-        return SupportsReindex(tenantConfig)
+        return IsSql(tenantConfig.Storage.Type)
             ? await _sqlReindexStoreFactory.GetReindexStoreAsync(tenantId, cancellationToken)
             : throw new NotSupportedException(
                 $"The storage provider '{tenantConfig.Storage.Type}' of tenant {tenantId} does not support $reindex.");
@@ -92,29 +85,18 @@ public class CompositeRepositoryFactory : IFhirRepositoryFactory, IReindexStoreF
         // tenant is already unsupported.
         var unsupportedTenantIds = tenants
             .Where(tenant => tenant.IsActive && tenant.TenantId != SystemConstants.SystemPartitionId)
-            .Where(tenant => !SupportsReindex(tenant))
+            .Where(tenant => !IsSql(tenant.Storage.Type))
             .Select(tenant => tenant.TenantId)
             .ToList();
 
         return unsupportedTenantIds.Count == 0 ? null : unsupportedTenantIds.Min();
     }
 
-    private static bool SupportsReindex(TenantConfiguration tenantConfiguration) =>
-        ResolveProviderType(tenantConfiguration.Storage.Type) == ProviderType.SqlEntityFramework;
-
-    private static ProviderType ResolveProviderType(string storageType)
+    /// <exception cref="NotSupportedException">The storage type is not recognized.</exception>
+    private static bool IsSql(string storageType) => storageType switch
     {
-        if (ProviderTypes.TryGetValue(storageType, out var providerType))
-        {
-            return providerType;
-        }
-
-        throw new NotSupportedException($"Storage type '{storageType}' is not supported");
-    }
-
-    private enum ProviderType
-    {
-        FileSystem,
-        SqlEntityFramework
-    }
+        "SqlEntityFramework" or "SqlServer" => true,
+        "FileSystem" => false,
+        _ => throw new NotSupportedException($"Storage type '{storageType}' is not supported")
+    };
 }

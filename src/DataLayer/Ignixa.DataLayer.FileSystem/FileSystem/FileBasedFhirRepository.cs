@@ -195,13 +195,6 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         }
     }
 
-    internal ValueTask<ResourceKey?> DeleteAsync(
-        ResourceKey key,
-        ResourceRequest request,
-        TransactionId? transactionId = null,
-        CancellationToken cancellationToken = default) =>
-        DeleteAsync(key, request, definitionsEventId: 0, transactionId, cancellationToken);
-
     public async ValueTask<ResourceKey?> DeleteAsync(
         ResourceKey key,
         ResourceRequest request,
@@ -412,9 +405,6 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         throw new InvalidOperationException(
             $"Resource {resourceId} not found in NDJSON file {path}");
     }
-
-    internal ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default) =>
-        GetNextTransactionIdAsync(definitionsEventId: 0, cancellationToken);
 
     public async ValueTask<TransactionId> GetNextTransactionIdAsync(
         long definitionsEventId,

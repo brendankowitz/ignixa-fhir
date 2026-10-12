@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Data.Common;
 using System.Text.Json;
 using DurableTask.Core;
 using Ignixa.Abstractions;
@@ -183,48 +182,12 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
             var successCount = 0;
             if (operations.Count > 0)
             {
-                var attempt = 0;
-                successCount = await _barrierRetryPolicy.ExecuteAsync(
-                    async ct =>
-                    {
-                        attempt++;
-                        var attemptHandle = attempt == 1
-                            ? definitionsHandle
-                            : _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
-                        var attemptOperations = attempt == 1
-                            ? operations
-                            : operations.Select(operation =>
-                            {
-                                IReadOnlyList<object> indexes = attemptHandle.Indexer.Extract(
-                                    (IElement)operation.resource.ToElement(attemptHandle.SchemaProvider)).ToArray();
-                                return (
-                                    operation.resourceType,
-                                    operation.resourceId,
-                                    operation.resource,
-                                    searchIndexes: indexes,
-                                    operation.httpMethod,
-                                    operation.entryIndex);
-                            }).ToList();
-
-                        var transactionId = await repository.GetNextTransactionIdAsync(
-                            attemptHandle.DefinitionsEventId,
-                            ct);
-                        _logger.LogDebug(
-                            "Executing BatchWriteAsync for {Count} resources with transaction {TransactionId}",
-                            attemptOperations.Count, transactionId);
-                        var keys = await repository.BatchWriteAsync(transactionId, attemptOperations, ct);
-                        try
-                        {
-                            await repository.CommitTransactionAsync(transactionId, CancellationToken.None);
-                        }
-                        catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
-                        {
-                            throw new InvalidOperationException(
-                                $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({attemptOperations.Count} resources). {ex.Message}", ex);
-                        }
-
-                        return keys.Count;
-                    },
+                successCount = await ImportBatchWriter.WriteAsync(
+                    repository,
+                    operations,
+                    definitionsHandle,
+                    () => _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId),
+                    _barrierRetryPolicy,
                     CancellationToken.None);
                 _logger.LogInformation("Batch write completed: {SuccessCount} resources written", successCount);
             }

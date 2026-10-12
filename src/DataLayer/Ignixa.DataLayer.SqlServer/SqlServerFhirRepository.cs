@@ -494,8 +494,11 @@ public class SqlServerFhirRepository(
                 },
                 cancellationToken);
         }
-        catch (ResourceVersionConflictException exception) when (ownsTransaction)
+        catch (Exception exception) when (ownsTransaction &&
+            (exception is ResourceVersionConflictException || IsKnownCoreRollback(exception)))
         {
+            // The SQL transaction rolled back; close the owned allocation so visibility (and the reindex
+            // drain waiting on the oldest incomplete transaction) does not stall behind it.
             await CompleteRejectedTransactionAsync(writeTransactionId.Value, exception);
             throw;
         }
@@ -1408,18 +1411,6 @@ public class SqlServerFhirRepository(
         }
 
         return currentVersions;
-    }
-
-    // Left Idempotent even though NEXT VALUE FOR mutates: a retry does not apply anything twice, it just
-    // consumes another value and hands back that one instead. The caller never saw the value the failed
-    // attempt may have burned, and a sequence is allowed to have gaps -- NEXT VALUE FOR is not rolled back
-    // by a transaction either. Declining the retry would fail an entire delete over a transient blip.
-    private async Task<long> GetNextSurrogateIdAsync(CancellationToken cancellationToken)
-    {
-        using var command = new SqlCommand("SELECT NEXT VALUE FOR dbo.ResourceSurrogateIdUniquifierSequence");
-        var results = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt32(0), cancellationToken);
-        var sequenceValue = results[0];
-        return (long)(DateTimeOffset.UtcNow - DateTimeOffset.MinValue).TotalMilliseconds * 80000 + sequenceValue;
     }
 
     /// <param name="transaction">

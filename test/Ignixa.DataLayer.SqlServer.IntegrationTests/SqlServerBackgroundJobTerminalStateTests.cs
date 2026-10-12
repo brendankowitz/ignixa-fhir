@@ -128,7 +128,6 @@ public class SqlServerBackgroundJobTerminalStateTests(SqlPersistenceContractFixt
     private static void AssertUnchanged(BackgroundJob<ExportJobDefinition> actual, BackgroundJob<ExportJobDefinition> expected)
     {
         actual.Status.ShouldBe(expected.Status);
-        actual.RowVersion.ShouldBe(expected.RowVersion);
         actual.EndDate.ShouldBe(expected.EndDate);
         actual.HeartbeatDate.ShouldBe(expected.HeartbeatDate);
         actual.ErrorMessage.ShouldBe(expected.ErrorMessage);

@@ -68,38 +68,6 @@ public sealed class CompositeRepositoryFactoryTests
         exception.Message.ShouldBe("Storage type 'TypoSqlServer' is not supported");
     }
 
-    [Fact]
-    public async Task GivenTenantProvidersChange_WhenFindingTenantWithoutReindexSupportAgain_ThenTheCurrentTenantsAreRead()
-    {
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
-            .Returns(
-                [Tenant(1, "SqlServer")],
-                [Tenant(1, "SqlServer"), Tenant(2, "FileSystem")]);
-        var factory = CreateFactory(tenants);
-
-        (await factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None)).ShouldBeNull();
-        (await factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None)).ShouldBe(2);
-    }
-
-    [Fact]
-    public async Task GivenTenantStoreFails_WhenFindingTenantWithoutReindexSupportAgain_ThenTheReadIsRetried()
-    {
-        var attempts = 0;
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
-            .Returns(_ => ++attempts == 1
-                ? ValueTask.FromException<IReadOnlyList<TenantConfiguration>>(
-                    new InvalidOperationException("tenant configuration is unavailable"))
-                : ValueTask.FromResult<IReadOnlyList<TenantConfiguration>>([Tenant(1, "SqlServer")]));
-        var factory = CreateFactory(tenants);
-
-        await Should.ThrowAsync<InvalidOperationException>(
-            () => factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None));
-        (await factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None)).ShouldBeNull();
-        attempts.ShouldBe(2);
-    }
-
     [Theory]
     [InlineData("SqlServer")]
     [InlineData("SqlEntityFramework")]
