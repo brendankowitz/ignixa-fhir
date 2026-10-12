@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Data.Common;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -215,50 +214,12 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                     "Consumer {ConsumerId} executing batch of {Count} resources",
                                     consumerId, validOperations.Count);
 
-                                var attempt = 0;
-                                var writtenCount = await _barrierRetryPolicy.ExecuteAsync(
-                                    async ct =>
-                                    {
-                                        attempt++;
-                                        var attemptHandle = attempt == 1
-                                            ? definitionsHandle
-                                            : _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
-                                        var attemptOperations = attempt == 1
-                                            ? validOperations
-                                            : validOperations.Select(operation =>
-                                            {
-                                                IReadOnlyList<object> indexes = attemptHandle.Indexer.Extract(
-                                                    (IElement)operation.resource.ToElement(attemptHandle.SchemaProvider)).ToArray();
-                                                return (
-                                                    operation.resourceType,
-                                                    operation.resourceId,
-                                                    operation.resource,
-                                                    searchIndexes: indexes,
-                                                    operation.httpMethod,
-                                                    operation.entryIndex);
-                                            }).ToList();
-
-                                        // A file can outgrow a reserved range, and blank lines are not resource offsets.
-                                        var transactionId = await consumerRepository.GetNextTransactionIdAsync(
-                                            attemptHandle.DefinitionsEventId,
-                                            ct);
-                                        var keys = await consumerRepository.BatchWriteAsync(
-                                            transactionId, attemptOperations, ct);
-                                        try
-                                        {
-                                            await consumerRepository.CommitTransactionAsync(
-                                                transactionId,
-                                                CancellationToken.None);
-                                        }
-                                        catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
-                                        {
-                                            throw new InvalidOperationException(
-                                                $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({attemptOperations.Count} resources). {ex.Message}",
-                                                ex);
-                                        }
-
-                                        return keys.Count;
-                                    },
+                                var writtenCount = await ImportBatchWriter.WriteAsync(
+                                    consumerRepository,
+                                    validOperations,
+                                    definitionsHandle,
+                                    () => _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId),
+                                    _barrierRetryPolicy,
                                     CancellationToken.None);
                                 localSuccessCount += writtenCount;
                                 _logger.LogDebug(
