@@ -61,6 +61,41 @@ public class DeferredWriteCoordinatorBarrierTests
         await Should.ThrowAsync<ConformanceStaleException>(() => second.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
+    // Spec 5.4: a transaction bundle rejected by the barrier re-extracts every staged entry with the fresh handle.
+    [Fact]
+    public async Task GivenAnAtomicCommitRejectedByTheBarrier_WhenDefinitionsRefresh_ThenEveryStagedEntryIsReextractedAndRetried()
+    {
+        var repository = Substitute.For<IFhirRepository, IAtomicFhirRepository>();
+        var attempts = new List<IReadOnlyList<ResourceWrapper>>();
+        ((IAtomicFhirRepository)repository).WriteTransactionAsync(Arg.Any<IReadOnlyList<ResourceWrapper>>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                attempts.Add(call.Arg<IReadOnlyList<ResourceWrapper>>());
+                return attempts.Count == 1
+                    ? Task.FromException(new StaleConformanceDefinitionsException(101, 11, 29))
+                    : Task.CompletedTask;
+            });
+        var indexer = Substitute.For<ISearchIndexer>();
+        indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
+        var coordinator = await DeferredWriteCoordinator.CreateAsync(
+            1,
+            TestWritePath.Repositories(repository),
+            TestWritePath.IsolatedPartition(),
+            TestWritePath.RequestContext(),
+            TestWritePath.Versions(definitionsEventId: 29, indexer),
+            TestConformanceBarrierRetryPolicy.Create(),
+            NullLogger<DeferredWriteCoordinator>.Instance,
+            atomic: true);
+        await coordinator.QueueWriteAsync(Patient("first") with { DefinitionsEventId = 11 }, entryIndex: 0);
+        await coordinator.QueueWriteAsync(Patient("second") with { DefinitionsEventId = 11 }, entryIndex: 1);
+
+        await coordinator.CommitAsync(CancellationToken.None);
+
+        attempts.Select(attempt => attempt.Select(write => write.DefinitionsEventId).ToArray())
+            .ShouldBe([[11L, 11L], [29L, 29L]]);
+        indexer.Received(2).Extract(Arg.Any<IElement>());
+    }
+
     private static Task<DeferredWriteCoordinator> CreateCoordinatorAsync(
         IFhirRepository repository,
         ISearchIndexer? indexer = null,

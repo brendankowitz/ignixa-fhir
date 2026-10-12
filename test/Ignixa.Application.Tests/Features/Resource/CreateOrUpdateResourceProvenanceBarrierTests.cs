@@ -66,4 +66,46 @@ public class CreateOrUpdateResourceProvenanceBarrierTests
         warning.RootElement.GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("warning");
         writeCount.ShouldBe(3);
     }
+
+    // F4: the Provenance write is fenced by the barrier like the main write, so it carries its handle's event id.
+    [Fact]
+    public async Task GivenTheProvenanceWriteSucceeds_WhenHandlingTheRequest_ThenItCarriesTheDefinitionsEventIdAndNoWarning()
+    {
+        var repository = Substitute.For<IFhirRepository>();
+        var writes = new List<ResourceWrapper>();
+        repository.CreateOrUpdateAsync(Arg.Any<ResourceWrapper>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var wrapper = call.Arg<ResourceWrapper>();
+                writes.Add(wrapper);
+                return new ValueTask<UpdateResult>(new UpdateResult(
+                    new ResourceKey(wrapper.ResourceType, wrapper.ResourceId, "1", 1),
+                    Encoding.UTF8.GetBytes($$"""{"resourceType":"{{wrapper.ResourceType}}","id":"{{wrapper.ResourceId}}"}"""),
+                    DateTimeOffset.UtcNow)
+                {
+                    IsCreated = true
+                });
+            });
+        var validationResolver = Substitute.For<IValidationSchemaResolver>();
+        validationResolver.GetSchema("Provenance").Returns((ValidationSchema?)null);
+        var handler = new CreateOrUpdateResourceHandler(
+            TestWritePath.IsolatedPartition(),
+            TestWritePath.Repositories(repository),
+            TestWritePath.RequestContext(),
+            TestWritePath.Versions(definitionsEventId: 11),
+            _ => validationResolver,
+            TestConformanceBarrierRetryPolicy.Create(),
+            NullLogger<CreateOrUpdateResourceHandler>.Instance);
+        var command = new CreateOrUpdateResourceCommand(
+            "Patient",
+            "p1",
+            ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"p1"}"""),
+            HttpMethod.Put,
+            ProvenanceResource: new Provenance());
+
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        result.OperationOutcomeBytes.ShouldBeNull();
+        writes.Select(write => (write.ResourceType, write.DefinitionsEventId)).ShouldBe([("Patient", 11L), ("Provenance", 11L)]);
+    }
 }
