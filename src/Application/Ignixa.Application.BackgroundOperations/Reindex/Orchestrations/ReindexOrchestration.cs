@@ -51,17 +51,6 @@ public sealed class ReindexOrchestration
                 Started = true,
                 IgnoredLifecycleEvents = started.IgnoredLifecycleEvents
             };
-            if (started.TargetEventId.HasValue &&
-                started.ResourceTypes is not null &&
-                started.Targets is not null)
-            {
-                input = input with
-                {
-                    TargetEventId = started.TargetEventId.Value,
-                    ResourceTypes = started.ResourceTypes,
-                    Targets = started.Targets
-                };
-            }
             if (ContinueIfNeeded(context, input, state, scheduledActivities))
             {
                 return default!;

@@ -576,10 +576,7 @@ public class ReindexOrchestrationTests
                 throw new InvalidOperationException("start failed");
             }
 
-            return new StartReindexOutput([])
-            {
-                ShouldContinue = startShouldContinue
-            };
+            return new StartReindexOutput(startShouldContinue, []);
         }
 
         private BarrierCutoff Barrier(RaiseBarrierInput input)

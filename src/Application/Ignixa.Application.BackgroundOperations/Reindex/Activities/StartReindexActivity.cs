@@ -33,18 +33,10 @@ public sealed class StartReindexActivity(
             ?? throw new InvalidOperationException($"Reindex job {input.JobId} does not exist.");
         if (job.IsTerminal())
         {
-            return new StartReindexOutput([])
-            {
-                ShouldContinue = false,
-                TargetEventId = input.TargetEventId,
-                Targets = input.Targets
-            };
+            return new StartReindexOutput(false, []);
         }
 
-        var usesPersistedDefinition =
-            job.Definition.SearchParameters.Count > 0 || input.Targets.Count == 0;
-        var targets = usesPersistedDefinition ? job.Definition.SearchParameters : input.Targets;
-        var ignored = await lifecycle.StartAsync(input.JobId, targets, cancellationToken);
+        var ignored = await lifecycle.StartAsync(input.JobId, input.Targets, cancellationToken);
         var now = timeProvider.GetUtcNow();
         job.SetStatus(ReindexJobStatus.Running);
         job.StartDate ??= now;
@@ -52,12 +44,6 @@ public sealed class StartReindexActivity(
         job.Progress = (ReindexProgress.Create(input.TenantIds) with { IgnoredLifecycleEvents = ignored }).ToJson();
         await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
 
-        return new StartReindexOutput(ignored)
-        {
-            ShouldContinue = true,
-            TargetEventId = usesPersistedDefinition ? job.Definition.TargetEventId : input.TargetEventId,
-            ResourceTypes = usesPersistedDefinition ? job.Definition.ResourceTypes : null,
-            Targets = targets
-        };
+        return new StartReindexOutput(true, ignored);
     }
 }

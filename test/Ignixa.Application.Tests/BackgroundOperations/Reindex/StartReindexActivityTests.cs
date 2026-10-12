@@ -21,58 +21,15 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class StartReindexActivityTests
 {
     [Fact]
-    public async Task GivenPersistedDefinitionHasTargets_WhenStartRuns_ThenPersistedTargetsAreUsed()
+    public async Task GivenQueuedJob_WhenStartRuns_ThenTargetsAreStartedAndTheJobRuns()
     {
         using var fixture = new Fixture();
         await fixture.InitializeAsync();
-        var second = new ReindexParameterDefinition(
-            "http://example.org/SearchParameter/patient-second",
-            "second",
-            "Patient",
-            18,
-            2,
-            ["Patient"]);
-        fixture.State.ApplyAndTrack(new SourceEvent(
-            2,
-            "search",
-            nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                second.Canonical,
-                second.Code,
-                second.ResourceType,
-                "Patient.name",
-                SearchParamType.String,
-                "example@2.0.0",
-                null,
-                second.SearchParamId,
-                null,
-                null,
-                null,
-                null),
-            DateTimeOffset.UtcNow));
-        var job = (await fixture.Repository.GetAsync("job", 1, CancellationToken.None))!;
-        job.Definition = new ReindexJobDefinition
-        {
-            TargetEventId = 2,
-            TenantIds = [1],
-            ResourceTypes = ["Patient"],
-            SearchParameters = [Definition(fixture.Target), Definition(second)],
-            MaximumNumberOfResourcesPerQuery = 10_000,
-            MaximumNumberOfResourcesPerWrite = 1_000,
-            MaximumConcurrency = 4,
-            QueryDelayIntervalInMilliseconds = 0,
-            Trigger = "Activation"
-        };
-        await fixture.Repository.UpdateAsync(job, 1, CancellationToken.None);
 
         var output = JsonSerializer.Deserialize<StartReindexOutput>(await fixture.StartAsync())!;
 
         output.ShouldContinue.ShouldBeTrue();
-        output.TargetEventId.ShouldBe(2);
-        output.Targets!.Select(target => target.Code)
-            .ShouldBe(["custom", "second"], ignoreOrder: true);
-        fixture.Events.OfType<SourceEvent>()
-            .Count(evt => evt.Data is SearchParameterReindexStarted).ShouldBe(2);
+        fixture.Events.Count(evt => evt.Data is SearchParameterReindexStarted).ShouldBe(1);
         var started = (await fixture.Repository.GetAsync("job", 1, CancellationToken.None))!;
         started.Status.ShouldBe("Running");
         started.StartDate.ShouldNotBeNull();
@@ -145,15 +102,6 @@ public class StartReindexActivityTests
         job.StartDate.ShouldNotBeNull();
         fixture.State.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
     }
-
-    private static ReindexParameterDefinition Definition(ReindexParameterDefinition target) =>
-        new(
-            target.Canonical,
-            target.Code,
-            target.ResourceType,
-            target.SearchParamId,
-            target.ActivationEventId,
-            target.AffectedResourceTypes);
 
     private sealed class Fixture : IDisposable
     {
