@@ -5,6 +5,7 @@ using System.Security.Claims;
 using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Api.Endpoints;
+using Ignixa.Api.Middleware;
 using Ignixa.Api.Tests.Services;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Activities;
@@ -258,7 +259,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task GivenStatusWithAllFields_WhenGettingStatus_ThenMapsFhirParameters()
     {
-        _status = CreateStatus();
+        _status = CreateStatus() with { IsStale = true };
 
         var response = await SendAsync("GetReindexForTenant", jobId: "complete-fields");
 
@@ -270,6 +271,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         Value(response.Body, "startTime").ShouldBeOfType<string>();
         Value(response.Body, "endTime").ShouldBeOfType<string>();
         Value(response.Body, "lastModified").ShouldBeOfType<string>();
+        Value(response.Body, "stale").ShouldBe(true);
         Value(response.Body, "totalResourcesToReindex").ShouldBe(10);
         Value(response.Body, "resourcesSuccessfullyReindexed").ShouldBe(7);
         Convert.ToDouble(Value(response.Body, "progress"), System.Globalization.CultureInfo.InvariantCulture)
@@ -553,14 +555,35 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             .ShouldBe("The $reindex operation is not supported by all active tenant providers.");
     }
 
-    [Fact]
-    public async Task GivenSystemTenantRoute_WhenAccessingReindex_ThenItIsRejected()
+    [Theory]
+    [InlineData("POST", "/tenant/0/$reindex")]
+    [InlineData("GET", "/tenant/0/$reindex")]
+    [InlineData("GET", "/tenant/0/$reindex/job")]
+    [InlineData("DELETE", "/tenant/0/$reindex/job")]
+    public async Task GivenSystemPartitionRoute_WhenRoutedThroughTenantResolution_ThenItIsRejectedBeforeDispatch(
+        string method,
+        string path)
     {
-        var response = await SendAsync("CreateReindexForTenant", tenantId: 0, body: Parameters());
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSingleton(_mediator);
+        builder.Services.AddSingleton(Substitute.For<ITenantConfigurationStore>());
+        await using var app = builder.Build();
+        var pipeline = new ApplicationBuilder(app.Services);
+        pipeline.UseRouting();
+        pipeline.UseMiddleware<TenantResolutionMiddleware>();
+        pipeline.UseEndpoints(endpoints => endpoints.MapReindexEndpoints());
+        var context = new DefaultHttpContext { RequestServices = app.Services };
+        context.Request.Method = method;
+        context.Request.Path = path;
+        context.Response.Body = new MemoryStream();
 
-        response.StatusCode.ShouldBe(StatusCodes.Status404NotFound);
-        response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
-        _createCommands.ShouldBeEmpty();
+        await pipeline.Build()(context);
+
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        context.Response.Body.Position = 0;
+        (await JsonNode.ParseAsync(context.Response.Body))!["issue"]![0]!["diagnostics"]!.GetValue<string>()
+            .ShouldContain("reserved for system operations");
+        _mediator.ReceivedCalls().ShouldBeEmpty();
     }
 
     [Theory]
@@ -921,6 +944,10 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     private static object ConvertValue(JsonNode value)
     {
         var jsonValue = value.AsValue();
+        if (jsonValue.TryGetValue<bool>(out var boolValue))
+        {
+            return boolValue;
+        }
         if (jsonValue.TryGetValue<string>(out var stringValue))
         {
             return stringValue;
