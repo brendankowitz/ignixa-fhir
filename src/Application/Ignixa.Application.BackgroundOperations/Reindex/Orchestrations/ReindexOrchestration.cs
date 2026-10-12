@@ -62,7 +62,17 @@ public sealed class ReindexOrchestration
             // One durable wait; stale-job detection adds the barrier delay to its allowance while a job is in it.
             await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
             state = state with { Phase = ReindexPhase.Draining };
-            if (!await PersistProgressAsync(context, input, state))
+            bool open;
+            try
+            {
+                open = await PersistProgressAsync(context, input, state);
+            }
+            catch (Exception ex)
+            {
+                return await CompleteAsync(context, input, state, ex);
+            }
+
+            if (!open)
             {
                 return Stopped(state);
             }

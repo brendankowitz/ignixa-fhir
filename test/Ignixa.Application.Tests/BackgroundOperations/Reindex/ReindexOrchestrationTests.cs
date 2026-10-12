@@ -27,6 +27,50 @@ public class ReindexOrchestrationTests
         context.Snapshots.Last().Tenants.Single().ResourcesReindexed.ShouldBe(30);
     }
 
+    // Spec 8.2: a snapshot that still cannot be written fails the job visibly and never reruns a range,
+    // whichever phase boundary it is written at.
+    [Theory]
+    [InlineData(ProgressFailure.Always, 0)]
+    [InlineData(ProgressFailure.AfterRanges, 3)]
+    public async Task GivenProgressCannotBePersistedAfterItsRetries_WhenOrchestrated_ThenTheJobIsFinalizedFailed(
+        ProgressFailure progressFailure,
+        int expectedRangeCalls)
+    {
+        var context = new ExecutingContext(progressFailure: progressFailure);
+
+        var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
+
+        output.Success.ShouldBeFalse();
+        context.CompletionCalls.ShouldBe(1);
+        context.LastCompletionInput!.FailureMessage.ShouldContain("progress storage unavailable");
+        context.RangeCalls.ShouldBe(expectedRangeCalls);
+    }
+
+    // Spec 8.6: a range activity that fails after its retries fails only that (tenant, type); the other
+    // tenant still completes and the job ends Failed.
+    [Fact]
+    public async Task GivenARangeActivityFailsAfterItsRetries_WhenOrchestrated_ThenOnlyThatTenantsTypeFailsAndTheOtherTenantCompletes()
+    {
+        var context = new ExecutingContext(failRangesForTenantId: 2);
+
+        var output = await new ReindexOrchestration().RunTask(
+            context,
+            CreateOrchestrationInput(tenantIds: [1, 2]));
+
+        output.Success.ShouldBeFalse();
+        var tenants = context.LastCompletionInput!.Tenants;
+        var healthy = tenants.Single(tenant => tenant.TenantId == 1);
+        healthy.Success.ShouldBeTrue();
+        healthy.ResourcesReindexed.ShouldBe(30);
+        var failed = tenants.Single(tenant => tenant.TenantId == 2);
+        failed.Status.ShouldBe(ReindexTenantStatus.Completed);
+        failed.Success.ShouldBeFalse();
+        failed.FailedResourceTypes.ShouldBe(["Patient"]);
+        failed.FailedResources.Count.ShouldBe(3);
+        failed.FailedResources.ShouldAllBe(failure =>
+            failure.ResourceType == "Patient" && failure.Reason.Contains("range worker crashed"));
+    }
+
     [Fact]
     public async Task GivenJobClosedElsewhere_WhenProgressIsPersistedAtAPhaseBoundary_ThenOrchestrationStopsWithoutCompleting()
     {
@@ -291,7 +335,9 @@ public class ReindexOrchestrationTests
         int? slowDrainTenantId = null,
         int definitionsNotReadyAttempts = 0,
         bool startShouldContinue = true,
-        bool useBarrierCutoffForRanges = false) : OrchestrationContext
+        bool useBarrierCutoffForRanges = false,
+        ProgressFailure progressFailure = ProgressFailure.None,
+        int? failRangesForTenantId = null) : OrchestrationContext
     {
         private DateTime _currentUtcDateTime = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
 
@@ -448,6 +494,11 @@ public class ReindexOrchestrationTests
             RangeInputs.Add(input);
             Log.Add($"range:{input.TenantId}");
             RangeCalls++;
+            if (input.TenantId == failRangesForTenantId)
+            {
+                throw new InvalidOperationException("range worker crashed");
+            }
+
             if (RangeCalls <= definitionsNotReadyAttempts)
             {
                 return ReindexRangeOutput.DefinitionsNotReady(41);
@@ -483,7 +534,9 @@ public class ReindexOrchestrationTests
         private bool Progress(PersistReindexProgressInput input)
         {
             ProgressCalls++;
-            if (failProgressOnce && RangeCalls > 0 && ProgressFailures == 0)
+            if (progressFailure == ProgressFailure.Always ||
+                progressFailure == ProgressFailure.AfterRanges && RangeCalls > 0 ||
+                failProgressOnce && RangeCalls > 0 && ProgressFailures == 0)
             {
                 ProgressFailures++;
                 throw new InvalidOperationException("progress storage unavailable");
@@ -498,6 +551,11 @@ public class ReindexOrchestrationTests
             CompletionCalls++;
             LastCompletionInput = input;
             if (input.FailureMessage is not null)
+            {
+                return new CompleteReindexOutput(false, []);
+            }
+
+            if (failRangesForTenantId is not null)
             {
                 return new CompleteReindexOutput(false, []);
             }
@@ -540,5 +598,12 @@ public class ReindexOrchestrationTests
 
             return new CompleteReindexOutput(true, []);
         }
+    }
+
+    public enum ProgressFailure
+    {
+        None,
+        Always,
+        AfterRanges,
     }
 }
