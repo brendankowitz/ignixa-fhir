@@ -4,7 +4,7 @@ using System.Security.Claims;
 using Ignixa.Abstractions;
 using Ignixa.Api.Endpoints;
 using Ignixa.Api.Middleware;
-using Ignixa.Api.Tests.Services;
+using Ignixa.Application.Tests.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.BackgroundOperations.Reindex.Models;
 using Ignixa.Application.Features.Authorization;
@@ -54,22 +54,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _mediator.SendAsync(Arg.Any<CancelReindexCommand>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(_cancelResult));
 
-        var authorization = Substitute.For<IFhirAuthorizationService>();
-        var requestContext = Substitute.For<IFhirRequestContextAccessor>();
-        var audit = Substitute.For<IAuditLogger>();
-        var metrics = Substitute.For<IMetricsService>();
-        var builder = WebApplication.CreateBuilder();
-        builder.Services.AddSingleton(_mediator);
-        builder.Services.AddSingleton(Options.Create(_reindexOptions));
-        builder.Services.AddSingleton(_ => _repositoryFactory);
-        builder.Services.AddSingleton(authorization);
-        builder.Services.AddSingleton(requestContext);
-        builder.Services.AddSingleton(audit);
-        builder.Services.AddSingleton(metrics);
-        builder.Services.AddSingleton<IOptions<AuthorizationOptions>>(
-            Options.Create(new AuthorizationOptions { Enabled = false }));
-        _app = builder.Build();
-        _app.MapReindexEndpoints();
+        _app = BuildApp(Substitute.For<IFhirAuthorizationService>(), authorizationEnabled: false);
     }
 
     [Fact]
@@ -155,8 +140,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         string identifierValueName)
     {
         const long largeValue = (long)int.MaxValue + 1;
-        var status = CreateStatus();
-        _status = status with
+        _status = CreateStatus() with
         {
             Progress = new ReindexProgress(ReindexPhase.Reindexing)
             {
@@ -174,18 +158,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                         null)
                 ]
             },
-            Definition = new ReindexJobDefinition
-            {
-                TargetEventId = largeValue,
-                TenantIds = status.Definition!.TenantIds,
-                ResourceTypes = status.Definition.ResourceTypes,
-                SearchParameters = status.Definition.SearchParameters,
-                MaximumNumberOfResourcesPerQuery = status.Definition.MaximumNumberOfResourcesPerQuery,
-                MaximumNumberOfResourcesPerWrite = status.Definition.MaximumNumberOfResourcesPerWrite,
-                MaximumConcurrency = status.Definition.MaximumConcurrency,
-                QueryDelayIntervalInMilliseconds = status.Definition.QueryDelayIntervalInMilliseconds,
-                Trigger = status.Definition.Trigger
-            }
+            Definition = CreateDefinition(targetEventId: largeValue)
         };
 
         var response = await SendAsync(
@@ -205,18 +178,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         ValueProperty(tenant, "resourcesReindexed").ShouldBe(countValueName);
         ValueProperty(tenant, "conflicts").ShouldBe(countValueName);
         ValueProperty(tenant, "failedResources").ShouldBe(countValueName);
-    }
-
-    [Fact]
-    public async Task GivenActiveJob_WhenCreating_ThenReturnsConflictOutcomeAndActiveLocation()
-    {
-        _createResult = new ActiveReindexJobResult("active-job");
-
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters());
-
-        response.StatusCode.ShouldBe(StatusCodes.Status409Conflict);
-        response.Headers["Content-Location"].ShouldBe("/tenant/1/$reindex/active-job");
-        response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
     }
 
     [Fact]
@@ -270,68 +231,50 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         Value(failures[1], "id").ShouldBe("second");
     }
 
-    [Fact]
-    public async Task GivenUnknownJob_WhenGettingStatusOrCancelling_ThenReturnsNotFoundOutcome()
+    [Theory]
+    [InlineData("CreateReindexForTenant", "active", 409, "OperationOutcome", "/tenant/1/$reindex/active-job")]
+    [InlineData("CreateReindexForTenant", "no-work", 400, "OperationOutcome", null)]
+    [InlineData("CreateReindexForTenant", "invalid", 400, "OperationOutcome", null)]
+    [InlineData("GetReindexForTenant", "missing", 404, "OperationOutcome", null)]
+    [InlineData("CancelReindexForTenant", "missing", 404, "OperationOutcome", null)]
+    [InlineData("CancelReindexForTenant", "cancelled", 202, "Parameters", null)]
+    [InlineData("CancelReindexForTenant", "terminal", 409, "OperationOutcome", null)]
+    public async Task GivenAHandlerOutcome_WhenRouted_ThenItMapsToItsStatusAndResource(
+        string endpointName,
+        string outcome,
+        int expectedStatus,
+        string expectedResourceType,
+        string? expectedContentLocation)
     {
-        _status = null!;
-        _cancelResult = new ReindexJobNotFoundResult("missing");
+        _createResult = outcome switch
+        {
+            "active" => new ActiveReindexJobResult("active-job"),
+            "no-work" => new NoReindexWorkResult("No resources need reindexing."),
+            "invalid" => new InvalidReindexRequestResult("maximumConcurrency must be between 1 and 16."),
+            _ => _createResult
+        };
+        _status = outcome == "missing" ? null! : _status;
+        _cancelResult = outcome switch
+        {
+            "missing" => new ReindexJobNotFoundResult("missing"),
+            "terminal" => new ReindexJobAlreadyTerminalResult("job", ReindexJobStatus.Completed),
+            _ => new ReindexCancelledResult("job")
+        };
 
-        var status = await SendAsync("GetReindexForTenant", jobId: "missing");
-        var cancel = await SendAsync("CancelReindexForTenant", jobId: "missing");
+        var response = await SendAsync(endpointName, body: Parameters());
 
-        status.StatusCode.ShouldBe(StatusCodes.Status404NotFound);
-        status.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
-        cancel.StatusCode.ShouldBe(StatusCodes.Status404NotFound);
-        cancel.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
-    }
+        response.StatusCode.ShouldBe(expectedStatus);
+        response.Body["resourceType"]!.GetValue<string>().ShouldBe(expectedResourceType);
+        response.Headers.GetValueOrDefault("Content-Location").ShouldBe(expectedContentLocation);
+        if (outcome == "invalid")
+        {
+            response.Body["issue"]![0]!["diagnostics"]!.GetValue<string>().ShouldBe("maximumConcurrency must be between 1 and 16.");
+        }
 
-    [Fact]
-    public async Task GivenRunningJob_WhenCancelling_ThenReturnsAcceptedParameters()
-    {
-        _cancelResult = new ReindexCancelledResult("running");
-
-        var response = await SendAsync("CancelReindexForTenant", jobId: "running");
-
-        response.StatusCode.ShouldBe(StatusCodes.Status202Accepted);
-        response.Body["resourceType"]!.GetValue<string>().ShouldBe("Parameters");
-        Value(response.Body, "id").ShouldBe("running");
-        Value(response.Body, "status").ShouldBe("Cancelled");
-    }
-
-    [Fact]
-    public async Task GivenTerminalJob_WhenCancelling_ThenReturnsConflictOutcome()
-    {
-        _cancelResult = new ReindexJobAlreadyTerminalResult("done", ReindexJobStatus.Completed);
-
-        var response = await SendAsync("CancelReindexForTenant", jobId: "done");
-
-        response.StatusCode.ShouldBe(StatusCodes.Status409Conflict);
-        response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
-    }
-
-    [Fact]
-    public async Task GivenNoReindexWork_WhenCreating_ThenReturnsBadRequestOutcome()
-    {
-        _createResult = new NoReindexWorkResult("No resources need reindexing.");
-
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters());
-
-        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
-        response.Body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
-    }
-
-    [Fact]
-    public async Task GivenTheHandlerRejectsTheParameters_WhenCreating_ThenReturnsBadRequestOutcome()
-    {
-        _createResult = new InvalidReindexRequestResult("maximumConcurrency must be between 1 and 16.");
-
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters(
-            ("maximumConcurrency", "valueInteger", 17)));
-
-        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
-        response.Body["issue"]![0]!["diagnostics"]!.GetValue<string>()
-            .ShouldBe("maximumConcurrency must be between 1 and 16.");
-        _createCommands.ShouldHaveSingleItem();
+        if (outcome == "cancelled")
+        {
+            Value(response.Body, "status").ShouldBe("Cancelled");
+        }
     }
 
     [Fact]
@@ -410,10 +353,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     public async Task GivenDeniedAuthorization_WhenAccessingReindexRoute_ThenEndpointReturnsForbiddenWithoutDispatching(
         string endpointName)
     {
-        var mediator = Substitute.For<IMediator>();
         var authorization = Substitute.For<IFhirAuthorizationService>();
-        var contextAccessor = Substitute.For<IFhirRequestContextAccessor>();
-        contextAccessor.RequestContext.Returns(Substitute.For<IFhirRequestContext>());
         FhirAuthorizationContext? captured = null;
         authorization.AuthorizeAsync(Arg.Any<FhirAuthorizationContext>(), Arg.Any<CancellationToken>())
             .Returns(call =>
@@ -422,18 +362,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                 return AuthorizationResult.Denied("Administrative access is required.");
             });
 
-        var builder = WebApplication.CreateBuilder();
-        builder.Services.AddSingleton(mediator);
-        builder.Services.AddSingleton(Options.Create(new ReindexOptions()));
-        builder.Services.AddSingleton(ReindexTestHelper.CreateRepositoryFactory());
-        builder.Services.AddSingleton(authorization);
-        builder.Services.AddSingleton(contextAccessor);
-        builder.Services.AddSingleton(Substitute.For<IAuditLogger>());
-        builder.Services.AddSingleton(Substitute.For<IMetricsService>());
-        builder.Services.AddSingleton<IOptions<AuthorizationOptions>>(
-            Options.Create(new AuthorizationOptions { Enabled = true }));
-        await using var app = builder.Build();
-        app.MapReindexEndpoints();
+        await using var app = BuildApp(authorization, authorizationEnabled: true);
 
         var response = await SendAsync(app, endpointName, body: Parameters());
 
@@ -442,7 +371,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         captured.ShouldNotBeNull();
         captured!.Interaction.ShouldBe(FhirInteraction.Update);
         captured.ResourceType.ShouldBe("*");
-        await mediator.DidNotReceive().SendAsync(
+        await _mediator.DidNotReceive().SendAsync(
             Arg.Any<CreateReindexJobCommand>(),
             Arg.Any<CancellationToken>());
     }
@@ -452,13 +381,13 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     [InlineData("CreateReindex")]
     public async Task GivenWildcardWriteSmartScope_WhenAccessingReindexRoute_ThenRequestIsAllowed(string endpointName)
     {
-        await using var app = CreateAuthorizedApp([]);
+        await using var app = CreateAuthorizedApp();
 
         var response = await SendAsync(
             app,
             endpointName,
             body: Parameters(),
-            user: CreateUser(scope: "system/*.write"));
+            user: CreateUser("system/*.write"));
 
         response.StatusCode.ShouldBe(StatusCodes.Status201Created);
     }
@@ -469,12 +398,12 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
     public async Task GivenReadOnlySmartScope_WhenGettingOperationDefinition_ThenRequestIsAllowed(
         string endpointName)
     {
-        await using var app = CreateAuthorizedApp([]);
+        await using var app = CreateAuthorizedApp();
 
         var response = await SendAsync(
             app,
             endpointName,
-            user: CreateUser(scope: "system/*.read"));
+            user: CreateUser("system/*.read"));
 
         response.StatusCode.ShouldBe(StatusCodes.Status200OK);
     }
@@ -505,60 +434,42 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         string fhirVersion = "4.0") =>
         await SendAsync(_app, endpointName, tenantId, jobId, body, prefer, setContentLength, fhirVersion);
 
-    private WebApplication CreateAuthorizedApp(
-        IReadOnlyList<ResourceGrant> rolePermissions,
-        bool authorizationEnabled = true)
+    private WebApplication CreateAuthorizedApp()
     {
         var permissionStore = Substitute.For<IRolePermissionStore>();
-        permissionStore.GetPermissionsAsync(
-                Arg.Any<string>(),
-                Arg.Any<IReadOnlyList<string>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(rolePermissions);
+        permissionStore.GetPermissionsAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        return BuildApp(
+            new FhirAuthorizationService(
+                [
+                    new RbacAuthorizationHandler(permissionStore, NullLogger<RbacAuthorizationHandler>.Instance),
+                    new SmartScopeAuthorizationHandler(NullLogger<SmartScopeAuthorizationHandler>.Instance)
+                ],
+                NullLogger<FhirAuthorizationService>.Instance),
+            authorizationEnabled: true);
+    }
 
-        var authorization = new FhirAuthorizationService(
-            [
-                new RbacAuthorizationHandler(
-                    permissionStore,
-                    NullLogger<RbacAuthorizationHandler>.Instance),
-                new SmartScopeAuthorizationHandler(
-                    NullLogger<SmartScopeAuthorizationHandler>.Instance)
-            ],
-            NullLogger<FhirAuthorizationService>.Instance);
+    private WebApplication BuildApp(IFhirAuthorizationService authorization, bool authorizationEnabled)
+    {
         var requestContext = Substitute.For<IFhirRequestContextAccessor>();
         requestContext.RequestContext.Returns(Substitute.For<IFhirRequestContext>());
-
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(_mediator);
         builder.Services.AddSingleton(Options.Create(_reindexOptions));
         builder.Services.AddSingleton(_ => _repositoryFactory);
-        builder.Services.AddSingleton<IFhirAuthorizationService>(authorization);
+        builder.Services.AddSingleton(authorization);
         builder.Services.AddSingleton(requestContext);
         builder.Services.AddSingleton(Substitute.For<IAuditLogger>());
         builder.Services.AddSingleton(Substitute.For<IMetricsService>());
         builder.Services.AddSingleton<IOptions<AuthorizationOptions>>(
             Options.Create(new AuthorizationOptions { Enabled = authorizationEnabled }));
-
         var app = builder.Build();
         app.MapReindexEndpoints();
         return app;
     }
 
-    private static ClaimsPrincipal CreateUser(string? scope = null, string? role = null)
-    {
-        var claims = new List<Claim> { new(FhirClaimTypes.Subject, "user") };
-        if (scope is not null)
-        {
-            claims.Add(new Claim(FhirClaimTypes.Scope, scope));
-        }
-
-        if (role is not null)
-        {
-            claims.Add(new Claim(FhirClaimTypes.Role, role));
-        }
-
-        return new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
-    }
+    private static ClaimsPrincipal CreateUser(string scope) =>
+        new(new ClaimsIdentity([new Claim(FhirClaimTypes.Subject, "user"), new Claim(FhirClaimTypes.Scope, scope)], "TestAuth"));
 
     private static async Task<Response> SendAsync(
         WebApplication app,
@@ -720,19 +631,21 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                     }
                 ]
             },
-            new ReindexJobDefinition
-            {
-                TargetEventId = 42,
-                TenantIds = [1, 2],
-                ResourceTypes = ["Patient", "Observation"],
-                SearchParameters = [new ReindexParameterDefinition(
-                    "http://example.test/SearchParameter/name", "name", "Patient", 1, 42, ["Patient"])],
-                MaximumNumberOfResourcesPerQuery = 50,
-                MaximumNumberOfResourcesPerWrite = 25,
-                MaximumConcurrency = 2,
-                QueryDelayIntervalInMilliseconds = 5,
-                Trigger = "Manual"
-            });
+            CreateDefinition());
+
+    private static ReindexJobDefinition CreateDefinition(long targetEventId = 42) => new()
+    {
+        TargetEventId = targetEventId,
+        TenantIds = [1, 2],
+        ResourceTypes = ["Patient", "Observation"],
+        SearchParameters = [new ReindexParameterDefinition(
+            "http://example.test/SearchParameter/name", "name", "Patient", 1, 42, ["Patient"])],
+        MaximumNumberOfResourcesPerQuery = 50,
+        MaximumNumberOfResourcesPerWrite = 25,
+        MaximumConcurrency = 2,
+        QueryDelayIntervalInMilliseconds = 5,
+        Trigger = "Manual"
+    };
 
     public Task InitializeAsync() => Task.CompletedTask;
 

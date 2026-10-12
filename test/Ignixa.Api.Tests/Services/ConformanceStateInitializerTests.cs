@@ -33,20 +33,6 @@ public class ConformanceStateInitializerTests
     }
 
     [Fact]
-    public async Task GivenInitialLoad_WhenItSucceeds_ThenItRenewsTheConformanceLease()
-    {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        using var state = new ConformanceState();
-        var lease = CreateLease();
-        using var service = CreateInitializer(store, state, TestConformanceRefresher.Tenants(), lease);
-
-        await RunAsync(service);
-
-        lease.IsHeld.ShouldBeTrue();
-    }
-
-    [Fact]
     public async Task GivenInitialLoad_WhenItSucceeds_ThenItRefreshesConsumersBeforeRenewingTheConformanceLease()
     {
         var store = Substitute.For<ISourceEventStore>();

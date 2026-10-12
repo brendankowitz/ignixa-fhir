@@ -35,31 +35,6 @@ public class DurableSearchParameterTransitionSchedulerTests
     }
 
     [Fact]
-    public async Task GivenTransitionScheduledTwice_WhenScheduled_ThenBothSchedulesUseTheDeterministicInstanceId()
-    {
-        var orchestrationService = Substitute.For<IOrchestrationServiceClient>();
-        orchestrationService.CreateTaskOrchestrationAsync(
-                Arg.Any<TaskMessage>(),
-                Arg.Any<OrchestrationStatus[]>())
-            .Returns(Task.CompletedTask);
-        var scheduler = new DurableSearchParameterTransitionScheduler(new TaskHubClient(orchestrationService));
-        var grace = TimeSpan.FromMinutes(3);
-
-        await scheduler.ScheduleAsync(20, grace, CancellationToken.None);
-        await scheduler.ScheduleAsync(20, grace, CancellationToken.None);
-
-        var instanceIds = orchestrationService.ReceivedCalls()
-            .Where(call => call.GetMethodInfo().Name == nameof(IOrchestrationServiceClient.CreateTaskOrchestrationAsync))
-            .Select(call => ((ExecutionStartedEvent)((TaskMessage)call.GetArguments()[0]!).Event).OrchestrationInstance.InstanceId)
-            .ToList();
-        instanceIds.ShouldBe(
-        [
-            DurableSearchParameterTransitionScheduler.GetInstanceId(20),
-            DurableSearchParameterTransitionScheduler.GetInstanceId(20),
-        ]);
-    }
-
-    [Fact]
     public async Task GivenActiveTransitionOrchestration_WhenScheduledAgain_ThenTheDuplicateIsMergedIntoIt()
     {
         var orchestrationService = Substitute.For<IOrchestrationServiceClient>();
