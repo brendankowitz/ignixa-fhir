@@ -323,8 +323,9 @@ commit.
 `CompositeSearchParameterDefinitionManager`/`ConformanceRefresher` publish immutable definitions snapshots
 and `DefinitionsHandle(ISearchIndexer Indexer, long DefinitionsEventId, long PublicationSequence)`. The event id is
 the position the indexer's definitions were built from, which is the *refreshed* position, not
-`ConformanceState.LastProcessedEventId`. Snapshot slots publish monotonically by generation and use
-`PublicationSequence` as the tie-breaker.
+`ConformanceState.LastProcessedEventId`. `ConformanceRefresher` is the only publisher; it publishes under its
+refresh lock and the activation lock, only while its generation is still current, so publication is in generation
+order without a compare-and-swap. `PublicationSequence` distinguishes a forced republish of the same generation.
 
 - The write pipeline acquires one handle per extraction.
 - Bundles use the **minimum** `DefinitionsEventId` across the handles that produced their final index sets. If an

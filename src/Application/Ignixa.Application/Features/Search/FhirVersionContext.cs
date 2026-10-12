@@ -27,7 +27,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ConcurrentDictionary<FhirVersion, IFhirSchemaProvider> _schemaProviders = new();
     private readonly ConcurrentDictionary<(FhirVersion, int), CompositeStructureDefinitionSummaryProvider> _compositeProviders = new();
     private readonly ConcurrentDictionary<FhirVersion, ISearchIndexer> _searchIndexers = new();
-    private readonly ConcurrentDictionary<(FhirVersion, int), ConformanceDefinitionsSnapshotSlot> _conformanceDefinitions = new();
+    private readonly ConcurrentDictionary<(FhirVersion, int), ConformanceDefinitionsSnapshot> _conformanceDefinitions = new();
     private readonly ConcurrentDictionary<FhirVersion, ISearchParameterDefinitionManager> _searchParamManagers = new();
     private readonly ConcurrentDictionary<FhirVersion, ICompartmentDefinitionManager> _compartmentManagers = new();
     private readonly SemaphoreSlim _indexerLock = new(1, 1);
@@ -247,8 +247,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         return new ConformanceDefinitionsSnapshot(
             definitions,
             new DefinitionsHandle(indexer, schemaProvider, generation, publicationSequence),
-            stateSnapshot,
-            publicationSequence);
+            stateSnapshot);
     }
 
     /// <inheritdoc/>
@@ -258,28 +257,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         ConformanceDefinitionsSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        _conformanceDefinitions.AddOrUpdate(
-            (fhirVersion, tenantId),
-            _ => new ConformanceDefinitionsSnapshotSlot(snapshot),
-            (_, slot) =>
-            {
-                slot.Publish(snapshot);
-                return slot;
-            });
-
-        while (true)
-        {
-            var latest = Volatile.Read(ref _latestPublished);
-            if (latest is not null && !ConformanceDefinitionsSnapshotSlot.IsNewer(snapshot, latest))
-            {
-                return;
-            }
-
-            if (ReferenceEquals(Interlocked.CompareExchange(ref _latestPublished, snapshot, latest), latest))
-            {
-                return;
-            }
-        }
+        _conformanceDefinitions[(fhirVersion, tenantId)] = snapshot;
+        Volatile.Write(ref _latestPublished, snapshot);
     }
 
     private bool TryGetDefinitions(
@@ -287,9 +266,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         int tenantId,
         [NotNullWhen(true)] out ConformanceDefinitionsSnapshot? definitions)
     {
-        if (_conformanceDefinitions.TryGetValue((fhirVersion, tenantId), out var slot))
+        if (_conformanceDefinitions.TryGetValue((fhirVersion, tenantId), out definitions))
         {
-            definitions = slot.Current;
             return true;
         }
 
@@ -300,12 +278,11 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
             return false;
         }
 
-        // A tenant created after the last refresh: build from the published projection. The refresher's
-        // next publication for this tenant replaces it through the slot's monotonic Publish.
+        // A tenant created after the last refresh: build from the published projection. GetOrAdd never
+        // replaces a refresher publication, and the refresher's next publication for this tenant replaces
+        // this one with a generation at least as new.
         var created = CreateConformanceDefinitionsSnapshot(fhirVersion, tenantId, latest.Source, latest.Generation);
-        definitions = _conformanceDefinitions
-            .GetOrAdd((fhirVersion, tenantId), _ => new ConformanceDefinitionsSnapshotSlot(created))
-            .Current;
+        definitions = _conformanceDefinitions.GetOrAdd((fhirVersion, tenantId), created);
         return true;
     }
 

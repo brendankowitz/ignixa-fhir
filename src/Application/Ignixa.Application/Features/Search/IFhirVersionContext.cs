@@ -66,8 +66,13 @@ public interface IFhirVersionContext
         long generation);
 
     /// <summary>
-    /// Publishes a complete tenant definition set if it is newer than the currently visible generation.
+    /// Makes a complete tenant definition set the visible one.
     /// </summary>
+    /// <remarks>
+    /// Not ordered by generation: the caller serializes publication and publishes generations in order.
+    /// <see cref="Ignixa.Application.Features.Conformance.ConformanceRefresher"/> is the only publisher and does
+    /// both under its refresh lock and the activation lock.
+    /// </remarks>
     void PublishConformanceDefinitionsSnapshot(
         FhirVersion fhirVersion,
         int tenantId,
