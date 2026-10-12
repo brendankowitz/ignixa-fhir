@@ -178,7 +178,7 @@ public class PackageActivationPipeline(
 
     // A forced refresh also republishes package resources that changed without advancing the projection.
     // On failure this instance keeps its old lease start, and synchronization retries the refresh.
-    private async Task<IReadOnlyList<ValidationIssue>> RefreshAsync(ConformanceLeaseStart leaseStart)
+    private async Task<IReadOnlyList<ValidationIssue>> RefreshAsync(long leaseStart)
     {
         try
         {

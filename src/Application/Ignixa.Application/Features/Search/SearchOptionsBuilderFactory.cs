@@ -205,8 +205,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
 
     private void EnsureConformanceLease()
     {
-        ConformanceSearchGuard.EnsureRequestCanSearch(
-            _conformanceLease,
+        _conformanceLease.EnsureRequestCanSearch(
             requestOriginated: _httpContextAccessor.HttpContext is not null,
             isBackgroundTask: _fhirRequestContextAccessor.RequestContext?.IsBackgroundTask == true);
     }

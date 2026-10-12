@@ -515,7 +515,7 @@ public class PackageActivationPipelineTests
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
         await refreshTenants.Received(1).GetAllTenantsAsync(CancellationToken.None);
-        lease.LeaseStartUtc.ShouldBeNull();
+        lease.IsHeld.ShouldBeFalse();
     }
 
     [Fact]
@@ -601,7 +601,7 @@ public class PackageActivationPipelineTests
         result.Issues.ShouldContain(issue =>
             issue.Code == PackageActivationPipeline.RefreshDeferredCode &&
             issue.Severity == ActivationIssueSeverity.Warning);
-        lease.LeaseStartUtc.ShouldBeNull();
+        lease.IsHeld.ShouldBeFalse();
     }
 
     [Fact]

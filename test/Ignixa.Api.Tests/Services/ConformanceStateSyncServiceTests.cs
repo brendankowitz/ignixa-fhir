@@ -43,7 +43,7 @@ public class ConformanceStateSyncServiceTests
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.RunSyncAsync());
 
-        lease.LeaseStartUtc.ShouldBeNull();
+        lease.IsHeld.ShouldBeFalse();
     }
 
     [Fact]

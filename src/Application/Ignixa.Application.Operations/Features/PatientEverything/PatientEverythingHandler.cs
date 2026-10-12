@@ -72,8 +72,7 @@ public class PatientEverythingHandler(
         // Get FHIR request context (populated by FhirRequestContextMiddleware)
         var context = contextAccessor.RequestContext
             ?? throw new InvalidOperationException("FHIR request context not available");
-        ConformanceSearchGuard.EnsureRequestCanSearch(
-            conformanceLease,
+        conformanceLease.EnsureRequestCanSearch(
             requestOriginated: true,
             context.IsBackgroundTask);
 
