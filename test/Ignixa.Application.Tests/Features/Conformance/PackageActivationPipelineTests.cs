@@ -4,6 +4,7 @@ using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Serialization;
 using NSubstitute;
 using Shouldly;
 using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
@@ -195,6 +196,55 @@ public class PackageActivationPipelineTests
         issue.Message.ShouldContain("FHIR 5.0");
         harness.Log.Events.Count.ShouldBe(eventCount);
         harness.Activations.ShouldAllBe(activation => activation.FhirVersion == "4.0");
+    }
+
+    // Shadowing a base code materialises the base under the base package key of the package's own version.
+    [Theory]
+    [InlineData("3.0.2", "hl7.fhir.r3.core@")]
+    [InlineData("4.0.1", "hl7.fhir.r4.core@")]
+    [InlineData("4.3.0", "hl7.fhir.r4b.core@")]
+    [InlineData("5.0.0", "hl7.fhir.r5.core@")]
+    public async Task GivenAPackageShadowingABaseCode_WhenActivated_ThenTheBaseIsMaterialisedUnderItsVersionsCorePackage(
+        string fhirVersion,
+        string expectedCorePackagePrefix)
+    {
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(SearchParameter("test.override", Canonical("test.override"), fhirVersion: fhirVersion));
+
+        var result = await ActivateAsync(pipeline, "test.override");
+
+        result.Success.ShouldBeTrue(Describe(result));
+        var materialised = harness.Activations.Single(activation => activation.Canonical == BaseIdentifier);
+        materialised.SourcePackage.ShouldStartWith(expectedCorePackagePrefix);
+        materialised.FhirVersion.ShouldBe(FhirSpecificationExtensions.FromVersionString(fhirVersion).ToVersionString());
+    }
+
+    // A materialised base composite keeps its components: it stays the extracted owner until the transition.
+    [Fact]
+    public async Task GivenAPackageShadowingABaseComposite_WhenActivated_ThenTheMaterialisedBaseKeepsItsComponents()
+    {
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(
+            SearchParameter("test.composite", Canonical("x-code"), "x-code", ["Observation"], "Observation.code"),
+            SearchParameter("test.composite", Canonical("x-value"), "x-value", ["Observation"], "Observation.value", type: "quantity"),
+            Composite(
+                "test.composite",
+                Canonical("code-value-quantity"),
+                "code-value-quantity",
+                "Observation",
+                (Canonical("x-code"), "code"),
+                (Canonical("x-value"), "value")));
+
+        var result = await ActivateAsync(pipeline, "test.composite");
+
+        result.Success.ShouldBeTrue(Describe(result));
+        var materialised = harness.Activations.Single(activation =>
+            activation.Canonical == "http://hl7.org/fhir/SearchParameter/Observation-code-value-quantity");
+        materialised.Components.ShouldNotBeNull().Select(component => component.DefinitionUrl).ShouldBe(
+            [
+                "http://hl7.org/fhir/SearchParameter/clinical-code",
+                "http://hl7.org/fhir/SearchParameter/Observation-value-quantity"
+            ]);
     }
 
     [Fact]

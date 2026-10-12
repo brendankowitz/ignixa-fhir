@@ -48,6 +48,43 @@ internal static class TestPackages
         };
     }
 
+    public static PackageResource Composite(
+        string packageId,
+        string canonical,
+        string code,
+        string baseType,
+        params (string Definition, string Expression)[] components)
+    {
+        var resource = new JsonObject
+        {
+            ["resourceType"] = "SearchParameter",
+            ["id"] = code,
+            ["url"] = canonical,
+            ["code"] = code,
+            ["base"] = new JsonArray(JsonValue.Create(baseType)),
+            ["type"] = "composite",
+            ["expression"] = baseType,
+            ["component"] = new JsonArray(components
+                .Select(component => (JsonNode?)new JsonObject
+                {
+                    ["definition"] = component.Definition,
+                    ["expression"] = component.Expression,
+                })
+                .ToArray()),
+        };
+
+        return new PackageResource
+        {
+            PackageId = packageId,
+            PackageVersion = "1.0.0",
+            ResourceType = "SearchParameter",
+            ResourceId = code,
+            Canonical = canonical,
+            FhirVersion = "4.0.1",
+            ResourceJson = resource.ToJsonString(),
+        };
+    }
+
     public static string Canonical(string name) => $"http://example.org/SearchParameter/{name}";
 
     /// <summary>A package with one custom (non-shadowing) Patient parameter: activation leaves it Pending.</summary>

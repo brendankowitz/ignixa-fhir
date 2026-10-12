@@ -203,14 +203,18 @@ public sealed class PackageActivationPlanner(
                             baseParameter.TargetResourceTypes,
                             baseParameter.Component.Select(component =>
                                 new SearchParameterComponentData(
-                                    component.DefinitionUrl?.ToString() ?? string.Empty,
+                                    component.DefinitionUrl?.ToString() ?? throw new InvalidOperationException(
+                                        $"Base composite {baseCanonical} has a component without a definition."),
                                     component.Expression)).ToList(),
                             baseParameter.Name,
                             baseParameter.Description,
                             activationVersion));
+                    // The slot is unowned (or Disabled) and the base carries no override, which is all
+                    // activation validation can reject, so a rejection here is a planner defect.
                     if (staged.ApplyProposedEvent(baseActivation) is { } baseIssue)
                     {
-                        return (events, baseIssue);
+                        throw new InvalidOperationException(
+                            $"Materialising base {baseCanonical} on {resourceType} was rejected: {baseIssue.Message}");
                     }
                     events.Add(baseActivation);
                     existing = staged.GetSearchParameter(resourceType, sp.Code);
