@@ -160,59 +160,40 @@ public class SqlServerSearchIndexReferenceDataCacheSyncTests : IAsyncLifetime
         rootId.ShouldNotBe(ownId);
     }
 
+    // Spec §5.4: a definitions generation still being prepared must not change how the published one resolves ids.
     [Fact]
     public async Task GivenFutureGenerationCatalogPreparationIsBlockedBeforePublication_WhenRowsResolveIds_ThenEachGenerationUsesItsOwnRoot()
     {
         const string overridingUrl = "http://example.org/SearchParameter/generation-override";
-        const string generationOneRootUrl = "http://example.org/SearchParameter/generation-one-root";
-        const string generationTwoRootUrl = "http://example.org/SearchParameter/generation-two-root";
-        var generationOneParameter = CreateOverride(overridingUrl, generationOneRootUrl);
-        var generationTwoParameter = CreateOverride(overridingUrl, generationTwoRootUrl);
-
-        await _cache.SyncSearchParametersToDatabaseAsync(
-            [overridingUrl],
-            CreateManager(generationOneParameter),
-            CancellationToken.None);
-
+        var generationOne = CreateOverride(overridingUrl, "http://example.org/SearchParameter/generation-one-root");
+        var generationTwo = CreateOverride(overridingUrl, "http://example.org/SearchParameter/generation-two-root");
+        await _cache.SyncSearchParametersToDatabaseAsync([overridingUrl], CreateManager(generationOne), CancellationToken.None);
         var catalogPrepared = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var allowPublication = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var futureBuild = Task.Run(async () =>
         {
-            await _cache.SyncSearchParametersToDatabaseAsync(
-                [overridingUrl],
-                CreateManager(generationTwoParameter),
-                CancellationToken.None);
+            await _cache.SyncSearchParametersToDatabaseAsync([overridingUrl], CreateManager(generationTwo), CancellationToken.None);
             catalogPrepared.TrySetResult();
             await allowPublication.Task;
         });
 
         await catalogPrepared.Task;
 
-        var generationOneRootId = await _database.ExecuteScalarAsync<short>(
-            $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{generationOneRootUrl}'");
-        var generationTwoRootId = await _database.ExecuteScalarAsync<short>(
-            $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{generationTwoRootUrl}'");
+        var generationOneRootId = await RootIdAsync(generationOne);
+        var generationTwoRootId = await RootIdAsync(generationTwo);
         generationOneRootId.ShouldNotBe(generationTwoRootId);
-        SearchParameterIdLookupHelper.TryGetSearchParamId(
-            generationOneParameter,
-            _cache.SearchParameterMappings,
-            out var beforePublicationId).ShouldBeTrue();
-        beforePublicationId.ShouldBe(generationOneRootId);
-
+        Resolve(generationOne).ShouldBe(generationOneRootId);
         allowPublication.TrySetResult();
         await futureBuild;
-
-        SearchParameterIdLookupHelper.TryGetSearchParamId(
-            generationOneParameter,
-            _cache.SearchParameterMappings,
-            out var inFlightGenerationOneId).ShouldBeTrue();
-        inFlightGenerationOneId.ShouldBe(generationOneRootId);
-        SearchParameterIdLookupHelper.TryGetSearchParamId(
-            generationTwoParameter,
-            _cache.SearchParameterMappings,
-            out var generationTwoId).ShouldBeTrue();
-        generationTwoId.ShouldBe(generationTwoRootId);
+        Resolve(generationOne).ShouldBe(generationOneRootId);
+        Resolve(generationTwo).ShouldBe(generationTwoRootId);
     }
+
+    private Task<short> RootIdAsync(SearchParameterInfo parameter) =>
+        _database.ExecuteScalarAsync<short>($"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{parameter.OverridesUrl}'");
+
+    private short? Resolve(SearchParameterInfo parameter) =>
+        SearchParameterIdLookupHelper.TryGetSearchParamId(parameter, _cache.SearchParameterMappings, out var id) ? id : null;
 
     [Theory]
     [InlineData(false)]

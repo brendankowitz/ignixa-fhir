@@ -12,17 +12,6 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
 public class SchemaDeployerUpgradeTests
 {
-    private static readonly string[] LegacyReindexObjectNames =
-    [
-        "AcquireReindexJobs",
-        "BulkReindexResourceTableType_1",
-        "CheckActiveReindexJobs",
-        "CreateReindexJob",
-        "GetReindexJobById",
-        "ReindexJob",
-        "UpdateReindexJob",
-    ];
-
     private sealed class SingleTenantStore : ITenantConfigurationStore
     {
         private readonly TenantConfiguration _tenant;
@@ -139,89 +128,36 @@ public class SchemaDeployerUpgradeTests
         return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
-    private static async Task<(bool HasLastValueIndex, bool ReturnsUpdatedSurrogates, bool HasIncompleteDrainIndex)> GetReindexObjectStateAsync(
-        string connectionString,
-        CancellationToken cancellationToken)
+    // The objects schema 4 retires (spec §8.7), and the indexes and result set it adds in their place.
+    private const string LegacyReindexObjects =
+        "AcquireReindexJobs,BulkReindexResourceTableType_1,CheckActiveReindexJobs,CreateReindexJob,GetReindexJobById,ReindexJob,UpdateReindexJob";
+
+    private const string LegacyReindexObjectsQuery = """
+        SELECT ISNULL(STRING_AGG(name, ',') WITHIN GROUP (ORDER BY name), '')
+        FROM (SELECT name FROM sys.objects WHERE schema_id = SCHEMA_ID('dbo') AND name IN
+                  ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob', 'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
+              UNION ALL
+              SELECT name FROM sys.table_types WHERE schema_id = SCHEMA_ID('dbo') AND name = 'BulkReindexResourceTableType_1') AS legacy
+        """;
+
+    private const string SchemaFourReindexObjectsQuery = """
+        SELECT (SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.Transactions')
+                  AND (name = 'IX_Transactions_SurrogateIdRangeLastValue'
+                       OR (name = 'IX_Transactions_SurrogateIdRangeFirstValue_Incomplete' AND has_filter = 1 AND filter_definition = '([IsCompleted]=(0))')))
+             + (SELECT COUNT(*) FROM sys.dm_exec_describe_first_result_set_for_object(OBJECT_ID('dbo.UpdateResourceSearchParams'), 0)
+                  WHERE name = 'ResourceSurrogateId')
+        """;
+
+    // CA2100 suppressed: test-controlled SQL text, as in the helpers above.
+    private static async Task<T> ScalarAsync<T>(string connectionString, string sql)
     {
         await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
+        await connection.OpenAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT
-                CAST(CASE WHEN EXISTS (
-                    SELECT 1
-                    FROM sys.indexes
-                    WHERE object_id = OBJECT_ID('dbo.Transactions')
-                      AND name = 'IX_Transactions_SurrogateIdRangeLastValue')
-                    THEN 1 ELSE 0 END AS bit),
-                CAST(CASE WHEN EXISTS (
-                    SELECT 1
-                    FROM sys.dm_exec_describe_first_result_set_for_object(
-                        OBJECT_ID('dbo.UpdateResourceSearchParams'),
-                        0)
-                    WHERE name = 'ResourceSurrogateId')
-                    THEN 1 ELSE 0 END AS bit),
-                CAST(CASE WHEN EXISTS (
-                    SELECT 1
-                    FROM sys.indexes
-                    WHERE object_id = OBJECT_ID('dbo.Transactions')
-                      AND name = 'IX_Transactions_SurrogateIdRangeFirstValue_Incomplete'
-                      AND has_filter = 1
-                      AND filter_definition = '([IsCompleted]=(0))')
-                    THEN 1 ELSE 0 END AS bit);
-            """;
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        (await reader.ReadAsync(cancellationToken)).ShouldBeTrue();
-        return (reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2));
-    }
-
-    /// <summary>
-    /// Schema version 2 still carries the legacy reindex objects that version 4 retires.
-    /// </summary>
-    private static async Task DeployVersionTwoSchemaAsync(string connectionString, string databaseName, CancellationToken cancellationToken)
-    {
-        var legacyDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "terminology-schema-version-2.dacpac");
-        using var legacyDacpacStream = File.OpenRead(legacyDacpacPath);
-        using var legacyPackage = DacPackage.Load(legacyDacpacStream);
-        var legacyDacServices = new DacServices(connectionString);
-        legacyDacServices.Deploy(
-            legacyPackage,
-            databaseName,
-            upgradeExisting: true,
-            options: TestDeployOptions(),
-            cancellationToken: cancellationToken);
-
-        await SchemaDeployer.StampSchemaVersionAsync(connectionString, 2, cancellationToken);
-    }
-
-    private static async Task<List<string>> GetLegacyReindexObjectNamesAsync(string connectionString, CancellationToken cancellationToken)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT name
-            FROM sys.objects
-            WHERE schema_id = SCHEMA_ID('dbo')
-              AND name IN
-                  ('AcquireReindexJobs', 'CheckActiveReindexJobs', 'CreateReindexJob',
-                   'GetReindexJobById', 'ReindexJob', 'UpdateReindexJob')
-            UNION ALL
-            SELECT name
-            FROM sys.table_types
-            WHERE schema_id = SCHEMA_ID('dbo')
-              AND name = 'BulkReindexResourceTableType_1'
-            ORDER BY name
-            """;
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-
-        var names = new List<string>();
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            names.Add(reader.GetString(0));
-        }
-
-        return names;
+#pragma warning disable CA2100
+        command.CommandText = sql;
+#pragma warning restore CA2100
+        return (T)(await command.ExecuteScalarAsync())!;
     }
 
     /// <summary>
@@ -274,6 +210,8 @@ public class SchemaDeployerUpgradeTests
         }
     }
 
+    // Spec §8.7: schema 4 retires dbo.ReindexJob only when it is empty; otherwise the upgrade fails, leaving the rows
+    // and the version stamp, and succeeds once the operator has removed them.
     [SkippableFact]
     public async Task GivenAVersionTwoTenantWithPopulatedLegacyReindexStorage_WhenUpgradeIfNeededAsyncCalled_ThenFailsWithoutDroppingLegacyObjectsOrStampingAndARetryAfterDeletingTheRowsSucceeds()
     {
@@ -283,42 +221,28 @@ public class SchemaDeployerUpgradeTests
 
         try
         {
-            await DeployVersionTwoSchemaAsync(connectionString, databaseName, CancellationToken.None);
-            await using (var connection = new SqlConnection(connectionString))
+            using (var legacyPackage = DacPackage.Load(Path.Combine(AppContext.BaseDirectory, "Fixtures", "terminology-schema-version-2.dacpac")))
             {
-                await connection.OpenAsync(CancellationToken.None);
-                await using var command = connection.CreateCommand();
-                command.CommandText = """
-                    INSERT dbo.ReindexJob (Id, Status, RawJobRecord)
-                    VALUES ('legacy-reindex-job', 'Running', '{}');
-                    """;
-                await command.ExecuteNonQueryAsync(CancellationToken.None);
+                new DacServices(connectionString).Deploy(legacyPackage, databaseName, upgradeExisting: true, options: TestDeployOptions());
             }
 
+            await SchemaDeployer.StampSchemaVersionAsync(connectionString, 2, CancellationToken.None);
+            await ScalarAsync<int>(connectionString, "INSERT dbo.ReindexJob (Id, Status, RawJobRecord) VALUES ('legacy-reindex-job', 'Running', '{}'); SELECT 1;");
             var deployer = CreateDeployer(connectionString);
             var resolver = new SchemaVersionResolver(new SingleTenantStore(connectionString), NullLogger<SchemaVersionResolver>.Instance);
-            var refusal = await Should.ThrowAsync<DacServicesException>(
-                () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
+
+            var refusal = await Should.ThrowAsync<DacServicesException>(() => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
 
             refusal.Message.ShouldContain("Cannot retire dbo.ReindexJob");
             (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(2);
-            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None))
-                .ShouldBe(LegacyReindexObjectNames, ignoreOrder: true);
+            (await ScalarAsync<string>(connectionString, LegacyReindexObjectsQuery)).ShouldBe(LegacyReindexObjects);
 
-            // The operator exports or deletes the legacy rows and the next lazy upgrade completes.
-            await using (var connection = new SqlConnection(connectionString))
-            {
-                await connection.OpenAsync(CancellationToken.None);
-                await using var command = connection.CreateCommand();
-                command.CommandText = "DELETE FROM dbo.ReindexJob;";
-                await command.ExecuteNonQueryAsync(CancellationToken.None);
-            }
-
+            await ScalarAsync<int>(connectionString, "DELETE FROM dbo.ReindexJob; SELECT 1;");
             await deployer.UpgradeIfNeededAsync(1, CancellationToken.None);
 
-            (await GetLegacyReindexObjectNamesAsync(connectionString, CancellationToken.None)).ShouldBeEmpty();
+            (await ScalarAsync<string>(connectionString, LegacyReindexObjectsQuery)).ShouldBeEmpty();
             (await resolver.GetCurrentVersionAsync(1, CancellationToken.None)).ShouldBe(SchemaVersionConstants.CurrentVersion);
-            (await GetReindexObjectStateAsync(connectionString, CancellationToken.None)).ShouldBe((true, true, true));
+            (await ScalarAsync<int>(connectionString, SchemaFourReindexObjectsQuery)).ShouldBe(3);
         }
         finally
         {
