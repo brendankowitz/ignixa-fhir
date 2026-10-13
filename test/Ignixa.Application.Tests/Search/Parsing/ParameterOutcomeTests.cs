@@ -161,28 +161,23 @@ public class ParameterOutcomeTests
         options.HiddenSearchParameters.ShouldContainKey(trace.Key);
     }
 
-    [Fact]
-    public void GivenAnUnsupportedModifier_WhenBuilt_ThenTheParameterIsReportedAsIgnored()
+    [Theory]
+    [InlineData("birthdate", SearchParamType.Date, "birthdate:exact", "2000-01-01", typeof(ParameterOutcome.Ignored))]
+    [InlineData("name", SearchParamType.String, "name", "Smith", typeof(ParameterOutcome.Compiled))]
+    public void GivenAParameter_WhenBuilt_ThenItsTraceReportsWhetherItCompiledOrWasIgnored(
+        string code,
+        SearchParamType type,
+        string key,
+        string value,
+        Type expectedOutcome)
     {
-        var harness = SearchOptionsBuilderHarness.ForPatient(("birthdate", SearchParamType.Date));
         var outcomes = new List<ParameterTrace>();
 
-        harness.Build([("birthdate:exact", "2000-01-01")], outcomes);
+        SearchOptionsBuilderHarness.ForPatient((code, type)).Build([(key, value)], outcomes);
 
         var trace = outcomes.ShouldHaveSingleItem();
-        trace.Key.ShouldBe("birthdate:exact");
-        trace.Outcome.ShouldBeOfType<ParameterOutcome.Ignored>();
-    }
-
-    [Fact]
-    public void GivenAValidParameter_WhenBuilt_ThenItIsReportedAsCompiled()
-    {
-        var harness = SearchOptionsBuilderHarness.ForPatient(("name", SearchParamType.String));
-        var outcomes = new List<ParameterTrace>();
-
-        harness.Build([("name", "Smith")], outcomes);
-
-        outcomes.ShouldHaveSingleItem().Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
+        trace.Key.ShouldBe(key);
+        trace.Outcome.ShouldBeOfType(expectedOutcome);
     }
 
     [Fact]
