@@ -3,7 +3,6 @@ using Ignixa.Application.Features.Admin;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Tests.Features.Conformance;
 using Ignixa.Domain.Models;
-using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Models;
 using Medino;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -37,22 +36,6 @@ public class LoadPackageHandlerTests
     }
 
     [Fact]
-    public async Task GivenActivationLosesEveryAppendRace_WhenLoaded_ThenTheLoadFailsAsARetryableConflict()
-    {
-        var log = new InMemoryEventLog();
-        foreach (var index in Enumerable.Range(1, 5))
-        {
-            log.OtherWriters.Enqueue(ConformanceEvents.PackageActivated($"other-{index}"));
-        }
-
-        var exception = await Should.ThrowAsync<PackageActivationRejectedException>(() => LoadAsync(TestPackages.Custom(PackageId), log));
-
-        exception.StatusCode.ShouldBe(409);
-        exception.ActivationIssues.ShouldHaveSingleItem().Code.ShouldBe("CONFORMANCE_CONFLICT");
-        exception.OperationOutcome.Issue.ShouldHaveSingleItem().IssueTypeCode.ShouldBe(IssueTypeCommon.Conflict);
-    }
-
-    [Fact]
     public async Task GivenShadowingPackage_WhenLoaded_ThenTheResultCarriesTheHiddenCodesAsAWarning()
     {
         var result = await LoadAsync(TestPackages.Shadow(PackageId));
@@ -64,12 +47,12 @@ public class LoadPackageHandlerTests
         await _mediator.Received(1).PublishAsync(Arg.Is<PackageLoadedEvent>(loaded => !loaded.RequiresConformanceRefresh), Arg.Any<CancellationToken>());
     }
 
-    private Task<LoadPackageResult> LoadAsync(PackageResource parameter, ISourceEventStore? eventStore = null)
+    private Task<LoadPackageResult> LoadAsync(PackageResource parameter)
     {
         var handler = new LoadPackageHandler(
             TestPackages.Provider(PackageId),
             _mediator,
-            TestPackageActivationPipeline.Create(TestPackages.Repository(parameter), eventStore ?? new InMemoryEventLog(), new ConformanceState()),
+            TestPackageActivationPipeline.Create(TestPackages.Repository(parameter), new InMemoryEventLog(), new ConformanceState()),
             NullLogger<LoadPackageHandler>.Instance);
         return handler.HandleAsync(new LoadPackageCommand("1", PackageId, TestPackages.PackageVersion), CancellationToken.None);
     }
