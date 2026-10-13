@@ -13,13 +13,19 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexOrchestrationTests
 {
-    // §8.2, §8.6 (M5): the flow runs end to end with every activity scheduled with retry.
+    // §8.2, §8.6 (M5): the flow runs end to end with every activity scheduled with retry; a type with
+    // nothing to reindex plans one empty page and moves on.
     [Fact]
     public async Task GivenJob_WhenOrchestrated_ThenEveryActivityIsScheduledWithRetryAndEveryRangeIsCounted()
     {
-        var context = new FakeContext();
+        var context = new FakeContext
+        {
+            Plan = plan => plan.ResourceType == "Observation" ? new([], null) : FakeContext.TwoPagesOfRanges(plan)
+        };
 
-        var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
+        var result = await new ReindexOrchestration().RunTask(
+            context,
+            CreateOrchestrationInput() with { ResourceTypes = ["Patient", "Observation"] });
 
         result.Success.ShouldBeTrue();
         context.DirectSchedules.ShouldBeEmpty();
@@ -73,20 +79,22 @@ public class ReindexOrchestrationTests
             failure.ResourceType == "Patient" && failure.Reason.Contains("range worker crashed"));
     }
 
-    // Spec §8.5: a job closed elsewhere is authoritative, whether start or the first phase boundary finds it.
+    // Spec §8.5: a job closed elsewhere is authoritative, whether start, the barrier-delay boundary or a later
+    // phase boundary (snapshot 0, 1 or 2) finds it.
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task GivenJobClosedElsewhere_WhenStartOrAPhaseBoundaryFindsIt_ThenOrchestrationStopsWithoutCompleting(bool foundByStart)
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task GivenJobClosedElsewhere_WhenStartOrAPhaseBoundaryFindsIt_ThenOrchestrationStopsWithoutCompleting(int closedAtSnapshot)
     {
-        var context = new FakeContext { Start = () => new(!foundByStart, []), Progress = _ => false };
+        var context = new FakeContext { Start = () => new(closedAtSnapshot > 0, []) };
+        context.Progress = _ => context.Inputs<PersistReindexProgressInput>().Count < closedAtSnapshot;
 
         var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         result.Success.ShouldBeFalse();
-        context.Scheduled.ShouldBe(foundByStart
-            ? [nameof(StartReindexInput)]
-            : [nameof(StartReindexInput), nameof(PersistReindexProgressInput)]);
+        context.Inputs<PersistReindexProgressInput>().Count.ShouldBe(closedAtSnapshot);
+        context.Scheduled.Last().ShouldBe(closedAtSnapshot == 0 ? nameof(StartReindexInput) : nameof(PersistReindexProgressInput));
         context.Continuations.ShouldBeEmpty();
     }
 
@@ -105,7 +113,25 @@ public class ReindexOrchestrationTests
         context.RangeAttempts.ShouldBe(9);
         context.TimerDelays.Skip(1).ShouldBe([1, 2, 4]);
         result.Tenants.Single().Success.ShouldBeTrue();
-        result.Tenants.Single().ResourcesReindexed.ShouldBe(30);
+        // The ranges that were not ready are retried, not planned again.
+        (result.Tenants.Single().ResourcesToReindex, result.Tenants.Single().ResourcesReindexed).ShouldBe((30L, 30L));
+    }
+
+    // Spec §8.2: progress is persisted at every phase boundary and after every five range waves, not every wave.
+    [Fact]
+    public async Task GivenElevenRangeWaves_WhenOrchestrated_ThenProgressIsPersistedAtPhaseBoundariesAndAfterEveryFiveWaves()
+    {
+        var context = new FakeContext
+        {
+            Plan = _ => new([.. Enumerable.Range(0, 11).Select(index => new SurrogateIdRange((index * 10) + 1, (index * 10) + 10, 10))], null)
+        };
+        var input = CreateOrchestrationInput() with { Parameters = ReindexJobParameters.Create(maximumConcurrency: 1) };
+
+        await new ReindexOrchestration().RunTask(context, input);
+
+        context.Inputs<PersistReindexProgressInput>()
+            .Select(snapshot => snapshot.Progress.Tenants.Single().ResourcesReindexed)
+            .ShouldBe([0L, 0L, 50L, 100L, 110L]);
     }
 
     // §8.4: a tenant whose definitions stay behind for StaleJobTimeout fails, reported as data.
@@ -441,7 +467,7 @@ public class ReindexOrchestrationTests
             throw new NotSupportedException();
 
         // Two ranges of ten on the first page, one on the last.
-        private static SurrogateIdRangePage TwoPagesOfRanges(PlanReindexInput plan)
+        public static SurrogateIdRangePage TwoPagesOfRanges(PlanReindexInput plan)
         {
             var first = (plan.StartAfterSurrogateId ?? 0) + 1;
             return first == 1
