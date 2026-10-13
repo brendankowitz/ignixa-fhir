@@ -42,16 +42,24 @@ internal static class TestWritePath
     /// <summary>Definitions published at <paramref name="definitionsEventId"/>, extracting nothing by default.</summary>
     public static IFhirVersionContext Versions(long definitionsEventId, ISearchIndexer? indexer = null)
     {
-        if (indexer is null)
-        {
-            indexer = Substitute.For<ISearchIndexer>();
-            indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        }
-
+        indexer ??= Indexer();
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(new R4CoreSchemaProvider());
         versions.GetBaseSchemaProvider(FhirVersion.R4).Returns(new R4CoreSchemaProvider());
         versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(new DefinitionsHandle(indexer, new R4CoreSchemaProvider(), definitionsEventId));
         return versions;
     }
+
+    /// <summary>An indexer that extracts no entries, so a test can count extractions.</summary>
+    public static ISearchIndexer Indexer()
+    {
+        var indexer = Substitute.For<ISearchIndexer>();
+        indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
+        return indexer;
+    }
+
+    /// <summary>A PUT of Patient/<paramref name="id"/> extracted at <paramref name="definitionsEventId"/>.</summary>
+    public static ResourceWrapper Patient(string id, long definitionsEventId) =>
+        new("Patient", id, "1", DateTimeOffset.UtcNow, ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{id}}"}"""),
+            new ResourceRequest("PUT", $"Patient/{id}")) { DefinitionsEventId = definitionsEventId };
 }
