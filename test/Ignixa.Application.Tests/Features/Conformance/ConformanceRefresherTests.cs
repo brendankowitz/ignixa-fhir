@@ -1,17 +1,15 @@
 using System.Data.Common;
-using Ignixa.Abstractions;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
-using Ignixa.Application.Infrastructure.Caching;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
-using Ignixa.Search.Indexing;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using Ignixa.Application.Tests.BackgroundOperations.Reindex;
 using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
@@ -179,13 +177,7 @@ public class ConformanceRefresherTests
         timeline.Events.ShouldContain("published 1@7");
     }
 
-    private static TenantConfiguration Tenant(int tenantId) => new()
-    {
-        TenantId = tenantId,
-        DisplayName = $"Tenant {tenantId}",
-        FhirVersion = "4.0",
-        Storage = new TenantStorageConfiguration { Type = "FileSystem" },
-    };
+    private static TenantConfiguration Tenant(int tenantId) => ReindexTestHelper.Tenant(tenantId, "FileSystem");
 
     /// <summary>
     /// A refresher over substituted consumers that record, in order, "built T@G", "cataloged T",
@@ -194,36 +186,11 @@ public class ConformanceRefresherTests
     private sealed class Timeline : IDisposable
     {
         private readonly ISearchParameterDefinitionManager _definitions = Substitute.For<ISearchParameterDefinitionManager>();
-        private readonly IFhirVersionContext _versions = Substitute.For<IFhirVersionContext>();
         private readonly ISearchParameterCatalogSynchronizer _catalog = Substitute.For<ISearchParameterCatalogSynchronizer>();
-        private readonly ICapabilityCacheInvalidator _capabilities = Substitute.For<ICapabilityCacheInvalidator>();
 
         public Timeline(params TenantConfiguration[] tenants)
         {
             Tenants = TestConformanceRefresher.Tenants(tenants);
-            _definitions.AllSearchParameters.Returns([]);
-            _versions.CreateConformanceDefinitionsSnapshot(
-                    Arg.Any<FhirVersion>(),
-                    Arg.Any<int>(),
-                    Arg.Any<ConformanceStateSnapshot>(),
-                    Arg.Any<long>())
-                .Returns(call =>
-                {
-                    var generation = call.ArgAt<long>(3);
-                    Events.Add($"built {call.ArgAt<int>(1)}@{generation}");
-                    var handle = new DefinitionsHandle(Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), generation);
-                    return new ConformanceDefinitionsSnapshot(_definitions, handle, call.ArgAt<ConformanceStateSnapshot>(2));
-                });
-            _versions
-                .When(context => context.PublishConformanceDefinitionsSnapshot(
-                    Arg.Any<FhirVersion>(),
-                    Arg.Any<int>(),
-                    Arg.Any<ConformanceDefinitionsSnapshot>()))
-                .Do(call =>
-                {
-                    Events.Add($"published {call.ArgAt<int>(1)}@{call.Arg<ConformanceDefinitionsSnapshot>().Generation}");
-                    OnPublish?.Invoke();
-                });
             _catalog.SynchronizeAsync(Arg.Any<TenantConfiguration>(), Arg.Any<ISearchParameterDefinitionManager>(), Arg.Any<CancellationToken>())
                 .Returns(call =>
                 {
@@ -235,13 +202,6 @@ public class ConformanceRefresherTests
                     call.Arg<ISearchParameterDefinitionManager>().ShouldBeSameAs(_definitions);
                     Events.Add($"cataloged {call.Arg<TenantConfiguration>().TenantId}");
                     return Task.CompletedTask;
-                });
-            _capabilities.InvalidateForTenantAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns(call =>
-                {
-                    var cancelable = call.ArgAt<CancellationToken>(1).CanBeCanceled ? " (cancelable)" : string.Empty;
-                    Events.Add($"invalidated {call.ArgAt<int>(0)}{cancelable}");
-                    return ValueTask.CompletedTask;
                 });
         }
 
@@ -256,7 +216,13 @@ public class ConformanceRefresherTests
         public Exception? CatalogFailure { get; init; }
 
         public ConformanceRefresher Refresher(ISourceEventStore? eventStore = null) =>
-            TestConformanceRefresher.Create(State, eventStore, Tenants, _versions, _catalog, _capabilities);
+            TestConformanceRefresher.Create(
+                State,
+                eventStore,
+                Tenants,
+                TestConformanceRefresher.RecordingVersions(Events, _definitions, () => OnPublish?.Invoke()),
+                _catalog,
+                TestConformanceRefresher.RecordingCapabilities(Events));
 
         public void Dispose() => State.Dispose();
     }
