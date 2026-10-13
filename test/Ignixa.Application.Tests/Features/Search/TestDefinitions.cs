@@ -11,10 +11,7 @@ namespace Ignixa.Application.Tests.Features.Search;
 internal static class TestDefinitions
 {
     public static FhirVersionContext CreateContext() =>
-        new(
-            NullLoggerFactory.Instance,
-            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true },
-            NullFhirBaseUriProvider.Instance);
+        new(NullLoggerFactory.Instance, new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = true }, NullFhirBaseUriProvider.Instance);
 
     /// <summary>Publishes <paramref name="state"/> as the definitions of one tenant, as a refresh does.</summary>
     public static FhirVersionContext Publish(
@@ -40,11 +37,7 @@ internal static class TestDefinitions
             state,
             null,
             NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-            new SearchParameterResolutionOptions
-            {
-                EagerLoadPackageSearchParameters = eager,
-                FailStartupOnEagerLoadError = true,
-            });
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager, FailStartupOnEagerLoadError = true });
         await manager.InitializeAsync();
         return manager;
     }

@@ -55,18 +55,14 @@ public class FhirBaseUriProviderWiringTests
             TestConformanceLease.Held()));
     }
 
+    // M-L4: the lease is checked once, when search options are created for a request.
     [Fact]
     public void GivenStaleLeaseForAnHttpRequest_WhenCreatingSearchOptions_ThenItFailsClosed()
     {
         var httpContextAccessor = Substitute.For<IHttpContextAccessor>();
         httpContextAccessor.HttpContext.Returns(new DefaultHttpContext());
-        var lease = TestConformanceLease.NotHeld();
         var factory = new SearchOptionsBuilderFactory(
-            Substitute.For<IFhirVersionContext>(),
-            NullFhirBaseUriProvider.Instance,
-            httpContextAccessor,
-            Substitute.For<IFhirRequestContextAccessor>(),
-            lease);
+            Substitute.For<IFhirVersionContext>(), NullFhirBaseUriProvider.Instance, httpContextAccessor, Substitute.For<IFhirRequestContextAccessor>(), TestConformanceLease.NotHeld());
 
         var exception = Should.Throw<ConformanceStaleException>(() => factory.Create(FhirVersion.R4));
 

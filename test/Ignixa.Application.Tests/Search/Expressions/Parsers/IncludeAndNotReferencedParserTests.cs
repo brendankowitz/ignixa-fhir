@@ -53,14 +53,9 @@ public class IncludeAndNotReferencedParserTests
     public void GivenWildcardIncludeSyntax_WhenBinding_ThenReturnsOnlySearchableReferenceParameters()
     {
         var context = new SearchParserTestContext();
-        var generalPractitioner = context.Add(
-            "Patient",
-            "general-practitioner",
-            SearchParamType.Reference,
-            targets: PatientReferenceTargets);
+        var generalPractitioner = context.Add("Patient", "general-practitioner", SearchParamType.Reference, targets: PatientReferenceTargets);
         context.Add("Patient", "link", SearchParamType.Reference, targets: PatientLinkTargets).IsSearchable = false;
-        context.Add("Patient", "managing-organization", SearchParamType.Reference, targets: ["Organization"])
-            .IsHiddenByTransition = true;
+        context.Add("Patient", "managing-organization", SearchParamType.Reference, targets: ["Organization"]).IsHiddenByTransition = true;
         var binder = new SearchKeyBinder(context.DefinitionManager, context.SchemaProvider);
         var syntax = new IncludeKeySyntax("Patient", null, null, true);
 

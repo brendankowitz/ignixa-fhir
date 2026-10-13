@@ -32,9 +32,7 @@ internal sealed class InMemoryEventLog : ISourceEventStore
         return sourceEvent.EventId;
     }
 
-    public Task<IReadOnlyList<SourceEvent>> AppendAsync(
-        IEnumerable<NewSourceEvent> events,
-        CancellationToken cancellationToken) =>
+    public Task<IReadOnlyList<SourceEvent>> AppendAsync(IEnumerable<NewSourceEvent> events, CancellationToken cancellationToken) =>
         AppendAsync(events, LastEventId, cancellationToken);
 
     public Task<IReadOnlyList<SourceEvent>> AppendAsync(
@@ -54,12 +52,7 @@ internal sealed class InMemoryEventLog : ISourceEventStore
         }
 
         SourceEvent[] appended = events
-            .Select((sourceEvent, index) => new SourceEvent(
-                LastEventId + index + 1,
-                sourceEvent.StreamId,
-                sourceEvent.EventType,
-                sourceEvent.Data,
-                DateTimeOffset.UtcNow))
+            .Select((sourceEvent, index) => new SourceEvent(LastEventId + index + 1, sourceEvent.StreamId, sourceEvent.EventType, sourceEvent.Data, DateTimeOffset.UtcNow))
             .ToArray();
         Events.AddRange(appended);
         Appends.Add(appended);

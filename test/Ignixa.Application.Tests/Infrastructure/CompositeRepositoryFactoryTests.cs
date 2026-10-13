@@ -48,8 +48,7 @@ public sealed class CompositeRepositoryFactoryTests
     {
         var factory = CreateFactory(TenantStore(Tenant(1, "FileSystem"), Tenant(2, "TypoSqlServer")));
 
-        var exception = await Should.ThrowAsync<NotSupportedException>(
-            () => factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None));
+        var exception = await Should.ThrowAsync<NotSupportedException>(() => factory.FindTenantWithoutReindexSupportAsync(CancellationToken.None));
 
         exception.Message.ShouldBe("Storage type 'TypoSqlServer' is not supported");
     }
@@ -77,29 +76,17 @@ public sealed class CompositeRepositoryFactoryTests
         }
     }
 
-    private static TenantConfiguration Tenant(int tenantId, string storageType = "FileSystem") =>
-        new()
-        {
-            TenantId = tenantId,
-            DisplayName = $"Tenant {tenantId}",
-            FhirVersion = "4.0",
-            IsSystemPartition = tenantId == 0,
-            Storage = new TenantStorageConfiguration { Type = storageType }
-        };
-
-    private static ITenantConfigurationStore TenantStore(params TenantConfiguration[] tenants)
+    private static TenantConfiguration Tenant(int tenantId, string storageType = "FileSystem") => new()
     {
-        var store = Substitute.For<ITenantConfigurationStore>();
-        store.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns(tenants);
-        return store;
-    }
+        TenantId = tenantId,
+        DisplayName = $"Tenant {tenantId}",
+        FhirVersion = "4.0",
+        IsSystemPartition = tenantId == 0,
+        Storage = new TenantStorageConfiguration { Type = storageType }
+    };
 
-    private static CompositeRepositoryFactory CreateFactory(
-        ITenantConfigurationStore tenants,
-        IReindexStoreFactory? sqlReindexStoreFactory = null) =>
-        new(
-            tenants,
-            Substitute.For<IFhirRepositoryFactory>(),
-            Substitute.For<IFhirRepositoryFactory>(),
-            sqlReindexStoreFactory ?? Substitute.For<IReindexStoreFactory>());
+    private static ITenantConfigurationStore TenantStore(params TenantConfiguration[] tenants) => TestConformanceRefresher.Tenants(tenants);
+
+    private static CompositeRepositoryFactory CreateFactory(ITenantConfigurationStore tenants, IReindexStoreFactory? sqlReindexStoreFactory = null) =>
+        new(tenants, Substitute.For<IFhirRepositoryFactory>(), Substitute.For<IFhirRepositoryFactory>(), sqlReindexStoreFactory ?? Substitute.For<IReindexStoreFactory>());
 }
