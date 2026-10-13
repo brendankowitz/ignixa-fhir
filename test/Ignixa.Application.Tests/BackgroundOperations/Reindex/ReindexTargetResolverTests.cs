@@ -3,14 +3,11 @@ using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
-using Ignixa.Domain.Abstractions;
-using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging.Abstractions;
-using NSubstitute;
 using Shouldly;
+using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
@@ -25,10 +22,7 @@ public class ReindexTargetResolverTests
         string? referenceTarget,
         string expectedTypes)
     {
-        var pending = Parameter(
-            "http://example.org/SearchParameter/custom",
-            baseType,
-            referenceTarget is null ? null : [referenceTarget]);
+        var pending = Parameter(baseType, referenceTarget is null ? null : [referenceTarget]);
 
         var result = ReindexTargetResolver.Resolve(
             [pending],
@@ -49,10 +43,7 @@ public class ReindexTargetResolverTests
         string? fhirVersion,
         int[] expectedTenantIds)
     {
-        var resolver = CreateResolver(
-            [Parameter("http://example.org/SearchParameter/custom", "Resource", fhirVersion: fhirVersion)],
-            Tenant(1, "4.0"),
-            Tenant(2, "5.0"));
+        var resolver = CreateResolver([Activation(resourceType: "Resource", fhirVersion: fhirVersion)]);
 
         var plan = await resolver.ResolveAsync(CancellationToken.None);
 
@@ -68,12 +59,10 @@ public class ReindexTargetResolverTests
     public async Task GivenPendingParametersOnTwoVersions_WhenResolved_ThenBothVersionsTenantsAreTargetedWithTheirOwnTypes()
     {
         var resolver = CreateResolver(
-            [
-                Parameter("http://example.org/SearchParameter/r4-custom", "DomainResource", fhirVersion: "4.0"),
-                Parameter("http://example.org/SearchParameter/r5-custom", "ActorDefinition", fhirVersion: "5.0")
-            ],
-            Tenant(1, "4.0"),
-            Tenant(2, "5.0"));
+        [
+            Activation(Canonical + "-r4", eventId: 1, resourceType: "DomainResource", fhirVersion: "4.0"),
+            Activation(Canonical + "-r5", eventId: 2, resourceType: "ActorDefinition", searchParamId: 18, fhirVersion: "5.0")
+        ]);
 
         var plan = await resolver.ResolveAsync(CancellationToken.None);
 
@@ -87,38 +76,17 @@ public class ReindexTargetResolverTests
         plan.ResourceTypes.ShouldContain("Patient");
     }
 
-    private static ReindexTargetResolver CreateResolver(
-        IEnumerable<ActiveSearchParameter> parameters,
-        params TenantConfiguration[] tenants)
+    /// <summary>A resolver over the given activations, with tenant 1 on R4 and tenant 2 on R5.</summary>
+    private static ReindexTargetResolver CreateResolver(IEnumerable<SourceEvent> activations)
     {
         var state = new ConformanceState();
-        foreach (var (parameter, index) in parameters.Select((parameter, index) => (parameter, index)))
+        foreach (var activation in activations)
         {
-            state.ApplyAndTrack(new SourceEvent(
-                index + 1,
-                "package:custom@1.0.0",
-                nameof(SearchParameterActivated),
-                new SearchParameterActivated(
-                    parameter.Canonical,
-                    parameter.Code,
-                    parameter.ResourceType,
-                    parameter.Expression,
-                    parameter.ParamType,
-                    parameter.SourcePackage,
-                    null,
-                    parameter.SearchParamId + index,
-                    parameter.TargetResourceTypes,
-                    null,
-                    null,
-                    null,
-                    parameter.FhirVersion),
-                DateTimeOffset.UtcNow));
+            state.ApplyAndTrack(activation);
         }
 
-        var tenantStore = Substitute.For<ITenantConfigurationStore>();
-        tenantStore.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns(tenants);
         return new ReindexTargetResolver(
-            tenantStore,
+            TenantStore(Tenant(1, fhirVersion: "4.0"), Tenant(2, fhirVersion: "5.0")),
             new FhirVersionContext(
                 NullLoggerFactory.Instance,
                 new SearchParameterResolutionOptions(),
@@ -127,30 +95,16 @@ public class ReindexTargetResolverTests
             TestConformanceRefresher.EmptyEventStore());
     }
 
-    private static TenantConfiguration Tenant(int tenantId, string fhirVersion) =>
-        new()
-        {
-            TenantId = tenantId,
-            DisplayName = $"Tenant {tenantId}",
-            FhirVersion = fhirVersion,
-            IsActive = true
-        };
-
-    private static ActiveSearchParameter Parameter(
-        string canonical,
-        string resourceType,
-        IReadOnlyList<string>? targetResourceTypes = null,
-        string? fhirVersion = null) =>
+    private static ActiveSearchParameter Parameter(string resourceType, IReadOnlyList<string>? targetResourceTypes) =>
         new()
         {
             SearchParamId = 17,
-            Canonical = canonical,
+            Canonical = Canonical,
             Code = "custom",
             ResourceType = resourceType,
             Expression = "Resource.id",
             ParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType.String,
             SourcePackage = "example@1.0.0",
-            FhirVersion = fhirVersion,
             TargetResourceTypes = targetResourceTypes,
             ActivationEventId = 42,
             Status = SearchParameterStatus.Pending

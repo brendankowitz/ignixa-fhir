@@ -88,32 +88,32 @@ public sealed class ReindexTriggerTests : IDisposable
         await AssertNoJobRequestedAsync();
     }
 
+    // Operational failures defer to periodic reconciliation; programmer errors fail fast.
     [Theory]
-    [InlineData(typeof(IOException))]
-    [InlineData(typeof(TimeoutException))]
-    public async Task GivenOperationalFailure_WhenActivationTriggers_ThenResultIsDeferred(Type failure)
+    [InlineData(typeof(IOException), false)]
+    [InlineData(typeof(TimeoutException), false)]
+    [InlineData(typeof(InvalidOperationException), true)]
+    [InlineData(typeof(ArgumentException), true)]
+    [InlineData(typeof(NullReferenceException), true)]
+    public async Task GivenAFailedJobRequest_WhenActivationTriggers_ThenOnlyAProgrammerErrorPropagates(Type failure, bool propagates)
     {
         FailJobRequests(failure);
+        ReindexTriggerResult? result = null;
 
-        var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
+        var exception = await Record.ExceptionAsync(async () =>
+            result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None));
 
-        result.Deferred.ShouldBeTrue();
-        result.JobId.ShouldBeNull();
-        result.Message.ShouldContain("periodic reconciliation");
-    }
-
-    [Theory]
-    [InlineData(typeof(InvalidOperationException))]
-    [InlineData(typeof(ArgumentException))]
-    [InlineData(typeof(NullReferenceException))]
-    public async Task GivenProgrammerError_WhenActivationTriggers_ThenItPropagates(Type failure)
-    {
-        FailJobRequests(failure);
-
-        var exception = await Should.ThrowAsync<Exception>(() =>
-            CreateTrigger().RequestReindexAsync("activation", CancellationToken.None));
-
-        exception.ShouldBeOfType(failure);
+        if (propagates)
+        {
+            exception.ShouldBeOfType(failure);
+        }
+        else
+        {
+            exception.ShouldBeNull();
+            result!.Deferred.ShouldBeTrue();
+            result.JobId.ShouldBeNull();
+            result.Message.ShouldContain("periodic reconciliation");
+        }
     }
 
     [Fact]
@@ -140,6 +140,7 @@ public sealed class ReindexTriggerTests : IDisposable
         exception.Message.ShouldContain(nameof(UnsupportedReindexResult));
     }
 
+    // N1: neither a finished job's own Pending parameters nor an empty Pending set start a job.
     [Theory]
     [InlineData(null)]
     [InlineData("Failed")]
@@ -163,18 +164,11 @@ public sealed class ReindexTriggerTests : IDisposable
         await AssertNoJobRequestedAsync();
     }
 
-    [Fact]
-    public async Task GivenActivationNewerThanFailedJob_WhenTickRuns_ThenReconciliationJobIsRequested()
-    {
-        await _jobs.CreateAsync(Job("Failed", definition: CreateJobDefinition(targetEventId: 41)), CancellationToken.None);
-
-        await CreateTrigger().ReconcileAsync(CancellationToken.None);
-
-        await AssertJobRequestedAsync(ReindexTriggerKind.Reconciliation);
-    }
-
-    [Fact]
-    public async Task GivenActivationArrivesWhileJobRuns_WhenJobFinishes_ThenFollowUpIsRequestedOnTheNextTick()
+    // N1: an activation newer than the latest finished job's target is due once that job has finished.
+    [Theory]
+    [InlineData("Completed")]
+    [InlineData("Failed")]
+    public async Task GivenActivationArrivesWhileJobRuns_WhenJobFinishes_ThenFollowUpIsRequestedOnTheNextTick(string finished)
     {
         await _jobs.CreateAsync(Job("Running", definition: CreateJobDefinition(targetEventId: 41)), CancellationToken.None);
         var trigger = CreateTrigger();
@@ -182,7 +176,7 @@ public sealed class ReindexTriggerTests : IDisposable
         await trigger.ReconcileAsync(CancellationToken.None);
         await AssertNoJobRequestedAsync();
         var running = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
-        running.Status = "Completed";
+        running.Status = finished;
         await _jobs.UpdateAsync(running, 1, CancellationToken.None);
         await trigger.ReconcileAsync(CancellationToken.None);
 

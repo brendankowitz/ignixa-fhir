@@ -46,8 +46,7 @@ public sealed class ReindexJobReconcilerTests : IDisposable
     [Fact]
     public async Task GivenRunningJobWithinOrphanGrace_WhenReconciled_ThenLockIsNotTaken()
     {
-        await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
-        var job = await CreateJobAsync("Running", Now - TimeSpan.FromMinutes(1));
+        var job = await StartedJobAsync(Now - TimeSpan.FromMinutes(1), orchestration: null);
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
 
@@ -59,9 +58,7 @@ public sealed class ReindexJobReconcilerTests : IDisposable
     [Fact]
     public async Task GivenOrchestrationStillRunning_WhenReconciled_ThenNothingChanges()
     {
-        await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
-        var job = await CreateJobAsync("Running", PastGrace);
-        _runtime.GetOrchestrationStateAsync("job", false).Returns([State(OrchestrationStatus.Running)]);
+        var job = await StartedJobAsync(PastGrace, OrchestrationStatus.Running);
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
 
@@ -75,10 +72,7 @@ public sealed class ReindexJobReconcilerTests : IDisposable
     public async Task GivenRunningJobPastGraceWithDeadOrchestration_WhenReconciled_ThenJobFailsAndParametersReturnToPending(
         bool orchestrationIsMissing)
     {
-        await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
-        var job = await CreateJobAsync("Running", PastGrace);
-        _runtime.GetOrchestrationStateAsync("job", false)
-            .Returns(orchestrationIsMissing ? [] : [State(OrchestrationStatus.Failed)]);
+        var job = await StartedJobAsync(PastGrace, orchestrationIsMissing ? null : OrchestrationStatus.Failed);
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
 
@@ -110,14 +104,12 @@ public sealed class ReindexJobReconcilerTests : IDisposable
         string expectedJobStatus,
         SearchParameterStatus expectedParameterStatus)
     {
-        await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
+        var job = await StartedJobAsync(PastGrace, OrchestrationStatus.Failed);
         await _lifecycle.CompleteAsync(
             "job",
             [new ReindexTargetCompletion(Target(), succeeded, 12, succeeded ? null : "worker failed")],
             TimeSpan.Zero,
             CancellationToken.None);
-        var job = await CreateJobAsync("Running", PastGrace);
-        _runtime.GetOrchestrationStateAsync("job", false).Returns([State(OrchestrationStatus.Failed)]);
         var appendedBefore = _events.Appended.Count;
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
@@ -144,11 +136,17 @@ public sealed class ReindexJobReconcilerTests : IDisposable
         JsonSerializer.Serialize(await GetJobAsync()).ShouldBe(before);
     }
 
-    private static OrchestrationState State(OrchestrationStatus status) => new()
+    /// <summary>A Running job that started <c>Patient.custom</c>; a null orchestration status means it is missing.</summary>
+    private async Task<BackgroundJob<ReindexJobDefinition>> StartedJobAsync(
+        DateTimeOffset lastObserved,
+        OrchestrationStatus? orchestration)
     {
-        OrchestrationInstance = new OrchestrationInstance { InstanceId = "job" },
-        OrchestrationStatus = status
-    };
+        await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
+        _runtime.GetOrchestrationStateAsync("job", false).Returns(orchestration is { } status
+            ? [new OrchestrationState { OrchestrationInstance = new() { InstanceId = "job" }, OrchestrationStatus = status }]
+            : []);
+        return await CreateJobAsync("Running", lastObserved);
+    }
 
     private async Task<BackgroundJob<ReindexJobDefinition>> CreateJobAsync(string status, DateTimeOffset lastObserved)
     {
