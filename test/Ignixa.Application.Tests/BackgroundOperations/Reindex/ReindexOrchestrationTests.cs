@@ -88,15 +88,20 @@ public class ReindexOrchestrationTests
             failure.ResourceType == "Patient" && failure.Reason.Contains("range worker crashed"));
     }
 
-    [Fact]
-    public async Task GivenJobClosedElsewhere_WhenProgressIsPersistedAtAPhaseBoundary_ThenOrchestrationStopsWithoutCompleting()
+    // Spec 8.5: a job closed elsewhere is authoritative, whether start or the first phase boundary finds it.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GivenJobClosedElsewhere_WhenStartOrAPhaseBoundaryFindsIt_ThenOrchestrationStopsWithoutCompleting(bool foundByStart)
     {
-        var context = new FakeContext { Progress = _ => false };
+        var context = new FakeContext { Start = () => new(!foundByStart, []), Progress = _ => false };
 
         var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         result.Success.ShouldBeFalse();
-        context.Scheduled.ShouldBe([nameof(StartReindexInput), nameof(PersistReindexProgressInput)]);
+        context.Scheduled.ShouldBe(foundByStart
+            ? [nameof(StartReindexInput)]
+            : [nameof(StartReindexInput), nameof(PersistReindexProgressInput)]);
         context.Continuations.ShouldBeEmpty();
     }
 
@@ -246,17 +251,6 @@ public class ReindexOrchestrationTests
 
         output.Success.ShouldBeFalse();
         context.Completion.FailureMessage.ShouldContain("start failed");
-    }
-
-    [Fact]
-    public async Task GivenStartActivityFindsClosedJob_WhenOrchestrated_ThenNoTenantOrCompletionWorkRuns()
-    {
-        var context = new FakeContext { Start = () => new(false, []) };
-
-        var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
-
-        output.Success.ShouldBeFalse();
-        context.Scheduled.ShouldBe([nameof(StartReindexInput)]);
     }
 
     [Fact]
