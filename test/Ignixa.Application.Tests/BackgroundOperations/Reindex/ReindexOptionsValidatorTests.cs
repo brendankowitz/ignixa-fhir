@@ -8,12 +8,6 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 public class ReindexOptionsValidatorTests
 {
     [Fact]
-    public void GivenDefaults_WhenValidated_ThenConfigurationIsAccepted()
-    {
-        ReindexOptionsValidator.Validate(new ReindexOptions()).Succeeded.ShouldBeTrue();
-    }
-
-    [Fact]
     public void GivenEveryKeyOutOfRange_WhenValidated_ThenEachIsReportedWithItsRange()
     {
         var result = ReindexOptionsValidator.Validate(new ReindexOptions

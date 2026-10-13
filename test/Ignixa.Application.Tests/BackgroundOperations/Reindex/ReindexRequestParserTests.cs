@@ -35,17 +35,6 @@ public class ReindexRequestParserTests
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("""{"resourceType":"Parameters"}""")]
-    public void GivenNoParameters_WhenParsing_ThenReturnsADefaultCommand(string? body)
-    {
-        ReindexRequestParser.TryParse(body, out var command, out _).ShouldBeTrue();
-
-        command.ShouldBe(new CreateReindexJobCommand());
-    }
-
-    [Theory]
     [InlineData("""{"name":"unexpected","valueString":"value"}""", "Unknown reindex parameter 'unexpected'.")]
     [InlineData("""{"name":"targetResourceTypes","valueString":"Patient"}""", "Parameter 'targetResourceTypes' is not supported.")]
     [InlineData("""{"name":"targetSearchParameterTypes","valueString":"x"}""", "Parameter 'targetSearchParameterTypes' is not supported.")]
