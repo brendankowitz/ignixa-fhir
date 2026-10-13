@@ -39,7 +39,8 @@ public sealed class ConformanceStateSyncServiceTests : IDisposable
     [Fact]
     public async Task GivenPendingParameterAfterTriggerFailure_WhenSyncRuns_ThenPeriodicReconciliationRequestsAJob()
     {
-        _state.ApplyAndTrack(ReindexTestHelper.Activation(eventId: 10));
+        await _state.InitializeFromEventsAsync(_store, CancellationToken.None);
+        _store.ReadFromAsync(0, Arg.Any<CancellationToken>()).Returns(TestConformanceRefresher.Stream(ReindexTestHelper.Activation(eventId: 10)));
         var mediator = Substitute.For<IMediator>();
         mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>()).Returns(new ReindexJobCreatedResult("reconciled"));
         using var service = CreateService(trigger: CreateReindexTrigger(mediator));
