@@ -57,62 +57,60 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _app = BuildApp(Substitute.For<IFhirAuthorizationService>(), authorizationEnabled: false);
     }
 
-    // §6.1: kickoff returns 201, the job Parameters and Content-Location.
-    [Fact]
-    public async Task GivenCreatedJob_WhenCreatingForTenant_ThenReturnsParametersAndContentLocation()
+    // §6.1: kickoff returns 201, the job Parameters and Content-Location; the Parameters body is optional.
+    [Theory]
+    [InlineData(2)]
+    [InlineData(null)]
+    public async Task GivenCreatedJob_WhenCreatingForTenant_ThenReturnsParametersAndContentLocation(int? maximumConcurrency)
     {
         _status = CreateStatus("created-job");
 
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters(("maximumConcurrency", "valueInteger", 2)));
+        var response = await SendAsync(
+            "CreateReindexForTenant",
+            body: maximumConcurrency is null ? string.Empty : Parameters(("maximumConcurrency", "valueInteger", maximumConcurrency)),
+            setContentLength: maximumConcurrency is not null);
 
         response.StatusCode.ShouldBe(StatusCodes.Status201Created);
         response.Headers["Content-Location"].ShouldBe("/tenant/1/$reindex/created-job");
         response.ResourceType.ShouldBe("Parameters");
         Describe(response.Body).ShouldContain("id[valueString]=\"created-job\"");
         // The request parser's own tests pin every parameter; this pins that the parsed command is dispatched.
-        _createCommands.ShouldHaveSingleItem().MaximumConcurrency.ShouldBe(2);
+        _createCommands.ShouldHaveSingleItem().MaximumConcurrency.ShouldBe(maximumConcurrency);
     }
 
-    // §10.2 Reindex:Enabled: a disabled server answers the operation with 404.
+    // §10.2 Reindex:Enabled: a disabled server answers the operation with 404; §6.1: OperationDefinition/reindex still
+    // lists exactly the accepted parameters.
     [Fact]
-    public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOperationalRoutesRemainMappedAndAnswerNotFound()
+    public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOperationalRoutesAnswerNotFoundAndTheDefinitionRemains()
     {
         const string operationEndpointName = "CreateReindex";
         _reindexOptions.Enabled = false;
-
-        var endpointNames = ((IEndpointRouteBuilder)_app).DataSources
-            .SelectMany(source => source.Endpoints)
-            .Select(endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName)
-            .ToArray();
-
-        endpointNames.ShouldContain(operationEndpointName);
-        endpointNames.ShouldContain("GetReindexOperationDefinitionForTenant");
 
         var response = await SendAsync(operationEndpointName, body: Parameters());
 
         (response.StatusCode, response.ResourceType).ShouldBe((StatusCodes.Status404NotFound, "OperationOutcome"));
         response.Diagnostics.ShouldBe("The $reindex operation is disabled on this server.");
         _createCommands.ShouldBeEmpty();
+        var definition = await SendAsync("GetReindexOperationDefinitionForTenant");
+        (definition.StatusCode, definition.ResourceType).ShouldBe((StatusCodes.Status200OK, "OperationDefinition"));
+        definition.Body["parameter"]!.AsArray().Select(parameter => parameter!["name"]!.GetValue<string>()).ShouldBe(
+            ["maximumNumberOfResourcesPerQuery", "maximumNumberOfResourcesPerWrite", "maximumConcurrency", "queryDelayIntervalInMilliseconds"]);
     }
 
-    // §6.1: the Parameters body is optional.
-    [Fact]
-    public async Task GivenEmptyChunkedRequestBody_WhenCreating_ThenUsesDefaultParameters()
+    // §6.1 (F12): a Prefer other than respond-async, or a rejected parameter, returns 400 before any job is created.
+    [Theory]
+    [InlineData("CreateReindexForTenant", "return=representation", null, "Only Prefer: respond-async is supported.")]
+    [InlineData("CreateReindex", null, "targetResourceTypes", "Parameter 'targetResourceTypes' is not supported.")]
+    public async Task GivenAnInvalidRequest_WhenCreating_ThenReturnsTheErrorWithoutDispatching(
+        string endpointName,
+        string? prefer,
+        string? parameter,
+        string expectedDiagnostics)
     {
-        var response = await SendAsync("CreateReindexForTenant", body: string.Empty, setContentLength: false);
-
-        response.StatusCode.ShouldBe(StatusCodes.Status201Created);
-        _createCommands.ShouldHaveSingleItem();
-    }
-
-    // §6.1 (F12): a rejected parameter returns 400 before any job is created.
-    [Fact]
-    public async Task GivenUnparseableParameters_WhenCreating_ThenReturnsTheParseErrorWithoutDispatching()
-    {
-        var response = await SendAsync("CreateReindex", body: Parameters(("targetResourceTypes", "valueString", "Patient")));
+        var response = await SendAsync(endpointName, body: parameter is null ? Parameters() : Parameters((parameter, "valueString", "Patient")), prefer: prefer);
 
         (response.StatusCode, response.ResourceType).ShouldBe((StatusCodes.Status400BadRequest, "OperationOutcome"));
-        response.Diagnostics.ShouldBe("Parameter 'targetResourceTypes' is not supported.");
+        response.Diagnostics.ShouldBe(expectedDiagnostics);
         _createCommands.ShouldBeEmpty();
     }
 
@@ -209,19 +207,20 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
 
     // §6.1, §6.2, §6.4: each handler outcome maps to its status code.
     [Theory]
-    [InlineData("CreateReindexForTenant", "active", 409, "OperationOutcome", "/tenant/1/$reindex/active-job")]
-    [InlineData("CreateReindexForTenant", "no-work", 400, "OperationOutcome", null)]
-    [InlineData("CreateReindexForTenant", "invalid", 400, "OperationOutcome", null)]
-    [InlineData("GetReindexForTenant", "missing", 404, "OperationOutcome", null)]
-    [InlineData("CancelReindexForTenant", "missing", 404, "OperationOutcome", null)]
-    [InlineData("CancelReindexForTenant", "cancelled", 202, "Parameters", null)]
-    [InlineData("CancelReindexForTenant", "terminal", 409, "OperationOutcome", null)]
+    [InlineData("CreateReindexForTenant", "active", 409, "OperationOutcome", "/tenant/1/$reindex/active-job", "A reindex job is already active.")]
+    [InlineData("CreateReindexForTenant", "no-work", 400, "OperationOutcome", null, "No resources need reindexing.")]
+    [InlineData("CreateReindexForTenant", "invalid", 400, "OperationOutcome", null, "maximumConcurrency must be between 1 and 16.")]
+    [InlineData("GetReindexForTenant", "missing", 404, "OperationOutcome", null, "Reindex job 'job' was not found.")]
+    [InlineData("CancelReindexForTenant", "missing", 404, "OperationOutcome", null, "Reindex job 'job' was not found.")]
+    [InlineData("CancelReindexForTenant", "cancelled", 202, "Parameters", null, "status[valueString]=\"Cancelled\"")]
+    [InlineData("CancelReindexForTenant", "terminal", 409, "OperationOutcome", null, "Reindex job 'job' is already terminal with status 'Completed'.")]
     public async Task GivenAHandlerOutcome_WhenRouted_ThenItMapsToItsStatusAndResource(
         string endpointName,
         string outcome,
         int expectedStatus,
         string expectedResourceType,
-        string? expectedContentLocation)
+        string? expectedContentLocation,
+        string expectedDetail)
     {
         _createResult = outcome switch
         {
@@ -242,25 +241,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
 
         (response.StatusCode, response.ResourceType).ShouldBe((expectedStatus, expectedResourceType));
         response.Headers.GetValueOrDefault("Content-Location").ShouldBe(expectedContentLocation);
-        if (outcome == "invalid")
-        {
-            response.Diagnostics.ShouldBe("maximumConcurrency must be between 1 and 16.");
-        }
-
-        if (outcome == "cancelled")
-        {
-            Describe(response.Body).ShouldContain("status[valueString]=\"Cancelled\"");
-        }
-    }
-
-    // §6.1: any Prefer other than respond-async returns 400.
-    [Fact]
-    public async Task GivenInvalidPreferHeader_WhenCreating_ThenReturnsBadRequestWithoutDispatching()
-    {
-        var response = await SendAsync("CreateReindexForTenant", body: Parameters(), prefer: "return=representation");
-
-        response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
-        _createCommands.ShouldBeEmpty();
+        (expectedResourceType == "Parameters" ? Describe(response.Body) : [response.Diagnostics]).ShouldContain(expectedDetail);
     }
 
     // §6.6: a tenant provider that cannot reindex makes the routes return 501.
@@ -286,15 +267,11 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         string method,
         string path)
     {
-        var builder = WebApplication.CreateBuilder();
-        builder.Services.AddSingleton(_mediator);
-        builder.Services.AddSingleton(Substitute.For<ITenantConfigurationStore>());
-        await using var app = builder.Build();
-        var pipeline = new ApplicationBuilder(app.Services);
+        var pipeline = new ApplicationBuilder(_app.Services);
         pipeline.UseRouting();
         pipeline.UseMiddleware<TenantResolutionMiddleware>();
         pipeline.UseEndpoints(endpoints => endpoints.MapReindexEndpoints());
-        var context = new DefaultHttpContext { RequestServices = app.Services };
+        var context = new DefaultHttpContext { RequestServices = _app.Services };
         context.Request.Method = method;
         context.Request.Path = path;
         context.Response.Body = new MemoryStream();
@@ -356,17 +333,6 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         response.StatusCode.ShouldBe(expectedStatus);
     }
 
-    // §6.1: OperationDefinition/reindex lists exactly the accepted parameters.
-    [Fact]
-    public async Task GivenOperationDefinitionRequest_WhenGettingDefinition_ThenListsAcceptedParameters()
-    {
-        var response = await SendAsync("GetReindexOperationDefinitionForTenant");
-
-        (response.StatusCode, response.ResourceType).ShouldBe((StatusCodes.Status200OK, "OperationDefinition"));
-        response.Body["parameter"]!.AsArray().Select(parameter => parameter!["name"]!.GetValue<string>()).ShouldBe(
-            ["maximumNumberOfResourcesPerQuery", "maximumNumberOfResourcesPerWrite", "maximumConcurrency", "queryDelayIntervalInMilliseconds"]);
-    }
-
     private WebApplication BuildApp(IFhirAuthorizationService authorization, bool authorizationEnabled)
     {
         var requestContext = Substitute.For<IFhirRequestContextAccessor>();
@@ -379,6 +345,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         builder.Services.AddSingleton(requestContext);
         builder.Services.AddSingleton(Substitute.For<IAuditLogger>());
         builder.Services.AddSingleton(Substitute.For<IMetricsService>());
+        builder.Services.AddSingleton(Substitute.For<ITenantConfigurationStore>());
         builder.Services.AddSingleton<IOptions<AuthorizationOptions>>(Options.Create(new AuthorizationOptions { Enabled = authorizationEnabled }));
         var app = builder.Build();
         app.MapReindexEndpoints();

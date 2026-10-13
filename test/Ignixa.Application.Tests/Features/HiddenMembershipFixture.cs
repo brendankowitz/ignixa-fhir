@@ -16,10 +16,7 @@ public enum HiddenMembershipScenario
     Pending,
 }
 
-/// <summary>
-/// M-L6: a real <see cref="FhirVersionContext"/> with an R4 snapshot published for tenant 1 in which the
-/// Patient-compartment membership parameter Observation.subject is hidden from search.
-/// </summary>
+/// <summary>M-L6: a real <see cref="FhirVersionContext"/> whose tenant 1 snapshot hides the membership parameter Observation.subject.</summary>
 internal static class HiddenMembershipFixture
 {
     private const string BaseCanonical = "http://hl7.org/fhir/SearchParameter/Observation-subject";
@@ -38,17 +35,10 @@ internal static class HiddenMembershipFixture
     /// <summary>Asserts one incomplete-results warning naming Observation.subject and its reason, or none when no reason is expected.</summary>
     public static void ShouldWarnOfHiddenMembership(this SearchOptions? options, string? expectedReason)
     {
-        var issues = options.ShouldNotBeNull().BundleIssues;
-        if (expectedReason is null)
-        {
-            issues.ShouldBeEmpty();
-            return;
-        }
-
-        var issue = issues.ShouldHaveSingleItem();
-        (issue.Severity, issue.Code).ShouldBe(("warning", "incomplete"));
-        issue.Diagnostics.ShouldContain("'Observation.subject'");
-        issue.Diagnostics.ShouldContain(expectedReason);
+        (string, string, bool)[] expected = expectedReason is null ? [] : [("warning", "incomplete", true)];
+        options.ShouldNotBeNull().BundleIssues
+            .Select(issue => (issue.Severity, issue.Code, issue.Diagnostics.Contains("'Observation.subject'") && issue.Diagnostics.Contains(expectedReason ?? string.Empty)))
+            .ShouldBe(expected);
     }
 
     private static object Subject(string canonical, string package, string? overrides) =>
