@@ -1,19 +1,13 @@
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
-using Ignixa.Application.Tests.Features.Conformance;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Specification.Extensions;
 using Shouldly;
 using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Tests.Features.Search;
 
-/// <summary>
-/// The conformance projection is shared by every tenant; a package activated for one FHIR version must leave
-/// the definitions, searchability and extraction of tenants on the other versions untouched (Review 5 N4), and every tenant
-/// resolves only a published projection.
-/// </summary>
+/// <summary>Review 5 N4: an activation for one FHIR version leaves other versions' tenants untouched; tenants resolve only published projections.</summary>
 public class MultiVersionConformanceSnapshotTests
 {
     private const string BaseCanonical = "http://hl7.org/fhir/SearchParameter/clinical-patient";
@@ -99,8 +93,7 @@ public class MultiVersionConformanceSnapshotTests
         return handle.Indexer.Extract(observation);
     }
 
-    // The events an R4 package activation appends when it shadows Observation.patient: the R4 base owner is
-    // materialised, the override is staged under the shared identity, and the transition commits.
+    // An R4 shadow of Observation.patient: the materialised base, the override under its identity, and the commit.
     private static object[] R4ShadowEvents() =>
     [
         ObservationPatient(BaseCanonical, CorePackage, null, "Observation.subject.where(resolve() is Patient)"),
