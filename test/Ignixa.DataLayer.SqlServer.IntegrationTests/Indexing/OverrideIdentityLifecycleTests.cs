@@ -81,7 +81,7 @@ public class OverrideIdentityLifecycleTests : IAsyncLifetime
         var baseManager = new SearchParameterDefinitionManager(
             FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
         var definitions = new CompositeSearchParameterDefinitionManager(
-            baseManager, state, "4.0", NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            baseManager, state.CreateSnapshot(), "4.0", NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
             new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager });
         if (eager)
         {

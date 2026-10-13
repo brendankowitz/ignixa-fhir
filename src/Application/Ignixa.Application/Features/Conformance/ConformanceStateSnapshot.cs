@@ -5,7 +5,7 @@ namespace Ignixa.Application.Features.Conformance;
 /// <summary>
 /// Detached, immutable-by-convention projection used to build conformance consumers off-lock.
 /// </summary>
-public sealed class ConformanceStateSnapshot : IConformanceStateView
+public sealed class ConformanceStateSnapshot
 {
     private readonly IReadOnlyDictionary<(string ResourceType, string Code), ActiveSearchParameter> _searchParameters;
     private readonly IReadOnlyList<ActiveSearchParameter> _searchParameterActivations;

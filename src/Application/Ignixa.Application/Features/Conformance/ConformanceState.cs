@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Features.Conformance;
 
-public sealed class ConformanceState : IConformanceStateView, IDisposable
+public sealed class ConformanceState : IDisposable
 {
     private const int MaxAppendAttempts = 3;
 

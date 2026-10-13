@@ -41,7 +41,7 @@ public class PackageSearchParameterInheritanceTests
         foreach (bool eager in new[] { true, false })
         {
             var manager = new CompositeSearchParameterDefinitionManager(
-                baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+                baseManager, state.CreateSnapshot(), null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
                 new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager });
             await manager.InitializeAsync();
 
@@ -79,7 +79,7 @@ public class PackageSearchParameterInheritanceTests
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events(resourceType, $"{resourceType}.id"));
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
         var manager = new CompositeSearchParameterDefinitionManager(
-            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            baseManager, state.CreateSnapshot(), null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
             new SearchParameterResolutionOptions
             {
                 EagerLoadPackageSearchParameters = eager,
@@ -117,7 +117,7 @@ public class PackageSearchParameterInheritanceTests
         store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
         var manager = new CompositeSearchParameterDefinitionManager(
-            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            baseManager, state.CreateSnapshot(), null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
             new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager });
         await manager.InitializeAsync();
 

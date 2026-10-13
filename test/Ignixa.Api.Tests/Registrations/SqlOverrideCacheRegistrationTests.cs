@@ -92,13 +92,7 @@ public class SqlOverrideCacheRegistrationTests
         using var state = new ConformanceState();
         var eventStore = Substitute.For<ISourceEventStore>();
         eventStore.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
-        var baseManager = new SearchParameterDefinitionManager(
-            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
-        var definitions = new CompositeSearchParameterDefinitionManager(
-            baseManager, state, "4.0", NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = false });
         var context = Substitute.For<IFhirVersionContext>();
-        context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1).Returns(definitions);
 
         var services = new ServiceCollection();
         services.AddLogging();
@@ -114,6 +108,12 @@ public class SqlOverrideCacheRegistrationTests
             () => registry.GetOrCreateAsync(1, CancellationToken.None));
         notReady.Message.ShouldContain("conformance event replay");
         await state.InitializeFromEventsAsync(eventStore, CancellationToken.None);
+        var baseManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        var definitions = new CompositeSearchParameterDefinitionManager(
+            baseManager, state.CreateSnapshot(), "4.0", NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = false });
+        context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1).Returns(definitions);
 
         var cache = await registry.GetOrCreateAsync(1, CancellationToken.None);
         await AssertPhysicalCacheAndGenerationResolutionAsync(cache, definitions, physicalOverrideId, originalId);

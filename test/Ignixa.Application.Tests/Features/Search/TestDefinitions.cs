@@ -34,7 +34,7 @@ internal static class TestDefinitions
     {
         var manager = new CompositeSearchParameterDefinitionManager(
             BaseManager(version),
-            state,
+            state.CreateSnapshot(),
             null,
             NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
             new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager, FailStartupOnEagerLoadError = true });
