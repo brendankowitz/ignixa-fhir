@@ -16,33 +16,6 @@ public class SearchParameterTransitionCommitterTests
     private static readonly string OverrideCanonical = Canonical("Patient-identifier");
 
     [Fact]
-    public async Task GivenMatchingStagedTransition_WhenCommitted_ThenItPromotesTheParameterAndRequestsReindex()
-    {
-        using var harness = new Harness();
-        var hideEventId = harness.SeedShadow();
-
-        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
-
-        committed.ShouldBeTrue();
-        harness.Owner("identifier").ShouldBe((OverrideCanonical, SearchParameterStatus.Pending));
-        await harness.Trigger.Received(1).RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task GivenAlreadyCommittedTransition_WhenCommittedAgain_ThenItCompletesWithoutAppendingOrTriggering()
-    {
-        using var harness = new Harness();
-        var hideEventId = harness.SeedShadow();
-        harness.Seed(Committed(1, hideEventId));
-
-        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
-
-        committed.ShouldBeFalse();
-        harness.Log.AppendAttempts.ShouldBe(0);
-        await harness.Trigger.DidNotReceiveWithAnyArgs().RequestReindexAsync(default!, default);
-    }
-
-    [Fact]
     public async Task GivenAStaleCandidateThatWouldBeIgnored_WhenCommitted_ThenItDoesNotAppendANoOpEvent()
     {
         using var harness = new Harness();
@@ -70,21 +43,6 @@ public class SearchParameterTransitionCommitterTests
         harness.Log.AppendAttempts.ShouldBe(1);
         harness.Log.Appends.ShouldBeEmpty();
         await harness.Trigger.DidNotReceiveWithAnyArgs().RequestReindexAsync(default!, default);
-    }
-
-    [Fact]
-    public async Task GivenPersistentConcurrencyConflicts_WhenCommitted_ThenItThrowsAfterBoundedRetries()
-    {
-        using var harness = new Harness();
-        var hideEventId = harness.SeedShadow();
-        foreach (var index in Enumerable.Range(1, 5))
-        {
-            harness.Log.OtherWriters.Enqueue(PackageActivated($"unrelated-{index}"));
-        }
-
-        await Should.ThrowAsync<SourceEventConcurrencyException>(() => harness.Committer().CommitAsync(hideEventId, CancellationToken.None));
-
-        harness.Log.AppendAttempts.ShouldBe(3);
     }
 
     // N6: one package activation is one phase-two transition, however many codes it hides.

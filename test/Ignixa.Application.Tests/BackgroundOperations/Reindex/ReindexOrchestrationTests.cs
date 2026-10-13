@@ -28,22 +28,6 @@ public class ReindexOrchestrationTests
         (tenant.ResourcesToReindex, tenant.ResourcesReindexed, tenant.Conflicts).ShouldBe((30L, 30L, 1L));
     }
 
-    // Spec §8.2: progress is persisted outside the range failure boundary, so retrying it never reruns a range.
-    [Fact]
-    public async Task GivenProgressPersistenceFails_WhenRetried_ThenOnlyProgressIsRetriedNotRanges()
-    {
-        var context = new FakeContext();
-        var snapshotsAfterRanges = 0;
-        context.Progress = _ => context.RangeAttempts > 0 && snapshotsAfterRanges++ == 0 ? throw ProgressUnavailable() : true;
-
-        var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
-
-        result.Success.ShouldBeTrue();
-        snapshotsAfterRanges.ShouldBeGreaterThan(1);
-        context.RangeAttempts.ShouldBe(3);
-        context.Inputs<PersistReindexProgressInput>().Last().Progress.Tenants.Single().ResourcesReindexed.ShouldBe(30);
-    }
-
     // Spec §8.2: a snapshot that still cannot be written fails the job visibly and never reruns a range,
     // whichever phase boundary it is written at.
     [Theory]

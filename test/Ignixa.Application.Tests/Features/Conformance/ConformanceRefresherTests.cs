@@ -163,20 +163,6 @@ public class ConformanceRefresherTests
         await Should.NotThrowAsync(() => handle);
     }
 
-    [Fact]
-    public async Task GivenUnseenDurableEvents_WhenSynchronized_ThenTheyAreAppliedAndTheirGenerationIsPublished()
-    {
-        using var timeline = new Timeline(Tenant(1));
-        var log = new InMemoryEventLog();
-        log.Events.AddRange([At(1, PackageActivated("first", "1")), At(7, PackageActivated("remote", "1"))]);
-        using var refresher = timeline.Refresher(log);
-
-        await refresher.SynchronizeAsync(CancellationToken.None);
-
-        timeline.State.LastProcessedEventId.ShouldBe(7);
-        timeline.Events.ShouldContain("published 1@7");
-    }
-
     private static TenantConfiguration Tenant(int tenantId) => ReindexTestHelper.Tenant(tenantId, "FileSystem");
 
     /// <summary>

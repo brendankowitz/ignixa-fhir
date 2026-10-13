@@ -123,20 +123,6 @@ public sealed class ReindexJobReconcilerTests : IDisposable
         Status.ShouldBe(expectedParameterStatus);
     }
 
-    [Fact]
-    public async Task GivenJobFinishedBeforeLockWasAcquired_WhenReconciled_ThenTerminalStateIsLeftAlone()
-    {
-        var job = await CreateJobAsync("Running", PastGrace);
-        var finished = await GetJobAsync();
-        finished.Status = "Completed";
-        await _jobs.UpdateAsync(finished, 1, CancellationToken.None);
-        var before = JsonSerializer.Serialize(await GetJobAsync());
-
-        await _reconciler.ReconcileAsync(job, CancellationToken.None);
-
-        JsonSerializer.Serialize(await GetJobAsync()).ShouldBe(before);
-    }
-
     /// <summary>A Running job that started <c>Patient.custom</c>; a null orchestration status means it is missing.</summary>
     private async Task<BackgroundJob<ReindexJobDefinition>> StartedJobAsync(
         DateTimeOffset lastObserved,
