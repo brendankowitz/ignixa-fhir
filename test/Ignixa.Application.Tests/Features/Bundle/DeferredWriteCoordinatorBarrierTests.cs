@@ -5,15 +5,18 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
-using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using static Ignixa.Application.Tests.Features.TestWritePath;
 
 namespace Ignixa.Application.Tests.Features.Bundle;
 
+/// <summary>Spec §5.3–§5.4: bundle entries extracted at event 11 meet a barrier that has moved on to 29.</summary>
 public class DeferredWriteCoordinatorBarrierTests
 {
+    private readonly ISearchIndexer _indexer = Indexer();
+
     [Fact]
     public async Task GivenANonAtomicEntryRejectedByTheBarrier_WhenDefinitionsRefresh_ThenItIsReextractedAndRetried()
     {
@@ -25,22 +28,19 @@ public class DeferredWriteCoordinatorBarrierTests
                 var wrapper = call.Arg<ResourceWrapper>();
                 attempts.Add(wrapper);
                 return attempts.Count == 1
-                    ? ValueTask.FromException<UpdateResult>(new StaleConformanceDefinitionsException(101, 11, 29))
-                    : new ValueTask<UpdateResult>(Result(wrapper));
+                    ? ValueTask.FromException<UpdateResult>(Stale())
+                    : new(new UpdateResult(new ResourceKey("Patient", wrapper.ResourceId, "1", 1), ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
             });
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var coordinator = await CreateCoordinatorAsync(repository, indexer);
-        var wrapper = Patient("retry") with { DefinitionsEventId = 11 };
+        var coordinator = await CreateCoordinatorAsync(repository);
 
-        var queued = coordinator.QueueWriteAsync(wrapper, entryIndex: 7);
+        var queued = coordinator.QueueWriteAsync(Patient("retry", 11), entryIndex: 7);
         await coordinator.WaitToReadAsync();
         var errors = await coordinator.ProcessBatchAsync(batchSize: 1, CancellationToken.None);
 
         errors.ShouldBeEmpty();
         (await queued).Id.ShouldBe("retry");
         attempts.Select(attempt => attempt.DefinitionsEventId).ShouldBe([11, 29]);
-        indexer.Received(1).Extract(Arg.Any<IElement>());
+        _indexer.Received(1).Extract(Arg.Any<IElement>());
     }
 
     [Fact]
@@ -48,15 +48,14 @@ public class DeferredWriteCoordinatorBarrierTests
     {
         var repository = Substitute.For<IFhirRepository>();
         repository.CreateOrUpdateAsync(Arg.Any<ResourceWrapper>(), Arg.Any<CancellationToken>())
-            .Returns(_ => ValueTask.FromException<UpdateResult>(new StaleConformanceDefinitionsException(101, 11, 29)));
+            .Returns(_ => ValueTask.FromException<UpdateResult>(Stale()));
         var coordinator = await CreateCoordinatorAsync(repository, channelCapacity: 2);
 
-        var first = coordinator.QueueWriteAsync(Patient("first") with { DefinitionsEventId = 11 });
-        var second = coordinator.QueueWriteAsync(Patient("second") with { DefinitionsEventId = 11 });
+        var first = coordinator.QueueWriteAsync(Patient("first", 11));
+        var second = coordinator.QueueWriteAsync(Patient("second", 11));
         await coordinator.WaitToReadAsync();
 
-        await Should.ThrowAsync<ConformanceStaleException>(() =>
-            coordinator.ProcessBatchAsync(batchSize: 2, CancellationToken.None));
+        await Should.ThrowAsync<ConformanceStaleException>(() => coordinator.ProcessBatchAsync(batchSize: 2, CancellationToken.None));
         await Should.ThrowAsync<ConformanceStaleException>(() => first);
         await Should.ThrowAsync<ConformanceStaleException>(() => second.WaitAsync(TimeSpan.FromSeconds(10)));
     }
@@ -71,54 +70,28 @@ public class DeferredWriteCoordinatorBarrierTests
             .Returns(call =>
             {
                 attempts.Add(call.Arg<IReadOnlyList<ResourceWrapper>>());
-                return attempts.Count == 1
-                    ? Task.FromException(new StaleConformanceDefinitionsException(101, 11, 29))
-                    : Task.CompletedTask;
+                return attempts.Count == 1 ? Task.FromException(Stale()) : Task.CompletedTask;
             });
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
-        var coordinator = await DeferredWriteCoordinator.CreateAsync(
-            1,
-            TestWritePath.Repositories(repository),
-            TestWritePath.IsolatedPartition(),
-            TestWritePath.RequestContext(),
-            TestWritePath.Versions(definitionsEventId: 29, indexer),
-            TestConformanceBarrierRetryPolicy.Create(),
-            NullLogger<DeferredWriteCoordinator>.Instance,
-            atomic: true);
-        await coordinator.QueueWriteAsync(Patient("first") with { DefinitionsEventId = 11 }, entryIndex: 0);
-        await coordinator.QueueWriteAsync(Patient("second") with { DefinitionsEventId = 11 }, entryIndex: 1);
+        var coordinator = await CreateCoordinatorAsync(repository, atomic: true);
+        await coordinator.QueueWriteAsync(Patient("first", 11), entryIndex: 0);
+        await coordinator.QueueWriteAsync(Patient("second", 11), entryIndex: 1);
 
         await coordinator.CommitAsync(CancellationToken.None);
 
-        attempts.Select(attempt => attempt.Select(write => write.DefinitionsEventId).ToArray())
-            .ShouldBe([[11L, 11L], [29L, 29L]]);
-        indexer.Received(2).Extract(Arg.Any<IElement>());
+        attempts.Select(attempt => attempt.Select(write => write.DefinitionsEventId).ToArray()).ShouldBe([[11L, 11L], [29L, 29L]]);
+        _indexer.Received(2).Extract(Arg.Any<IElement>());
     }
 
-    private static Task<DeferredWriteCoordinator> CreateCoordinatorAsync(
-        IFhirRepository repository,
-        ISearchIndexer? indexer = null,
-        int channelCapacity = 1) =>
+    private static StaleConformanceDefinitionsException Stale() => new(101, 11, 29);
+
+    private Task<DeferredWriteCoordinator> CreateCoordinatorAsync(IFhirRepository repository, int channelCapacity = 1, bool atomic = false) =>
         DeferredWriteCoordinator.CreateAsync(
             channelCapacity,
-            TestWritePath.Repositories(repository),
-            TestWritePath.IsolatedPartition(),
-            TestWritePath.RequestContext(),
-            TestWritePath.Versions(definitionsEventId: 29, indexer),
+            Repositories(repository),
+            IsolatedPartition(),
+            RequestContext(),
+            Versions(definitionsEventId: 29, _indexer),
             TestConformanceBarrierRetryPolicy.Create(),
-            NullLogger<DeferredWriteCoordinator>.Instance);
-
-    private static ResourceWrapper Patient(string id) => new(
-        "Patient",
-        id,
-        "1",
-        DateTimeOffset.UtcNow,
-        ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{id}}"}"""),
-        new ResourceRequest("PUT", $"Patient/{id}"));
-
-    private static UpdateResult Result(ResourceWrapper wrapper) => new(
-        new ResourceKey(wrapper.ResourceType, wrapper.ResourceId, "1", 1),
-        ReadOnlyMemory<byte>.Empty,
-        DateTimeOffset.UtcNow);
+            NullLogger<DeferredWriteCoordinator>.Instance,
+            atomic);
 }

@@ -5,12 +5,10 @@ using Microsoft.Extensions.Options;
 namespace Ignixa.Application.Tests;
 
 /// <summary>
-/// Real conformance leases on the system clock, for tests that only need a held or stale lease.
+/// Real conformance leases, by default on the system clock with an hour of allowed staleness and a 30 s sync interval.
 /// </summary>
 internal static class TestConformanceLease
 {
-    public static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(30);
-
     public static ConformanceLease Held()
     {
         var lease = NotHeld();
@@ -18,13 +16,13 @@ internal static class TestConformanceLease
         return lease;
     }
 
-    public static ConformanceLease NotHeld() =>
+    public static ConformanceLease NotHeld(TimeProvider? clock = null, TimeSpan? maxStaleness = null, int syncIntervalSeconds = 30) =>
         new(
             Options.Create(new ConformanceTransitionOptions
             {
-                MaxStaleness = TimeSpan.FromHours(1),
-                SyncIntervalSeconds = (int)RetryAfter.TotalSeconds,
+                MaxStaleness = maxStaleness ?? TimeSpan.FromHours(1),
+                SyncIntervalSeconds = syncIntervalSeconds,
             }),
-            TimeProvider.System,
+            clock ?? TimeProvider.System,
             NullLogger<ConformanceLease>.Instance);
 }

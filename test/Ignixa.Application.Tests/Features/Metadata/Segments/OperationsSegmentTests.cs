@@ -276,10 +276,7 @@ public class OperationsSegmentTests
         var segment = CreateSegment(reindexEnabled, ReindexTestHelper.CreateRepositoryFactory(tenants));
         var statement = new CapabilityStatementJsonNode();
 
-        await segment.ApplyAsync(
-            statement,
-            new CapabilityContext(FhirVersion.R4, TenantId: 1),
-            CancellationToken.None);
+        await segment.ApplyAsync(statement, new CapabilityContext(FhirVersion.R4, TenantId: 1), CancellationToken.None);
 
         if (expectAdvertised)
         {
@@ -294,21 +291,14 @@ public class OperationsSegmentTests
     [Fact]
     public async Task GivenUnsupportedTenantAddedAtRuntime_WhenHashingAndApplyingAgain_ThenReindexIsWithdrawn()
     {
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
-            .Returns([ReindexTestHelper.Tenant(1, "SqlServer")]);
+        var tenants = ReindexTestHelper.TenantStore(ReindexTestHelper.Tenant(1, "SqlServer"));
         var segment = CreateSegment(
             reindexEnabled: true,
-            new CompositeRepositoryFactory(
-                tenants,
-                Substitute.For<IFhirRepositoryFactory>(),
-                Substitute.For<IFhirRepositoryFactory>(),
-                Substitute.For<IReindexStoreFactory>()));
+            new CompositeRepositoryFactory(tenants, Substitute.For<IFhirRepositoryFactory>(), Substitute.For<IFhirRepositoryFactory>(), Substitute.For<IReindexStoreFactory>()));
         var context = new CapabilityContext(FhirVersion.R4, TenantId: 1);
         var advertisedHash = await segment.GetVersionHashAsync(context, CancellationToken.None);
 
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
-            .Returns([ReindexTestHelper.Tenant(1, "SqlServer"), ReindexTestHelper.Tenant(2, "FileSystem")]);
+        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([ReindexTestHelper.Tenant(1, "SqlServer"), ReindexTestHelper.Tenant(2, "FileSystem")]);
         var withdrawnHash = await segment.GetVersionHashAsync(context, CancellationToken.None);
         var statement = new CapabilityStatementJsonNode();
         await segment.ApplyAsync(statement, context, CancellationToken.None);
@@ -465,9 +455,7 @@ public class OperationsSegmentTests
         return feature;
     }
 
-    private OperationsSegment CreateSegment(
-        bool reindexEnabled,
-        CompositeRepositoryFactory? repositoryFactory = null) =>
+    private OperationsSegment CreateSegment(bool reindexEnabled, CompositeRepositoryFactory? repositoryFactory = null) =>
         new(
             _features,
             _packageResourceRepository,

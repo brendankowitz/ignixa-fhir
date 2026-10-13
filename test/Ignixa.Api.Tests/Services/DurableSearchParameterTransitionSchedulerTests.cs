@@ -2,50 +2,36 @@ using DurableTask.Core;
 using DurableTask.Core.Exceptions;
 using DurableTask.Core.History;
 using Ignixa.Api.Services;
-using Ignixa.Application.Features.Conformance;
 using NSubstitute;
 using Shouldly;
 
 namespace Ignixa.Api.Tests.Services;
 
+/// <summary>Spec §4.4: one transition orchestration per hide event, so a repeated schedule merges into it.</summary>
 public class DurableSearchParameterTransitionSchedulerTests
 {
+    private readonly IOrchestrationServiceClient _orchestrations = Substitute.For<IOrchestrationServiceClient>();
+
     [Fact]
     public async Task GivenActivationTransition_WhenScheduled_ThenItUsesTheDeterministicInstanceId()
     {
-        var orchestrationService = Substitute.For<IOrchestrationServiceClient>();
-        orchestrationService.CreateTaskOrchestrationAsync(
-                Arg.Any<TaskMessage>(),
-                Arg.Any<OrchestrationStatus[]>())
-            .Returns(Task.CompletedTask);
-        var scheduler = new DurableSearchParameterTransitionScheduler(new TaskHubClient(orchestrationService));
-        var grace = TimeSpan.FromMinutes(3);
+        await new DurableSearchParameterTransitionScheduler(new TaskHubClient(_orchestrations)).ScheduleAsync(20, TimeSpan.FromMinutes(3), CancellationToken.None);
 
-        await scheduler.ScheduleAsync(20, grace, CancellationToken.None);
-
-        await orchestrationService.Received(1).CreateTaskOrchestrationAsync(
-            Arg.Is<TaskMessage>(message =>
-                ((ExecutionStartedEvent)message.Event).OrchestrationInstance.InstanceId ==
-                "search-parameter-transition-20"),
+        await _orchestrations.Received(1).CreateTaskOrchestrationAsync(
+            Arg.Is<TaskMessage>(message => ((ExecutionStartedEvent)message.Event).OrchestrationInstance.InstanceId == "search-parameter-transition-20"),
             Arg.Is<OrchestrationStatus[]>(statuses =>
-                statuses.Length == 3 &&
-                statuses[0] == OrchestrationStatus.Running &&
-                statuses[1] == OrchestrationStatus.Pending &&
-                statuses[2] == OrchestrationStatus.ContinuedAsNew));
+                statuses.SequenceEqual(new[] { OrchestrationStatus.Running, OrchestrationStatus.Pending, OrchestrationStatus.ContinuedAsNew })));
     }
 
     [Fact]
     public async Task GivenActiveTransitionOrchestration_WhenScheduledAgain_ThenTheDuplicateIsMergedIntoIt()
     {
-        var orchestrationService = Substitute.For<IOrchestrationServiceClient>();
-        orchestrationService.CreateTaskOrchestrationAsync(
-                Arg.Any<TaskMessage>(),
-                Arg.Any<OrchestrationStatus[]>())
+        _orchestrations.CreateTaskOrchestrationAsync(Arg.Any<TaskMessage>(), Arg.Any<OrchestrationStatus[]>())
             .Returns(
                 Task.CompletedTask,
                 Task.FromException(new OrchestrationAlreadyExistsException(
                     "An orchestration with instance ID 'search-parameter-transition-20' and status 'Pending' already exists.")));
-        var scheduler = new DurableSearchParameterTransitionScheduler(new TaskHubClient(orchestrationService));
+        var scheduler = new DurableSearchParameterTransitionScheduler(new TaskHubClient(_orchestrations));
 
         await scheduler.ScheduleAsync(20, TimeSpan.FromMinutes(3), CancellationToken.None);
         await Should.NotThrowAsync(() => scheduler.ScheduleAsync(20, TimeSpan.FromMinutes(3), CancellationToken.None));

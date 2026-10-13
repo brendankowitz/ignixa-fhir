@@ -5,7 +5,7 @@ using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Shouldly;
 using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
-using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
+using static Ignixa.Conformance.Events.Models.SearchParameterStatus;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
@@ -22,15 +22,13 @@ public class ConformanceLifecycleTests
     public void GivenOverrideActivated_WhenItsTransitionIsCommitted_ThenItMovesFromStagedToPendingAndTheBaseToDisabled()
     {
         using var state = CreateStateWithStagedOverride();
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
+        Statuses(state, BaseCanonical, OverrideCanonical).ShouldBe([Disabling, Staged]);
+        Owner(state).ShouldBe(BaseCanonical);
 
         state.Apply(Commit(30, 20));
 
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(OverrideCanonical);
+        Statuses(state, BaseCanonical, OverrideCanonical).ShouldBe([Disabled, Pending]);
+        Owner(state).ShouldBe(OverrideCanonical);
     }
 
     // TransitionCommitted guard: it must name both the staging and the hiding event.
@@ -46,9 +44,8 @@ public class ConformanceLifecycleTests
 
         state.Apply(At(30, new SearchParameterTransitionCommitted(7, [activationEventId], [deactivationEventId])));
 
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
+        Statuses(state, BaseCanonical, OverrideCanonical).ShouldBe([Disabling, Staged]);
+        Owner(state).ShouldBe(BaseCanonical);
     }
 
     [Fact]
@@ -60,10 +57,8 @@ public class ConformanceLifecycleTests
 
         state.Apply(Commit(40, 20));
 
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(newerCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
+        Statuses(state, OverrideCanonical, newerCanonical, BaseCanonical).ShouldBe([Disabled, Staged, Disabling]);
+        Owner(state).ShouldBe(BaseCanonical);
     }
 
     // Removing an override is itself two-phase: the base is restaged by the new hide event, and the outgoing owner
@@ -80,15 +75,13 @@ public class ConformanceLifecycleTests
 
         state.Apply(packageDeactivated ? At(40, PackageDeactivated("custom.package")) : Hide(40, OverrideCanonical));
 
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
-        state.FindByCanonical(BaseCanonical)!.ActivationEventId.ShouldBe(40);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(overrideEnabled ? OverrideCanonical : BaseCanonical);
+        (state.FindByCanonical(BaseCanonical)!.Status, state.FindByCanonical(BaseCanonical)!.ActivationEventId).ShouldBe((Staged, 40L));
+        Owner(state).ShouldBe(overrideEnabled ? OverrideCanonical : BaseCanonical);
 
         state.Apply(Commit(50, 40));
 
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Pending);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(BaseCanonical);
+        Statuses(state, OverrideCanonical, BaseCanonical).ShouldBe([Disabled, Pending]);
+        Owner(state).ShouldBe(BaseCanonical);
     }
 
     [Fact]
@@ -103,9 +96,8 @@ public class ConformanceLifecycleTests
         state.Apply(Completed(63, 60, "middle-job", MiddleCanonical));
         state.Apply(Hide(70, MiddleCanonical));
 
-        state.FindByCanonical(MiddleCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        state.FindByCanonical(BaseCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabled);
-        state.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(MiddleCanonical);
+        Statuses(state, MiddleCanonical, BaseCanonical).ShouldBe([Disabling, Disabled]);
+        Owner(state).ShouldBe(MiddleCanonical);
     }
 
     // Removing the top of base <- middle <- top restores the highest definition still installed.
@@ -129,10 +121,8 @@ public class ConformanceLifecycleTests
             state.Apply(At(50, PackageDeactivated("top.package")));
         }
 
-        state.FindByCanonical(TopCanonical)!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        var restored = state.FindByCanonical(expectedRestored)!;
-        restored.Status.ShouldBe(SearchParameterStatus.Staged);
-        restored.ActivationEventId.ShouldBe(expectedActivationEventId);
+        Statuses(state, TopCanonical, expectedRestored).ShouldBe([Disabling, Staged]);
+        state.FindByCanonical(expectedRestored)!.ActivationEventId.ShouldBe(expectedActivationEventId);
     }
 
     // Disabling -> Disabled: a repeated deactivation keeps the original hide event, which the commit must name.
@@ -145,15 +135,13 @@ public class ConformanceLifecycleTests
         state.Apply(Hide(20, OverrideCanonical, "custom"));
         state.Apply(Hide(30, OverrideCanonical, "custom"));
 
-        var parameter = state.GetSearchParameter("Patient", "custom")!;
-        parameter.Status.ShouldBe(SearchParameterStatus.Disabling);
-        parameter.DeactivationEventId.ShouldBe(20);
+        (Custom(state).Status, Custom(state).DeactivationEventId).ShouldBe((Disabling, 20L));
         state.GetTransitionCandidates(20).Count.ShouldBe(1);
         state.GetTransitionCandidates(30).ShouldBeEmpty();
 
         state.Apply(At(40, new SearchParameterTransitionCommitted(7, [], [20])));
 
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabled);
+        Custom(state).Status.ShouldBe(Disabled);
     }
 
     [Fact]
@@ -162,13 +150,7 @@ public class ConformanceLifecycleTests
         using var state = new ConformanceState();
         state.Apply(Base(10));
         state.Apply(At(10, Activated(
-            "http://hl7.org/fhir/SearchParameter/Observation-subject",
-            "subject",
-            8,
-            package: CorePackage,
-            resourceType: "Observation",
-            type: SearchParamType.Reference,
-            targets: ["Patient"])));
+            "http://hl7.org/fhir/SearchParameter/Observation-subject", "subject", 8, package: CorePackage, resourceType: "Observation")));
         state.Apply(Override(20));
         state.Apply(Commit(30, 20));
         state.Apply(Started(31, 20, "job"));
@@ -177,10 +159,7 @@ public class ConformanceLifecycleTests
         state.Apply(Hide(40, OverrideCanonical));
 
         var restored = state.FindByCanonical(BaseCanonical)!;
-        restored.ResourceType.ShouldBe("Patient");
-        restored.Code.ShouldBe("identifier");
-        restored.Status.ShouldBe(SearchParameterStatus.Staged);
-        restored.ActivationEventId.ShouldBe(40);
+        (restored.ResourceType, restored.Code, restored.Status, restored.ActivationEventId).ShouldBe(("Patient", "identifier", Staged, 40L));
     }
 
     [Fact]
@@ -191,16 +170,14 @@ public class ConformanceLifecycleTests
         state.Apply(Custom(20));
 
         state.Apply(Started(30, 10, "stale"));
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Disabling);
-        state.FindByCanonical(OverrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Staged);
+        Custom(state).Status.ShouldBe(Disabling);
+        Statuses(state, OverrideCanonical).ShouldBe([Staged]);
 
         state.Apply(Commit(31, 20));
         state.Apply(Started(32, 20, "current"));
         state.Apply(Completed(33, 20, "other"));
 
-        var current = state.GetSearchParameter("Patient", "custom")!;
-        current.Status.ShouldBe(SearchParameterStatus.Reindexing);
-        current.ReindexJobId.ShouldBe("current");
+        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Reindexing, "current"));
     }
 
     [Fact]
@@ -208,15 +185,12 @@ public class ConformanceLifecycleTests
     {
         using var state = new ConformanceState();
         state.Apply(Custom(10));
-        state.GetSearchParameter("Patient", "custom")!.Status.ShouldBe(SearchParameterStatus.Pending);
-        state.GetSearchParameter("Patient", "custom")!.ActivationEventId.ShouldBe(10);
+        (Custom(state).Status, Custom(state).ActivationEventId).ShouldBe((Pending, 10L));
         state.Apply(Started(20, 10, "job"));
 
         state.Apply(Completed(30, 10, "job"));
 
-        var parameter = state.GetSearchParameter("Patient", "custom")!;
-        parameter.Status.ShouldBe(SearchParameterStatus.Enabled);
-        parameter.ReindexJobId.ShouldBeNull();
+        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Enabled, (string?)null));
     }
 
     // Started guard: a Pending owner only starts a reindex for its own activation.
@@ -228,9 +202,7 @@ public class ConformanceLifecycleTests
 
         state.Apply(Started(20, 9, "wrong-activation"));
 
-        var parameter = state.GetSearchParameter("Patient", "custom")!;
-        parameter.Status.ShouldBe(SearchParameterStatus.Pending);
-        parameter.ReindexJobId.ShouldBeNull();
+        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Pending, (string?)null));
     }
 
     public enum ReindexEventKind
@@ -266,9 +238,7 @@ public class ConformanceLifecycleTests
             _ => At(30, ReindexFailed(OverrideCanonical, "custom", activationEventId, jobId)),
         });
 
-        var parameter = state.GetSearchParameter("Patient", "custom")!;
-        parameter.Status.ShouldBe(SearchParameterStatus.Reindexing);
-        parameter.ReindexJobId.ShouldBe("current");
+        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Reindexing, "current"));
     }
 
     [Fact]
@@ -281,9 +251,7 @@ public class ConformanceLifecycleTests
         state.Apply(Started(30, 10, "job"));
         state.Apply(Completed(31, 10, "job"));
 
-        var parameter = state.GetSearchParameter("Patient", "custom")!;
-        parameter.Status.ShouldBe(SearchParameterStatus.Disabling);
-        parameter.ReindexJobId.ShouldBeNull();
+        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Disabling, (string?)null));
     }
 
     [Fact]
@@ -306,9 +274,7 @@ public class ConformanceLifecycleTests
         state.Apply(At(20, Activated(OverrideCanonical, "identifier", 8, BaseCanonical)));
 
         var owner = state.GetSearchParameter("Patient", "identifier")!;
-        owner.Canonical.ShouldBe(BaseCanonical);
-        owner.SearchParamId.ShouldBe(7);
-        owner.Status.ShouldBe(SearchParameterStatus.Enabled);
+        (owner.Canonical, owner.SearchParamId, owner.Status).ShouldBe((BaseCanonical, 7, Enabled));
         state.FindByCanonical(OverrideCanonical).ShouldBeNull();
     }
 
@@ -321,10 +287,16 @@ public class ConformanceLifecycleTests
         state.Apply(At(20, Activated(BaseCanonical, "identifier", 7, package: "hl7.fhir.r4.core@4.0.2")));
 
         var owner = state.GetSearchParameter("Patient", "identifier")!;
-        owner.Status.ShouldBe(SearchParameterStatus.Enabled);
-        owner.ActivationEventId.ShouldBe(10);
+        (owner.Status, owner.ActivationEventId).ShouldBe((Enabled, 10L));
         state.FindByCanonical(BaseCanonical).ShouldBeSameAs(owner);
     }
+
+    private static SearchParameterStatus[] Statuses(ConformanceState state, params string[] canonicals) =>
+        [.. canonicals.Select(canonical => state.FindByCanonical(canonical)!.Status)];
+
+    private static string Owner(ConformanceState state) => state.GetSearchParameter("Patient", "identifier")!.Canonical;
+
+    private static ActiveSearchParameter Custom(ConformanceState state) => state.GetSearchParameter("Patient", "custom")!;
 
     private static ConformanceState CreateStateWithStagedOverride()
     {

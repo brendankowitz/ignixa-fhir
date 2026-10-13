@@ -8,37 +8,27 @@ using Shouldly;
 
 namespace Ignixa.Api.Tests.Registrations;
 
+/// <summary>M-L4 and M-L5: the registered conformance timings derive from the sync interval and validate at startup.</summary>
 public sealed class BackgroundServicesRegistrationTests
 {
     [Fact]
     public void GivenDefaultConformanceSettings_WhenOptionsAreResolved_ThenOneMissedPollKeepsTheLeaseValid()
     {
-        var services = new ServiceCollection();
-        services.AddIgnixaBackgroundServices(new ConfigurationBuilder().Build());
-        using var provider = services.BuildServiceProvider();
+        using var provider = BuildProvider();
 
         var conformance = provider.GetRequiredService<IOptions<ConformanceTransitionOptions>>().Value;
-        var reindex = provider.GetRequiredService<IOptions<ReindexOptions>>().Value;
 
         conformance.SyncIntervalSeconds.ShouldBe(30);
         conformance.MaxStaleness.ShouldBe(TimeSpan.FromSeconds(90));
         conformance.TransitionSafetyMargin.ShouldBe(TimeSpan.FromSeconds(150));
         conformance.TransitionGrace.ShouldBe(TimeSpan.FromSeconds(240));
-        reindex.BarrierDelay.ShouldBe(TimeSpan.FromSeconds(90));
+        provider.GetRequiredService<IOptions<ReindexOptions>>().Value.BarrierDelay.ShouldBe(TimeSpan.FromSeconds(90));
     }
 
     [Fact]
     public void GivenAShortSyncIntervalAndDerivedDurations_WhenOptionsAreResolved_ThenTheSafetyMarginStillValidates()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Conformance:SyncIntervalSeconds"] = "5",
-            })
-            .Build();
-        var services = new ServiceCollection();
-        services.AddIgnixaBackgroundServices(configuration);
-        using var provider = services.BuildServiceProvider();
+        using var provider = BuildProvider(("Conformance:SyncIntervalSeconds", "5"));
 
         provider.GetRequiredService<IStartupValidator>().Validate();
         var conformance = provider.GetRequiredService<IOptions<ConformanceTransitionOptions>>().Value;
@@ -51,20 +41,19 @@ public sealed class BackgroundServicesRegistrationTests
     [Fact]
     public void GivenReindexEnabledAndTransactionWatcherDisabled_WhenStartingOptionsValidation_ThenStartupFails()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Reindex:Enabled"] = "true",
-                ["TransactionWatcher:Enabled"] = "false"
-            })
-            .Build();
-        var services = new ServiceCollection();
-        services.AddIgnixaBackgroundServices(configuration);
-        using var provider = services.BuildServiceProvider();
+        using var provider = BuildProvider(("Reindex:Enabled", "true"), ("TransactionWatcher:Enabled", "false"));
 
-        var error = Should.Throw<OptionsValidationException>(
-            () => provider.GetRequiredService<IStartupValidator>().Validate());
+        var error = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
 
         error.Message.ShouldContain("TransactionWatcher:Enabled must be true when Reindex:Enabled is true.");
+    }
+
+    private static ServiceProvider BuildProvider(params (string Key, string Value)[] settings)
+    {
+        var services = new ServiceCollection();
+        services.AddIgnixaBackgroundServices(new ConfigurationBuilder()
+            .AddInMemoryCollection(settings.Select(setting => new KeyValuePair<string, string?>(setting.Key, setting.Value)))
+            .Build());
+        return services.BuildServiceProvider();
     }
 }

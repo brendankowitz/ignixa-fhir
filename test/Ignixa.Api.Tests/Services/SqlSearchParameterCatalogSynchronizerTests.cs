@@ -1,7 +1,7 @@
 using Ignixa.Api.Services;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
-using Ignixa.Domain.Models;
+using Ignixa.Application.Tests.BackgroundOperations.Reindex;
 using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -19,16 +19,7 @@ public class SqlSearchParameterCatalogSynchronizerTests
         var definitions = Substitute.For<ISearchParameterDefinitionManager>();
         var synchronizer = new SqlSearchParameterCatalogSynchronizer(registry);
 
-        await synchronizer.SynchronizeAsync(
-            new TenantConfiguration
-            {
-                TenantId = 1,
-                DisplayName = "File tenant",
-                FhirVersion = "4.0",
-                Storage = new TenantStorageConfiguration { Type = "FileSystem" },
-            },
-            definitions,
-            CancellationToken.None);
+        await synchronizer.SynchronizeAsync(ReindexTestHelper.Tenant(1, "FileSystem"), definitions, CancellationToken.None);
 
         sql.ReceivedCalls().ShouldBeEmpty();
         definitions.ReceivedCalls().ShouldBeEmpty();

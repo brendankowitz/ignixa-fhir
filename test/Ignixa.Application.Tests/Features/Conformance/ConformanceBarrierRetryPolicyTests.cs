@@ -60,14 +60,11 @@ public class ConformanceBarrierRetryPolicyTests
     }
 
     private static ConformanceBarrierRetryPolicy CreatePolicy(ISourceEventStore eventStore) =>
-        new(
-            TestConformanceRefresher.Create(new ConformanceState(), eventStore),
-            Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }),
-            NullLogger<ConformanceBarrierRetryPolicy>.Instance);
+        new(TestConformanceRefresher.Create(new ConformanceState(), eventStore), Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }), NullLogger<ConformanceBarrierRetryPolicy>.Instance);
 
     private static StaleConformanceDefinitionsException Stale() => new(101, 11, 29);
 
-    // The meter is process-wide and other test classes record barrier outcomes in parallel;
+    // F4: the meter is process-wide and other test classes record barrier outcomes in parallel;
     // measurements are recorded synchronously, so an AsyncLocal scopes capture to this test's flow.
     private static readonly AsyncLocal<bool> _capturing = new();
 
@@ -79,8 +76,7 @@ public class ConformanceBarrierRetryPolicyTests
         var listener = new MeterListener();
         listener.InstrumentPublished = (instrument, meterListener) =>
         {
-            if (instrument.Meter.Name == "Ignixa.Conformance" &&
-                instrument.Name == "conformance.barrier.rejections")
+            if (instrument.Meter.Name == "Ignixa.Conformance" && instrument.Name == "conformance.barrier.rejections")
             {
                 meterListener.EnableMeasurementEvents(instrument);
             }
@@ -92,15 +88,9 @@ public class ConformanceBarrierRetryPolicyTests
                 return;
             }
 
-            foreach (var tag in tags)
+            lock (captured)
             {
-                if (tag.Key == "outcome" && tag.Value is string outcome)
-                {
-                    lock (captured)
-                    {
-                        captured.Add(outcome);
-                    }
-                }
+                captured.AddRange(tags.ToArray().Where(tag => tag.Key == "outcome").Select(tag => tag.Value).OfType<string>());
             }
         });
         listener.Start();

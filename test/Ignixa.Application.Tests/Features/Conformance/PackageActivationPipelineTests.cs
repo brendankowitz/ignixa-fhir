@@ -28,17 +28,14 @@ public class PackageActivationPipelineTests
         result.Success.ShouldBeTrue();
         result.PendingReindex.ShouldBeEmpty();
         var hidden = result.Issues.ShouldHaveSingleItem();
-        hidden.Code.ShouldBe(PackageActivationPipeline.TransitionPendingCode);
-        hidden.Severity.ShouldBe(ActivationIssueSeverity.Warning);
+        (hidden.Code, hidden.Severity).ShouldBe((PackageActivationPipeline.TransitionPendingCode, ActivationIssueSeverity.Warning));
         hidden.Message.ShouldContain("Patient.identifier");
         hidden.Message.ShouldContain(TestPackageActivationPipeline.TransitionGrace.ToString());
         hidden.Message.ShouldContain("reindex");
         var activations = harness.Activations.ToArray();
         activations.Length.ShouldBe(2);
-        activations[0].Canonical.ShouldBe(BaseIdentifier);
-        activations[0].SourcePackage.ShouldBe(CorePackage);
-        activations[1].Overrides!.OverridesCanonical.ShouldBe(BaseIdentifier);
-        activations[1].SearchParamId.ShouldBe(activations[0].SearchParamId);
+        (activations[0].Canonical, activations[0].SourcePackage).ShouldBe((BaseIdentifier, CorePackage));
+        (activations[1].Overrides!.OverridesCanonical, activations[1].SearchParamId).ShouldBe((BaseIdentifier, activations[0].SearchParamId));
         harness.State.FindByCanonical(BaseIdentifier)!.Status.ShouldBe(SearchParameterStatus.Disabling);
         harness.State.FindByCanonical(Canonical("test.override"))!.Status.ShouldBe(SearchParameterStatus.Staged);
         await harness.Scheduler.Received(1).ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), CancellationToken.None);
@@ -70,12 +67,7 @@ public class PackageActivationPipelineTests
         string secondBaseType)
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(SearchParameter(
-            "test.multi-base",
-            Canonical("multi"),
-            code,
-            [firstBaseType, secondBaseType],
-            expression));
+        var pipeline = harness.Pipeline(SearchParameter("test.multi-base", Canonical("multi"), code, [firstBaseType, secondBaseType], expression));
 
         var result = await ActivateAsync(pipeline, "test.multi-base");
 
@@ -105,12 +97,7 @@ public class PackageActivationPipelineTests
         }
 
         var pipeline = harness.Pipeline(SearchParameter(
-            "test.multi-base",
-            Canonical("multi"),
-            "_tag",
-            ["Practitioner", "Patient"],
-            "Resource.meta.tag",
-            derivedFrom: ownedByAnOverride ? Canonical("existing") : null));
+            "test.multi-base", Canonical("multi"), "_tag", ["Practitioner", "Patient"], "Resource.meta.tag", ownedByAnOverride ? Canonical("existing") : null));
 
         var result = await ActivateAsync(pipeline, "test.multi-base");
 
@@ -142,10 +129,7 @@ public class PackageActivationPipelineTests
             harness.Seed(Activated(Canonical("existing"), "identifier", 1, BaseIdentifier, "existing.owner@1.0.0"));
         }
 
-        var pipeline = harness.Pipeline(SearchParameter(
-            "test.multi-base",
-            Canonical("multi"),
-            baseTypes: [firstBaseType, secondBaseType]));
+        var pipeline = harness.Pipeline(SearchParameter("test.multi-base", Canonical("multi"), baseTypes: [firstBaseType, secondBaseType]));
 
         var result = await ActivateAsync(pipeline, "test.multi-base");
 
@@ -156,8 +140,8 @@ public class PackageActivationPipelineTests
     [Fact]
     public async Task GivenAnotherPackageShadowsDuringTransition_WhenActivated_ThenConflictMatchesPostCommitResult()
     {
-        var duringTransition = await ActivateSecondShadowAsync(commitFirstTransition: false);
-        var afterTransition = await ActivateSecondShadowAsync(commitFirstTransition: true);
+        var duringTransition = await ActivateSecondShadowAsync(removeFirst: false, commitPendingTransition: false);
+        var afterTransition = await ActivateSecondShadowAsync(removeFirst: false, commitPendingTransition: true);
 
         duringTransition.Success.ShouldBeFalse();
         duringTransition.Issues.ShouldContain(issue => issue.Code == "SP_CONFLICT");
@@ -168,8 +152,8 @@ public class PackageActivationPipelineTests
     [Fact]
     public async Task GivenEnabledPackageIsRemoved_WhenAnotherPackageActivatesDuringRestoration_ThenResultMatchesPostCommit()
     {
-        var duringRemoval = await ActivateSecondShadowDuringRemovalAsync(commitRestoration: false);
-        var afterRemoval = await ActivateSecondShadowDuringRemovalAsync(commitRestoration: true);
+        var duringRemoval = await ActivateSecondShadowAsync(removeFirst: true, commitPendingTransition: false);
+        var afterRemoval = await ActivateSecondShadowAsync(removeFirst: true, commitPendingTransition: true);
 
         afterRemoval.Success.ShouldBeTrue(Describe(afterRemoval));
         duringRemoval.Success.ShouldBeTrue(Describe(duringRemoval));
@@ -227,24 +211,15 @@ public class PackageActivationPipelineTests
         var pipeline = harness.Pipeline(
             SearchParameter("test.composite", Canonical("x-code"), "x-code", ["Observation"], "Observation.code"),
             SearchParameter("test.composite", Canonical("x-value"), "x-value", ["Observation"], "Observation.value", type: "quantity"),
-            Composite(
-                "test.composite",
-                Canonical("code-value-quantity"),
-                "code-value-quantity",
-                "Observation",
-                (Canonical("x-code"), "code"),
-                (Canonical("x-value"), "value")));
+            Composite("test.composite", "code-value-quantity", "Observation", (Canonical("x-code"), "code"), (Canonical("x-value"), "value")));
 
         var result = await ActivateAsync(pipeline, "test.composite");
 
         result.Success.ShouldBeTrue(Describe(result));
         var materialised = harness.Activations.Single(activation =>
             activation.Canonical == "http://hl7.org/fhir/SearchParameter/Observation-code-value-quantity");
-        materialised.Components.ShouldNotBeNull().Select(component => component.DefinitionUrl).ShouldBe(
-            [
-                "http://hl7.org/fhir/SearchParameter/clinical-code",
-                "http://hl7.org/fhir/SearchParameter/Observation-value-quantity"
-            ]);
+        materialised.Components.ShouldNotBeNull().Select(component => component.DefinitionUrl)
+            .ShouldBe(["http://hl7.org/fhir/SearchParameter/clinical-code", "http://hl7.org/fhir/SearchParameter/Observation-value-quantity"]);
     }
 
     [Fact]
@@ -312,9 +287,7 @@ public class PackageActivationPipelineTests
         var result = await ActivateAsync(pipeline, packageId);
 
         result.Success.ShouldBeTrue();
-        result.Issues.ShouldContain(issue =>
-            issue.Code == expectedCode &&
-            issue.Severity == ActivationIssueSeverity.Warning);
+        result.Issues.ShouldContain(issue => issue.Code == expectedCode && issue.Severity == ActivationIssueSeverity.Warning);
         harness.State.LastProcessedEventId.ShouldBeGreaterThan(0);
         lease.IsHeld.ShouldBe(failure != FollowUpFailure.RefreshDependencyUnavailable);
     }
@@ -345,19 +318,13 @@ public class PackageActivationPipelineTests
         using var caller = new CancellationTokenSource();
         harness.Log.AfterAppend = caller.Cancel;
         var lease = TestConformanceLease.NotHeld();
-        var pipeline = harness.Pipeline(
-            [Shadow()],
-            tenants: TestConformanceRefresher.FailingTenants(new InvalidOperationException("Injected refresh failure.")),
-            lease: lease);
+        var pipeline = harness.Pipeline([Shadow()], tenants: TestConformanceRefresher.FailingTenants(new InvalidOperationException("Injected refresh failure.")), lease: lease);
 
         await Should.ThrowAsync<InvalidOperationException>(() => pipeline.ActivateAsync("test.override", "1.0.0", caller.Token));
 
         harness.State.LastProcessedEventId.ShouldBe(harness.Log.LastEventId);
         harness.State.FindByCanonical(Canonical("test.override"))!.Status.ShouldBe(SearchParameterStatus.Staged);
-        await harness.Scheduler.Received(1).ScheduleAsync(
-            harness.Log.LastEventId,
-            TestPackageActivationPipeline.TransitionGrace,
-            CancellationToken.None);
+        await harness.Scheduler.Received(1).ScheduleAsync(harness.Log.LastEventId, TestPackageActivationPipeline.TransitionGrace, CancellationToken.None);
         lease.IsHeld.ShouldBeFalse();
     }
 
@@ -391,17 +358,11 @@ public class PackageActivationPipelineTests
     {
         const int shadowCount = 70;
         using var harness = new Harness();
-        var shadows = new List<PackageResource>();
-        for (var index = 1; index <= shadowCount; index++)
+        var shadows = Enumerable.Range(1, shadowCount).Select(index =>
         {
             harness.Seed(Activated(Canonical($"seed-{index}"), $"code-{index}", index, package: "seed@1.0.0", expression: "Patient.identifier"));
-            shadows.Add(SearchParameter(
-                "test.shadows",
-                Canonical($"shadow-{index}"),
-                $"code-{index}",
-                expression: "Patient.identifier",
-                derivedFrom: Canonical($"seed-{index}")));
-        }
+            return SearchParameter("test.shadows", Canonical($"shadow-{index}"), $"code-{index}", expression: "Patient.identifier", derivedFrom: Canonical($"seed-{index}"));
+        });
 
         var pipeline = harness.Pipeline([.. shadows]);
 
@@ -410,10 +371,7 @@ public class PackageActivationPipelineTests
         result.Success.ShouldBeTrue(Describe(result));
         var packageEventId = harness.Log.Events.Single(row => row.Data is PackageActivated { PackageId: "test.shadows" }).EventId;
         harness.Scheduler.ReceivedCalls().ShouldHaveSingleItem();
-        await harness.Scheduler.Received(1).ScheduleAsync(
-            packageEventId,
-            TestPackageActivationPipeline.TransitionGrace,
-            CancellationToken.None);
+        await harness.Scheduler.Received(1).ScheduleAsync(packageEventId, TestPackageActivationPipeline.TransitionGrace, CancellationToken.None);
         harness.State.GetTransitionCandidates(packageEventId).Count.ShouldBe(shadowCount);
     }
 
@@ -488,32 +446,25 @@ public class PackageActivationPipelineTests
         return (harness.Pipeline([Custom(), Shadow()], trigger, tenants, lease), custom ? "test.custom" : "test.override");
     }
 
-    private static async Task<ActivationResult> ActivateSecondShadowAsync(bool commitFirstTransition)
+    // Activates test.first's shadow (optionally enabling and then removing it, which restages the base), optionally
+    // commits the transition still pending, then activates test.second's shadow of the same code.
+    private static async Task<ActivationResult> ActivateSecondShadowAsync(bool removeFirst, bool commitPendingTransition)
     {
         using var harness = new Harness();
         var pipeline = harness.Pipeline(Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null));
         (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
-        if (commitFirstTransition)
+        if (removeFirst)
         {
-            harness.CommitTransitionOf(Canonical("test.first"));
+            var first = harness.CommitTransitionOf(Canonical("test.first"));
+            harness.Seed(ReindexStarted(first.Canonical, first.Code, first.ActivationEventId, "job"));
+            harness.Seed(ReindexCompleted(first.Canonical, first.Code, first.ActivationEventId, "job"));
+            harness.Seed(PackageDeactivated("test.first", "1.0.0"));
+            harness.State.GetLatestNonDisabledActivation("Patient", "identifier")!.SourcePackage.ShouldBe(CorePackage);
         }
 
-        return await ActivateAsync(pipeline, "test.second");
-    }
-
-    private static async Task<ActivationResult> ActivateSecondShadowDuringRemovalAsync(bool commitRestoration)
-    {
-        using var harness = new Harness();
-        var pipeline = harness.Pipeline(Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null));
-        (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
-        var first = harness.CommitTransitionOf(Canonical("test.first"));
-        harness.Seed(ReindexStarted(first.Canonical, first.Code, first.ActivationEventId, "job"));
-        harness.Seed(ReindexCompleted(first.Canonical, first.Code, first.ActivationEventId, "job"));
-        harness.Seed(PackageDeactivated("test.first", "1.0.0"));
-        harness.State.GetLatestNonDisabledActivation("Patient", "identifier")!.SourcePackage.ShouldBe(CorePackage);
-        if (commitRestoration)
+        if (commitPendingTransition)
         {
-            harness.CommitTransitionOf(BaseIdentifier);
+            harness.CommitTransitionOf(removeFirst ? BaseIdentifier : Canonical("test.first"));
         }
 
         return await ActivateAsync(pipeline, "test.second");

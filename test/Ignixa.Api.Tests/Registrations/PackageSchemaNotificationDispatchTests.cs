@@ -1,6 +1,5 @@
 using Autofac;
 using Ignixa.Api.Registrations;
-using Ignixa.Abstractions;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
@@ -11,8 +10,6 @@ using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Search.Definition;
-using Ignixa.Search.Indexing;
 using Medino;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -31,45 +28,14 @@ public class PackageSchemaNotificationDispatchTests
         bool unload)
     {
         var registry = Substitute.For<ICompositeSchemaProviderRegistry>();
-        var capabilities = Substitute.For<ICapabilityCacheInvalidator>();
-        using var state = new ConformanceState();
-        var tenant = new TenantConfiguration
-        {
-            TenantId = 1, DisplayName = "Package events", FhirVersion = "4.0.1",
-            Storage = new TenantStorageConfiguration { Type = "FileSystem" }
-        };
-        var tenants = Substitute.For<ITenantConfigurationStore>();
+        var effects = new List<string>();
+        var capabilities = TestConformanceRefresher.RecordingCapabilities(effects);
+        var versions = TestConformanceRefresher.RecordingVersions(effects);
+        var tenant = new TenantConfiguration { TenantId = 1, DisplayName = "Package events", FhirVersion = "4.0.1", Storage = new() { Type = "FileSystem" } };
+        var tenants = TestConformanceRefresher.Tenants(tenant);
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(tenant);
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<IReadOnlyList<TenantConfiguration>>([tenant]));
-        var versions = Substitute.For<IFhirVersionContext>();
-        var builtGenerations = new List<long>();
-        var publishedGenerations = new List<long>();
-        var definitions = Substitute.For<ISearchParameterDefinitionManager>();
-        versions.CreateConformanceDefinitionsSnapshot(
-                Arg.Any<FhirVersion>(), Arg.Any<int>(), Arg.Any<ConformanceStateSnapshot>(), Arg.Any<long>())
-            .Returns(call =>
-            {
-                builtGenerations.Add(call.ArgAt<long>(3));
-                return new ConformanceDefinitionsSnapshot(
-                    definitions,
-                    new DefinitionsHandle(
-                        Substitute.For<ISearchIndexer>(),
-                        Substitute.For<IFhirSchemaProvider>(),
-                        call.ArgAt<long>(3)),
-                    call.ArgAt<ConformanceStateSnapshot>(2));
-            });
-        versions.When(context => context.PublishConformanceDefinitionsSnapshot(
-                Arg.Any<FhirVersion>(), Arg.Any<int>(), Arg.Any<ConformanceDefinitionsSnapshot>()))
-            .Do(call => publishedGenerations.Add(call.Arg<ConformanceDefinitionsSnapshot>().Generation));
-        var invalidatedAfterPublication = false;
-        capabilities.When(service => service.InvalidateForTenantAsync(1, Arg.Any<CancellationToken>()))
-            .Do(_ => invalidatedAfterPublication = publishedGenerations.Count == 1);
-        using var conformanceRefresher = TestConformanceRefresher.Create(
-            state,
-            tenants: tenants,
-            versions: versions,
-            capabilities: capabilities);
+        using var state = new ConformanceState();
+        using var conformanceRefresher = TestConformanceRefresher.Create(state, tenants: tenants, versions: versions, capabilities: capabilities);
         var builder = new ContainerBuilder();
         builder.RegisterApplicationServices(new ConfigurationBuilder().Build());
         builder.RegisterInstance(registry).As<ICompositeSchemaProviderRegistry>();
@@ -92,11 +58,9 @@ public class PackageSchemaNotificationDispatchTests
             await mediator.PublishAsync(new PackageLoadedEvent("local.ignixa.sqlonfhir", "2.1.0", 1, DateTimeOffset.UtcNow));
         }
 
-        builtGenerations.ShouldBe([0]);
-        publishedGenerations.ShouldBe([0]);
-        await registry.DidNotReceiveWithAnyArgs()
-            .InvalidateCacheForPackageAsync(default!, default, default);
-        await capabilities.Received().InvalidateForTenantAsync(1, Arg.Any<CancellationToken>());
-        invalidatedAfterPublication.ShouldBeTrue();
+        effects.Take(2).ShouldBe(["built 1@0", "published 1@0"]);
+        effects.Skip(2).ShouldNotBeEmpty();
+        effects.Skip(2).ShouldAllBe(effect => effect == "invalidated 1");
+        await registry.DidNotReceiveWithAnyArgs().InvalidateCacheForPackageAsync(default!, default, default);
     }
 }

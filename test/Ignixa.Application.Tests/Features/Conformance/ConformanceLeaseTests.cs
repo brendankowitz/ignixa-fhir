@@ -1,46 +1,48 @@
 using Ignixa.Application.Features.Conformance;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using Xunit;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
+/// <summary>Spec §4.5: ten seconds of allowed staleness; a stale request retries after one seven-second sync interval.</summary>
 public class ConformanceLeaseTests
 {
+    private readonly FakeTimeProvider _clock = new();
+    private readonly ConformanceLease _lease;
+
+    public ConformanceLeaseTests() =>
+        _lease = TestConformanceLease.NotHeld(_clock, TimeSpan.FromSeconds(10), syncIntervalSeconds: 7);
+
     [Fact]
     public void GivenNoSyncThenOneThatSucceedsAfterWork_WhenLeaseIsRenewed_ThenItIsHeldOnlyWithinMaxStalenessOfTheSyncStart()
     {
-        var clock = new ManualTimeProvider();
-        var lease = CreateLease(clock);
-        lease.IsHeld.ShouldBeFalse("no sync has succeeded yet");
-        lease.Age.ShouldBe(TimeSpan.MaxValue);
-        var syncStart = lease.CaptureStart();
+        _lease.IsHeld.ShouldBeFalse("no sync has succeeded yet");
+        _lease.Age.ShouldBe(TimeSpan.MaxValue);
+        var syncStart = _lease.CaptureStart();
 
-        clock.Advance(TimeSpan.FromSeconds(4));
-        lease.Renew(syncStart);
-        lease.IsHeld.ShouldBeTrue();
-        clock.Advance(TimeSpan.FromSeconds(7));
+        _clock.Advance(TimeSpan.FromSeconds(4));
+        _lease.Renew(syncStart);
+        _lease.IsHeld.ShouldBeTrue();
+        _clock.Advance(TimeSpan.FromSeconds(7));
 
-        lease.IsHeld.ShouldBeFalse();
-        lease.Age.ShouldBe(TimeSpan.FromSeconds(11));
+        _lease.IsHeld.ShouldBeFalse();
+        _lease.Age.ShouldBe(TimeSpan.FromSeconds(11));
     }
 
     [Fact]
     public void GivenNewerRenewal_WhenAnOlderStartRenewsLater_ThenTheLeaseKeepsTheNewerStart()
     {
-        var clock = new ManualTimeProvider();
-        var lease = CreateLease(clock);
-        var olderStart = lease.CaptureStart();
-        clock.Advance(TimeSpan.FromSeconds(8));
-        var newerStart = lease.CaptureStart();
+        var olderStart = _lease.CaptureStart();
+        _clock.Advance(TimeSpan.FromSeconds(8));
+        var newerStart = _lease.CaptureStart();
 
-        lease.Renew(newerStart);
-        lease.Renew(olderStart);
-        clock.Advance(TimeSpan.FromSeconds(5));
+        _lease.Renew(newerStart);
+        _lease.Renew(olderStart);
+        _clock.Advance(TimeSpan.FromSeconds(5));
 
-        lease.Age.ShouldBe(TimeSpan.FromSeconds(5));
-        lease.IsHeld.ShouldBeTrue();
+        _lease.Age.ShouldBe(TimeSpan.FromSeconds(5));
+        _lease.IsHeld.ShouldBeTrue();
     }
 
     [Theory]
@@ -54,13 +56,12 @@ public class ConformanceLeaseTests
         bool held,
         bool expectRejected)
     {
-        var lease = CreateLease(new ManualTimeProvider());
         if (held)
         {
-            lease.Renew(lease.CaptureStart());
+            _lease.Renew(_lease.CaptureStart());
         }
 
-        var exception = Record.Exception(() => lease.EnsureRequestCanSearch(requestOriginated, isBackgroundTask));
+        var exception = Record.Exception(() => _lease.EnsureRequestCanSearch(requestOriginated, isBackgroundTask));
 
         if (expectRejected)
         {
@@ -69,35 +70,6 @@ public class ConformanceLeaseTests
         else
         {
             exception.ShouldBeNull();
-        }
-    }
-
-    // Ten seconds of allowed staleness; a stale request is told to retry after one seven-second sync interval.
-    private static ConformanceLease CreateLease(TimeProvider clock) =>
-        new(
-            Options.Create(new ConformanceTransitionOptions
-            {
-                MaxStaleness = TimeSpan.FromSeconds(10),
-                SyncIntervalSeconds = 7,
-            }),
-            clock,
-            NullLogger<ConformanceLease>.Instance);
-
-    private sealed class ManualTimeProvider : TimeProvider
-    {
-        private long _timestamp;
-        private DateTimeOffset _utcNow = DateTimeOffset.UnixEpoch;
-
-        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-
-        public override DateTimeOffset GetUtcNow() => _utcNow;
-
-        public override long GetTimestamp() => _timestamp;
-
-        public void Advance(TimeSpan duration)
-        {
-            _timestamp += duration.Ticks;
-            _utcNow += duration;
         }
     }
 }

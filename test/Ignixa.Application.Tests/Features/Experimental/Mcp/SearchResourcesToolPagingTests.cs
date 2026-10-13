@@ -108,17 +108,13 @@ public class SearchResourcesToolPagingTests
             tool.SearchResourcesAsync("Patient", [], count: 2, tenantId: 1, cancellationToken: CancellationToken.None));
     }
 
+    // M-L7: MCP search builds its options from the requested tenant's definitions.
     [Fact]
     public async Task GivenAnExplicitTenant_WhenMcpSearches_ThenItBuildsOptionsFromThatTenantsDefinitions()
     {
         var tool = CreateTool(Stream([]), out var factory);
 
-        var result = await tool.SearchResourcesAsync(
-            "Patient",
-            [],
-            count: 2,
-            tenantId: 1,
-            cancellationToken: CancellationToken.None);
+        var result = await tool.SearchResourcesAsync("Patient", [], count: 2, tenantId: 1, cancellationToken: CancellationToken.None);
 
         result.Entries.ShouldBeEmpty();
         factory.Received(1).Create(FhirVersion.R4, 1);
@@ -127,10 +123,7 @@ public class SearchResourcesToolPagingTests
     private static SearchResourcesTool CreateTool(IAsyncEnumerable<SearchEntryResult> entries, string? continuationToken = null)
         => CreateTool(entries, out _, continuationToken);
 
-    private static SearchResourcesTool CreateTool(
-        IAsyncEnumerable<SearchEntryResult> entries,
-        out ISearchOptionsBuilderFactory factory,
-        string? continuationToken = null)
+    private static SearchResourcesTool CreateTool(IAsyncEnumerable<SearchEntryResult> entries, out ISearchOptionsBuilderFactory factory, string? continuationToken = null)
     {
         var mediator = Substitute.For<IMediator>();
         mediator.SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>())

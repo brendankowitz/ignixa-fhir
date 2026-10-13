@@ -171,7 +171,7 @@ public class PackageSearchParameterInheritanceTests
     {
         object[] events = scenario switch
         {
-            PendingScenario.CustomParameter => [PackageCustom("Patient")],
+            PendingScenario.CustomParameter => [Activated(TestPackages.Canonical("package-custom"), "package-custom", 1, expression: "Patient.active")],
             PendingScenario.DistinctIdentityOverride => [Activated(TestPackages.Canonical("distinct-identifier"), "identifier", 99)],
             _ =>
             [
@@ -189,8 +189,7 @@ public class PackageSearchParameterInheritanceTests
         context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1).TryGetSearchParameter("Patient", code, out _).ShouldBeFalse();
         context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1, () => true)
             .TryGetSearchParameter("Patient", code, out var partial).ShouldBeTrue();
-        partial.IsSearchable.ShouldBeFalse();
-        partial.IsSupported.ShouldBeTrue();
+        (partial.IsSearchable, partial.IsSupported).ShouldBe((false, true));
     }
 
     [Fact]
@@ -227,33 +226,22 @@ public class PackageSearchParameterInheritanceTests
     {
         var overrideCanonical = TestPackages.Canonical("shadow.package");
         var events = await RecordShadowLifecycleAsync(overrideCanonical);
-        events.Select(row => row.Data.GetType().Name).ShouldBe(
-        [
-            nameof(SearchParameterActivated),
-            nameof(SearchParameterActivated),
-            nameof(PackageActivated),
-            nameof(SearchParameterTransitionCommitted),
-            nameof(SearchParameterReindexStarted),
-            nameof(SearchParameterReindexCompleted)
-        ]);
+        events.Select(row => row.Data.GetType().Name).ShouldBe([nameof(SearchParameterActivated), nameof(SearchParameterActivated),
+            nameof(PackageActivated), nameof(SearchParameterTransitionCommitted), nameof(SearchParameterReindexStarted), nameof(SearchParameterReindexCompleted)]);
 
         var instances = new List<(int Cut, SearchParamInfo Extraction, SearchParamInfo? Searchable)>();
         for (var cut = 0; cut <= events.Count; cut++)
         {
             using var state = await InitializedStateAsync([.. events.Take(cut).Select(row => row.Data)]);
             using var context = CreateContext().Publish(state);
-            var extraction = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1)
-                .GetSearchParameter("Patient", "identifier");
+            var extraction = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1).GetSearchParameter("Patient", "identifier");
             var searchable = context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1)
-                .TryGetSearchParameter("Patient", "identifier", out var visible)
-                ? visible
-                : null;
+                .TryGetSearchParameter("Patient", "identifier", out var visible) ? visible : null;
             instances.Add((cut, extraction, searchable));
         }
 
         // Not vacuous: the code is visible before the hide and after the reindex, and hidden in between.
-        instances.Where(instance => instance.Searchable is not null).Select(instance => instance.Cut)
-            .ShouldBe([0, 1, events.Count]);
+        instances.Where(instance => instance.Searchable is not null).Select(instance => instance.Cut).ShouldBe([0, 1, events.Count]);
         instances[^1].Searchable!.Url.ShouldBe(new Uri(overrideCanonical));
         foreach (var writer in instances)
         {
@@ -293,31 +281,16 @@ public class PackageSearchParameterInheritanceTests
         (await pipeline.ActivateAsync("shadow.package", "1.0.0", CancellationToken.None)).Success.ShouldBeTrue();
 
         var transitionId = log.Events.Single(row => row.Data is PackageActivated).EventId;
-        var committer = new SearchParameterTransitionCommitter(
-            log,
-            state,
-            TestPackageActivationPipeline.NoJobTrigger(),
-            TestConformanceRefresher.Create(state, log));
+        var committer = new SearchParameterTransitionCommitter(log, state, TestPackageActivationPipeline.NoJobTrigger(), TestConformanceRefresher.Create(state, log));
         (await committer.CommitAsync(transitionId, CancellationToken.None)).ShouldBeTrue();
 
         var pending = state.FindByCanonical(overrideCanonical)!;
         pending.Status.ShouldBe(SearchParameterStatus.Pending);
         var target = new ReindexParameterDefinition(
-            pending.Canonical,
-            pending.Code,
-            pending.ResourceType,
-            pending.SearchParamId,
-            pending.ActivationEventId,
-            ["Patient"],
-            pending.OverridesCanonical,
-            pending.FhirVersion);
+            pending.Canonical, pending.Code, pending.ResourceType, pending.SearchParamId, pending.ActivationEventId, ["Patient"], pending.OverridesCanonical, pending.FhirVersion);
         var lifecycle = new ReindexLifecycleEventWriter(log, state);
         (await lifecycle.StartAsync("job", [target], CancellationToken.None)).ShouldBeEmpty();
-        (await lifecycle.CompleteAsync(
-            "job",
-            [new ReindexTargetCompletion(target, true, 1, null)],
-            TimeSpan.Zero,
-            CancellationToken.None)).ShouldBeEmpty();
+        (await lifecycle.CompleteAsync("job", [new ReindexTargetCompletion(target, true, 1, null)], TimeSpan.Zero, CancellationToken.None)).ShouldBeEmpty();
         state.FindByCanonical(overrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         return log.Events.ToArray();
     }
@@ -329,14 +302,6 @@ public class PackageSearchParameterInheritanceTests
             .Extract(ResourceJsonNode.Parse(json).ToElement(schema));
     }
 
-    private static SearchParameterActivated PackageCustom(string resourceType, string? expression = null) =>
-        Activated(
-            TestPackages.Canonical("package-custom"),
-            "package-custom",
-            1,
-            package: "inheritance.package@1.0",
-            resourceType: resourceType,
-            expression: expression ?? $"{resourceType}.active");
 
     // Patient.reindexing is Reindexing, Patient.disabling is Disabling, and an override of Patient.name is Staged.
     private static object[] LifecycleEvents() =>

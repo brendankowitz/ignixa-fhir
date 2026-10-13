@@ -49,25 +49,13 @@ internal static class ConformanceEvents
     public static SearchParameterTransitionCommitted Committed(int searchParamId, long hideEventId) =>
         new(searchParamId, [hideEventId], [hideEventId]);
 
-    public static SearchParameterReindexStarted ReindexStarted(
-        string canonical,
-        string code,
-        long? activationEventId,
-        string jobId) =>
+    public static SearchParameterReindexStarted ReindexStarted(string canonical, string code, long? activationEventId, string jobId) =>
         new(canonical, code, "Patient", jobId, ["Patient"], activationEventId);
 
-    public static SearchParameterReindexCompleted ReindexCompleted(
-        string canonical,
-        string code,
-        long? activationEventId,
-        string jobId) =>
+    public static SearchParameterReindexCompleted ReindexCompleted(string canonical, string code, long? activationEventId, string jobId) =>
         new(canonical, code, "Patient", jobId, 1, TimeSpan.FromSeconds(1), activationEventId);
 
-    public static SearchParameterReindexFailed ReindexFailed(
-        string canonical,
-        string code,
-        long? activationEventId,
-        string jobId) =>
+    public static SearchParameterReindexFailed ReindexFailed(string canonical, string code, long? activationEventId, string jobId) =>
         new(canonical, code, "Patient", jobId, "failed", activationEventId);
 
     public static PackageActivated PackageActivated(string packageId, string version = "1.0.0", params string[] canonicals) =>

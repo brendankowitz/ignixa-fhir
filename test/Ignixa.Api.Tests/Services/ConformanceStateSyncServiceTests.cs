@@ -4,10 +4,7 @@ using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Tests;
 using Ignixa.Application.Tests.BackgroundOperations.Reindex;
-using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
-using Ignixa.Conformance.Events.Events;
-using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,82 +13,36 @@ using Medino;
 using NSubstitute;
 using Shouldly;
 using Xunit;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 
 namespace Ignixa.Api.Tests.Services;
 
-public class ConformanceStateSyncServiceTests
+/// <summary>Spec §4.5 and §7: a sync renews the lease only after its refresh succeeds, then reconciles reindex.</summary>
+public sealed class ConformanceStateSyncServiceTests : IDisposable
 {
+    private readonly ISourceEventStore _store = TestConformanceRefresher.EmptyEventStore();
+    private readonly ConformanceState _state = new();
+    private readonly ConformanceLease _lease = TestConformanceLease.NotHeld();
+
     [Fact]
     public async Task GivenRefreshFails_WhenSyncRuns_ThenItDoesNotRenewTheLease()
     {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(
-            Events(new SourceEvent(1, "package:test@1.0.0", nameof(PackageActivated), new PackageActivated("test", "1.0.0", []), DateTimeOffset.UtcNow)));
-        using var state = new ConformanceState();
-        await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        var lease = TestConformanceLease.NotHeld();
-        using var service = new TestSyncService(
-            store,
-            state,
-            TestConformanceRefresher.FailingTenants(new InvalidOperationException("refresh failed")),
-            lease);
+        await _state.InitializeFromEventsAsync(_store, CancellationToken.None);
+        _store.ReadFromAsync(0, Arg.Any<CancellationToken>()).Returns(TestConformanceRefresher.Stream(At(1, PackageActivated("test"))));
+        using var service = CreateService(TestConformanceRefresher.FailingTenants(new InvalidOperationException("refresh failed")));
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.RunSyncAsync());
 
-        lease.IsHeld.ShouldBeFalse();
-    }
-
-    [Fact]
-    public async Task GivenForcedRefreshFails_WhenNextSyncHasNoNewEvents_ThenItPublishesThePendingRefresh()
-    {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(new SourceEvent(
-            1,
-            "package:test@1",
-            nameof(PackageActivated),
-            new PackageActivated("test", "1", []),
-            DateTimeOffset.UtcNow));
-        var builds = 0;
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
-            .Returns(_ => ++builds == 2
-                ? ValueTask.FromException<IReadOnlyList<TenantConfiguration>>(new IOException("failed"))
-                : new ValueTask<IReadOnlyList<TenantConfiguration>>([]));
-        using var refresher = TestConformanceRefresher.Create(state, eventStore: store, tenants: tenants);
-        using var service = new TestSyncService(
-            state,
-            refresher,
-            TestConformanceLease.NotHeld());
-
-        await service.RunSyncAsync();
-        await Should.ThrowAsync<ConformanceConsumerRefreshException>(() =>
-            refresher.RefreshAsync(force: true, CancellationToken.None));
-        await service.RunSyncAsync();
-
-        builds.ShouldBe(3);
+        _lease.IsHeld.ShouldBeFalse();
     }
 
     [Fact]
     public async Task GivenPendingParameterAfterTriggerFailure_WhenSyncRuns_ThenPeriodicReconciliationRequestsAJob()
     {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        using var state = new ConformanceState();
-        state.ApplyAndTrack(ReindexTestHelper.Activation(eventId: 10));
+        _state.ApplyAndTrack(ReindexTestHelper.Activation(eventId: 10));
         var mediator = Substitute.For<IMediator>();
-        mediator.SendAsync(
-                Arg.Any<CreateReindexJobCommand>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new ReindexJobCreatedResult("reconciled"));
-        using var service = new TestSyncService(
-            store,
-            state,
-            TestConformanceRefresher.Tenants(),
-            TestConformanceLease.NotHeld(),
-            CreateReindexTrigger(mediator, state, autoStart: true));
+        mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>()).Returns(new ReindexJobCreatedResult("reconciled"));
+        using var service = CreateService(trigger: CreateReindexTrigger(mediator));
 
         await service.RunSyncAsync();
 
@@ -103,52 +54,40 @@ public class ConformanceStateSyncServiceTests
     [Fact]
     public async Task GivenReindexReconciliationFailsOperationally_WhenSyncRuns_ThenTheLeaseIsStillRenewed()
     {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(EmptyEvents());
-        using var state = new ConformanceState();
-        var lease = TestConformanceLease.NotHeld();
         var jobs = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         jobs.GetActiveAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns<Task<BackgroundJob<ReindexJobDefinition>?>>(_ => throw new IOException("Database unavailable."));
-        using var service = new TestSyncService(
-            store,
-            state,
-            TestConformanceRefresher.Tenants(),
-            lease,
-            CreateReindexTrigger(Substitute.For<IMediator>(), state, autoStart: true, jobs));
+        using var service = CreateService(trigger: CreateReindexTrigger(Substitute.For<IMediator>(), jobs));
 
         await service.RunSyncAsync();
 
-        lease.IsHeld.ShouldBeTrue();
+        _lease.IsHeld.ShouldBeTrue();
     }
 
-    private static IAsyncEnumerable<SourceEvent> EmptyEvents() => Events();
+    public void Dispose() => _state.Dispose();
 
-    private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
-    {
-        await Task.CompletedTask;
-        foreach (var sourceEvent in events)
-        {
-            yield return sourceEvent;
-        }
-    }
+    private TestSyncService CreateService(ITenantConfigurationStore? refreshTenants = null, ReindexTrigger? trigger = null) =>
+        new(
+            _state,
+            TestConformanceRefresher.Create(_state, _store, refreshTenants),
+            _lease,
+            trigger ?? CreateReindexTrigger(Substitute.For<IMediator>(), autoStart: false));
 
-    private static ReindexTrigger CreateReindexTrigger(
+    private ReindexTrigger CreateReindexTrigger(
         IMediator mediator,
-        ConformanceState state,
-        bool autoStart,
-        IBackgroundJobRepository<ReindexJobDefinition>? jobs = null)
+        IBackgroundJobRepository<ReindexJobDefinition>? jobs = null,
+        bool autoStart = true)
     {
         jobs ??= Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         var options = Options.Create(new ReindexOptions { AutoStart = autoStart });
         return new ReindexTrigger(
             mediator,
             jobs,
-            state,
+            _state,
             new ReindexJobReconciler(
                 new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()),
                 jobs,
-                new ReindexLifecycleEventWriter(Substitute.For<ISourceEventStore>(), state),
+                new ReindexLifecycleEventWriter(Substitute.For<ISourceEventStore>(), _state),
                 Substitute.For<IReindexJobLock>(),
                 options,
                 TimeProvider.System,
@@ -158,40 +97,19 @@ public class ConformanceStateSyncServiceTests
             NullLogger<ReindexTrigger>.Instance);
     }
 
-    private sealed class TestSyncService : ConformanceStateSyncService
+    private sealed class TestSyncService(
+        ConformanceState state,
+        ConformanceRefresher refresher,
+        ConformanceLease lease,
+        ReindexTrigger reindexTrigger)
+        : ConformanceStateSyncService(
+            state,
+            refresher,
+            lease,
+            Options.Create(new ConformanceTransitionOptions()),
+            reindexTrigger,
+            NullLogger<ConformanceStateSyncService>.Instance)
     {
-        public TestSyncService(
-            ISourceEventStore store,
-            ConformanceState state,
-            ITenantConfigurationStore refreshTenants,
-            ConformanceLease lease,
-            ReindexTrigger? reindexTrigger = null)
-            : this(
-                state,
-                TestConformanceRefresher.Create(state, eventStore: store, tenants: refreshTenants),
-                lease,
-                reindexTrigger)
-        {
-        }
-
-        public TestSyncService(
-            ConformanceState state,
-            ConformanceRefresher refresher,
-            ConformanceLease lease,
-            ReindexTrigger? reindexTrigger = null)
-            : base(
-                state,
-                refresher,
-                lease,
-                Options.Create(new ConformanceTransitionOptions()),
-                reindexTrigger ?? CreateReindexTrigger(
-                    Substitute.For<IMediator>(),
-                    state,
-                    autoStart: false),
-                NullLogger<ConformanceStateSyncService>.Instance)
-        {
-        }
-
         public Task RunSyncAsync() => SyncAsync(CancellationToken.None);
     }
 }

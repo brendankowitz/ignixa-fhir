@@ -1,5 +1,7 @@
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Tests.Features.Search;
+using Ignixa.Search.Models;
+using Shouldly;
 using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
@@ -15,7 +17,7 @@ public enum HiddenMembershipScenario
 }
 
 /// <summary>
-/// Builds a real <see cref="FhirVersionContext"/> with an R4 snapshot published for tenant 1 in which the
+/// M-L6: a real <see cref="FhirVersionContext"/> with an R4 snapshot published for tenant 1 in which the
 /// Patient-compartment membership parameter Observation.subject is hidden from search.
 /// </summary>
 internal static class HiddenMembershipFixture
@@ -29,22 +31,26 @@ internal static class HiddenMembershipFixture
             Subject(BaseCanonical, CorePackage, overrides: null),
             Subject("http://example.org/SearchParameter/observation-subject", "example.package@1.0.0", BaseCanonical),
         ];
-        using var state = await InitializedStateAsync(
-            scenario == HiddenMembershipScenario.Pending ? [.. events, Committed(1, 2)] : events);
+        using var state = await InitializedStateAsync(scenario == HiddenMembershipScenario.Pending ? [.. events, Committed(1, 2)] : events);
         return TestDefinitions.CreateContext().Publish(state);
     }
 
+    /// <summary>Asserts one incomplete-results warning naming Observation.subject and its reason, or none when no reason is expected.</summary>
+    public static void ShouldWarnOfHiddenMembership(this SearchOptions? options, string? expectedReason)
+    {
+        var issues = options.ShouldNotBeNull().BundleIssues;
+        if (expectedReason is null)
+        {
+            issues.ShouldBeEmpty();
+            return;
+        }
+
+        var issue = issues.ShouldHaveSingleItem();
+        (issue.Severity, issue.Code).ShouldBe(("warning", "incomplete"));
+        issue.Diagnostics.ShouldContain("'Observation.subject'");
+        issue.Diagnostics.ShouldContain(expectedReason);
+    }
+
     private static object Subject(string canonical, string package, string? overrides) =>
-        Activated(
-            canonical,
-            "subject",
-            1,
-            overrides,
-            package,
-            "Observation",
-            "Observation.subject",
-            SearchParamType.Reference,
-            ["Patient", "Group", "Device", "Location"],
-            "subject",
-            "4.0");
+        Activated(canonical, "subject", 1, overrides, package, "Observation", "Observation.subject", SearchParamType.Reference, ["Patient", "Group", "Device", "Location"], "subject", "4.0");
 }
