@@ -22,18 +22,16 @@ public class ParameterOutcomeTests
     public static TheoryData<string, string, string, string, bool> WildcardIncludeCases()
     {
         var cases = new TheoryData<string, string, string, string, bool>();
-        foreach (var usePartialIndices in new[] { false, true })
+        foreach (var (parameterName, sourceResourceType) in new[] { ("_include", "Patient"), ("_revinclude", "Observation") })
         {
-            cases.Add("_include", "*", "Patient", "Patient", usePartialIndices);
-            cases.Add("_revinclude", "*", "Observation", "Observation", usePartialIndices);
-            foreach (var baseResourceType in new[] { "Resource", "DomainResource" })
+            foreach (var usePartialIndices in new[] { false, true })
             {
-                cases.Add("_include", "Patient:*", "Patient", baseResourceType, usePartialIndices);
-                cases.Add("_revinclude", "Observation:*", "Observation", baseResourceType, usePartialIndices);
+                cases.Add(parameterName, "*", sourceResourceType, sourceResourceType, usePartialIndices);
+                foreach (var baseResourceType in new[] { sourceResourceType, "Resource", "DomainResource" })
+                {
+                    cases.Add(parameterName, $"{sourceResourceType}:*", sourceResourceType, baseResourceType, usePartialIndices);
+                }
             }
-
-            cases.Add("_include", "Patient:*", "Patient", "Patient", usePartialIndices);
-            cases.Add("_revinclude", "Observation:*", "Observation", "Observation", usePartialIndices);
         }
 
         return cases;
@@ -50,16 +48,8 @@ public class ParameterOutcomeTests
         bool usePartialIndices)
     {
         var context = new SearchParserTestContext();
-        var pending = new SearchParameterInfo(
-            name: "pending-reference",
-            code: "pending-reference",
-            searchParamType: SearchParamType.Reference,
-            targetResourceTypes: ["Organization", "Patient"],
-            baseResourceTypes: [baseResourceType],
-            url: new Uri("http://ignixa.test/SearchParameter/pending-reference"))
-        {
-            IsSearchable = false,
-        };
+        var pending = new SearchParameterInfo("pending-reference", "pending-reference", SearchParamType.Reference, targetResourceTypes: ["Organization", "Patient"],
+            baseResourceTypes: [baseResourceType], url: new Uri("http://ignixa.test/SearchParameter/pending-reference")) { IsSearchable = false };
         context.DefinitionManager.GetSearchParameters(sourceResourceType).Returns([pending]);
         context.DefinitionManager.AllSearchParameters.Returns([pending]);
         context.DefinitionManager.GetAllKnownSearchParameters().Returns([pending]);
@@ -84,11 +74,7 @@ public class ParameterOutcomeTests
         var pending = context.Add("Observation", "custom", SearchParamType.String, url: canonical);
         pending.IsSearchable = false;
 
-        var options = Build(context, usePartialIndices, null,
-        [
-            new QueryParameter("_type", "Patient,Observation"),
-            new QueryParameter("_sort", "custom"),
-        ]);
+        var options = Build(context, usePartialIndices, null, [new("_type", "Patient,Observation"), new("_sort", "custom")]);
 
         options.ResolvedSearchParameters.ShouldContain(parameter => ReferenceEquals(parameter, enabled));
         if (usePartialIndices)
@@ -111,21 +97,11 @@ public class ParameterOutcomeTests
     public void GivenASystemSortWithDifferentCanonicalDefinitions_WhenBuilt_ThenItRejectsTheRequest()
     {
         var context = new SearchParserTestContext();
-        context.Add(
-            "Patient",
-            "custom",
-            SearchParamType.String,
-            url: new Uri("http://ignixa.test/SearchParameter/patient-custom"));
-        context.Add(
-            "Observation",
-            "custom",
-            SearchParamType.String,
-            url: new Uri("http://ignixa.test/SearchParameter/observation-custom"));
-        Should.Throw<BadSearchRequestException>(() => Build(context, usePartialIndices: false, null,
-        [
-            new QueryParameter("_type", "Patient,Observation"),
-            new QueryParameter("_sort", "custom"),
-        ]));
+        context.Add("Patient", "custom", SearchParamType.String, url: new Uri("http://ignixa.test/SearchParameter/patient-custom"));
+        context.Add("Observation", "custom", SearchParamType.String, url: new Uri("http://ignixa.test/SearchParameter/observation-custom"));
+
+        Should.Throw<BadSearchRequestException>(() =>
+            Build(context, usePartialIndices: false, null, [new("_type", "Patient,Observation"), new("_sort", "custom")]));
     }
 
     public static TheoryData<string, bool, bool, string> HiddenParameterCases()
@@ -212,16 +188,14 @@ public class ParameterOutcomeTests
     [Fact]
     public void GivenAChainedKey_WhenBuilt_ThenKeySyntaxRetainsTheChainStructure()
     {
-        var harness = SearchOptionsBuilderHarness.ForPatientChainedThrough(
-            "general-practitioner", "Practitioner", "name", SearchParamType.String);
+        var harness = SearchOptionsBuilderHarness.ForPatientChainedThrough("general-practitioner", "Practitioner", "name", SearchParamType.String);
         var outcomes = new List<ParameterTrace>();
 
         harness.Build([("general-practitioner.name", "Smith")], outcomes);
 
         var trace = outcomes.ShouldHaveSingleItem();
         trace.Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
-        trace.KeySyntax.ShouldNotBeNull();
-        trace.KeySyntax!.Kind.ShouldBe("ForwardChain");
+        trace.KeySyntax.ShouldNotBeNull().Kind.ShouldBe("ForwardChain");
         trace.KeySyntax.Children.ShouldHaveSingleItem();
     }
 
@@ -233,9 +207,7 @@ public class ParameterOutcomeTests
         IList<ParameterTrace>? outcomes = null)
     {
         var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager, () => usePartialIndices);
-        return new SearchOptionsBuilder(
-                new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
-                definitions)
+        return new SearchOptionsBuilder(new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider), definitions)
             .Build(resourceType, parameters, outcomes: outcomes);
     }
 
