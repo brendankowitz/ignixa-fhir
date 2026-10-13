@@ -194,7 +194,7 @@ public class IncludeExpression : Expression
     public override bool ValueInsensitiveEquals(Expression other)
     {
         if (other is not IncludeExpression include ||
-            !include.ReferenceSearchParameter.Equals(ReferenceSearchParameter) ||
+            !Equals(include.ReferenceSearchParameter, ReferenceSearchParameter) ||
             include.SourceResourceType != SourceResourceType ||
             include.TargetResourceType != TargetResourceType ||
             include.WildCard != WildCard ||
