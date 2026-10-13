@@ -127,7 +127,7 @@ public sealed class ReindexTriggerTests : IDisposable
         exception.Message.ShouldContain(nameof(UnsupportedReindexResult));
     }
 
-    // N1: neither a finished job's own Pending parameters nor an empty Pending set start a job.
+    // Review 5 N1: neither a finished job's own Pending parameters nor an empty Pending set start a job.
     [Theory]
     [InlineData(null)]
     [InlineData("Failed")]
@@ -151,7 +151,7 @@ public sealed class ReindexTriggerTests : IDisposable
         await AssertNoJobRequestedAsync();
     }
 
-    // N1: an activation newer than the latest finished job's target is due once that job has finished.
+    // Review 5 N1: an activation newer than the latest finished job's target is due once that job has finished.
     [Theory]
     [InlineData("Completed")]
     [InlineData("Failed")]

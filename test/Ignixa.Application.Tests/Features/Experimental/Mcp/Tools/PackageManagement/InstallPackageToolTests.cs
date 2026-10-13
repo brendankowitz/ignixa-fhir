@@ -11,7 +11,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Experimental.Mcp.Tools.PackageManagement;
 
-/// <summary>N2: the MCP install tool reports activation, not just storage, as its outcome.</summary>
+/// <summary>Review 5 N2: the MCP install tool reports activation, not just storage, as its outcome.</summary>
 public sealed class InstallPackageToolTests : IDisposable
 {
     private const string PackageId = "test.package";

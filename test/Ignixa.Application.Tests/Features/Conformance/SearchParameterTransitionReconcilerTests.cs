@@ -9,7 +9,7 @@ namespace Ignixa.Application.Tests.Features.Conformance;
 
 public class SearchParameterTransitionReconcilerTests
 {
-    // N6 on restart: an uncommitted batch is one transition, rescheduled with the full grace from now.
+    // Review 5 N6 on restart: an uncommitted batch is one transition, rescheduled with the full grace from now.
     [Theory]
     [InlineData(1)]
     [InlineData(-1)]

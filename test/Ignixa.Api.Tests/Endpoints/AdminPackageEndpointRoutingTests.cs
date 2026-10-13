@@ -145,7 +145,7 @@ public sealed class AdminPackageEndpointRoutingTests : IAsyncLifetime
         _requests.ShouldBeEmpty();
     }
 
-    // N2: a stored package that does not activate fails the load with an OperationOutcome naming each issue.
+    // Review 5 N2: a stored package that does not activate fails the load with an OperationOutcome naming each issue.
     [Theory]
     [InlineData("SP_MIXED_BASE_SHADOW", StatusCodes.Status422UnprocessableEntity, "business-rule")]
     [InlineData("CONFORMANCE_CONFLICT", StatusCodes.Status409Conflict, "conflict")]

@@ -12,7 +12,7 @@ using static Ignixa.Models.OperationOutcomeIssue;
 
 namespace Ignixa.Application.Tests.Features.Admin;
 
-/// <summary>N2: a package is stored before activation; a rejected activation fails the load, a durable one reports its issues.</summary>
+/// <summary>Review 5 N2: a package is stored before activation; a rejected activation fails the load, a durable one reports its issues.</summary>
 public class LoadPackageHandlerTests
 {
     private const string PackageId = "test.package";

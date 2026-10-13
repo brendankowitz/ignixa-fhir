@@ -11,7 +11,7 @@ using PackageResourceProvider = Ignixa.PackageManagement.Infrastructure.PackageR
 
 namespace Ignixa.Application.Tests.Features.Specification;
 
-/// <summary>F9: a ViewDefinition unload republishes the same generation; handles already taken stay immutable.</summary>
+/// <summary>Finding F9: a ViewDefinition unload republishes the same generation; handles already taken stay immutable.</summary>
 public class ConformanceSchemaRefreshTests
 {
     [Fact]

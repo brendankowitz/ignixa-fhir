@@ -15,7 +15,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Metadata;
 
-/// <summary>F9: an unload republishes the same generation, so tenant capabilities are cached by publication as well as generation.</summary>
+/// <summary>Finding F9: an unload republishes the same generation, so tenant capabilities are cached by publication as well as generation.</summary>
 public sealed class CapabilityStatementServiceTests : IDisposable
 {
     private static readonly CapabilityContext Tenant1 = new(FhirVersion.R4, TenantId: 1);

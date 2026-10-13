@@ -64,7 +64,7 @@ public class ConformanceBarrierRetryPolicyTests
 
     private static StaleConformanceDefinitionsException Stale() => new(101, 11, 29);
 
-    // F4: the meter is process-wide and other test classes record barrier outcomes in parallel;
+    // Finding F4: the meter is process-wide and other test classes record barrier outcomes in parallel;
     // measurements are recorded synchronously, so an AsyncLocal scopes capture to this test's flow.
     private static readonly AsyncLocal<bool> _capturing = new();
 

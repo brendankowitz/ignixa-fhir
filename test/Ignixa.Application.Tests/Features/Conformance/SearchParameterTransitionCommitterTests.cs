@@ -45,7 +45,7 @@ public class SearchParameterTransitionCommitterTests
         await harness.Trigger.DidNotReceiveWithAnyArgs().RequestReindexAsync(default!, default);
     }
 
-    // N6: one package activation is one phase-two transition, however many codes it hides.
+    // Review 5 N6: one package activation is one phase-two transition, however many codes it hides.
     [Fact]
     public async Task GivenSeventyShadowsInOneActivation_WhenTheBatchIsCommitted_ThenOneAppendOneReindexRequestAndOneRefreshCommitThemAll()
     {

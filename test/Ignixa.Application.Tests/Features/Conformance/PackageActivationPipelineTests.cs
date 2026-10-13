@@ -163,7 +163,7 @@ public class PackageActivationPipelineTests
         duringRemoval.Issues.Select(issue => issue.Code).ShouldBe(afterRemoval.Issues.Select(issue => issue.Code));
     }
 
-    // N4: definitions are partitioned by FHIR version; one code cannot be owned by two versions.
+    // Review 5 N4: definitions are partitioned by FHIR version; one code cannot be owned by two versions.
     [Fact]
     public async Task GivenR4PackageOwnsACode_WhenAnR5PackageRedefinesIt_ThenActivationIsRejectedAsAVersionConflict()
     {
@@ -275,7 +275,7 @@ public class PackageActivationPipelineTests
         TransitionSchedulerProgrammerError,
     }
 
-    // N2: once the activation is durable, an operational follow-up failure is a warning, not a lost activation.
+    // Review 5 N2: once the activation is durable, an operational follow-up failure is a warning, not a lost activation.
     [Theory]
     [InlineData(FollowUpFailure.ReindexTriggerDeferred, PackageActivationPipeline.ReindexTriggerDeferredCode)]
     [InlineData(FollowUpFailure.RefreshDependencyUnavailable, PackageActivationPipeline.RefreshDeferredCode)]
@@ -296,7 +296,7 @@ public class PackageActivationPipelineTests
         lease.IsHeld.ShouldBe(failure != FollowUpFailure.RefreshDependencyUnavailable);
     }
 
-    // N2: an unexpected follow-up failure is surfaced, never reported as success.
+    // Review 5 N2: an unexpected follow-up failure is surfaced, never reported as success.
     [Theory]
     [InlineData(FollowUpFailure.ReindexTriggerProgrammerError, typeof(InvalidOperationException))]
     [InlineData(FollowUpFailure.RefreshIndependentlyCancelled, typeof(OperationCanceledException))]
@@ -314,7 +314,7 @@ public class PackageActivationPipelineTests
         harness.State.LastProcessedEventId.ShouldBeGreaterThan(0);
     }
 
-    // N2, §4.4: a durable hide event schedules its transition even when the caller cancels and the refresh fails.
+    // Review 5 N2, §4.4: a durable hide event schedules its transition even when the caller cancels and the refresh fails.
     [Fact]
     public async Task GivenTheCallerCancelsAfterTheDurableAppend_WhenTheRefreshFails_ThenTheTransitionIsStillScheduledAndTheFailureSurfaces()
     {
@@ -357,7 +357,7 @@ public class PackageActivationPipelineTests
         harness.Log.AppendAttempts.ShouldBe(expectedAttempts);
     }
 
-    // N3: activating a package that is already active (a restart reloading it) appends nothing and starts no reindex.
+    // Spec N3: activating a package that is already active (a restart reloading it) appends nothing and starts no reindex.
     [Fact]
     public async Task GivenAnActivePackage_WhenActivatedAgain_ThenNothingIsAppendedOrReindexed()
     {
@@ -372,7 +372,7 @@ public class PackageActivationPipelineTests
         harness.Log.Events.Count.ShouldBe(eventCount);
     }
 
-    // N6: one package activation is one phase-two transition, however many codes it hides.
+    // Review 5 N6: one package activation is one phase-two transition, however many codes it hides.
     [Fact]
     public async Task GivenPackageShadowsSeventyCodes_WhenActivated_ThenOneTransitionIsScheduledForThePackageEvent()
     {

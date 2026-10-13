@@ -11,7 +11,7 @@ namespace Ignixa.Application.Tests.Features.Search;
 
 /// <summary>
 /// The conformance projection is shared by every tenant; a package activated for one FHIR version must leave
-/// the definitions, searchability and extraction of tenants on the other versions untouched (N4), and every tenant
+/// the definitions, searchability and extraction of tenants on the other versions untouched (Review 5 N4), and every tenant
 /// resolves only a published projection.
 /// </summary>
 public class MultiVersionConformanceSnapshotTests
@@ -53,7 +53,7 @@ public class MultiVersionConformanceSnapshotTests
             .ShouldBeFalse("the R4 tenant is mid-transition and must stay hidden");
     }
 
-    // N4: an activation applies to its own FHIR version's tenants; one recorded before versions applies to all.
+    // Review 5 N4: an activation applies to its own FHIR version's tenants; one recorded before versions applies to all.
     [Theory]
     [InlineData("5.0", false)]
     [InlineData(null, true)]

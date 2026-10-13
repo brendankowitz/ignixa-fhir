@@ -129,7 +129,7 @@ public class ConformanceRefresherTests
         timeline.Events.ShouldBe(["built 1@1"]);
     }
 
-    // F9: an unload republishes the current generation, so every tenant's capabilities are rebuilt.
+    // Finding F9: an unload republishes the current generation, so every tenant's capabilities are rebuilt.
     [Fact]
     public async Task GivenMultipleTenants_WhenPackageIsUnloaded_ThenItInvalidatesEveryPublishedTenantsCapabilities()
     {
