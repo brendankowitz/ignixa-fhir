@@ -5,6 +5,7 @@ using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
 
@@ -59,7 +60,7 @@ public class GetReindexStatusHandlerTests
         await _jobs.CreateAsync(Job("Completed", "old", observed: Now.AddMinutes(-10)), CancellationToken.None);
         await _jobs.CreateAsync(Job("Completed", "recent", observed: Now.AddMinutes(-1)), CancellationToken.None);
 
-        var result = await new GetReindexJobsHandler(_jobs, JobOptions, new FixedTimeProvider(Now))
+        var result = await new GetReindexJobsHandler(_jobs, JobOptions, new FakeTimeProvider(Now))
             .HandleAsync(new GetReindexJobsQuery(1), CancellationToken.None);
 
         result.Select(job => job.JobId).ShouldBe(["queued", "running", "recent"]);
@@ -67,6 +68,6 @@ public class GetReindexStatusHandlerTests
     }
 
     private Task<ReindexStatusResult?> StatusAsync(string jobId) =>
-        new GetReindexStatusHandler(_jobs, JobOptions, new FixedTimeProvider(Now), NullLogger<GetReindexStatusHandler>.Instance)
+        new GetReindexStatusHandler(_jobs, JobOptions, new FakeTimeProvider(Now), NullLogger<GetReindexStatusHandler>.Instance)
             .HandleAsync(new GetReindexStatusQuery(jobId), CancellationToken.None);
 }

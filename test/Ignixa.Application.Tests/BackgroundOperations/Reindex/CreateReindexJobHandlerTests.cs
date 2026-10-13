@@ -9,6 +9,7 @@ using Ignixa.Conformance.Events.Events;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Shouldly;
 using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
@@ -77,22 +78,6 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldHaveSingleItem().JobId.ShouldBe("failed-during-race");
     }
 
-    // §7 start rule: a Pending activation newer than the latest finished job's TargetEventId starts a job.
-    [Theory]
-    [InlineData("Completed")]
-    [InlineData("Failed")]
-    [InlineData("Cancelled")]
-    public async Task GivenFinishedJobTargetedAnOlderActivation_WhenReconciliationCreatesJob_ThenJobStarts(string status)
-    {
-        await _jobs.CreateAsync(Job(status, "older", CreateJobDefinition(targetEventId: 41)), CancellationToken.None);
-
-        var job = await CreatedJobAsync(await HandleAsync(ReindexTriggerKind.Reconciliation));
-
-        job.Definition.TargetEventId.ShouldBe(42);
-        job.Definition.Trigger.ShouldBe("Reconciliation");
-        job.Definition.SearchParameters.Select(parameter => parameter.Code).ShouldBe(["custom"]);
-    }
-
     // §7 start rule: a manual $reindex ignores the rule.
     [Fact]
     public async Task GivenFinishedJobCoversPendingParameters_WhenJobIsCreatedManually_ThenJobStarts()
@@ -127,11 +112,23 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldHaveSingleItem();
     }
 
-    // §8.1: the handler writes the Queued job row and starts its orchestration with instanceId = jobId.
-    [Fact]
-    public async Task GivenJobIsCreated_WhenOrchestrationStarts_ThenRowAndInputCarryTheResolvedPlan()
+    // §8.1: the handler writes the Queued job row and starts its orchestration with instanceId = jobId; §7 start
+    // rule: a Pending activation newer than the latest finished job's TargetEventId starts a job.
+    [Theory]
+    [InlineData(null, ReindexTriggerKind.Activation)]
+    [InlineData("Completed", ReindexTriggerKind.Reconciliation)]
+    [InlineData("Failed", ReindexTriggerKind.Reconciliation)]
+    [InlineData("Cancelled", ReindexTriggerKind.Reconciliation)]
+    public async Task GivenNoFinishedJobOrOneForAnOlderActivation_WhenAJobIsRequested_ThenRowAndOrchestrationCarryTheResolvedPlan(
+        string? finishedStatus,
+        ReindexTriggerKind trigger)
     {
-        var job = await CreatedJobAsync(await HandleAsync(ReindexTriggerKind.Activation));
+        if (finishedStatus is not null)
+        {
+            await _jobs.CreateAsync(Job(finishedStatus, "older", CreateJobDefinition(targetEventId: 41)), CancellationToken.None);
+        }
+
+        var job = await CreatedJobAsync(await HandleAsync(trigger));
 
         job.Status.ShouldBe("Queued");
         job.OrchestrationInstanceId.ShouldBe(job.JobId);
@@ -139,7 +136,8 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         job.Definition.TargetEventId.ShouldBe(42);
         job.Definition.TenantIds.ShouldBe([1]);
         job.Definition.ResourceTypes.ShouldBe(["Patient"]);
-        job.Definition.Trigger.ShouldBe("Activation");
+        job.Definition.SearchParameters.Select(parameter => parameter.Code).ShouldBe(["custom"]);
+        job.Definition.Trigger.ShouldBe(trigger.ToString());
         await _runtime.Received(1).CreateTaskOrchestrationAsync(
             Arg.Is<TaskMessage>(message =>
                 message.OrchestrationInstance.InstanceId == job.JobId && message.Event is ExecutionStartedEvent),
@@ -180,12 +178,8 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         schema.GetTypeDefinition("Patient").Returns(patient);
         var versions = Substitute.For<IFhirVersionContext>();
         versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(schema);
-        return new CreateReindexJobHandler(
-            new TaskHubClient(_runtime),
-            _jobs,
-            _jobLock,
-            new ReindexTargetResolver(TenantStore(_tenants), versions, _state, _events),
-            Options.Create(new ReindexOptions { BarrierDelay = TimeSpan.Zero }),
-            new FixedTimeProvider(Now));
+        var resolver = new ReindexTargetResolver(TenantStore(_tenants), versions, _state, _events);
+        var options = Options.Create(new ReindexOptions { BarrierDelay = TimeSpan.Zero });
+        return new CreateReindexJobHandler(new TaskHubClient(_runtime), _jobs, _jobLock, resolver, options, new FakeTimeProvider(Now));
     }
 }
