@@ -1,7 +1,6 @@
 using System.Diagnostics.Metrics;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Abstractions;
-using Ignixa.Domain.Exceptions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -35,7 +34,7 @@ public class ConformanceBarrierRetryPolicyTests
 
         var execution = policy.ExecuteAsync(
             _ => ++attempts == 1 || retry == RetryAttempt.IsStillStale
-                ? Task.FromException<int>(Stale())
+                ? Task.FromException<int>(TestWritePath.Stale())
                 : retry == RetryAttempt.Succeeds ? Task.FromResult(42) : Task.FromException<int>(retryFailure),
             CancellationToken.None);
 
@@ -61,8 +60,6 @@ public class ConformanceBarrierRetryPolicyTests
 
     private static ConformanceBarrierRetryPolicy CreatePolicy(ISourceEventStore eventStore) =>
         new(TestConformanceRefresher.Create(new ConformanceState(), eventStore), Options.Create(new ConformanceTransitionOptions { SyncIntervalSeconds = 17 }), NullLogger<ConformanceBarrierRetryPolicy>.Instance);
-
-    private static StaleConformanceDefinitionsException Stale() => new(101, 11, 29);
 
     // Finding F4: the meter is process-wide and other test classes record barrier outcomes in parallel;
     // measurements are recorded synchronously, so an AsyncLocal scopes capture to this test's flow.

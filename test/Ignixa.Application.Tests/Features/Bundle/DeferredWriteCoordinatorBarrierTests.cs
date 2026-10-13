@@ -2,7 +2,6 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -82,7 +81,14 @@ public class DeferredWriteCoordinatorBarrierTests
         _indexer.Received(2).Extract(Arg.Any<IElement>());
     }
 
-    private static StaleConformanceDefinitionsException Stale() => new(101, 11, 29);
+    // Spec §5.4: a bundle allocates with the minimum DefinitionsEventId of the handles that produced its index sets.
+    [Fact]
+    public void GivenResourcesExtractedAtDifferentPositions_WhenAllocationPositionIsSelected_ThenMinimumIsUsed()
+    {
+        ResourceWrapper[] resources = [Patient("newer", 29), Patient("older", 11), Patient("newest", 41)];
+
+        DefinitionsEventIdSelector.GetMinimum(resources).ShouldBe(11);
+    }
 
     private Task<DeferredWriteCoordinator> CreateCoordinatorAsync(IFhirRepository repository, int channelCapacity = 1, bool atomic = false) =>
         DeferredWriteCoordinator.CreateAsync(
