@@ -143,12 +143,12 @@ public sealed class SqlServerReindexStore(
     {
         ArgumentException.ThrowIfNullOrEmpty(resourceType);
         ArgumentOutOfRangeException.ThrowIfLessThan(startAfterSurrogateId, -1);
-        ArgumentOutOfRangeException.ThrowIfNegative(targetRangeSize);
-        ArgumentOutOfRangeException.ThrowIfZero(targetRangeSize);
-        ArgumentOutOfRangeException.ThrowIfNegative(maxRanges);
-        ArgumentOutOfRangeException.ThrowIfZero(maxRanges);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(targetRangeSize);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxRanges);
 
-        var resourceTypeId = await GetResourceTypeIdAsync(resourceType, cancellationToken);
+        // Types are added to dbo.ResourceType as any instance first writes them, so a miss in the preloaded
+        // snapshot is checked against the table; only a type that was never written has no rows to reindex.
+        var resourceTypeId = await _referenceDataCache.GetResourceTypeIdAsync(resourceType, cancellationToken);
         if (!resourceTypeId.HasValue || startAfterSurrogateId >= upperBoundSurrogateId)
         {
             return new SurrogateIdRangePage([], null);
@@ -252,10 +252,9 @@ public sealed class SqlServerReindexStore(
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(resourceType);
-        ArgumentOutOfRangeException.ThrowIfNegative(maxCount);
-        ArgumentOutOfRangeException.ThrowIfZero(maxCount);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
 
-        var resourceTypeId = await GetResourceTypeIdAsync(resourceType, cancellationToken);
+        var resourceTypeId = await _referenceDataCache.GetResourceTypeIdAsync(resourceType, cancellationToken);
         if (!resourceTypeId.HasValue)
         {
             return [];
@@ -363,20 +362,7 @@ public sealed class SqlServerReindexStore(
         command.Parameters.Add(failedResources);
         AddTableValuedParameter(command, "@Resources", "dbo.ResourceList", resourceRecords);
         AddTableValuedParameter(command, "@ResourceWriteClaims", "dbo.ResourceWriteClaimList", resourceWriteClaims);
-        AddTableValuedParameter(command, "@ReferenceSearchParams", "dbo.ReferenceSearchParamList", searchIndexRowSets.Reference);
-        AddTableValuedParameter(command, "@TokenSearchParams", "dbo.TokenSearchParamList", searchIndexRowSets.Token);
-        AddTableValuedParameter(command, "@TokenTexts", "dbo.TokenTextList", searchIndexRowSets.TokenText);
-        AddTableValuedParameter(command, "@StringSearchParams", "dbo.StringSearchParamList", searchIndexRowSets.String);
-        AddTableValuedParameter(command, "@UriSearchParams", "dbo.UriSearchParamList", searchIndexRowSets.Uri);
-        AddTableValuedParameter(command, "@NumberSearchParams", "dbo.NumberSearchParamList", searchIndexRowSets.Number);
-        AddTableValuedParameter(command, "@QuantitySearchParams", "dbo.QuantitySearchParamList", searchIndexRowSets.Quantity);
-        AddTableValuedParameter(command, "@DateTimeSearchParams", "dbo.DateTimeSearchParamList", searchIndexRowSets.DateTime);
-        AddTableValuedParameter(command, "@ReferenceTokenCompositeSearchParams", "dbo.ReferenceTokenCompositeSearchParamList", searchIndexRowSets.ReferenceTokenComposite);
-        AddTableValuedParameter(command, "@TokenTokenCompositeSearchParams", "dbo.TokenTokenCompositeSearchParamList", searchIndexRowSets.TokenTokenComposite);
-        AddTableValuedParameter(command, "@TokenDateTimeCompositeSearchParams", "dbo.TokenDateTimeCompositeSearchParamList", searchIndexRowSets.TokenDateTimeComposite);
-        AddTableValuedParameter(command, "@TokenQuantityCompositeSearchParams", "dbo.TokenQuantityCompositeSearchParamList", searchIndexRowSets.TokenQuantityComposite);
-        AddTableValuedParameter(command, "@TokenStringCompositeSearchParams", "dbo.TokenStringCompositeSearchParamList", searchIndexRowSets.TokenStringComposite);
-        AddTableValuedParameter(command, "@TokenNumberNumberCompositeSearchParams", "dbo.TokenNumberNumberCompositeSearchParamList", searchIndexRowSets.TokenNumberNumberComposite);
+        searchIndexRowSets.AddTableValuedParameters(command);
 
         try
         {
@@ -479,11 +465,6 @@ public sealed class SqlServerReindexStore(
         return records;
     }
 
-    // Types are added to dbo.ResourceType as any instance first writes them, so a miss in the preloaded
-    // snapshot is checked against the table; only a type that was never written has no rows to reindex.
-    private Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken) =>
-        _referenceDataCache.GetResourceTypeIdAsync(resourceType, cancellationToken);
-
     private static void AddTableValuedParameter(
         SqlCommand command,
         string name,
@@ -541,5 +522,4 @@ public sealed class SqlServerReindexStore(
 
         return records;
     }
-
 }

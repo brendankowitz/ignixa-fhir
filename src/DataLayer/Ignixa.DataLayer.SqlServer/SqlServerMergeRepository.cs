@@ -217,7 +217,7 @@ public class SqlServerMergeRepository(
             "EXEC dbo.MergeResources @AffectedRows OUTPUT, @RaiseExceptionOnConflict, @IsResourceChangeCaptureEnabled, " +
             "@TransactionId, @SingleTransaction, @Resources, @ResourceWriteClaims, " +
             "@ReferenceSearchParams, @TokenSearchParams, @TokenTexts, @StringSearchParams, @UriSearchParams, " +
-            "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParms, " +
+            "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParams, " +
             "@ReferenceTokenCompositeSearchParams, @TokenTokenCompositeSearchParams, " +
             "@TokenDateTimeCompositeSearchParams, @TokenQuantityCompositeSearchParams, @TokenStringCompositeSearchParams, " +
             "@TokenNumberNumberCompositeSearchParams";
@@ -241,76 +241,7 @@ public class SqlServerMergeRepository(
             TypeName = "dbo.ResourceWriteClaimList",
             Value = resourceWriteClaimRecords
         });
-        command.Parameters.Add(new SqlParameter("@ReferenceSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.ReferenceSearchParamList",
-            Value = searchIndexRowSets.Reference
-        });
-        command.Parameters.Add(new SqlParameter("@TokenSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenSearchParamList",
-            Value = searchIndexRowSets.Token
-        });
-        command.Parameters.Add(new SqlParameter("@TokenTexts", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenTextList",
-            Value = searchIndexRowSets.TokenText
-        });
-        command.Parameters.Add(new SqlParameter("@StringSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.StringSearchParamList",
-            Value = searchIndexRowSets.String
-        });
-        command.Parameters.Add(new SqlParameter("@UriSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.UriSearchParamList",
-            Value = searchIndexRowSets.Uri
-        });
-        command.Parameters.Add(new SqlParameter("@NumberSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.NumberSearchParamList",
-            Value = searchIndexRowSets.Number
-        });
-        command.Parameters.Add(new SqlParameter("@QuantitySearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.QuantitySearchParamList",
-            Value = searchIndexRowSets.Quantity
-        });
-        command.Parameters.Add(new SqlParameter("@DateTimeSearchParms", SqlDbType.Structured)
-        {
-            TypeName = "dbo.DateTimeSearchParamList",
-            Value = searchIndexRowSets.DateTime
-        });
-        command.Parameters.Add(new SqlParameter("@ReferenceTokenCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.ReferenceTokenCompositeSearchParamList",
-            Value = searchIndexRowSets.ReferenceTokenComposite
-        });
-        command.Parameters.Add(new SqlParameter("@TokenTokenCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenTokenCompositeSearchParamList",
-            Value = searchIndexRowSets.TokenTokenComposite
-        });
-        command.Parameters.Add(new SqlParameter("@TokenDateTimeCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenDateTimeCompositeSearchParamList",
-            Value = searchIndexRowSets.TokenDateTimeComposite
-        });
-        command.Parameters.Add(new SqlParameter("@TokenQuantityCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenQuantityCompositeSearchParamList",
-            Value = searchIndexRowSets.TokenQuantityComposite
-        });
-        command.Parameters.Add(new SqlParameter("@TokenStringCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenStringCompositeSearchParamList",
-            Value = searchIndexRowSets.TokenStringComposite
-        });
-        command.Parameters.Add(new SqlParameter("@TokenNumberNumberCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenNumberNumberCompositeSearchParamList",
-            Value = searchIndexRowSets.TokenNumberNumberComposite
-        });
+        searchIndexRowSets.AddTableValuedParameters(command);
 
         // Extract extension data before calling the SP (needed for post-merge update)
         var tokenExtensions = _searchIndexRowSetBuilder.TokenRowGenerator.ExtractExtensionData(
