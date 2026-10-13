@@ -212,7 +212,7 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
     internal ValidationIssue? ApplyProposedEvent(NewSourceEvent proposed)
     {
         if (proposed.Data is SearchParameterActivated parameter &&
-            ValidateSearchParameterActivation(parameter, out _) is { } issue)
+            (ValidateStorageCanonical(parameter, out _) ?? ValidateOwnerSearchParamId(parameter)) is { } issue)
         {
             return issue;
         }
@@ -464,19 +464,6 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
             _nextSearchParamId = sp.SearchParamId + 1;
         }
 
-    }
-
-    private ValidationIssue? ValidateSearchParameterActivation(
-        SearchParameterActivated sp,
-        out string storageCanonical)
-    {
-        var issue = ValidateStorageCanonical(sp, out storageCanonical);
-        if (issue is not null)
-        {
-            return issue;
-        }
-
-        return ValidateOwnerSearchParamId(sp);
     }
 
     private ValidationIssue? ValidateOwnerSearchParamId(SearchParameterActivated sp)
@@ -843,8 +830,6 @@ public sealed class ConformanceState : IConformanceStateView, IDisposable
         IsLatestActivation(parameter) &&
         parameter.ReindexJobId == jobId &&
         (activationEventId is null || parameter.ActivationEventId == activationEventId);
-
-
 
     private void LogIgnoredLifecycleEvent(
         long eventId,
