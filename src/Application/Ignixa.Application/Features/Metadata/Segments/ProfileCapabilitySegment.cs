@@ -199,6 +199,13 @@ public class ProfileCapabilitySegment : ICapabilitySegment
     }
 
     /// <summary>
+    /// The profile-data cache key for one definitions generation. <see cref="CapabilityStatementService"/>
+    /// invalidates through it, so the read and the invalidation can never disagree on the format.
+    /// </summary>
+    internal static string GetProfileCacheKey(string tenantId, DefinitionsHandle? definitionsHandle) =>
+        $"profiles:{tenantId}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
+
+    /// <summary>
     /// Gets cached profile data for a tenant, loading from database if not cached.
     /// Cache key format: "profiles:{tenantId}:{definitionsEventId}:{publicationSequence}"
     /// Uses ICapabilityCache with 5-minute TTL to avoid repeated database queries during capability statement builds.
@@ -214,7 +221,7 @@ public class ProfileCapabilitySegment : ICapabilitySegment
         var definitionsHandle = _versionContext.GetDefinitionsHandle(
             context.FhirVersion,
             context.TenantId);
-        var cacheKey = $"profiles:{tenantId}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
+        var cacheKey = GetProfileCacheKey(tenantId, definitionsHandle);
 
         // Check cache first
         var cached = await _cache.GetAsync(cacheKey, cancellationToken);

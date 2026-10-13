@@ -247,7 +247,7 @@ public class CapabilityStatementService
         if (context.TenantId is { } tenantId)
         {
             await _cache.RemoveAsync(
-                GetProfileCacheKey(tenantId, definitionsHandle),
+                ProfileCapabilitySegment.GetProfileCacheKey(tenantId.ToString(), definitionsHandle),
                 cancellationToken);
         }
 
@@ -266,11 +266,6 @@ public class CapabilityStatementService
         CapabilityContext context,
         DefinitionsHandle? definitionsHandle) =>
         $"{context.ToCacheKey()}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
-
-    private static string GetProfileCacheKey(
-        int tenantId,
-        DefinitionsHandle? definitionsHandle) =>
-        $"profiles:{tenantId}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
 
     /// <summary>
     /// Clears all cached capability statements.
