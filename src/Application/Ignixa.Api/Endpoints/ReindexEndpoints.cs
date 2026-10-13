@@ -23,40 +23,26 @@ public static class ReindexEndpoints
 
     public static IEndpointRouteBuilder MapReindexEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var reindexAuthorization = new FhirAuthorizationMetadata(FhirInteraction.Update, "*");
-        var tenantEndpoints = endpoints.MapGroup("/tenant/{tenantId:int}")
-            .AddEndpointFilter<FhirAuthorizationFilter>()
-            .AddEndpointFilter<FhirAuditFilter>()
-            .AddEndpointFilter<FhirMetricsFilter>();
-
-        tenantEndpoints.MapGet("/OperationDefinition/reindex", GetOperationDefinition)
-            .WithName("GetReindexOperationDefinitionForTenant");
-
-        var systemEndpoints = endpoints.MapGroup(string.Empty)
-            .AddEndpointFilter<FhirAuthorizationFilter>()
-            .AddEndpointFilter<FhirAuditFilter>()
-            .AddEndpointFilter<FhirMetricsFilter>();
-
-        systemEndpoints.MapGet("/OperationDefinition/reindex", GetOperationDefinition)
-            .WithName("GetReindexOperationDefinition");
-
-        var tenantReindexEndpoints = tenantEndpoints.MapGroup(string.Empty)
-            .WithMetadata(reindexAuthorization)
-            .AddEndpointFilter(RequireReindexAvailableAsync);
-        tenantReindexEndpoints.MapPost("/$reindex", CreateAsync).WithName("CreateReindexForTenant");
-        tenantReindexEndpoints.MapGet("/$reindex", ListAsync).WithName("ListReindexForTenant");
-        tenantReindexEndpoints.MapGet("/$reindex/{jobId}", GetAsync).WithName("GetReindexForTenant");
-        tenantReindexEndpoints.MapDelete("/$reindex/{jobId}", CancelAsync).WithName("CancelReindexForTenant");
-
-        var systemReindexEndpoints = systemEndpoints.MapGroup(string.Empty)
-            .WithMetadata(reindexAuthorization)
-            .AddEndpointFilter(RequireReindexAvailableAsync);
-        systemReindexEndpoints.MapPost("/$reindex", CreateAsync).WithName("CreateReindex");
-        systemReindexEndpoints.MapGet("/$reindex", ListAsync).WithName("ListReindex");
-        systemReindexEndpoints.MapGet("/$reindex/{jobId}", GetAsync).WithName("GetReindex");
-        systemReindexEndpoints.MapDelete("/$reindex/{jobId}", CancelAsync).WithName("CancelReindex");
-
+        MapRoutes(endpoints.MapGroup("/tenant/{tenantId:int}"), "ForTenant");
+        MapRoutes(endpoints.MapGroup(string.Empty), string.Empty);
         return endpoints;
+    }
+
+    private static void MapRoutes(RouteGroupBuilder group, string nameSuffix)
+    {
+        group.AddEndpointFilter<FhirAuthorizationFilter>()
+            .AddEndpointFilter<FhirAuditFilter>()
+            .AddEndpointFilter<FhirMetricsFilter>();
+        group.MapGet("/OperationDefinition/reindex", GetOperationDefinition)
+            .WithName($"GetReindexOperationDefinition{nameSuffix}");
+
+        var reindex = group.MapGroup(string.Empty)
+            .WithMetadata(new FhirAuthorizationMetadata(FhirInteraction.Update, "*"))
+            .AddEndpointFilter(RequireReindexAvailableAsync);
+        reindex.MapPost("/$reindex", CreateAsync).WithName($"CreateReindex{nameSuffix}");
+        reindex.MapGet("/$reindex", ListAsync).WithName($"ListReindex{nameSuffix}");
+        reindex.MapGet("/$reindex/{jobId}", GetAsync).WithName($"GetReindex{nameSuffix}");
+        reindex.MapDelete("/$reindex/{jobId}", CancelAsync).WithName($"CancelReindex{nameSuffix}");
     }
 
     // Tenant routing, including the reserved partition 0, is enforced by TenantResolutionMiddleware before
