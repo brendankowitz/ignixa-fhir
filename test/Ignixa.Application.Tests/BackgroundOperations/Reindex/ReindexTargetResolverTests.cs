@@ -30,6 +30,7 @@ public class ReindexTargetResolverTests
             ["Patient", "Practitioner", "Observation", "Binary"],
             new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
             {
+                ["Resource"] = ["Patient", "Practitioner", "Observation", "Binary"],
                 ["DomainResource"] = ["Observation", "Patient"]
             });
 

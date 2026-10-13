@@ -70,29 +70,19 @@ public sealed class ReindexTargetResolver(
     public static IReadOnlyList<ReindexParameterDefinition> Resolve(
         IEnumerable<ActiveSearchParameter> parameters,
         IReadOnlyCollection<string> concreteResourceTypes,
-        IReadOnlyDictionary<string, IReadOnlyCollection<string>>? abstractResourceTypeExpansions = null)
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>> abstractResourceTypeExpansions)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(concreteResourceTypes);
+        ArgumentNullException.ThrowIfNull(abstractResourceTypeExpansions);
 
-        var concrete = concreteResourceTypes
-            .Order(StringComparer.Ordinal)
-            .ToArray();
         return parameters
             .Where(parameter => parameter.Status == SearchParameterStatus.Pending)
             .Select(parameter =>
             {
-                IEnumerable<string> affected = concrete.Contains(
-                    parameter.ResourceType,
-                    StringComparer.OrdinalIgnoreCase)
+                IEnumerable<string> affected = concreteResourceTypes.Contains(parameter.ResourceType, StringComparer.OrdinalIgnoreCase)
                     ? [parameter.ResourceType]
-                    : abstractResourceTypeExpansions?.TryGetValue(
-                        parameter.ResourceType,
-                        out var expansion) == true
-                        ? expansion
-                        : parameter.ResourceType.Equals("Resource", StringComparison.OrdinalIgnoreCase)
-                            ? concrete
-                            : [];
+                    : abstractResourceTypeExpansions.GetValueOrDefault(parameter.ResourceType) ?? [];
                 var affectedTypes = affected
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Order(StringComparer.Ordinal)
