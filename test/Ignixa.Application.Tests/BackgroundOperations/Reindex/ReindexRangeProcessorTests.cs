@@ -22,6 +22,7 @@ public class ReindexRangeProcessorTests
 {
     private static readonly ReindexRangeInput Range = new("job", 1, "Patient", 1, 20, 42, 20, 0);
 
+    // §8.4: a timed-out write halves its batch size and retries.
     [Fact]
     public async Task GivenWriteTimeout_WhenRangeIsProcessed_ThenBatchSizeIsHalvedAndRetried()
     {
@@ -57,6 +58,7 @@ public class ReindexRangeProcessorTests
         versions.Received(2).GetDefinitionsHandle(FhirVersion.R4, 1);
     }
 
+    // §8.4: definitions still behind E return a typed not-ready output, not an exception.
     [Fact]
     public async Task GivenDefinitionsStillBehindAfterRefresh_WhenRangeIsProcessed_ThenItReturnsNotReadyWithoutReadingOrThrowing()
     {
@@ -71,6 +73,7 @@ public class ReindexRangeProcessorTests
         await store.DidNotReceiveWithAnyArgs().ReadRangeAsync(default!, default, default, default, default, default);
     }
 
+    // §8.4 step 3 (M10): extraction runs under a background FhirRequestContext for the tenant.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -133,6 +136,7 @@ public class ReindexRangeProcessorTests
             Arg.Any<CancellationToken>());
     }
 
+    // §8.4 step 6 (F11): every failure is counted; at most 100 are returned.
     [Fact]
     public async Task GivenMoreFailuresThanTheSample_WhenRangeIsProcessed_ThenAllAreCountedAndTheSampleIsCapped()
     {
@@ -146,7 +150,7 @@ public class ReindexRangeProcessorTests
         await store.DidNotReceiveWithAnyArgs().UpdateSearchIndicesAsync(default!, default);
     }
 
-    // Spec 8.4 step 5: with a query delay the worker waits after each page before reading the next one.
+    // Spec §8.4 step 5: with a query delay the worker waits after each page before reading the next one.
     [Fact]
     public async Task GivenAQueryDelay_WhenAPageIsWritten_ThenTheWorkerWaitsBeforeTheNextRead()
     {

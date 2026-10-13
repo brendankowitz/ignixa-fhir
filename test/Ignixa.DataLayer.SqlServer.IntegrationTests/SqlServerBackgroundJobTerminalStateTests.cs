@@ -100,6 +100,7 @@ public class SqlServerBackgroundJobTerminalStateTests(SqlPersistenceContractFixt
         error.GetType().FullName.ShouldNotBe(ConflictType);
     }
 
+    // §7 start rule: the two job-table reads, the active job and the latest finished one.
     [Fact]
     public async Task GivenJobsInEveryStatus_WhenTheActiveAndLatestFinishedJobsAreRead_ThenOnlyRequestedStatusesMatch()
     {

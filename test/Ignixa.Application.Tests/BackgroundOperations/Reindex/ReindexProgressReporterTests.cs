@@ -16,6 +16,7 @@ public class ReindexProgressReporterTests
 {
     private readonly InMemoryBackgroundJobRepository<ReindexJobDefinition> _jobs = JobRepository();
 
+    // §8.5: a progress or heartbeat write that finds the job closed is a no-op.
     [Theory]
     [InlineData(null)]
     [InlineData("Completed")]
@@ -37,6 +38,7 @@ public class ReindexProgressReporterTests
         (await SerializedJobAsync()).ShouldBe(before);
     }
 
+    // §8.2, B2: the snapshot replaces the stored progress as camelCase JSON and refreshes the heartbeat.
     [Fact]
     public async Task GivenRunningJob_WhenProgressIsReported_ThenTheTypedSnapshotIsStoredAsCamelCaseJsonWithHeartbeat()
     {
@@ -53,6 +55,7 @@ public class ReindexProgressReporterTests
         ReindexProgress.FromJson(stored.Progress)!.ToJson().ToJsonString().ShouldBe(snapshot.ToJson().ToJsonString());
     }
 
+    // §8.5: the first terminal status is authoritative over a racing progress write.
     [Theory]
     [InlineData("Completed")]
     [InlineData("Failed")]
@@ -78,6 +81,7 @@ public class ReindexProgressReporterTests
         (await SerializedJobAsync()).ShouldBe(closed);
     }
 
+    // §8.6: a heartbeat that fails before an activity's work fails the activity.
     [Fact]
     public async Task GivenJobStoreUnavailable_WhenWorkWouldStart_ThenTheStartingHeartbeatFailsBeforeTheWork()
     {

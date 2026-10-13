@@ -3,6 +3,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.Features.Bundle;
 
+/// <summary>Spec §5.4: a bundle allocates with the minimum DefinitionsEventId of the handles that produced its index sets.</summary>
 public class DefinitionsEventIdTests
 {
     [Fact]

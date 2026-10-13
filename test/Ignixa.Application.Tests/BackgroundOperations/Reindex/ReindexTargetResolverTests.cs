@@ -13,6 +13,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexTargetResolverTests
 {
+    // §5.1: affected types are the targeted params' base types, expanded to concrete types.
     [Theory]
     [InlineData("Resource", null, "Binary,Observation,Patient,Practitioner")]
     [InlineData("DomainResource", null, "Observation,Patient")]
@@ -35,6 +36,7 @@ public class ReindexTargetResolverTests
         string.Join(",", result.Single().AffectedResourceTypes).ShouldBe(expectedTypes);
     }
 
+    // §4.4: a job targets a parameter only on tenants of its FHIR version.
     [Theory]
     [InlineData("4.0", new[] { 1 })]
     [InlineData("5.0", new[] { 2 })]
@@ -55,6 +57,7 @@ public class ReindexTargetResolverTests
         target.AffectedResourceTypes.ShouldContain("Patient");
     }
 
+    // §4.4: each version's parameters target that version's tenants and types.
     [Fact]
     public async Task GivenPendingParametersOnTwoVersions_WhenResolved_ThenBothVersionsTenantsAreTargetedWithTheirOwnTypes()
     {

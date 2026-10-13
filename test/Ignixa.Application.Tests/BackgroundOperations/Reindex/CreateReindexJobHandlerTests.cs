@@ -31,6 +31,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
 
     public void Dispose() => _state.Dispose();
 
+    // §6.1: with no Pending parameters there is nothing to do and no job row.
     [Fact]
     public async Task GivenNoPendingParameters_WhenAutomationRequestsReindex_ThenNothingToDoIsReturned()
     {
@@ -43,6 +44,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldBeEmpty();
     }
 
+    // §10.1: a job fans out over the active tenants, so with none there is nothing to do.
     [Fact]
     public async Task GivenNoActiveTenant_WhenAJobIsRequested_ThenNothingToDoNamesTheMissingTenant()
     {
@@ -54,6 +56,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldBeEmpty();
     }
 
+    // §7: the start rule is re-applied under the singleton lock after catching up.
     [Fact]
     public async Task GivenRemoteCompletionAfterPollCatchUp_WhenReconciliationAcquiresJobLock_ThenNoRedundantJobIsCreated()
     {
@@ -70,6 +73,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldBeEmpty();
     }
 
+    // §7 start rule: a finished job's own Pending parameters never restart on their own.
     [Theory]
     [InlineData("Failed")]
     [InlineData("Cancelled")]
@@ -86,6 +90,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldHaveSingleItem().JobId.ShouldBe("failed-during-race");
     }
 
+    // §7 start rule: a Pending activation newer than the latest finished job's TargetEventId starts a job.
     [Theory]
     [InlineData("Completed")]
     [InlineData("Failed")]
@@ -101,6 +106,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         job.Definition.SearchParameters.Select(parameter => parameter.Code).ShouldBe(["custom"]);
     }
 
+    // §7 start rule: a manual $reindex ignores the rule.
     [Fact]
     public async Task GivenFinishedJobCoversPendingParameters_WhenJobIsCreatedManually_ThenJobStarts()
     {
@@ -109,6 +115,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await CreatedJobAsync(await HandleAsync())).Definition.Trigger.ShouldBe("Manual");
     }
 
+    // §6.1: an out-of-range parameter is a typed 400 result, rejected before the job lock.
     [Fact]
     public async Task GivenInvalidConcurrency_WhenJobIsCreated_ThenTypedValidationResultIsReturned()
     {
@@ -119,6 +126,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         _jobLock.Acquisitions.ShouldBe(0);
     }
 
+    // §6.1 (F8): an active or queued job is returned for the 409 instead of a second job.
     [Theory]
     [InlineData("Queued")]
     [InlineData("Running")]
@@ -132,6 +140,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldHaveSingleItem();
     }
 
+    // §8.1: the handler writes the Queued job row and starts its orchestration with instanceId = jobId.
     [Fact]
     public async Task GivenJobIsCreated_WhenOrchestrationStarts_ThenRowAndInputCarryTheResolvedPlan()
     {
@@ -150,6 +159,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
             Arg.Any<OrchestrationStatus[]>());
     }
 
+    // §7: a job row whose orchestration could not be started is deleted.
     [Fact]
     public async Task GivenOrchestrationStartFailure_WhenJobIsCreated_ThenRowIsDeletedAndNextAutomaticStartSucceeds()
     {

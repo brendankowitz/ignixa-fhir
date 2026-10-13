@@ -60,7 +60,7 @@ public class DeferredWriteCoordinatorBarrierTests
         await Should.ThrowAsync<ConformanceStaleException>(() => second.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
-    // Spec 5.4: a transaction bundle rejected by the barrier re-extracts every staged entry with the fresh handle.
+    // Spec §5.4: a transaction bundle rejected by the barrier re-extracts every staged entry with the fresh handle.
     [Fact]
     public async Task GivenAnAtomicCommitRejectedByTheBarrier_WhenDefinitionsRefresh_ThenEveryStagedEntryIsReextractedAndRetried()
     {

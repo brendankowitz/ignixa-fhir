@@ -11,6 +11,7 @@ using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHe
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
+/// <summary>Spec §6.4: cancel is 202 (parameters return to Pending), 404 for an unknown job, or 409 for a terminal one.</summary>
 public sealed class CancelReindexHandlerTests : IDisposable
 {
     private readonly IOrchestrationServiceClient _runtime = Substitute.For<IOrchestrationServiceClient>();

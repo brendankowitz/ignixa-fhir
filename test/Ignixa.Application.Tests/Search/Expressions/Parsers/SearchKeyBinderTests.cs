@@ -63,7 +63,7 @@ public class SearchKeyBinderTests
         exception.Message.ShouldBe(Resources.ChainedParameterNotSupported);
     }
 
-    // Spec 4.2: a hidden parameter on one chain target must surface as hidden, not be filtered like an
+    // Spec §4.2: a hidden parameter on one chain target must surface as hidden, not be filtered like an
     // unsupported one, which would silently narrow the chain to the remaining targets.
     [Fact]
     public void GivenUntypedForwardChainWhoseParameterIsHiddenOnOneTarget_WhenBinding_ThenTheHiddenParameterIsReported()

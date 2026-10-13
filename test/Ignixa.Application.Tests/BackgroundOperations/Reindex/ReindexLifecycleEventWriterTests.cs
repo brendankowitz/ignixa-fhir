@@ -9,6 +9,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexLifecycleEventWriterTests
 {
+    // M-L3: a multi-base canonical completes each base type by its own outcome.
     [Fact]
     public async Task GivenMultiBaseCanonical_WhenLifecycleCompletes_ThenEachTargetUsesItsOwnOutcome()
     {
@@ -35,7 +36,7 @@ public class ReindexLifecycleEventWriterTests
         state.GetSearchParameter("Observation", "custom")!.Status.ShouldBe(SearchParameterStatus.Enabled);
     }
 
-    // Spec 4.3: a lifecycle event the projection's guard ignores is reported, never silently dropped.
+    // Spec §4.3: a lifecycle event the projection's guard ignores is reported, never silently dropped.
     [Theory]
     [InlineData("custom", 5)]
     [InlineData("unknown", 1)]

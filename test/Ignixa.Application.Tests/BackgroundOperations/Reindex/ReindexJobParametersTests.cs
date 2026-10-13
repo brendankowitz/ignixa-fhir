@@ -3,6 +3,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
+/// <summary>Spec §6.1: the tuning parameters are validated against their ranges.</summary>
 public class ReindexJobParametersTests
 {
     [Theory]

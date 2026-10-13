@@ -14,6 +14,7 @@ namespace Ignixa.Api.E2ETests;
 public class VersionReadTenantIsolationTests(IgnixaApiFixture fixture)
 {
     private static readonly int[] Tenants = [1, 2];
+    // Review 4: pre-existing test, now [SqlFact] because it needs TEST_SQL_CONNECTION_STRING.
     [SqlFact]
     public async Task GivenTwoTenantsWithTheSameResourceId_WhenVread_ThenHistoryIsIsolatedAndUnqualifiedRoutesAreRejected()
     {

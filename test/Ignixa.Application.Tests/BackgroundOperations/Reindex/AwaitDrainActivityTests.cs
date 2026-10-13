@@ -14,7 +14,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public sealed class AwaitDrainActivityTests
 {
-    // Spec 8.6: an incomplete transaction below the cutoff holds the drain even after the watermark advanced;
+    // Spec §8.6: an incomplete transaction below the cutoff holds the drain even after the watermark advanced;
     // a drain still waiting past DrainWarningAfter logs the oldest such transaction.
     [Theory]
     [InlineData(4, false)]

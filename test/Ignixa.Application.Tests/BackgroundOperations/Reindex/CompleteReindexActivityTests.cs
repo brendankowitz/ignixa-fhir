@@ -17,6 +17,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class CompleteReindexActivityTests
 {
+    // §8.5: lifecycle appends are idempotent, so a retried completion appends nothing twice.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -56,7 +57,7 @@ public class CompleteReindexActivityTests
         }
     }
 
-    // Spec 8.5: an active tenant the job did not cover fails the target; a retried append keeps that decision.
+    // Spec §8.5: an active tenant the job did not cover fails the target; a retried append keeps that decision.
     [Fact]
     public async Task GivenActiveTenantWasNotInJobAndTheLifecycleAppendFails_WhenActivityRetries_ThenTheJobFailsWithoutEnablingTarget()
     {
@@ -76,6 +77,7 @@ public class CompleteReindexActivityTests
         job.ErrorMessage.ShouldContain("manual $reindex");
     }
 
+    // §8.5 (M7): an owned target that does not match a planned identity fails back to Pending.
     [Theory]
     [InlineData("canonical")]
     [InlineData("resourceType")]
@@ -105,6 +107,7 @@ public class CompleteReindexActivityTests
         fixture.State.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
     }
 
+    // §8.5: the catalog is checked by storage canonical (OverridesCanonical ?? Canonical).
     [Fact]
     public async Task GivenAnOverrideStoredUnderItsBaseCanonical_WhenReindexCompletes_ThenTheBaseCatalogRowIsCheckedAndTheOverrideIsEnabled()
     {
@@ -123,6 +126,7 @@ public class CompleteReindexActivityTests
         fixture.Status.ShouldBe(SearchParameterStatus.Enabled);
     }
 
+    // §8.5: a tenant whose catalog has no row for the storage canonical fails the target.
     [Fact]
     public async Task GivenTheTenantCatalogHasNoRowForTheStorageCanonical_WhenCompletionRuns_ThenTheJobFailsAndTheParameterIsNotEnabled()
     {
@@ -157,7 +161,7 @@ public class CompleteReindexActivityTests
         fixture.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
-    // Spec 8.5: the job store's first terminal status is authoritative; a delayed completion changes nothing.
+    // Spec §8.5: the job store's first terminal status is authoritative; a delayed completion changes nothing.
     [Fact]
     public async Task GivenTheJobWasCancelledFirst_WhenCompletionRuns_ThenNeitherTheJobNorItsParameterIsTouched()
     {
@@ -176,7 +180,7 @@ public class CompleteReindexActivityTests
             data is SearchParameterReindexCompleted || data is SearchParameterReindexFailed);
     }
 
-    // Spec 4.4: a target is judged only by tenants of its FHIR version. Another version's active tenant is
+    // Spec §4.4: a target is judged only by tenants of its FHIR version. Another version's active tenant is
     // neither required nor catalog-checked (only tenant 1 has a store), and its failures do not decide it.
     [Theory]
     [InlineData(false)]

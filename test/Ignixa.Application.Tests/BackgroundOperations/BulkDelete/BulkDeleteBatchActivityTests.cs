@@ -129,6 +129,7 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
         _operations.ShouldBeEmpty();
     }
 
+    // §4.5: without the lease a bulk-delete batch neither searches nor deletes and reports a deferred batch.
     [Theory]
     [InlineData(BulkDeleteMode.SoftDelete)]
     [InlineData(BulkDeleteMode.HardDelete)]

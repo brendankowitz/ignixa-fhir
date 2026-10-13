@@ -90,6 +90,7 @@ public class SchemaDeployerDeployOptionsTests
         CreateDeployer(environmentName).CreateDeployOptions().BlockOnPossibleDataLoss.ShouldBeTrue();
     }
 
+    // §8.7: DacFx leaves the retired ReindexJob objects to the post-deploy script, which refuses a non-empty table.
     [Theory]
     [InlineData("Development")]
     [InlineData("Test")]
@@ -99,7 +100,7 @@ public class SchemaDeployerDeployOptionsTests
         CreateDeployer(environmentName).CreateDeployOptions().DropObjectsNotInSource.ShouldBeFalse();
     }
 
-    // An upgrade can build an index ONLINE over a large table (schema 4's filtered dbo.Transactions index);
+    // §8.7: an upgrade can build an index ONLINE over a large table (schema 4's filtered dbo.Transactions index);
     // DacFx's 60-second command default would abort it part-way.
     [Theory]
     [InlineData("Development")]

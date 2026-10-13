@@ -3,6 +3,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
+/// <summary>Spec §6.1: the kickoff body accepts exactly the listed parameters; anything else is a 400 (F12).</summary>
 public class ReindexRequestParserTests
 {
     [Fact]

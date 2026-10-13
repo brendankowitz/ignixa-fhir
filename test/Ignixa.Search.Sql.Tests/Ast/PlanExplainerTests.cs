@@ -185,7 +185,7 @@ public class PlanExplainerTests
             "inc0 = IncludeStage(ref=*, seedTypes=*, outputTypes=*, seeds=[match], limit=500 iterate, Reverse)");
     }
 
-    // A wildcard include that resolved to the searchable reference parameters names them, so Explain shows
+    // §4.2: a wildcard include that resolved to the searchable reference parameters names them, so Explain shows
     // which ids the stage follows rather than an unrestricted wildcard.
     [Fact]
     public void GivenAWildcardIncludeStageWithResolvedReferences_WhenExplained_ThenItListsTheReferenceIds()

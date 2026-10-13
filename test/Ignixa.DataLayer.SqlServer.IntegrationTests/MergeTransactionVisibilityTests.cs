@@ -40,6 +40,7 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
             .ShouldBe(2);
     }
 
+    // §5.2 step 3: a rejected delete completes its allocation, so it cannot hold the drain or visibility.
     [Fact]
     public async Task GivenAStandaloneDeleteRejectedByTheServer_WhenItRollsBack_ThenItsAllocationIsCompleted()
     {
@@ -63,6 +64,7 @@ public class MergeTransactionVisibilityTests : IAsyncLifetime
             .ShouldBe(1);
     }
 
+    // §5.5 invariant: every SQL write shape allocates through BeginTransactionAsync.
     [Fact]
     public async Task GivenEachSqlWriteShape_WhenItStarts_ThenItAllocatesThroughTheVisibilityTransaction()
     {

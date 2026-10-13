@@ -13,6 +13,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexOrchestrationTests
 {
+    // §8.2, §8.6 (M5): the flow runs end to end with every activity scheduled with retry.
     [Fact]
     public async Task GivenJob_WhenOrchestrated_ThenEveryActivityIsScheduledWithRetryAndEveryRangeIsCounted()
     {
@@ -27,7 +28,7 @@ public class ReindexOrchestrationTests
         (tenant.ResourcesToReindex, tenant.ResourcesReindexed, tenant.Conflicts).ShouldBe((30L, 30L, 1L));
     }
 
-    // Spec 8.2: progress is persisted outside the range failure boundary, so retrying it never reruns a range.
+    // Spec §8.2: progress is persisted outside the range failure boundary, so retrying it never reruns a range.
     [Fact]
     public async Task GivenProgressPersistenceFails_WhenRetried_ThenOnlyProgressIsRetriedNotRanges()
     {
@@ -43,7 +44,7 @@ public class ReindexOrchestrationTests
         context.Inputs<PersistReindexProgressInput>().Last().Progress.Tenants.Single().ResourcesReindexed.ShouldBe(30);
     }
 
-    // Spec 8.2: a snapshot that still cannot be written fails the job visibly and never reruns a range,
+    // Spec §8.2: a snapshot that still cannot be written fails the job visibly and never reruns a range,
     // whichever phase boundary it is written at.
     [Theory]
     [InlineData(false, 0)]
@@ -62,7 +63,7 @@ public class ReindexOrchestrationTests
         context.RangeAttempts.ShouldBe(expectedRangeAttempts);
     }
 
-    // Spec 8.6: a range activity that fails after its retries fails only that (tenant, type); the other
+    // Spec §8.6: a range activity that fails after its retries fails only that (tenant, type); the other
     // tenant still completes and the job ends Failed.
     [Fact]
     public async Task GivenARangeActivityFailsAfterItsRetries_WhenOrchestrated_ThenOnlyThatTenantsTypeFailsAndTheOtherTenantCompletes()
@@ -88,7 +89,7 @@ public class ReindexOrchestrationTests
             failure.ResourceType == "Patient" && failure.Reason.Contains("range worker crashed"));
     }
 
-    // Spec 8.5: a job closed elsewhere is authoritative, whether start or the first phase boundary finds it.
+    // Spec §8.5: a job closed elsewhere is authoritative, whether start or the first phase boundary finds it.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -123,6 +124,7 @@ public class ReindexOrchestrationTests
         result.Tenants.Single().ResourcesReindexed.ShouldBe(30);
     }
 
+    // §8.4: a tenant whose definitions stay behind for StaleJobTimeout fails, reported as data.
     [Fact]
     public async Task GivenDefinitionsNeverCatchUp_WhenStaleJobTimeoutElapses_ThenTenantFailsWithoutAnExceptionCrossingTheActivityBoundary()
     {
@@ -157,6 +159,7 @@ public class ReindexOrchestrationTests
             .ShouldBe(JsonSerializer.Serialize(uninterrupted.Context.Inputs<PersistReindexProgressInput>()));
     }
 
+    // §8.2 (B1): ContinueAsNew carries the state and returns without scheduling more work.
     [Fact]
     public async Task GivenContinueAsNew_WhenRequested_ThenCurrentStateIsCarriedAndNoMoreWorkIsScheduled()
     {
@@ -168,6 +171,7 @@ public class ReindexOrchestrationTests
         context.Scheduled.ShouldBe([nameof(StartReindexInput)]);
     }
 
+    // §5.2: wait BarrierDelay, drain to B_t, plan and reindex ranges up to S_t.
     [Fact]
     public async Task GivenBarrierDelayAndCutoffs_WhenOrchestrated_ThenTheBarrierWaitsAndPlanningRangesAndDrainingUseTheCorrectWatermarks()
     {
@@ -192,6 +196,7 @@ public class ReindexOrchestrationTests
         context.Inputs<AwaitDrainInput>().ShouldHaveSingleItem().CutoffTransactionId.ShouldBe(10);
     }
 
+    // §8.2: the carried ReindexOrchestrationState round-trips with enums as strings.
     [Fact]
     public async Task GivenContinuationAfterBarrier_WhenSerialized_ThenTypedStateRoundTripsWithReadableEnums()
     {
@@ -242,6 +247,7 @@ public class ReindexOrchestrationTests
         tenant.FailedResourceCount.ShouldBe(306);
     }
 
+    // §8.6 (N4): an activity that fails after its retries ends the job Failed, with the reason.
     [Fact]
     public async Task GivenStartActivityFailsAfterRetries_WhenOrchestrated_ThenJobIsFinalizedFailed()
     {
@@ -253,6 +259,7 @@ public class ReindexOrchestrationTests
         context.Completion.FailureMessage.ShouldContain("start failed");
     }
 
+    // §5.2 step 3, §8.6: a drain still waiting at StaleJobTimeout fails the tenant.
     [Fact]
     public async Task GivenDrainNeverCompletes_WhenStaleJobTimeoutElapses_ThenTenantFails()
     {
@@ -274,6 +281,7 @@ public class ReindexOrchestrationTests
         context.Inputs<PersistReindexProgressInput>().Count.ShouldBe(1);
     }
 
+    // §8.2: a waiting tenant does not hold the other tenants' waves.
     [Fact]
     public async Task GivenOneTenantStillDraining_WhenAnotherReindexes_ThenTheReindexingTenantIsNotHeldByTheDrainPoll()
     {

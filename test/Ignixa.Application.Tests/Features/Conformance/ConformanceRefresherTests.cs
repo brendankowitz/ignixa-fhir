@@ -15,7 +15,7 @@ using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 namespace Ignixa.Application.Tests.Features.Conformance;
 
 /// <summary>
-/// A refresh builds each tenant's definitions, catalogs them, publishes them all, then invalidates capabilities.
+/// Spec §5.4: a refresh builds each tenant's definitions, catalogs them, publishes them all, then invalidates capabilities.
 /// Each test asserts that ordered effect timeline.
 /// </summary>
 public class ConformanceRefresherTests

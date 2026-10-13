@@ -26,7 +26,7 @@ public class ImportDefinitionsEventIdTests
         await repository.Received(1).GetNextTransactionIdAsync(73, Arg.Any<CancellationToken>());
     }
 
-    // Spec 5.4: a batch the barrier rejects is re-extracted with a fresh handle and retried once.
+    // Spec §5.4: a batch the barrier rejects is re-extracted with a fresh handle and retried once.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

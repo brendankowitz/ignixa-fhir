@@ -6,6 +6,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.Infrastructure;
 
+/// <summary>Spec §6.6: only SQL tenants can reindex; §10.1: the system partition and inactive tenants are not counted.</summary>
 public sealed class CompositeRepositoryFactoryTests
 {
     public static TheoryData<string, bool> RecognizedStorageTypes => new()

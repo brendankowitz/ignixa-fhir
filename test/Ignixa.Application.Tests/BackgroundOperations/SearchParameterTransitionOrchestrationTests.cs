@@ -5,6 +5,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations;
 
+/// <summary>Spec §4.4: phase 2 commits after a durable TransitionGrace timer.</summary>
 public class SearchParameterTransitionOrchestrationTests
 {
     [Fact]

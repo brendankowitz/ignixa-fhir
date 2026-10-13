@@ -13,6 +13,7 @@ using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHe
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
+/// <summary>Spec §8.6 Recovery: past OrphanGrace, a job with a missing or terminal orchestration takes its recorded outcome or fails.</summary>
 public sealed class ReindexJobReconcilerTests : IDisposable
 {
     private static readonly DateTimeOffset PastGrace = Now - TimeSpan.FromMinutes(10);

@@ -34,6 +34,7 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
 
     public void Dispose() => _state.Dispose();
 
+    // §8.2: start appends SearchParameterReindexStarted per target and moves the job to Running.
     [Fact]
     public async Task GivenQueuedJob_WhenStartRuns_ThenTargetsAreStartedAndTheJobRuns()
     {
@@ -46,6 +47,7 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
         started.StartDate.ShouldNotBeNull();
     }
 
+    // §8.5: a delayed start cannot reopen a finalized job or its parameters.
     [Theory]
     [InlineData("Completed", SearchParameterStatus.Enabled)]
     [InlineData("Failed", SearchParameterStatus.Pending)]
@@ -73,6 +75,7 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
         _events.Appended.Count(evt => evt.Data is SearchParameterReindexStarted).ShouldBe(1);
     }
 
+    // §8.5: lifecycle start and cancellation serialize on the singleton job lock.
     [Fact]
     public async Task GivenStartIsAppending_WhenCancellationArrives_ThenCancellationWaitsForTheStartToCommit()
     {

@@ -69,6 +69,7 @@ public class BulkDeleteOrchestrationTests
             retry.MaxNumberOfAttempts == 3 && retry.BackoffCoefficient == 2);
     }
 
+    // §4.5: a deferred batch runs again after a durable wait of 5 s doubling.
     [Fact]
     public async Task GivenABatchDeferredForAStaleConformanceLease_WhenRunning_ThenTheSameBatchRunsAgainAfterADurableWait()
     {
@@ -89,6 +90,7 @@ public class BulkDeleteOrchestrationTests
         output.Success.ShouldBeTrue();
     }
 
+    // §4.5: the job fails, with the reason, once one batch has waited 15 minutes.
     [Fact]
     public async Task GivenTheConformanceLeaseStaysLost_WhenTheWaitExceedsItsBound_ThenTheJobFailsWithTheReason()
     {

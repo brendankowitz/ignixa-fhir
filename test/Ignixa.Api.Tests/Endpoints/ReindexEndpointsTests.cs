@@ -57,6 +57,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _app = BuildApp(Substitute.For<IFhirAuthorizationService>(), authorizationEnabled: false);
     }
 
+    // §6.1: kickoff returns 201, the job Parameters and Content-Location.
     [Fact]
     public async Task GivenCreatedJob_WhenCreatingForTenant_ThenReturnsParametersAndContentLocation()
     {
@@ -72,6 +73,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands.ShouldHaveSingleItem().MaximumConcurrency.ShouldBe(2);
     }
 
+    // §10.2 Reindex:Enabled: a disabled server answers the operation with 404.
     [Fact]
     public async Task GivenDisabledReindex_WhenMappingEndpoints_ThenOperationalRoutesRemainMappedAndAnswerNotFound()
     {
@@ -93,6 +95,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands.ShouldBeEmpty();
     }
 
+    // §6.1: the Parameters body is optional.
     [Fact]
     public async Task GivenEmptyChunkedRequestBody_WhenCreating_ThenUsesDefaultParameters()
     {
@@ -102,6 +105,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands.ShouldHaveSingleItem();
     }
 
+    // §6.1 (F12): a rejected parameter returns 400 before any job is created.
     [Fact]
     public async Task GivenUnparseableParameters_WhenCreating_ThenReturnsTheParseErrorWithoutDispatching()
     {
@@ -112,6 +116,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands.ShouldBeEmpty();
     }
 
+    // §6.3: counts and identifiers use valueInteger64 on R5, valueDecimal/valueString before.
     [Theory]
     [InlineData("3.0", "valueDecimal", "valueString")]
     [InlineData("4.0", "valueDecimal", "valueString")]
@@ -143,6 +148,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         identifiers.ShouldAllBe(name => lines.Any(line => line.StartsWith($"{name}[{identifierValueName}]=", StringComparison.Ordinal)));
     }
 
+    // §6.3: the job Parameters body.
     [Fact]
     public async Task GivenStatusWithAllFields_WhenGettingStatus_ThenMapsFhirParameters()
     {
@@ -201,6 +207,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
             """.ReplaceLineEndings("\n"));
     }
 
+    // §6.1, §6.2, §6.4: each handler outcome maps to its status code.
     [Theory]
     [InlineData("CreateReindexForTenant", "active", 409, "OperationOutcome", "/tenant/1/$reindex/active-job")]
     [InlineData("CreateReindexForTenant", "no-work", 400, "OperationOutcome", null)]
@@ -246,6 +253,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         }
     }
 
+    // §6.1: any Prefer other than respond-async returns 400.
     [Fact]
     public async Task GivenInvalidPreferHeader_WhenCreating_ThenReturnsBadRequestWithoutDispatching()
     {
@@ -255,6 +263,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         _createCommands.ShouldBeEmpty();
     }
 
+    // §6.6: a tenant provider that cannot reindex makes the routes return 501.
     [Theory]
     [MemberData(nameof(OperationalRoutes))]
     public async Task GivenMixedProviderServer_WhenUsingOperationalRoute_ThenReturnsNotImplementedOutcome(string operationEndpointName)
@@ -346,6 +355,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         response.StatusCode.ShouldBe(expectedStatus);
     }
 
+    // §6.1: OperationDefinition/reindex lists exactly the accepted parameters.
     [Fact]
     public async Task GivenOperationDefinitionRequest_WhenGettingDefinition_ThenListsAcceptedParameters()
     {

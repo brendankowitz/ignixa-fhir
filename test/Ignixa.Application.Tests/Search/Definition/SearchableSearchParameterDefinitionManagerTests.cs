@@ -157,7 +157,7 @@ public class SearchableSearchParameterDefinitionManagerTests
             () => searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> _));
     }
 
-    // Hidden (pending or redefined) and unsupported are distinct answers whichever key the caller looks up by.
+    // §4.2: hidden (pending or redefined) and unsupported are distinct answers whichever key the caller looks up by.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

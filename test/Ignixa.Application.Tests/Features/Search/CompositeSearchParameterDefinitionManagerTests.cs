@@ -8,7 +8,7 @@ using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType
 
 namespace Ignixa.Application.Tests.Features.Search;
 
-/// <summary>Listing all parameters keeps one entry per storage identity and base type, whether base or override.</summary>
+/// <summary>Spec §4.4 (B-L2, M-L3): listing all parameters keeps one entry per storage identity and base type, whether base or override.</summary>
 public class CompositeSearchParameterDefinitionManagerTests
 {
     private const string ClinicalPatient = "http://hl7.org/fhir/SearchParameter/clinical-patient";

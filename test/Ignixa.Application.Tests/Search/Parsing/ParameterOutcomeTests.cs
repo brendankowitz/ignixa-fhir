@@ -37,7 +37,7 @@ public class ParameterOutcomeTests
         return cases;
     }
 
-    // A wildcard include expands to pending references too, concrete or declared on an abstract base.
+    // §4.2: a wildcard include expands to pending references too, concrete or declared on an abstract base.
     [Theory]
     [MemberData(nameof(WildcardIncludeCases))]
     public void GivenAWildcardIncludeWithAPendingReference_WhenBuilt_ThenItWarnsOfIncompleteResultsAndTracksTheParameter(
@@ -62,6 +62,7 @@ public class ParameterOutcomeTests
             "Search results may be incomplete because search parameter 'pending-reference' is pending reindex.");
     }
 
+    // §4.2: _sort follows the same hidden and partial-index rules.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -128,7 +129,7 @@ public class ParameterOutcomeTests
         return cases;
     }
 
-    // A pending parameter is visible only with the partial-index opt-in; a redefined one never is.
+    // §4.2: a pending parameter is visible only with the partial-index opt-in; a redefined one never is.
     [Theory]
     [MemberData(nameof(HiddenParameterCases))]
     public void GivenAHiddenParameterInAnyResolvedPosition_WhenBuilt_ThenItReportsTheWarningForItsState(
@@ -145,7 +146,7 @@ public class ParameterOutcomeTests
         options.BundleIssues.ShouldContain(issue => issue.Diagnostics == expectedDiagnostics);
     }
 
-    // The trace shows why a hidden parameter did not reach the query, as it does for an unsupported one.
+    // §4.2: the trace shows why a hidden parameter did not reach the query, as it does for an unsupported one.
     [Fact]
     public void GivenAHiddenParameter_WhenTraced_ThenItIsReportedIgnoredAndTracked()
     {

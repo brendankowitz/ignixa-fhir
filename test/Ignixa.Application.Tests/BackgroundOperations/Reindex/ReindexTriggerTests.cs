@@ -12,6 +12,7 @@ using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHe
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
+/// <summary>Spec §7: activation and tick triggering, the start rule and hand-off; §6.6 and §10.2 when reindex cannot run.</summary>
 public sealed class ReindexTriggerTests : IDisposable
 {
     private readonly IMediator _mediator = Substitute.For<IMediator>();

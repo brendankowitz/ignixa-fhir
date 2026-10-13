@@ -6,6 +6,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexProgressTests
 {
+    // §6.3: progress is capped at 99.9 for every status other than Completed.
     [Theory]
     [InlineData(ReindexJobStatus.Running, 10, 10, 99.9)]
     [InlineData(ReindexJobStatus.Failed, 10, 10, 99.9)]
@@ -34,6 +35,7 @@ public class ReindexProgressTests
         progress.PercentComplete(status).ShouldBe(expected);
     }
 
+    // §8.2 (B2): the progress snapshot round-trips with phases and statuses as strings; §6.3 totals derive from it.
     [Fact]
     public void GivenProgressWithFailures_WhenRoundTrippedThroughJson_ThenTotalsAndSamplesDerive()
     {

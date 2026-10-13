@@ -4,6 +4,7 @@ using Shouldly;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
+/// <summary>Spec §10.2: the Reindex configuration section is validated at startup.</summary>
 public class ReindexOptionsValidatorTests
 {
     [Fact]

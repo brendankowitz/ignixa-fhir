@@ -20,6 +20,7 @@ public class GetReindexStatusHandlerTests
 
     private readonly InMemoryBackgroundJobRepository<ReindexJobDefinition> _jobs = JobRepository();
 
+    // §8.6: a job silent past StaleJobTimeout (plus BarrierDelay in that phase) is flagged stale.
     [Theory]
     [InlineData("Queued", null, true)]
     [InlineData("Running", ReindexPhase.BarrierDelay, false)]
@@ -38,6 +39,7 @@ public class GetReindexStatusHandlerTests
         result.ShouldNotBeNull().IsStale.ShouldBe(expectedStale);
     }
 
+    // §6.2: an id that is not a reindex job is a 404.
     [Fact]
     public async Task GivenJobOfAnotherType_WhenStatusIsRead_ThenItIsAbsent()
     {
@@ -48,6 +50,7 @@ public class GetReindexStatusHandlerTests
         (await StatusAsync("export")).ShouldBeNull();
     }
 
+    // §6.2: the list holds every active and queued job and only the most recent terminal ones.
     [Fact]
     public async Task GivenActiveAndTerminalJobs_WhenListingJobs_ThenAllActiveAndOnlyRecentTerminalsAreReturned()
     {
