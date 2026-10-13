@@ -75,7 +75,8 @@ public class SqlOverrideRestartTests
         await using var restartedHost = CreateHost(template, connectionString);
         using var client = restartedHost.CreateClient();
 
-        await AssertPendingSearchAsync(client, identifier);
+        await SearchParameterLifecycleTestHelper.AssertHiddenAsync(
+            client, $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}", "identifier", redefined: false);
         var restartedState = restartedHost.Services.GetRequiredService<ConformanceState>();
         ReferenceEquals(restartedState, initialState).ShouldBeFalse();
         restartedState.IsInitialized.ShouldBeTrue();
@@ -132,23 +133,6 @@ public class SqlOverrideRestartTests
         var body = await response.Content.ReadAsStringAsync();
         response.StatusCode.ShouldBe(HttpStatusCode.Created, body);
         JsonNode.Parse(body)!["meta"]!["versionId"]!.GetValue<string>().ShouldBe("1");
-    }
-
-    private static async Task AssertPendingSearchAsync(HttpClient client, string identifier)
-    {
-        using var strictRequest = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}");
-        strictRequest.Headers.Add("Prefer", "handling=strict");
-        using var strictResponse = await client.SendAsync(strictRequest);
-        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
-
-        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}");
-        lenientRequest.Headers.Add("Prefer", "handling=lenient");
-        using var lenientResponse = await client.SendAsync(lenientRequest);
-        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
-        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
-        lenientBody.ShouldContain("Search parameter 'identifier' is pending reindex and was ignored.");
     }
 
     private static async Task AssertPatientAsync(HttpClient client, string identifier, string id)

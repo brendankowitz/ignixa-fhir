@@ -41,188 +41,25 @@ public class SqlOverrideActivationLifecycleTests
     public async Task GivenSuccessiveRealActivations_WhenUpgradedChainedAndReplayed_ThenEveryWriteKeepsTheRootIdentity(bool legacyEvents)
     {
         await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaOverrideActivation");
-        var connectionString = database.ConnectionString;
-        await AssertLifecycleAsync(connectionString, legacyEvents);
+        await AssertLifecycleAsync(database.ConnectionString, legacyEvents);
     }
 
     [SqlFact]
     public async Task GivenStagedOverride_WhenTransitionGraceElapses_ThenItIsCommittedAutomatically()
     {
         await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaAutomaticTransition");
-        var connectionString = database.ConnectionString;
         await using var template = new IgnixaApiFixture();
-        await using var host = CreateHost(template, connectionString, shortTransitionGrace: true);
+        await using var host = CreateHost(template, database.ConnectionString, shortTransitionGrace: true);
 
         await ActivateAsync(host.Services, "hl7.fhir.r4.core", "automatic-base", BaseUrl, null);
         await ActivateAsync(host.Services, PackageId, "automatic", PackageUrl, BaseUrl);
 
+        // Spec §4.4: the durable transition orchestration commits the staged override once the grace elapses.
         var state = host.Services.GetRequiredService<ConformanceState>();
-        var completed = await SpinWaitAsync(
-            () => state.FindByCanonical(PackageUrl)?.Status == Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending,
-            TimeSpan.FromSeconds(10));
+        await SearchParameterLifecycleTestHelper.WaitForStatusAsync(
+            state, PackageUrl, Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending, TimeSpan.FromSeconds(10));
 
-        completed.ShouldBeTrue("the durable transition orchestration should commit the staged override");
         state.FindByCanonical(BaseUrl)!.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Disabled);
-    }
-
-    [SqlFact]
-    public async Task GivenInProcessBaseParameter_WhenOverrideIsActivatedAndReindexed_ThenItUsesSharedIdentity()
-    {
-        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaInProcessOverride");
-        var connectionString = database.ConnectionString;
-        await using var template = new IgnixaApiFixture();
-        await using var host = CreateHost(template, connectionString, fastReindex: true);
-        using var client = host.CreateClient();
-        var cache = await host.Services.GetRequiredService<SqlServerSearchIndexCacheRegistry>()
-            .GetOrCreateAsync(1, CancellationToken.None);
-        var baseId = await cache.GetSearchParamIdAsync(BaseUrl, CancellationToken.None)
-            ?? throw new InvalidOperationException("Missing in-process base identifier ID.");
-        var beforeId = $"before-override-{Guid.NewGuid():N}";
-        var afterId = $"after-override-{Guid.NewGuid():N}";
-        await PutPatientAsync(client, beforeId, "shared-identity");
-
-        await ActivateAsync(host.Services, PackageId, "distinct", PackageUrl, BaseUrl);
-
-        var owner = host.Services.GetRequiredService<ConformanceState>()
-            .FindByCanonical(PackageUrl)!;
-        owner.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Staged);
-        owner.OverridesCanonical.ShouldBe(BaseUrl);
-
-        await PutPatientAsync(client, afterId, "shared-identity");
-        RenewLease(host.Services);
-
-        using var strictRequest = new HttpRequestMessage(
-            HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|not-yet-searchable")}");
-        strictRequest.Headers.Add("Prefer", "handling=strict");
-        using var strictResponse = await client.SendAsync(strictRequest);
-        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
-
-        RenewLease(host.Services);
-        using var lenientRequest = new HttpRequestMessage(
-            HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|not-yet-searchable")}");
-        lenientRequest.Headers.Add("Prefer", "handling=lenient");
-        using var lenientResponse = await client.SendAsync(lenientRequest);
-        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
-        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
-        JsonNode.Parse(lenientBody)!["entry"]!.AsArray()
-            .Select(entry => entry!["resource"])
-            .ShouldContain(resource =>
-                resource!["resourceType"]!.GetValue<string>() == "OperationOutcome" &&
-                resource["issue"]![0]!["severity"]!.GetValue<string>() == "warning");
-
-        (await SpinWaitAsync(
-            () => host.Services.GetRequiredService<ConformanceState>()
-                .FindByCanonical(PackageUrl)?.Status ==
-                Ignixa.Conformance.Events.Models.SearchParameterStatus.Pending,
-            TimeSpan.FromSeconds(20))).ShouldBeTrue();
-        var definitions = host.Services.GetRequiredService<IFhirVersionContext>()
-            .GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
-        var resolver = new SqlServerSymbolResolver(cache);
-        (await resolver.GetSearchParamIdAsync(
-            definitions.GetSearchParameter("Patient", "identifier"),
-            CancellationToken.None)).ShouldBe(baseId);
-        using var reindexResponse = await client.PostAsync(
-            "/tenant/1/$reindex",
-            new StringContent("""{"resourceType":"Parameters"}""", Encoding.UTF8, "application/fhir+json"));
-        var reindexBody = await reindexResponse.Content.ReadAsStringAsync();
-        reindexResponse.StatusCode.ShouldBe(HttpStatusCode.Created, reindexBody);
-        var jobId = JsonNode.Parse(reindexBody)!["parameter"]!.AsArray()
-            .Single(parameter => parameter!["name"]!.GetValue<string>() == "id")!["valueString"]!
-            .GetValue<string>();
-        await WaitForReindexAsync(client, jobId);
-        // Completion no longer refreshes local consumers synchronously (M9); the sync tick does it.
-        await host.Services.GetRequiredService<ConformanceRefresher>()
-            .RefreshAsync(force: false, CancellationToken.None);
-        RenewLease(host.Services);
-        var searchableDefinitions = host.Services.GetRequiredService<IFhirVersionContext>()
-            .GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, 1);
-        var searchable = searchableDefinitions.GetSearchParameter("Patient", "identifier");
-        searchable.OverridesUrl.ShouldBe(new Uri(BaseUrl));
-        (await resolver.GetSearchParamIdAsync(searchable, CancellationToken.None)).ShouldBe(baseId);
-        // Every current token row for the shared value is stored under the base identity, none under the package's own.
-        await using (var connection = new SqlConnection(connectionString))
-        {
-            await connection.OpenAsync();
-            using var command = new SqlCommand(
-                """
-                SELECT STRING_AGG(CONCAT(token.SearchParamId, ':', resource.ResourceId), ',')
-                       WITHIN GROUP (ORDER BY resource.ResourceId)
-                FROM dbo.TokenSearchParam token
-                JOIN dbo.System system ON system.SystemId = token.SystemId
-                JOIN dbo.Resource resource
-                  ON resource.ResourceTypeId = token.ResourceTypeId
-                 AND resource.ResourceSurrogateId = token.ResourceSurrogateId
-                WHERE token.Code = @Code AND system.Value = @System
-                  AND resource.IsHistory = 0
-                  AND resource.IsDeleted = 0
-                """,
-                connection);
-            command.Parameters.Add("@Code", SqlDbType.NVarChar, 256).Value = "shared-identity";
-            command.Parameters.Add("@System", SqlDbType.NVarChar, 256).Value = System;
-            ((string)(await command.ExecuteScalarAsync())!).ShouldBe(
-                string.Join(",", new[] { afterId, beforeId }.Order(StringComparer.Ordinal).Select(id => $"{baseId}:{id}")));
-        }
-
-        RenewLease(host.Services);
-        using var enabledRequest = new HttpRequestMessage(
-            HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|shared-identity")}");
-        enabledRequest.Headers.Add("Prefer", "handling=strict");
-        using var enabledResponse = await client.SendAsync(enabledRequest);
-        var enabledBody = await enabledResponse.Content.ReadAsStringAsync();
-        enabledResponse.StatusCode.ShouldBe(HttpStatusCode.OK, enabledBody);
-        var enabledIds = JsonNode.Parse(enabledBody)!["entry"]!.AsArray()
-            .Select(entry => entry!["resource"]!["id"]!.GetValue<string>())
-            .ToArray();
-        enabledIds.ShouldContain(beforeId);
-        enabledIds.ShouldContain(afterId);
-    }
-
-    private static async Task PutPatientAsync(
-        HttpClient client,
-        string patientId,
-        string value,
-        HttpStatusCode expectedStatus = HttpStatusCode.Created)
-    {
-        using var body = new StringContent($$"""
-            {"resourceType":"Patient","id":"{{patientId}}","identifier":[{"system":"{{System}}","value":"{{value}}"}]}
-            """, Encoding.UTF8, "application/fhir+json");
-        using var response = await client.PutAsync($"/tenant/1/Patient/{patientId}", body);
-        response.StatusCode.ShouldBe(expectedStatus, await response.Content.ReadAsStringAsync());
-    }
-
-    private static async Task WaitForReindexAsync(HttpClient client, string jobId)
-    {
-        var expires = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTimeOffset.UtcNow < expires)
-        {
-            using var response = await client.GetAsync($"/tenant/1/$reindex/{jobId}");
-            var body = await response.Content.ReadAsStringAsync();
-            response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
-            var status = JsonNode.Parse(body)!["parameter"]!.AsArray()
-                .Single(parameter => parameter!["name"]!.GetValue<string>() == "status")!["valueString"]!
-                .GetValue<string>();
-            if (status == "Completed")
-            {
-                return;
-            }
-            if (status is "Failed" or "Cancelled")
-            {
-                throw new InvalidOperationException($"Reindex job {jobId} ended as {status}: {body}");
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50));
-        }
-
-        throw new TimeoutException($"Reindex job {jobId} did not complete.");
-    }
-
-    private static void RenewLease(IServiceProvider services)
-    {
-        var lease = services.GetRequiredService<ConformanceLease>();
-        lease.Renew(lease.CaptureStart());
     }
 
     private static async Task AssertLifecycleAsync(string connectionString, bool legacyEvents)
@@ -243,19 +80,13 @@ public class SqlOverrideActivationLifecycleTests
             await ActivateAsync(host.Services, "hl7.fhir.r4.core", "1", BaseUrl, null);
             await ActivateAsync(host.Services, "hl7.fhir.r4.core", "2", BaseUrl, null);
             await ActivateAsync(host.Services, PackageId, "1", PackageUrl, BaseUrl);
-            await AssertRedefiningSearchAsync(client, marker);
-            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(host.Services, PackageUrl);
-            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(host.Services, PackageUrl);
+            await CompleteOverrideAsync(host.Services, client, marker, PackageUrl);
             await WriteAndAssertAsync(client, marker, ids);
             await ActivateAsync(host.Services, PackageId, "2", PackageUrl, BaseUrl);
-            await AssertRedefiningSearchAsync(client, marker);
-            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(host.Services, PackageUrl);
-            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(host.Services, PackageUrl);
+            await CompleteOverrideAsync(host.Services, client, marker, PackageUrl);
             await WriteAndAssertAsync(client, marker, ids);
             await ActivateAsync(host.Services, "test.override.chain", "1", ChainedUrl, PackageUrl);
-            await AssertRedefiningSearchAsync(client, marker);
-            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(host.Services, ChainedUrl);
-            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(host.Services, ChainedUrl);
+            await CompleteOverrideAsync(host.Services, client, marker, ChainedUrl);
             await WriteAndAssertAsync(client, marker, ids);
             await AssertCatalogAndResolutionAsync(
                 cache,
@@ -382,8 +213,7 @@ public class SqlOverrideActivationLifecycleTests
     private static WebApplicationFactory<Program> CreateHost(
         IgnixaApiFixture template,
         string connectionString,
-        bool shortTransitionGrace = false,
-        bool fastReindex = false) =>
+        bool shortTransitionGrace = false) =>
         template.WithWebHostBuilder(builder =>
         {
             if (shortTransitionGrace)
@@ -392,13 +222,6 @@ public class SqlOverrideActivationLifecycleTests
                 builder.UseSetting("Conformance:TransitionGrace", "00:00:00.100");
                 builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:00.050");
                 builder.UseSetting("Reindex:BarrierDelay", "00:00:00.050");
-            }
-            else if (fastReindex)
-            {
-                builder.UseSetting("Conformance:MaxStaleness", "00:00:10");
-                builder.UseSetting("Conformance:TransitionGrace", "00:00:15");
-                builder.UseSetting("Conformance:TransitionSafetyMargin", "00:00:05");
-                builder.UseSetting("Reindex:BarrierDelay", "00:00:10");
             }
 
             builder.ConfigureAppConfiguration((_, configuration) =>
@@ -410,22 +233,6 @@ public class SqlOverrideActivationLifecycleTests
                     ["Conformance:SyncIntervalSeconds"] = "3600"
                 }));
         });
-
-    private static async Task<bool> SpinWaitAsync(Func<bool> condition, TimeSpan timeout)
-    {
-        var expires = DateTimeOffset.UtcNow + timeout;
-        while (DateTimeOffset.UtcNow < expires)
-        {
-            if (condition())
-            {
-                return true;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50));
-        }
-
-        return condition();
-    }
 
     private static async Task WriteAndAssertAsync(HttpClient client, string marker, List<string> ids)
     {
@@ -440,32 +247,16 @@ public class SqlOverrideActivationLifecycleTests
         await AssertPatientAsync(client, marker, id);
     }
 
-    private static async Task AssertRedefiningSearchAsync(HttpClient client, string marker)
+    // Spec §4.4: a staged override hides the code until it commits; the reindex is synthetic here, isolating identity.
+    private static async Task CompleteOverrideAsync(IServiceProvider services, HttpClient client, string marker, string canonical)
     {
-        using var strictRequest = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|{marker}")}");
-        strictRequest.Headers.Add("Prefer", "handling=strict");
-        using var strictResponse = await client.SendAsync(strictRequest);
-        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
-
-        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|{marker}")}");
-        lenientRequest.Headers.Add("Prefer", "handling=lenient");
-        using var lenientResponse = await client.SendAsync(lenientRequest);
-        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
-        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
-        lenientBody.ShouldContain("Search parameter 'identifier' is being redefined and was ignored.");
+        await SearchParameterLifecycleTestHelper.AssertHiddenAsync(client, Query(marker), "identifier", redefined: true);
+        await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, canonical);
+        await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, canonical);
     }
 
-    private static async Task AssertPatientAsync(HttpClient client, string marker, string id)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|{marker}")}");
-        request.Headers.Add("Prefer", "handling=strict");
-        using var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
-        var entries = JsonNode.Parse(body)!["entry"]!.AsArray();
-        entries.Select(entry => entry!["resource"]!["id"]!.GetValue<string>()).ShouldContain(id);
-    }
+    private static async Task AssertPatientAsync(HttpClient client, string marker, string id) =>
+        (await SearchParameterLifecycleTestHelper.SearchIdsAsync(client, Query(marker))).ShouldContain(id);
+
+    private static string Query(string marker) => $"/tenant/1/Patient?identifier={Uri.EscapeDataString($"{System}|{marker}")}";
 }

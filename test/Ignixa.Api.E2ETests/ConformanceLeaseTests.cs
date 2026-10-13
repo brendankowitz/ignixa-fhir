@@ -1,5 +1,6 @@
 using System.Net;
-using System.Text;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Microsoft.AspNetCore.Hosting;
@@ -8,6 +9,7 @@ using Xunit;
 
 namespace Ignixa.Api.E2ETests;
 
+/// <summary>Spec F15, N7, §4.5: without the staleness lease, search-evaluating requests fail closed with 503.</summary>
 public class ConformanceLeaseTests
 {
     [Fact]
@@ -16,77 +18,48 @@ public class ConformanceLeaseTests
         await using var fixture = new StaleLeaseFixture();
         await fixture.InitializeAsync();
         var client = fixture.Client;
-        using var patient = new StringContent(
-            """{"resourceType":"Patient","active":true}""",
-            Encoding.UTF8,
-            "application/fhir+json");
-
-        using var created = await client.PostAsync("/tenant/1/Patient", patient);
+        using var created = await client.PostAsJsonAsync("/tenant/1/Patient", new { resourceType = "Patient", active = true });
         created.StatusCode.ShouldBe(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
         var id = JsonNode.Parse(await created.Content.ReadAsStringAsync())!["id"]!.GetValue<string>();
-
         using var read = await client.GetAsync($"/tenant/1/Patient/{id}");
         read.StatusCode.ShouldBe(HttpStatusCode.OK, await read.Content.ReadAsStringAsync());
-
-        using var conditionalRequest = new HttpRequestMessage(HttpMethod.Post, "/tenant/1/Patient")
+        using var conditionalCreate = new HttpRequestMessage(HttpMethod.Post, "/tenant/1/Patient")
         {
-            Content = new StringContent(
-                """{"resourceType":"Patient","active":true}""",
-                Encoding.UTF8,
-                "application/fhir+json")
+            Content = JsonContent.Create(new { resourceType = "Patient", active = true }),
         };
-        conditionalRequest.Headers.TryAddWithoutValidation("If-None-Exist", "active=true");
-        using var conditional = await client.SendAsync(conditionalRequest);
+        conditionalCreate.Headers.TryAddWithoutValidation("If-None-Exist", "active=true");
+        var memberMatch = new
+        {
+            resourceType = "Parameters",
+            parameter = new object[]
+            {
+                new { name = "MemberPatient", resource = (object)new { resourceType = "Patient", identifier = new[] { new { value = "member-123" } } } },
+                new { name = "CoverageToMatch", resource = (object)new { resourceType = "Coverage", subscriberId = "member-123" } },
+            },
+        };
+
+        using var conditional = await client.SendAsync(conditionalCreate);
         conditional.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await conditional.Content.ReadAsStringAsync());
+        HttpResponseMessage[] searches =
+        [
+            await client.GetAsync("/tenant/1/Patient?active=true&_include=Patient:organization"),
+            await client.GetAsync($"/tenant/1/Patient/{id}/Observation"),
+            await client.GetAsync($"/tenant/1/Patient/{id}/$everything"),
+            await client.PostAsync("/tenant/1/Patient/$member-match", JsonContent.Create(memberMatch, new MediaTypeHeaderValue("application/fhir+json"))),
+            await client.GetAsync($"/tenant/1/Patient/{id}/$summary"),
+        ];
 
-        using var search = await client.GetAsync("/tenant/1/Patient?active=true&_include=Patient:organization");
-        using var compartment = await client.GetAsync($"/tenant/1/Patient/{id}/Observation");
-        using var everything = await client.GetAsync($"/tenant/1/Patient/{id}/$everything");
-        using var memberMatch = await client.PostAsync(
-            "/tenant/1/Patient/$member-match",
-            new StringContent(
-                """
-                {
-                  "resourceType": "Parameters",
-                  "parameter": [
-                    {
-                      "name": "MemberPatient",
-                      "resource": {
-                        "resourceType": "Patient",
-                        "identifier": [{ "value": "member-123" }]
-                      }
-                    },
-                    {
-                      "name": "CoverageToMatch",
-                      "resource": {
-                        "resourceType": "Coverage",
-                        "subscriberId": "member-123"
-                      }
-                    }
-                  ]
-                }
-                """,
-                Encoding.UTF8,
-                "application/fhir+json"));
-        using var summary = await client.GetAsync($"/tenant/1/Patient/{id}/$summary");
-
-        search.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await search.Content.ReadAsStringAsync());
-        compartment.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await compartment.Content.ReadAsStringAsync());
-        everything.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await everything.Content.ReadAsStringAsync());
-        memberMatch.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await memberMatch.Content.ReadAsStringAsync());
-        summary.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, await summary.Content.ReadAsStringAsync());
-        search.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromHours(1));
-        memberMatch.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromHours(1));
-        summary.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromHours(1));
-        var outcome = JsonNode.Parse(await search.Content.ReadAsStringAsync())!;
-        outcome["issue"]![0]!["diagnostics"]!.GetValue<string>()
-            .ShouldBe("Conformance state is stale; search is temporarily unavailable.");
-        var memberMatchOutcome = JsonNode.Parse(await memberMatch.Content.ReadAsStringAsync())!;
-        memberMatchOutcome["issue"]![0]!["diagnostics"]!.GetValue<string>()
-            .ShouldBe("Conformance state is stale; search is temporarily unavailable.");
-        var summaryOutcome = JsonNode.Parse(await summary.Content.ReadAsStringAsync())!;
-        summaryOutcome["issue"]![0]!["diagnostics"]!.GetValue<string>()
-            .ShouldBe("Conformance state is stale; search is temporarily unavailable.");
+        foreach (var response in searches)
+        {
+            using (response)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, $"{response.RequestMessage!.RequestUri}: {body}");
+                response.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromHours(1));
+                JsonNode.Parse(body)!["issue"]![0]!["diagnostics"]!.GetValue<string>()
+                    .ShouldBe("Conformance state is stale; search is temporarily unavailable.");
+            }
+        }
     }
 
     private sealed class StaleLeaseFixture : IgnixaApiFixture

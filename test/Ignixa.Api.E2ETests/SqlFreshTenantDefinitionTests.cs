@@ -83,8 +83,9 @@ public class SqlFreshTenantDefinitionTests(ITestOutputHelper output)
         state.IsInitialized.ShouldBeTrue();
         state.FindByCanonical(OverrideUrl).ShouldNotBeNull();
         state.FindByCanonical(CustomUrl).ShouldNotBeNull();
-        await AssertHiddenSearchAsync(client, "identifier", marker, isRedefining: true);
-        await AssertHiddenSearchAsync(client, CustomCode, marker, isRedefining: false);
+        var hidden = Uri.EscapeDataString($"{IdentifierSystem}|{marker}");
+        await SearchParameterLifecycleTestHelper.AssertHiddenAsync(client, $"/tenant/2/Patient?identifier={hidden}", "identifier", redefined: true);
+        await SearchParameterLifecycleTestHelper.AssertHiddenAsync(client, $"/tenant/2/Patient?{CustomCode}={hidden}", CustomCode, redefined: false);
         await SearchParameterLifecycleTestHelper.CommitTransitionAsync(host.Services, OverrideUrl);
         await SearchParameterLifecycleTestHelper.CompleteReindexAsync(host.Services, OverrideUrl);
         await SearchParameterLifecycleTestHelper.CompleteReindexAsync(host.Services, CustomUrl);
@@ -109,13 +110,13 @@ public class SqlFreshTenantDefinitionTests(ITestOutputHelper output)
         await PutPatientAsync(client, firstId, marker);
         await AssertPatientsAsync(client, "identifier", marker, firstId);
         await AssertPatientsAsync(client, CustomCode, marker, firstId);
-        await AssertPhysicalRowsAsync(resourceConnection, marker, identities, RootUrl, expectedPatients: 1);
+        await AssertPhysicalRowsAsync(resourceConnection, marker, identities, expectedPatients: 1);
 
         var secondId = $"fresh-second-{marker}";
         await PutPatientAsync(client, secondId, marker);
         await AssertPatientsAsync(client, "identifier", marker, firstId, secondId);
         await AssertPatientsAsync(client, CustomCode, marker, firstId, secondId);
-        await AssertPhysicalRowsAsync(resourceConnection, marker, identities, RootUrl, expectedPatients: 2);
+        await AssertPhysicalRowsAsync(resourceConnection, marker, identities, expectedPatients: 2);
         await AssertStoreIsolationAsync(conformanceConnection, resourceConnection, marker);
         elapsed.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(PollSeconds),
             "All assertions must finish before the real hosted poller's first interval.");
@@ -189,29 +190,6 @@ public class SqlFreshTenantDefinitionTests(ITestOutputHelper output)
         entries.Select(entry => entry!["resource"]!["id"]!.GetValue<string>()).Order().ShouldBe(ids.Order());
     }
 
-    private static async Task AssertHiddenSearchAsync(
-        HttpClient client,
-        string code,
-        string marker,
-        bool isRedefining)
-    {
-        using var strictRequest = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/2/Patient?{code}={Uri.EscapeDataString($"{IdentifierSystem}|{marker}")}");
-        strictRequest.Headers.Add("Prefer", "handling=strict");
-        using var strictResponse = await client.SendAsync(strictRequest);
-        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
-
-        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/2/Patient?{code}={Uri.EscapeDataString($"{IdentifierSystem}|{marker}")}");
-        lenientRequest.Headers.Add("Prefer", "handling=lenient");
-        using var lenientResponse = await client.SendAsync(lenientRequest);
-        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
-        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
-        lenientBody.ShouldContain(isRedefining
-            ? $"Search parameter '{code}' is being redefined and was ignored."
-            : $"Search parameter '{code}' is pending reindex and was ignored.");
-    }
-
     private static async Task PutPatientAsync(HttpClient client, string id, string marker)
     {
         using var content = new StringContent($$"""
@@ -253,11 +231,7 @@ public class SqlFreshTenantDefinitionTests(ITestOutputHelper output)
     }
 
     private static async Task AssertPhysicalRowsAsync(
-        string connectionString,
-        string marker,
-        Dictionary<string, short> identities,
-        string searchParameterCanonical,
-        int expectedPatients)
+        string connectionString, string marker, Dictionary<string, short> identities, int expectedPatients)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -272,7 +246,7 @@ public class SqlFreshTenantDefinitionTests(ITestOutputHelper output)
             counts.Add(reader.GetInt16(0), reader.GetInt32(1));
         }
         counts.Count.ShouldBe(2);
-        counts[identities[searchParameterCanonical]].ShouldBe(expectedPatients);
+        counts[identities[RootUrl]].ShouldBe(expectedPatients);
         counts[identities[CustomUrl]].ShouldBe(expectedPatients);
         counts.ShouldNotContainKey(identities[OverrideUrl]);
     }

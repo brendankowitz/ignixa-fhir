@@ -93,7 +93,7 @@ public class SqlActivationPreflightTests
             Snapshot(state).ShouldBe(before);
             state.Packages.Keys.Order().ShouldBe(packagesBefore);
             ReferenceEquals(versions.GetSearchIndexer(FhirVersion.R4, 1), warmIndexer).ShouldBeTrue();
-            await AssertRedefiningSearchAsync(client, "identifier");
+            await SearchParameterLifecycleTestHelper.AssertHiddenAsync(client, $"/tenant/1/Patient?identifier={Marker}", "identifier", redefined: true);
             await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, OverrideUrl);
             await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, OverrideUrl);
 
@@ -181,21 +181,6 @@ public class SqlActivationPreflightTests
         var entries = JsonNode.Parse(body)!["entry"]!.AsArray();
         entries.Count.ShouldBe(1);
         entries[0]!["resource"]!["id"]!.GetValue<string>().ShouldBe(id);
-    }
-
-    private static async Task AssertRedefiningSearchAsync(HttpClient client, string code)
-    {
-        using var strictRequest = new HttpRequestMessage(HttpMethod.Get, $"/tenant/1/Patient?{code}={Marker}");
-        strictRequest.Headers.Add("Prefer", "handling=strict");
-        using var strictResponse = await client.SendAsync(strictRequest);
-        strictResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await strictResponse.Content.ReadAsStringAsync());
-
-        using var lenientRequest = new HttpRequestMessage(HttpMethod.Get, $"/tenant/1/Patient?{code}={Marker}");
-        lenientRequest.Headers.Add("Prefer", "handling=lenient");
-        using var lenientResponse = await client.SendAsync(lenientRequest);
-        var lenientBody = await lenientResponse.Content.ReadAsStringAsync();
-        lenientResponse.StatusCode.ShouldBe(HttpStatusCode.OK, lenientBody);
-        lenientBody.ShouldContain($"Search parameter '{code}' is being redefined and was ignored.");
     }
 
     private static WebApplicationFactory<Program> CreateHost(IgnixaApiFixture template, string connectionString) =>
