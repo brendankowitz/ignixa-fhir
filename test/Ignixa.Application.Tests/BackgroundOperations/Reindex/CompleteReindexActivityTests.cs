@@ -56,10 +56,10 @@ public class CompleteReindexActivityTests
         }
     }
 
+    // Spec 8.5: an active tenant the job did not cover fails the target; a retried append keeps that decision.
     [Fact]
-    public async Task GivenAFailedCompletionWhoseLifecycleAppendFails_WhenActivityRetries_ThenTargetIsNotEnabled()
+    public async Task GivenActiveTenantWasNotInJobAndTheLifecycleAppendFails_WhenActivityRetries_ThenTheJobFailsWithoutEnablingTarget()
     {
-        // Tenant 2 was not in the job, so completion decides to fail the target.
         var fixture = await Fixture.CreateAsync(activeTenants: [Tenant(1), Tenant(2)]);
         var activity = fixture.Activity();
 
@@ -74,35 +74,6 @@ public class CompleteReindexActivityTests
         var job = await fixture.JobAsync();
         job.Status.ShouldBe("Failed");
         job.ErrorMessage.ShouldContain("manual $reindex");
-    }
-
-    [Fact]
-    public async Task GivenActiveTenantWasNotInJob_WhenCompletionRuns_ThenJobFailsWithoutEnablingTarget()
-    {
-        var fixture = await Fixture.CreateAsync(activeTenants: [Tenant(1), Tenant(2)]);
-
-        await fixture.Activity().RunAsync(ActivityContext(), Input([Target()]));
-
-        var job = await fixture.JobAsync();
-        job.Status.ShouldBe("Failed");
-        job.ErrorMessage.ShouldContain("manual $reindex");
-        fixture.Status.ShouldBe(SearchParameterStatus.Pending);
-    }
-
-    [Fact]
-    public async Task GivenAnActiveTenantOnAnotherFhirVersion_WhenAnR4JobCompletes_ThenThatTenantIsNeitherRequiredNorChecked()
-    {
-        var target = Target(fhirVersion: "4.0");
-        // Only tenant 1 has a store: a catalog check against tenant 2 would throw and fail the activity.
-        var fixture = await Fixture.CreateAsync(
-            activeTenants: [Tenant(1), Tenant(2, fhirVersion: "5.0")],
-            target: target,
-            jobTargets: [target]);
-
-        await fixture.Activity().RunAsync(ActivityContext(), Input([target]));
-
-        (await fixture.JobAsync()).Status.ShouldBe("Completed");
-        fixture.Status.ShouldBe(SearchParameterStatus.Enabled);
     }
 
     [Theory]
@@ -143,7 +114,7 @@ public class CompleteReindexActivityTests
 
         await fixture.Activity(StoreFactoryWithCatalog(baseCanonical)).RunAsync(
             ActivityContext(),
-            Input([target], new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 153, null)));
+            Input([target], tenants: Completed(1, failedResourceCount: 153)));
 
         var job = await fixture.JobAsync();
         job.Status.ShouldBe("Completed");
@@ -174,12 +145,11 @@ public class CompleteReindexActivityTests
         bool wholeRangeFailed)
     {
         var fixture = await Fixture.CreateAsync();
-        var progress = new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 2, 1, 0, 0, null);
-        progress = wholeRangeFailed
-            ? progress.AddRangeFailure("Patient", "range timed out")
-            : progress.Add("Patient", new ReindexRangeOutput(1, 0, [new ReindexFailedResource("Patient", "p2", "bad")]));
+        var progress = wholeRangeFailed
+            ? Completed(1).AddRangeFailure("Patient", "range timed out")
+            : Completed(1).Add("Patient", new ReindexRangeOutput(0, 0, [new ReindexFailedResource("Patient", "p2", "bad")]));
 
-        await fixture.Activity().RunAsync(ActivityContext(), Input([Target()], progress));
+        await fixture.Activity().RunAsync(ActivityContext(), Input([Target()], tenants: progress));
 
         var job = await fixture.JobAsync();
         job.Status.ShouldBe("Failed");
@@ -206,41 +176,38 @@ public class CompleteReindexActivityTests
             data is SearchParameterReindexCompleted || data is SearchParameterReindexFailed);
     }
 
-    // Spec 4.4: a target is judged only by tenants of its FHIR version, so another version's failures do not
-    // keep it from Enabled.
-    [Fact]
-    public async Task GivenAFailedTenantOnAnotherFhirVersion_WhenAnR4TargetCompletes_ThenThatTenantDoesNotDecideIt()
+    // Spec 4.4: a target is judged only by tenants of its FHIR version. Another version's active tenant is
+    // neither required nor catalog-checked (only tenant 1 has a store), and its failures do not decide it.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenAnActiveTenantOnAnotherFhirVersion_WhenAnR4TargetCompletes_ThenThatTenantDoesNotDecideIt(
+        bool otherTenantRanAndFailed)
     {
         var target = Target(fhirVersion: "4.0");
         var fixture = await Fixture.CreateAsync(
             activeTenants: [Tenant(1), Tenant(2, fhirVersion: "5.0")],
             target: target,
             jobTargets: [target]);
-        var otherVersion = new ReindexTenantProgress(2, ReindexTenantStatus.Completed, 1, 1, 1, 0, 0, 0, null)
-            .AddRangeFailure("Patient", "range timed out");
+        ReindexTenantProgress[] tenants = otherTenantRanAndFailed
+            ? [Completed(1), Completed(2).AddRangeFailure("Patient", "range timed out")]
+            : [Completed(1)];
 
-        await fixture.Activity().RunAsync(
-            ActivityContext(),
-            Input([target], [new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 0, null), otherVersion]));
+        await fixture.Activity().RunAsync(ActivityContext(), Input([target], tenants: tenants));
 
         fixture.Status.ShouldBe(SearchParameterStatus.Enabled);
     }
 
-    private static string Input(ReindexParameterDefinition[] targets, ReindexTenantProgress[] tenants) =>
-        JsonSerializer.Serialize(new[] { new CompleteReindexInput("job", 1, targets, tenants, []) });
+    private static ReindexTenantProgress Completed(int tenantId, long failedResourceCount = 0) =>
+        new(tenantId, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, failedResourceCount, null);
 
     private static string Input(
         ReindexParameterDefinition[] targets,
-        ReindexTenantProgress? tenant = null,
-        string? failureMessage = null) =>
+        string? failureMessage = null,
+        params ReindexTenantProgress[] tenants) =>
         JsonSerializer.Serialize(new[]
         {
-            new CompleteReindexInput(
-                "job",
-                1,
-                targets,
-                [tenant ?? new ReindexTenantProgress(1, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, 0, null)],
-                [])
+            new CompleteReindexInput("job", 1, targets, tenants.Length == 0 ? [Completed(1)] : tenants, [])
             {
                 FailureMessage = failureMessage
             }
