@@ -72,18 +72,7 @@ public class SearchCompartmentHandlerTests
             new SearchCompartmentQuery("Patient", "123", resourceType, new SearchOptions()),
             CancellationToken.None);
 
-        var issues = result.SearchOptions.ShouldNotBeNull().BundleIssues;
-        if (expectedReason is null)
-        {
-            issues.ShouldBeEmpty();
-            return;
-        }
-
-        var issue = issues.ShouldHaveSingleItem();
-        issue.Severity.ShouldBe("warning");
-        issue.Code.ShouldBe("incomplete");
-        issue.Diagnostics.ShouldContain("'Observation.subject'");
-        issue.Diagnostics.ShouldContain(expectedReason);
+        result.SearchOptions.ShouldWarnOfHiddenMembership(expectedReason);
     }
 
     private static readonly int[] SinglePartitionArray = new[] { 1 };
