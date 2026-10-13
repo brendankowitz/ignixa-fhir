@@ -6,10 +6,7 @@ using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
-/// <summary>
-/// Builds conformance event payloads with test defaults, and wraps them as durable events. An override's
-/// <see cref="OverrideInfo"/> carries the shared storage identity, so it reuses the activation's SearchParamId.
-/// </summary>
+/// <summary>Conformance event payloads with test defaults; an override's <see cref="OverrideInfo"/> reuses its SearchParamId.</summary>
 internal static class ConformanceEvents
 {
     public const string CorePackage = "hl7.fhir.r4.core@4.0.1";
@@ -54,9 +51,6 @@ internal static class ConformanceEvents
 
     public static SearchParameterReindexCompleted ReindexCompleted(string canonical, string code, long? activationEventId, string jobId) =>
         new(canonical, code, "Patient", jobId, 1, TimeSpan.FromSeconds(1), activationEventId);
-
-    public static SearchParameterReindexFailed ReindexFailed(string canonical, string code, long? activationEventId, string jobId) =>
-        new(canonical, code, "Patient", jobId, "failed", activationEventId);
 
     public static PackageActivated PackageActivated(string packageId, string version = "1.0.0", params string[] canonicals) =>
         new(packageId, version, canonicals.Select(canonical => new ActivatedResource("Patient", canonical)).ToList());

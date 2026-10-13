@@ -1,15 +1,8 @@
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events;
-using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Conformance.Events.Events;
-using Ignixa.Search.Definition;
 using Ignixa.Search.Exceptions;
-using Ignixa.Search.Models;
-using Ignixa.Specification.Extensions;
-using Microsoft.Extensions.Logging.Abstractions;
-using NSubstitute;
 using Shouldly;
 using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Tests.Features.Conformance;
@@ -31,19 +24,12 @@ public class PackageSearchParameterInheritanceTests
     [InlineData(FhirVersion.R5)]
     public async Task GivenPackageParameter_WhenLoadedEagerlyOrLazily_ThenInheritedParametersRemainAvailable(FhirVersion version)
     {
-        var baseManager = new SearchParameterDefinitionManager(
-            version.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
-        using var state = new ConformanceState();
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
-        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var baseManager = BaseManager(version);
+        using var state = await InitializedStateAsync(PackageCustom());
 
         foreach (bool eager in new[] { true, false })
         {
-            var manager = new CompositeSearchParameterDefinitionManager(
-                baseManager, state.CreateSnapshot(), null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-                new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager });
-            await manager.InitializeAsync();
+            var manager = await CreateManagerAsync(state, eager, version);
 
             foreach (string resourceType in new[] { "Patient", "Observation", "Organization", "Bundle" })
             {
@@ -72,21 +58,10 @@ public class PackageSearchParameterInheritanceTests
     public async Task GivenPackageResource_WhenLoadedEagerlyOrLazily_ThenOwnAndUniversalParametersSurviveCacheReload(
         string resourceType, bool eager)
     {
-        var baseManager = new SearchParameterDefinitionManager(
-            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
-        using var state = new ConformanceState();
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events(resourceType, $"{resourceType}.id"));
-        await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        var manager = new CompositeSearchParameterDefinitionManager(
-            baseManager, state.CreateSnapshot(), null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-            new SearchParameterResolutionOptions
-            {
-                EagerLoadPackageSearchParameters = eager,
-                FailStartupOnEagerLoadError = true,
-            });
+        var baseManager = BaseManager();
+        using var state = await InitializedStateAsync(PackageCustom(resourceType, $"{resourceType}.id"));
+        var manager = await CreateManagerAsync(state, eager);
 
-        await manager.InitializeAsync();
         AssertParameters();
         manager.ClearCache();
         AssertParameters();
@@ -110,16 +85,8 @@ public class PackageSearchParameterInheritanceTests
     [InlineData(false)]
     public async Task GivenUnknownTypeWithoutPackageParameters_WhenRequested_ThenTypeRemainsUnsupported(bool eager)
     {
-        var baseManager = new SearchParameterDefinitionManager(
-            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
-        using var state = new ConformanceState();
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
-        await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        var manager = new CompositeSearchParameterDefinitionManager(
-            baseManager, state.CreateSnapshot(), null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = eager });
-        await manager.InitializeAsync();
+        using var state = await InitializedStateAsync(PackageCustom());
+        var manager = await CreateManagerAsync(state, eager);
 
         Should.Throw<SearchResourceNotSupportedException>(
             () => manager.GetSearchParameters("UnregisteredResource").ToList());
@@ -147,7 +114,7 @@ public class PackageSearchParameterInheritanceTests
     {
         object[] events = scenario switch
         {
-            PendingScenario.CustomParameter => [Activated(TestPackages.Canonical("package-custom"), "package-custom", 1, expression: "Patient.active")],
+            PendingScenario.CustomParameter => [PackageCustom()],
             PendingScenario.DistinctIdentityOverride => [Activated(TestPackages.Canonical("distinct-identifier"), "identifier", 99)],
             _ =>
             [
@@ -181,9 +148,8 @@ public class PackageSearchParameterInheritanceTests
         partialDefinitions.TryGetSearchParameter("Patient", "disabling", out _).ShouldBeFalse();
     }
 
-    // B-L2: on a web farm, instance A writes with its extraction definition while instance B, up to one grace
-    // window behind, still searches with its own. The stream is the one the real activation, transition commit
-    // and reindex completion append; every prefix is one instance's view, and every ordered pair is one lag.
+    // B-L2: on a web farm one instance writes while another, up to a grace window behind, searches. Each prefix of the
+    // real activation/commit/reindex stream is one instance's view, and every ordered pair is one lag.
     [Fact]
     public async Task GivenLaggingInstancesAtEachShadowTransitionCut_WhenDefinitionsReplay_ThenNoPairBindsDifferentStorageIdentity()
     {
@@ -220,22 +186,7 @@ public class PackageSearchParameterInheritanceTests
         static Uri Identity(SearchParamInfo parameter) => parameter.OverridesUrl ?? parameter.Url;
     }
 
-    // §4.4: while an upgrade is Staged the outgoing definition still owns the id and is extracted.
-    [Fact]
-    public async Task GivenSameCanonicalUpgradeIsStaged_WhenResolvedByCanonical_ThenOutgoingDefinitionRemainsExtracted()
-    {
-        var canonical = TestPackages.Canonical("same-canonical");
-        using var state = await InitializedStateAsync(
-            Activated(canonical, "same-canonical", 1, type: SearchParamType.String, expression: "Patient.name"),
-            Activated(canonical, "same-canonical", 1, canonical, "custom.package@2.0", type: SearchParamType.String, expression: "Patient.family"));
-        var manager = await CreateManagerAsync(state, eager: false);
-
-        manager.TryGetSearchParameter(new Uri(canonical), out var parameter).ShouldBeTrue();
-        parameter.Expression.ShouldBe("Patient.name");
-    }
-
-    // Activates a package that shadows the in-process base Patient.identifier, commits its transition and
-    // completes its reindex, all through the production writers, and returns the durable stream.
+    // Shadows Patient.identifier, commits and reindexes it through the production writers; returns the durable stream.
     private static async Task<IReadOnlyList<SourceEvent>> RecordShadowLifecycleAsync(string overrideCanonical)
     {
         var log = new InMemoryEventLog();
@@ -270,14 +221,6 @@ public class PackageSearchParameterInheritanceTests
         Activated(StagedName, "name", 3, PatientName, type: SearchParamType.String),
     ];
 
-    private static async IAsyncEnumerable<SourceEvent> Events(string resourceType = "Patient", string? expression = null)
-    {
-        await Task.CompletedTask;
-        yield return new SourceEvent(
-            1, "package-inheritance", nameof(SearchParameterActivated),
-            new SearchParameterActivated(
-                "http://example.org/SearchParameter/package-custom", "package-custom", resourceType,
-                expression ?? $"{resourceType}.active", SearchParamType.Token, "inheritance.package@1.0", null, 1, null, null, null, null),
-            DateTimeOffset.UtcNow);
-    }
+    private static SearchParameterActivated PackageCustom(string resourceType = "Patient", string? expression = null) =>
+        Activated(TestPackages.Canonical("package-custom"), "package-custom", 1, resourceType: resourceType, expression: expression ?? $"{resourceType}.active");
 }

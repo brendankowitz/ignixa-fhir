@@ -5,9 +5,8 @@ using Ignixa.Conformance.Events.Abstractions;
 namespace Ignixa.Application.Tests.Features.Conformance;
 
 /// <summary>
-/// An in-memory event store with the durable store's optimistic contract: an append succeeds only at the
-/// current last event id. Events queued in <see cref="OtherWriters"/> are committed by "another instance"
-/// at the start of each append attempt, one per attempt, so the attempt loses the race.
+/// An event store with the durable optimistic contract: an append succeeds only at the current last event id. Each
+/// append attempt first commits one <see cref="OtherWriters"/> event from "another instance", so it loses the race.
 /// </summary>
 internal sealed class InMemoryEventLog : ISourceEventStore
 {

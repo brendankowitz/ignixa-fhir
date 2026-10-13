@@ -2,6 +2,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization.SourceNodes;
@@ -57,6 +58,9 @@ internal static class TestWritePath
         indexer.Extract(Arg.Any<IElement>()).Returns(Array.Empty<SearchIndexEntry>());
         return indexer;
     }
+
+    /// <summary>The barrier's rejection of a write extracted at event 11 once definitions reached 29.</summary>
+    public static StaleConformanceDefinitionsException Stale() => new(101, 11, 29);
 
     /// <summary>A PUT of Patient/<paramref name="id"/> extracted at <paramref name="definitionsEventId"/>.</summary>
     public static ResourceWrapper Patient(string id, long definitionsEventId) =>

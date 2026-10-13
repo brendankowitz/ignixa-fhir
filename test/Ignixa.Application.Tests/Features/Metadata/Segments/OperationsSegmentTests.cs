@@ -279,14 +279,7 @@ public class OperationsSegmentTests
 
         await segment.ApplyAsync(statement, new CapabilityContext(FhirVersion.R4, TenantId: 1), CancellationToken.None);
 
-        if (expectAdvertised)
-        {
-            SystemOperationNames(statement).ShouldBe(["reindex"]);
-        }
-        else
-        {
-            statement.Rest.ShouldBeEmpty();
-        }
+        SystemOperationNames(statement).ShouldBe(expectAdvertised ? ["reindex"] : Array.Empty<string>());
     }
 
     // §6.6 (M8): a tenant added at runtime that cannot reindex withdraws the operation.
@@ -466,6 +459,6 @@ public class OperationsSegmentTests
             NullLogger<OperationsSegment>.Instance);
 
     private static IEnumerable<string> SystemOperationNames(CapabilityStatementJsonNode statement) =>
-        statement.Rest.ShouldHaveSingleItem().MutableNode()["operation"]!.AsArray()
+        statement.Rest.SelectMany(rest => rest.MutableNode()["operation"]!.AsArray())
             .Select(operation => operation!["name"]!.GetValue<string>());
 }

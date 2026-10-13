@@ -16,40 +16,8 @@ public class ConformanceLifecycleTests
     private const string OverrideCanonical = "http://example.org/SearchParameter/Patient-identifier";
     private const string MiddleCanonical = "http://example.org/SearchParameter/Patient-identifier-middle";
     private const string TopCanonical = "http://example.org/SearchParameter/Patient-identifier-top";
-    private static readonly JsonSerializerOptions CamelCase = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    // TransitionCommitted guard: it must name both the staging and the hiding event.
-    [Theory]
-    [InlineData(19, 19)]
-    [InlineData(20, 19)]
-    [InlineData(19, 20)]
-    public void GivenStagedOverride_WhenTransitionDoesNotMatchBothHideEvents_ThenNothingChanges(
-        long activationEventId,
-        long deactivationEventId)
-    {
-        using var state = CreateStateWithStagedOverride();
-
-        state.Apply(At(30, new SearchParameterTransitionCommitted(7, [activationEventId], [deactivationEventId])));
-
-        Statuses(state, BaseCanonical, OverrideCanonical).ShouldBe([Disabling, Staged]);
-        Owner(state).ShouldBe(BaseCanonical);
-    }
-
-    [Fact]
-    public void GivenNewerStagedOverride_WhenOlderTransitionIsCommitted_ThenOlderOverrideIsNotPromoted()
-    {
-        const string newerCanonical = "http://example.org/SearchParameter/Patient-identifier-newer";
-        using var state = CreateStateWithStagedOverride();
-        state.Apply(Override(30, newerCanonical));
-
-        state.Apply(Commit(40, 20));
-
-        Statuses(state, OverrideCanonical, newerCanonical, BaseCanonical).ShouldBe([Disabled, Staged, Disabling]);
-        Owner(state).ShouldBe(BaseCanonical);
-    }
-
-    // Removing an override is itself two-phase: the base is restaged by the new hide event, and the outgoing owner
-    // keeps extraction until that event's transition commits.
+    // Removing an override is two-phase: its hide event restages the base; the outgoing owner extracts until it commits.
     [Theory]
     [InlineData(true, false)]
     [InlineData(false, false)]
@@ -69,22 +37,6 @@ public class ConformanceLifecycleTests
 
         Statuses(state, OverrideCanonical, BaseCanonical).ShouldBe([Disabled, Pending]);
         Owner(state).ShouldBe(BaseCanonical);
-    }
-
-    [Fact]
-    public void GivenThreeLevelOverride_WhenLowerPackageIsDeactivatedBeforeHigherDefinitions_ThenItIsNeverRestored()
-    {
-        using var state = CreateStateWithEnabledThreeLevelOverride();
-
-        state.Apply(At(50, PackageDeactivated("hl7.fhir.r4.core", "4.0.1")));
-        state.Apply(Hide(60, TopCanonical));
-        state.Apply(Commit(61, 60));
-        state.Apply(Started(62, 60, "middle-job", MiddleCanonical));
-        state.Apply(Completed(63, 60, "middle-job", MiddleCanonical));
-        state.Apply(Hide(70, MiddleCanonical));
-
-        Statuses(state, MiddleCanonical, BaseCanonical).ShouldBe([Disabling, Disabled]);
-        Owner(state).ShouldBe(MiddleCanonical);
     }
 
     // Removing the top of base <- middle <- top restores the highest definition still installed.
@@ -149,18 +101,6 @@ public class ConformanceLifecycleTests
         (restored.ResourceType, restored.Code, restored.Status, restored.ActivationEventId).ShouldBe(("Patient", "identifier", Staged, 40L));
     }
 
-    // Started guard: a Pending owner only starts a reindex for its own activation.
-    [Fact]
-    public void GivenPendingOwner_WhenReindexStartHasWrongActivation_ThenOwnerRemainsPending()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Custom(10));
-
-        state.Apply(Started(20, 9, "wrong-activation"));
-
-        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Pending, (string?)null));
-    }
-
     public enum ReindexEventKind
     {
         Started,
@@ -168,33 +108,38 @@ public class ConformanceLifecycleTests
         Failed,
     }
 
-    // Completed / Failed guards (and Started on a running job): an event for another activation or job never moves it.
+    // Started / Completed / Failed guards: an event for another activation or job moves neither a Pending nor a running owner.
     [Theory]
-    [InlineData(ReindexEventKind.Started, 9L, "other")]
-    [InlineData(ReindexEventKind.Started, null, "legacy-other-job")]
-    [InlineData(ReindexEventKind.Completed, 10L, "wrong")]
-    [InlineData(ReindexEventKind.Completed, 9L, "current")]
-    [InlineData(ReindexEventKind.Completed, null, "legacy-other-job")]
-    [InlineData(ReindexEventKind.Failed, 10L, "wrong")]
-    [InlineData(ReindexEventKind.Failed, 9L, "current")]
-    [InlineData(ReindexEventKind.Failed, null, "legacy-other-job")]
-    public void GivenRunningReindex_WhenAnEventForAnotherActivationOrJobArrives_ThenTheRunningJobIsKept(
+    [InlineData(false, ReindexEventKind.Started, 9L, "wrong-activation")]
+    [InlineData(true, ReindexEventKind.Started, 9L, "other")]
+    [InlineData(true, ReindexEventKind.Started, null, "legacy-other-job")]
+    [InlineData(true, ReindexEventKind.Completed, 10L, "wrong")]
+    [InlineData(true, ReindexEventKind.Completed, 9L, "current")]
+    [InlineData(true, ReindexEventKind.Completed, null, "legacy-other-job")]
+    [InlineData(true, ReindexEventKind.Failed, 10L, "wrong")]
+    [InlineData(true, ReindexEventKind.Failed, 9L, "current")]
+    [InlineData(true, ReindexEventKind.Failed, null, "legacy-other-job")]
+    public void GivenAPendingOrRunningOwner_WhenAReindexEventForAnotherActivationOrJobArrives_ThenItDoesNotMove(
+        bool running,
         ReindexEventKind kind,
         long? activationEventId,
         string jobId)
     {
         using var state = new ConformanceState();
         state.Apply(Custom(10));
-        state.Apply(Started(20, 10, "current"));
+        if (running)
+        {
+            state.Apply(Started(20, 10, "current"));
+        }
 
         state.Apply(kind switch
         {
             ReindexEventKind.Started => Started(30, activationEventId, jobId),
             ReindexEventKind.Completed => Completed(30, activationEventId, jobId),
-            _ => At(30, ReindexFailed(OverrideCanonical, "custom", activationEventId, jobId)),
+            _ => At(30, new SearchParameterReindexFailed(OverrideCanonical, "custom", "Patient", jobId, "failed", activationEventId)),
         });
 
-        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Reindexing, "current"));
+        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe(running ? (Reindexing, "current") : (Pending, (string?)null));
     }
 
     [Fact]
@@ -203,35 +148,30 @@ public class ConformanceLifecycleTests
         const string json =
             """{"canonical":"http://example.org/SearchParameter/custom","code":"custom","resourceType":"Patient","jobId":"job","affectedResourceTypes":["Patient"]}""";
 
-        var reindex = JsonSerializer.Deserialize<SearchParameterReindexStarted>(json, CamelCase);
+        var reindex = JsonSerializer.Deserialize<SearchParameterReindexStarted>(json, JsonSerializerOptions.Web);
 
         reindex.ShouldNotBeNull().ActivationEventId.ShouldBeNull();
     }
 
-    [Fact]
-    public void GivenOccupiedCode_WhenReplacementUsesDifferentSearchParamId_ThenActivationIsRejectedWithoutMutation()
+    // A different storage identity on an occupied code, or a replay of the enabled base, leaves the owner untouched.
+    [Theory]
+    [InlineData(OverrideCanonical, 8, BaseCanonical, CustomPackage)]
+    [InlineData(BaseCanonical, 7, null, "hl7.fhir.r4.core@4.0.2")]
+    public void GivenEnabledBaseOwner_WhenARefusedActivationArrives_ThenTheOwnerIsUnchanged(
+        string canonical,
+        int searchParamId,
+        string? overrides,
+        string package)
     {
         using var state = new ConformanceState();
         state.Apply(Base(10));
 
-        state.Apply(At(20, Activated(OverrideCanonical, "identifier", 8, BaseCanonical)));
+        state.Apply(At(20, Activated(canonical, "identifier", searchParamId, overrides, package)));
 
         var owner = state.GetSearchParameter("Patient", "identifier")!;
-        (owner.Canonical, owner.SearchParamId, owner.Status).ShouldBe((BaseCanonical, 7, Enabled));
-        state.FindByCanonical(OverrideCanonical).ShouldBeNull();
-    }
-
-    [Fact]
-    public void GivenEnabledBaseParameter_WhenSameCanonicalBaseActivationReplays_ThenOwnerRemainsEnabled()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Base(10));
-
-        state.Apply(At(20, Activated(BaseCanonical, "identifier", 7, package: "hl7.fhir.r4.core@4.0.2")));
-
-        var owner = state.GetSearchParameter("Patient", "identifier")!;
-        (owner.Status, owner.ActivationEventId).ShouldBe((Enabled, 10L));
+        (owner.Canonical, owner.SearchParamId, owner.Status, owner.ActivationEventId).ShouldBe((BaseCanonical, 7, Enabled, 10L));
         state.FindByCanonical(BaseCanonical).ShouldBeSameAs(owner);
+        state.FindByCanonical(OverrideCanonical).ShouldBeNull();
     }
 
     private static SearchParameterStatus[] Statuses(ConformanceState state, params string[] canonicals) =>

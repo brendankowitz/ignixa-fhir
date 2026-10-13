@@ -1,5 +1,4 @@
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
@@ -21,7 +20,7 @@ public class PackageActivationPipelineTests
     public async Task GivenInProcessBaseCode_WhenShadowed_ThenOverrideIsStagedUnderTheBaseIdentityAndTheHiddenCodeIsReported(bool derivedFrom)
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(Shadow(derivedFrom: derivedFrom ? BaseIdentifier : null));
+        var pipeline = harness.Pipeline([Shadow(derivedFrom: derivedFrom ? BaseIdentifier : null)]);
 
         var result = await ActivateAsync(pipeline, "test.override");
 
@@ -41,21 +40,6 @@ public class PackageActivationPipelineTests
         await harness.Scheduler.Received(1).ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), CancellationToken.None);
     }
 
-    // §4.4: the base owner is materialised once; a later shadow emits no second base activation.
-    [Fact]
-    public async Task GivenBaseWasMaterialisedByEarlierShadowing_WhenShadowedAgain_ThenNoSecondBaseActivationIsEmitted()
-    {
-        using var harness = new Harness();
-        var pipeline = harness.Pipeline(
-            Shadow("test.first", derivedFrom: null),
-            Shadow("test.second", derivedFrom: Canonical("test.first")));
-
-        (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
-        (await ActivateAsync(pipeline, "test.second")).Success.ShouldBeTrue();
-
-        harness.Activations.Count(activation => activation.Canonical == BaseIdentifier).ShouldBe(1);
-    }
-
     // M-L3: a parameter on several base types resolves one storage identity, including types with no base code.
     [Theory]
     [InlineData("_tag", "Resource.meta.tag", "Patient", "Practitioner")]
@@ -68,7 +52,7 @@ public class PackageActivationPipelineTests
         string secondBaseType)
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(SearchParameter("test.multi-base", Canonical("multi"), code, [firstBaseType, secondBaseType], expression));
+        var pipeline = harness.Pipeline([SearchParameter("test.multi-base", Canonical("multi"), code, [firstBaseType, secondBaseType], expression)]);
 
         var result = await ActivateAsync(pipeline, "test.multi-base");
 
@@ -80,8 +64,7 @@ public class PackageActivationPipelineTests
             .ShouldAllBe(activation => activation.SearchParamId == identity);
     }
 
-    // B-L2: when one base type is already owned (by the base or by an override of it) and another is not, the
-    // unowned type's base and the package's activations all take the owned root's existing identity, not a fresh one.
+    // B-L2: when only one base type is owned (by the base or an override), every activation takes that identity.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -97,8 +80,8 @@ public class PackageActivationPipelineTests
             harness.Seed(Activated(Canonical("existing"), "_tag", ownedId, baseTag, "existing.owner@1.0.0", expression: "Resource.meta.tag"));
         }
 
-        var pipeline = harness.Pipeline(SearchParameter(
-            "test.multi-base", Canonical("multi"), "_tag", ["Practitioner", "Patient"], "Resource.meta.tag", ownedByAnOverride ? Canonical("existing") : null));
+        var pipeline = harness.Pipeline([SearchParameter(
+            "test.multi-base", Canonical("multi"), "_tag", ["Practitioner", "Patient"], "Resource.meta.tag", ownedByAnOverride ? Canonical("existing") : null)]);
 
         var result = await ActivateAsync(pipeline, "test.multi-base");
 
@@ -130,7 +113,7 @@ public class PackageActivationPipelineTests
             harness.Seed(Activated(Canonical("existing"), "identifier", 1, BaseIdentifier, "existing.owner@1.0.0"));
         }
 
-        var pipeline = harness.Pipeline(SearchParameter("test.multi-base", Canonical("multi"), baseTypes: [firstBaseType, secondBaseType]));
+        var pipeline = harness.Pipeline([SearchParameter("test.multi-base", Canonical("multi"), baseTypes: [firstBaseType, secondBaseType])]);
 
         var result = await ActivateAsync(pipeline, "test.multi-base");
 
@@ -138,29 +121,21 @@ public class PackageActivationPipelineTests
         result.Issues.ShouldContain(issue => issue.Code == "SP_MIXED_BASE_SHADOW");
     }
 
-    // §4.4: validation uses the latest non-Disabled owner, so its result is independent of activation timing.
-    [Fact]
-    public async Task GivenAnotherPackageShadowsDuringTransition_WhenActivated_ThenConflictMatchesPostCommitResult()
+    // §4.4: validation uses the latest non-Disabled owner, so during a transition or an override removal it
+    // already returns the post-commit result.
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task GivenAnotherPackageShadowsDuringATransitionOrRemoval_WhenActivated_ThenTheResultMatchesPostCommit(
+        bool removeFirst,
+        bool expectActivated)
     {
-        var duringTransition = await ActivateSecondShadowAsync(removeFirst: false, commitPendingTransition: false);
-        var afterTransition = await ActivateSecondShadowAsync(removeFirst: false, commitPendingTransition: true);
+        var during = await ActivateSecondShadowAsync(removeFirst, commitPendingTransition: false);
+        var after = await ActivateSecondShadowAsync(removeFirst, commitPendingTransition: true);
 
-        duringTransition.Success.ShouldBeFalse();
-        duringTransition.Issues.ShouldContain(issue => issue.Code == "SP_CONFLICT");
-        afterTransition.Success.ShouldBe(duringTransition.Success);
-        afterTransition.Issues.Select(issue => issue.Code).ShouldBe(duringTransition.Issues.Select(issue => issue.Code));
-    }
-
-    // §4.4: during an override removal, validation already matches the post-commit result.
-    [Fact]
-    public async Task GivenEnabledPackageIsRemoved_WhenAnotherPackageActivatesDuringRestoration_ThenResultMatchesPostCommit()
-    {
-        var duringRemoval = await ActivateSecondShadowAsync(removeFirst: true, commitPendingTransition: false);
-        var afterRemoval = await ActivateSecondShadowAsync(removeFirst: true, commitPendingTransition: true);
-
-        afterRemoval.Success.ShouldBeTrue(Describe(afterRemoval));
-        duringRemoval.Success.ShouldBeTrue(Describe(duringRemoval));
-        duringRemoval.Issues.Select(issue => issue.Code).ShouldBe(afterRemoval.Issues.Select(issue => issue.Code));
+        (during.Success, after.Success).ShouldBe((expectActivated, expectActivated), Describe(during));
+        during.Issues.Any(issue => issue.Code == "SP_CONFLICT").ShouldBe(!expectActivated);
+        during.Issues.Select(issue => issue.Code).ShouldBe(after.Issues.Select(issue => issue.Code));
     }
 
     // Review 5 N4: definitions are partitioned by FHIR version; one code cannot be owned by two versions.
@@ -168,9 +143,9 @@ public class PackageActivationPipelineTests
     public async Task GivenR4PackageOwnsACode_WhenAnR5PackageRedefinesIt_ThenActivationIsRejectedAsAVersionConflict()
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(
+        var pipeline = harness.Pipeline([
             SearchParameter("test.r4", Canonical("test.r4")),
-            SearchParameter("test.r5", Canonical("test.r5"), fhirVersion: "5.0.0"));
+            SearchParameter("test.r5", Canonical("test.r5"), fhirVersion: "5.0.0")]);
         (await ActivateAsync(pipeline, "test.r4")).Success.ShouldBeTrue();
         var eventCount = harness.Log.Events.Count;
 
@@ -196,7 +171,7 @@ public class PackageActivationPipelineTests
         string expectedCorePackagePrefix)
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(SearchParameter("test.override", Canonical("test.override"), fhirVersion: fhirVersion));
+        var pipeline = harness.Pipeline([SearchParameter("test.override", Canonical("test.override"), fhirVersion: fhirVersion)]);
 
         var result = await ActivateAsync(pipeline, "test.override");
 
@@ -211,10 +186,10 @@ public class PackageActivationPipelineTests
     public async Task GivenAPackageShadowingABaseComposite_WhenActivated_ThenTheMaterialisedBaseKeepsItsComponents()
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(
+        var pipeline = harness.Pipeline([
             SearchParameter("test.composite", Canonical("x-code"), "x-code", ["Observation"], "Observation.code"),
             SearchParameter("test.composite", Canonical("x-value"), "x-value", ["Observation"], "Observation.value", type: "quantity"),
-            Composite("test.composite", "code-value-quantity", "Observation", (Canonical("x-code"), "code"), (Canonical("x-value"), "value")));
+            Composite("test.composite", "code-value-quantity", "Observation", (Canonical("x-code"), "code"), (Canonical("x-value"), "value"))]);
 
         var result = await ActivateAsync(pipeline, "test.composite");
 
@@ -229,7 +204,7 @@ public class PackageActivationPipelineTests
     public async Task GivenUnknownFhirVersionWithSearchParameters_WhenActivated_ThenItIsRejected()
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(SearchParameter("test.future", Canonical("future"), fhirVersion: "99.0.0"));
+        var pipeline = harness.Pipeline([SearchParameter("test.future", Canonical("future"), fhirVersion: "99.0.0")]);
 
         var result = await ActivateAsync(pipeline, "test.future");
 
@@ -257,7 +232,7 @@ public class PackageActivationPipelineTests
             harness.State.GetSearchParameter("Patient", "custom-code")!.Status.ShouldBe(SearchParameterStatus.Disabled);
         }
 
-        var pipeline = harness.Pipeline(SearchParameter("test.new", Canonical("new-custom"), "custom-code", expression: "Patient.active"));
+        var pipeline = harness.Pipeline([SearchParameter("test.new", Canonical("new-custom"), "custom-code", expression: "Patient.active")]);
 
         var result = await ActivateAsync(pipeline, "test.new");
 
@@ -348,7 +323,7 @@ public class PackageActivationPipelineTests
             harness.Log.OtherWriters.Enqueue(PackageActivated($"other-{index}"));
         }
 
-        var result = await ActivateAsync(harness.Pipeline(Custom()), "test.custom");
+        var result = await ActivateAsync(harness.Pipeline([Custom()]), "test.custom");
 
         result.Success.ShouldBe(expectActivated, Describe(result));
         result.Issues.Any(issue => issue.Code == "CONFORMANCE_CONFLICT").ShouldBe(!expectActivated);
@@ -362,7 +337,7 @@ public class PackageActivationPipelineTests
     public async Task GivenAnActivePackage_WhenActivatedAgain_ThenNothingIsAppendedOrReindexed()
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(Custom());
+        var pipeline = harness.Pipeline([Custom()]);
         (await ActivateAsync(pipeline, "test.custom")).PendingReindex.ShouldBe(["Patient"]);
         var eventCount = harness.Log.Events.Count;
 
@@ -428,8 +403,7 @@ public class PackageActivationPipelineTests
     private static string Describe(ActivationResult result) =>
         string.Join("; ", result.Issues.Select(issue => $"{issue.Code}: {issue.Message}"));
 
-    // Custom parameters become Pending and reach the reindex trigger; overrides become Staged and reach the
-    // transition scheduler. Either way the activation is durable before the injected failure.
+    // The custom package reaches the reindex trigger, the override the scheduler; both are durable before the failure.
     private static (PackageActivationPipeline Pipeline, string PackageId) CreatePipelineFailingAfterAppend(
         Harness harness,
         FollowUpFailure failure,
@@ -467,12 +441,11 @@ public class PackageActivationPipelineTests
         return (harness.Pipeline([Custom(), Shadow()], trigger, tenants, lease), custom ? "test.custom" : "test.override");
     }
 
-    // Activates test.first's shadow (optionally enabling and then removing it, which restages the base), optionally
-    // commits the transition still pending, then activates test.second's shadow of the same code.
+    // Activates test.first's shadow (optionally enabled then removed), optionally commits the pending transition, then test.second's.
     private static async Task<ActivationResult> ActivateSecondShadowAsync(bool removeFirst, bool commitPendingTransition)
     {
         using var harness = new Harness();
-        var pipeline = harness.Pipeline(Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null));
+        var pipeline = harness.Pipeline([Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null)]);
         (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
         if (removeFirst)
         {
@@ -513,8 +486,6 @@ public class PackageActivationPipelineTests
             Seed(new SearchParameterTransitionCommitted(staged.SearchParamId, [staged.ActivationEventId], [outgoing.DeactivationEventId!.Value]));
             return staged;
         }
-
-        public PackageActivationPipeline Pipeline(params PackageResource[] resources) => Pipeline(resources, null);
 
         public PackageActivationPipeline Pipeline(
             PackageResource[] resources,

@@ -1,7 +1,6 @@
 using Ignixa.Application.Features.Conformance;
 using Microsoft.Extensions.Time.Testing;
 using Shouldly;
-using Xunit;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
@@ -15,34 +14,22 @@ public class ConformanceLeaseTests
         _lease = TestConformanceLease.NotHeld(_clock, TimeSpan.FromSeconds(10), syncIntervalSeconds: 7);
 
     [Fact]
-    public void GivenNoSyncThenOneThatSucceedsAfterWork_WhenLeaseIsRenewed_ThenItIsHeldOnlyWithinMaxStalenessOfTheSyncStart()
+    public void GivenTwoSyncsThatSucceedAfterWorkInReverseOrder_WhenTheLeaseIsRenewed_ThenItIsHeldOnlyWithinMaxStalenessOfTheNewerStart()
     {
         _lease.IsHeld.ShouldBeFalse("no sync has succeeded yet");
         _lease.Age.ShouldBe(TimeSpan.MaxValue);
-        var syncStart = _lease.CaptureStart();
-
-        _clock.Advance(TimeSpan.FromSeconds(4));
-        _lease.Renew(syncStart);
-        _lease.IsHeld.ShouldBeTrue();
-        _clock.Advance(TimeSpan.FromSeconds(7));
-
-        _lease.IsHeld.ShouldBeFalse();
-        _lease.Age.ShouldBe(TimeSpan.FromSeconds(11));
-    }
-
-    [Fact]
-    public void GivenNewerRenewal_WhenAnOlderStartRenewsLater_ThenTheLeaseKeepsTheNewerStart()
-    {
         var olderStart = _lease.CaptureStart();
-        _clock.Advance(TimeSpan.FromSeconds(8));
+        _clock.Advance(TimeSpan.FromSeconds(4));
         var newerStart = _lease.CaptureStart();
+        _clock.Advance(TimeSpan.FromSeconds(4));
 
         _lease.Renew(newerStart);
         _lease.Renew(olderStart);
-        _clock.Advance(TimeSpan.FromSeconds(5));
 
-        _lease.Age.ShouldBe(TimeSpan.FromSeconds(5));
-        _lease.IsHeld.ShouldBeTrue();
+        _clock.Advance(TimeSpan.FromSeconds(4));
+        (_lease.IsHeld, _lease.Age).ShouldBe((true, TimeSpan.FromSeconds(8)));
+        _clock.Advance(TimeSpan.FromSeconds(3));
+        (_lease.IsHeld, _lease.Age).ShouldBe((false, TimeSpan.FromSeconds(11)));
     }
 
     [Theory]
@@ -63,13 +50,7 @@ public class ConformanceLeaseTests
 
         var exception = Record.Exception(() => _lease.EnsureRequestCanSearch(requestOriginated, isBackgroundTask));
 
-        if (expectRejected)
-        {
-            exception.ShouldBeOfType<ConformanceStaleException>().RetryAfter.ShouldBe(TimeSpan.FromSeconds(7));
-        }
-        else
-        {
-            exception.ShouldBeNull();
-        }
+        (Type?, TimeSpan?) expected = expectRejected ? (typeof(ConformanceStaleException), TimeSpan.FromSeconds(7)) : (null, null);
+        (exception?.GetType(), (exception as ConformanceStaleException)?.RetryAfter).ShouldBe(expected);
     }
 }

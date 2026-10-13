@@ -13,18 +13,7 @@ public class DurableSearchParameterTransitionSchedulerTests
     private readonly IOrchestrationServiceClient _orchestrations = Substitute.For<IOrchestrationServiceClient>();
 
     [Fact]
-    public async Task GivenActivationTransition_WhenScheduled_ThenItUsesTheDeterministicInstanceId()
-    {
-        await new DurableSearchParameterTransitionScheduler(new TaskHubClient(_orchestrations)).ScheduleAsync(20, TimeSpan.FromMinutes(3), CancellationToken.None);
-
-        await _orchestrations.Received(1).CreateTaskOrchestrationAsync(
-            Arg.Is<TaskMessage>(message => ((ExecutionStartedEvent)message.Event).OrchestrationInstance.InstanceId == "search-parameter-transition-20"),
-            Arg.Is<OrchestrationStatus[]>(statuses =>
-                statuses.SequenceEqual(new[] { OrchestrationStatus.Running, OrchestrationStatus.Pending, OrchestrationStatus.ContinuedAsNew })));
-    }
-
-    [Fact]
-    public async Task GivenActiveTransitionOrchestration_WhenScheduledAgain_ThenTheDuplicateIsMergedIntoIt()
+    public async Task GivenActivationTransition_WhenScheduledTwice_ThenBothUseTheDeterministicInstanceIdAndTheDuplicateIsMerged()
     {
         _orchestrations.CreateTaskOrchestrationAsync(Arg.Any<TaskMessage>(), Arg.Any<OrchestrationStatus[]>())
             .Returns(
@@ -35,5 +24,10 @@ public class DurableSearchParameterTransitionSchedulerTests
 
         await scheduler.ScheduleAsync(20, TimeSpan.FromMinutes(3), CancellationToken.None);
         await Should.NotThrowAsync(() => scheduler.ScheduleAsync(20, TimeSpan.FromMinutes(3), CancellationToken.None));
+
+        await _orchestrations.Received(2).CreateTaskOrchestrationAsync(
+            Arg.Is<TaskMessage>(message => ((ExecutionStartedEvent)message.Event).OrchestrationInstance.InstanceId == "search-parameter-transition-20"),
+            Arg.Is<OrchestrationStatus[]>(statuses =>
+                statuses.SequenceEqual(new[] { OrchestrationStatus.Running, OrchestrationStatus.Pending, OrchestrationStatus.ContinuedAsNew })));
     }
 }
