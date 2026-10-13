@@ -574,9 +574,7 @@ public static class FhirEndpoints
 
             if (result.OperationOutcomeBytes is { } createWarning)
             {
-                return FhirResults.Created(location, createWarning, context)
-                    .WithETag(result.Key.VersionId!)
-                    .WithLastModified(result.LastModified);
+                return WarningOutcome(createWarning, location, result.Key.VersionId!, result.LastModified, context);
             }
 
             if (actualReturnPreference == ReturnPreference.Representation)
@@ -597,9 +595,7 @@ public static class FhirEndpoints
 
         if (result.OperationOutcomeBytes is { } updateWarning)
         {
-            return FhirResults.Ok(updateWarning, context)
-                .WithETag(result.Key.VersionId!)
-                .WithLastModified(result.LastModified);
+            return WarningOutcome(updateWarning, createdLocation: null, result.Key.VersionId!, result.LastModified, context);
         }
 
         if (actualReturnPreference == ReturnPreference.Representation)
@@ -1066,9 +1062,7 @@ public static class FhirEndpoints
 
         if (createResult.OperationOutcomeBytes is { } createWarning)
         {
-            return FhirResults.Created(createLocation, createWarning, context)
-                .WithETag(createResult.Key.VersionId!)
-                .WithLastModified(createResult.LastModified);
+            return WarningOutcome(createWarning, createLocation, createResult.Key.VersionId!, createResult.LastModified, context);
         }
 
         if (actualReturnPreference == ReturnPreference.Representation)
@@ -1352,9 +1346,7 @@ public static class FhirEndpoints
 
             if (result.OperationOutcomeBytes is { } createWarning)
             {
-                return FhirResults.Created(location, createWarning)
-                    .WithETag(result.Resource.VersionId)
-                    .WithLastModified(result.Resource.LastModified);
+                return WarningOutcome(createWarning, location, result.Resource.VersionId, result.Resource.LastModified, context: null);
             }
 
             if (actualReturnPreference == ReturnPreference.Minimal)
@@ -1385,9 +1377,7 @@ public static class FhirEndpoints
             // 200 OK
             if (result.OperationOutcomeBytes is { } updateWarning)
             {
-                return FhirResults.Ok(updateWarning)
-                    .WithETag(result.Resource.VersionId)
-                    .WithLastModified(result.Resource.LastModified);
+                return WarningOutcome(updateWarning, createdLocation: null, result.Resource.VersionId, result.Resource.LastModified, context: null);
             }
 
             if (actualReturnPreference == ReturnPreference.Minimal)
@@ -1748,6 +1738,28 @@ public static class FhirEndpoints
             Diagnostics = message
         });
         return outcome;
+    }
+
+    /// <summary>
+    /// The response to a write whose resource was saved while a non-atomic secondary write (X-Provenance)
+    /// failed: the warning OperationOutcome instead of the resource, with the saved version's headers.
+    /// <paramref name="context"/> is passed through only by the routes that honour <c>_pretty</c>.
+    /// </summary>
+    private static FhirResult WarningOutcome(
+        ReadOnlyMemory<byte> outcome,
+        string? createdLocation,
+        string versionId,
+        DateTimeOffset lastModified,
+        HttpContext? context)
+    {
+        var response = (createdLocation, context) switch
+        {
+            (null, null) => FhirResults.Ok(outcome),
+            (null, { } httpContext) => FhirResults.Ok(outcome, httpContext),
+            ({ } location, null) => FhirResults.Created(location, outcome),
+            ({ } location, { } httpContext) => FhirResults.Created(location, outcome, httpContext),
+        };
+        return response.WithETag(versionId).WithLastModified(lastModified);
     }
 
     /// <summary>
