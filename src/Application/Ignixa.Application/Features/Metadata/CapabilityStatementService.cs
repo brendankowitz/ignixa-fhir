@@ -264,8 +264,8 @@ public class CapabilityStatementService
 
     private static string GetCacheKey(
         CapabilityContext context,
-        DefinitionsHandle? definitionsHandle) =>
-        $"{context.ToCacheKey()}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
+        DefinitionsHandle definitionsHandle) =>
+        $"{context.ToCacheKey()}:{definitionsHandle.DefinitionsEventId}:{definitionsHandle.PublicationSequence}";
 
     /// <summary>
     /// Clears all cached capability statements.

@@ -202,8 +202,8 @@ public class ProfileCapabilitySegment : ICapabilitySegment
     /// The profile-data cache key for one definitions generation. <see cref="CapabilityStatementService"/>
     /// invalidates through it, so the read and the invalidation can never disagree on the format.
     /// </summary>
-    internal static string GetProfileCacheKey(string tenantId, DefinitionsHandle? definitionsHandle) =>
-        $"profiles:{tenantId}:{definitionsHandle?.DefinitionsEventId ?? 0}:{definitionsHandle?.PublicationSequence ?? 0}";
+    internal static string GetProfileCacheKey(string tenantId, DefinitionsHandle definitionsHandle) =>
+        $"profiles:{tenantId}:{definitionsHandle.DefinitionsEventId}:{definitionsHandle.PublicationSequence}";
 
     /// <summary>
     /// Gets cached profile data for a tenant, loading from database if not cached.
