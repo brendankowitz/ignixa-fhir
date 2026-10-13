@@ -17,14 +17,18 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class CompleteReindexActivityTests
 {
-    // §8.5: lifecycle appends are idempotent, so a retried completion appends nothing twice.
+    // §8.5: the job is written only after the lifecycle outcome is appended, and appends are idempotent, so a
+    // completion retried after a failed append and then a failed final write appends nothing twice. The catalog is
+    // checked by storage canonical (OverridesCanonical ?? Canonical), and the job keeps the tenants' failure counts.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task GivenFinalWriteFailsAfterTheLifecycleOutcomeWasAppended_WhenActivityRetries_ThenTheOutcomeIsKeptAndNotAppendedTwice(
+    public async Task GivenTheAppendAndThenTheFinalWriteFail_WhenActivityRetries_ThenTheOutcomeIsKeptAndNotAppendedTwice(
         bool orchestrationFailed)
     {
-        var fixture = await Fixture.CreateAsync();
+        const string baseCanonical = "http://hl7.org/fhir/SearchParameter/Resource-id";
+        var target = Target(overridesCanonical: baseCanonical);
+        var fixture = await Fixture.CreateAsync(target: target);
         var failWrite = true;
         var jobs = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         jobs.GetAsync("job", 1, Arg.Any<CancellationToken>())
@@ -33,15 +37,24 @@ public class CompleteReindexActivityTests
             .Returns(call => failWrite
                 ? Task.FromException(new TimeoutException("job store unavailable"))
                 : fixture.Jobs.UpdateAsync(call.Arg<BackgroundJob<ReindexJobDefinition>>(), 1, CancellationToken.None));
-        var activity = fixture.Activity(jobs: jobs);
-        var input = Input([Target()], failureMessage: orchestrationFailed ? "Reindex orchestration failed: worker crashed" : null);
+        var activity = fixture.Activity(StoreFactoryWithCatalog(baseCanonical), jobs);
+        var input = Input(
+            [target],
+            orchestrationFailed ? "Reindex orchestration failed: worker crashed" : null,
+            Completed(1, failedResourceCount: 153));
 
+        fixture.Events.FailAppends = true;
+        await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(() => activity.RunAsync(ActivityContext(), input));
+        (await fixture.JobAsync()).Status.ShouldBe("Running");
+        fixture.Events.FailAppends = false;
         await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(() => activity.RunAsync(ActivityContext(), input));
         (await fixture.JobAsync()).Status.ShouldBe("Running");
         failWrite = false;
         await activity.RunAsync(ActivityContext(), input);
 
         var job = await fixture.JobAsync();
+        job.Result!["success"]!.GetValue<bool>().ShouldBe(!orchestrationFailed);
+        ReindexProgress.FromJson(job.Progress)!.Tenants.ShouldHaveSingleItem().FailedResourceCount.ShouldBe(153);
         if (orchestrationFailed)
         {
             job.Status.ShouldBe("Failed");
@@ -55,26 +68,6 @@ public class CompleteReindexActivityTests
             fixture.Events.Appended.Select(evt => evt.Data).OfType<SearchParameterReindexCompleted>().ShouldHaveSingleItem()
                 .Duration.ShouldBeGreaterThanOrEqualTo(TimeSpan.FromHours(1));
         }
-    }
-
-    // Spec §8.5: an active tenant the job did not cover fails the target; a retried append keeps that decision.
-    [Fact]
-    public async Task GivenActiveTenantWasNotInJobAndTheLifecycleAppendFails_WhenActivityRetries_ThenTheJobFailsWithoutEnablingTarget()
-    {
-        var fixture = await Fixture.CreateAsync(activeTenants: [Tenant(1), Tenant(2)]);
-        var activity = fixture.Activity();
-
-        fixture.Events.FailAppends = true;
-        await Should.ThrowAsync<DurableTask.Core.Exceptions.TaskFailureException>(
-            () => activity.RunAsync(ActivityContext(), Input([Target()])));
-        (await fixture.JobAsync()).Status.ShouldBe("Running");
-        fixture.Events.FailAppends = false;
-        await activity.RunAsync(ActivityContext(), Input([Target()]));
-
-        fixture.Status.ShouldBe(SearchParameterStatus.Pending);
-        var job = await fixture.JobAsync();
-        job.Status.ShouldBe("Failed");
-        job.ErrorMessage.ShouldContain("manual $reindex");
     }
 
     // §8.5 (M7): an owned target that does not match a planned identity fails back to Pending.
@@ -109,59 +102,35 @@ public class CompleteReindexActivityTests
         fixture.State.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
     }
 
-    // §8.5: the catalog is checked by storage canonical (OverridesCanonical ?? Canonical).
-    [Fact]
-    public async Task GivenAnOverrideStoredUnderItsBaseCanonical_WhenReindexCompletes_ThenTheBaseCatalogRowIsCheckedAndTheOverrideIsEnabled()
+    // §8.5: an active tenant the job did not cover, or one whose catalog has no row for the storage canonical, fails
+    // the target; F2/F11: so do failed resources or ranges of an affected type, and the failing tenant is reported Failed.
+    [Theory]
+    [InlineData("tenantAddedAfterStart", "a manual $reindex is needed", ReindexTenantStatus.Completed)]
+    [InlineData("noCatalogRow", "Tenant 1: the search-parameter catalog has no row for " + Canonical, ReindexTenantStatus.Completed)]
+    [InlineData("failedResource", "Tenant 1: resource failures occurred", ReindexTenantStatus.Failed)]
+    [InlineData("failedRange", "Tenant 1: resource failures occurred", ReindexTenantStatus.Failed)]
+    public async Task GivenATenantThatCannotEnableTheTarget_WhenCompletionRuns_ThenTheJobFailsAndTheParameterReturnsToPending(
+        string blocker,
+        string expectedError,
+        ReindexTenantStatus expectedTenantStatus)
     {
-        const string baseCanonical = "http://hl7.org/fhir/SearchParameter/Resource-id";
-        var target = Target(overridesCanonical: baseCanonical);
-        var fixture = await Fixture.CreateAsync(target: target);
+        var fixture = await Fixture.CreateAsync(activeTenants: blocker == "tenantAddedAfterStart" ? [Tenant(1), Tenant(2)] : null);
+        var progress = blocker switch
+        {
+            "failedRange" => Completed(1).AddRangeFailure("Patient", "range timed out"),
+            "failedResource" => Completed(1).Add("Patient", new ReindexRangeOutput(0, 0, [new ReindexFailedResource("Patient", "p2", "bad")])),
+            _ => Completed(1)
+        };
 
-        await fixture.Activity(StoreFactoryWithCatalog(baseCanonical)).RunAsync(
-            ActivityContext(),
-            Input([target], tenants: Completed(1, failedResourceCount: 153)));
-
-        var job = await fixture.JobAsync();
-        job.Status.ShouldBe("Completed");
-        ReindexProgress.FromJson(job.Progress)!.Tenants.ShouldHaveSingleItem().FailedResourceCount.ShouldBe(153);
-        job.Result!["success"]!.GetValue<bool>().ShouldBeTrue();
-        fixture.Status.ShouldBe(SearchParameterStatus.Enabled);
-    }
-
-    // §8.5: a tenant whose catalog has no row for the storage canonical fails the target.
-    [Fact]
-    public async Task GivenTheTenantCatalogHasNoRowForTheStorageCanonical_WhenCompletionRuns_ThenTheJobFailsAndTheParameterIsNotEnabled()
-    {
-        var fixture = await Fixture.CreateAsync();
-
-        await fixture.Activity(StoreFactoryWithCatalog()).RunAsync(ActivityContext(), Input([Target()]));
+        await fixture.Activity(blocker == "noCatalogRow" ? StoreFactoryWithCatalog() : null)
+            .RunAsync(ActivityContext(), Input([Target()], tenants: progress));
 
         var job = await fixture.JobAsync();
         job.Status.ShouldBe("Failed");
-        job.ErrorMessage.ShouldContain($"Tenant 1: the search-parameter catalog has no row for {Canonical}");
+        job.ErrorMessage.ShouldContain(expectedError);
+        ReindexProgress.FromJson(job.Progress)!.Tenants.ShouldHaveSingleItem().Status.ShouldBe(expectedTenantStatus);
         fixture.Status.ShouldBe(SearchParameterStatus.Pending);
         fixture.State.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
-    }
-
-    // F2/F11: while a tenant has failed resources of an affected type, the parameter stays out of Enabled.
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task GivenATenantWithFailuresOfAnAffectedType_WhenCompletionRuns_ThenTheJobFailsAndTheParameterReturnsToPending(
-        bool wholeRangeFailed)
-    {
-        var fixture = await Fixture.CreateAsync();
-        var progress = wholeRangeFailed
-            ? Completed(1).AddRangeFailure("Patient", "range timed out")
-            : Completed(1).Add("Patient", new ReindexRangeOutput(0, 0, [new ReindexFailedResource("Patient", "p2", "bad")]));
-
-        await fixture.Activity().RunAsync(ActivityContext(), Input([Target()], tenants: progress));
-
-        var job = await fixture.JobAsync();
-        job.Status.ShouldBe("Failed");
-        job.ErrorMessage.ShouldContain("Tenant 1: resource failures occurred");
-        ReindexProgress.FromJson(job.Progress)!.Tenants.ShouldHaveSingleItem().Status.ShouldBe(ReindexTenantStatus.Failed);
-        fixture.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
     // Spec §8.5: the job store's first terminal status is authoritative; a delayed completion changes nothing.
@@ -277,13 +246,7 @@ public class CompleteReindexActivityTests
         public CompleteReindexActivity Activity(
             IReindexStoreFactory? storeFactory = null,
             IBackgroundJobRepository<ReindexJobDefinition>? jobs = null) =>
-            new(
-                storeFactory ?? StoreFactoryWithCatalog(Canonical),
-                Lifecycle,
-                jobs ?? Jobs,
-                new TestReindexJobLock(),
-                _tenants,
-                TimeProvider.System,
-                NullLogger<CompleteReindexActivity>.Instance);
+            new(storeFactory ?? StoreFactoryWithCatalog(Canonical), Lifecycle, jobs ?? Jobs, new TestReindexJobLock(), _tenants,
+                TimeProvider.System, NullLogger<CompleteReindexActivity>.Instance);
     }
 }
