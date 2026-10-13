@@ -112,9 +112,6 @@ public sealed class ConformanceState : IDisposable
             parameter.IsAvailable &&
             parameter.Status != SearchParameterStatus.Disabled);
 
-    public ActiveSearchParameter? FindExtractedByCanonical(string canonical) =>
-        _searchParameters.Values.LastOrDefault(sp => sp.Canonical == canonical);
-
     /// <summary>
     /// Gets the Staged and Disabling definitions that one transition commits, grouped by storage identity.
     /// </summary>
@@ -158,9 +155,6 @@ public sealed class ConformanceState : IDisposable
                     : parameter.DeactivationEventId!.Value))
             .Distinct()
             .ToArray();
-
-    public bool TryGetSearchParameterStorageCanonical(string canonical, out string storageCanonical) =>
-        _storageCanonicals.TryGetValue(canonical, out storageCanonical!);
 
     // The caller holds the activation lock. Allocation and proposed-event application must not
     // change published state until the complete batch has validated and the append has succeeded.
