@@ -44,6 +44,7 @@
     <EmbeddedResource Include="..\Ignixa.DataLayer.SqlServer.Database\bin\$(Configuration)\Ignixa.DataLayer.SqlServer.Database.dacpac">
       <LogicalName>Ignixa.DataLayer.SqlServer.Schema.dacpac</LogicalName>
     </EmbeddedResource>
+    <ProjectReference Include="..\Ignixa.DataLayer.SqlServer.Database\Ignixa.DataLayer.SqlServer.Database.sqlproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

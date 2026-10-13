@@ -13,10 +13,7 @@
          AllowIncompatiblePlatform=true for that reason. Production never sets it. -->
     <DSP>Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider</DSP>
     <ModelCollation>1033, CI</ModelCollation>
-    <ProjectGuid>{0d46d298-89f4-43e1-b6b6-4f560d86d637}</ProjectGuid>
-    <TargetDatabaseSet>True</TargetDatabaseSet>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <TargetFrameworkProfile />
+    <ProjectGuid>0D46D298-89F4-43E1-B6B6-4F560D86D637</ProjectGuid>
   </PropertyGroup>
   <ItemGroup>
     <Build Remove="Scripts\Script.PostDeployment.sql" />

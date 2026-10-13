@@ -20,7 +20,6 @@ namespace Ignixa.Models;
 [CompatibleFhirVersions(global::Ignixa.Abstractions.FhirVersion.R4, global::Ignixa.Abstractions.FhirVersion.R5)]
 public sealed partial class Address : BaseJsonNode
 {
-    // TODO: Brian go play 
     public Address()
     {
     }
