@@ -4,7 +4,6 @@ using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure.Caching;
-using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;

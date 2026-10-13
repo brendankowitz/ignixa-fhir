@@ -12,7 +12,6 @@ using Microsoft.Extensions.Options;
 using Medino;
 using NSubstitute;
 using Shouldly;
-using Xunit;
 using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 
 namespace Ignixa.Api.Tests.Services;

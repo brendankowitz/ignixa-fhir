@@ -11,31 +11,23 @@ namespace Ignixa.Api.Tests.Registrations;
 /// <summary>M-L4 and M-L5: the registered conformance timings derive from the sync interval and validate at startup.</summary>
 public sealed class BackgroundServicesRegistrationTests
 {
-    [Fact]
-    public void GivenDefaultConformanceSettings_WhenOptionsAreResolved_ThenOneMissedPollKeepsTheLeaseValid()
+    [Theory]
+    [InlineData(null, 30, 240)]
+    [InlineData("5", 5, 165)]
+    public void GivenASyncInterval_WhenOptionsAreResolved_ThenOneMissedPollKeepsTheLeaseValidAndTheTimingsValidate(
+        string? syncIntervalSeconds,
+        int expectedSyncIntervalSeconds,
+        int expectedGraceSeconds)
     {
-        using var provider = BuildProvider();
-
-        var conformance = provider.GetRequiredService<IOptions<ConformanceTransitionOptions>>().Value;
-
-        conformance.SyncIntervalSeconds.ShouldBe(30);
-        conformance.MaxStaleness.ShouldBe(TimeSpan.FromSeconds(90));
-        conformance.TransitionSafetyMargin.ShouldBe(TimeSpan.FromSeconds(150));
-        conformance.TransitionGrace.ShouldBe(TimeSpan.FromSeconds(240));
-        provider.GetRequiredService<IOptions<ReindexOptions>>().Value.BarrierDelay.ShouldBe(TimeSpan.FromSeconds(90));
-    }
-
-    [Fact]
-    public void GivenAShortSyncIntervalAndDerivedDurations_WhenOptionsAreResolved_ThenTheSafetyMarginStillValidates()
-    {
-        using var provider = BuildProvider(("Conformance:SyncIntervalSeconds", "5"));
+        using var provider = syncIntervalSeconds is null ? BuildProvider() : BuildProvider(("Conformance:SyncIntervalSeconds", syncIntervalSeconds));
 
         provider.GetRequiredService<IStartupValidator>().Validate();
         var conformance = provider.GetRequiredService<IOptions<ConformanceTransitionOptions>>().Value;
 
-        conformance.MaxStaleness.ShouldBe(TimeSpan.FromSeconds(15));
-        conformance.TransitionSafetyMargin.ShouldBe(TimeSpan.FromSeconds(150));
-        conformance.TransitionGrace.ShouldBe(TimeSpan.FromSeconds(165));
+        var staleness = TimeSpan.FromSeconds(3 * expectedSyncIntervalSeconds);
+        (conformance.SyncIntervalSeconds, conformance.MaxStaleness, conformance.TransitionSafetyMargin, conformance.TransitionGrace)
+            .ShouldBe((expectedSyncIntervalSeconds, staleness, TimeSpan.FromSeconds(150), TimeSpan.FromSeconds(expectedGraceSeconds)));
+        provider.GetRequiredService<IOptions<ReindexOptions>>().Value.BarrierDelay.ShouldBe(staleness);
     }
 
     [Fact]

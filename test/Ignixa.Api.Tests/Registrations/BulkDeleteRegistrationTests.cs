@@ -8,7 +8,6 @@ using Ignixa.Application.BackgroundOperations.BulkDelete;
 using Ignixa.Application.BackgroundOperations.BulkDelete.Activities;
 using Ignixa.Application.BackgroundOperations.BulkDelete.Models;
 using Ignixa.Application.BackgroundOperations.BulkDelete.Orchestrations;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Tests;
