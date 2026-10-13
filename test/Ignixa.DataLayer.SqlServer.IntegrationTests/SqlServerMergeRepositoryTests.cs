@@ -71,7 +71,8 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task GivenAWriterBehindTheConformanceBarrier_WhenTransactionIsAllocated_ThenItIsFailedAndVisible()
     {
-        await SetConformanceBarrierAsync(29);
+        // Spec F4, §5.3: a fresh tenant has no barrier row yet.
+        await _database.ExecuteNonQueryAsync("INSERT dbo.Parameters (Id, Bigint) VALUES ('Conformance.MinAcceptedDefinitionsEventId', 29)");
 
         var exception = await Should.ThrowAsync<StaleConformanceDefinitionsException>(() =>
             _repository.BeginTransactionAsync(
@@ -212,20 +213,6 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
             "SELECT COUNT(*) FROM dbo.TokenSearchParam WHERE ResourceSurrogateId >= " + transactionId);
         rowCount.ShouldBe(0);
     }
-
-    private Task SetConformanceBarrierAsync(long eventId) =>
-        _database.ExecuteNonQueryAsync(
-            $"""
-             UPDATE dbo.Parameters
-             SET Bigint = {eventId}
-             WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId';
-             IF @@ROWCOUNT = 0
-             BEGIN
-                 INSERT dbo.Parameters (Id, Bigint)
-                 VALUES ('Conformance.MinAcceptedDefinitionsEventId', {eventId});
-             END
-             """);
-
 }
 
 internal sealed class ListLogger<T> : ILogger<T>
