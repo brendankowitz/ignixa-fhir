@@ -14,6 +14,16 @@ namespace Ignixa.Api.Endpoints;
 
 internal static class SearchRequestHandling
 {
+    /// <summary>
+    /// Returns the 400 a search must fail with, or null to serve it.
+    /// </summary>
+    /// <remarks>
+    /// R4 makes the two cases differ (search.html#modifiers, http.html#2.21.0.2). An unsupported modifier is a
+    /// SHALL reject, because dropping it widens the result instead of narrowing it, so it fails unless the
+    /// client sent <c>Prefer: handling=lenient</c>. An unknown parameter only SHOULD be ignored, since proxies
+    /// inject parameters, so it fails only under <c>handling=strict</c>. Either way the ignored parameter is
+    /// already in the bundle warning and dropped from the self link.
+    /// </remarks>
     public static IResult? CheckStrictHandling(
         HttpContext context,
         SearchOptions searchOptions,
