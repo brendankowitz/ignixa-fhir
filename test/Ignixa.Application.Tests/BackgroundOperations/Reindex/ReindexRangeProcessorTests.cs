@@ -13,7 +13,6 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
-using Ignixa.Specification.ValueSets.Normative;
 using NSubstitute;
 using Shouldly;
 
@@ -21,6 +20,8 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexRangeProcessorTests
 {
+    private static readonly ReindexRangeInput Range = new("job", 1, "Patient", 1, 20, 42, 20, 0);
+
     [Fact]
     public async Task GivenWriteTimeout_WhenRangeIsProcessed_ThenBatchSizeIsHalvedAndRetried()
     {
@@ -35,29 +36,21 @@ public class ReindexRangeProcessorTests
                     ? throw new TimeoutException("SQL command timed out.")
                     : new SearchIndexUpdateResult(count, 0);
             });
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns([]);
 
-        var result = await CreateProcessor(new FhirRequestContextAccessor(), indexer, store).ProcessAsync(
-            new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, 0),
-            CancellationToken.None);
+        var result = await CreateProcessor(store).ProcessAsync(Range, CancellationToken.None);
 
         writeSizes.ShouldBe([20, 10, 10]);
         result.ResourcesReindexed.ShouldBe(20);
     }
 
+    // M5: a worker behind the job's target event refreshes its definitions before deciding it is not ready.
     [Fact]
     public async Task GivenDefinitionsBehindTargetEvent_WhenRangeIsProcessed_ThenDefinitionsAreRefreshed()
     {
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetDefinitionsHandle(Arg.Any<FhirVersion>(), 1)
-            .Returns(
-                new DefinitionsHandle(Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 41),
-                new DefinitionsHandle(Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 42));
+        var versions = Versions(41, 42);
         var eventStore = TestConformanceRefresher.EmptyEventStore();
 
-        var result = await CreateProcessor(new FhirRequestContextAccessor(), Substitute.For<IReindexStore>(), versions, eventStore)
-            .ProcessAsync(new ReindexRangeInput("job", 1, "Patient", 1, 100, 42, 1000, 0), CancellationToken.None);
+        var result = await CreateProcessor(Substitute.For<IReindexStore>(), versions, eventStore).ProcessAsync(Range, CancellationToken.None);
 
         result.ResourcesReindexed.ShouldBe(0);
         _ = eventStore.Received(1).ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
@@ -67,15 +60,9 @@ public class ReindexRangeProcessorTests
     [Fact]
     public async Task GivenDefinitionsStillBehindAfterRefresh_WhenRangeIsProcessed_ThenItReturnsNotReadyWithoutReadingOrThrowing()
     {
-        var store = SinglePageStore();
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(Substitute.For<ISearchIndexer>(), Substitute.For<IFhirSchemaProvider>(), 41));
-        var processor = CreateProcessor(new FhirRequestContextAccessor(), store, versions);
+        var store = PageStore(1);
 
-        var result = await processor.ProcessAsync(
-            new ReindexRangeInput("job", 1, "Patient", 1, 100, 42, 1000, 0),
-            CancellationToken.None);
+        var result = await CreateProcessor(store, Versions(41)).ProcessAsync(Range, CancellationToken.None);
 
         // The not-ready signal must survive the converter DurableTask uses at the activity boundary.
         var crossed = JsonDataConverter.Default.Deserialize<ReindexRangeOutput>(JsonDataConverter.Default.Serialize(result));
@@ -93,23 +80,15 @@ public class ReindexRangeProcessorTests
         var caller = new FhirRequestContext { TenantId = 99 };
         var accessor = new RecordingContextAccessor { RequestContext = caller };
         var observed = new List<IFhirRequestContext?>();
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(_ =>
-        {
-            observed.Add(accessor.RequestContext);
-            return [];
-        });
-        var store = SinglePageStore();
+        var store = PageStore(1);
         if (readThrows)
         {
             store.ReadRangeAsync(default!, default, default, default, default, default)
                 .ReturnsForAnyArgs<IReadOnlyList<ReindexResource>>(_ => throw new InvalidOperationException("read failed"));
         }
 
-        var processor = CreateProcessor(accessor, indexer, store);
-        var process = () => processor.ProcessAsync(
-            new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, 0),
-            CancellationToken.None);
+        var process = () => CreateProcessor(store, Indexer(_ => observed.Add(accessor.RequestContext)), accessor)
+            .ProcessAsync(Range, CancellationToken.None);
 
         if (readThrows)
         {
@@ -135,15 +114,15 @@ public class ReindexRangeProcessorTests
     public async Task GivenOneResourceFailsExtraction_WhenRangeIsProcessed_ThenItIsRecordedAndTheOthersAreWritten()
     {
         var store = PageStore(3);
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(call =>
-            call.Arg<IElement>().Scalar("id") as string == "p2"
-                ? throw new InvalidOperationException("bad expression")
-                : []);
+        var indexer = Indexer(resource =>
+        {
+            if (resource.Scalar("id") as string == "p2")
+            {
+                throw new InvalidOperationException("bad expression");
+            }
+        });
 
-        var result = await CreateProcessor(new FhirRequestContextAccessor(), indexer, store).ProcessAsync(
-            new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, 0),
-            CancellationToken.None);
+        var result = await CreateProcessor(store, indexer).ProcessAsync(Range, CancellationToken.None);
 
         result.ResourcesReindexed.ShouldBe(2);
         result.FailedResourceCount.ShouldBe(1);
@@ -158,12 +137,9 @@ public class ReindexRangeProcessorTests
     public async Task GivenMoreFailuresThanTheSample_WhenRangeIsProcessed_ThenAllAreCountedAndTheSampleIsCapped()
     {
         var store = PageStore(ReindexTenantProgress.FailedResourceSampleSize + 1);
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns(_ => throw new InvalidOperationException("bad expression"));
+        var indexer = Indexer(_ => throw new InvalidOperationException("bad expression"));
 
-        var result = await CreateProcessor(new FhirRequestContextAccessor(), indexer, store).ProcessAsync(
-            new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 1000, 0),
-            CancellationToken.None);
+        var result = await CreateProcessor(store, indexer).ProcessAsync(Range, CancellationToken.None);
 
         result.FailedResourceCount.ShouldBe(ReindexTenantProgress.FailedResourceSampleSize + 1);
         result.FailedResources.Count.ShouldBe(ReindexTenantProgress.FailedResourceSampleSize);
@@ -177,40 +153,61 @@ public class ReindexRangeProcessorTests
         using var cancellation = new CancellationTokenSource();
         var store = PageStore(1);
         store.UpdateSearchIndicesAsync(Arg.Any<IReadOnlyList<ReindexResource>>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
+            .Returns(_ =>
             {
                 // Cancelling here makes the wait observable: it can only fail if it was started.
                 cancellation.Cancel();
                 return new SearchIndexUpdateResult(1, 0);
             });
-        var indexer = Substitute.For<ISearchIndexer>();
-        indexer.Extract(Arg.Any<IElement>()).Returns([]);
 
-        await Should.ThrowAsync<OperationCanceledException>(() =>
-            CreateProcessor(new FhirRequestContextAccessor(), indexer, store).ProcessAsync(
-                new ReindexRangeInput("job", 1, "Patient", 1, 20, 42, 20, int.MaxValue),
-                cancellation.Token));
+        await Should.ThrowAsync<OperationCanceledException>(() => CreateProcessor(store)
+            .ProcessAsync(Range with { QueryDelayIntervalInMilliseconds = int.MaxValue }, cancellation.Token));
 
-        await store.Received(1).ReadRangeAsync(
-            Arg.Any<string>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<long?>(), Arg.Any<CancellationToken>());
+        await store.ReceivedWithAnyArgs(1).ReadRangeAsync(default!, default, default, default, default, default);
     }
 
-    private static ReindexRangeProcessor CreateProcessor(
-        IFhirRequestContextAccessor accessor,
-        ISearchIndexer indexer,
-        IReindexStore store)
+    /// <summary>An indexer that runs <paramref name="onExtract"/> for each resource and extracts nothing.</summary>
+    private static ISearchIndexer Indexer(Action<IElement> onExtract)
+    {
+        var indexer = Substitute.For<ISearchIndexer>();
+        indexer.Extract(Arg.Any<IElement>()).Returns(call =>
+        {
+            onExtract(call.Arg<IElement>());
+            return [];
+        });
+        return indexer;
+    }
+
+    /// <summary>Definitions for tenant 1 at each successive event id, one per lookup.</summary>
+    private static IFhirVersionContext Versions(long definitionsEventId, params long[] laterEventIds)
     {
         var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1)
-            .Returns(new DefinitionsHandle(indexer, FhirVersion.R4.GetSchemaProvider(), 42));
-        return CreateProcessor(accessor, store, versions);
+        var first = Handle(definitionsEventId);
+        var later = laterEventIds.Select(Handle).ToArray();
+        versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(first, later);
+        return versions;
+
+        static DefinitionsHandle Handle(long eventId) =>
+            new(Substitute.For<ISearchIndexer>(), FhirVersion.R4.GetSchemaProvider(), eventId);
     }
 
     private static ReindexRangeProcessor CreateProcessor(
-        IFhirRequestContextAccessor accessor,
+        IReindexStore store,
+        ISearchIndexer? indexer = null,
+        IFhirRequestContextAccessor? accessor = null)
+    {
+        // Built before the definitions lookup is configured: NSubstitute cannot configure two substitutes at once.
+        var handle = new DefinitionsHandle(indexer ?? Indexer(_ => { }), FhirVersion.R4.GetSchemaProvider(), 42);
+        var versions = Substitute.For<IFhirVersionContext>();
+        versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(handle);
+        return CreateProcessor(store, versions, accessor: accessor);
+    }
+
+    private static ReindexRangeProcessor CreateProcessor(
         IReindexStore store,
         IFhirVersionContext versions,
-        ISourceEventStore? eventStore = null)
+        ISourceEventStore? eventStore = null,
+        IFhirRequestContextAccessor? accessor = null)
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(ReindexTestHelper.Tenant(1));
@@ -221,10 +218,8 @@ public class ReindexRangeProcessorTests
             tenants,
             versions,
             TestConformanceRefresher.Create(new ConformanceState(), eventStore),
-            accessor);
+            accessor ?? new FhirRequestContextAccessor());
     }
-
-    private static IReindexStore SinglePageStore() => PageStore(1);
 
     /// <summary>A store whose range 1..20 holds one page of <paramref name="count"/> patients, all written.</summary>
     private static IReindexStore PageStore(int count)

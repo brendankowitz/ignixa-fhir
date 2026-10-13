@@ -12,6 +12,12 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class GetReindexStatusHandlerTests
 {
+    private static readonly IOptions<ReindexOptions> JobOptions = Options.Create(new ReindexOptions
+    {
+        StaleJobTimeout = TimeSpan.FromMinutes(30),
+        BarrierDelay = TimeSpan.FromHours(3)
+    });
+
     private readonly InMemoryBackgroundJobRepository<ReindexJobDefinition> _jobs = JobRepository();
 
     [Theory]
@@ -26,17 +32,8 @@ public class GetReindexStatusHandlerTests
         var job = Job(status, observed: Now.AddHours(-1));
         job.Progress = phase is { } value ? new ReindexProgress(value).ToJson() : null;
         await _jobs.CreateAsync(job, CancellationToken.None);
-        var handler = new GetReindexStatusHandler(
-            _jobs,
-            Options.Create(new ReindexOptions
-            {
-                StaleJobTimeout = TimeSpan.FromMinutes(30),
-                BarrierDelay = TimeSpan.FromHours(3)
-            }),
-            new FixedTimeProvider(Now),
-            NullLogger<GetReindexStatusHandler>.Instance);
 
-        var result = await handler.HandleAsync(new GetReindexStatusQuery("job"), CancellationToken.None);
+        var result = await StatusAsync("job");
 
         result.ShouldNotBeNull().IsStale.ShouldBe(expectedStale);
     }
@@ -47,13 +44,8 @@ public class GetReindexStatusHandlerTests
         var export = Job("Running", "export");
         export.JobType = (int)BackgroundJobType.Export;
         await _jobs.CreateAsync(export, CancellationToken.None);
-        var handler = new GetReindexStatusHandler(
-            _jobs,
-            Options.Create(new ReindexOptions()),
-            TimeProvider.System,
-            NullLogger<GetReindexStatusHandler>.Instance);
 
-        (await handler.HandleAsync(new GetReindexStatusQuery("export"), CancellationToken.None)).ShouldBeNull();
+        (await StatusAsync("export")).ShouldBeNull();
     }
 
     [Fact]
@@ -63,14 +55,15 @@ public class GetReindexStatusHandlerTests
         await _jobs.CreateAsync(Job("Queued", "queued", observed: Now.AddMinutes(-2)), CancellationToken.None);
         await _jobs.CreateAsync(Job("Completed", "old", observed: Now.AddMinutes(-10)), CancellationToken.None);
         await _jobs.CreateAsync(Job("Completed", "recent", observed: Now.AddMinutes(-1)), CancellationToken.None);
-        var handler = new GetReindexJobsHandler(
-            _jobs,
-            Options.Create(new ReindexOptions { StaleJobTimeout = TimeSpan.FromMinutes(30) }),
-            new FixedTimeProvider(Now));
 
-        var result = await handler.HandleAsync(new GetReindexJobsQuery(1), CancellationToken.None);
+        var result = await new GetReindexJobsHandler(_jobs, JobOptions, new FixedTimeProvider(Now))
+            .HandleAsync(new GetReindexJobsQuery(1), CancellationToken.None);
 
         result.Select(job => job.JobId).ShouldBe(["queued", "running", "recent"]);
         result.All(job => job.Definition is not null).ShouldBeTrue();
     }
+
+    private Task<ReindexStatusResult?> StatusAsync(string jobId) =>
+        new GetReindexStatusHandler(_jobs, JobOptions, new FixedTimeProvider(Now), NullLogger<GetReindexStatusHandler>.Instance)
+            .HandleAsync(new GetReindexStatusQuery(jobId), CancellationToken.None);
 }

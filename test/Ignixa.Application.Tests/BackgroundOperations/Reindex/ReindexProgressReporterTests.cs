@@ -8,11 +8,14 @@ using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
 
 namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexProgressReporterTests
 {
+    private readonly InMemoryBackgroundJobRepository<ReindexJobDefinition> _jobs = JobRepository();
+
     [Theory]
     [InlineData(null)]
     [InlineData("Completed")]
@@ -20,37 +23,29 @@ public class ReindexProgressReporterTests
     [InlineData("Cancelled")]
     public async Task GivenMissingOrClosedJob_WhenLateProgressOrHeartbeatIsReported_ThenNoOpReportsClosedAndPreservesJob(string? status)
     {
-        var repository = CreateRepository();
         if (status is not null)
         {
-            var job = CreateJob();
-            job.Status = status;
-            job.HeartbeatDate = DateTimeOffset.UtcNow.AddMinutes(-1);
-            await repository.CreateAsync(job, CancellationToken.None);
+            await CreateJobAsync(status, heartbeat: DateTimeOffset.UtcNow.AddMinutes(-1));
         }
 
-        var reporter = CreateReporter(repository);
-        var before = JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None));
+        var reporter = CreateReporter(_jobs);
+        var before = await SerializedJobAsync();
 
         (await reporter.ReportAsync("job", Snapshot(10), CancellationToken.None)).ShouldBeFalse();
         (await reporter.HeartbeatAsync("job", CancellationToken.None)).ShouldBeFalse();
 
-        JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None)).ShouldBe(before);
+        (await SerializedJobAsync()).ShouldBe(before);
     }
 
     [Fact]
     public async Task GivenRunningJob_WhenProgressIsReported_ThenTheTypedSnapshotIsStoredAsCamelCaseJsonWithHeartbeat()
     {
-        var repository = CreateRepository();
-        var job = CreateJob();
-        job.HeartbeatDate = DateTimeOffset.UtcNow.AddMinutes(-5);
-        await repository.CreateAsync(job, CancellationToken.None);
-        var reporter = CreateReporter(repository);
+        await CreateJobAsync("Running", heartbeat: DateTimeOffset.UtcNow.AddMinutes(-5));
         var snapshot = Snapshot(15);
 
-        (await reporter.ReportAsync("job", snapshot, CancellationToken.None)).ShouldBeTrue();
+        (await CreateReporter(_jobs).ReportAsync("job", snapshot, CancellationToken.None)).ShouldBeTrue();
 
-        var stored = (await repository.GetAsync("job", 1, CancellationToken.None))!;
+        var stored = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
         stored.HeartbeatDate.ShouldBeGreaterThan(DateTimeOffset.UtcNow.AddMinutes(-1));
         stored.Progress!["phase"]!.GetValue<string>().ShouldBe("Reindexing");
         stored.Progress["tenants"]![0]!["status"]!.GetValue<string>().ShouldBe("Reindexing");
@@ -64,26 +59,23 @@ public class ReindexProgressReporterTests
     [InlineData("Cancelled")]
     public async Task GivenJobClosesAfterRead_WhenProgressWrites_ThenTheTerminalStateIsPreserved(string status)
     {
-        var repository = CreateRepository();
-        await repository.CreateAsync(CreateJob(), CancellationToken.None);
+        await CreateJobAsync("Running", heartbeat: Now);
         var proxy = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
-        proxy.GetAsync("job", 1, Arg.Any<CancellationToken>())
-            .Returns(_ => repository.GetAsync("job", 1, CancellationToken.None));
+        proxy.GetAsync("job", 1, Arg.Any<CancellationToken>()).Returns(_ => _jobs.GetAsync("job", 1, CancellationToken.None));
         string? closed = null;
         proxy.UpdateAsync(Arg.Any<BackgroundJob<ReindexJobDefinition>>(), 1, Arg.Any<CancellationToken>())
             .Returns(async call =>
             {
-                var terminal = (await repository.GetAsync("job", 1, CancellationToken.None))!;
+                var terminal = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
                 terminal.Status = status;
-                await repository.UpdateAsync(terminal, 1, CancellationToken.None);
-                closed = JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None));
-                await repository.UpdateAsync(
-                    call.Arg<BackgroundJob<ReindexJobDefinition>>(), 1, CancellationToken.None);
+                await _jobs.UpdateAsync(terminal, 1, CancellationToken.None);
+                closed = await SerializedJobAsync();
+                await _jobs.UpdateAsync(call.Arg<BackgroundJob<ReindexJobDefinition>>(), 1, CancellationToken.None);
             });
 
         (await CreateReporter(proxy).ReportAsync("job", Snapshot(15), CancellationToken.None)).ShouldBeFalse();
 
-        JsonSerializer.Serialize(await repository.GetAsync("job", 1, CancellationToken.None)).ShouldBe(closed);
+        (await SerializedJobAsync()).ShouldBe(closed);
     }
 
     [Fact]
@@ -120,14 +112,16 @@ public class ReindexProgressReporterTests
             ]
         };
 
-    private static BackgroundJob<ReindexJobDefinition> CreateJob()
+    private async Task CreateJobAsync(string status, DateTimeOffset heartbeat)
     {
-        var job = ReindexTestHelper.Job("Running");
+        var job = Job(status);
+        job.HeartbeatDate = heartbeat;
         job.Progress = new JsonObject();
-        return job;
+        await _jobs.CreateAsync(job, CancellationToken.None);
     }
 
-    private static InMemoryBackgroundJobRepository<ReindexJobDefinition> CreateRepository() => ReindexTestHelper.JobRepository();
+    private async Task<string> SerializedJobAsync() =>
+        JsonSerializer.Serialize(await _jobs.GetAsync("job", 1, CancellationToken.None));
 
     private static ReindexProgressReporter CreateReporter(IBackgroundJobRepository<ReindexJobDefinition> repository) =>
         new(repository, TimeProvider.System);

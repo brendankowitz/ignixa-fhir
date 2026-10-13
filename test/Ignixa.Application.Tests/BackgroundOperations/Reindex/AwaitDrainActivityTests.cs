@@ -14,15 +14,8 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public sealed class AwaitDrainActivityTests
 {
-    [Fact]
-    public async Task GivenAnIncompleteTransactionBelowTheCutoff_WhenTheWatermarkHasAdvanced_ThenDrainStillWaits()
-    {
-        var (drained, _) = await PollAsync(waited: TimeSpan.Zero);
-
-        drained.ShouldBeFalse();
-    }
-
-    // Spec 8.6: a drain still waiting past DrainWarningAfter logs the oldest incomplete transaction.
+    // Spec 8.6: an incomplete transaction below the cutoff holds the drain even after the watermark advanced;
+    // a drain still waiting past DrainWarningAfter logs the oldest such transaction.
     [Theory]
     [InlineData(4, false)]
     [InlineData(6, true)]

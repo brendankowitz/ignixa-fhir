@@ -19,13 +19,8 @@ public class SearchParameterTransitionOrchestrationTests
                 Arg.Any<RetryOptions>(),
                 Arg.Any<object[]>())
             .Returns(new TransitionCommitResult(true));
-        context.ScheduleTask<TransitionCommitResult>(
-                typeof(SearchParameterTransitionCommitActivity),
-                Arg.Any<object[]>())
-            .Returns(new TransitionCommitResult(true));
-        var orchestration = new SearchParameterTransitionOrchestration();
 
-        var result = await orchestration.RunTask(
+        var result = await new SearchParameterTransitionOrchestration().RunTask(
             context,
             new SearchParameterTransitionOrchestrationInput(20, TimeSpan.FromSeconds(3)));
 
