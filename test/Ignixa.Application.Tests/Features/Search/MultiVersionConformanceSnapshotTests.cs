@@ -4,13 +4,15 @@ using Ignixa.Application.Tests.Features.Conformance;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Shouldly;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType;
 
 namespace Ignixa.Application.Tests.Features.Search;
 
 /// <summary>
 /// The conformance projection is shared by every tenant; a package activated for one FHIR version must leave
-/// the definitions, searchability and extraction of tenants on the other versions untouched.
+/// the definitions, searchability and extraction of tenants on the other versions untouched (N4), and every tenant
+/// resolves only a published projection.
 /// </summary>
 public class MultiVersionConformanceSnapshotTests
 {
@@ -26,7 +28,7 @@ public class MultiVersionConformanceSnapshotTests
     public async Task GivenR4PackageShadowsABaseCode_WhenOtherVersionTenantsResolve_ThenTheirBaseDefinitionIsUnchanged(
         int replayedEvents)
     {
-        using var state = await ConformanceEvents.InitializedStateAsync([.. R4ShadowEvents().Take(replayedEvents)]);
+        using var state = await InitializedStateAsync([.. R4ShadowEvents().Take(replayedEvents)]);
         using var context = TestDefinitions.CreateContext()
             .Publish(state, FhirVersion.R4, R4TenantId)
             .Publish(state, FhirVersion.R5, R5TenantId)
@@ -36,20 +38,14 @@ public class MultiVersionConformanceSnapshotTests
         {
             var expected = context.GetSearchParameterDefinitionManager(version).GetSearchParameter("Observation", "patient");
             var actual = context.GetSearchParameterDefinitionManager(version, tenantId).GetSearchParameter("Observation", "patient");
-            actual.Url.ShouldBe(expected.Url);
-            actual.Expression.ShouldBe(expected.Expression);
-            actual.OverridesUrl.ShouldBeNull();
-            actual.IsSearchable.ShouldBeTrue();
+            (actual.Url, actual.Expression, actual.OverridesUrl, actual.IsSearchable).ShouldBe((expected.Url, expected.Expression, null, true));
             context.GetSearchableSearchParameterDefinitionManager(version, tenantId)
                 .TryGetSearchParameter("Observation", "patient", out _)
                 .ShouldBeTrue($"{version} tenant must still search Observation.patient");
 
-            var extracted = Extract(context, version, tenantId)
-                .Where(entry => entry.SearchParameter.Code == "patient")
-                .Select(entry => entry.SearchParameter)
-                .ToList();
+            var extracted = Extract(context, version, tenantId).Where(entry => entry.SearchParameter.Code == "patient").ToList();
             extracted.ShouldNotBeEmpty();
-            extracted.ShouldAllBe(parameter => parameter.Url == expected.Url && parameter.OverridesUrl == null);
+            extracted.ShouldAllBe(entry => entry.SearchParameter.Url == expected.Url && entry.SearchParameter.OverridesUrl == null);
         }
 
         context.GetSearchableSearchParameterDefinitionManager(FhirVersion.R4, R4TenantId)
@@ -65,7 +61,7 @@ public class MultiVersionConformanceSnapshotTests
         string? fhirVersion,
         bool visibleToR4)
     {
-        using var state = await ConformanceEvents.InitializedStateAsync(CustomActivation("custom", fhirVersion));
+        using var state = await InitializedStateAsync(Custom("custom", 101, fhirVersion));
         using var context = TestDefinitions.CreateContext()
             .Publish(state, FhirVersion.R4, R4TenantId)
             .Publish(state, FhirVersion.R5, R5TenantId);
@@ -80,10 +76,21 @@ public class MultiVersionConformanceSnapshotTests
         r5.AllSearchParameters.ShouldContain(parameter => parameter.Code == "custom");
     }
 
-    private static IReadOnlyCollection<Ignixa.Search.Indexing.SearchIndexEntry> Extract(
-        FhirVersionContext context,
-        FhirVersion version,
-        int tenantId)
+    [Fact]
+    public async Task GivenLiveStateAdvancedPastThePublishedProjection_WhenAnUnpublishedTenantResolves_ThenItUsesThePublishedProjection()
+    {
+        using var state = await InitializedStateAsync(Custom("published-code", 101));
+        using var context = TestDefinitions.CreateContext().Publish(state);
+        state.ApplyAndTrack(At(2, Custom("unpublished-code", 102)));
+
+        var definitions = context.GetSearchParameterDefinitionManager(FhirVersion.R4, 2);
+
+        definitions.TryGetSearchParameter("Patient", "published-code", out _).ShouldBeTrue();
+        definitions.TryGetSearchParameter("Patient", "unpublished-code", out _).ShouldBeFalse();
+        context.GetDefinitionsHandle(FhirVersion.R4, 2).DefinitionsEventId.ShouldBe(1);
+    }
+
+    private static IReadOnlyCollection<Ignixa.Search.Indexing.SearchIndexEntry> Extract(FhirVersionContext context, FhirVersion version, int tenantId)
     {
         var handle = context.GetDefinitionsHandle(version, tenantId);
         var observation = ResourceJsonNode.Parse(
@@ -96,32 +103,15 @@ public class MultiVersionConformanceSnapshotTests
     // materialised, the override is staged under the shared identity, and the transition commits.
     private static object[] R4ShadowEvents() =>
     [
-        ObservationPatient(BaseCanonical, ConformanceEvents.CorePackage, null, "Observation.subject.where(resolve() is Patient)"),
+        ObservationPatient(BaseCanonical, CorePackage, null, "Observation.subject.where(resolve() is Patient)"),
         ObservationPatient(OverrideCanonical, "r4.shadow@1.0.0", BaseCanonical, "Observation.subject"),
-        ConformanceEvents.Committed(1, 2),
+        Committed(1, 2),
     ];
 
     private static object ObservationPatient(string canonical, string package, string? overrides, string expression) =>
-        ConformanceEvents.Activated(
-            canonical,
-            "patient",
-            1,
-            overrides,
-            package,
-            "Observation",
-            expression,
-            SearchParamType.Reference,
-            ["Patient"],
-            "patient",
-            "4.0");
+        Activated(canonical, "patient", 1, overrides, package, "Observation", expression, SearchParamType.Reference, ["Patient"], "patient", "4.0");
 
-    private static object CustomActivation(string code, string? fhirVersion) =>
-        ConformanceEvents.Activated(
-            $"http://example.org/SearchParameter/{code}",
-            code,
-            101,
-            package: "custom@1.0.0",
-            expression: "Patient.name",
-            type: SearchParamType.String,
-            fhirVersion: fhirVersion);
+    private static object Custom(string code, int searchParamId, string? fhirVersion = null) =>
+        Activated(
+            $"http://example.org/SearchParameter/{code}", code, searchParamId, package: "custom@1.0.0", expression: "Patient.name", type: SearchParamType.String, fhirVersion: fhirVersion);
 }
