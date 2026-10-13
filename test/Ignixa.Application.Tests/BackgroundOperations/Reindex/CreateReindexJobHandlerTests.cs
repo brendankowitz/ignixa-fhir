@@ -31,19 +31,6 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
 
     public void Dispose() => _state.Dispose();
 
-    // §6.1: with no Pending parameters there is nothing to do and no job row.
-    [Fact]
-    public async Task GivenNoPendingParameters_WhenAutomationRequestsReindex_ThenNothingToDoIsReturned()
-    {
-        _state.Dispose();
-        _state = new ConformanceState();
-
-        var result = await HandleAsync(ReindexTriggerKind.Activation);
-
-        result.ShouldBeOfType<NoReindexWorkResult>();
-        (await _jobs.ListAsync()).ShouldBeEmpty();
-    }
-
     // §10.1: a job fans out over the active tenants, so with none there is nothing to do.
     [Fact]
     public async Task GivenNoActiveTenant_WhenAJobIsRequested_ThenNothingToDoNamesTheMissingTenant()

@@ -103,6 +103,8 @@ public class CompleteReindexActivityTests
         var job = await fixture.JobAsync();
         job.Status.ShouldBe("Failed");
         job.ErrorMessage.ShouldContain("not planned by this job");
+        // §4.3: a planned target the job does not own is reported as an ignored lifecycle event.
+        ReindexProgress.FromJson(job.Progress)!.IgnoredLifecycleEvents.Count.ShouldBe(differingField == "missing" ? 0 : 1);
         fixture.Status.ShouldBe(SearchParameterStatus.Pending);
         fixture.State.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
     }
@@ -158,6 +160,7 @@ public class CompleteReindexActivityTests
         var job = await fixture.JobAsync();
         job.Status.ShouldBe("Failed");
         job.ErrorMessage.ShouldContain("Tenant 1: resource failures occurred");
+        ReindexProgress.FromJson(job.Progress)!.Tenants.ShouldHaveSingleItem().Status.ShouldBe(ReindexTenantStatus.Failed);
         fixture.Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
@@ -181,7 +184,8 @@ public class CompleteReindexActivityTests
     }
 
     // Spec §4.4: a target is judged only by tenants of its FHIR version. Another version's active tenant is
-    // neither required nor catalog-checked (only tenant 1 has a store), and its failures do not decide it.
+    // neither required nor catalog-checked (only tenant 1 has a store), and its failures do not decide it;
+    // they still fail the job (§8.6).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -200,6 +204,7 @@ public class CompleteReindexActivityTests
         await fixture.Activity().RunAsync(ActivityContext(), Input([target], tenants: tenants));
 
         fixture.Status.ShouldBe(SearchParameterStatus.Enabled);
+        (await fixture.JobAsync()).Status.ShouldBe(otherTenantRanAndFailed ? "Failed" : "Completed");
     }
 
     private static ReindexTenantProgress Completed(int tenantId, long failedResourceCount = 0) =>

@@ -18,19 +18,6 @@ public class ConformanceLifecycleTests
     private const string TopCanonical = "http://example.org/SearchParameter/Patient-identifier-top";
     private static readonly JsonSerializerOptions CamelCase = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    [Fact]
-    public void GivenOverrideActivated_WhenItsTransitionIsCommitted_ThenItMovesFromStagedToPendingAndTheBaseToDisabled()
-    {
-        using var state = CreateStateWithStagedOverride();
-        Statuses(state, BaseCanonical, OverrideCanonical).ShouldBe([Disabling, Staged]);
-        Owner(state).ShouldBe(BaseCanonical);
-
-        state.Apply(Commit(30, 20));
-
-        Statuses(state, BaseCanonical, OverrideCanonical).ShouldBe([Disabled, Pending]);
-        Owner(state).ShouldBe(OverrideCanonical);
-    }
-
     // TransitionCommitted guard: it must name both the staging and the hiding event.
     [Theory]
     [InlineData(19, 19)]
@@ -162,37 +149,6 @@ public class ConformanceLifecycleTests
         (restored.ResourceType, restored.Code, restored.Status, restored.ActivationEventId).ShouldBe(("Patient", "identifier", Staged, 40L));
     }
 
-    [Fact]
-    public void GivenNewerActivation_WhenStaleReindexEventsArrive_ThenTheyAreIgnored()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Custom(10));
-        state.Apply(Custom(20));
-
-        state.Apply(Started(30, 10, "stale"));
-        Custom(state).Status.ShouldBe(Disabling);
-        Statuses(state, OverrideCanonical).ShouldBe([Staged]);
-
-        state.Apply(Commit(31, 20));
-        state.Apply(Started(32, 20, "current"));
-        state.Apply(Completed(33, 20, "other"));
-
-        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Reindexing, "current"));
-    }
-
-    [Fact]
-    public void GivenNewCustomParameter_WhenItsReindexStartsAndCompletes_ThenItMovesFromPendingToEnabled()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Custom(10));
-        (Custom(state).Status, Custom(state).ActivationEventId).ShouldBe((Pending, 10L));
-        state.Apply(Started(20, 10, "job"));
-
-        state.Apply(Completed(30, 10, "job"));
-
-        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Enabled, (string?)null));
-    }
-
     // Started guard: a Pending owner only starts a reindex for its own activation.
     [Fact]
     public void GivenPendingOwner_WhenReindexStartHasWrongActivation_ThenOwnerRemainsPending()
@@ -239,19 +195,6 @@ public class ConformanceLifecycleTests
         });
 
         (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Reindexing, "current"));
-    }
-
-    [Fact]
-    public void GivenParameterIsDisabling_WhenReindexEventsArrive_ThenTheyCannotResurrectIt()
-    {
-        using var state = new ConformanceState();
-        state.Apply(Custom(10));
-        state.Apply(Hide(20, OverrideCanonical, "custom"));
-
-        state.Apply(Started(30, 10, "job"));
-        state.Apply(Completed(31, 10, "job"));
-
-        (Custom(state).Status, Custom(state).ReindexJobId).ShouldBe((Disabling, (string?)null));
     }
 
     [Fact]

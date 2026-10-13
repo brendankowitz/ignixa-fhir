@@ -357,6 +357,21 @@ public class PackageActivationPipelineTests
         harness.Log.AppendAttempts.ShouldBe(expectedAttempts);
     }
 
+    // N3: activating a package that is already active (a restart reloading it) appends nothing and starts no reindex.
+    [Fact]
+    public async Task GivenAnActivePackage_WhenActivatedAgain_ThenNothingIsAppendedOrReindexed()
+    {
+        using var harness = new Harness();
+        var pipeline = harness.Pipeline(Custom());
+        (await ActivateAsync(pipeline, "test.custom")).PendingReindex.ShouldBe(["Patient"]);
+        var eventCount = harness.Log.Events.Count;
+
+        var again = await ActivateAsync(pipeline, "test.custom");
+
+        (again.Success, again.PendingReindex.Count).ShouldBe((true, 0));
+        harness.Log.Events.Count.ShouldBe(eventCount);
+    }
+
     // N6: one package activation is one phase-two transition, however many codes it hides.
     [Fact]
     public async Task GivenPackageShadowsSeventyCodes_WhenActivated_ThenOneTransitionIsScheduledForThePackageEvent()

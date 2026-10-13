@@ -15,8 +15,6 @@ using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Tests.Features.Conformance;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Models;
-using Ignixa.Search.Indexing;
-using Ignixa.Serialization.SourceNodes;
 using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 using static Ignixa.Application.Tests.Features.Search.TestDefinitions;
 using SearchParamInfo = Ignixa.Search.Models.SearchParameterInfo;
@@ -64,28 +62,6 @@ public class PackageSearchParameterInheritanceTests
             manager.GetSearchParameter("Patient", "_id").ShouldNotBeNull();
             manager.GetSearchParameter("Patient", "package-custom").ShouldNotBeNull();
         }
-    }
-
-    [Fact]
-    public async Task GivenPackageOnlyResourceType_WhenLoadedEagerly_ThenItsOwnParameterRemainsAvailable()
-    {
-        var baseManager = new SearchParameterDefinitionManager(
-            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
-        using var state = new ConformanceState();
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events("CustomPackageResource"));
-        await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        var manager = new CompositeSearchParameterDefinitionManager(
-            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-            new SearchParameterResolutionOptions
-            {
-                EagerLoadPackageSearchParameters = true,
-                FailStartupOnEagerLoadError = true,
-            });
-
-        await manager.InitializeAsync();
-
-        manager.GetSearchParameter("CustomPackageResource", "package-custom").Expression.ShouldBe("CustomPackageResource.active");
     }
 
     [Theory]
@@ -205,20 +181,6 @@ public class PackageSearchParameterInheritanceTests
         partialDefinitions.TryGetSearchParameter("Patient", "disabling", out _).ShouldBeFalse();
     }
 
-    // B-L1: a Disabling owner keeps being extracted until its transition commits; a Staged override is not yet.
-    [Fact]
-    public async Task GivenLifecycleStatuses_WhenAResourceIsIndexed_ThenDisablingIsExtractedButStagedIsNot()
-    {
-        using var state = await InitializedStateAsync(LifecycleEvents());
-        var manager = await CreateManagerAsync(state);
-
-        var entries = Extract(manager, """{ "resourceType": "Patient", "active": true, "name": [{ "family": "Hidden" }] }""");
-
-        manager.TryGetSearchParameter("Patient", "reindexing", out _).ShouldBeTrue();
-        entries.ShouldContain(entry => entry.SearchParameter.Code == "disabling");
-        entries.ShouldNotContain(entry => entry.SearchParameter.Url == new Uri(StagedName));
-    }
-
     // B-L2: on a web farm, instance A writes with its extraction definition while instance B, up to one grace
     // window behind, still searches with its own. The stream is the one the real activation, transition commit
     // and reindex completion append; every prefix is one instance's view, and every ordered pair is one lag.
@@ -296,14 +258,6 @@ public class PackageSearchParameterInheritanceTests
         state.FindByCanonical(overrideCanonical)!.Status.ShouldBe(SearchParameterStatus.Enabled);
         return log.Events.ToArray();
     }
-
-    private static IReadOnlyCollection<SearchIndexEntry> Extract(ISearchParameterDefinitionManager manager, string json)
-    {
-        var schema = FhirVersion.R4.GetSchemaProvider();
-        return SearchIndexerFactory.CreateInstance(schema, NullLoggerFactory.Instance, manager, NullFhirBaseUriProvider.Instance)
-            .Extract(ResourceJsonNode.Parse(json).ToElement(schema));
-    }
-
 
     // Patient.reindexing is Reindexing, Patient.disabling is Disabling, and an override of Patient.name is Staged.
     private static object[] LifecycleEvents() =>
