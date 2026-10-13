@@ -15,7 +15,7 @@ public sealed class FmlIncubatorTheoryAttribute : TheoryAttribute
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(CorpusPathVariable)))
         {
- //           Skip = $"Set {CorpusPathVariable} to a local HL7/mapping-language-ig checkout to run these conformance tests.";
+            Skip = $"Set {CorpusPathVariable} to a local HL7/mapping-language-ig checkout to run these conformance tests.";
         }
     }
 }

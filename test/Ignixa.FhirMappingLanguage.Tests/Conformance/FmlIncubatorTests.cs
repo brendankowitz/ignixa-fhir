@@ -31,15 +31,14 @@ public class FmlIncubatorTests(ITestOutputHelper output)
     {
         get
         {
-            return "C:\\git\\hl7-incubators\\fml-incubator";
-            //var root = Environment.GetEnvironmentVariable(FmlIncubatorTheoryAttribute.CorpusPathVariable);
-            //if (string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root))
-            //{
-            //    throw new InvalidOperationException(
-            //        $"Set {FmlIncubatorTheoryAttribute.CorpusPathVariable} to the absolute path of a HL7/mapping-language-ig checkout.");
-            //}
+            var root = Environment.GetEnvironmentVariable(FmlIncubatorTheoryAttribute.CorpusPathVariable);
+            if (string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root))
+            {
+                throw new InvalidOperationException(
+                    $"Set {FmlIncubatorTheoryAttribute.CorpusPathVariable} to the absolute path of a HL7/mapping-language-ig checkout.");
+            }
 
-            //return root;
+            return root;
         }
     }
 
