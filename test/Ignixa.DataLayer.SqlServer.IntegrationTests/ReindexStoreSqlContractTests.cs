@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Xml.Linq;
 using Ignixa.Abstractions;
-using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
@@ -22,8 +21,11 @@ using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
+/// <summary>Spec §5 (barrier-fenced cutoff), §8.3-§8.5 and §8.7: the SQL <see cref="IReindexStore"/> contract.</summary>
 public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
 {
+    private const long BarrierEventId = 70;
+    private static readonly XNamespace ShowPlan = "http://schemas.microsoft.com/sqlserver/2004/07/showplan";
     private TestTenantDatabase _database = null!;
     private IReindexStore _store = null!;
 
@@ -35,10 +37,11 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
 
     public Task DisposeAsync() => _database.DisposeAsync();
 
+    // §8.7: the barrier is raised monotonically, then B and S are read.
     [Fact]
     public async Task GivenExistingTransactions_WhenBarrierIsRaisedMonotonically_ThenItReturnsThePostBarrierCutoff()
     {
-        await _database.Repository.CreateOrUpdateAsync(Patient("before-barrier"));
+        await PutAsync(Patient("before-barrier"));
 
         var first = await _store.RaiseBarrierAsync(42, CancellationToken.None);
         var second = await _store.RaiseBarrierAsync(17, CancellationToken.None);
@@ -47,50 +50,105 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         first.SurrogateId.ShouldBeGreaterThanOrEqualTo(first.TransactionId);
         second.ShouldBe(first);
         (await _database.ExecuteScalarAsync<long>(
-            "SELECT Bigint FROM dbo.Parameters WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId'"))
-            .ShouldBe(42);
+            "SELECT Bigint FROM dbo.Parameters WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId'")).ShouldBe(42);
     }
 
-    [Fact]
-    public async Task GivenNoTransactionsOrResources_WhenBarrierIsRaised_ThenBothCutoffsUseTheEmptySentinel()
+    // §5.1 S_t, §5.5 pre-feature rows: S is the greater of the newest current resource and the newest transaction.
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task GivenTransactionsAndLegacyResources_WhenBarrierIsRaised_ThenTheSurrogateCutoffIsTheGreaterValue(
+        bool transactional, bool legacy)
     {
+        var transactionCutoff = -1L;
+        if (transactional)
+        {
+            await PutAsync(Patient("transactional"));
+            transactionCutoff = await _database.ExecuteScalarAsync<long>("SELECT MAX(SurrogateIdRangeLastValue) FROM dbo.Transactions");
+        }
+
+        var legacySurrogateId = transactionCutoff + 999_999;
+        if (legacy)
+        {
+            await _database.ExecuteNonQueryAsync(
+                $"""
+                 INSERT dbo.Resource (ResourceTypeId, ResourceId, Version, IsHistory, ResourceSurrogateId, IsDeleted,
+                     RequestMethod, RawResource, IsRawResourceMetaSet, SearchParamHash, TransactionId, HistoryTransactionId)
+                 VALUES (1, 'legacy', 1, 0, {legacySurrogateId}, 0, 'PUT', 0x01, 0, NULL, NULL, NULL);
+                 """);
+        }
+
         var cutoff = await _store.RaiseBarrierAsync(42, CancellationToken.None);
 
-        cutoff.ShouldBe(new BarrierCutoff(-1, -1));
+        cutoff.SurrogateId.ShouldBe(legacy ? legacySurrogateId : -1);
+        if (transactional)
+        {
+            cutoff.TransactionId.ShouldBeGreaterThan(0);
+        }
+        else
+        {
+            cutoff.TransactionId.ShouldBe(-1);
+        }
     }
 
+    // §5.2 step 3 / D1: the drain reports incomplete transactions only, never trusting IsVisible.
     [Fact]
     public async Task GivenVisibilityDisagreesWithCompletion_WhenDraining_ThenOnlyIncompleteTransactionsAreReported()
     {
         // 200 completes and visibility advances past it; then 100 is allocated late, below the watermark (D1).
         // 300: completed but not yet visible. 400: still incomplete although marked visible.
-        await _database.ExecuteNonQueryAsync(
-            """
-            INSERT INTO dbo.Transactions
-                (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
-            VALUES (200, 200, 1, 0);
-
-            EXEC dbo.MergeResourcesAdvanceTransactionVisibility;
-            """);
+        await InsertTransactionsAsync("(200, 200, 1, 0); EXEC dbo.MergeResourcesAdvanceTransactionVisibility;");
         (await _store.GetVisibleWatermarkAsync(CancellationToken.None)).ShouldBe(200);
-        await _database.ExecuteNonQueryAsync(
-            """
-            INSERT INTO dbo.Transactions
-                (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
-            VALUES (100, 100, 0, 0),
-                   (300, 300, 1, 0),
-                   (400, 400, 0, 1);
-            """);
+        await InsertTransactionsAsync("(100, 100, 0, 0), (300, 300, 1, 0), (400, 400, 0, 1)");
 
-        (await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None))!.TransactionId.ShouldBe(100);
-        await _database.ExecuteNonQueryAsync(
-            "UPDATE dbo.Transactions SET IsCompleted = 1 WHERE SurrogateIdRangeFirstValue = 100");
-        (await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None))!.TransactionId.ShouldBe(400);
-        await _database.ExecuteNonQueryAsync(
-            "UPDATE dbo.Transactions SET IsCompleted = 1 WHERE SurrogateIdRangeFirstValue = 400");
-        (await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None)).ShouldBeNull();
+        foreach (var expected in new long?[] { 100, 400, null })
+        {
+            ((await _store.GetOldestIncompleteTransactionAsync(500, CancellationToken.None))?.TransactionId).ShouldBe(expected);
+            await _database.ExecuteNonQueryAsync($"UPDATE dbo.Transactions SET IsCompleted = 1 WHERE SurrogateIdRangeFirstValue = {expected ?? 0}");
+        }
     }
 
+    // §5.2 step 3: the drain seeks the filtered incomplete index, although dbo.Transactions is never pruned.
+    [Fact]
+    public async Task GivenManyCompletedTransactions_WhenTheDrainLooksForAnIncompleteOne_ThenItSeeksTheFilteredIndexInsteadOfScanning()
+    {
+        await InsertTransactionsAsync(
+            """
+            SELECT TOP (20000) n, n, 1, 1
+            FROM (SELECT ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) FROM sys.all_objects a CROSS JOIN sys.all_objects b) AS numbers(n);
+            UPDATE STATISTICS dbo.Transactions WITH FULLSCAN;
+            """,
+            values: false);
+        SqlCommand? drainQuery = null;
+        var (store, cache) = await CreateStoreAsync(new InterceptingSqlExecutionService(_database.SqlExecutionService, command =>
+        {
+            drainQuery = command.Parameters.Contains("@CutoffTransactionId") ? InterceptingSqlExecutionService.Clone(command) : drainQuery;
+            return Task.CompletedTask;
+        }));
+        using (cache)
+        {
+            (await store.GetOldestIncompleteTransactionAsync(20_000, CancellationToken.None)).ShouldBeNull();
+        }
+
+        var plan = await CaptureShowPlanXmlAsync(drainQuery!);
+        var operators = XDocument.Parse(plan).Descendants(ShowPlan + "RelOp")
+            .Select(operation => (
+                PhysicalOp: operation.Attribute("PhysicalOp")!.Value,
+                Index: operation.Elements().Where(element => element.Name != ShowPlan + "RelOp")
+                    .Descendants(ShowPlan + "Object")
+                    .FirstOrDefault(@object => @object.Attribute("Table")?.Value == "[Transactions]")?.Attribute("Index")?.Value,
+                RowsRead: operation.Elements(ShowPlan + "RunTimeInformation").Descendants(ShowPlan + "RunTimeCountersPerThread")
+                    .Sum(counters => long.Parse(counters.Attribute("ActualRowsRead")?.Value ?? "0", CultureInfo.InvariantCulture))))
+            .Where(operation => operation.Index is not null)
+            .ToArray();
+
+        operators.ShouldContain(op => op.PhysicalOp == "Index Seek" && op.Index == "[IX_Transactions_SurrogateIdRangeFirstValue_Incomplete]", plan);
+        operators.ShouldNotContain(op => op.Index == "[PKC_Transactions_SurrogateIdRangeFirstValue]" && op.PhysicalOp != "Key Lookup", plan);
+        operators.Sum(op => op.RowsRead).ShouldBe(0, plan);
+    }
+
+    // §8.5: completion checks the tenant catalog by storage URI, never by conformance id.
     [Fact]
     public async Task GivenACatalogProvisionedByUri_WhenAParameterIsChecked_ThenItIsFoundByItsStorageUriNotItsConformanceId()
     {
@@ -102,170 +160,71 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         var physicalId = (await catalog.GetSearchParamIdAsync(provisioned, CancellationToken.None))!.Value;
 
         // Conformance allocates its own logical ids; one can equal another URI's IDENTITY value.
-        var unprovisionedTarget = Target(neverProvisioned, conformanceId: physicalId);
-        var provisionedTarget = Target(provisioned, conformanceId: short.MaxValue + 1);
-        var overridingTarget = Target("http://example.org/SearchParameter/override", conformanceId: 40_000) with
-        {
-            OverridesCanonical = provisioned,
-        };
+        var unprovisioned = Target(neverProvisioned, conformanceId: physicalId);
+        var overriding = Target("http://example.org/SearchParameter/override", conformanceId: 40_000) with { OverridesCanonical = provisioned };
 
-        (await _store.HasSearchParameterAsync(unprovisionedTarget.StorageCanonical, CancellationToken.None)).ShouldBeFalse(
-            $"{neverProvisioned} has no catalog row although its conformance id equals {provisioned}'s physical id.");
-        (await _store.HasSearchParameterAsync(provisionedTarget.StorageCanonical, CancellationToken.None)).ShouldBeTrue();
-        (await _store.HasSearchParameterAsync(overridingTarget.StorageCanonical, CancellationToken.None)).ShouldBeTrue();
+        (await _store.HasSearchParameterAsync(unprovisioned.StorageCanonical, CancellationToken.None)).ShouldBeFalse();
+        (await _store.HasSearchParameterAsync(Target(provisioned, short.MaxValue + 1).StorageCanonical, CancellationToken.None)).ShouldBeTrue();
+        (await _store.HasSearchParameterAsync(overriding.StorageCanonical, CancellationToken.None)).ShouldBeTrue();
     }
 
-    private static ReindexParameterDefinition Target(string canonical, int conformanceId) =>
-        new(canonical, "code", "Patient", conformanceId, ActivationEventId: 1, ["Patient"]);
-
-    [Fact]
-    public async Task GivenLegacyCurrentResourcesWithoutTransactions_WhenBarrierIsRaised_ThenTheSurrogateCutoffIncludesThem()
-    {
-        await InsertLegacyCurrentResourceAsync("legacy-only", surrogateId: 999_999);
-
-        var cutoff = await _store.RaiseBarrierAsync(42, CancellationToken.None);
-
-        cutoff.ShouldBe(new BarrierCutoff(-1, 999_999));
-    }
-
-    [Fact]
-    public async Task GivenTransactionsAndLegacyCurrentResources_WhenBarrierIsRaised_ThenTheSurrogateCutoffUsesTheGreaterValue()
-    {
-        await _database.Repository.CreateOrUpdateAsync(Patient("transactional"));
-        var transactionCutoff = await _database.ExecuteScalarAsync<long>(
-            "SELECT MAX(SurrogateIdRangeLastValue) FROM dbo.Transactions");
-        await InsertLegacyCurrentResourceAsync("legacy-mixed", transactionCutoff + 1_000);
-
-        var cutoff = await _store.RaiseBarrierAsync(42, CancellationToken.None);
-
-        cutoff.TransactionId.ShouldBeGreaterThan(0);
-        cutoff.SurrogateId.ShouldBe(transactionCutoff + 1_000);
-    }
-
-    [Fact]
-    public async Task GivenManyCompletedTransactions_WhenTheDrainLooksForAnIncompleteOne_ThenItSeeksTheFilteredIndexInsteadOfScanning()
-    {
-        // The normal state: nothing incomplete, and dbo.Transactions is never pruned.
-        await _database.ExecuteNonQueryAsync(
-            """
-            INSERT dbo.Transactions (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible)
-            SELECT TOP (20000) numbers.Value, numbers.Value, 1, 1
-            FROM (SELECT ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS Value
-                  FROM sys.all_objects AS a CROSS JOIN sys.all_objects AS b) AS numbers;
-
-            UPDATE STATISTICS dbo.Transactions WITH FULLSCAN;
-            """);
-        SqlCommand? drainQuery = null;
-        var capturing = new InterceptingSqlExecutionService(_database.SqlExecutionService, command =>
-        {
-            if (command.Parameters.Contains("@CutoffTransactionId"))
-            {
-                drainQuery = InterceptingSqlExecutionService.Clone(command);
-            }
-
-            return Task.CompletedTask;
-        });
-        var (store, cache) = await CreateStoreAsync(capturing);
-        using (cache)
-        {
-            (await store.GetOldestIncompleteTransactionAsync(20_000, CancellationToken.None)).ShouldBeNull();
-        }
-
-        var plan = (await CaptureShowPlanXmlAsync(drainQuery!)).ShouldHaveSingleItem();
-        var showPlanNamespace = XNamespace.Get("http://schemas.microsoft.com/sqlserver/2004/07/showplan");
-        var transactionOperators = XDocument.Parse(plan)
-            .Descendants(showPlanNamespace + "RelOp")
-            .Select(operation => (
-                PhysicalOp: operation.Attribute("PhysicalOp")!.Value,
-                Index: operation.Elements()
-                    .Where(element => element.Name != showPlanNamespace + "RelOp")
-                    .Descendants(showPlanNamespace + "Object")
-                    .Where(@object => @object.Attribute("Table")?.Value == "[Transactions]")
-                    .Select(@object => @object.Attribute("Index")?.Value)
-                    .FirstOrDefault(),
-                RowsRead: operation.Elements(showPlanNamespace + "RunTimeInformation")
-                    .Descendants(showPlanNamespace + "RunTimeCountersPerThread")
-                    .Sum(counters => long.Parse(counters.Attribute("ActualRowsRead")?.Value ?? "0", CultureInfo.InvariantCulture))))
-            .Where(operation => operation.Index is not null)
-            .ToArray();
-
-        transactionOperators.ShouldContain(
-            operation => operation.PhysicalOp == "Index Seek" &&
-                operation.Index == "[IX_Transactions_SurrogateIdRangeFirstValue_Incomplete]",
-            plan);
-        transactionOperators.ShouldNotContain(
-            operation => operation.Index == "[PKC_Transactions_SurrogateIdRangeFirstValue]" && operation.PhysicalOp != "Key Lookup",
-            plan);
-        transactionOperators.Sum(operation => operation.RowsRead).ShouldBe(0, plan);
-    }
-
+    // §5.2 step 4, §5.5: only current, non-deleted rows at or below the cutoff are reindexed.
     [Fact]
     public async Task GivenCurrentDeletedAndHistoryRows_WhenRangesAndPagesAreRead_ThenOnlyCurrentNonDeletedRowsAtTheCutoffAreReturned()
     {
-        await _database.Repository.CreateOrUpdateAsync(Patient("first"));
-        await _database.Repository.CreateOrUpdateAsync(Patient("updated"));
-        await _database.Repository.CreateOrUpdateAsync(Patient("updated") with { VersionId = "2" });
-        await _database.Repository.CreateOrUpdateAsync(Patient("deleted"));
+        await PutAsync(Patient("first"), Patient("updated"), Patient("updated") with { VersionId = "2" }, Patient("deleted"));
         await _database.Repository.DeleteAsync(
-            new ResourceKey("Patient", "deleted"),
-            new ResourceRequest("DELETE", "Patient/deleted"),
-            definitionsEventId: 0);
-
+            new ResourceKey("Patient", "deleted"), new ResourceRequest("DELETE", "Patient/deleted"), definitionsEventId: 0);
         var (_, cutoff) = await _store.RaiseBarrierAsync(50, CancellationToken.None);
-        var (ranges, _) = await _store.GetSurrogateIdRangesAsync(
-            "Patient", -1, cutoff, 1, 10, CancellationToken.None);
-        var resources = new List<ReindexResource>();
 
-        ranges.Sum(range => range.ResourceCount).ShouldBe(2);
-        foreach (var (start, end, _) in ranges)
-        {
-            var after = (long?)null;
-            while (true)
-            {
-                var page = await _store.ReadRangeAsync("Patient", start, end, 1, after, CancellationToken.None);
-                if (page.Count == 0)
-                {
-                    break;
-                }
-
-                resources.AddRange(page);
-                after = page[^1].ResourceSurrogateId;
-            }
-        }
+        var resources = await ReadAllAsync(_store, "Patient", cutoff);
 
         resources.Select(resource => resource.Resource.ResourceId).ShouldBe(["first", "updated"], ignoreOrder: true);
         resources.Select(resource => resource.Resource.VersionId).ShouldContain("2");
         resources.ShouldAllBe(resource => resource.ResourceSurrogateId <= cutoff);
     }
 
-    [Fact]
-    public async Task GivenSparseCurrentResourceIds_WhenRangesArePlanned_ThenTheyAreContiguousAndExhaustiveToTheUpperBound()
+    // §8.3: ranges over sparse ids are contiguous and exhaustive to S, and only an unfinished page continues.
+    [Theory]
+    [InlineData(0, new[] { 0 })]
+    [InlineData(2, new[] { 2 })]
+    [InlineData(3, new[] { 2, 1 })]
+    public async Task GivenSparseCurrentResourceIds_WhenRangesArePlannedInPagesOfTwo_ThenTheyAreContiguousAndExhaustiveToTheUpperBound(
+        int resourceCount, int[] expectedPageSizes)
     {
-        await _database.Repository.CreateOrUpdateAsync(Patient("sparse-first"));
-        await _database.Repository.CreateOrUpdateAsync(Patient("sparse-middle"));
-        await _database.Repository.CreateOrUpdateAsync(Patient("sparse-last"));
-        var firstId = await GetCurrentResourceSurrogateIdAsync("sparse-first");
-        var middleId = await GetCurrentResourceSurrogateIdAsync("sparse-middle");
-        var lastId = await GetCurrentResourceSurrogateIdAsync("sparse-last");
-        await _database.ExecuteNonQueryAsync(
-            $"UPDATE dbo.Resource SET ResourceSurrogateId = {middleId + 1_000} WHERE ResourceId = 'sparse-middle' AND IsHistory = 0");
-        await _database.ExecuteNonQueryAsync(
-            $"UPDATE dbo.Resource SET ResourceSurrogateId = {lastId + 2_000} WHERE ResourceId = 'sparse-last' AND IsHistory = 0");
-        var upperBound = lastId + 2_050;
-
-        var (ranges, _) = await _store.GetSurrogateIdRangesAsync(
-            "Patient", -1, upperBound, 1, 10, CancellationToken.None);
-
-        ranges.Count.ShouldBe(3);
-        ranges[0].Start.ShouldBe(firstId);
-        ranges[^1].End.ShouldBe(upperBound);
-        for (var index = 1; index < ranges.Count; index++)
+        var ids = new List<long>();
+        for (var index = 0; index < resourceCount; index++)
         {
-            ranges[index].Start.ShouldBe(ranges[index - 1].End + 1);
+            await PutAsync(Patient($"sparse-{index}"));
+        }
+
+        for (var index = 0; index < resourceCount; index++)
+        {
+            await _database.ExecuteNonQueryAsync(
+                $"UPDATE dbo.Resource SET ResourceSurrogateId += {index * 1_000} WHERE ResourceId = 'sparse-{index}' AND IsHistory = 0");
+            ids.Add(await _database.ExecuteScalarAsync<long>($"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = 'sparse-{index}'"));
+        }
+
+        var upperBound = ids.LastOrDefault() + 2_050;
+        var pages = new List<SurrogateIdRangePage>();
+        for (long? startAfter = -1; startAfter is { } start; startAfter = pages[^1].NextStartAfter)
+        {
+            pages.Add(await _store.GetSurrogateIdRangesAsync("Patient", start, upperBound, 1, 2, CancellationToken.None));
+        }
+
+        var ranges = pages.SelectMany(page => page.Ranges).ToArray();
+        pages.Select(page => page.Ranges.Count).ShouldBe(expectedPageSizes);
+        pages.SkipLast(1).Select(page => page.NextStartAfter == page.Ranges[^1].End).ShouldAllBe(continuesAtItsEnd => continuesAtItsEnd);
+        ranges.Sum(range => range.ResourceCount).ShouldBe(resourceCount);
+        ranges.Zip(ranges.Skip(1)).ShouldAllBe(pair => pair.Second.Start == pair.First.End + 1);
+        if (resourceCount > 0)
+        {
+            ranges[0].Start.ShouldBe(ids[0]);
+            ranges[^1].End.ShouldBe(upperBound);
         }
     }
 
-    // dbo.ResourceType grows as types are first written, by any instance; a store whose cache was loaded
+    // §8.7: dbo.ResourceType grows as types are first written, by any instance; a store whose cache was loaded
     // before that must still find the type, or the reindex skips its rows and enables the parameter anyway.
     [Fact]
     public async Task GivenATypeFirstWrittenAfterTheStoreLoadedItsTypes_WhenRangesArePlannedAndRead_ThenItsResourcesAreIncluded()
@@ -273,289 +232,162 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         var (store, cache) = await CreateStoreAsync(_database.SqlExecutionService);
         using (cache)
         {
-            (await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.ResourceType WHERE Name = 'Observation'"))
-                .ShouldBe(0);
-            await _database.Repository.CreateOrUpdateAsync(Observation("late-type"));
+            (await _database.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.ResourceType WHERE Name = 'Observation'")).ShouldBe(0);
+            await PutAsync(Resource("Observation", "late-type"));
             var (_, cutoff) = await store.RaiseBarrierAsync(50, CancellationToken.None);
 
-            var (ranges, _) = await store.GetSurrogateIdRangesAsync(
-                "Observation", -1, cutoff, 10, 10, CancellationToken.None);
-            var range = ranges.ShouldHaveSingleItem();
-            var page = await store.ReadRangeAsync("Observation", range.Start, range.End, 10, null, CancellationToken.None);
-
-            range.ResourceCount.ShouldBe(1);
-            page.ShouldHaveSingleItem().Resource.ResourceId.ShouldBe("late-type");
+            (await ReadAllAsync(store, "Observation", cutoff)).ShouldHaveSingleItem().Resource.ResourceId.ShouldBe("late-type");
         }
     }
 
-    [Fact]
-    public async Task GivenNoCurrentResources_WhenRangesArePlanned_ThenThePageIsEmptyAndHasNoContinuation()
-    {
-        var page = await _store.GetSurrogateIdRangesAsync(
-            "Patient", -1, long.MaxValue, 100, 10, CancellationToken.None);
-
-        page.Ranges.ShouldBeEmpty();
-        page.NextStartAfter.ShouldBeNull();
-    }
-
-    [Fact]
-    public async Task GivenMoreRangesThanFitInOnePage_WhenRangesArePlanned_ThenPagesRemainContiguous()
-    {
-        await _database.Repository.CreateOrUpdateAsync(Patient("paged-first"));
-        await _database.Repository.CreateOrUpdateAsync(Patient("paged-second"));
-        await _database.Repository.CreateOrUpdateAsync(Patient("paged-third"));
-        var upperBound = await GetCurrentResourceSurrogateIdAsync("paged-third");
-
-        var firstPage = await _store.GetSurrogateIdRangesAsync(
-            "Patient", -1, upperBound, 1, 2, CancellationToken.None);
-        var secondPage = await _store.GetSurrogateIdRangesAsync(
-            "Patient", firstPage.NextStartAfter!.Value, upperBound, 1, 2, CancellationToken.None);
-
-        firstPage.Ranges.Count.ShouldBe(2);
-        firstPage.NextStartAfter.ShouldBe(firstPage.Ranges[^1].End);
-        secondPage.Ranges.ShouldHaveSingleItem();
-        secondPage.Ranges[0].Start.ShouldBe(firstPage.Ranges[^1].End + 1);
-        secondPage.Ranges[^1].End.ShouldBe(upperBound);
-        secondPage.NextStartAfter.ShouldBeNull();
-    }
-
-    [Fact]
-    public async Task GivenTheLastResourceEndsExactlyAtThePageLimit_WhenRangesArePlanned_ThenThePageExtendsToTheUpperBound()
-    {
-        await _database.Repository.CreateOrUpdateAsync(Patient("page-limit-first"));
-        await _database.Repository.CreateOrUpdateAsync(Patient("page-limit-last"));
-        var lastId = await GetCurrentResourceSurrogateIdAsync("page-limit-last");
-        var upperBound = lastId + 100;
-
-        var page = await _store.GetSurrogateIdRangesAsync(
-            "Patient", -1, upperBound, 1, 2, CancellationToken.None);
-
-        page.Ranges.Count.ShouldBe(2);
-        page.Ranges[^1].End.ShouldBe(upperBound);
-        page.NextStartAfter.ShouldBeNull();
-    }
-
+    // §5.5: an import reserves 1000 ids; S is the maximum last value, so a resource past the first value is included.
     [Fact]
     public async Task GivenAnImportReservationWhoseResourceFallsPastItsFirstValue_WhenBarrierIsRaised_ThenTheCutoffRangeIncludesTheResource()
     {
-        var (transactionId, _) = await _database.MergeRepository.BeginTransactionAsync(
-            resourceCount: 1000,
-            definitionsEventId: 0,
-            CancellationToken.None);
-        var resource = Patient("import-tail");
-
-        await _database.MergeRepository.MergeResourcesAsync(
-            transactionId,
-            singleTransaction: true,
-            [resource],
-            [999],
-            CancellationToken.None);
+        var (transactionId, _) = await _database.MergeRepository.BeginTransactionAsync(1000, definitionsEventId: 0, CancellationToken.None);
+        await _database.MergeRepository.MergeResourcesAsync(transactionId, singleTransaction: true, [Patient("import-tail")], [999], CancellationToken.None);
         await _database.MergeRepository.CommitTransactionAsync(transactionId, null, CancellationToken.None);
 
         var (cutoffTransactionId, cutoffSurrogateId) = await _store.RaiseBarrierAsync(55, CancellationToken.None);
+
         var resourceSurrogateId = await _database.ExecuteScalarAsync<long>(
             "SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = 'import-tail' AND IsHistory = 0");
-
         transactionId.ShouldBeLessThanOrEqualTo(cutoffTransactionId);
         resourceSurrogateId.ShouldBeGreaterThan(cutoffTransactionId);
         cutoffSurrogateId.ShouldBeGreaterThanOrEqualTo(resourceSurrogateId);
-
-        var (ranges, _) = await _store.GetSurrogateIdRangesAsync(
-            "Patient", -1, cutoffSurrogateId, 1000, 10, CancellationToken.None);
-        var range = ranges.Single();
-        var resources = await _store.ReadRangeAsync(
-            "Patient", range.Start, range.End, 1000, afterSurrogateId: null, CancellationToken.None);
-
-        resources.Select(reindexResource => reindexResource.Resource.ResourceId).ShouldContain("import-tail");
+        (await ReadAllAsync(_store, "Patient", cutoffSurrogateId)).Select(resource => resource.Resource.ResourceId).ShouldContain("import-tail");
     }
 
+    // F10, §5.5: a version superseded after the read is a conflict, and the index-only write creates no history.
     [Fact]
     public async Task GivenAResourceSupersededAfterRead_WhenItsIndicesAreUpdated_ThenItIsReportedAsAConflictWithoutCreatingHistory()
     {
-        await _database.Repository.CreateOrUpdateAsync(Patient("conflict"));
-        var (_, cutoff) = await _store.RaiseBarrierAsync(60, CancellationToken.None);
-        var resource = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None)).Single();
-        var beforeHistory = await _database.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'conflict' AND IsHistory = 1");
+        var resource = await PutAndReadAsync(Patient("conflict"));
+        await PutAsync(Patient("conflict") with { VersionId = "2", DefinitionsEventId = BarrierEventId });
+        const string history = "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'conflict' AND IsHistory = 1";
+        var historyBefore = await _database.ExecuteScalarAsync<int>(history);
 
-        await _database.Repository.CreateOrUpdateAsync(
-            Patient("conflict") with { VersionId = "2", DefinitionsEventId = 60 });
+        (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(0, 1));
 
-        var result = await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None);
-
-        result.Updated.ShouldBe(0);
-        result.Conflicts.ShouldBe(1);
-        (await _database.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'conflict' AND IsHistory = 1"))
-            .ShouldBe(beforeHistory + 1);
+        (await _database.ExecuteScalarAsync<int>(history)).ShouldBe(historyBefore);
     }
 
+    // §8.7 UpdateResourceSearchParams: an index-only rebuild keeps the resource's write claims.
     [Fact]
     public async Task GivenExistingResourceWriteClaims_WhenSearchIndicesAreRebuilt_ThenTheClaimsArePreservedExactly()
     {
-        await _database.Repository.CreateOrUpdateAsync(Patient("claims"));
-        var (_, cutoff) = await _store.RaiseBarrierAsync(70, CancellationToken.None);
-        var resource = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None)).Single();
+        var resource = await PutAndReadAsync(Patient("claims"));
+        var surrogateId = resource.ResourceSurrogateId;
         await _database.ExecuteNonQueryAsync(
-            $"""
-             INSERT dbo.ResourceWriteClaim (ResourceSurrogateId, ClaimTypeId, ClaimValue)
-             VALUES ({resource.ResourceSurrogateId}, 1, N'alpha'),
-                    ({resource.ResourceSurrogateId}, 2, N'beta');
-             """);
+            $"INSERT dbo.ResourceWriteClaim (ResourceSurrogateId, ClaimTypeId, ClaimValue) VALUES ({surrogateId}, 1, N'alpha'), ({surrogateId}, 2, N'beta');");
 
         (await _store.UpdateSearchIndicesAsync([resource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
 
         (await _database.ExecuteScalarAsync<string>(
-            $"SELECT STRING_AGG(CONCAT(ClaimTypeId, '=', ClaimValue), ',') WITHIN GROUP (ORDER BY ClaimTypeId) FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {resource.ResourceSurrogateId}"))
+            $"SELECT STRING_AGG(CONCAT(ClaimTypeId, '=', ClaimValue), ',') WITHIN GROUP (ORDER BY ClaimTypeId) FROM dbo.ResourceWriteClaim WHERE ResourceSurrogateId = {surrogateId}"))
             .ShouldBe("1=alpha,2=beta");
     }
 
+    // §5.3 ordering proof: every racing allocation is inside the cutoff or rejected, with and without RCSI.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task GivenConcurrentBarrierRaisesAndStaleAllocations_WhenRacing_ThenEveryAllocationIsCoveredOrRejectedAndVisibilityAdvances(
         bool readCommittedSnapshot)
     {
-        const int iterations = 30;
         await ConfigureReadCommittedSnapshotAsync(readCommittedSnapshot);
 
-        for (var iteration = 1; iteration <= iterations; iteration++)
+        for (var iteration = 1; iteration <= 30; iteration++)
         {
             var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var allocationTask = Task.Run(async () =>
+            var allocation = Task.Run(async () =>
             {
                 await start.Task;
-                if (iteration % 3 == 0)
-                {
-                    await Task.Delay(1);
-                }
-
-                try
-                {
-                    return (
-                        Allocation: ((long TransactionId, int SequenceStart)?)await _database.MergeRepository.BeginTransactionAsync(
-                        resourceCount: 1,
-                        definitionsEventId: iteration - 1,
-                        CancellationToken.None),
-                        RejectedTransactionId: (long?)null);
-                }
-                catch (StaleConformanceDefinitionsException exception)
-                {
-                    return (
-                        Allocation: ((long TransactionId, int SequenceStart)?)null,
-                        RejectedTransactionId: exception.TransactionId);
-                }
+                await Task.Delay(iteration % 3 == 0 ? 1 : 0);
+                return await _database.MergeRepository.BeginTransactionAsync(1, definitionsEventId: iteration - 1, CancellationToken.None);
             });
-            var raiseTask = Task.Run(async () =>
+            var raise = Task.Run(async () =>
             {
                 await start.Task;
-                if (iteration % 3 == 1)
-                {
-                    await Task.Delay(1);
-                }
-
+                await Task.Delay(iteration % 3 == 1 ? 1 : 0);
                 return await _store.RaiseBarrierAsync(iteration, CancellationToken.None);
             });
 
             start.SetResult();
-            var allocation = await allocationTask;
-            var cutoff = await raiseTask;
+            var rejected = await Record.ExceptionAsync(() => allocation);
+            var cutoff = await raise;
 
-            if (allocation.Allocation.HasValue)
+            if (rejected is null)
             {
-                allocation.Allocation.Value.TransactionId.ShouldBeLessThanOrEqualTo(cutoff.TransactionId);
-                await _database.MergeRepository.CommitTransactionAsync(
-                    allocation.Allocation.Value.TransactionId,
-                    failureReason: "Reindex barrier race test cleanup.",
-                    CancellationToken.None);
+                var (transactionId, _) = await allocation;
+                transactionId.ShouldBeLessThanOrEqualTo(cutoff.TransactionId);
+                await _database.MergeRepository.CommitTransactionAsync(transactionId, "Barrier race cleanup.", CancellationToken.None);
+                continue;
             }
-            else
-            {
-                var transaction = allocation.RejectedTransactionId!.Value;
-                (await _database.ExecuteScalarAsync<int>(
-                    $"SELECT COUNT(*) FROM dbo.Transactions WHERE SurrogateIdRangeFirstValue = {transaction} AND IsCompleted = 1 AND IsSuccess = 0"))
-                    .ShouldBe(1);
-                await WaitForVisibleWatermarkAsync(transaction);
-            }
+
+            var transaction = rejected.ShouldBeOfType<StaleConformanceDefinitionsException>().TransactionId;
+            (await _database.ExecuteScalarAsync<int>(
+                $"SELECT COUNT(*) FROM dbo.Transactions WHERE SurrogateIdRangeFirstValue = {transaction} AND IsCompleted = 1 AND IsSuccess = 0"))
+                .ShouldBe(1);
+            await WaitForVisibleWatermarkAsync(transaction);
         }
     }
 
+    // F10, §8.4 step 4: conflict rows get no extension update; updated rows have their extension columns restored.
     [Fact]
     public async Task GivenOneConflictingAndOneUpdatedResource_WhenReindexUpdatesExtensions_ThenOnlyTheUpdatedResourceIsProcessed()
     {
         await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
         var searchIndices = BuildSearchIndicesWithExtensions("reindex-target");
-        var conflicted = Patient("conflicted-input") with
-        {
-            SearchIndices = searchIndices,
-        };
-        var updated = Patient("updated-input") with { SearchIndices = searchIndices };
-        await _database.Repository.CreateOrUpdateAsync(conflicted);
-        await _database.Repository.CreateOrUpdateAsync(updated);
-
+        await PutAsync(Patient("conflicted-input") with { SearchIndices = searchIndices }, Patient("updated-input") with { SearchIndices = searchIndices });
         var (_, cutoff) = await _store.RaiseBarrierAsync(65, CancellationToken.None);
-        var reads = await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None);
-        var stale = reads
-            .Where(resource => resource.Resource.ResourceId is "conflicted-input" or "updated-input")
+        var stale = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None))
             .Select(resource => resource with { Resource = resource.Resource with { SearchIndices = searchIndices } })
             .ToArray();
-        var conflictedResource = stale.Single(resource => resource.Resource.ResourceId == conflicted.ResourceId);
-        var updatedResource = stale.Single(resource => resource.Resource.ResourceId == updated.ResourceId);
-        await SearchIndexTableSeeder.InsertResourceWriteClaimAsync(
-            _database, conflictedResource.ResourceSurrogateId, CancellationToken.None);
-        await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(
-            _database, conflictedResource.ResourceSurrogateId, CancellationToken.None);
+        var conflicted = stale.Single(resource => resource.Resource.ResourceId == "conflicted-input").ResourceSurrogateId;
+        var updated = stale.Single(resource => resource.Resource.ResourceId == "updated-input").ResourceSurrogateId;
+        await SearchIndexTableSeeder.InsertResourceWriteClaimAsync(_database, conflicted, CancellationToken.None);
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(_database, conflicted, CancellationToken.None);
         await _database.ExecuteNonQueryAsync(
             $"""
-             UPDATE dbo.TokenSearchParam
-             SET IdentifierTypeCode = NULL
-             WHERE ResourceSurrogateId = {updatedResource.ResourceSurrogateId};
-
-             UPDATE dbo.UriSearchParam
-             SET Version = NULL, Fragment = NULL
-             WHERE ResourceSurrogateId = {updatedResource.ResourceSurrogateId};
+             UPDATE dbo.TokenSearchParam SET IdentifierTypeCode = NULL WHERE ResourceSurrogateId = {updated};
+             UPDATE dbo.UriSearchParam SET Version = NULL, Fragment = NULL WHERE ResourceSurrogateId = {updated};
              """);
-
         var logger = new RecordingLogger<SqlServerPostMergeExtensionUpdater>();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var gate = new InterceptingSqlExecutionService(_database.SqlExecutionService, async command =>
-        {
-            if (command.CommandText.Contains("EXEC dbo.UpdateResourceSearchParams", StringComparison.Ordinal))
+        var (store, cache) = await CreateStoreAsync(
+            new InterceptingSqlExecutionService(_database.SqlExecutionService, async command =>
             {
-                entered.TrySetResult();
-                await release.Task;
-            }
-        });
-        var (store, cache) = await CreateStoreAsync(gate, logger);
+                if (command.CommandText.Contains("EXEC dbo.UpdateResourceSearchParams", StringComparison.Ordinal))
+                {
+                    entered.TrySetResult();
+                    await release.Task;
+                }
+            }),
+            logger);
         using (cache)
         {
             var update = store.UpdateSearchIndicesAsync(stale, CancellationToken.None);
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
-            await _database.Repository.CreateOrUpdateAsync(
-                Patient(conflicted.ResourceId) with { VersionId = "2", DefinitionsEventId = 65 });
+            await PutAsync(Patient("conflicted-input") with { VersionId = "2", DefinitionsEventId = 65 });
             release.SetResult();
 
             (await update).ShouldBe(new SearchIndexUpdateResult(1, 1));
-            await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(
-                _database, conflictedResource.ResourceSurrogateId, CancellationToken.None);
+            await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(_database, conflicted, CancellationToken.None);
         }
 
         logger.Errors.ShouldBeEmpty();
         (await _database.ExecuteScalarAsync<string>(
-            $"SELECT TOP (1) IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {updatedResource.ResourceSurrogateId}"))
-            .ShouldBe("MR");
-        (await _database.ExecuteScalarAsync<string>(
-            $"SELECT TOP (1) Version FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {updatedResource.ResourceSurrogateId}"))
-            .ShouldBe("1.0");
+            $"SELECT CONCAT((SELECT TOP (1) IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {updated}), '|', (SELECT TOP (1) Version FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {updated}))"))
+            .ShouldBe("MR|1.0");
     }
 
+    // F9, N3: a repeated index-only write changes no version, raw resource, transaction or history.
     [Fact]
     public async Task GivenACurrentResource_WhenIndexOnlyUpdateIsRepeated_ThenVersionRawResourceTransactionAndHistoryStayUnchanged()
     {
-        await _database.Repository.CreateOrUpdateAsync(Patient("idempotent"));
-        var (_, cutoff) = await _store.RaiseBarrierAsync(70, CancellationToken.None);
-        var resource = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None)).Single();
+        var resource = await PutAndReadAsync(Patient("idempotent"));
         const string snapshot = """
             SELECT CONCAT(Version, '|', TransactionId, '|', CONVERT(varchar(max), RawResource, 1), '|', IsHistory, '|',
                 (SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'idempotent' AND IsHistory = 1))
@@ -569,44 +401,29 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         (await _database.ExecuteScalarAsync<string>(snapshot)).ShouldBe(before);
     }
 
+    // §8.7 UpdateResourceSearchParams: the index-only write covers every typed table and the extension columns.
     [Fact]
     public async Task GivenDriftInEveryTypedSearchIndexTable_WhenIndexOnlyUpdateRuns_ThenAllRowsAndExtensionColumnsAreRestored()
     {
         await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
-        await _database.Repository.CreateOrUpdateAsync(Patient("reindex-target"));
-
-        var resource = Patient("reindex-all-types") with
-        {
-            SearchIndices = BuildSearchIndicesWithExtensions("reindex-target"),
-        };
-        await _database.Repository.CreateOrUpdateAsync(resource);
-
-        var (_, cutoff) = await _store.RaiseBarrierAsync(80, CancellationToken.None);
-        var reindexResource = (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None))
-            .Single(reindexResource => reindexResource.Resource.ResourceId == resource.ResourceId);
-        var indexedResource = reindexResource with
-        {
-            Resource = reindexResource.Resource with { SearchIndices = resource.SearchIndices },
-        };
-        var resourceSurrogateId = reindexResource.ResourceSurrogateId;
+        await PutAsync(Patient("reindex-target"));
+        var searchIndices = BuildSearchIndicesWithExtensions("reindex-target");
+        var read = await PutAndReadAsync(Patient("reindex-all-types") with { SearchIndices = searchIndices });
+        var indexed = read with { Resource = read.Resource with { SearchIndices = searchIndices } };
+        var surrogateId = read.ResourceSurrogateId;
         var expectedRowCounts = new Dictionary<string, int>();
-
         foreach (var table in SearchIndexTableSeeder.SearchIndexTables.Where(table => table != "ResourceWriteClaim"))
         {
-            var expectedCount = await _database.ExecuteScalarAsync<int>(
-                $"SELECT COUNT(*) FROM dbo.{table} WHERE ResourceSurrogateId = {resourceSurrogateId}");
-            expectedCount.ShouldBeGreaterThan(0, $"dbo.{table} must have a row before drift is introduced.");
-            expectedRowCounts.Add(table, expectedCount);
-            await _database.ExecuteNonQueryAsync(
-                $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId = {resourceSurrogateId}");
+            expectedRowCounts[table] = await _database.ExecuteScalarAsync<int>($"SELECT COUNT(*) FROM dbo.{table} WHERE ResourceSurrogateId = {surrogateId}");
+            expectedRowCounts[table].ShouldBeGreaterThan(0, $"dbo.{table} must have a row before drift is introduced.");
+            await _database.ExecuteNonQueryAsync($"DELETE FROM dbo.{table} WHERE ResourceSurrogateId = {surrogateId}");
         }
 
-        (await _store.UpdateSearchIndicesAsync([indexedResource], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
+        (await _store.UpdateSearchIndicesAsync([indexed], CancellationToken.None)).ShouldBe(new SearchIndexUpdateResult(1, 0));
 
         foreach (var (table, expectedCount) in expectedRowCounts)
         {
-            (await _database.ExecuteScalarAsync<int>(
-                $"SELECT COUNT(*) FROM dbo.{table} WHERE ResourceSurrogateId = {resourceSurrogateId}"))
+            (await _database.ExecuteScalarAsync<int>($"SELECT COUNT(*) FROM dbo.{table} WHERE ResourceSurrogateId = {surrogateId}"))
                 .ShouldBe(expectedCount, $"dbo.{table} must be restored to its pre-drift row count.");
         }
 
@@ -614,11 +431,9 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             $"""
              SELECT CONCAT(system.Value COLLATE DATABASE_DEFAULT, '|', token.IdentifierTypeCode COLLATE DATABASE_DEFAULT, '|',
                  uri.Version COLLATE DATABASE_DEFAULT, '|', uri.Fragment COLLATE DATABASE_DEFAULT)
-             FROM (SELECT TOP (1) IdentifierTypeSystemId, IdentifierTypeCode FROM dbo.TokenSearchParam
-                   WHERE ResourceSurrogateId = {resourceSurrogateId}) AS token
+             FROM (SELECT TOP (1) IdentifierTypeSystemId, IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId = {surrogateId}) AS token
              JOIN dbo.System AS system ON system.SystemId = token.IdentifierTypeSystemId
-             CROSS JOIN (SELECT TOP (1) Version, Fragment FROM dbo.UriSearchParam
-                         WHERE ResourceSurrogateId = {resourceSurrogateId}) AS uri
+             CROSS JOIN (SELECT TOP (1) Version, Fragment FROM dbo.UriSearchParam WHERE ResourceSurrogateId = {surrogateId}) AS uri
              """))
             .ShouldBe("http://terminology.hl7.org/CodeSystem/v2-0203|MR|1.0|fragment");
     }
@@ -628,74 +443,91 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
             .Cast<SearchIndexEntry>()
             .Select(entry => entry.SearchParameter.Type switch
             {
-                SearchParamType.Token => new SearchIndexEntry(
-                    entry.SearchParameter,
-                    new TokenSearchValue(
-                        system: null,
-                        code: "sweep-code",
-                        text: "sweep text",
-                        identifierTypeSystem: "http://terminology.hl7.org/CodeSystem/v2-0203",
-                        identifierTypeCode: "MR")),
-                SearchParamType.Uri => new SearchIndexEntry(
-                    entry.SearchParameter,
+                SearchParamType.Token => new SearchIndexEntry(entry.SearchParameter, new TokenSearchValue(
+                    system: null, code: "sweep-code", text: "sweep text",
+                    identifierTypeSystem: "http://terminology.hl7.org/CodeSystem/v2-0203", identifierTypeCode: "MR")),
+                SearchParamType.Uri => new SearchIndexEntry(entry.SearchParameter,
                     new UriSearchValue("http://example.org/sweep-uri|1.0#fragment", separateCanonicalComponents: true)),
                 _ => entry,
             })
             .Cast<object>()
             .ToArray();
 
-    private async Task<long> GetCurrentResourceSurrogateIdAsync(string resourceId) =>
-        await _database.ExecuteScalarAsync<long>(
-            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{resourceId}' AND IsHistory = 0");
+    private static ReindexParameterDefinition Target(string canonical, int conformanceId) =>
+        new(canonical, "code", "Patient", conformanceId, ActivationEventId: 1, ["Patient"]);
 
-    private async Task InsertLegacyCurrentResourceAsync(string resourceId, long surrogateId)
+    private async Task PutAsync(params ResourceWrapper[] resources)
     {
-        await _database.ExecuteNonQueryAsync(
-            $"""
-             INSERT dbo.Resource (
-                 ResourceTypeId, ResourceId, Version, IsHistory, ResourceSurrogateId, IsDeleted,
-                 RequestMethod, RawResource, IsRawResourceMetaSet, SearchParamHash, TransactionId, HistoryTransactionId)
-             VALUES (1, '{resourceId}', 1, 0, {surrogateId}, 0, 'PUT', 0x01, 0, NULL, NULL, NULL);
-             """);
+        foreach (var resource in resources)
+        {
+            await _database.Repository.CreateOrUpdateAsync(resource);
+        }
     }
+
+    /// <summary>Writes <paramref name="resource"/>, raises the barrier and reads it back as a reindex worker would.</summary>
+    private async Task<ReindexResource> PutAndReadAsync(ResourceWrapper resource)
+    {
+        await PutAsync(resource);
+        var (_, cutoff) = await _store.RaiseBarrierAsync(BarrierEventId, CancellationToken.None);
+        return (await _store.ReadRangeAsync("Patient", 0, cutoff, 10, null, CancellationToken.None))
+            .Single(read => read.Resource.ResourceId == resource.ResourceId);
+    }
+
+    /// <summary>Plans every range of <paramref name="resourceType"/> up to <paramref name="cutoff"/> and reads each in pages of one.</summary>
+    private static async Task<List<ReindexResource>> ReadAllAsync(IReindexStore store, string resourceType, long cutoff)
+    {
+        var resources = new List<ReindexResource>();
+        var (ranges, _) = await store.GetSurrogateIdRangesAsync(resourceType, -1, cutoff, 1, 10, CancellationToken.None);
+        foreach (var (start, end, _) in ranges)
+        {
+            for (var page = await store.ReadRangeAsync(resourceType, start, end, 1, null, CancellationToken.None);
+                 page.Count > 0;
+                 page = await store.ReadRangeAsync(resourceType, start, end, 1, page[^1].ResourceSurrogateId, CancellationToken.None))
+            {
+                resources.AddRange(page);
+            }
+        }
+
+        return resources;
+    }
+
+    private Task InsertTransactionsAsync(string rows, bool values = true) =>
+        _database.ExecuteNonQueryAsync(
+            $"INSERT dbo.Transactions (SurrogateIdRangeFirstValue, SurrogateIdRangeLastValue, IsCompleted, IsVisible) {(values ? "VALUES " : string.Empty)}{rows}");
 
     private async Task ConfigureReadCommittedSnapshotAsync(bool enabled)
     {
         var builder = new SqlConnectionStringBuilder(_database.ConnectionString);
         var databaseName = builder.InitialCatalog;
         databaseName.ShouldStartWith("IgnixaDataLayerSqlServerTest_", Case.Sensitive);
-        using var pooledConnection = new SqlConnection(builder.ConnectionString);
-        SqlConnection.ClearPool(pooledConnection);
+        using var pooled = new SqlConnection(_database.ConnectionString);
+        SqlConnection.ClearPool(pooled);
         builder.InitialCatalog = "master";
         await using var connection = new SqlConnection(builder.ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
 #pragma warning disable CA2100
-        command.CommandText =
-            $"ALTER DATABASE [{databaseName}] SET READ_COMMITTED_SNAPSHOT {(enabled ? "ON" : "OFF")} WITH ROLLBACK IMMEDIATE";
+        command.CommandText = $"ALTER DATABASE [{databaseName}] SET READ_COMMITTED_SNAPSHOT {(enabled ? "ON" : "OFF")} WITH ROLLBACK IMMEDIATE";
 #pragma warning restore CA2100
         await command.ExecuteNonQueryAsync();
-        SqlConnection.ClearPool(pooledConnection);
+        SqlConnection.ClearPool(pooled);
 
         (await _database.ExecuteScalarAsync<int>(
-            "SELECT CAST(is_read_committed_snapshot_on AS int) FROM sys.databases WHERE database_id = DB_ID()"))
-            .ShouldBe(enabled ? 1 : 0);
+            "SELECT CAST(is_read_committed_snapshot_on AS int) FROM sys.databases WHERE database_id = DB_ID()")).ShouldBe(enabled ? 1 : 0);
     }
 
     private async Task WaitForVisibleWatermarkAsync(long transactionId)
     {
         var timeout = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTimeOffset.UtcNow < timeout)
+        while (await _store.GetVisibleWatermarkAsync(CancellationToken.None) < transactionId)
         {
-            if (await _store.GetVisibleWatermarkAsync(CancellationToken.None) >= transactionId)
+            if (DateTimeOffset.UtcNow > timeout)
             {
-                return;
+                throw new TimeoutException($"Visible watermark did not advance past failed transaction {transactionId}.");
             }
 
             await Task.Delay(25);
         }
-
-        throw new TimeoutException($"Visible watermark did not advance past failed transaction {transactionId}.");
     }
 
     /// <summary>A store whose commands run through <paramref name="sql"/>; dispose the returned cache.</summary>
@@ -703,69 +535,47 @@ public sealed class ReindexStoreSqlContractTests : IAsyncLifetime
         ISqlExecutionService sql,
         ILogger<SqlServerPostMergeExtensionUpdater>? extensionLogger = null)
     {
-        var cache = new SqlServerSearchIndexReferenceDataCache(
-            sql, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
+        var cache = new SqlServerSearchIndexReferenceDataCache(sql, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
         await cache.PreloadResourceTypesAsync(CancellationToken.None);
         var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
             sql, _database.TenantId, extensionLogger ?? NullLogger<SqlServerPostMergeExtensionUpdater>.Instance);
         var store = new SqlServerReindexStore(
-            sql,
-            _database.TenantId,
-            new GzipResourceCompressor(new RecyclableMemoryStreamManager()),
-            cache,
-            extensionUpdater,
-            NullLogger.Instance);
+            sql, _database.TenantId, new GzipResourceCompressor(new RecyclableMemoryStreamManager()), cache, extensionUpdater, NullLogger.Instance);
         return (store, cache);
     }
 
-    private async Task<IReadOnlyList<string>> CaptureShowPlanXmlAsync(SqlCommand command)
+    /// <summary>Runs <paramref name="command"/> with <c>STATISTICS XML</c> on and returns its single actual plan.</summary>
+    private async Task<string> CaptureShowPlanXmlAsync(SqlCommand command)
     {
         await using var connection = new SqlConnection(_database.ConnectionString);
         await connection.OpenAsync();
-        await using var enableStatisticsXml = connection.CreateCommand();
-        enableStatisticsXml.CommandText = "SET STATISTICS XML ON;";
-        await enableStatisticsXml.ExecuteNonQueryAsync();
-
-        try
+        await using (var enable = new SqlCommand("SET STATISTICS XML ON;", connection))
         {
-            command.Connection = connection;
-            var plans = new List<string>();
-            await using var reader = await command.ExecuteReaderAsync();
-            do
+            await enable.ExecuteNonQueryAsync();
+        }
+
+        command.Connection = connection;
+        var plans = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync();
+        do
+        {
+            while (await reader.ReadAsync())
             {
-                while (await reader.ReadAsync())
+                if (reader.FieldCount == 1)
                 {
-                    if (reader.FieldCount == 1)
-                    {
-                        plans.Add(reader.GetString(0));
-                    }
+                    plans.Add(reader.GetString(0));
                 }
             }
-            while (await reader.NextResultAsync());
+        }
+        while (await reader.NextResultAsync());
 
-            return plans;
-        }
-        finally
-        {
-            await using var disableStatisticsXml = connection.CreateCommand();
-            disableStatisticsXml.CommandText = "SET STATISTICS XML OFF;";
-            await disableStatisticsXml.ExecuteNonQueryAsync();
-        }
+        return plans.ShouldHaveSingleItem();
     }
 
-    private static ResourceWrapper Patient(string id) => new(
-        "Patient",
-        id,
-        "1",
-        DateTimeOffset.UtcNow,
-        ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{id}}"}"""),
-        new ResourceRequest("PUT", $"Patient/{id}"));
+    private static ResourceWrapper Patient(string id) => Resource("Patient", id);
 
-    private static ResourceWrapper Observation(string id) => new(
-        "Observation",
-        id,
-        "1",
-        DateTimeOffset.UtcNow,
-        ResourceJsonNode.Parse($$"""{"resourceType":"Observation","id":"{{id}}","status":"final"}"""),
-        new ResourceRequest("PUT", $"Observation/{id}"));
+    private static ResourceWrapper Resource(string type, string id) => new(
+        type, id, "1", DateTimeOffset.UtcNow,
+        ResourceJsonNode.Parse($$"""{"resourceType":"{{type}}","id":"{{id}}"}"""),
+        new ResourceRequest("PUT", $"{type}/{id}"));
 }
