@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.PackageManagement.Abstractions;
+using Ignixa.PackageManagement.Models;
 using NSubstitute;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
@@ -9,6 +11,8 @@ namespace Ignixa.Application.Tests.Features.Conformance;
 internal static class TestPackages
 {
     public const string BaseIdentifier = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
+
+    public const string PackageVersion = "1.0.0";
 
     public static PackageResource SearchParameter(
         string packageId,
@@ -61,6 +65,15 @@ internal static class TestPackages
                 .Where(resource => resource.PackageId == call.ArgAt<string>(0) && resource.PackageVersion == call.ArgAt<string>(1))
                 .ToArray());
         return repository;
+    }
+
+    /// <summary>An implementation guide provider that stores <paramref name="packageId"/>@<see cref="PackageVersion"/> for tenant 1.</summary>
+    public static IImplementationGuideProvider Provider(string packageId)
+    {
+        var provider = Substitute.For<IImplementationGuideProvider>();
+        provider.LoadPackageAsync("1", packageId, PackageVersion, Arg.Any<CancellationToken>())
+            .Returns(new PackageImportResult { PackageId = packageId, PackageVersion = PackageVersion, ImportedResources = 1 });
+        return provider;
     }
 
     private static JsonObject Json(string canonical, string code, IReadOnlyList<string> baseTypes, string type, string expression) =>
