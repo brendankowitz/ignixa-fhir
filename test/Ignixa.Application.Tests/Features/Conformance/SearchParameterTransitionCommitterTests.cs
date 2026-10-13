@@ -1,5 +1,4 @@
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Domain.Abstractions;
 using NSubstitute;
@@ -15,32 +14,30 @@ public class SearchParameterTransitionCommitterTests
     private const int ShadowCount = 70;
     private static readonly string OverrideCanonical = Canonical("Patient-identifier");
 
-    [Fact]
-    public async Task GivenAStaleCandidateThatWouldBeIgnored_WhenCommitted_ThenItDoesNotAppendANoOpEvent()
+    // §9: a candidate made obsolete before the commit, or by the winner of a lost append, commits nothing.
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
+    public async Task GivenACandidateMadeObsolete_WhenCommitted_ThenItStopsWithoutAppendingOrRequestingReindex(
+        bool byAnotherWriter,
+        int expectedAppendAttempts)
     {
         using var harness = new Harness();
         var hideEventId = harness.SeedShadow();
-        harness.State.FindByCanonical(BaseIdentifier)!.DeactivationEventId = hideEventId + 1;
+        if (byAnotherWriter)
+        {
+            harness.Log.OtherWriters.Enqueue(Committed(1, hideEventId));
+        }
+        else
+        {
+            harness.State.FindByCanonical(BaseIdentifier)!.DeactivationEventId = hideEventId + 1;
+        }
+
         harness.State.GetTransitionCandidates(hideEventId).Count.ShouldBe(1);
 
         var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
 
-        committed.ShouldBeFalse();
-        harness.Log.AppendAttempts.ShouldBe(0);
-    }
-
-    // §9: a lost append catches up and rebuilds the transition; here the winner already committed it.
-    [Fact]
-    public async Task GivenNewerTransitionMakesCandidateObsolete_WhenCommitted_ThenItStopsWithoutRetryingAppend()
-    {
-        using var harness = new Harness();
-        var hideEventId = harness.SeedShadow();
-        harness.Log.OtherWriters.Enqueue(Committed(1, hideEventId));
-
-        var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
-
-        committed.ShouldBeFalse();
-        harness.Log.AppendAttempts.ShouldBe(1);
+        (committed, harness.Log.AppendAttempts).ShouldBe((false, expectedAppendAttempts));
         harness.Log.Appends.ShouldBeEmpty();
         await harness.Trigger.DidNotReceiveWithAnyArgs().RequestReindexAsync(default!, default);
     }

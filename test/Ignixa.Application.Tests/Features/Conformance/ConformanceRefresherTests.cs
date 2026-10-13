@@ -1,7 +1,6 @@
 using System.Data.Common;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Conformance;
-using Ignixa.Application.Features.Search;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -14,10 +13,7 @@ using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 
 namespace Ignixa.Application.Tests.Features.Conformance;
 
-/// <summary>
-/// Spec §5.4: a refresh builds each tenant's definitions, catalogs them, publishes them all, then invalidates capabilities.
-/// Each test asserts that ordered effect timeline.
-/// </summary>
+/// <summary>Spec §5.4: a refresh builds and catalogs each tenant's definitions, publishes them all, then invalidates capabilities.</summary>
 public class ConformanceRefresherTests
 {
     private static readonly string[] OneRefresh = ["built 1@1", "cataloged 1", "published 1@1", "invalidated 1"];
@@ -102,23 +98,16 @@ public class ConformanceRefresherTests
     }
 
     [Theory]
-    [InlineData(nameof(IOException), true)]
-    [InlineData(nameof(TimeoutException), true)]
-    [InlineData(nameof(DbException), true)]
-    [InlineData(nameof(OperationCanceledException), false)]
-    [InlineData(nameof(InvalidOperationException), false)]
+    [InlineData(typeof(IOException), true)]
+    [InlineData(typeof(TimeoutException), true)]
+    [InlineData(typeof(TestDbException), true)]
+    [InlineData(typeof(OperationCanceledException), false)]
+    [InlineData(typeof(InvalidOperationException), false)]
     public async Task GivenConsumerFailure_WhenRefreshed_ThenOnlyDependencyFailuresAreMappedAndNothingIsPublished(
-        string failureKind,
+        Type failureType,
         bool expectMapped)
     {
-        Exception failure = failureKind switch
-        {
-            nameof(IOException) => new IOException("Store unavailable."),
-            nameof(TimeoutException) => new TimeoutException("Catalog write timed out."),
-            nameof(DbException) => new TestDbException(),
-            nameof(OperationCanceledException) => new OperationCanceledException("Independent cancellation."),
-            _ => new InvalidOperationException("Programmer error."),
-        };
+        var failure = (Exception)Activator.CreateInstance(failureType, "Injected consumer failure.")!;
         using var timeline = new Timeline(Tenant(1)) { CatalogFailure = failure };
         using var refresher = timeline.Refresher();
 
@@ -165,10 +154,7 @@ public class ConformanceRefresherTests
 
     private static TenantConfiguration Tenant(int tenantId) => ReindexTestHelper.Tenant(tenantId, "FileSystem");
 
-    /// <summary>
-    /// A refresher over substituted consumers that record, in order, "built T@G", "cataloged T",
-    /// "published T@G" and "invalidated T" (suffixed "(cancelable)" if given a cancelable token).
-    /// </summary>
+    /// <summary>A refresher whose consumers record "built T@G", "cataloged T", "published T@G" and "invalidated T" in order.</summary>
     private sealed class Timeline : IDisposable
     {
         private readonly ISearchParameterDefinitionManager _definitions = Substitute.For<ISearchParameterDefinitionManager>();
@@ -213,5 +199,5 @@ public class ConformanceRefresherTests
         public void Dispose() => State.Dispose();
     }
 
-    private sealed class TestDbException() : DbException("Database unavailable.");
+    private sealed class TestDbException(string message) : DbException(message);
 }
