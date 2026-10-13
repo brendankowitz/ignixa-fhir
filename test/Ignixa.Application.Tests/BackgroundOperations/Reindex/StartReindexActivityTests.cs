@@ -90,11 +90,7 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
         await appending.Task;
         _events.BeforeAppend = null;
         var cancelling = new CancelReindexHandler(
-                new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()),
-                _jobs,
-                _lifecycle,
-                _jobLock,
-                TimeProvider.System)
+                new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()), _jobs, _lifecycle, _jobLock, TimeProvider.System)
             .HandleAsync(new CancelReindexCommand("job", "cancelled"), CancellationToken.None);
         string statusWhileStarting;
         try

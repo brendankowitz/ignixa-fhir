@@ -50,11 +50,7 @@ public sealed class AwaitDrainActivityTests
         var jobRepository = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
         var progress = new ReindexProgressReporter(jobRepository, TimeProvider.System);
         var logs = new List<(LogLevel Level, string Message)>();
-        var activity = new AwaitDrainActivity(
-            stores,
-            TimeProvider.System,
-            progress,
-            new CapturingLoggerFactory(logs).CreateLogger<AwaitDrainActivity>());
+        var activity = new AwaitDrainActivity(stores, TimeProvider.System, progress, new CapturingLoggerFactory(logs).CreateLogger<AwaitDrainActivity>());
         var input = new AwaitDrainInput("job", 1, 50, DateTime.UtcNow - waited, TimeSpan.FromMinutes(5));
 
         var json = await activity.RunAsync(null!, JsonSerializer.Serialize(new[] { input }));

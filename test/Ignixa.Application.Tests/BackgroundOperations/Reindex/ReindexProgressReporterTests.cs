@@ -102,19 +102,10 @@ public class ReindexProgressReporterTests
         started.ShouldBeFalse();
     }
 
-    private static ReindexProgress Snapshot(long count) =>
-        new(ReindexPhase.Reindexing)
-        {
-            Tenants =
-            [
-                ReindexTenantProgress.Create(1) with
-                {
-                    Status = ReindexTenantStatus.Reindexing,
-                    ResourcesToReindex = 15,
-                    ResourcesReindexed = count
-                }
-            ]
-        };
+    private static ReindexProgress Snapshot(long count) => new(ReindexPhase.Reindexing)
+    {
+        Tenants = [ReindexTenantProgress.Create(1) with { Status = ReindexTenantStatus.Reindexing, ResourcesToReindex = 15, ResourcesReindexed = count }]
+    };
 
     private async Task CreateJobAsync(string status, DateTimeOffset heartbeat)
     {
