@@ -29,11 +29,12 @@ public sealed class ReindexTriggerTests : IDisposable
 
     public void Dispose() => _state.Dispose();
 
+    // A due job is not requested while reindex cannot run: an activation reports why, and ticks stay quiet.
     [Theory]
     [InlineData(false, true, false, "Automatic reindex is disabled; parameters remain Pending.")]
     [InlineData(true, false, false, "Reindex is unavailable because the feature is disabled; parameters remain Pending.")]
     [InlineData(true, true, true, "Reindex is unavailable for tenant 3; parameters remain Pending.")]
-    public async Task GivenAutomaticReindexCannotRun_WhenActivationTriggers_ThenThePendingReasonIsReportedWithoutARequest(
+    public async Task GivenAutomaticReindexCannotRun_WhenActivationOrTickTriggers_ThenThePendingReasonIsReportedWithoutARequest(
         bool autoStart,
         bool enabled,
         bool withFileSystemTenant,
@@ -45,6 +46,7 @@ public sealed class ReindexTriggerTests : IDisposable
             tenants: withFileSystemTenant ? [Tenant(1, "SqlServer"), Tenant(3, "FileSystem")] : []);
 
         var result = await trigger.RequestReindexAsync("activation", CancellationToken.None);
+        await trigger.ReconcileAsync(CancellationToken.None);
 
         result.ShouldBe(new ReindexTriggerResult(null, false, expectedMessage));
         await AssertNoJobRequestedAsync();
@@ -70,22 +72,6 @@ public sealed class ReindexTriggerTests : IDisposable
         var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
 
         result.ShouldBe(new ReindexTriggerResult(null, false, "No resources need reindexing."));
-    }
-
-    // A due job is not requested while reindex cannot run; parameters stay Pending without a request each tick.
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, true)]
-    public async Task GivenReindexIsUnavailable_WhenTickFindsAPendingActivation_ThenNoJobIsRequested(
-        bool enabled,
-        bool withFileSystemTenant)
-    {
-        await CreateTrigger(
-                enabled: enabled,
-                tenants: withFileSystemTenant ? [Tenant(1, "SqlServer"), Tenant(3, "FileSystem")] : [])
-            .ReconcileAsync(CancellationToken.None);
-
-        await AssertNoJobRequestedAsync();
     }
 
     // Operational failures defer to periodic reconciliation; programmer errors fail fast.
