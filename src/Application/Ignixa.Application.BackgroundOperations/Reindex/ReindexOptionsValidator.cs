@@ -12,49 +12,34 @@ public sealed class ReindexOptionsValidator : IValidateOptions<ReindexOptions>
         ArgumentNullException.ThrowIfNull(options);
         var failures = new List<string>();
 
-        // Each default is checked on its own so every out-of-range key is reported, not just the first.
-        ValidateJobParameter(
-            () => ReindexJobParameters.Create(
-                maximumNumberOfResourcesPerQuery: options.DefaultMaximumNumberOfResourcesPerQuery),
+        ValidateRange(
+            options.DefaultMaximumNumberOfResourcesPerQuery,
+            ReindexJobParameters.MaxResourcesPerBatch,
             nameof(options.DefaultMaximumNumberOfResourcesPerQuery),
             failures);
-        ValidateJobParameter(
-            () => ReindexJobParameters.Create(
-                maximumNumberOfResourcesPerWrite: options.DefaultMaximumNumberOfResourcesPerWrite),
+        ValidateRange(
+            options.DefaultMaximumNumberOfResourcesPerWrite,
+            ReindexJobParameters.MaxResourcesPerBatch,
             nameof(options.DefaultMaximumNumberOfResourcesPerWrite),
             failures);
-        ValidateJobParameter(
-            () => ReindexJobParameters.Create(maximumConcurrency: options.DefaultMaximumConcurrency),
-            nameof(options.DefaultMaximumConcurrency),
-            failures);
+        ValidateRange(
+            options.DefaultMaximumConcurrency, ReindexJobParameters.MaxConcurrency, nameof(options.DefaultMaximumConcurrency), failures);
 
         ValidatePositive(options.OrphanGrace, nameof(options.OrphanGrace), failures);
         ValidatePositive(options.StaleJobTimeout, nameof(options.StaleJobTimeout), failures);
         ValidatePositive(options.DrainWarningAfter, nameof(options.DrainWarningAfter), failures);
-        if (options.ContinueAsNewThreshold < 1)
-        {
-            failures.Add(
-                $"{ReindexOptions.SectionName}:{nameof(options.ContinueAsNewThreshold)} must be between 1 and {int.MaxValue}.");
-        }
+        ValidateRange(options.ContinueAsNewThreshold, int.MaxValue, nameof(options.ContinueAsNewThreshold), failures);
 
         return failures.Count == 0
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);
     }
 
-    private static void ValidateJobParameter(
-        Func<ReindexJobParameters> create,
-        string optionName,
-        ICollection<string> failures)
+    private static void ValidateRange(int value, int maximum, string name, ICollection<string> failures)
     {
-        try
+        if (value < 1 || value > maximum)
         {
-            create();
-        }
-        catch (ReindexValidationException exception)
-        {
-            failures.Add(
-                $"{ReindexOptions.SectionName}:{optionName} must be between {exception.Minimum} and {exception.Maximum}.");
+            failures.Add($"{ReindexOptions.SectionName}:{name} must be between 1 and {maximum}.");
         }
     }
 

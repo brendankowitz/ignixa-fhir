@@ -10,28 +10,20 @@ public sealed record ReindexJobParameters(
     int MaximumConcurrency,
     int QueryDelayIntervalInMilliseconds)
 {
+    public const int MaxResourcesPerBatch = 10_000;
+    public const int MaxConcurrency = 16;
+    public const int MaxQueryDelayInMilliseconds = 60_000;
+
     public static ReindexJobParameters Create(
-        int maximumNumberOfResourcesPerQuery = 10_000,
+        int maximumNumberOfResourcesPerQuery = MaxResourcesPerBatch,
         int maximumNumberOfResourcesPerWrite = 100,
         int maximumConcurrency = 4,
         int queryDelayIntervalInMilliseconds = 0)
     {
-        ValidateRange(
-            maximumNumberOfResourcesPerQuery,
-            1,
-            10_000,
-            nameof(maximumNumberOfResourcesPerQuery));
-        ValidateRange(
-            maximumNumberOfResourcesPerWrite,
-            1,
-            10_000,
-            nameof(maximumNumberOfResourcesPerWrite));
-        ValidateRange(maximumConcurrency, 1, 16, nameof(maximumConcurrency));
-        ValidateRange(
-            queryDelayIntervalInMilliseconds,
-            0,
-            60_000,
-            nameof(queryDelayIntervalInMilliseconds));
+        ValidateRange(maximumNumberOfResourcesPerQuery, 1, MaxResourcesPerBatch, nameof(maximumNumberOfResourcesPerQuery));
+        ValidateRange(maximumNumberOfResourcesPerWrite, 1, MaxResourcesPerBatch, nameof(maximumNumberOfResourcesPerWrite));
+        ValidateRange(maximumConcurrency, 1, MaxConcurrency, nameof(maximumConcurrency));
+        ValidateRange(queryDelayIntervalInMilliseconds, 0, MaxQueryDelayInMilliseconds, nameof(queryDelayIntervalInMilliseconds));
 
         return new ReindexJobParameters(
             maximumNumberOfResourcesPerQuery,
