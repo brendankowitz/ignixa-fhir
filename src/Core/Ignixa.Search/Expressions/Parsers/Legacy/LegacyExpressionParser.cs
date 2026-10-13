@@ -153,19 +153,8 @@ public sealed class LegacyExpressionParser : IExpressionParser
         if (wildCard)
         {
             referencedTypes = new List<string>();
-            IEnumerable<SearchParameterInfo> searchParameters =
-                originalType.Equals("*".AsSpan(), StringComparison.Ordinal)
-                    ? isReversed
-                        ? _searchParameterDefinitionManager.AllSearchParameters
-                        : resourceTypes.SelectMany(_searchParameterDefinitionManager.GetSearchParameters)
-                    : _searchParameterDefinitionManager.GetSearchParameters(originalType.ToString());
-            wildcardReferenceSearchParameters = searchParameters
-                .Where(p =>
-                    p.Type == SearchParamType.Reference &&
-                    p.IsSearchable &&
-                    !p.IsHiddenByTransition &&
-                    p.Url is not null)
-                .DistinctBy(p => p.Url)
+            wildcardReferenceSearchParameters = WildcardIncludeParameters
+                .Resolve(_searchParameterDefinitionManager, resourceTypes, originalType.ToString(), isReversed)
                 .ToList();
 
             foreach (SearchParameterInfo p in wildcardReferenceSearchParameters)

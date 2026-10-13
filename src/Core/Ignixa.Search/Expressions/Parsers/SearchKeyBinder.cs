@@ -79,7 +79,7 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
         }
 
         ImmutableArray<SearchParameterInfo> wildcardReferenceSearchParameters = syntax.Wildcard
-            ? ResolveWildcardReferenceSearchParameters(resourceTypes, syntax.SourceResourceType, isReversed)
+            ? [.. WildcardIncludeParameters.Resolve(definitionManager, resourceTypes, syntax.SourceResourceType, isReversed)]
             : [];
         ImmutableArray<string> referencedTypes = syntax.Wildcard
             ? ResolveWildcardReferencedTypes(wildcardReferenceSearchParameters)
@@ -301,28 +301,6 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
         {
             throw new InvalidSearchOperationException(Resources.ChainedParameterMustBeReferenceSearchParamType);
         }
-    }
-
-    private ImmutableArray<SearchParameterInfo> ResolveWildcardReferenceSearchParameters(
-        string[] resourceTypes,
-        string sourceResourceType,
-        bool isReversed)
-    {
-        IEnumerable<SearchParameterInfo> candidates = sourceResourceType switch
-        {
-            "*" when isReversed => definitionManager.AllSearchParameters,
-            "*" => resourceTypes.SelectMany(definitionManager.GetSearchParameters),
-            _ => definitionManager.GetSearchParameters(sourceResourceType),
-        };
-
-        return candidates
-            .Where(parameter =>
-                parameter.Type == SearchParamType.Reference &&
-                parameter.IsSearchable &&
-                !parameter.IsHiddenByTransition &&
-                parameter.Url is not null)
-            .DistinctBy(parameter => parameter.Url)
-            .ToImmutableArray();
     }
 
     private static ImmutableArray<string> ResolveWildcardReferencedTypes(
