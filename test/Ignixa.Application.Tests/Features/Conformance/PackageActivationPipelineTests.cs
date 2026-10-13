@@ -140,8 +140,8 @@ public class PackageActivationPipelineTests
     [Fact]
     public async Task GivenAnotherPackageShadowsDuringTransition_WhenActivated_ThenConflictMatchesPostCommitResult()
     {
-        var duringTransition = await ActivateSecondShadowAsync(commitFirstTransition: false);
-        var afterTransition = await ActivateSecondShadowAsync(commitFirstTransition: true);
+        var duringTransition = await ActivateSecondShadowAsync(removeFirst: false, commitPendingTransition: false);
+        var afterTransition = await ActivateSecondShadowAsync(removeFirst: false, commitPendingTransition: true);
 
         duringTransition.Success.ShouldBeFalse();
         duringTransition.Issues.ShouldContain(issue => issue.Code == "SP_CONFLICT");
@@ -152,8 +152,8 @@ public class PackageActivationPipelineTests
     [Fact]
     public async Task GivenEnabledPackageIsRemoved_WhenAnotherPackageActivatesDuringRestoration_ThenResultMatchesPostCommit()
     {
-        var duringRemoval = await ActivateSecondShadowDuringRemovalAsync(commitRestoration: false);
-        var afterRemoval = await ActivateSecondShadowDuringRemovalAsync(commitRestoration: true);
+        var duringRemoval = await ActivateSecondShadowAsync(removeFirst: true, commitPendingTransition: false);
+        var afterRemoval = await ActivateSecondShadowAsync(removeFirst: true, commitPendingTransition: true);
 
         afterRemoval.Success.ShouldBeTrue(Describe(afterRemoval));
         duringRemoval.Success.ShouldBeTrue(Describe(duringRemoval));
@@ -446,32 +446,25 @@ public class PackageActivationPipelineTests
         return (harness.Pipeline([Custom(), Shadow()], trigger, tenants, lease), custom ? "test.custom" : "test.override");
     }
 
-    private static async Task<ActivationResult> ActivateSecondShadowAsync(bool commitFirstTransition)
+    // Activates test.first's shadow (optionally enabling and then removing it, which restages the base), optionally
+    // commits the transition still pending, then activates test.second's shadow of the same code.
+    private static async Task<ActivationResult> ActivateSecondShadowAsync(bool removeFirst, bool commitPendingTransition)
     {
         using var harness = new Harness();
         var pipeline = harness.Pipeline(Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null));
         (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
-        if (commitFirstTransition)
+        if (removeFirst)
         {
-            harness.CommitTransitionOf(Canonical("test.first"));
+            var first = harness.CommitTransitionOf(Canonical("test.first"));
+            harness.Seed(ReindexStarted(first.Canonical, first.Code, first.ActivationEventId, "job"));
+            harness.Seed(ReindexCompleted(first.Canonical, first.Code, first.ActivationEventId, "job"));
+            harness.Seed(PackageDeactivated("test.first", "1.0.0"));
+            harness.State.GetLatestNonDisabledActivation("Patient", "identifier")!.SourcePackage.ShouldBe(CorePackage);
         }
 
-        return await ActivateAsync(pipeline, "test.second");
-    }
-
-    private static async Task<ActivationResult> ActivateSecondShadowDuringRemovalAsync(bool commitRestoration)
-    {
-        using var harness = new Harness();
-        var pipeline = harness.Pipeline(Shadow("test.first", derivedFrom: null), Shadow("test.second", derivedFrom: null));
-        (await ActivateAsync(pipeline, "test.first")).Success.ShouldBeTrue();
-        var first = harness.CommitTransitionOf(Canonical("test.first"));
-        harness.Seed(ReindexStarted(first.Canonical, first.Code, first.ActivationEventId, "job"));
-        harness.Seed(ReindexCompleted(first.Canonical, first.Code, first.ActivationEventId, "job"));
-        harness.Seed(PackageDeactivated("test.first", "1.0.0"));
-        harness.State.GetLatestNonDisabledActivation("Patient", "identifier")!.SourcePackage.ShouldBe(CorePackage);
-        if (commitRestoration)
+        if (commitPendingTransition)
         {
-            harness.CommitTransitionOf(BaseIdentifier);
+            harness.CommitTransitionOf(removeFirst ? BaseIdentifier : Canonical("test.first"));
         }
 
         return await ActivateAsync(pipeline, "test.second");

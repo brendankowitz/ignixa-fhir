@@ -50,12 +50,9 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                 _createCommands.Add(call.Arg<CreateReindexJobCommand>());
                 return Task.FromResult(_createResult);
             });
-        _mediator.SendAsync(Arg.Any<GetReindexStatusQuery>(), Arg.Any<CancellationToken>())
-            .Returns(_ => (ReindexStatusResult?)_status);
-        _mediator.SendAsync(Arg.Any<GetReindexJobsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(_jobs));
-        _mediator.SendAsync(Arg.Any<CancelReindexCommand>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(_cancelResult));
+        _mediator.SendAsync(Arg.Any<GetReindexStatusQuery>(), Arg.Any<CancellationToken>()).Returns(_ => (ReindexStatusResult?)_status);
+        _mediator.SendAsync(Arg.Any<GetReindexJobsQuery>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(_jobs));
+        _mediator.SendAsync(Arg.Any<CancelReindexCommand>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(_cancelResult));
 
         _app = BuildApp(Substitute.For<IFhirAuthorizationService>(), authorizationEnabled: false);
     }
@@ -371,8 +368,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         builder.Services.AddSingleton(requestContext);
         builder.Services.AddSingleton(Substitute.For<IAuditLogger>());
         builder.Services.AddSingleton(Substitute.For<IMetricsService>());
-        builder.Services.AddSingleton<IOptions<AuthorizationOptions>>(
-            Options.Create(new AuthorizationOptions { Enabled = authorizationEnabled }));
+        builder.Services.AddSingleton<IOptions<AuthorizationOptions>>(Options.Create(new AuthorizationOptions { Enabled = authorizationEnabled }));
         var app = builder.Build();
         app.MapReindexEndpoints();
         return app;
@@ -438,11 +434,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         new JsonObject
         {
             ["resourceType"] = "Parameters",
-            ["parameter"] = new JsonArray(parameters.Select(parameter => (JsonNode)new JsonObject
-            {
-                ["name"] = parameter.Name,
-                [parameter.ValueName] = JsonValue.Create(parameter.Value)
-            }).ToArray())
+            ["parameter"] = new JsonArray([.. parameters.Select(parameter => new JsonObject { ["name"] = parameter.Name, [parameter.ValueName] = JsonValue.Create(parameter.Value) })])
         }.ToJsonString();
 
     private static readonly System.Text.Json.JsonSerializerOptions RelaxedJson =
@@ -478,14 +470,8 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
                 IgnoredLifecycleEvents = ["http://example.test/SearchParameter/ignored"],
                 Tenants =
                 [
-                    new ReindexTenantProgress(1, ReindexTenantStatus.Reindexing, 10, 20, 5, 3, 1, 1, null)
-                    {
-                        FailedResources = [new ReindexFailedResource("Patient", "first", "first failure")]
-                    },
-                    new ReindexTenantProgress(2, ReindexTenantStatus.Reindexing, 11, 21, 5, 4, 1, 1, null)
-                    {
-                        FailedResources = [new ReindexFailedResource("Observation", "second", "second failure")]
-                    }
+                    new ReindexTenantProgress(1, ReindexTenantStatus.Reindexing, 10, 20, 5, 3, 1, 1, null) { FailedResources = [new("Patient", "first", "first failure")] },
+                    new ReindexTenantProgress(2, ReindexTenantStatus.Reindexing, 11, 21, 5, 4, 1, 1, null) { FailedResources = [new("Observation", "second", "second failure")] }
                 ]
             },
             CreateDefinition());
