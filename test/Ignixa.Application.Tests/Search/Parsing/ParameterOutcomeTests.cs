@@ -169,6 +169,22 @@ public class ParameterOutcomeTests
         options.BundleIssues.ShouldContain(issue => issue.Diagnostics == expectedDiagnostics);
     }
 
+    // The trace shows why a hidden parameter did not reach the query, as it does for an unsupported one.
+    [Fact]
+    public void GivenAHiddenParameter_WhenTraced_ThenItIsReportedIgnoredAndTracked()
+    {
+        var context = new SearchParserTestContext();
+        var (resourceType, parameters) = AddHiddenParameter(context, "direct", isSupported: true);
+        var outcomes = new List<ParameterTrace>();
+
+        var options = Build(context, usePartialIndices: false, resourceType, parameters, outcomes);
+
+        var trace = outcomes.ShouldHaveSingleItem();
+        trace.Key.ShouldBe(parameters.ShouldHaveSingleItem().Name);
+        trace.Outcome.ShouldBeOfType<ParameterOutcome.Ignored>().Reason.ShouldNotBeNullOrWhiteSpace();
+        options.HiddenSearchParameters.ShouldContainKey(trace.Key);
+    }
+
     [Fact]
     public void GivenAnUnsupportedModifier_WhenBuilt_ThenTheParameterIsReportedAsIgnored()
     {
@@ -213,13 +229,14 @@ public class ParameterOutcomeTests
         SearchParserTestContext context,
         bool usePartialIndices,
         string? resourceType,
-        IReadOnlyList<QueryParameter> parameters)
+        IReadOnlyList<QueryParameter> parameters,
+        IList<ParameterTrace>? outcomes = null)
     {
         var definitions = new SearchableSearchParameterDefinitionManager(context.DefinitionManager, () => usePartialIndices);
         return new SearchOptionsBuilder(
                 new ExpressionParser(() => definitions, context.ValueParser, context.SchemaProvider),
                 definitions)
-            .Build(resourceType, parameters);
+            .Build(resourceType, parameters, outcomes: outcomes);
     }
 
     // Registers a hidden "pending" parameter where the search form resolves it, and returns that form's query.

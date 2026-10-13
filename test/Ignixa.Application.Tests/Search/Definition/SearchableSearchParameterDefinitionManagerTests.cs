@@ -157,6 +157,31 @@ public class SearchableSearchParameterDefinitionManagerTests
             () => searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> _));
     }
 
+    // Hidden (pending or redefined) and unsupported are distinct answers whichever key the caller looks up by.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GivenANonSearchableParameter_WhenGotByCodeOrCanonical_ThenOnlyASupportedOneIsReportedHidden(bool isSupported)
+    {
+        SetStatus(isSearchable: false, isSupported: isSupported);
+        var searchable = new SearchableSearchParameterDefinitionManager(_inner);
+
+        var byCode = Should.Throw<SearchParameterNotSupportedException>(() => searchable.GetSearchParameter("Patient", CustomCode));
+        var byCanonical = Should.Throw<SearchParameterNotSupportedException>(() => searchable.GetSearchParameter(new Uri(CustomUrl)));
+
+        foreach (var exception in new[] { byCode, byCanonical })
+        {
+            if (isSupported)
+            {
+                exception.ShouldBeOfType<HiddenSearchParameterException>().SearchParameter.Code.ShouldBe(CustomCode);
+            }
+            else
+            {
+                exception.ShouldNotBeOfType<HiddenSearchParameterException>();
+            }
+        }
+    }
+
     [Fact]
     public void GivenAnUnknownResourceType_WhenSearchParametersAreRequested_ThenItReportsMissing()
     {

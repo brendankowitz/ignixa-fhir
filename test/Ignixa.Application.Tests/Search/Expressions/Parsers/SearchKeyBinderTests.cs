@@ -10,6 +10,7 @@ using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Expressions.Parsers.Binding;
 using Ignixa.Search.Expressions.Parsers.Syntax;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Models;
 using Ignixa.Search;
 using Ignixa.Specification.ValueSets.Normative;
 using NSubstitute;
@@ -60,6 +61,25 @@ public class SearchKeyBinderTests
         var exception = Should.Throw<InvalidSearchOperationException>(() => binder.Bind(ObservationResourceTypes, syntax));
 
         exception.Message.ShouldBe(Resources.ChainedParameterNotSupported);
+    }
+
+    // Spec 4.2: a hidden parameter on one chain target must surface as hidden, not be filtered like an
+    // unsupported one, which would silently narrow the chain to the remaining targets.
+    [Fact]
+    public void GivenUntypedForwardChainWhoseParameterIsHiddenOnOneTarget_WhenBinding_ThenTheHiddenParameterIsReported()
+    {
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "subject", SearchParamType.Reference, targets: SubjectTargets);
+        context.Add("Patient", "name", SearchParamType.String);
+        var groupName = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://ignixa.test/SearchParameter/Group-name"));
+        context.DefinitionManager.GetSearchParameter("Group", "name")
+            .Returns(_ => throw new HiddenSearchParameterException(groupName));
+        var binder = new SearchKeyBinder(context.DefinitionManager, context.SchemaProvider);
+        var syntax = new ForwardChainKeySyntax("subject", null, new ParameterKeySyntax("name", null));
+
+        var exception = Should.Throw<HiddenSearchParameterException>(() => binder.Bind(ObservationResourceTypes, syntax));
+
+        exception.SearchParameter.ShouldBeSameAs(groupName);
     }
 
     [Fact]
