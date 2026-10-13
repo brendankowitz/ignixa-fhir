@@ -3,28 +3,29 @@ using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Tests;
 using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Abstractions;
-using Ignixa.Conformance.Events.Events;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Shouldly;
 using Xunit;
+using static Ignixa.Application.Tests.Features.Conformance.ConformanceEvents;
 
 namespace Ignixa.Api.Tests.Services;
 
+/// <summary>Spec §4.5: the initial state load counts as a successful sync, so it refreshes consumers, then renews the lease.</summary>
 public class ConformanceStateInitializerTests
 {
+    private readonly ConformanceLease _lease = TestConformanceLease.NotHeld();
+
     [Fact]
     public async Task GivenCompletedPreHostReplay_WhenHostedInitializerRuns_ThenItDoesNotReplayAgain()
     {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
+        var store = TestConformanceRefresher.EmptyEventStore();
         using var state = new ConformanceState();
         await state.InitializeFromEventsAsync(store, CancellationToken.None);
-        using var service = CreateInitializer(store, state, TestConformanceRefresher.Tenants(), CreateLease());
+        using var service = CreateInitializer(store, state);
 
         await RunAsync(service);
 
@@ -35,51 +36,36 @@ public class ConformanceStateInitializerTests
     [Fact]
     public async Task GivenInitialLoad_WhenItSucceeds_ThenItRefreshesConsumersBeforeRenewingTheConformanceLease()
     {
-        var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(EmptyEvents());
         using var state = new ConformanceState();
-        var lease = CreateLease();
         bool? heldDuringRefresh = null;
         var refreshTenants = Substitute.For<ITenantConfigurationStore>();
         refreshTenants.GetAllTenantsAsync(Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
-                heldDuringRefresh = lease.IsHeld;
+                heldDuringRefresh = _lease.IsHeld;
                 return new ValueTask<IReadOnlyList<TenantConfiguration>>([]);
             });
-        using var service = CreateInitializer(store, state, refreshTenants, lease);
+        using var service = CreateInitializer(TestConformanceRefresher.EmptyEventStore(), state, refreshTenants);
 
         await RunAsync(service);
 
         heldDuringRefresh.ShouldBe(false);
-        lease.IsHeld.ShouldBeTrue();
+        _lease.IsHeld.ShouldBeTrue();
     }
 
     [Fact]
     public async Task GivenReplayFailsAfterApplyingAnEvent_WhenInitializationRetries_ThenItCatchesUpFromTheLastAppliedEvent()
     {
-        var first = new SourceEvent(
-            1,
-            "package:first@1.0.0",
-            nameof(PackageActivated),
-            new PackageActivated("first", "1.0.0", []),
-            DateTimeOffset.UtcNow);
-        var second = new SourceEvent(
-            2,
-            "package:second@1.0.0",
-            nameof(PackageActivated),
-            new PackageActivated("second", "1.0.0", []),
-            DateTimeOffset.UtcNow);
+        var first = At(1, PackageActivated("first"));
+        var second = At(2, PackageActivated("second"));
         var store = Substitute.For<ISourceEventStore>();
         var readAllCalls = 0;
         store.ReadAllAsync(Arg.Any<CancellationToken>())
-            .Returns(_ => ++readAllCalls == 1
-                ? EventsThenFailure(first)
-                : Events(first, second));
-        store.ReadFromAsync(1, Arg.Any<CancellationToken>()).Returns(Events(second));
+            .Returns(_ => ++readAllCalls == 1 ? EventsThenFailure(first) : TestConformanceRefresher.Stream(first, second));
+        store.ReadFromAsync(1, Arg.Any<CancellationToken>()).Returns(TestConformanceRefresher.Stream(second));
         using var state = new ConformanceState();
         var time = new FakeTimeProvider();
-        using var service = CreateInitializer(store, state, TestConformanceRefresher.Tenants(), CreateLease(), time);
+        using var service = CreateInitializer(store, state, time: time);
 
         await service.StartAsync(CancellationToken.None);
         await AdvanceUntilCompletedAsync(time, service.ExecuteTask!);
@@ -90,51 +76,24 @@ public class ConformanceStateInitializerTests
         _ = store.Received(1).ReadFromAsync(1, Arg.Any<CancellationToken>());
     }
 
-    private static async IAsyncEnumerable<SourceEvent> EmptyEvents()
+    private static async IAsyncEnumerable<SourceEvent> EventsThenFailure(SourceEvent sourceEvent)
     {
-        await Task.CompletedTask;
-        yield break;
-    }
-
-    private static async IAsyncEnumerable<SourceEvent> Events(params SourceEvent[] events)
-    {
-        foreach (var sourceEvent in events)
-        {
-            yield return sourceEvent;
-        }
-
-        await Task.CompletedTask;
-    }
-
-    private static async IAsyncEnumerable<SourceEvent> EventsThenFailure(params SourceEvent[] events)
-    {
-        foreach (var sourceEvent in events)
-        {
-            yield return sourceEvent;
-        }
-
+        yield return sourceEvent;
         await Task.Yield();
         throw new IOException("event store failed");
     }
 
-    private static ConformanceLease CreateLease() =>
-        new ConformanceLease(
-            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromMinutes(1) }),
-            TimeProvider.System,
-            NullLogger<ConformanceLease>.Instance);
-
-    private static ConformanceStateInitializerService CreateInitializer(
+    private ConformanceStateInitializerService CreateInitializer(
         ISourceEventStore store,
         ConformanceState state,
-        ITenantConfigurationStore refreshTenants,
-        ConformanceLease lease,
-        TimeProvider? timeProvider = null) =>
+        ITenantConfigurationStore? refreshTenants = null,
+        TimeProvider? time = null) =>
         new(
             store,
             state,
             TestConformanceRefresher.Create(state, tenants: refreshTenants),
-            lease,
-            timeProvider ?? new FakeTimeProvider(),
+            _lease,
+            time ?? new FakeTimeProvider(),
             NullLogger<ConformanceStateInitializerService>.Instance);
 
     private static async Task RunAsync(ConformanceStateInitializerService service)

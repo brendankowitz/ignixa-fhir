@@ -33,6 +33,7 @@
     <!-- Shared with Ignixa.Application.Tests rather than copied. -->
     <Compile Include="..\Ignixa.Application.Tests\TestConformanceLease.cs" Link="TestConformanceLease.cs" />
     <Compile Include="..\Ignixa.Application.Tests\TestConformanceRefresher.cs" Link="TestConformanceRefresher.cs" />
+    <Compile Include="..\Ignixa.Application.Tests\Features\Conformance\ConformanceEvents.cs" Link="ConformanceEvents.cs" />
     <Compile Include="..\Ignixa.Application.Tests\BackgroundOperations\Reindex\ReindexTestHelper.cs" Link="ReindexTestHelper.cs" />
   </ItemGroup>
 

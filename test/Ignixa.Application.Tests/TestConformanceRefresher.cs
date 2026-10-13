@@ -52,14 +52,18 @@ internal static class TestConformanceRefresher
     public static ISourceEventStore EmptyEventStore()
     {
         var store = Substitute.For<ISourceEventStore>();
-        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(_ => NoEvents());
-        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(_ => NoEvents());
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(_ => Stream());
+        store.ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(_ => Stream());
         return store;
     }
 
-    private static async IAsyncEnumerable<SourceEvent> NoEvents()
+    /// <summary>A stored event stream, for event store substitutes.</summary>
+    public static async IAsyncEnumerable<SourceEvent> Stream(params SourceEvent[] events)
     {
         await Task.CompletedTask;
-        yield break;
+        foreach (var sourceEvent in events)
+        {
+            yield return sourceEvent;
+        }
     }
 }
