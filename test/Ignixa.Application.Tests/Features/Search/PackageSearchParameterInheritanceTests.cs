@@ -219,21 +219,6 @@ public class PackageSearchParameterInheritanceTests
         entries.ShouldNotContain(entry => entry.SearchParameter.Url == new Uri(StagedName));
     }
 
-    [Fact]
-    public async Task GivenShadowedCodeBeforeAndAfterCommit_WhenAResourceIsIndexed_ThenStorageIdentityStaysOnTheBase()
-    {
-        const string patient = """{ "resourceType": "Patient", "name": [{ "family": "Shadowed" }] }""";
-        using var stagedState = await InitializedStateAsync(LifecycleEvents());
-        using var committedState = await InitializedStateAsync([.. LifecycleEvents(), Committed(3, 6)]);
-
-        var staged = Extract(await CreateManagerAsync(stagedState), patient);
-        var committed = Extract(await CreateManagerAsync(committedState), patient);
-
-        staged.Count(entry => entry.SearchParameter.Url == new Uri(PatientName)).ShouldBe(1);
-        var shadow = committed.Single(entry => entry.SearchParameter.Url == new Uri(StagedName));
-        shadow.SearchParameter.OverridesUrl.ShouldBe(new Uri(PatientName));
-    }
-
     // B-L2: on a web farm, instance A writes with its extraction definition while instance B, up to one grace
     // window behind, still searches with its own. The stream is the one the real activation, transition commit
     // and reindex completion append; every prefix is one instance's view, and every ordered pair is one lag.

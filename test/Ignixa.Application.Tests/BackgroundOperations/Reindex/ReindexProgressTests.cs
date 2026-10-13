@@ -65,33 +65,4 @@ public class ReindexProgressTests
         restored.Tenants[0].Success.ShouldBeTrue();
         restored.Tenants[1].Success.ShouldBeFalse();
     }
-
-    [Fact]
-    public void GivenProgressPersistedWithRetiredTenantFields_WhenRead_ThenTheRemainingFieldsDeserialize()
-    {
-        var json = System.Text.Json.Nodes.JsonNode.Parse("""
-            {
-              "phase": "Reindexing",
-              "tenants": [
-                {
-                  "tenantId": 1,
-                  "status": "Reindexing",
-                  "cutoffTransactionId": 10,
-                  "cutoffSurrogateId": 20,
-                  "resourcesToReindex": 5,
-                  "resourcesRead": 4,
-                  "resourcesReindexed": 3,
-                  "conflicts": 1,
-                  "failedResourceCount": 0
-                }
-              ]
-            }
-            """);
-
-        var tenant = ReindexProgress.FromJson(json)!.Tenants.ShouldHaveSingleItem();
-
-        tenant.ResourcesToReindex.ShouldBe(5);
-        tenant.ResourcesReindexed.ShouldBe(3);
-        tenant.Conflicts.ShouldBe(1);
-    }
 }

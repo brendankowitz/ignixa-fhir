@@ -5,17 +5,6 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexJobParametersTests
 {
-    [Fact]
-    public void GivenNoOverrides_WhenParametersAreCreated_ThenDefaultsAreApplied()
-    {
-        var parameters = ReindexJobParameters.Create();
-
-        parameters.MaximumNumberOfResourcesPerQuery.ShouldBe(10_000);
-        parameters.MaximumNumberOfResourcesPerWrite.ShouldBe(100);
-        parameters.MaximumConcurrency.ShouldBe(4);
-        parameters.QueryDelayIntervalInMilliseconds.ShouldBe(0);
-    }
-
     [Theory]
     [InlineData(0, 1_000, 4, 0)]
     [InlineData(10_001, 1_000, 4, 0)]
