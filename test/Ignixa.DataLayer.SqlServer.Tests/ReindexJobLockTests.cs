@@ -1,85 +1,48 @@
 using Microsoft.Data.SqlClient;
+using NSubstitute;
 
 namespace Ignixa.DataLayer.SqlServer.Tests;
 
+/// <summary>Spec §8.5: work done under the singleton reindex job lock must not be replayed by a SQL retry.</summary>
 public sealed class ReindexJobLockTests
 {
     [Fact]
     public async Task GivenLockBodyFailsAfterSideEffect_WhenExecutionRetries_ThenBodyRunsOnce()
     {
-        var execution = new RetryingExecutionService();
-        var jobLock = new ReindexJobLock(execution);
+        var acquired = Substitute.For<ISqlTransactionContext>();
+        acquired.ExecuteReaderAsync(Arg.Any<SqlCommand>(), Arg.Any<Func<SqlDataReader, int>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<int>>([0]));
+        var sql = Substitute.For<ISqlExecutionService>();
+        var attempts = 0;
+        // An execution service that retries the transaction once, as the transient-fault policy would.
+        sql.ExecuteInTransactionAsync(Arg.Any<int>(), Arg.Any<Func<ISqlTransactionContext, CancellationToken, Task<int>>>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                var work = call.Arg<Func<ISqlTransactionContext, CancellationToken, Task<int>>>();
+                for (; ; )
+                {
+                    try
+                    {
+                        attempts++;
+                        return await work(acquired, CancellationToken.None);
+                    }
+                    catch (InvalidOperationException) when (attempts == 1)
+                    {
+                    }
+                }
+            });
         var sideEffects = 0;
 
-        Func<Task> execute = () => jobLock.ExecuteAsync<int>(
+        var failure = await Should.ThrowAsync<InvalidOperationException>(() => new ReindexJobLock(sql).ExecuteAsync<int>(
             _ =>
             {
                 sideEffects++;
                 throw new InvalidOperationException("failure after side effect");
             },
-            CancellationToken.None);
+            CancellationToken.None));
 
-        (await execute.ShouldThrowAsync<InvalidOperationException>())
-            .Message.ShouldBe("failure after side effect");
+        failure.Message.ShouldBe("failure after side effect");
         sideEffects.ShouldBe(1);
-        execution.Attempts.ShouldBe(1);
-    }
-
-    private sealed class RetryingExecutionService : ISqlExecutionService
-    {
-        public int Attempts { get; private set; }
-
-        public async Task<TResult> ExecuteInTransactionAsync<TResult>(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work,
-            CancellationToken cancellationToken)
-        {
-            for (var attempt = 0; ; attempt++)
-            {
-                Attempts++;
-                try
-                {
-                    return await work(new LockAcquiredTransaction(), cancellationToken);
-                }
-                catch (InvalidOperationException) when (attempt == 0)
-                {
-                }
-            }
-        }
-
-        public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
-            int tenantId,
-            SqlCommand command,
-            Func<SqlDataReader, TResult> readRow,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent) =>
-            throw new NotSupportedException();
-
-        public Task<int> ExecuteNonQueryAsync(
-            int tenantId,
-            SqlCommand command,
-            CancellationToken cancellationToken,
-            SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent) =>
-            throw new NotSupportedException();
-
-        public Task ExecuteInTransactionAsync(
-            int tenantId,
-            Func<ISqlTransactionContext, CancellationToken, Task> work,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
-    }
-
-    private sealed class LockAcquiredTransaction : ISqlTransactionContext
-    {
-        public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
-            SqlCommand command,
-            Func<SqlDataReader, TResult> readRow,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<TResult>>([(TResult)(object)0]);
-
-        public Task<int> ExecuteNonQueryAsync(
-            SqlCommand command,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+        attempts.ShouldBe(1);
     }
 }

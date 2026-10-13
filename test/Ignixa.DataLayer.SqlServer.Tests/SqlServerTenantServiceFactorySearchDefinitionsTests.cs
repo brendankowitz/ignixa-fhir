@@ -14,6 +14,7 @@ using SearchParamType = Ignixa.Specification.ValueSets.Normative.SearchParamType
 
 namespace Ignixa.DataLayer.SqlServer.Tests;
 
+/// <summary>Spec F1, §4.2: a compartment search compiled by the tenant's search service uses only searchable parameters.</summary>
 public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDisposable
 {
     private const int TenantId = 1;
@@ -26,106 +27,63 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
     public void Dispose() => _cacheRegistry.Dispose();
 
     [Theory]
-    [InlineData("Pending")]
-    [InlineData("Staged")]
-    [InlineData("Disabling")]
+    [InlineData("Pending", true, false)]
+    [InlineData("Staged", false, true)]
+    [InlineData("Disabling", true, true)]
     public async Task GivenANonSearchableCompartmentMembershipParameter_WhenCompilingACompartmentSearch_ThenTheSqlDoesNotUseIt(
-        string lifecycleState)
+        string lifecycleState, bool isSupported, bool isHiddenByTransition)
     {
-        var (isSupported, isHiddenByTransition) = lifecycleState switch
-        {
-            "Pending" => (true, false),
-            "Staged" => (false, true),
-            "Disabling" => (true, true),
-            _ => throw new ArgumentOutOfRangeException(nameof(lifecycleState)),
-        };
         var subject = new SearchParameterInfo(
-            "subject",
-            "subject",
-            SearchParamType.Reference,
-            new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"),
+            "subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"),
             baseResourceTypes: ["Observation"])
         {
             IsSearchable = false,
             IsSupported = isSupported,
             IsHiddenByTransition = isHiddenByTransition,
         };
-        var sql = await CompileCompartmentSearchAsync(subject);
-
-        sql.ShouldNotContain("dbo.ReferenceSearchParam");
-    }
-
-    private async Task<string> CompileCompartmentSearchAsync(SearchParameterInfo subject)
-    {
         var allDefinitions = Substitute.For<ISearchParameterDefinitionManager>();
-        allDefinitions.TryGetSearchParameter(
-                Arg.Any<string>(),
-                Arg.Any<string>(),
-                out Arg.Any<SearchParameterInfo>())
-            .Returns(callInfo =>
+        allDefinitions.TryGetSearchParameter("Observation", "subject", out Arg.Any<SearchParameterInfo>())
+            .Returns(call =>
             {
-                if (callInfo.ArgAt<string>(0) == "Observation" &&
-                    callInfo.ArgAt<string>(1) == "subject")
-                {
-                    callInfo[2] = subject;
-                    return true;
-                }
-
-                callInfo[2] = null!;
-                return false;
+                call[2] = subject;
+                return true;
             });
-        var searchableDefinitions = new SearchableSearchParameterDefinitionManager(allDefinitions);
-        var initializer = new SqlServerTenantInitializer(
-            Substitute.For<ISchemaDeployer>(),
-            _cacheRegistry,
-            NullLogger<SqlServerTenantInitializer>.Instance);
-        var factory = new SqlServerTenantServiceFactory(
-            SingleTenantStore(),
-            NullLoggerFactory.Instance,
-            new RecyclableMemoryStreamManager(),
-            initializer,
-            new ManagedIdentityConnectionStringValidator(
-                "Development",
-                NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
-            _sql,
-            (_, _) => searchableDefinitions);
-        var service = await factory.GetSearchServiceAsync(TenantId, CancellationToken.None);
-        var options = new SearchOptions
-        {
-            ResourceType = "Observation",
-            Expression = new CompartmentSearchExpression(
-                "Patient",
-                "patient-id",
-                new HashSet<string> { "Observation" }),
-        };
+        var service = await CreateFactory(new SearchableSearchParameterDefinitionManager(allDefinitions))
+            .GetSearchServiceAsync(TenantId, CancellationToken.None);
 
-        _ = await service.CountAsync(options, CancellationToken.None);
+        _ = await service.CountAsync(
+            new SearchOptions
+            {
+                ResourceType = "Observation",
+                Expression = new CompartmentSearchExpression("Patient", "patient-id", new HashSet<string> { "Observation" }),
+            },
+            CancellationToken.None);
 
-        allDefinitions.Received().TryGetSearchParameter(
-            "Observation",
-            "subject",
-            out Arg.Any<SearchParameterInfo>());
-        return _sql.LastCommandText.ShouldNotBeNull();
+        allDefinitions.Received().TryGetSearchParameter("Observation", "subject", out Arg.Any<SearchParameterInfo>());
+        _sql.LastCommandText.ShouldNotBeNull().ShouldNotContain("dbo.ReferenceSearchParam", customMessage: lifecycleState);
     }
 
-    private static ITenantConfigurationStore SingleTenantStore()
+    private SqlServerTenantServiceFactory CreateFactory(ISearchParameterDefinitionManager definitions)
     {
         var tenant = new TenantConfiguration
         {
             TenantId = TenantId,
             DisplayName = "Test Tenant",
             FhirVersion = "4.0",
-            Storage = new TenantStorageConfiguration
-            {
-                Type = "SqlServer",
-                ConnectionString = "Server=localhost;Database=Ignixa;Integrated Security=true;",
-            },
+            Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = "Server=localhost;Database=Ignixa;Integrated Security=true;" },
         };
         var store = Substitute.For<ITenantConfigurationStore>();
         store.Mode.Returns(TenantMode.Isolated);
         store.GetTenantConfigurationAsync(TenantId, Arg.Any<CancellationToken>()).Returns(tenant);
         store.GetAllTenantsAsync(Arg.Any<CancellationToken>()).Returns([tenant]);
-        return store;
+        return new SqlServerTenantServiceFactory(
+            store,
+            NullLoggerFactory.Instance,
+            new RecyclableMemoryStreamManager(),
+            new SqlServerTenantInitializer(Substitute.For<ISchemaDeployer>(), _cacheRegistry, NullLogger<SqlServerTenantInitializer>.Instance),
+            new ManagedIdentityConnectionStringValidator("Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
+            _sql,
+            (_, _) => definitions);
     }
 
     /// <summary>Records the last reader command and answers it with no rows.</summary>
@@ -134,10 +92,7 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
         public string? LastCommandText { get; private set; }
 
         public Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
-            int tenantId,
-            SqlCommand command,
-            Func<SqlDataReader, TResult> readRow,
-            CancellationToken cancellationToken,
+            int tenantId, SqlCommand command, Func<SqlDataReader, TResult> readRow, CancellationToken cancellationToken,
             SqlCommandIdempotency idempotency = SqlCommandIdempotency.Idempotent)
         {
             LastCommandText = command.CommandText;
@@ -145,8 +100,7 @@ public sealed class SqlServerTenantServiceFactorySearchDefinitionsTests : IDispo
         }
 
         public Task<int> ExecuteNonQueryAsync(
-            int tenantId, SqlCommand command, CancellationToken cancellationToken, SqlCommandIdempotency idempotency) =>
-            Task.FromResult(0);
+            int tenantId, SqlCommand command, CancellationToken cancellationToken, SqlCommandIdempotency idempotency) => Task.FromResult(0);
 
         public Task<TResult> ExecuteInTransactionAsync<TResult>(
             int tenantId, Func<ISqlTransactionContext, CancellationToken, Task<TResult>> work, CancellationToken cancellationToken) =>

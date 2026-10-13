@@ -1065,21 +1065,10 @@ public class EndToEndCompilationTests
     [Fact]
     public async Task GivenPatientIncludeWildcard_WhenCompiledEndToEnd_ThenOnlySearchableReferenceParametersAreUsed()
     {
-        var organization = new SearchParameterInfo(
-            "organization",
-            "organization",
-            SearchParamType.Reference,
-            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
-            targetResourceTypes: ["Organization"]);
+        // Arrange -- Patient?_include=Patient:* resolves to the searchable reference parameters only (spec F1).
+        var organization = Reference("organization", "Patient-organization");
         var include = new IncludeExpression(
-            ["Patient"],
-            null,
-            "Patient",
-            null,
-            ["Organization"],
-            wildCard: true,
-            reversed: false,
-            iterate: false,
+            ["Patient"], null, "Patient", null, ["Organization"], wildCard: true, reversed: false, iterate: false,
             wildcardReferenceSearchParameters: [organization]);
 
         var resolver = new FakeSymbolResolver();
@@ -1104,27 +1093,11 @@ public class EndToEndCompilationTests
     [Fact]
     public async Task GivenRevincludeWildcardSource_WhenCompiledEndToEnd_ThenOutputTypeIdsIsNullSoNoOutputFilterIsEmitted()
     {
-        var subject = new SearchParameterInfo(
-            "subject",
-            "subject",
-            SearchParamType.Reference,
-            new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"),
-            targetResourceTypes: ["Patient"]);
-        var patient = new SearchParameterInfo(
-            "patient",
-            "patient",
-            SearchParamType.Reference,
-            new Uri("http://hl7.org/fhir/SearchParameter/Condition-patient"),
-            targetResourceTypes: ["Patient"]);
+        // Arrange -- Patient?_revinclude=*:* -- Produces=["*"] (the literal sentinel, design §1.2).
+        var subject = Reference("subject", "Observation-subject");
+        var patient = Reference("patient", "Condition-patient");
         var revInclude = new IncludeExpression(
-            ["*"],
-            null,
-            "*",
-            "Patient",
-            ["Observation", "Condition"],
-            wildCard: true,
-            reversed: true,
-            iterate: false,
+            ["*"], null, "*", "Patient", ["Observation", "Condition"], wildCard: true, reversed: true, iterate: false,
             wildcardReferenceSearchParameters: [subject, patient]);
 
         var resolver = new FakeSymbolResolver();
@@ -1149,6 +1122,9 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 104");
         emitted.Sql.ShouldNotContain("rsp.ResourceTypeId = 106");
     }
+
+    private static SearchParameterInfo Reference(string code, string id) =>
+        new(code, code, SearchParamType.Reference, new Uri($"http://hl7.org/fhir/SearchParameter/{id}"));
 
     [Fact]
     public async Task GivenChainedIterateIncludesSpecifiedOutOfOrder_WhenCompiledEndToEnd_ThenTheKahnSortReordersThemRegardlessOfInputOrder()
