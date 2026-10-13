@@ -11,11 +11,9 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Application.Features.Search;
-using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
-using Ignixa.Serialization;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Operations.Features.PatientEverything;
@@ -116,7 +114,11 @@ public class PatientEverythingHandler(
             Summary = Ignixa.Search.Models.SummaryType.False,
             Elements = new HashSet<string>(),
             // A membership parameter the searchable definitions drop makes the result incomplete; say so.
-            BundleIssues = DescribeHiddenMembership(context, request.Types)
+            BundleIssues = HiddenCompartmentMembership.Describe(
+                versionContext,
+                context,
+                CompartmentType.Patient,
+                request.Types is null ? null : new HashSet<string>(request.Types))
         };
 
         // Determine partition(s) using IPartitionStrategy
@@ -164,17 +166,5 @@ public class PatientEverythingHandler(
             SearchOptions: searchOptions); // Include SearchOptions for bundle serialization
 
         return Task.FromResult(result);
-    }
-
-    private IReadOnlyList<IssueComponent> DescribeHiddenMembership(IFhirRequestContext context, ISet<string>? types)
-    {
-        var tenant = context.TenantConfiguration
-            ?? throw new InvalidOperationException("Tenant configuration not available");
-        var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
-        return CompartmentMembershipIssues.Describe(
-            versionContext.GetCompartmentDefinitionManager(fhirVersion),
-            versionContext.GetSearchParameterDefinitionManager(fhirVersion, context.TenantId),
-            CompartmentType.Patient,
-            types is null ? null : new HashSet<string>(types));
     }
 }

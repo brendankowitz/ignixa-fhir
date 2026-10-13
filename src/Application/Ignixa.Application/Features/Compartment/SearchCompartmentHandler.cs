@@ -10,10 +10,8 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
-using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
-using Ignixa.Serialization;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Application.Features.Compartment;
@@ -107,7 +105,11 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
             BundleIssues =
             [
                 .. request.SearchOptions.BundleIssues,
-                .. DescribeHiddenMembership(context, request.CompartmentType, filteredResourceTypes),
+                .. HiddenCompartmentMembership.Describe(
+                    _versionContext,
+                    context,
+                    Enum.Parse<CompartmentType>(request.CompartmentType, ignoreCase: true),
+                    filteredResourceTypes),
             ],
         };
 
@@ -169,20 +171,5 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
             SearchOptions: compartmentSearchOptions);
 
         return Task.FromResult(result);
-    }
-
-    private IReadOnlyList<IssueComponent> DescribeHiddenMembership(
-        IFhirRequestContext context,
-        string compartmentType,
-        IReadOnlySet<string>? resourceTypes)
-    {
-        var tenant = context.TenantConfiguration
-            ?? throw new InvalidOperationException("Tenant configuration not available");
-        var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenant.FhirVersion);
-        return CompartmentMembershipIssues.Describe(
-            _versionContext.GetCompartmentDefinitionManager(fhirVersion),
-            _versionContext.GetSearchParameterDefinitionManager(fhirVersion, context.TenantId),
-            Enum.Parse<CompartmentType>(compartmentType, ignoreCase: true),
-            resourceTypes);
     }
 }
