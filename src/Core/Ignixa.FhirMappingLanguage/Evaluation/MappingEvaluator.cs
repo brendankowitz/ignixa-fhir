@@ -40,7 +40,14 @@ public class MappingEvaluator
     private Dictionary<(object Parent, string Property), IElement> _intermediateTargets = new();
     private HashSet<(object Parent, TargetExpression Target)> _singleTargets = new();
     private readonly HashSet<JsonNode> _sourceRoots = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<JsonNode> _targetRoots = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<IElement, IElement> _sourceSnapshots = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<MapExpression, Dictionary<string, List<(MapExpression Map, GroupExpression Group)>>> _defaultGroupsBySourceType =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(MapExpression Map, string SourceType, ISchema? SourceSchema, IType TargetDefinition, ISchema? TargetSchema),
+        (MapExpression Map, GroupExpression Group)?> _defaultGroupMatches = new();
+    private readonly Dictionary<(MapExpression Map, string GroupName), GroupExpression?> _resolvedGroups = new();
+    private readonly Dictionary<GroupExpression, MapExpression> _owningMaps = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(object Parent, string Property),
         (TargetExpression? First, TargetExpression? Last, int FirstCount, List<IElement> LastItems)> _targetOrder = new();
 
@@ -135,6 +142,7 @@ public class MappingEvaluator
         _currentRuleIndex = null;
         _currentRuleName = null;
         _sourceRoots.Clear();
+        _targetRoots.Clear();
         _sourceSnapshots.Clear();
     }
 
@@ -164,6 +172,8 @@ public class MappingEvaluator
         _intermediateTargets.Clear();
         _singleTargets.Clear();
         _targetOrder.Clear();
+        _resolvedGroups.Clear();
+        _owningMaps.Clear();
         foreach (var source in context.Sources)
         {
             if (source.Value.Meta<JsonNode>() is { } node)
@@ -172,7 +182,11 @@ public class MappingEvaluator
         foreach (var target in context.Targets)
         {
             if (target.Value.Meta<JsonNode>() is { } node)
-                _sourceRoots.Remove(JsonRoot(node));
+            {
+                var root = JsonRoot(node);
+                _sourceRoots.Remove(root);
+                _targetRoots.Add(root);
+            }
         }
 
         // Wire up standard transforms if not already configured
@@ -205,12 +219,91 @@ public class MappingEvaluator
         }
 
         VisitGroup(group, map, context);
+        if (_options.PruneEmptyTargets)
+        {
+            foreach (var root in _targetRoots)
+                PruneEmptyElements(root);
+        }
     }
 
-    private void VisitGroup(GroupExpression group, MapExpression map, MappingContext context, HashSet<string>? visitedGroups = null)
+    private static bool PruneEmptyElements(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (string name in obj.Select(property => property.Key).ToArray())
+                {
+                    if (!obj.TryGetPropertyValue(name, out var child))
+                        continue;
+
+                    if (name.StartsWith('_') && obj[name[1..]] is JsonArray)
+                        continue;
+
+                    if (child is JsonArray)
+                    {
+                        string valueName = name.StartsWith('_') ? name[1..] : name;
+                        if (obj["_" + valueName] is JsonArray shadows)
+                        {
+                            PrunePrimitiveArray(obj, valueName, obj[valueName] as JsonArray, shadows);
+                            continue;
+                        }
+                    }
+
+                    if (!PruneEmptyElements(child))
+                        obj.Remove(name);
+                }
+                return obj.Count > 0;
+            case JsonArray array:
+                for (int index = array.Count - 1; index >= 0; index--)
+                {
+                    if (!PruneEmptyElements(array[index]))
+                        array.RemoveAt(index);
+                }
+                return array.Count > 0;
+            default:
+                return node is not null;
+        }
+    }
+
+    private static void PrunePrimitiveArray(JsonObject owner, string name, JsonArray? values, JsonArray shadows)
+    {
+        // FHIR primitive values and metadata must keep matching indices, including null placeholders.
+        int count = Math.Max(values?.Count ?? 0, shadows.Count);
+        while (values is not null && values.Count < count)
+            values.Add(null);
+        while (shadows.Count < count)
+            shadows.Add(null);
+
+        for (int index = count - 1; index >= 0; index--)
+        {
+            bool hasValue = values is not null && PruneEmptyElements(values[index]);
+            bool hasChildren = PruneEmptyElements(shadows[index]);
+            if (!hasValue && !hasChildren)
+            {
+                values?.RemoveAt(index);
+                shadows.RemoveAt(index);
+            }
+            else
+            {
+                if (values is not null && !hasValue)
+                    values[index] = null;
+                if (!hasChildren)
+                    shadows[index] = null;
+            }
+        }
+
+        if (values is not null && values.All(value => value is null))
+            owner.Remove(name);
+        if (shadows.All(shadow => shadow is null))
+            owner.Remove("_" + name);
+    }
+
+    private void VisitGroup(GroupExpression group, MapExpression map, MappingContext context, HashSet<GroupExpression>? visitedGroups = null)
     {
         var location = $"Group: {group.Name}";
         var previousGroupName = _currentGroupName;
+        var previousMap = _currentMap;
+        _currentMap = map;
         _recursionDepth++;
 
         try
@@ -229,10 +322,10 @@ public class MappingEvaluator
             _currentGroupName = group.Name;
 
             // Initialize visited groups set for circular inheritance detection
-            visitedGroups ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            visitedGroups ??= new HashSet<GroupExpression>(ReferenceEqualityComparer.Instance);
 
             // Check for circular inheritance
-            if (!visitedGroups.Add(group.Name))
+            if (!visitedGroups.Add(group))
             {
                 throw new InvalidOperationException(
                     $"Circular group inheritance detected: group '{group.Name}' is part of an inheritance cycle");
@@ -241,14 +334,7 @@ public class MappingEvaluator
             // Handle group inheritance (extends)
             if (!string.IsNullOrEmpty(group.Extends))
             {
-                // Try to find base group in current map first (case-insensitive)
-                var baseGroup = map.Groups.FirstOrDefault(g => string.Equals(g.Name, group.Extends, StringComparison.OrdinalIgnoreCase));
-
-                // If not found and import resolver is available, check imports
-                if (baseGroup == null && _importResolver != null)
-                {
-                    baseGroup = _importResolver.FindGroup(map, group.Extends);
-                }
+                var baseGroup = FindGroup(map, group.Extends);
 
                 if (baseGroup == null)
                 {
@@ -257,7 +343,8 @@ public class MappingEvaluator
                 }
 
                 // Execute base group first (recursive, handles transitive inheritance)
-                VisitGroup(baseGroup, map, context, visitedGroups);
+                var baseMap = FindOwningMap(map, baseGroup);
+                VisitGroup(baseGroup, baseMap, context, visitedGroups);
             }
 
             // Then execute this group's own rules
@@ -297,6 +384,7 @@ public class MappingEvaluator
         {
             // Restore previous group context
             _currentGroupName = previousGroupName;
+            _currentMap = previousMap;
             _currentRuleIndex = null;
             _recursionDepth--;
         }
@@ -446,6 +534,37 @@ public class MappingEvaluator
         }
     }
 
+    private GroupExpression? FindGroup(MapExpression map, string groupName)
+    {
+        var key = (map, groupName);
+        if (_resolvedGroups.TryGetValue(key, out var resolved))
+        {
+            return resolved;
+        }
+
+        resolved = map.Groups.FirstOrDefault(group => string.Equals(group.Name, groupName, StringComparison.Ordinal))
+            ?? _importResolver?.FindGroup(map, groupName);
+        _resolvedGroups[key] = resolved;
+        return resolved;
+    }
+
+    private MapExpression FindOwningMap(MapExpression currentMap, GroupExpression group)
+    {
+        if (currentMap.Groups.Contains(group))
+        {
+            return currentMap;
+        }
+
+        if (_owningMaps.TryGetValue(group, out var owningMap))
+        {
+            return owningMap;
+        }
+
+        owningMap = _importResolver!.FindOwningMap(group);
+        _owningMaps[group] = owningMap;
+        return owningMap;
+    }
+
     private void VisitGroupInvocation(GroupInvocationExpression invocation, MappingContext context, string? location)
     {
         try
@@ -455,15 +574,7 @@ public class MappingEvaluator
                 throw new InvalidOperationException("Cannot invoke group - no map context available");
             }
 
-            // Find the group to invoke (case-insensitive)
-            var targetGroup = _currentMap.Groups.FirstOrDefault(g =>
-                string.Equals(g.Name, invocation.GroupName, StringComparison.OrdinalIgnoreCase));
-
-            if (targetGroup == null && _importResolver != null)
-            {
-                // Try to find in imported maps
-                targetGroup = _importResolver.FindGroup(_currentMap, invocation.GroupName);
-            }
+            var targetGroup = FindGroup(_currentMap, invocation.GroupName);
 
             if (targetGroup == null)
             {
@@ -492,10 +603,7 @@ public class MappingEvaluator
             _singleTargets = new();
             try
             {
-                if (!_currentMap.Groups.Contains(targetGroup))
-                {
-                    _currentMap = _importResolver!.FindOwningMap(targetGroup);
-                }
+                _currentMap = FindOwningMap(_currentMap, targetGroup);
 
                 // Save current parameter values and set new ones from arguments
                 for (int i = 0; i < targetGroup.Parameters.Count; i++)
@@ -863,7 +971,7 @@ public class MappingEvaluator
             IEnumerable<IElement> values;
             if (target.Transform is TransformExpression transform)
             {
-                values = NormalizeTransformResult(VisitTransform(transform, context, location), transform);
+                values = NormalizeTransformResult(VisitTransform(transform, context, location, target.Context), transform);
             }
             else if (target.Transform is not null)
             {
@@ -892,13 +1000,13 @@ public class MappingEvaluator
                     else
                     {
                         var defaultGroup = target.Transform is null && target.Variable is null
-                            ? FindDefaultGroup(value, mutation.GetTargetDefinition(parent, property.Property))
+                            ? FindDefaultGroup(value, parent, mutation.GetTargetDefinition(parent, property.Property))
                             : null;
                         IElement? assigned = target.Transform is null && target.Variable is not null ? null : value;
-                        if (defaultGroup is not null)
+                        if (defaultGroup is { } binding)
                         {
-                            var targetType = defaultGroup.Parameters.Single(p => p.Mode == ParameterMode.Target).Type!;
-                            assigned = mutation.CreateElement(ResolveTypeName(targetType));
+                            var targetType = binding.Group.Parameters.Single(p => p.Mode == ParameterMode.Target).Type!;
+                            assigned = mutation.CreateElement(ResolveTypeName(binding.Map, targetType));
                         }
                         TrackElementCreation();
                         result = mutation.SetTarget(parent, property.Property, assigned);
@@ -907,9 +1015,9 @@ public class MappingEvaluator
                         {
                             _sharedTargets[sharedId] = result;
                         }
-                        if (defaultGroup is not null)
+                        if (defaultGroup is { } conversion)
                         {
-                            InvokeBoundGroup(defaultGroup, [value, result], context);
+                            InvokeBoundGroup(conversion.Map, conversion.Group, [value, result], context);
                         }
                     }
                 }
@@ -988,11 +1096,16 @@ public class MappingEvaluator
         if (matches.Count == 1)
         {
             var match = matches[0];
-            // A source can be passed as a target to a dependent group; from that point it is mutable.
-            if (match.Meta<JsonNode>() is { } node && _sourceRoots.Remove(JsonRoot(node)))
+            if (match.Meta<JsonNode>() is { } node)
             {
-                _sourceSnapshots.Clear();
-                return mutation.Refresh(match);
+                var root = JsonRoot(node);
+                _targetRoots.Add(root);
+                // A source can be passed as a target to a dependent group; from that point it is mutable.
+                if (_sourceRoots.Remove(root))
+                {
+                    _sourceSnapshots.Clear();
+                    return mutation.Refresh(match);
+                }
             }
             return expression is IdentifierExpression ? match : mutation.Refresh(match);
         }
@@ -1001,34 +1114,175 @@ public class MappingEvaluator
     }
 
     private string ResolveTypeName(string name) =>
-        _currentMap?.Uses.FirstOrDefault(u => u.Alias == name)?.Url.Split('/').Last() ?? name;
+        _currentMap is { } map ? ResolveTypeName(map, name) : name;
 
-    private GroupExpression? FindDefaultGroup(IElement source, IType target)
+    private static string ResolveTypeName(MapExpression map, string name) =>
+        map.Uses.FirstOrDefault(use => string.Equals(use.Alias, name, StringComparison.Ordinal))?.Url
+            .Split('#', '|')[0].Split('/').Last() ?? name;
+
+    private (MapExpression Map, GroupExpression Group)? FindDefaultGroup(IElement source, IElement targetParent, IType target)
     {
-        if (target is not ITypeExtended definition)
+        if (target is not ITypeExtended definition || _currentMap is not { } currentMap)
             return null;
-        var matches = _currentMap?.Groups.Where(g =>
-            g.TypeMode != GroupTypeMode.None && g.Parameters.Count == 2 &&
-            g.Parameters[0].Mode == ParameterMode.Source &&
-            ResolveTypeName(g.Parameters[0].Type ?? string.Empty) == source.InstanceType &&
-            g.Parameters[1].Mode == ParameterMode.Target &&
-            definition.Types.Any(t => t.Code == ResolveTypeName(g.Parameters[1].Type ?? string.Empty) ||
-                (g.TypeMode == GroupTypeMode.TypeAndTypes && t.Code is "Resource" or "DomainResource"))).ToList() ?? [];
-        return matches.Count switch
+
+        var sourceSchema = (source as SchemaAwareElement)?.Schema;
+        var targetSchema = (targetParent as SchemaAwareElement)?.Schema;
+        var lookupKey = (currentMap, source.InstanceType, sourceSchema, target, targetSchema);
+        if (_defaultGroupMatches.TryGetValue(lookupKey, out var cachedMatch))
+            return cachedMatch;
+
+        var groupsBySourceType = GetDefaultGroupsBySourceType(currentMap);
+        if (!groupsBySourceType.TryGetValue(source.InstanceType, out var candidates))
+        {
+            _defaultGroupMatches.Add(lookupKey, null);
+            return null;
+        }
+
+        var matches = new List<(MapExpression Map, GroupExpression Group)>();
+        foreach (var (map, group) in candidates)
+        {
+            if (!MatchesDeclaredType(map, group.Parameters[0].Type, ModelMode.Source, source, sourceSchema))
+                continue;
+
+            string targetTypeName = ResolveTypeName(map, group.Parameters[1].Type ?? string.Empty);
+            bool targetTypeAllowed = definition.Types.Any(type => type.Code == targetTypeName ||
+                (group.TypeMode == GroupTypeMode.TypeAndTypes && type.Code is "Resource" or "DomainResource"));
+            if (targetTypeAllowed && MatchesDeclaredType(map, group.Parameters[1].Type, ModelMode.Target, targetParent, targetSchema, targetTypeName))
+            {
+                matches.Add((map, group));
+            }
+        }
+
+        var exactMatches = matches.Where(match =>
+            ResolveTypeName(match.Map, match.Group.Parameters[1].Type ?? string.Empty) == source.InstanceType).ToList();
+        var selectedMatches = exactMatches.Count > 0 ? exactMatches : matches;
+        (MapExpression Map, GroupExpression Group)? selected = selectedMatches.Count switch
         {
             0 => null,
-            1 => matches[0],
-            _ => throw new InvalidOperationException($"Multiple default groups match '{source.InstanceType}' and target '{target.Info.Name}'.")
+            1 => selectedMatches[0],
+            _ => throw new InvalidOperationException(
+                $"Multiple default groups match '{source.InstanceType}' and target '{target.Info.Name}': " +
+                string.Join(", ", selectedMatches.Select(match => $"{match.Map.Url}#{match.Group.Name}")))
+        };
+        _defaultGroupMatches.Add(lookupKey, selected);
+        return selected;
+    }
+
+    private Dictionary<string, List<(MapExpression Map, GroupExpression Group)>> GetDefaultGroupsBySourceType(MapExpression map)
+    {
+        if (_defaultGroupsBySourceType.TryGetValue(map, out var cached))
+            return cached;
+
+        var groupsBySourceType = new Dictionary<string, List<(MapExpression Map, GroupExpression Group)>>(StringComparer.Ordinal);
+        var maps = new List<MapExpression> { map };
+        if (_importResolver is not null)
+        {
+            maps.AddRange(_importResolver.GetImportedMaps(map).Where(imported => !ReferenceEquals(imported, map)));
+        }
+
+        foreach (var owner in maps)
+        {
+            foreach (var group in owner.Groups)
+            {
+                string? sourceParameterType = group.Parameters.Count == 2 ? group.Parameters[0].Type : null;
+                if (group.TypeMode == GroupTypeMode.None || group.Parameters.Count != 2 ||
+                    group.Parameters[0].Mode != ParameterMode.Source || group.Parameters[1].Mode != ParameterMode.Target ||
+                    string.IsNullOrWhiteSpace(sourceParameterType))
+                {
+                    continue;
+                }
+
+                string sourceType = ResolveTypeName(owner, sourceParameterType);
+                if (!groupsBySourceType.TryGetValue(sourceType, out var candidates))
+                {
+                    candidates = [];
+                    groupsBySourceType.Add(sourceType, candidates);
+                }
+                candidates.Add((owner, group));
+            }
+        }
+
+        _defaultGroupsBySourceType.Add(map, groupsBySourceType);
+        return groupsBySourceType;
+    }
+
+    private static bool MatchesDeclaredType(
+        MapExpression map,
+        string? declaredType,
+        ModelMode mode,
+        IElement element,
+        ISchema? schema,
+        string? resolvedTypeName = null)
+    {
+        if (string.IsNullOrWhiteSpace(declaredType))
+            return false;
+
+        string typeName = resolvedTypeName ?? ResolveTypeName(map, declaredType);
+        UsesExpression? use = map.Uses.FirstOrDefault(candidate => candidate.Mode == mode &&
+            (string.Equals(candidate.Alias, declaredType, StringComparison.Ordinal) ||
+             (candidate.Alias is null && GetStructureDefinitionTypeName(candidate.Url) == typeName)));
+        if (use is null)
+        {
+            return mode == ModelMode.Target ||
+                   string.Equals(element.InstanceType, typeName, StringComparison.Ordinal) ||
+                   string.Equals(element.Type?.Info.Name, typeName, StringComparison.Ordinal);
+        }
+
+        string declaredName = GetStructureDefinitionTypeName(use.Url);
+        if (!string.Equals(declaredName, typeName, StringComparison.Ordinal))
+            return false;
+
+        if (mode == ModelMode.Source)
+        {
+            if (!string.Equals(element.InstanceType, declaredName, StringComparison.Ordinal))
+                return false;
+
+            if (element.Type is ITypeExtended { CanonicalUrl: { } canonicalUrl } &&
+                canonicalUrl.IndexOf('#', StringComparison.Ordinal) < 0 &&
+                !string.Equals(GetStructureDefinitionTypeName(canonicalUrl), declaredName, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        FhirVersion? declaredVersion = GetFhirVersion(use.Url);
+        return declaredVersion is null || schema is null || schema.Version == declaredVersion;
+    }
+
+    private static string GetStructureDefinitionTypeName(string url)
+    {
+        string canonical = url.Split('|')[0].Split('#')[0];
+        int marker = canonical.LastIndexOf("/StructureDefinition/", StringComparison.Ordinal);
+        return marker >= 0 ? canonical[(marker + "/StructureDefinition/".Length)..] : canonical.Split('/').Last();
+    }
+
+    private static FhirVersion? GetFhirVersion(string url)
+    {
+        string[] segments = url.Split('|')[0].Split('#')[0].Split('/');
+        int marker = Array.IndexOf(segments, "StructureDefinition");
+        if (marker <= 0)
+            return null;
+
+        return segments[marker - 1] switch
+        {
+            "3.0" => FhirVersion.Stu3,
+            "4.0" => FhirVersion.R4,
+            "4.3" => FhirVersion.R4B,
+            "5.0" => FhirVersion.R5,
+            "6.0" => FhirVersion.R6,
+            _ => null
         };
     }
 
-    private void InvokeBoundGroup(GroupExpression group, IReadOnlyList<IElement> arguments, MappingContext context)
+    private void InvokeBoundGroup(MapExpression map, GroupExpression group, IReadOnlyList<IElement> arguments, MappingContext context)
     {
         var savedSources = group.Parameters.Select(p => context.GetSource(p.Name)).ToArray();
         var savedTargets = group.Parameters.Select(p => context.GetTarget(p.Name)).ToArray();
         var savedVariables = context.CaptureVariables();
         var savedShared = _sharedTargets;
         var savedSingle = _singleTargets;
+        var savedMap = _currentMap;
+        _currentMap = map;
         _sharedTargets = new(StringComparer.Ordinal);
         _singleTargets = new();
         try
@@ -1041,13 +1295,14 @@ public class MappingEvaluator
                 else
                     context.SetTarget(parameter.Name, arguments[i]);
             }
-            VisitGroup(group, _currentMap!, context);
+            VisitGroup(group, map, context);
         }
         finally
         {
             context.RestoreVariables(savedVariables);
             _sharedTargets = savedShared;
             _singleTargets = savedSingle;
+            _currentMap = savedMap;
             for (var i = 0; i < group.Parameters.Count; i++)
             {
                 var name = group.Parameters[i].Name;
@@ -1114,7 +1369,7 @@ public class MappingEvaluator
         return elements;
     }
 
-    private object? VisitTransform(TransformExpression transform, MappingContext context, string? location = null)
+    private object? VisitTransform(TransformExpression transform, MappingContext context, string? location = null, Expression? target = null)
     {
         try
         {
@@ -1169,6 +1424,24 @@ public class MappingEvaluator
                         groupName: _currentGroupName,
                         ruleIndex: _currentRuleIndex);
                     // Continue with other arguments
+                }
+            }
+
+            if (transform.FunctionName == "cast" && transform.Arguments.Count == 1 && args.Count == 1)
+            {
+                if (_mutator is not IMappingTargetMutator mutation)
+                    throw new InvalidOperationException("Inferring a cast type requires a schema-aware mapping mutator.");
+                if (target is QualifiedIdentifierExpression property)
+                {
+                    var parent = ResolveTargetParent(property.Context, context, mutation);
+                    args.Add(mutation.GetTargetType(parent, property.Property));
+                }
+                else
+                {
+                    var targets = target is null ? [] : VisitExpression(target, context, location).ToList();
+                    if (targets.Count != 1)
+                        throw new InvalidOperationException("cast() requires an explicit type when no single target type is known.");
+                    args.Add(targets[0].InstanceType);
                 }
             }
 
@@ -1309,8 +1582,16 @@ public class MappingEvaluator
         var result = new List<IElement>();
         foreach (var element in contextElements)
         {
-            var children = element.Children(qual.Property).ToList();
-            result.AddRange(children);
+            bool isPrimitive = IsPrimitiveElement(element) ||
+                element.InstanceType == "xhtml" && element.HasPrimitiveValue;
+            if (qual.Property == "value" && isPrimitive)
+            {
+                if (element.HasPrimitiveValue && element.Value is { } value)
+                    result.Add(CreatePrimitive(value, trackCreation: false));
+                continue;
+            }
+
+            result.AddRange(element.Children(qual.Property));
         }
 
         // Don't add error here - let VisitSource handle it based on cardinality constraints
@@ -1366,6 +1647,16 @@ public class MappingEvaluator
         return snapshot;
     }
 
+    private static bool IsPrimitiveElement(IElement element)
+    {
+        if (element is not SchemaAwareElement schemaAware)
+            return element.Type?.Info.IsPrimitive == true;
+
+        var instanceType = schemaAware.Schema.GetTypeDefinition(element.InstanceType);
+        return instanceType?.Info.IsPrimitive ??
+            (element.Type is { } definition && definition.Info.Name == element.InstanceType && definition.Info.IsPrimitive);
+    }
+
     private static JsonNode JsonRoot(JsonNode node)
     {
         while (node.Parent is { } parent)
@@ -1373,9 +1664,10 @@ public class MappingEvaluator
         return node;
     }
 
-    private IElement CreatePrimitive(object value)
+    private IElement CreatePrimitive(object value, bool trackCreation = true)
     {
-        TrackElementCreation();
+        if (trackCreation)
+            TrackElementCreation();
 
         var typeName = value switch
         {
@@ -1623,6 +1915,9 @@ public class MappingEvaluator
 
             // Determine mutation mode from list mode
             var mutationMode = GetMutationMode(target.ListMode);
+            var targetNode = targetResource.ToSourceNavigator().Meta<JsonNode>()
+                ?? throw new InvalidOperationException($"Target resource '{contextName}' is not JSON-backed.");
+            _targetRoots.Add(JsonRoot(targetNode));
 
             // Apply mutation
             _mutator!.SetProperty(targetResource, fhirPath, element, mutationMode);

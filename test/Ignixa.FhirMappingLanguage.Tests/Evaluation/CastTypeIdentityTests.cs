@@ -8,6 +8,7 @@ using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirMappingLanguage.Parser;
 using Ignixa.FhirMappingLanguage.Tests.Conformance;
+using Ignixa.FhirMappingLanguage.Validation;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
@@ -21,6 +22,114 @@ namespace Ignixa.FhirMappingLanguage.Tests.Evaluation;
 
 public class CastTypeIdentityTests
 {
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    public void GivenSingleTypeTargets_WhenCastingWithoutAType_ThenConvertsUsingTheTargetSchema(FhirVersion version)
+    {
+        var (context, target) = Execute("""
+            src -> tgt.id = cast(123) as id,
+                   tgt.active = cast('true'),
+                   tgt.birthDate = cast('2024-02');
+            """, version: version);
+
+        var id = context.GetVariable("id").ShouldBeAssignableTo<IElement>().ShouldNotBeNull();
+        id.InstanceType.ShouldBe("id");
+        id.Value.ShouldBe("123");
+        AssertJson(target, """{"resourceType":"Patient","id":"123","active":true,"birthDate":"2024-02"}""");
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    public void GivenNestedTargets_WhenCastingWithoutAType_ThenResolvesPathsAndAliases(FhirVersion version)
+    {
+        var (_, target) = Execute("""
+            src -> tgt.name.family = cast(123);
+            src -> tgt.extension as e then {
+              src -> e.valueBoolean = cast('true');
+            };
+            """, version: version);
+
+        AssertJson(target, """
+            {"resourceType":"Patient","name":[{"family":"123"}],"extension":[{"valueBoolean":true}]}
+            """);
+    }
+
+    [Fact]
+    public void GivenATargetElementAlias_WhenCastingWithoutAType_ThenUsesItsKnownType()
+    {
+        var (context, target) = Execute("""
+            src -> tgt.name as name then {
+              src -> name.family = 'Alpha';
+              src -> name = cast(name) as value;
+            };
+            """);
+
+        context.GetVariable("value").ShouldBeAssignableTo<IElement>().InstanceType.ShouldBe("HumanName");
+        AssertJson(target, """{"resourceType":"Patient","name":[{"family":"Alpha"}]}""");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GivenAnAmbiguousChoice_WhenCastingWithoutAType_ThenDoesNotInferFromTheSourceOrExistingValue(
+        bool existingValue)
+    {
+        var initial = existingValue ? "src -> e.value = cast('false', 'boolean');" : "";
+        var exception = Should.Throw<InvalidOperationException>(() => Execute($$"""
+            src -> tgt.extension as e then {
+              {{initial}}
+              src -> e.value = cast(true);
+            };
+            """));
+
+        exception.Message.ShouldContain("Cannot determine a supported type for choice target");
+    }
+
+    [Fact]
+    public void GivenNoTarget_WhenCastingWithoutAType_ThenRequiresAnExplicitType()
+    {
+        var exception = Should.Throw<InvalidOperationException>(() => Execute("src -> cast('text') as value;"));
+
+        exception.Message.ShouldContain("explicit type");
+    }
+
+    [Fact]
+    public void GivenNoSchemaAwareMutator_WhenCastingWithoutAType_ThenFailsExplicitly()
+    {
+        var exception = Should.Throw<InvalidOperationException>(() => Execute("src -> tgt.id = cast(123);", useMutator: false));
+
+        exception.Message.ShouldContain("schema-aware mapping mutator");
+    }
+
+    [Theory]
+    [InlineData("tgt.id = cast('text')", true)]
+    [InlineData("tgt.id = cast('text', 'id')", true)]
+    [InlineData("tgt.id = cast()", false)]
+    [InlineData("cast('text') as value", false)]
+    public void GivenACast_WhenValidating_ThenTheTypeIsOptionalOnlyWithATarget(string target, bool expectedValid)
+    {
+        var map = new MappingParser().Parse($$"""
+            map 'http://example.org/cast-validation' = 'CastValidation'
+            group Main(source src : Patient, target tgt : Patient) {
+              src -> {{target}};
+            }
+            """);
+
+        var result = new MappingValidator().Validate(map);
+
+        result.IsValid.ShouldBe(expectedValid);
+        if (expectedValid)
+            result.Errors.ShouldBeEmpty();
+        else
+            result.Errors.ShouldContain(error => error.Code == "MISSING_ARGUMENT");
+    }
+
     public static TheoryData<string, string, string, bool> CastTypes()
     {
         var data = new TheoryData<string, string, string, bool>();
@@ -238,9 +347,9 @@ public class CastTypeIdentityTests
 
     private static (MappingContext Context, ResourceJsonNode Target) Execute(
         string rules, bool useMutator = true, string additionalGroups = "",
-        Func<string, IEnumerable<object>, object>? transformResolver = null)
+        Func<string, IEnumerable<object>, object>? transformResolver = null, FhirVersion version = FhirVersion.R5)
     {
-        var schema = FhirVersion.R5.GetSchemaProvider();
+        var schema = version.GetSchemaProvider();
         var source = ResourceJsonNode.Parse("""{"resourceType":"Patient"}""");
         var target = ResourceJsonNode.Parse("""{"resourceType":"Patient"}""");
         var context = new MappingContext { TransformResolver = transformResolver };

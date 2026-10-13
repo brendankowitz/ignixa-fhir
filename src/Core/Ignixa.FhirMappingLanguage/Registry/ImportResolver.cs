@@ -57,7 +57,7 @@ internal class ImportResolver
         }
 
         return importedMap.Groups.FirstOrDefault(g =>
-            g.Name.Equals(groupName, StringComparison.OrdinalIgnoreCase));
+            g.Name.Equals(groupName, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -70,7 +70,7 @@ internal class ImportResolver
     {
         // First check the current map
         var group = map.Groups.FirstOrDefault(g =>
-            g.Name.Equals(groupName, StringComparison.OrdinalIgnoreCase));
+            g.Name.Equals(groupName, StringComparison.Ordinal));
 
         if (group is not null)
         {
@@ -106,6 +106,24 @@ internal class ImportResolver
     public MapExpression FindOwningMap(GroupExpression group) =>
         _registry.GetAllUrls().Select(url => _registry.GetByUrl(url)!)
             .Single(map => map.Groups.Contains(group));
+
+    public IReadOnlyList<MapExpression> GetImportedMaps(MapExpression map)
+    {
+        var maps = new List<MapExpression>();
+        var urls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var import in map.Imports)
+        {
+            foreach (var imported in GetMatchingMaps(import.Url))
+            {
+                if (urls.Add(imported.Url))
+                {
+                    maps.Add(imported);
+                }
+            }
+        }
+
+        return maps;
+    }
 
     private IEnumerable<MapExpression> GetMatchingMaps(string pattern)
     {

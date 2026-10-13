@@ -8,6 +8,7 @@ using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Mutator;
 using Ignixa.FhirMappingLanguage.Parser;
+using Ignixa.FhirMappingLanguage.Registry;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization.SourceNodes;
@@ -181,6 +182,8 @@ public class XverMappingOptimizationTests
         var firstContext = CreateContext(firstSource, firstTarget, sourceSchema, targetSchema);
         var firstSourceElement = firstContext.GetSource("src")!;
         firstSourceElement.Children("valueSet").ShouldHaveSingleItem().InstanceType.ShouldBe("canonical");
+        CreateMutator(targetSchema).Refresh(firstSourceElement).Children("valueSet")
+            .ShouldHaveSingleItem().InstanceType.ShouldBe("canonical");
 
         Execute(map, firstContext, evaluator);
 
@@ -207,6 +210,341 @@ public class XverMappingOptimizationTests
         firstTarget.ToSourceNavigator().Meta<JsonNode>()!["valueSet"]!.GetValue<string>()
             .ShouldBe("http://example.org/ValueSet/first");
     }
+    [Fact]
+    public void GivenR4Account_WhenMappingServicePeriodToStu3Period_ThenPeriodFieldsArePreserved()
+    {
+        var sourceSchema = FhirVersion.R4.GetSchemaProvider();
+        var targetSchema = FhirVersion.Stu3.GetSchemaProvider();
+        var source = ResourceJsonNode.Parse(
+            """{"resourceType":"Account","servicePeriod":{"start":"2020-01-01","end":"2020-12-31"}}""");
+        var target = ResourceJsonNode.Parse("""{"resourceType":"Account"}""");
+        var map = new MappingParser().Parse("""
+            map 'http://example.org/xver-account-period' = 'AccountPeriod'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/Account' alias Account as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Account' alias AccountR3 as target
+            group Main(source src : Account, target tgt : AccountR3) {
+              src.servicePeriod -> tgt.period;
+            }
+            """);
+
+        Execute(map, CreateContext(source, target, sourceSchema, targetSchema), CreateMutator(targetSchema));
+
+        target.ToSourceNavigator().Meta<JsonNode>()!["period"]!.ToJsonString().ShouldBe(
+            """{"start":"2020-01-01","end":"2020-12-31"}""");
+    }
+
+    [Fact]
+    public async Task GivenImportedPrimitiveConversion_WhenMappingAccountName_ThenPrimitiveValueIsPreserved()
+    {
+        var sourceSchema = FhirVersion.R4.GetSchemaProvider();
+        var targetSchema = FhirVersion.Stu3.GetSchemaProvider();
+        var parser = new MappingParser();
+        var conversion = parser.Parse("""
+            map 'http://example.org/maps/string' = 'String'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/string' alias stringR4 as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/string' alias stringR3 as target
+            group string(source src : stringR4, target tgt : stringR3) <<types>> {
+              src.value as v -> tgt.value = v;
+            }
+            """);
+        var map = parser.Parse("""
+            map 'http://example.org/xver-account-name' = 'AccountName'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/Account' alias Account as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Account' alias AccountR3 as target
+            imports 'http://example.org/maps/string'
+            group Main(source src : Account, target tgt : AccountR3) {
+              src.name -> tgt.name;
+            }
+            """);
+        var registry = new MapRegistry();
+        registry.Register(conversion);
+        var resolver = new ImportResolver(registry, parser);
+        await resolver.ResolveImportsAsync(map);
+        var source = ResourceJsonNode.Parse("""{"resourceType":"Account","name":"Converted account"}""");
+        var target = ResourceJsonNode.Parse("""{"resourceType":"Account"}""");
+        var context = CreateContext(source, target, sourceSchema, targetSchema);
+
+        new MappingEvaluator(MappingEvaluatorOptions.Default, CreateMutator(targetSchema), resolver).Execute(map, context);
+
+        target.ToSourceNavigator().Meta<JsonNode>()!["name"]!.GetValue<string>().ShouldBe("Converted account");
+    }
+
+    [Fact]
+    public async Task GivenImportedPrimitiveChoiceConversion_WhenMappingCarePlanSchedule_ThenStringValueIsPreserved()
+    {
+        var sourceSchema = FhirVersion.R4.GetSchemaProvider();
+        var targetSchema = FhirVersion.Stu3.GetSchemaProvider();
+        var parser = new MappingParser();
+        var conversion = parser.Parse("""
+            map 'http://example.org/maps/string' = 'String'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/string' alias stringR4 as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/string' alias stringR3 as target
+            group string(source src : stringR4, target tgt : stringR3) <<types>> {
+              src.value as v -> tgt.value = v;
+            }
+            """);
+        var map = parser.Parse("""
+            map 'http://example.org/xver-careplan-schedule' = 'CarePlanSchedule'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/CarePlan' alias CarePlan as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/CarePlan' alias CarePlanR3 as target
+            imports 'http://example.org/maps/string'
+            group Main(source src : CarePlan, target tgt : CarePlanR3) {
+              src.activity as s -> tgt.activity as t then activity(s, t);
+            }
+            group activity(source src, target tgt) {
+              src.detail as s -> tgt.detail as t then detail(s, t);
+            }
+            group detail(source src, target tgt) {
+              src.scheduled : string as s -> tgt.scheduled = create('string') as t then string(s, t);
+            }
+            """);
+        var registry = new MapRegistry();
+        registry.Register(conversion);
+        var resolver = new ImportResolver(registry, parser);
+        await resolver.ResolveImportsAsync(map);
+        var source = ResourceJsonNode.Parse("""
+            {"resourceType":"CarePlan","activity":[{"detail":{"scheduledString":"Scheduled visit"}}]}
+            """);
+        var target = ResourceJsonNode.Parse("""{"resourceType":"CarePlan"}""");
+        var mutator = CreateMutator(targetSchema);
+        var context = CreateContext(source, target, sourceSchema, targetSchema);
+        context.ErrorMode = ErrorMode.Strict;
+        context.ResourceCreator = type => mutator.CreateElement(type);
+
+        new MappingEvaluator(MappingEvaluatorOptions.Default, mutator, resolver).Execute(map, context);
+
+        var actual = target.ToSourceNavigator().Meta<JsonNode>()!;
+        actual.ToJsonString().ShouldBe(
+            """{"resourceType":"CarePlan","activity":[{"detail":{"scheduledString":"Scheduled visit"}}]}""");
+    }
+
+    [Fact]
+    public async Task GivenImportedXhtmlConversion_WhenMappingNarrativeDiv_ThenMarkupIsPreserved()
+    {
+        var sourceSchema = FhirVersion.R4.GetSchemaProvider();
+        var targetSchema = FhirVersion.Stu3.GetSchemaProvider();
+        var parser = new MappingParser();
+        var conversion = parser.Parse("""
+            map 'http://example.org/maps/xhtml' = 'Xhtml'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/xhtml' alias xhtmlR4 as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/xhtml' alias xhtmlR3 as target
+            group xhtml(source src : xhtmlR4, target tgt : xhtmlR3) <<types>> {
+              src.value as v -> tgt.value = v;
+            }
+            """);
+        var map = parser.Parse("""
+            map 'http://example.org/xver-patient-narrative' = 'PatientNarrative'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/Patient' alias Patient as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Patient' alias PatientR3 as target
+            imports 'http://example.org/maps/xhtml'
+            group Main(source src : Patient, target tgt : PatientR3) {
+              src.text.div as s -> tgt.text.div = create('xhtml') as t then xhtml(s, t);
+            }
+            """);
+        var registry = new MapRegistry();
+        registry.Register(conversion);
+        var resolver = new ImportResolver(registry, parser);
+        await resolver.ResolveImportsAsync(map);
+        var source = ResourceJsonNode.Parse(
+            """{"resourceType":"Patient","text":{"status":"generated","div":"<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Visible narrative</p></div>"}}""");
+        var div = source.ToElement(sourceSchema).Children("text").ShouldHaveSingleItem().Children("div").ShouldHaveSingleItem();
+        div.InstanceType.ShouldBe("xhtml");
+        var target = ResourceJsonNode.Parse("""{"resourceType":"Patient"}""");
+        var mutator = CreateMutator(targetSchema);
+        var context = CreateContext(source, target, sourceSchema, targetSchema);
+        context.ErrorMode = ErrorMode.Strict;
+        context.ResourceCreator = type => mutator.CreateElement(type);
+
+        new MappingEvaluator(MappingEvaluatorOptions.Default, mutator, resolver).Execute(map, context);
+
+        target.ToSourceNavigator().Meta<JsonNode>()!["text"]!["div"]!.GetValue<string>().ShouldBe(
+            "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Visible narrative</p></div>");
+    }
+
+    [Fact]
+    public async Task GivenR4StructureDefinitionDifferentialFixedQuantity_WhenMappedToStu3WithImportedQuantityGroup_ThenValueIsPreserved()
+    {
+        var sourceSchema = FhirVersion.R4.GetSchemaProvider();
+        var targetSchema = FhirVersion.Stu3.GetSchemaProvider();
+        var parser = new MappingParser();
+        var quantityConversion = parser.Parse("""
+            map 'http://example.org/maps/quantity-r4-to-stu3' = 'QuantityR4ToStu3'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/Quantity' alias QuantityR4 as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Quantity' alias QuantityStu3 as target
+            group Quantity(source src : QuantityR4, target tgt : QuantityStu3) <<types>> {
+              src.value -> tgt.value;
+            }
+            """);
+        var map = parser.Parse("""
+            map 'http://example.org/xver-structure-definition-fixed-quantity' = 'StructureDefinitionFixedQuantity'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/StructureDefinition' alias StructureDefinitionR4 as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/StructureDefinition' alias StructureDefinitionStu3 as target
+            imports 'http://example.org/maps/quantity-r4-to-stu3'
+            group Main(source src : StructureDefinitionR4, target tgt : StructureDefinitionStu3) {
+              src.differential as s -> tgt.differential as t then differential(s, t);
+            }
+            group differential(source src, target tgt) {
+              src.element as s -> tgt.element as t then element(s, t);
+            }
+            group element(source src, target tgt) {
+              src.fixed : Quantity as s -> tgt.fixed = create('Quantity') as t then Quantity(s, t);
+            }
+            """);
+        var registry = new MapRegistry();
+        registry.Register(quantityConversion);
+        var resolver = new ImportResolver(registry, parser);
+        await resolver.ResolveImportsAsync(map);
+        var source = ResourceJsonNode.Parse("""
+            {"resourceType":"StructureDefinition","differential":{"element":[{"id":"Observation.value","path":"Observation.value","fixedQuantity":{"value":4.5}}]}}
+            """);
+        var target = ResourceJsonNode.Parse("""{"resourceType":"StructureDefinition"}""");
+        var mutator = CreateMutator(targetSchema);
+        var context = CreateContext(source, target, sourceSchema, targetSchema);
+        context.ErrorMode = ErrorMode.Strict;
+        context.ResourceCreator = type => mutator.CreateElement(type);
+        var fixedQuantity = source.ToElement(sourceSchema).Children("differential").ShouldHaveSingleItem()
+            .Children("element").ShouldHaveSingleItem().Children("fixed").ShouldHaveSingleItem();
+        fixedQuantity.InstanceType.ShouldBe("Quantity");
+        fixedQuantity.Children("value").ShouldHaveSingleItem().Value.ShouldBe(4.5m);
+        var refreshedFixedQuantity = mutator.Refresh(fixedQuantity);
+        refreshedFixedQuantity.Children("value").ShouldHaveSingleItem().Value.ShouldBe(4.5m);
+
+        new MappingEvaluator(MappingEvaluatorOptions.Default, mutator, resolver).Execute(map, context);
+
+        target.ToSourceNavigator().Meta<JsonNode>()!["differential"]!["element"]![0]!["fixedQuantity"]!
+            .ToJsonString().ShouldBe("""{"value":4.5}""");
+    }
+
+    [Fact]
+    public void GivenR4BodyStructure_WhenMappingToStu3BodySite_ThenTargetUsesTheRenamedResourceType()
+    {
+        var sourceSchema = FhirVersion.R4.GetSchemaProvider();
+        var targetSchema = FhirVersion.Stu3.GetSchemaProvider();
+        var source = ResourceJsonNode.Parse(
+            """{"resourceType":"BodyStructure","id":"body-1","active":true,"location":{"coding":[{"code":"arm"}]}}""");
+        var target = ResourceJsonNode.Parse("""{"resourceType":"BodySite"}""");
+        var map = new MappingParser().Parse("""
+            map 'http://example.org/xver-body-structure' = 'BodyStructure'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/BodyStructure' alias BodyStructure as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/BodySite' alias BodySiteR3 as target
+            group Main(source src : BodyStructure, target tgt : BodySiteR3) {
+              src.id -> tgt.id;
+              src.active -> tgt.active;
+              src.location -> tgt.code;
+            }
+            """);
+
+        Execute(map, CreateContext(source, target, sourceSchema, targetSchema), CreateMutator(targetSchema));
+
+        var actual = target.ToSourceNavigator().Meta<JsonNode>()!;
+        actual["resourceType"]!.GetValue<string>().ShouldBe("BodySite");
+        actual["id"]!.GetValue<string>().ShouldBe("body-1");
+        actual["active"]!.GetValue<bool>().ShouldBeTrue();
+        actual["code"]!["coding"]![0]!["code"]!.GetValue<string>().ShouldBe("arm");
+    }
+
+    [Fact]
+    public async Task GivenImportedCanonicalConversion_WhenMappingToReference_ThenValueMetadataAndRenderedValueAreConverted()
+    {
+        var sourceSchema = FhirVersion.R4.GetSchemaProvider();
+        var targetSchema = FhirVersion.Stu3.GetSchemaProvider();
+        var parser = new MappingParser();
+        var conversion = parser.Parse("""
+            map 'http://example.org/maps/canonical-reference' = 'CanonicalReference'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/canonical' alias canonical as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Reference' alias ReferenceR3 as target
+            group canonical2Reference(source src : canonical, target tgt : ReferenceR3) <<types>> {
+              src.id -> tgt.id;
+              src.extension where (url != 'http://hl7.org/fhir/StructureDefinition/rendered-value') -> tgt.extension;
+              src.value as v -> tgt.reference as r, r.value = v "reference";
+              src.extension as e where (url = 'http://hl7.org/fhir/StructureDefinition/rendered-value') then {
+                e.value : string -> tgt.display;
+              };
+            }
+            """);
+        var map = parser.Parse("""
+            map 'http://example.org/xver-code-system-reference' = 'CodeSystemReference'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/canonical' alias canonical as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Patient' alias PatientR3 as target
+            imports 'http://example.org/maps/canonical-reference'
+            group Main(source src : canonical, target tgt : PatientR3) {
+              src -> tgt.managingOrganization;
+            }
+            """);
+        var registry = new MapRegistry();
+        registry.Register(conversion);
+        var resolver = new ImportResolver(registry, parser);
+        await resolver.ResolveImportsAsync(map);
+        var source = ResourceJsonNode.Parse("""
+            {"resourceType":"PlanDefinition","library":["http://example.org/codes"],"_library":[{"id":"canonical-id","extension":[{"url":"http://hl7.org/fhir/StructureDefinition/rendered-value","valueString":"Visible code system"},{"url":"http://example.org/source-extension","valueString":"extra metadata"}]}]}
+            """);
+        var target = ResourceJsonNode.Parse("""{"resourceType":"Patient"}""");
+        var context = new MappingContext();
+        context.SetSource("src", source.ToElement(sourceSchema).Children("library").ShouldHaveSingleItem());
+        context.SetTarget("tgt", target.ToElement(targetSchema));
+        context.GetSource("src")!.InstanceType.ShouldBe("canonical");
+        var evaluator = new MappingEvaluator(MappingEvaluatorOptions.Default, CreateMutator(targetSchema), resolver);
+
+        Execute(map, context, evaluator);
+
+        var actual = target.ToSourceNavigator().Meta<JsonNode>()!["managingOrganization"]!;
+        actual["id"]!.GetValue<string>().ShouldBe("canonical-id");
+        actual["reference"]!.GetValue<string>().ShouldBe("http://example.org/codes");
+        actual["display"]!.GetValue<string>().ShouldBe("Visible code system");
+        actual["extension"]![0]!["url"]!.GetValue<string>().ShouldBe("http://example.org/source-extension");
+        actual["extension"]![0]!["valueString"]!.GetValue<string>().ShouldBe("extra metadata");
+    }
+
+    [Fact]
+    public async Task GivenImportedGroupsWithSameTypeNamesAcrossVersions_WhenMappingR4Canonical_ThenOnlyR4GroupRuns()
+    {
+        var sourceSchema = FhirVersion.R4.GetSchemaProvider();
+        var targetSchema = FhirVersion.Stu3.GetSchemaProvider();
+        var parser = new MappingParser();
+        var r4Conversion = parser.Parse("""
+            map 'http://example.org/maps/canonical-r4' = 'CanonicalR4'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/canonical' alias canonicalR4 as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Reference' alias ReferenceR3 as target
+            group Convert(source src : canonicalR4, target tgt : ReferenceR3) <<types>> {
+              src.value as v -> tgt.reference as r, r.value = v "reference";
+            }
+            """);
+        var r5Conversion = parser.Parse("""
+            map 'http://example.org/maps/canonical-r5' = 'CanonicalR5'
+            uses 'http://hl7.org/fhir/5.0/StructureDefinition/canonical' alias canonicalR5 as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Reference' alias ReferenceR3 as target
+            group Convert(source src : canonicalR5, target tgt : ReferenceR3) <<types>> {
+              src.value -> tgt.display;
+            }
+            """);
+        var map = parser.Parse("""
+            map 'http://example.org/xver-versioned-imports' = 'VersionedImports'
+            uses 'http://hl7.org/fhir/4.0/StructureDefinition/canonical' alias canonical as source
+            uses 'http://hl7.org/fhir/3.0/StructureDefinition/Patient' alias PatientR3 as target
+            imports 'http://example.org/maps/canonical-*'
+            group Main(source src : canonical, target tgt : PatientR3) {
+              src -> tgt.managingOrganization;
+            }
+            """);
+        var registry = new MapRegistry();
+        registry.Register(r4Conversion);
+        registry.Register(r5Conversion);
+        var resolver = new ImportResolver(registry, parser);
+        await resolver.ResolveImportsAsync(map);
+        var source = ResourceJsonNode.Parse("""{"resourceType":"PlanDefinition","library":["http://example.org/codes"]}""");
+        var target = ResourceJsonNode.Parse("""{"resourceType":"Patient"}""");
+        var context = new MappingContext();
+        context.SetSource("src", source.ToElement(sourceSchema).Children("library").ShouldHaveSingleItem());
+        context.SetTarget("tgt", target.ToElement(targetSchema));
+        var evaluator = new MappingEvaluator(MappingEvaluatorOptions.Default, CreateMutator(targetSchema), resolver);
+
+        Execute(map, context, evaluator);
+
+        var actual = target.ToSourceNavigator().Meta<JsonNode>()!["managingOrganization"]!;
+        actual["reference"]!.GetValue<string>().ShouldBe("http://example.org/codes");
+        actual["display"].ShouldBeNull();
+    }
+
     [Fact]
     public void GivenSourceAndTargetAreTheSameJson_WhenAWriteIsFollowedByAnotherSourceRead_ThenTheLaterReadSeesTheWrite()
     {
@@ -310,6 +648,7 @@ public class XverMappingOptimizationTests
 
         public IElement CreateElement(string typeName, object? value = null) => inner.CreateElement(typeName, value);
         public IType GetTargetDefinition(IElement parent, string propertyName) => inner.GetTargetDefinition(parent, propertyName);
+        public string GetTargetType(IElement parent, string propertyName) => inner.GetTargetType(parent, propertyName);
         public IElement SetTarget(IElement parent, string propertyName, IElement? value,
             PropertyMutationMode mode = PropertyMutationMode.AutoDetect, bool insertFirst = false) =>
             inner.SetTarget(parent, propertyName, value, mode, insertFirst);

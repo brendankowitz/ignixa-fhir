@@ -26,6 +26,17 @@ public partial class JsonNodeMutator
     }
 
     /// <inheritdoc />
+    public string GetTargetType(IElement parent, string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        var schema = GetMappingSchema();
+        var parentDefinition = RequireMappingType(schema, NormalizeMappingType(parent.InstanceType));
+        var child = FindMappingChild(parentDefinition, propertyName);
+        return ResolveMappingChildType(schema, parentDefinition, child, propertyName, null);
+    }
+
+    /// <inheritdoc />
     public IElement CreateElement(string typeName, object? value = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(typeName);
@@ -62,9 +73,9 @@ public partial class JsonNodeMutator
         var schema = GetMappingSchema();
         var parentDefinition = RequireMappingType(schema, NormalizeMappingType(parent.InstanceType));
         var child = FindMappingChild(parentDefinition, propertyName);
-        if (parentDefinition.Info.IsPrimitive && ChildName(child) == "value")
+        if ((parentDefinition.Info.IsPrimitive || parent.InstanceType == "xhtml") && ChildName(child) == "value")
         {
-            throw new InvalidOperationException("A primitive value must be assigned through its containing property.");
+            return SetPrimitiveValue(parent, value, schema, parentDefinition);
         }
 
         string typeName = ResolveMappingChildType(schema, parentDefinition, child, propertyName, value);
@@ -100,7 +111,7 @@ public partial class JsonNodeMutator
     public IElement Refresh(IElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        var schema = GetMappingSchema();
+        var schema = element is SchemaAwareElement schemaAware ? schemaAware.Schema : GetMappingSchema();
         var type = RequireMappingType(schema, NormalizeMappingType(element.InstanceType));
         var node = element.Meta<JsonNode>()
             ?? throw new InvalidOperationException($"Element '{element.Location}' is not JSON-backed.");
@@ -158,6 +169,85 @@ public partial class JsonNodeMutator
         if (definition.Info.IsAbstract)
         {
             throw new InvalidOperationException($"Cannot create abstract FHIR type '{definition.Info.Name}'.");
+        }
+    }
+
+    private IElement SetPrimitiveValue(IElement parent, IElement? value, ISchema schema, IType definition)
+    {
+        var (node, _) = value is null
+            ? (null, null)
+            : parent.InstanceType == "xhtml"
+                ? value.HasPrimitiveValue && value.Value is { } scalar
+                    ? (SerializePrimitive(scalar), null)
+                    : throw new InvalidOperationException("FHIR XHTML values must be scalar.")
+                : SerializeMappingValue(value, RequireMappingType(schema, NormalizeMappingType(parent.InstanceType)));
+        var valueNode = (JsonNode?)parent.Meta<JsonPrimitiveValueNode>()?.Value;
+        var anchor = valueNode ?? parent.Meta<JsonNode>()
+            ?? throw new InvalidOperationException($"Primitive target '{parent.Location}' is not JSON-backed.");
+
+        JsonObject owner;
+        string name;
+        int? index;
+        if (anchor.Parent is JsonArray containingArray && containingArray.Parent is JsonObject arrayOwner)
+        {
+            owner = arrayOwner;
+            name = owner.Single(property => ReferenceEquals(property.Value, containingArray)).Key;
+            index = containingArray.IndexOf(anchor);
+        }
+        else if (anchor.Parent is JsonObject objectOwner)
+        {
+            owner = objectOwner;
+            name = owner.Single(property => ReferenceEquals(property.Value, anchor)).Key;
+            index = null;
+        }
+        else
+        {
+            throw new InvalidOperationException($"Primitive target '{parent.Location}' has no containing JSON property.");
+        }
+
+        if (name.StartsWith('_'))
+            name = name[1..];
+
+        if (index is { } itemIndex)
+        {
+            if (owner[name] is not JsonArray values)
+            {
+                values = new JsonArray();
+                owner[name] = values;
+            }
+            PadArray(values, itemIndex + 1);
+            values[itemIndex] = node;
+        }
+        else
+        {
+            owner[name] = node;
+        }
+
+        RemoveEmptyPrimitiveShadow(owner, name, index);
+        return WrapTarget(owner, name, index ?? 0, schema, parent.Type ?? definition, parent.InstanceType);
+    }
+
+    private static void RemoveEmptyPrimitiveShadow(JsonObject owner, string name, int? index)
+    {
+        string shadowName = "_" + name;
+        if (index is { } itemIndex && owner[shadowName] is JsonArray shadows)
+        {
+            if (itemIndex < shadows.Count && shadows[itemIndex] is JsonObject { Count: 0 })
+            {
+                shadows[itemIndex] = null;
+            }
+
+            if (shadows.All(shadow => shadow is null))
+            {
+                owner.Remove(shadowName);
+            }
+
+            return;
+        }
+
+        if (owner[shadowName] is JsonObject { Count: 0 })
+        {
+            owner.Remove(shadowName);
         }
     }
 
@@ -302,7 +392,6 @@ public partial class JsonNodeMutator
 
     private (JsonNode? Node, JsonObject? Shadow) SerializeMappingValue(IElement element, IType definition)
     {
-        var sourceType = RequireMappingType(GetMappingSchema(), NormalizeMappingType(element.InstanceType));
         if (element.Meta<JsonNode>() is not null)
         {
             element = Refresh(element);
@@ -317,7 +406,7 @@ public partial class JsonNodeMutator
             return (PrepareComplexValue(SerializeValue(element), definition), null);
         }
 
-        if (!element.HasPrimitiveValue && !sourceType.Info.IsPrimitive)
+        if (!element.HasPrimitiveValue && element.Type?.Info.IsPrimitive != true)
         {
             throw new InvalidOperationException($"FHIR primitive '{definition.Info.Name}' cannot receive a complex value.");
         }

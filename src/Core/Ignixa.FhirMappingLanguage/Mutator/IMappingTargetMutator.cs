@@ -24,6 +24,12 @@ public interface IMappingTargetMutator : IJsonNodeMutator
     IType GetTargetDefinition(IElement parent, string propertyName);
 
     /// <summary>
+    /// Resolves the target property's type without a source value.
+    /// Throws when the schema and property name do not identify a single concrete type.
+    /// </summary>
+    string GetTargetType(IElement parent, string propertyName);
+
+    /// <summary>
     /// Copies a value into a JSON-backed parent, or creates an empty child when value is null.
     /// Collections append unless Replace is specified; insertFirst inserts at index zero.
     /// Returns an element backed by the inserted target node, not the source node.

@@ -12,6 +12,13 @@ public class MappingEvaluatorOptions
     /// </summary>
     public static MappingEvaluatorOptions Default => new();
 
+    /// <summary>
+    /// Prunes empty JSON target elements after the entry group completes (default: true).
+    /// Disable only when a downstream pipeline stage owns output normalization,
+    /// including alignment of primitive values and metadata arrays.
+    /// </summary>
+    public bool PruneEmptyTargets { get; set; } = true;
+
     // ========== Resource Limits ==========
 
     /// <summary>

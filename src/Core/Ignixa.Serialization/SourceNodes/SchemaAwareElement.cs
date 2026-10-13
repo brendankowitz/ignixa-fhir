@@ -293,6 +293,8 @@ internal class SchemaAwareElement : IElement
         return null;
     }
 
+    internal ISchema Schema => _schema;
+
     public string Name => _source.Name;
 
     public string InstanceType => _instanceType ?? string.Empty;
