@@ -9,6 +9,7 @@ using Shouldly;
 
 namespace Ignixa.Api.Tests.Services;
 
+/// <summary>Spec §5.4: a refresh syncs SQL tenants' catalog rows before publication and skips FileSystem tenants.</summary>
 public class SqlSearchParameterCatalogSynchronizerTests
 {
     [Fact]

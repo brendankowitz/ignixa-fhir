@@ -334,6 +334,8 @@ order without a compare-and-swap. `PublicationSequence` distinguishes a forced r
 - Package load and unload build and publish a fresh snapshot. Caches are invalidated after publication and are
   fenced by its publication sequence. A failed forced refresh remains pending and is retried on the next sync tick.
   Package unload is process-local today (issue #491).
+- Before publication, a refresh synchronizes each SQL tenant's `dbo.SearchParam` catalog rows; FileSystem tenants
+  have no catalog and are skipped.
 
 ### 5.5 Edge cases
 
@@ -373,7 +375,7 @@ as for `$export` (`ReindexEndpoints.MapReindexEndpoints`).
 - **Active job exists:** `409 Conflict` with an `OperationOutcome` and a `Content-Location` header pointing to the
   active job (Q3).
 - **Nothing to do** (no `Pending` params or owned `Reindexing` params): `400` with
-  `No resources need reindexing.`
+  `No resources need reindexing.` With no active tenant it is `No active tenant is configured for reindexing.`
 
 | Parameter | Type | Range | Default | Effect |
 |---|---|---|---|---|
@@ -713,7 +715,7 @@ Instance **A** applies a conformance change at event E. Instance **B** has not a
 
 | Key | Default | Purpose |
 |---|---|---|
-| `Enabled` | `true` | Registers the endpoints and the orchestration |
+| `Enabled` | `true` | When `false`, no job starts (parameters stay `Pending`), the capability statement omits `$reindex`, and its routes stay mapped but answer 404 |
 | `AutoStart` | `true` | Activation-triggered jobs (§7) |
 | `BarrierDelay` | `3 × Conformance:SyncIntervalSeconds` | Advisory catch-up time before the barrier (§5.2); must be `≥ MaxStaleness` |
 | `DefaultMaximumNumberOfResourcesPerQuery` | `10000` | §6.1 |
