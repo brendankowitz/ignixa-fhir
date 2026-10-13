@@ -157,6 +157,7 @@ public class ReindexOrchestrationTests
 
         var serialized = JsonDataConverter.Default.Serialize(continuation);
         var roundTripped = JsonDataConverter.Default.Deserialize<ReindexOrchestrationInput>(serialized)!;
+        // The chain ran at threshold 1; resume at 3 so this execution plans and drains once before continuing again.
         await new ReindexOrchestration().RunTask(context, roundTripped with { ContinueAsNewThreshold = 3 });
 
         afterStart.State!.Started.ShouldBeTrue();
