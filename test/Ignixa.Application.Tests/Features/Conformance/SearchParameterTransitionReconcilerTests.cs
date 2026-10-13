@@ -17,30 +17,21 @@ public class SearchParameterTransitionReconcilerTests
     public async Task GivenAnUncommittedBatchOfShadows_WhenReconciled_ThenOneTransitionIsScheduledWithFullGraceWhateverTheHideTimestamp(
         int hideTimestampOffsetDays)
     {
-        const int shadowCount = 70;
         var hiddenAt = DateTimeOffset.UtcNow.AddDays(hideTimestampOffsetDays);
+        var shadows = Enumerable.Range(1, 70).Select(index => Canonical($"shadow-{index}")).ToArray();
         using var state = new ConformanceState();
         var eventId = 0L;
-        for (var index = 1; index <= shadowCount; index++)
+        foreach (var index in Enumerable.Range(1, shadows.Length))
         {
             state.ApplyAndTrack(At(++eventId, Activated(Canonical($"seed-{index}"), $"code-{index}", index)));
-        }
-
-        var shadows = Enumerable.Range(1, shadowCount).Select(index => Canonical($"shadow-{index}")).ToArray();
-        for (var index = 1; index <= shadowCount; index++)
-        {
-            var shadow = Activated(shadows[index - 1], $"code-{index}", index, Canonical($"seed-{index}"), "shadow@1.0.0");
-            state.ApplyAndTrack(At(++eventId, shadow, hiddenAt));
+            state.ApplyAndTrack(At(++eventId, Activated(shadows[index - 1], $"code-{index}", index, Canonical($"seed-{index}"), "shadow@1.0.0"), hiddenAt));
         }
 
         var batchId = ++eventId;
         state.ApplyAndTrack(At(batchId, PackageActivated("shadow", "1.0.0", shadows), hiddenAt));
         var scheduler = Substitute.For<ISearchParameterTransitionScheduler>();
         var grace = TimeSpan.FromMinutes(3);
-        var reconciler = new SearchParameterTransitionReconciler(
-            state,
-            scheduler,
-            Options.Create(new ConformanceTransitionOptions { TransitionGrace = grace }));
+        var reconciler = new SearchParameterTransitionReconciler(state, scheduler, Options.Create(new ConformanceTransitionOptions { TransitionGrace = grace }));
 
         await reconciler.ReconcileAsync(CancellationToken.None);
 

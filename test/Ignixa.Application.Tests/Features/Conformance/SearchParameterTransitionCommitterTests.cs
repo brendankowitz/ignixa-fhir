@@ -24,9 +24,7 @@ public class SearchParameterTransitionCommitterTests
         var committed = await harness.Committer().CommitAsync(hideEventId, CancellationToken.None);
 
         committed.ShouldBeTrue();
-        var owner = harness.State.GetSearchParameter("Patient", "identifier")!;
-        owner.Canonical.ShouldBe(OverrideCanonical);
-        owner.Status.ShouldBe(SearchParameterStatus.Pending);
+        harness.Owner("identifier").ShouldBe((OverrideCanonical, SearchParameterStatus.Pending));
         await harness.Trigger.Received(1).RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -84,8 +82,7 @@ public class SearchParameterTransitionCommitterTests
             harness.Log.OtherWriters.Enqueue(PackageActivated($"unrelated-{index}"));
         }
 
-        await Should.ThrowAsync<SourceEventConcurrencyException>(() =>
-            harness.Committer().CommitAsync(hideEventId, CancellationToken.None));
+        await Should.ThrowAsync<SourceEventConcurrencyException>(() => harness.Committer().CommitAsync(hideEventId, CancellationToken.None));
 
         harness.Log.AppendAttempts.ShouldBe(3);
     }
@@ -102,9 +99,8 @@ public class SearchParameterTransitionCommitterTests
 
         committed.ShouldBeTrue();
         harness.Log.Appends.ShouldHaveSingleItem().Count.ShouldBe(ShadowCount);
-        Enumerable.Range(1, ShadowCount).ShouldAllBe(index =>
-            harness.State.GetSearchParameter("Patient", Code(index))!.Canonical == Canonical($"shadow-{index}") &&
-            harness.State.GetSearchParameter("Patient", Code(index))!.Status == SearchParameterStatus.Pending);
+        Enumerable.Range(1, ShadowCount).Select(index => harness.Owner(Code(index)))
+            .ShouldBe(Enumerable.Range(1, ShadowCount).Select(index => (Canonical($"shadow-{index}"), SearchParameterStatus.Pending)));
         await harness.Trigger.Received(1).RequestReindexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         await harness.Tenants.Received(1).GetAllTenantsAsync(Arg.Any<CancellationToken>());
         harness.State.GetTransitionHideEventIds().ShouldBeEmpty();
@@ -131,10 +127,8 @@ public class SearchParameterTransitionCommitterTests
 
         harness.Log.Appends.Count.ShouldBe(2);
         harness.Log.Appends.ShouldAllBe(append => append.Count == 1);
-        harness.State.GetSearchParameter("Patient", Code(1))!.Canonical.ShouldBe(Canonical("second-1"));
-        harness.State.GetSearchParameter("Patient", Code(2))!.Canonical.ShouldBe(Canonical("first-2"));
-        harness.State.GetSearchParameter("Patient", Code(1))!.Status.ShouldBe(SearchParameterStatus.Pending);
-        harness.State.GetSearchParameter("Patient", Code(2))!.Status.ShouldBe(SearchParameterStatus.Pending);
+        harness.Owner(Code(1)).ShouldBe((Canonical("second-1"), SearchParameterStatus.Pending));
+        harness.Owner(Code(2)).ShouldBe((Canonical("first-2"), SearchParameterStatus.Pending));
         harness.State.FindByCanonical(Canonical("first-1"))!.Status.ShouldBe(SearchParameterStatus.Disabled);
         harness.State.GetTransitionHideEventIds().ShouldBeEmpty();
     }
@@ -156,6 +150,9 @@ public class SearchParameterTransitionCommitterTests
 
         public long Seed(object data) => Log.Seed(State, data);
 
+        public (string Canonical, SearchParameterStatus Status) Owner(string code) =>
+            State.GetSearchParameter("Patient", code) is { } owner ? (owner.Canonical, owner.Status) : default;
+
         /// <summary>Seeds the base Patient.identifier and an override staged against it; returns its hide event id.</summary>
         public long SeedShadow()
         {
@@ -169,13 +166,7 @@ public class SearchParameterTransitionCommitterTests
             var canonicals = Enumerable.Range(1, count).Select(index => Canonical($"{package}-{index}")).ToArray();
             for (var index = 1; index <= count; index++)
             {
-                Seed(Activated(
-                    canonicals[index - 1],
-                    Code(index),
-                    index,
-                    shadowsSeed ? Canonical($"seed-{index}") : null,
-                    $"{package}@1.0.0",
-                    expression: "Patient.identifier"));
+                Seed(Activated(canonicals[index - 1], Code(index), index, shadowsSeed ? Canonical($"seed-{index}") : null, $"{package}@1.0.0", expression: "Patient.identifier"));
             }
 
             return Seed(PackageActivated(package, "1.0.0", canonicals));
