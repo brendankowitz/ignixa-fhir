@@ -159,7 +159,7 @@ public class PackageSearchParameterInheritanceTests
         RestoredBase,
     }
 
-    // A Pending parameter is extracted but hidden from search unless the request opts in to partial indices.
+    // §4.2: a Pending parameter is extracted but hidden from search unless the request opts in to partial indices.
     [Theory]
     [InlineData(PendingScenario.CustomParameter, "package-custom", "http://example.org/SearchParameter/package-custom")]
     [InlineData(PendingScenario.DistinctIdentityOverride, "identifier", "http://example.org/SearchParameter/distinct-identifier")]
@@ -192,6 +192,7 @@ public class PackageSearchParameterInheritanceTests
         (partial.IsSearchable, partial.IsSupported).ShouldBe((false, true));
     }
 
+    // §4.2, §4.4: a shared-identity override in transition stays hidden even with the partial-index header.
     [Fact]
     public async Task GivenASharedIdentityOverrideInTransition_WhenSearchDefinitionsAreResolved_ThenTheCodeIsNotVisibleEvenWithPartialIndices()
     {
@@ -257,6 +258,7 @@ public class PackageSearchParameterInheritanceTests
         static Uri Identity(SearchParamInfo parameter) => parameter.OverridesUrl ?? parameter.Url;
     }
 
+    // §4.4: while an upgrade is Staged the outgoing definition still owns the id and is extracted.
     [Fact]
     public async Task GivenSameCanonicalUpgradeIsStaged_WhenResolvedByCanonical_ThenOutgoingDefinitionRemainsExtracted()
     {

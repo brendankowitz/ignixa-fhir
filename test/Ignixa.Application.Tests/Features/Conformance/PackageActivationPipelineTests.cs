@@ -41,6 +41,7 @@ public class PackageActivationPipelineTests
         await harness.Scheduler.Received(1).ScheduleAsync(Arg.Any<long>(), Arg.Any<TimeSpan>(), CancellationToken.None);
     }
 
+    // §4.4: the base owner is materialised once; a later shadow emits no second base activation.
     [Fact]
     public async Task GivenBaseWasMaterialisedByEarlierShadowing_WhenShadowedAgain_ThenNoSecondBaseActivationIsEmitted()
     {
@@ -137,6 +138,7 @@ public class PackageActivationPipelineTests
         result.Issues.ShouldContain(issue => issue.Code == "SP_MIXED_BASE_SHADOW");
     }
 
+    // §4.4: validation uses the latest non-Disabled owner, so its result is independent of activation timing.
     [Fact]
     public async Task GivenAnotherPackageShadowsDuringTransition_WhenActivated_ThenConflictMatchesPostCommitResult()
     {
@@ -149,6 +151,7 @@ public class PackageActivationPipelineTests
         afterTransition.Issues.Select(issue => issue.Code).ShouldBe(duringTransition.Issues.Select(issue => issue.Code));
     }
 
+    // §4.4: during an override removal, validation already matches the post-commit result.
     [Fact]
     public async Task GivenEnabledPackageIsRemoved_WhenAnotherPackageActivatesDuringRestoration_ThenResultMatchesPostCommit()
     {
@@ -182,7 +185,7 @@ public class PackageActivationPipelineTests
         harness.Activations.ShouldAllBe(activation => activation.FhirVersion == "4.0");
     }
 
-    // Shadowing a base code materialises the base under the base package key of the package's own version.
+    // §4.4: shadowing a base code materialises the base under the base package key of the package's own version.
     [Theory]
     [InlineData("3.0.2", "hl7.fhir.r3.core@")]
     [InlineData("4.0.1", "hl7.fhir.r4.core@")]
@@ -203,7 +206,7 @@ public class PackageActivationPipelineTests
         materialised.FhirVersion.ShouldBe(FhirSpecificationExtensions.FromVersionString(fhirVersion).ToVersionString());
     }
 
-    // A materialised base composite keeps its components: it stays the extracted owner until the transition.
+    // §4.4: a materialised base composite keeps its components: it stays the extracted owner until the transition.
     [Fact]
     public async Task GivenAPackageShadowingABaseComposite_WhenActivated_ThenTheMaterialisedBaseKeepsItsComponents()
     {
@@ -235,6 +238,7 @@ public class PackageActivationPipelineTests
         harness.Log.Events.ShouldBeEmpty();
     }
 
+    // §4.4: validation ignores a Disabled owner.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -310,6 +314,7 @@ public class PackageActivationPipelineTests
         harness.State.LastProcessedEventId.ShouldBeGreaterThan(0);
     }
 
+    // N2, §4.4: a durable hide event schedules its transition even when the caller cancels and the refresh fails.
     [Fact]
     public async Task GivenTheCallerCancelsAfterTheDurableAppend_WhenTheRefreshFails_ThenTheTransitionIsStillScheduledAndTheFailureSurfaces()
     {
@@ -375,6 +380,7 @@ public class PackageActivationPipelineTests
         harness.State.GetTransitionCandidates(packageEventId).Count.ShouldBe(shadowCount);
     }
 
+    // §7: package load reports PendingReindex with the job id, or why no job started.
     [Theory]
     [InlineData("job-1", false, null, null, null)]
     [InlineData("active-job", true, null, "REINDEX_QUEUED", ActivationIssueSeverity.Information)]

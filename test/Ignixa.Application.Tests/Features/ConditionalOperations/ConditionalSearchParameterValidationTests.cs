@@ -32,6 +32,7 @@ public class ConditionalSearchParameterValidationTests
         Unsupported,
     }
 
+    // §4.2: conditional criteria on a hidden, partially indexed or unsupported parameter are rejected before any write.
     [Theory]
     [InlineData(CriteriaScenario.PendingReindex, "cannot use search parameter 'pending' because it is pending reindex")]
     [InlineData(CriteriaScenario.BeingRedefined, "cannot use search parameter 'pending' because it is being redefined")]

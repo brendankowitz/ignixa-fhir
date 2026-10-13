@@ -152,6 +152,7 @@ public class PatientEverythingHandlerTests
             Arg.Any<IReadOnlyDictionary<string, string>>());
     }
 
+    // §4.5 (F15): $everything fails closed without the lease.
     [Fact]
     public async Task GivenStaleLease_WhenHandlingEverything_ThenItFailsClosed()
     {

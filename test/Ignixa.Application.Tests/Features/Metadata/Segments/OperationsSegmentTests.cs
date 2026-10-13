@@ -263,6 +263,7 @@ public class OperationsSegmentTests
             .ShouldBe("http://hl7.org/fhir/OperationDefinition/Resource-graphql");
     }
 
+    // §6.6, §10.2: $reindex is advertised only when enabled and every tenant's provider can reindex.
     [Theory]
     [InlineData(true, "SqlServer", true)]
     [InlineData(false, "SqlServer", false)]
@@ -288,6 +289,7 @@ public class OperationsSegmentTests
         }
     }
 
+    // §6.6 (M8): a tenant added at runtime that cannot reindex withdraws the operation.
     [Fact]
     public async Task GivenUnsupportedTenantAddedAtRuntime_WhenHashingAndApplyingAgain_ThenReindexIsWithdrawn()
     {

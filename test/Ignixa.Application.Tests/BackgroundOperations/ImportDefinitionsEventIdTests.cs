@@ -13,6 +13,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations;
 
 public class ImportDefinitionsEventIdTests
 {
+    // §5.4: an import batch allocates with the event id of the handle that extracted it.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

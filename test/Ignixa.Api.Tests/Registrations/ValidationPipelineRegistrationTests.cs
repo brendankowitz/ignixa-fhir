@@ -139,6 +139,7 @@ public class ValidationPipelineRegistrationTests
         harness.Writes.ShouldBe(0);
     }
 
+    // §4.5: stale conformance state answers 503 with Retry-After.
     [Fact]
     public async Task GivenStaleConformance_WhenUsingExceptionMiddleware_ThenReturnsRetryAfterServiceUnavailable()
     {

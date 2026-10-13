@@ -5,7 +5,7 @@ namespace Ignixa.Application.Tests.Features.Conformance;
 
 public class ValidationIssueTests
 {
-    // The activation response carries these as FHIR issue-severity codes.
+    // §4.4, §7: the activation response carries these as FHIR issue-severity codes.
     [Fact]
     public void GivenEachSeverity_WhenItsCodeIsRead_ThenItIsTheFhirIssueSeverityCode()
     {

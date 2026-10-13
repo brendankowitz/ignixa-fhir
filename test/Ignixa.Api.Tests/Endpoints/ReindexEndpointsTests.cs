@@ -276,6 +276,7 @@ public sealed class ReindexEndpointsTests : IAsyncLifetime
         response.Diagnostics.ShouldBe("The $reindex operation is not supported by all active tenant providers.");
     }
 
+    // §6: tenant 0 is never a [base] for $reindex.
     [Theory]
     [InlineData("POST", "/tenant/0/$reindex")]
     [InlineData("GET", "/tenant/0/$reindex")]
