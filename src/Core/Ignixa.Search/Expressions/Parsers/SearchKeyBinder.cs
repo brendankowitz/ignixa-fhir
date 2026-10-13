@@ -147,11 +147,7 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
                     false,
                     next));
             }
-            catch (HiddenSearchParameterException)
-            {
-                throw;
-            }
-            catch (SearchParameterNotSupportedException)
+            catch (SearchParameterNotSupportedException exception) when (exception is not HiddenSearchParameterException)
             {
                 // Unsupported candidates are intentionally filtered so chain binding can resolve supported targets.
             }
@@ -181,11 +177,7 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
         {
             return Bind([candidate], next);
         }
-        catch (HiddenSearchParameterException)
-        {
-            throw;
-        }
-        catch (SearchParameterNotSupportedException)
+        catch (SearchParameterNotSupportedException exception) when (exception is not HiddenSearchParameterException)
         {
             throw new InvalidSearchOperationException(Resources.ChainedParameterNotSupported);
         }

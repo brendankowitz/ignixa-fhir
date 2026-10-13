@@ -251,27 +251,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
                 }
             }
-            catch (HiddenSearchParameterException ex)
-            {
-                unsupportedParameters.Add(param.Name);
-                hiddenSearchParameters[param.Name] = ex.SearchParameter;
-
-                if (outcomes is not null && param.Category == ParameterCategory.Search)
-                {
-                    outcomes.Add(new ParameterTrace(
-                        ordinal: searchOrdinal++,
-                        key: param.Name,
-                        keySyntax: null,
-                        value: param.Value,
-                        valueSyntax: null,
-                        ir: null,
-                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
-                        dataType: null));
-                }
-            }
             catch (SearchParameterNotSupportedException ex)
             {
                 unsupportedParameters.Add(param.Name);
+                if (ex is HiddenSearchParameterException hidden)
+                {
+                    hiddenSearchParameters[param.Name] = hidden.SearchParameter;
+                }
 
                 if (outcomes is not null && param.Category == ParameterCategory.Search)
                 {
@@ -565,22 +551,16 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
                     System.Diagnostics.Debug.WriteLine($"✅ Added sort expression: {firstSearchParameter.Code} ({firstSearchParameter.Type}) {sortOrder}");
                 }
-                catch (HiddenSearchParameterException ex)
-                {
-                    string parameterName = $"_sort={fieldName}";
-                    unsupportedParameters.Add(parameterName);
-                    hiddenSearchParameters[parameterName] = ex.SearchParameter;
-                }
-                catch (BadSearchRequestException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not BadSearchRequestException)
                 {
                     // Log other exceptions for debugging, add to unsupported, then skip
                     System.Diagnostics.Debug.WriteLine($"Failed to parse sort field '{fieldName}': {ex.GetType().Name} - {ex.Message}");
-                    unsupportedParameters.Add($"_sort={fieldName}");
-                    continue;
+                    string parameterName = $"_sort={fieldName}";
+                    unsupportedParameters.Add(parameterName);
+                    if (ex is HiddenSearchParameterException hidden)
+                    {
+                        hiddenSearchParameters[parameterName] = hidden.SearchParameter;
+                    }
                 }
             }
         }
@@ -643,14 +623,13 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         wildcardReferenceSearchParameters);
                 }
             }
-            catch (HiddenSearchParameterException ex)
+            catch (SearchParameterNotSupportedException ex)
             {
                 unsupportedParameters.Add(parameterName);
-                hiddenSearchParameters[parameterName] = ex.SearchParameter;
-            }
-            catch (SearchParameterNotSupportedException)
-            {
-                unsupportedParameters.Add(parameterName);
+                if (ex is HiddenSearchParameterException hidden)
+                {
+                    hiddenSearchParameters[parameterName] = hidden.SearchParameter;
+                }
             }
         }
 
