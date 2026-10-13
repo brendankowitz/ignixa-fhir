@@ -138,5 +138,5 @@ public sealed class CreateReindexJobHandler(
     }
 
     private Task<BackgroundJob<ReindexJobDefinition>?> GetLatestFinishedAsync(CancellationToken cancellationToken) =>
-        jobRepository.GetLatestAsync((int)BackgroundJobType.Reindex, ReindexJobs.FinishedStatuses, cancellationToken);
+        jobRepository.GetLatestFinishedAsync((int)BackgroundJobType.Reindex, cancellationToken);
 }

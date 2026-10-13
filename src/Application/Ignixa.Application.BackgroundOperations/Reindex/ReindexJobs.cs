@@ -8,14 +8,6 @@ namespace Ignixa.Application.BackgroundOperations.Reindex;
 /// </summary>
 internal static class ReindexJobs
 {
-    /// <summary>The stored spellings of the terminal statuses, for repository queries.</summary>
-    public static readonly List<string> FinishedStatuses =
-    [
-        nameof(ReindexJobStatus.Completed),
-        nameof(ReindexJobStatus.Failed),
-        nameof(ReindexJobStatus.Cancelled)
-    ];
-
     public static ReindexJobStatus GetStatus(this BackgroundJob<ReindexJobDefinition> job) =>
         Enum.TryParse<ReindexJobStatus>(job.Status, ignoreCase: true, out var status)
             ? status

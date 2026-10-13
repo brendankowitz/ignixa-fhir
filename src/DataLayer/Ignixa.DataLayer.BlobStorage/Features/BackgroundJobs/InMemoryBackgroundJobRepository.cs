@@ -165,16 +165,14 @@ public partial class InMemoryBackgroundJobRepository<T> : IBackgroundJobReposito
         return Task.FromResult(job);
     }
 
-    public Task<BackgroundJob<T>?> GetLatestAsync(
+    public Task<BackgroundJob<T>?> GetLatestFinishedAsync(
         int jobType,
-        IReadOnlyList<string> statuses,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(statuses);
         var job = _jobs.Values
             .Where(candidate =>
                 candidate.JobType == jobType &&
-                statuses.Contains(candidate.Status, StringComparer.OrdinalIgnoreCase))
+                IsTerminal(candidate.Status))
             .OrderByDescending(candidate => candidate.EndDate ?? candidate.CreateDate)
             .Select(Snapshot)
             .FirstOrDefault();

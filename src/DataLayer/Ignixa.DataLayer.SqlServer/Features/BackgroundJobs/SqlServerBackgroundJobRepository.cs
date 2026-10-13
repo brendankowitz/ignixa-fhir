@@ -216,30 +216,16 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         return jobs.Count == 0 ? null : jobs[0];
     }
 
-    public async Task<BackgroundJob<T>?> GetLatestAsync(
+    public async Task<BackgroundJob<T>?> GetLatestFinishedAsync(
         int jobType,
-        IReadOnlyList<string> statuses,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(statuses);
-        if (statuses.Count == 0)
-        {
-            return null;
-        }
-
-        var statusParameters = string.Join(
-            ", ",
-            Enumerable.Range(0, statuses.Count).Select(index => $"@status{index}"));
         using var command = CreateCommand(
             $"SELECT TOP (1) {AllColumns} FROM {QualifiedTable} " +
             $"WHERE {Jobs.Column("JobType").Name} = @jobType " +
-            $"AND {Jobs.Column("Status").Name} IN ({statusParameters}) " +
+            $"AND {Jobs.Column("Status").Name} IN ('Completed', 'Failed', 'Cancelled') " +
             $"ORDER BY COALESCE({Jobs.Column("EndDate").Name}, {Jobs.Column("CreateDate").Name}) DESC");
         command.Parameters.AddWithValue("@jobType", jobType);
-        for (var index = 0; index < statuses.Count; index++)
-        {
-            command.Parameters.AddWithValue($"@status{index}", statuses[index]);
-        }
 
         var jobs = await sqlExecutionService.ExecuteReaderAsync(
             connectionTenantId,

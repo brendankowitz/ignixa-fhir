@@ -104,9 +104,8 @@ public sealed class ReindexTrigger(
                 return;
             }
 
-            var latestFinished = await jobRepository.GetLatestAsync(
+            var latestFinished = await jobRepository.GetLatestFinishedAsync(
                 (int)BackgroundJobType.Reindex,
-                ReindexJobs.FinishedStatuses,
                 cancellationToken);
             if (!await HasPendingActivationAfterAsync(latestFinished?.Definition.TargetEventId, cancellationToken))
             {

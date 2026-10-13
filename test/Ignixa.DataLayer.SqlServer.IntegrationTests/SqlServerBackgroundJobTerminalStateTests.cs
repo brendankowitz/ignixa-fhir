@@ -102,7 +102,7 @@ public class SqlServerBackgroundJobTerminalStateTests(SqlPersistenceContractFixt
 
     // §7 start rule: the two job-table reads, the active job and the latest finished one.
     [Fact]
-    public async Task GivenJobsInEveryStatus_WhenTheActiveAndLatestFinishedJobsAreRead_ThenOnlyRequestedStatusesMatch()
+    public async Task GivenJobsInEveryStatus_WhenTheActiveAndLatestFinishedJobsAreRead_ThenEachReadSkipsTheOtherStatuses()
     {
         // A job type no other test uses, because the fixture database is shared.
         const int jobType = 97;
@@ -129,8 +129,8 @@ public class SqlServerBackgroundJobTerminalStateTests(SqlPersistenceContractFixt
         }
 
         (await repository.GetActiveAsync(jobType))!.JobId.ShouldBe(jobs[4].JobId);
-        (await repository.GetLatestAsync(jobType, ["Failed", "Completed"]))!.JobId.ShouldBe(jobs[2].JobId);
-        (await repository.GetLatestAsync(jobType, ["Failed"]))!.JobId.ShouldBe(jobs[1].JobId);
+        // Cancelled is the latest finished job; the later Queued one is not finished.
+        (await repository.GetLatestFinishedAsync(jobType))!.JobId.ShouldBe(jobs[3].JobId);
     }
 
     private SqlServerBackgroundJobRepository<ExportJobDefinition> CreateRepository(
