@@ -62,19 +62,9 @@ public sealed class ReindexOrchestration
             // One durable wait; stale-job detection adds the barrier delay to its allowance while a job is in it.
             await context.CreateTimer(context.CurrentUtcDateTime.Add(input.BarrierDelay), true);
             state = state with { Phase = ReindexPhase.Draining };
-            bool open;
-            try
+            if (await PersistProgressAsync(context, input, state) is { } closed)
             {
-                open = await PersistProgressAsync(context, input, state);
-            }
-            catch (Exception ex)
-            {
-                return await CompleteAsync(context, input, state, ex);
-            }
-
-            if (!open)
-            {
-                return Stopped(state);
+                return closed;
             }
 
             scheduledActivities++;
@@ -100,19 +90,9 @@ public sealed class ReindexOrchestration
             if (state.Phase != previousPhase || state.WavesSinceSnapshot >= WavesPerProgressSnapshot)
             {
                 // Persist outside the tenant/range failure boundary: retrying this activity never repeats range work.
-                bool open;
-                try
+                if (await PersistProgressAsync(context, input, state) is { } closed)
                 {
-                    open = await PersistProgressAsync(context, input, state);
-                }
-                catch (Exception ex)
-                {
-                    return await CompleteAsync(context, input, state, ex);
-                }
-
-                if (!open)
-                {
-                    return Stopped(state);
+                    return closed;
                 }
 
                 scheduledActivities++;
@@ -166,30 +146,40 @@ public sealed class ReindexOrchestration
             state.Tenants.Select(tenant => tenant.Progress).ToArray(),
             state.IgnoredLifecycleEvents);
 
-    private static RetryOptions CreateRetryOptions() =>
-        new(TimeSpan.FromSeconds(1), 5)
+    private static RetryOptions CreateRetryOptions(int maxNumberOfAttempts = 5) =>
+        new(TimeSpan.FromSeconds(1), maxNumberOfAttempts)
         {
             BackoffCoefficient = 2,
             MaxRetryInterval = TimeSpan.FromSeconds(30)
         };
 
-    // Progress storage gets a longer, still bounded, window than range work: a snapshot that cannot be
-    // written after this fails the job visibly instead of retrying forever.
-    private static RetryOptions CreateProgressRetryOptions() =>
-        new(TimeSpan.FromSeconds(1), 8)
-        {
-            BackoffCoefficient = 2,
-            MaxRetryInterval = TimeSpan.FromSeconds(30)
-        };
-
-    private static Task<bool> PersistProgressAsync(
+    /// <summary>
+    /// Persists a progress snapshot. Returns null while the job row is open; otherwise the output the
+    /// orchestration ends with: stopped when someone else closed the job, failed when the snapshot could not
+    /// be written.
+    /// </summary>
+    private static async Task<ReindexOrchestrationOutput?> PersistProgressAsync(
         OrchestrationContext context,
         ReindexOrchestrationInput input,
-        ReindexOrchestrationState state) =>
-        context.ScheduleWithRetry<bool>(
-            typeof(PersistReindexProgressActivity),
-            CreateProgressRetryOptions(),
-            new PersistReindexProgressInput(input.JobId, state.ToProgress()));
+        ReindexOrchestrationState state)
+    {
+        bool open;
+        try
+        {
+            // Progress storage gets a longer, still bounded, window than range work: a snapshot that cannot
+            // be written after this fails the job visibly instead of retrying forever.
+            open = await context.ScheduleWithRetry<bool>(
+                typeof(PersistReindexProgressActivity),
+                CreateRetryOptions(maxNumberOfAttempts: 8),
+                new PersistReindexProgressInput(input.JobId, state.ToProgress()));
+        }
+        catch (Exception ex)
+        {
+            return await CompleteAsync(context, input, state, ex);
+        }
+
+        return open ? null : Stopped(state);
+    }
 
     private static ReindexPhase DerivePhase(ReindexOrchestrationState state)
     {

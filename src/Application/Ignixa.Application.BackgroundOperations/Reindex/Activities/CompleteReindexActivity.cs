@@ -98,9 +98,7 @@ public sealed class CompleteReindexActivity(
     // unplanned owner fails so it returns to Pending instead of staying Reindexing forever.
     private async Task<IReadOnlyList<ReindexTargetCompletion>> EvaluateTargetsAsync(CompleteReindexInput input)
     {
-        var unplannedOwners = (await lifecycle.GetOwnedTargetsAsync(CancellationToken.None))
-            .Where(owned => owned.JobId == input.JobId)
-            .Select(owned => owned.Target)
+        var unplannedOwners = (await lifecycle.GetOwnedTargetsAsync(input.JobId, CancellationToken.None))
             .Where(owned => !input.Targets.Any(planned => ReindexLifecycleEventWriter.SameTarget(planned, owned)));
         var tenantVersions = await GetTenantVersionsAsync(CancellationToken.None);
         var completions = new List<ReindexTargetCompletion>(input.Targets.Count);

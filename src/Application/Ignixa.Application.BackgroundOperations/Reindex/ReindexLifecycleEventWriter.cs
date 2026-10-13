@@ -114,7 +114,9 @@ public sealed class ReindexLifecycleEventWriter(
         }
     }
 
-    public async Task<IReadOnlyList<OwnedReindexTarget>> GetOwnedTargetsAsync(
+    /// <summary>Every parameter the job still owns, read from the caught-up projection.</summary>
+    public async Task<IReadOnlyList<ReindexParameterDefinition>> GetOwnedTargetsAsync(
+        string jobId,
         CancellationToken cancellationToken)
     {
         using (await conformanceState.AcquireActivationLockAsync(cancellationToken))
@@ -122,12 +124,7 @@ public sealed class ReindexLifecycleEventWriter(
             await conformanceState.CatchUpWhileActivationLockHeldAsync(
                 eventStore,
                 cancellationToken);
-            return conformanceState.AllSearchParameters.Values
-                .Where(parameter =>
-                    parameter.Status == SearchParameterStatus.Reindexing &&
-                    parameter.ReindexJobId is not null)
-                .Select(parameter => new OwnedReindexTarget(parameter.ReindexJobId!, ToTarget(parameter)))
-                .ToArray();
+            return GetOwnedTargets(jobId).ToArray();
         }
     }
 

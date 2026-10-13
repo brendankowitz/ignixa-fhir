@@ -38,28 +38,23 @@ public sealed class CancelReindexHandler(
         await taskHubClient.TerminateInstanceAsync(
             new OrchestrationInstance { InstanceId = job.OrchestrationInstanceId ?? job.JobId },
             request.Reason);
-        var cancelled = await jobLock.ExecuteAsync(
+        return await jobLock.ExecuteAsync(
             ct => CancelUnderLockAsync(request, ct),
             cancellationToken);
-        if (cancelled)
-        {
-            return new ReindexCancelledResult(job.JobId);
-        }
-
-        var terminal = await repository.GetAsync(request.JobId, SystemConstants.GlobalTenantId, cancellationToken)
-            ?? throw new InvalidOperationException($"Reindex job {request.JobId} disappeared during cancellation.");
-        return new ReindexJobAlreadyTerminalResult(terminal.JobId, terminal.GetStatus());
     }
 
     // Cancellation returns the job's parameters to Pending before the final write, like every other terminal
-    // path, so a job can never finish while still owning a parameter.
-    private async Task<bool> CancelUnderLockAsync(CancelReindexCommand request, CancellationToken cancellationToken)
+    // path, so a job can never finish while still owning a parameter. A job that finished first keeps its
+    // status: the first terminal status is final.
+    private async Task<CancelReindexResult> CancelUnderLockAsync(
+        CancelReindexCommand request,
+        CancellationToken cancellationToken)
     {
         var job = await repository.GetAsync(request.JobId, SystemConstants.GlobalTenantId, cancellationToken)
             ?? throw new InvalidOperationException($"Reindex job {request.JobId} disappeared during cancellation.");
         if (job.IsTerminal())
         {
-            return false;
+            return new ReindexJobAlreadyTerminalResult(job.JobId, job.GetStatus());
         }
 
         var reason = $"Cancelled: {request.Reason}";
@@ -74,6 +69,6 @@ public sealed class CancelReindexHandler(
         var progress = ReindexProgress.FromJson(job.Progress) ?? ReindexProgress.Create(job.Definition.TenantIds);
         job.Progress = (progress with { CancellationReason = request.Reason }).ToJson();
         await repository.UpdateAsync(job, SystemConstants.GlobalTenantId, cancellationToken);
-        return true;
+        return new ReindexCancelledResult(job.JobId);
     }
 }
