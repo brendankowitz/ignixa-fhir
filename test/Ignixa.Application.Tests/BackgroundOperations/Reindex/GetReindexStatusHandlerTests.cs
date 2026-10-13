@@ -40,21 +40,14 @@ public class GetReindexStatusHandlerTests
         result.ShouldNotBeNull().IsStale.ShouldBe(expectedStale);
     }
 
-    // §6.2: an id that is not a reindex job is a 404.
+    // §6.2: the list holds every active and queued job and only the most recent terminal ones; an id that is not a
+    // reindex job is a 404.
     [Fact]
-    public async Task GivenJobOfAnotherType_WhenStatusIsRead_ThenItIsAbsent()
+    public async Task GivenActiveTerminalAndExportJobs_WhenListedOrRead_ThenOnlyReindexJobsAppearAndOnlyRecentTerminals()
     {
         var export = Job("Running", "export");
         export.JobType = (int)BackgroundJobType.Export;
         await _jobs.CreateAsync(export, CancellationToken.None);
-
-        (await StatusAsync("export")).ShouldBeNull();
-    }
-
-    // §6.2: the list holds every active and queued job and only the most recent terminal ones.
-    [Fact]
-    public async Task GivenActiveAndTerminalJobs_WhenListingJobs_ThenAllActiveAndOnlyRecentTerminalsAreReturned()
-    {
         await _jobs.CreateAsync(Job("Running", "running", observed: Now.AddMinutes(-3)), CancellationToken.None);
         await _jobs.CreateAsync(Job("Queued", "queued", observed: Now.AddMinutes(-2)), CancellationToken.None);
         await _jobs.CreateAsync(Job("Completed", "old", observed: Now.AddMinutes(-10)), CancellationToken.None);
@@ -65,6 +58,7 @@ public class GetReindexStatusHandlerTests
 
         result.Select(job => job.JobId).ShouldBe(["queued", "running", "recent"]);
         result.All(job => job.Definition is not null).ShouldBeTrue();
+        (await StatusAsync("export")).ShouldBeNull();
     }
 
     private Task<ReindexStatusResult?> StatusAsync(string jobId) =>

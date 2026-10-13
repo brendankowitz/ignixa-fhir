@@ -54,26 +54,27 @@ public sealed class ReindexTriggerTests : IDisposable
         await AssertNoJobRequestedAsync();
     }
 
+    // An activation reports the job it created or found active, or why there was nothing to do, without deferring.
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task GivenACreatedOrActiveJob_WhenActivationTriggers_ThenItsIdIsReported(bool alreadyActive)
+    [InlineData("created", "job-1", false, null)]
+    [InlineData("active", "job-1", true, null)]
+    [InlineData("noWork", null, false, "No resources need reindexing.")]
+    public async Task GivenAJobRequestOutcome_WhenActivationTriggers_ThenItIsReported(
+        string outcome,
+        string? jobId,
+        bool alreadyActive,
+        string? message)
     {
-        _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-            .Returns(alreadyActive ? new ActiveReindexJobResult("job-1") : new ReindexJobCreatedResult("job-1"));
+        if (outcome != "noWork")
+        {
+            _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
+                .Returns(outcome == "active" ? new ActiveReindexJobResult("job-1") : new ReindexJobCreatedResult("job-1"));
+        }
 
         var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
 
-        result.ShouldBe(new ReindexTriggerResult("job-1", alreadyActive, null));
+        result.ShouldBe(new ReindexTriggerResult(jobId, alreadyActive, message));
         await AssertJobRequestedAsync(ReindexTriggerKind.Activation);
-    }
-
-    [Fact]
-    public async Task GivenNoReindexWork_WhenActivationTriggers_ThenTheReasonIsReportedWithoutDeferral()
-    {
-        var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
-
-        result.ShouldBe(new ReindexTriggerResult(null, false, "No resources need reindexing."));
     }
 
     // Operational failures defer to periodic reconciliation, from an activation or a tick; programmer errors fail fast.

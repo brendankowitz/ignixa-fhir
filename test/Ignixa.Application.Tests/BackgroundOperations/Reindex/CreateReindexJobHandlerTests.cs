@@ -78,15 +78,6 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldHaveSingleItem().JobId.ShouldBe("failed-during-race");
     }
 
-    // §7 start rule: a manual $reindex ignores the rule.
-    [Fact]
-    public async Task GivenFinishedJobCoversPendingParameters_WhenJobIsCreatedManually_ThenJobStarts()
-    {
-        await _jobs.CreateAsync(Job("Failed", "failed", CreateJobDefinition([PendingTarget], targetEventId: 42)), CancellationToken.None);
-
-        (await CreatedJobAsync(await HandleAsync())).Definition.Trigger.ShouldBe("Manual");
-    }
-
     // §6.1: an out-of-range parameter is a typed 400 result, rejected before the job lock.
     [Fact]
     public async Task GivenInvalidConcurrency_WhenJobIsCreated_ThenTypedValidationResultIsReturned()
@@ -113,19 +104,23 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
     }
 
     // §8.1: the handler writes the Queued job row and starts its orchestration with instanceId = jobId; §7 start
-    // rule: a Pending activation newer than the latest finished job's TargetEventId starts a job.
+    // rule: a Pending activation newer than the latest finished job's TargetEventId starts a job, and a manual
+    // $reindex ignores the rule.
     [Theory]
-    [InlineData(null, ReindexTriggerKind.Activation)]
-    [InlineData("Completed", ReindexTriggerKind.Reconciliation)]
-    [InlineData("Failed", ReindexTriggerKind.Reconciliation)]
-    [InlineData("Cancelled", ReindexTriggerKind.Reconciliation)]
-    public async Task GivenNoFinishedJobOrOneForAnOlderActivation_WhenAJobIsRequested_ThenRowAndOrchestrationCarryTheResolvedPlan(
+    [InlineData(null, 0, ReindexTriggerKind.Activation)]
+    [InlineData("Completed", 41, ReindexTriggerKind.Reconciliation)]
+    [InlineData("Failed", 41, ReindexTriggerKind.Reconciliation)]
+    [InlineData("Cancelled", 41, ReindexTriggerKind.Reconciliation)]
+    [InlineData("Failed", 42, ReindexTriggerKind.Manual)]
+    public async Task GivenNoFinishedJobOrOneTheStartRuleAllows_WhenAJobIsRequested_ThenRowAndOrchestrationCarryTheResolvedPlan(
         string? finishedStatus,
+        long finishedTargetEventId,
         ReindexTriggerKind trigger)
     {
         if (finishedStatus is not null)
         {
-            await _jobs.CreateAsync(Job(finishedStatus, "older", CreateJobDefinition(targetEventId: 41)), CancellationToken.None);
+            await _jobs.CreateAsync(
+                Job(finishedStatus, "older", CreateJobDefinition([PendingTarget], finishedTargetEventId)), CancellationToken.None);
         }
 
         var job = await CreatedJobAsync(await HandleAsync(trigger));
