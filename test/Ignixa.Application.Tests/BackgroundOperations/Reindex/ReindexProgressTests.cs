@@ -15,10 +15,7 @@ public class ReindexProgressTests
     [InlineData(ReindexJobStatus.Completed, 0, 0, 100)]
     [InlineData(ReindexJobStatus.Completed, 10, 10, 100)]
     public void GivenCounts_WhenPercentIsReported_ThenOnlyACompletedJobReachesOneHundred(
-        ReindexJobStatus status,
-        long total,
-        long reindexed,
-        double expected)
+        ReindexJobStatus status, long total, long reindexed, double expected)
     {
         var progress = new ReindexProgress(ReindexPhase.Reindexing)
         {

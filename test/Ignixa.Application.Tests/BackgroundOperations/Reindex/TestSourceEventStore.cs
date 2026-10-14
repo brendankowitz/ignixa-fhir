@@ -24,9 +24,7 @@ internal sealed class TestSourceEventStore(long firstEventId = 2) : ISourceEvent
         AppendAsync(events, expectedLastEventId: -1, cancellationToken);
 
     public async Task<IReadOnlyList<SourceEvent>> AppendAsync(
-        IEnumerable<NewSourceEvent> events,
-        long expectedLastEventId,
-        CancellationToken cancellationToken)
+        IEnumerable<NewSourceEvent> events, long expectedLastEventId, CancellationToken cancellationToken)
     {
         if (BeforeAppend is { } beforeAppend)
         {

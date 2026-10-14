@@ -37,15 +37,9 @@ public sealed class ReindexTriggerTests : IDisposable
     [InlineData(true, false, false, "Reindex is unavailable because the feature is disabled; parameters remain Pending.")]
     [InlineData(true, true, true, "Reindex is unavailable for tenant 3; parameters remain Pending.")]
     public async Task GivenAutomaticReindexCannotRun_WhenActivationOrTickTriggers_ThenThePendingReasonIsReportedWithoutARequest(
-        bool autoStart,
-        bool enabled,
-        bool withFileSystemTenant,
-        string expectedMessage)
+        bool autoStart, bool enabled, bool withFileSystemTenant, string expectedMessage)
     {
-        var trigger = CreateTrigger(
-            autoStart: autoStart,
-            enabled: enabled,
-            tenants: withFileSystemTenant ? [Tenant(1, "SqlServer"), Tenant(3, "FileSystem")] : []);
+        var trigger = CreateTrigger(autoStart, enabled, withFileSystemTenant ? [Tenant(1, "SqlServer"), Tenant(3, "FileSystem")] : []);
 
         var result = await trigger.RequestReindexAsync("activation", CancellationToken.None);
         await trigger.ReconcileAsync(CancellationToken.None);
@@ -60,10 +54,7 @@ public sealed class ReindexTriggerTests : IDisposable
     [InlineData("active", "job-1", true, null)]
     [InlineData("noWork", null, false, "No resources need reindexing.")]
     public async Task GivenAJobRequestOutcome_WhenActivationTriggers_ThenItIsReported(
-        string outcome,
-        string? jobId,
-        bool alreadyActive,
-        string? message)
+        string outcome, string? jobId, bool alreadyActive, string? message)
     {
         if (outcome != "noWork")
         {

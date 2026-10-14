@@ -17,9 +17,7 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class CompleteReindexActivityTests
 {
-    // §8.5: the job is written only after the lifecycle outcome is appended, and appends are idempotent, so a
-    // completion retried after a failed append and then a failed final write appends nothing twice. The catalog is
-    // checked by storage canonical (OverridesCanonical ?? Canonical), and the job keeps the tenants' failure counts.
+    // §8.5: the job is written after the idempotent lifecycle append; the catalog is checked by storage canonical.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -102,17 +100,14 @@ public class CompleteReindexActivityTests
         fixture.State.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
     }
 
-    // §8.5: an active tenant the job did not cover, or one whose catalog has no row for the storage canonical, fails
-    // the target; F2/F11: so do failed resources or ranges of an affected type, and the failing tenant is reported Failed.
+    // §8.5, F2/F11: an uncovered tenant, a missing catalog row or failures of an affected type fail the target.
     [Theory]
     [InlineData("tenantAddedAfterStart", "a manual $reindex is needed", ReindexTenantStatus.Completed)]
     [InlineData("noCatalogRow", "Tenant 1: the search-parameter catalog has no row for " + Canonical, ReindexTenantStatus.Completed)]
     [InlineData("failedResource", "Tenant 1: resource failures occurred", ReindexTenantStatus.Failed)]
     [InlineData("failedRange", "Tenant 1: resource failures occurred", ReindexTenantStatus.Failed)]
     public async Task GivenATenantThatCannotEnableTheTarget_WhenCompletionRuns_ThenTheJobFailsAndTheParameterReturnsToPending(
-        string blocker,
-        string expectedError,
-        ReindexTenantStatus expectedTenantStatus)
+        string blocker, string expectedError, ReindexTenantStatus expectedTenantStatus)
     {
         var fixture = await Fixture.CreateAsync(activeTenants: blocker == "tenantAddedAfterStart" ? [Tenant(1), Tenant(2)] : null);
         var progress = blocker switch
@@ -152,9 +147,7 @@ public class CompleteReindexActivityTests
             data is SearchParameterReindexCompleted || data is SearchParameterReindexFailed);
     }
 
-    // Spec §4.4: a target is judged only by tenants of its FHIR version. Another version's active tenant is
-    // neither required nor catalog-checked (only tenant 1 has a store), and its failures do not decide it;
-    // they still fail the job (§8.6).
+    // Spec §4.4, §8.6: another FHIR version's tenant neither decides an R4 target nor escapes failing the job.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -180,15 +173,10 @@ public class CompleteReindexActivityTests
         new(tenantId, ReindexTenantStatus.Completed, 1, 1, 1, 1, 0, failedResourceCount, null);
 
     private static string Input(
-        ReindexParameterDefinition[] targets,
-        string? failureMessage = null,
-        params ReindexTenantProgress[] tenants) =>
+        ReindexParameterDefinition[] targets, string? failureMessage = null, params ReindexTenantProgress[] tenants) =>
         JsonSerializer.Serialize(new[]
         {
-            new CompleteReindexInput("job", 1, targets, tenants.Length == 0 ? [Completed(1)] : tenants, [])
-            {
-                FailureMessage = failureMessage
-            }
+            new CompleteReindexInput("job", 1, targets, tenants.Length == 0 ? [Completed(1)] : tenants, []) { FailureMessage = failureMessage }
         });
 
     private static IReindexStoreFactory StoreFactoryWithCatalog(params string[] storageCanonicals)
@@ -227,9 +215,7 @@ public class CompleteReindexActivityTests
         public SearchParameterStatus Status => State.GetSearchParameter("Patient", "custom")!.Status;
 
         public static async Task<Fixture> CreateAsync(
-            TenantConfiguration[]? activeTenants = null,
-            ReindexParameterDefinition? target = null,
-            ReindexParameterDefinition[]? jobTargets = null)
+            TenantConfiguration[]? activeTenants = null, ReindexParameterDefinition? target = null, ReindexParameterDefinition[]? jobTargets = null)
         {
             target ??= Target();
             var fixture = new Fixture(TenantStore(activeTenants ?? [Tenant(1)]), target);
@@ -244,8 +230,7 @@ public class CompleteReindexActivityTests
             (await Jobs.GetAsync("job", 1, CancellationToken.None))!;
 
         public CompleteReindexActivity Activity(
-            IReindexStoreFactory? storeFactory = null,
-            IBackgroundJobRepository<ReindexJobDefinition>? jobs = null) =>
+            IReindexStoreFactory? storeFactory = null, IBackgroundJobRepository<ReindexJobDefinition>? jobs = null) =>
             new(storeFactory ?? StoreFactoryWithCatalog(Canonical), Lifecycle, jobs ?? Jobs, new TestReindexJobLock(), _tenants,
                 TimeProvider.System, NullLogger<CompleteReindexActivity>.Instance);
     }

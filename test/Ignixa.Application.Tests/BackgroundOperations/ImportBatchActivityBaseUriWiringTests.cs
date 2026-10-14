@@ -7,8 +7,8 @@ using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Import.Activities;
 using Ignixa.Application.BackgroundOperations.Import.Models;
-using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -183,13 +183,7 @@ public class ImportBatchActivityBaseUriWiringTests
         IFhirRequestContextAccessor fhirContextAccessor,
         ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<ImportBatchActivity> logger)
-        : ImportBatchActivity(
-            repositoryFactory,
-            fhirVersionContext,
-            tenantConfigurationStore,
-            fhirContextAccessor,
-            barrierRetryPolicy,
-            logger)
+        : ImportBatchActivity(repositoryFactory, fhirVersionContext, tenantConfigurationStore, fhirContextAccessor, barrierRetryPolicy, logger)
     {
         public Task<ImportBatchOutput> RunExecuteAsync(TaskContext context, ImportBatchInput input) =>
             ExecuteAsync(context, input);

@@ -14,8 +14,7 @@ public class ReindexLifecycleEventWriterTests
     [InlineData("custom", 5)]
     [InlineData("unknown", 1)]
     public async Task GivenATargetTheProjectionDoesNotMatch_WhenStarted_ThenItsIgnoredEventIsReported(
-        string code,
-        long activationEventId)
+        string code, long activationEventId)
     {
         using var state = new ConformanceState();
         state.ApplyAndTrack(Activation(eventId: 1));

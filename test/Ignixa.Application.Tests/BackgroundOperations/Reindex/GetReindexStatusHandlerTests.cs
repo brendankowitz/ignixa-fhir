@@ -27,9 +27,7 @@ public class GetReindexStatusHandlerTests
     [InlineData("Running", ReindexPhase.BarrierDelay, false)]
     [InlineData("Running", ReindexPhase.Reindexing, true)]
     public async Task GivenAnHourWithoutHeartbeat_WhenStatusIsRead_ThenItIsStaleUnlessTheBarrierDelayCoversTheSilence(
-        string status,
-        ReindexPhase? phase,
-        bool expectedStale)
+        string status, ReindexPhase? phase, bool expectedStale)
     {
         var job = Job(status, observed: Now.AddHours(-1));
         job.Progress = phase is { } value ? new ReindexProgress(value).ToJson() : null;
@@ -40,8 +38,7 @@ public class GetReindexStatusHandlerTests
         result.ShouldNotBeNull().IsStale.ShouldBe(expectedStale);
     }
 
-    // §6.2: the list holds every active and queued job and only the most recent terminal ones; an id that is not a
-    // reindex job is a 404.
+    // §6.2: every active job and only recent terminal ones are listed; a non-reindex id is a 404.
     [Fact]
     public async Task GivenActiveTerminalAndExportJobs_WhenListedOrRead_ThenOnlyReindexJobsAppearAndOnlyRecentTerminals()
     {

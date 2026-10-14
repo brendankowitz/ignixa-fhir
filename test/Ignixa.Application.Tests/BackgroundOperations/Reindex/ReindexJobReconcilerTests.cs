@@ -45,9 +45,7 @@ public sealed class ReindexJobReconcilerTests : IDisposable
     [InlineData(1, null, 0)]
     [InlineData(10, OrchestrationStatus.Running, 1)]
     public async Task GivenJobWithinGraceOrWithARunningOrchestration_WhenReconciled_ThenNothingChanges(
-        int minutesSinceObserved,
-        OrchestrationStatus? orchestration,
-        int expectedLockAcquisitions)
+        int minutesSinceObserved, OrchestrationStatus? orchestration, int expectedLockAcquisitions)
     {
         var job = await StartedJobAsync(Now - TimeSpan.FromMinutes(minutesSinceObserved), orchestration);
 
@@ -59,19 +57,19 @@ public sealed class ReindexJobReconcilerTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
+    [InlineData(null, "missing")]
+    [InlineData(OrchestrationStatus.Failed, "Failed")]
     public async Task GivenRunningJobPastGraceWithDeadOrchestration_WhenReconciled_ThenJobFailsAndParametersReturnToPending(
-        bool orchestrationIsMissing)
+        OrchestrationStatus? orchestration, string expectedReason)
     {
-        var job = await StartedJobAsync(PastGrace, orchestrationIsMissing ? null : OrchestrationStatus.Failed);
+        var job = await StartedJobAsync(PastGrace, orchestration);
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
 
         var failed = await GetJobAsync();
         failed.Status.ShouldBe("Failed");
         failed.EndDate.ShouldBe(Now);
-        failed.ErrorMessage.ShouldContain(orchestrationIsMissing ? "missing" : "Failed");
+        failed.ErrorMessage.ShouldContain(expectedReason);
         Status.ShouldBe(SearchParameterStatus.Pending);
         _state.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
     }
@@ -92,16 +90,11 @@ public sealed class ReindexJobReconcilerTests : IDisposable
     [InlineData(true, "Completed", SearchParameterStatus.Enabled)]
     [InlineData(false, "Failed", SearchParameterStatus.Pending)]
     public async Task GivenLifecycleOutcomeAppendedBeforeTheFinalWriteWasLost_WhenReconciledTwice_ThenTheJobTakesThatOutcomeWithoutNewEvents(
-        bool succeeded,
-        string expectedJobStatus,
-        SearchParameterStatus expectedParameterStatus)
+        bool succeeded, string expectedJobStatus, SearchParameterStatus expectedParameterStatus)
     {
         var job = await StartedJobAsync(PastGrace, OrchestrationStatus.Failed);
-        await _lifecycle.CompleteAsync(
-            "job",
-            [new ReindexTargetCompletion(Target(), succeeded, 12, succeeded ? null : "worker failed")],
-            TimeSpan.Zero,
-            CancellationToken.None);
+        var completion = new ReindexTargetCompletion(Target(), succeeded, 12, succeeded ? null : "worker failed");
+        await _lifecycle.CompleteAsync("job", [completion], TimeSpan.Zero, CancellationToken.None);
         var appendedBefore = _events.Appended.Count;
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
@@ -116,8 +109,7 @@ public sealed class ReindexJobReconcilerTests : IDisposable
 
     /// <summary>A Running job that started <c>Patient.custom</c>; a null orchestration status means it is missing.</summary>
     private async Task<BackgroundJob<ReindexJobDefinition>> StartedJobAsync(
-        DateTimeOffset lastObserved,
-        OrchestrationStatus? orchestration)
+        DateTimeOffset lastObserved, OrchestrationStatus? orchestration)
     {
         await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
         _runtime.GetOrchestrationStateAsync("job", false).Returns(orchestration is { } status
@@ -128,9 +120,7 @@ public sealed class ReindexJobReconcilerTests : IDisposable
 
     private async Task<BackgroundJob<ReindexJobDefinition>> CreateJobAsync(string status, DateTimeOffset lastObserved)
     {
-        await _jobs.CreateAsync(
-            Job(status, definition: CreateJobDefinition([Target()], targetEventId: 1), observed: lastObserved),
-            CancellationToken.None);
+        await _jobs.CreateAsync(Job(status, definition: CreateJobDefinition([Target()], 1), observed: lastObserved), CancellationToken.None);
         return await GetJobAsync();
     }
 

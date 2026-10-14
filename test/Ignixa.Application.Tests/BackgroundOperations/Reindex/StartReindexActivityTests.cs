@@ -53,15 +53,11 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
     [InlineData("Failed", SearchParameterStatus.Pending)]
     [InlineData("Cancelled", SearchParameterStatus.Pending)]
     public async Task GivenJobFinishedBeforeStart_WhenDelayedStartResumes_ThenLifecycleAndTerminalJobAreUnchanged(
-        string decision,
-        SearchParameterStatus expectedStatus)
+        string decision, SearchParameterStatus expectedStatus)
     {
         await _lifecycle.StartAsync("job", [Target()], CancellationToken.None);
-        await _lifecycle.CompleteAsync(
-            "job",
-            [new ReindexTargetCompletion(Target(), decision == "Completed", 0, "terminated")],
-            TimeSpan.Zero,
-            CancellationToken.None);
+        var completion = new ReindexTargetCompletion(Target(), decision == "Completed", 0, "terminated");
+        await _lifecycle.CompleteAsync("job", [completion], TimeSpan.Zero, CancellationToken.None);
         var finished = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
         finished.Status = decision;
         await _jobs.UpdateAsync(finished, 1, CancellationToken.None);
@@ -92,15 +88,8 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
         var cancelling = new CancelReindexHandler(
                 new TaskHubClient(Substitute.For<IOrchestrationServiceClient>()), _jobs, _lifecycle, _jobLock, TimeProvider.System)
             .HandleAsync(new CancelReindexCommand("job", "cancelled"), CancellationToken.None);
-        string statusWhileStarting;
-        try
-        {
-            statusWhileStarting = (await _jobs.GetAsync("job", 1, CancellationToken.None))!.Status;
-        }
-        finally
-        {
-            releaseStart.SetResult();
-        }
+        var statusWhileStarting = (await _jobs.GetAsync("job", 1, CancellationToken.None))!.Status;
+        releaseStart.SetResult();
 
         var startError = await Record.ExceptionAsync(() => starting);
         var cancelled = await cancelling;

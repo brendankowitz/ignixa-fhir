@@ -75,13 +75,9 @@ internal static class ReindexTestHelper
         EndDate = status is "Completed" or "Failed" or "Cancelled" ? observed ?? Now : null
     };
 
-    /// <summary>An in-memory job store whose tenant store lists <paramref name="activeTenants"/>.</summary>
-    public static InMemoryBackgroundJobRepository<ReindexJobDefinition> JobRepository(
-        params TenantConfiguration[] activeTenants) =>
-        JobRepository(TenantStore(activeTenants));
-
-    public static InMemoryBackgroundJobRepository<ReindexJobDefinition> JobRepository(ITenantConfigurationStore tenants) =>
-        new(tenants, NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
+    /// <summary>An in-memory job store; by default its tenant store lists no tenant.</summary>
+    public static InMemoryBackgroundJobRepository<ReindexJobDefinition> JobRepository(ITenantConfigurationStore? tenants = null) =>
+        new(tenants ?? TenantStore(), NullLogger<InMemoryBackgroundJobRepository<ReindexJobDefinition>>.Instance);
 
     public static ITenantConfigurationStore TenantStore(params TenantConfiguration[] activeTenants)
     {
@@ -94,21 +90,14 @@ internal static class ReindexTestHelper
     public static TaskContext ActivityContext() => new(new OrchestrationInstance { InstanceId = "job" });
 
     public static ReindexOrchestrationInput CreateOrchestrationInput(
-        TimeSpan? barrierDelay = null,
-        IReadOnlyList<int>? tenantIds = null) =>
+        TimeSpan? barrierDelay = null, IReadOnlyList<int>? tenantIds = null) =>
         new("job", 42, barrierDelay ?? TimeSpan.Zero, tenantIds ?? [1], ["Patient"], [], ReindexJobParameters.Create(),
             DrainWarningAfter: TimeSpan.FromMinutes(5), StaleJobTimeout: TimeSpan.FromMinutes(30), ContinueAsNewThreshold: 2_000);
 
-    /// <summary>
-    /// A repository factory whose tenant store lists <paramref name="tenants"/>; by default one SQL Server
-    /// tenant, which makes reindex available.
-    /// </summary>
+    /// <summary>A repository factory over <paramref name="tenants"/>; by default one SQL Server tenant, so reindex is available.</summary>
     public static CompositeRepositoryFactory CreateRepositoryFactory(params TenantConfiguration[] tenants) =>
-        new(
-            TenantStore(tenants.Length == 0 ? [Tenant(1, "SqlServer")] : tenants),
-            Substitute.For<IFhirRepositoryFactory>(),
-            Substitute.For<IFhirRepositoryFactory>(),
-            Substitute.For<IReindexStoreFactory>());
+        new(TenantStore(tenants.Length == 0 ? [Tenant(1, "SqlServer")] : tenants), Substitute.For<IFhirRepositoryFactory>(),
+            Substitute.For<IFhirRepositoryFactory>(), Substitute.For<IReindexStoreFactory>());
 
     public static TenantConfiguration Tenant(int tenantId, string? storageType = null, string fhirVersion = "4.0") => new()
     {
