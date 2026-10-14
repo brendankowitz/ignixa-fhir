@@ -19,9 +19,7 @@ public class ReindexTargetResolverTests
     [InlineData("DomainResource", null, "Observation,Patient")]
     [InlineData("Patient", "Practitioner", "Patient")]
     public void GivenAPendingParameter_WhenTargetsAreResolved_ThenItsConcreteBaseTypesAreReindexedInOrderButNotItsReferenceTargets(
-        string baseType,
-        string? referenceTarget,
-        string expectedTypes)
+        string baseType, string? referenceTarget, string expectedTypes)
     {
         var pending = Parameter(baseType, referenceTarget is null ? null : [referenceTarget]);
 
@@ -37,16 +35,19 @@ public class ReindexTargetResolverTests
         string.Join(",", result.Single().AffectedResourceTypes).ShouldBe(expectedTypes);
     }
 
-    // §4.4: a job targets a parameter only on tenants of its FHIR version.
+    // §4.4: a job targets a parameter only on tenants of its FHIR version (tenant 1 is R4, tenant 2 R5).
     [Theory]
     [InlineData("4.0", new[] { 1 })]
     [InlineData("5.0", new[] { 2 })]
     [InlineData(null, new[] { 1, 2 })]
     public async Task GivenTenantsOnTwoVersions_WhenAPendingParameterIsResolved_ThenOnlyItsVersionsTenantsAreTargeted(
-        string? fhirVersion,
-        int[] expectedTenantIds)
+        string? fhirVersion, int[] expectedTenantIds)
     {
-        var resolver = CreateResolver([Activation(resourceType: "Resource", fhirVersion: fhirVersion)]);
+        var state = new ConformanceState();
+        state.ApplyAndTrack(Activation(resourceType: "Resource", fhirVersion: fhirVersion));
+        var versions = new FhirVersionContext(NullLoggerFactory.Instance, new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance);
+        var resolver = new ReindexTargetResolver(
+            TenantStore(Tenant(1, fhirVersion: "4.0"), Tenant(2, fhirVersion: "5.0")), versions, state, TestConformanceRefresher.EmptyEventStore());
 
         var plan = await resolver.ResolveAsync(CancellationToken.None);
 
@@ -56,25 +57,6 @@ public class ReindexTargetResolverTests
         // ActorDefinition exists only from R5: an R4 parameter must not reach it, an R5 one must.
         target.AffectedResourceTypes.Contains("ActorDefinition").ShouldBe(fhirVersion != "4.0");
         target.AffectedResourceTypes.ShouldContain("Patient");
-    }
-
-    /// <summary>A resolver over the given activations, with tenant 1 on R4 and tenant 2 on R5.</summary>
-    private static ReindexTargetResolver CreateResolver(IEnumerable<SourceEvent> activations)
-    {
-        var state = new ConformanceState();
-        foreach (var activation in activations)
-        {
-            state.ApplyAndTrack(activation);
-        }
-
-        return new ReindexTargetResolver(
-            TenantStore(Tenant(1, fhirVersion: "4.0"), Tenant(2, fhirVersion: "5.0")),
-            new FhirVersionContext(
-                NullLoggerFactory.Instance,
-                new SearchParameterResolutionOptions(),
-                NullFhirBaseUriProvider.Instance),
-            state,
-            TestConformanceRefresher.EmptyEventStore());
     }
 
     private static ActiveSearchParameter Parameter(string resourceType, IReadOnlyList<string>? targetResourceTypes) =>

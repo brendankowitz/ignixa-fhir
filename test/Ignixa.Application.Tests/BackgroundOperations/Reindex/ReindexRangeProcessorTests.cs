@@ -44,8 +44,7 @@ public class ReindexRangeProcessorTests
         result.ResourcesReindexed.ShouldBe(20);
     }
 
-    // M5, §8.4: a worker behind the job's target event refreshes its definitions once; still behind, it returns a
-    // typed not-ready output that survives DurableTask's activity-boundary converter, without reading or throwing.
+    // M5, §8.4: a worker still behind after one refresh returns a typed not-ready output without reading.
     [Fact]
     public async Task GivenDefinitionsStillBehindAfterRefresh_WhenRangeIsProcessed_ThenItReturnsNotReadyWithoutReadingOrThrowing()
     {
@@ -53,7 +52,7 @@ public class ReindexRangeProcessorTests
         var versions = Versions(Substitute.For<ISearchIndexer>(), 41, 41);
         var eventStore = TestConformanceRefresher.EmptyEventStore();
 
-        var result = await CreateProcessor(store, versions, eventStore).ProcessAsync(Range, CancellationToken.None);
+        var result = await CreateProcessor(store, versions: versions, eventStore: eventStore).ProcessAsync(Range, CancellationToken.None);
 
         var crossed = JsonDataConverter.Default.Deserialize<ReindexRangeOutput>(JsonDataConverter.Default.Serialize(result));
         crossed.IsDefinitionsNotReady.ShouldBeTrue();
@@ -63,9 +62,7 @@ public class ReindexRangeProcessorTests
         await store.DidNotReceiveWithAnyArgs().ReadRangeAsync(default!, default, default, default, default, default);
     }
 
-    // M5, §8.4 steps 3 and 6 (M10, F11): a worker behind the target extracts with its refreshed definitions, under a
-    // background FhirRequestContext for the tenant, and restores the caller's; a failure is recorded and skipped while
-    // the rest of the page is written; every failure is counted, at most 100 are returned. Only p1 and p103 extract.
+    // M5, §8.4 steps 3 and 6 (M10, F11): refreshed definitions, background context, failures counted. p1, p103 extract.
     [Fact]
     public async Task GivenACallerContextAndMoreFailuresThanTheSample_WhenRangeIsProcessed_ThenItExtractsInTheBackgroundAndCountsEveryFailure()
     {
@@ -82,7 +79,7 @@ public class ReindexRangeProcessorTests
             }
         });
 
-        var result = await CreateProcessor(store, Versions(indexer, 41, 42), accessor: accessor).ProcessAsync(Range, CancellationToken.None);
+        var result = await CreateProcessor(store, versions: Versions(indexer, 41, 42), accessor: accessor).ProcessAsync(Range, CancellationToken.None);
 
         var background = observed.Distinct().ShouldHaveSingleItem().ShouldNotBeNull();
         background.ShouldNotBeSameAs(caller);
@@ -114,7 +111,7 @@ public class ReindexRangeProcessorTests
             .ReturnsForAnyArgs<IReadOnlyList<ReindexResource>>(_ => throw new InvalidOperationException("read failed"));
 
         await Should.ThrowAsync<InvalidOperationException>(() =>
-            CreateProcessor(store, Indexer(_ => extractions++), accessor).ProcessAsync(Range, CancellationToken.None));
+            CreateProcessor(store, Indexer(_ => extractions++), accessor: accessor).ProcessAsync(Range, CancellationToken.None));
 
         extractions.ShouldBe(0);
         accessor.RequestContext.ShouldBeSameAs(caller);
@@ -164,26 +161,21 @@ public class ReindexRangeProcessorTests
         DefinitionsHandle Handle(long eventId) => new(indexer, FhirVersion.R4.GetSchemaProvider(), eventId);
     }
 
-    private static ReindexRangeProcessor CreateProcessor(
-        IReindexStore store, ISearchIndexer? indexer = null, IFhirRequestContextAccessor? accessor = null) =>
-        CreateProcessor(store, Versions(indexer ?? Indexer(_ => { }), 42), accessor: accessor);
-
+    /// <summary>A processor for tenant 1 whose definitions are at the target event 42 unless <paramref name="versions"/> says otherwise.</summary>
     private static ReindexRangeProcessor CreateProcessor(
         IReindexStore store,
-        IFhirVersionContext versions,
+        ISearchIndexer? indexer = null,
+        IFhirVersionContext? versions = null,
         ISourceEventStore? eventStore = null,
         IFhirRequestContextAccessor? accessor = null)
     {
+        versions ??= Versions(indexer ?? Indexer(_ => { }), 42);
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(ReindexTestHelper.Tenant(1));
         var stores = Substitute.For<IReindexStoreFactory>();
         stores.GetReindexStoreAsync(1, Arg.Any<CancellationToken>()).Returns(store);
-        return new ReindexRangeProcessor(
-            stores,
-            tenants,
-            versions,
-            TestConformanceRefresher.Create(new ConformanceState(), eventStore),
-            accessor ?? new FhirRequestContextAccessor());
+        var refresher = TestConformanceRefresher.Create(new ConformanceState(), eventStore);
+        return new ReindexRangeProcessor(stores, tenants, versions, refresher, accessor ?? new FhirRequestContextAccessor());
     }
 
     /// <summary>A store whose range 1..20 holds one page of <paramref name="count"/> patients, all written.</summary>
@@ -203,8 +195,7 @@ public class ReindexRangeProcessorTests
         return store;
     }
 
-    // A plain property, unlike the AsyncLocal accessor: what the processor sets and restores is observable
-    // from the test after the call returns.
+    // A plain property, unlike the AsyncLocal accessor, so what the processor restores is observable afterwards.
     private sealed class RecordingContextAccessor : IFhirRequestContextAccessor
     {
         public IFhirRequestContext? RequestContext { get; set; }

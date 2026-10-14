@@ -8,6 +8,8 @@ using Ignixa.Conformance.Events;
 using Ignixa.Conformance.Events.Events;
 using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Definition;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
@@ -51,8 +53,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         _events.Unread.AddRange(
         [
             RemoteEvent(43, new SearchParameterReindexStarted(Canonical, "custom", "Patient", "remote-job", ["Patient"], 42)),
-            RemoteEvent(44, new SearchParameterReindexCompleted(
-                Canonical, "custom", "Patient", "remote-job", 1, TimeSpan.FromSeconds(1), 42))
+            RemoteEvent(44, new SearchParameterReindexCompleted(Canonical, "custom", "Patient", "remote-job", 1, TimeSpan.FromSeconds(1), 42))
         ]);
 
         var result = await HandleAsync(ReindexTriggerKind.Reconciliation);
@@ -68,9 +69,8 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
     public async Task GivenJobEndsUnsuccessfullyBeforeReconciliationAcquiresLock_WhenReconciliationCreatesJob_ThenRestartIsSuppressed(
         string status)
     {
-        _jobLock.OnAcquired = () => _jobs.CreateAsync(
-            Job(status, "failed-during-race", CreateJobDefinition([PendingTarget], targetEventId: 42)),
-            CancellationToken.None);
+        var finished = Job(status, "failed-during-race", CreateJobDefinition([PendingTarget], targetEventId: 42));
+        _jobLock.OnAcquired = () => _jobs.CreateAsync(finished, CancellationToken.None);
 
         var result = await HandleAsync(ReindexTriggerKind.Reconciliation);
 
@@ -103,9 +103,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
         (await _jobs.ListAsync()).ShouldHaveSingleItem();
     }
 
-    // §8.1: the handler writes the Queued job row and starts its orchestration with instanceId = jobId; §7 start
-    // rule: a Pending activation newer than the latest finished job's TargetEventId starts a job, and a manual
-    // $reindex ignores the rule.
+    // §8.1: a Queued row and an orchestration with instanceId = jobId; §7: the start rule, which manual ignores.
     [Theory]
     [InlineData(null, 0, ReindexTriggerKind.Activation)]
     [InlineData("Completed", 41, ReindexTriggerKind.Reconciliation)]
@@ -113,9 +111,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
     [InlineData("Cancelled", 41, ReindexTriggerKind.Reconciliation)]
     [InlineData("Failed", 42, ReindexTriggerKind.Manual)]
     public async Task GivenNoFinishedJobOrOneTheStartRuleAllows_WhenAJobIsRequested_ThenRowAndOrchestrationCarryTheResolvedPlan(
-        string? finishedStatus,
-        long finishedTargetEventId,
-        ReindexTriggerKind trigger)
+        string? finishedStatus, long finishedTargetEventId, ReindexTriggerKind trigger)
     {
         if (finishedStatus is not null)
         {
@@ -166,13 +162,7 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
 
     private CreateReindexJobHandler CreateHandler()
     {
-        var schema = Substitute.For<IFhirSchemaProvider>();
-        schema.ResourceTypeNames.Returns(new HashSet<string>(StringComparer.Ordinal) { "Patient" });
-        var patient = Substitute.For<IType>();
-        patient.Info.Returns(new TypeInfo("Patient", isResource: true));
-        schema.GetTypeDefinition("Patient").Returns(patient);
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetSchemaProvider(FhirVersion.R4, 1).Returns(schema);
+        var versions = new FhirVersionContext(NullLoggerFactory.Instance, new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance);
         var resolver = new ReindexTargetResolver(TenantStore(_tenants), versions, _state, _events);
         var options = Options.Create(new ReindexOptions { BarrierDelay = TimeSpan.Zero });
         return new CreateReindexJobHandler(new TaskHubClient(_runtime), _jobs, _jobLock, resolver, options, new FakeTimeProvider(Now));

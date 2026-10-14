@@ -68,14 +68,8 @@ public class ReindexProgressReporterTests
             .Returns<Task<BackgroundJob<ReindexJobDefinition>?>>(_ => throw new TimeoutException("job store unavailable"));
         var started = false;
 
-        await Should.ThrowAsync<TimeoutException>(() => CreateReporter(repository).RunWithHeartbeatAsync(
-            "job",
-            _ =>
-            {
-                started = true;
-                return Task.FromResult(17);
-            },
-            CancellationToken.None));
+        await Should.ThrowAsync<TimeoutException>(() =>
+            CreateReporter(repository).RunWithHeartbeatAsync("job", _ => Task.FromResult(started = true), CancellationToken.None));
 
         started.ShouldBeFalse();
     }
