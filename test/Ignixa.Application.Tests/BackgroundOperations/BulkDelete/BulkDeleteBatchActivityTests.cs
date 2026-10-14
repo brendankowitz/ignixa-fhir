@@ -59,12 +59,7 @@ public sealed class BulkDeleteBatchActivityTests : IAsyncLifetime, IDisposable
 
     public BulkDeleteBatchActivityTests()
     {
-        _builders = new SearchOptionsBuilderFactory(
-            _versions,
-            NullFhirBaseUriProvider.Instance,
-            new HttpContextAccessor(),
-            _accessor,
-            _lease);
+        _builders = new SearchOptionsBuilderFactory(_versions, NullFhirBaseUriProvider.Instance, new HttpContextAccessor(), _accessor, _lease);
         _tenants.Mode.Returns(TenantMode.Isolated);
         _tenants.GetTenantConfigurationAsync(TenantId, Arg.Any<CancellationToken>())
             .Returns(new TenantConfiguration { TenantId = TenantId, DisplayName = "Bulk delete", FhirVersion = "4.0" });

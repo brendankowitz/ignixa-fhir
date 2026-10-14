@@ -28,13 +28,15 @@ public sealed class CancelReindexHandlerTests : IDisposable
     public void Dispose() => _state.Dispose();
 
     [Fact]
-    public async Task GivenTerminalJob_WhenCancellationIsRequested_ThenOrchestrationIsNotTerminated()
+    public async Task GivenNoSuchJobOrATerminalJob_WhenCancellationIsRequested_ThenItIsRejectedWithoutTerminatingAnOrchestration()
     {
-        await _jobs.CreateAsync(Job("Completed"), CancellationToken.None);
+        await _jobs.CreateAsync(Job("Completed", "done"), CancellationToken.None);
 
-        var result = await CancelAsync();
+        var missing = await CancelAsync();
+        var terminal = await CancelAsync("done");
 
-        result.ShouldBeOfType<ReindexJobAlreadyTerminalResult>().Status.ShouldBe(ReindexJobStatus.Completed);
+        missing.ShouldBeOfType<ReindexJobNotFoundResult>();
+        terminal.ShouldBeOfType<ReindexJobAlreadyTerminalResult>().Status.ShouldBe(ReindexJobStatus.Completed);
         await _runtime.DidNotReceiveWithAnyArgs().ForceTerminateTaskOrchestrationAsync(default!, default!);
     }
 
@@ -57,16 +59,7 @@ public sealed class CancelReindexHandlerTests : IDisposable
         await _runtime.Received(1).ForceTerminateTaskOrchestrationAsync("job", "operator request");
     }
 
-    [Fact]
-    public async Task GivenNoSuchJob_WhenCancellationIsRequested_ThenItIsReportedNotFound()
-    {
-        var result = await CancelAsync();
-
-        result.ShouldBeOfType<ReindexJobNotFoundResult>();
-        await _runtime.DidNotReceiveWithAnyArgs().ForceTerminateTaskOrchestrationAsync(default!, default!);
-    }
-
-    private Task<CancelReindexResult> CancelAsync() =>
+    private Task<CancelReindexResult> CancelAsync(string jobId = "job") =>
         new CancelReindexHandler(new TaskHubClient(_runtime), _jobs, _lifecycle, new TestReindexJobLock(), TimeProvider.System)
-            .HandleAsync(new CancelReindexCommand("job", "operator request"), CancellationToken.None);
+            .HandleAsync(new CancelReindexCommand(jobId, "operator request"), CancellationToken.None);
 }

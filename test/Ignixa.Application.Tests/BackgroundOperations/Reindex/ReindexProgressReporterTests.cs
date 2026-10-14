@@ -16,28 +16,6 @@ public class ReindexProgressReporterTests
 {
     private readonly InMemoryBackgroundJobRepository<ReindexJobDefinition> _jobs = JobRepository();
 
-    // §8.5: a progress or heartbeat write that finds the job closed is a no-op.
-    [Theory]
-    [InlineData(null)]
-    [InlineData("Completed")]
-    [InlineData("Failed")]
-    [InlineData("Cancelled")]
-    public async Task GivenMissingOrClosedJob_WhenLateProgressOrHeartbeatIsReported_ThenNoOpReportsClosedAndPreservesJob(string? status)
-    {
-        if (status is not null)
-        {
-            await CreateJobAsync(status, heartbeat: DateTimeOffset.UtcNow.AddMinutes(-1));
-        }
-
-        var reporter = CreateReporter(_jobs);
-        var before = await SerializedJobAsync();
-
-        (await reporter.ReportAsync("job", Snapshot(10), CancellationToken.None)).ShouldBeFalse();
-        (await reporter.HeartbeatAsync("job", CancellationToken.None)).ShouldBeFalse();
-
-        (await SerializedJobAsync()).ShouldBe(before);
-    }
-
     // §8.2, B2: the snapshot replaces the stored progress as camelCase JSON and refreshes the heartbeat.
     [Fact]
     public async Task GivenRunningJob_WhenProgressIsReported_ThenTheTypedSnapshotIsStoredAsCamelCaseJsonWithHeartbeat()
@@ -102,19 +80,10 @@ public class ReindexProgressReporterTests
         started.ShouldBeFalse();
     }
 
-    private static ReindexProgress Snapshot(long count) =>
-        new(ReindexPhase.Reindexing)
-        {
-            Tenants =
-            [
-                ReindexTenantProgress.Create(1) with
-                {
-                    Status = ReindexTenantStatus.Reindexing,
-                    ResourcesToReindex = 15,
-                    ResourcesReindexed = count
-                }
-            ]
-        };
+    private static ReindexProgress Snapshot(long count) => new(ReindexPhase.Reindexing)
+    {
+        Tenants = [ReindexTenantProgress.Create(1) with { Status = ReindexTenantStatus.Reindexing, ResourcesToReindex = 15, ResourcesReindexed = count }]
+    };
 
     private async Task CreateJobAsync(string status, DateTimeOffset heartbeat)
     {

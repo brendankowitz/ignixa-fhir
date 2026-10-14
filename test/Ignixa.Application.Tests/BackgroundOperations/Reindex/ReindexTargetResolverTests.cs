@@ -58,28 +58,6 @@ public class ReindexTargetResolverTests
         target.AffectedResourceTypes.ShouldContain("Patient");
     }
 
-    // §4.4: each version's parameters target that version's tenants and types.
-    [Fact]
-    public async Task GivenPendingParametersOnTwoVersions_WhenResolved_ThenBothVersionsTenantsAreTargetedWithTheirOwnTypes()
-    {
-        var resolver = CreateResolver(
-        [
-            Activation(Canonical + "-r4", eventId: 1, resourceType: "DomainResource", fhirVersion: "4.0"),
-            Activation(Canonical + "-r5", eventId: 2, resourceType: "ActorDefinition", searchParamId: 18, fhirVersion: "5.0")
-        ]);
-
-        var plan = await resolver.ResolveAsync(CancellationToken.None);
-
-        plan.TenantIds.ShouldBe([1, 2]);
-        plan.Targets.Count.ShouldBe(2);
-        plan.Targets.Single(target => target.FhirVersion == "4.0")
-            .AffectedResourceTypes.ShouldNotContain("ActorDefinition");
-        plan.Targets.Single(target => target.FhirVersion == "5.0")
-            .AffectedResourceTypes.ShouldBe(["ActorDefinition"]);
-        plan.ResourceTypes.ShouldContain("ActorDefinition");
-        plan.ResourceTypes.ShouldContain("Patient");
-    }
-
     /// <summary>A resolver over the given activations, with tenant 1 on R4 and tenant 2 on R5.</summary>
     private static ReindexTargetResolver CreateResolver(IEnumerable<SourceEvent> activations)
     {

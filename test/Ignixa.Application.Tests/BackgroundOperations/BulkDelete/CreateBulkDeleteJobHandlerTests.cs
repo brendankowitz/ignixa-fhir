@@ -37,12 +37,8 @@ public sealed class CreateBulkDeleteJobHandlerTests : IDisposable
 
     public CreateBulkDeleteJobHandlerTests()
     {
-        _builders = new SearchOptionsBuilderFactory(
-            _versions,
-            NullFhirBaseUriProvider.Instance,
-            new HttpContextAccessor(),
-            Substitute.For<IFhirRequestContextAccessor>(),
-            TestConformanceLease.Held());
+        _builders = new SearchOptionsBuilderFactory(_versions, NullFhirBaseUriProvider.Instance, new HttpContextAccessor(),
+            Substitute.For<IFhirRequestContextAccessor>(), TestConformanceLease.Held());
         _tenants.Mode.Returns(TenantMode.Isolated);
         _tenants.GetTenantConfigurationAsync(TenantId, Arg.Any<CancellationToken>())
             .Returns(new TenantConfiguration { TenantId = TenantId, DisplayName = "Bulk delete", FhirVersion = "4.0" });

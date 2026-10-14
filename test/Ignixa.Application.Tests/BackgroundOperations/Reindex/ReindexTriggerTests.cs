@@ -6,6 +6,7 @@ using Ignixa.Domain.Models;
 using Medino;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Shouldly;
 using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
@@ -53,43 +54,46 @@ public sealed class ReindexTriggerTests : IDisposable
         await AssertNoJobRequestedAsync();
     }
 
+    // An activation reports the job it created or found active, or why there was nothing to do, without deferring.
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task GivenACreatedOrActiveJob_WhenActivationTriggers_ThenItsIdIsReported(bool alreadyActive)
+    [InlineData("created", "job-1", false, null)]
+    [InlineData("active", "job-1", true, null)]
+    [InlineData("noWork", null, false, "No resources need reindexing.")]
+    public async Task GivenAJobRequestOutcome_WhenActivationTriggers_ThenItIsReported(
+        string outcome,
+        string? jobId,
+        bool alreadyActive,
+        string? message)
     {
-        _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
-            .Returns(alreadyActive ? new ActiveReindexJobResult("job-1") : new ReindexJobCreatedResult("job-1"));
+        if (outcome != "noWork")
+        {
+            _mediator.SendAsync(Arg.Any<CreateReindexJobCommand>(), Arg.Any<CancellationToken>())
+                .Returns(outcome == "active" ? new ActiveReindexJobResult("job-1") : new ReindexJobCreatedResult("job-1"));
+        }
 
         var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
 
-        result.ShouldBe(new ReindexTriggerResult("job-1", alreadyActive, null));
+        result.ShouldBe(new ReindexTriggerResult(jobId, alreadyActive, message));
         await AssertJobRequestedAsync(ReindexTriggerKind.Activation);
     }
 
-    [Fact]
-    public async Task GivenNoReindexWork_WhenActivationTriggers_ThenTheReasonIsReportedWithoutDeferral()
-    {
-        var result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None);
-
-        result.ShouldBe(new ReindexTriggerResult(null, false, "No resources need reindexing."));
-    }
-
-    // Operational failures defer to periodic reconciliation; programmer errors fail fast.
+    // Operational failures defer to periodic reconciliation, from an activation or a tick; programmer errors fail fast.
     [Theory]
     [InlineData(typeof(IOException), false)]
     [InlineData(typeof(TimeoutException), false)]
     [InlineData(typeof(InvalidOperationException), true)]
     [InlineData(typeof(ArgumentException), true)]
     [InlineData(typeof(NullReferenceException), true)]
-    public async Task GivenAFailedJobRequest_WhenActivationTriggers_ThenOnlyAProgrammerErrorPropagates(Type failure, bool propagates)
+    public async Task GivenAFailedJobRequest_WhenActivationOrTickTriggers_ThenOnlyAProgrammerErrorPropagates(Type failure, bool propagates)
     {
         FailJobRequests(failure);
         ReindexTriggerResult? result = null;
 
         var exception = await Record.ExceptionAsync(async () =>
             result = await CreateTrigger().RequestReindexAsync("activation", CancellationToken.None));
+        var tickException = await Record.ExceptionAsync(() => CreateTrigger().ReconcileAsync(CancellationToken.None));
 
+        (tickException?.GetType()).ShouldBe(propagates ? failure : null);
         if (propagates)
         {
             exception.ShouldBeOfType(failure);
@@ -199,48 +203,14 @@ public sealed class ReindexTriggerTests : IDisposable
         await AssertJobRequestedAsync(ReindexTriggerKind.Reconciliation);
     }
 
-    [Theory]
-    [InlineData(typeof(IOException), false)]
-    [InlineData(typeof(InvalidOperationException), true)]
-    public async Task GivenAFailedJobRequest_WhenTickRuns_ThenOnlyAProgrammerErrorPropagates(Type failure, bool propagates)
-    {
-        FailJobRequests(failure);
-
-        var exception = await Record.ExceptionAsync(() => CreateTrigger().ReconcileAsync(CancellationToken.None));
-
-        if (propagates)
-        {
-            exception.ShouldBeOfType(failure);
-        }
-        else
-        {
-            exception.ShouldBeNull();
-        }
-    }
-
     private ReindexTrigger CreateTrigger(bool autoStart = true, bool enabled = true, TenantConfiguration[]? tenants = null)
     {
-        var options = Options.Create(new ReindexOptions
-        {
-            Enabled = enabled,
-            AutoStart = autoStart,
-            OrphanGrace = TimeSpan.FromMinutes(2)
-        });
+        var options = Options.Create(new ReindexOptions { Enabled = enabled, AutoStart = autoStart, OrphanGrace = TimeSpan.FromMinutes(2) });
+        var lifecycle = new ReindexLifecycleEventWriter(new TestSourceEventStore(), _state);
+        var reconciler = new ReindexJobReconciler(
+            new TaskHubClient(_runtime), _jobs, lifecycle, _jobLock, options, new FakeTimeProvider(Now), NullLogger<ReindexJobReconciler>.Instance);
         return new ReindexTrigger(
-            _mediator,
-            _jobs,
-            _state,
-            new ReindexJobReconciler(
-                new TaskHubClient(_runtime),
-                _jobs,
-                new ReindexLifecycleEventWriter(new TestSourceEventStore(), _state),
-                _jobLock,
-                options,
-                new FixedTimeProvider(Now),
-                NullLogger<ReindexJobReconciler>.Instance),
-            CreateRepositoryFactory(tenants ?? []),
-            options,
-            NullLogger<ReindexTrigger>.Instance);
+            _mediator, _jobs, _state, reconciler, CreateRepositoryFactory(tenants ?? []), options, NullLogger<ReindexTrigger>.Instance);
     }
 
     private void FailJobRequests(Type failure) =>

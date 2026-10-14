@@ -39,19 +39,8 @@ internal static class ReindexTestHelper
         "search",
         nameof(SearchParameterActivated),
         new SearchParameterActivated(
-            canonical,
-            "custom",
-            resourceType,
-            $"{resourceType}.id",
-            SearchParamType.String,
-            "example@1.0.0",
-            overrides,
-            searchParamId,
-            null,
-            null,
-            null,
-            null,
-            fhirVersion),
+            canonical, "custom", resourceType, $"{resourceType}.id", SearchParamType.String, "example@1.0.0", overrides,
+            searchParamId, null, null, null, null, fhirVersion),
         DateTimeOffset.UtcNow);
 
     public static ReindexJobDefinition CreateJobDefinition(
@@ -107,17 +96,8 @@ internal static class ReindexTestHelper
     public static ReindexOrchestrationInput CreateOrchestrationInput(
         TimeSpan? barrierDelay = null,
         IReadOnlyList<int>? tenantIds = null) =>
-        new(
-            "job",
-            42,
-            barrierDelay ?? TimeSpan.Zero,
-            tenantIds ?? [1],
-            ["Patient"],
-            [],
-            ReindexJobParameters.Create(),
-            DrainWarningAfter: TimeSpan.FromMinutes(5),
-            StaleJobTimeout: TimeSpan.FromMinutes(30),
-            ContinueAsNewThreshold: 2_000);
+        new("job", 42, barrierDelay ?? TimeSpan.Zero, tenantIds ?? [1], ["Patient"], [], ReindexJobParameters.Create(),
+            DrainWarningAfter: TimeSpan.FromMinutes(5), StaleJobTimeout: TimeSpan.FromMinutes(30), ContinueAsNewThreshold: 2_000);
 
     /// <summary>
     /// A repository factory whose tenant store lists <paramref name="tenants"/>; by default one SQL Server

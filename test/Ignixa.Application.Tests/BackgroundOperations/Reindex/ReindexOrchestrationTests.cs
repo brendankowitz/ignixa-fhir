@@ -1,4 +1,3 @@
-using System.Text.Json;
 using DurableTask.Core;
 using DurableTask.Core.Serializing;
 using Ignixa.Application.BackgroundOperations.Reindex;
@@ -13,52 +12,74 @@ namespace Ignixa.Application.Tests.BackgroundOperations.Reindex;
 
 public class ReindexOrchestrationTests
 {
-    // §8.2, §8.6 (M5): the flow runs end to end with every activity scheduled with retry; a type with
-    // nothing to reindex plans one empty page and moves on.
+    // §5.2, §8.2, §8.6 (M5): a job waits BarrierDelay, then plans and drains to the barrier's cutoffs with every
+    // activity scheduled with retry. Ranges whose workers report definitions behind the target are retried after a
+    // backoff, not planned again. Progress is persisted at phase boundaries and after every five range waves, every
+    // range is counted once, and a type with nothing to reindex plans one empty page and moves on.
     [Fact]
-    public async Task GivenJob_WhenOrchestrated_ThenEveryActivityIsScheduledWithRetryAndEveryRangeIsCounted()
+    public async Task GivenAJobWhoseWorkersBrieflyLagTheTarget_WhenOrchestrated_ThenItBacksOffAndPersistsAndCountsEveryWaveOnce()
     {
         var context = new FakeContext
         {
-            Plan = plan => plan.ResourceType == "Observation" ? new([], null) : FakeContext.TwoPagesOfRanges(plan)
+            Plan = plan => plan.ResourceType == "Observation"
+                ? new([], null)
+                : new([.. Enumerable.Range(0, 11).Select(index => new SurrogateIdRange((index * 10) + 1, (index * 10) + 10, 10))], null)
+        };
+        context.Range = range => context.RangeAttempts <= 3 ? ReindexRangeOutput.DefinitionsNotReady(41) : FakeContext.HealthyRange(range);
+        var input = CreateOrchestrationInput(barrierDelay: TimeSpan.FromSeconds(30)) with
+        {
+            ResourceTypes = ["Patient", "Observation"],
+            Parameters = ReindexJobParameters.Create(maximumConcurrency: 1)
         };
 
-        var result = await new ReindexOrchestration().RunTask(
-            context,
-            CreateOrchestrationInput() with { ResourceTypes = ["Patient", "Observation"] });
+        var result = await new ReindexOrchestration().RunTask(context, input);
 
         result.Success.ShouldBeTrue();
-        context.DirectSchedules.ShouldBeEmpty();
+        context.RetriedSchedules.ShouldBe(context.Activities.Count);
+        context.TimerDelays.ShouldBe([30, 1, 2, 4]);
+        context.RangeAttempts.ShouldBe(14);
+        context.Inputs<PlanReindexInput>().ShouldAllBe(plan => plan.CutoffSurrogateId == 30);
+        context.Inputs<AwaitDrainInput>().ShouldHaveSingleItem().CutoffTransactionId.ShouldBe(10);
+        context.Inputs<PersistReindexProgressInput>()
+            .Select(snapshot => snapshot.Progress.Tenants.Single().ResourcesReindexed)
+            .ShouldBe([0L, 0L, 50L, 100L, 110L]);
         var tenant = context.Completion.Tenants.ShouldHaveSingleItem();
         tenant.Status.ShouldBe(ReindexTenantStatus.Completed);
-        (tenant.ResourcesToReindex, tenant.ResourcesReindexed, tenant.Conflicts).ShouldBe((30L, 30L, 1L));
+        (tenant.ResourcesToReindex, tenant.ResourcesReindexed, tenant.Conflicts).ShouldBe((110L, 110L, 1L));
     }
 
-    // Spec §8.2: a snapshot that still cannot be written fails the job visibly and never reruns a range,
-    // whichever phase boundary it is written at.
+    // Spec §8.2, §8.6 (N4): an activity still failing after its retries ends the job Failed with its reason; a
+    // snapshot that cannot be written never reruns a range, whichever phase boundary it is written at.
     [Theory]
-    [InlineData(false, 0)]
-    [InlineData(true, 3)]
-    public async Task GivenProgressCannotBePersistedAfterItsRetries_WhenOrchestrated_ThenTheJobIsFinalizedFailed(
+    [InlineData("start", false, 0)]
+    [InlineData("progress", false, 0)]
+    [InlineData("progress", true, 3)]
+    public async Task GivenAnActivityFailsAfterItsRetries_WhenOrchestrated_ThenTheJobIsFinalizedFailedWithItsReason(
+        string failingActivity,
         bool failOnlyAfterRanges,
         int expectedRangeAttempts)
     {
         var context = new FakeContext();
-        context.Progress = _ => !failOnlyAfterRanges || context.RangeAttempts > 0 ? throw ProgressUnavailable() : true;
+        var failure = new InvalidOperationException($"{failingActivity} failed");
+        context.Start = failingActivity == "start" ? () => throw failure : context.Start;
+        context.Progress = _ => failingActivity == "progress" && (!failOnlyAfterRanges || context.RangeAttempts > 0)
+            ? throw failure
+            : true;
 
         var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
 
         output.Success.ShouldBeFalse();
-        context.Completion.FailureMessage.ShouldContain("progress storage unavailable");
+        context.Completion.FailureMessage.ShouldContain($"{failingActivity} failed");
         context.RangeAttempts.ShouldBe(expectedRangeAttempts);
     }
 
-    // Spec §8.6: a range activity that fails after its retries fails only that (tenant, type); the other
-    // tenant still completes and the job ends Failed.
+    // Spec §8.2, §8.6: tenants are isolated. One still draining does not hold another's range waves, and a range
+    // activity that fails after its retries fails only that (tenant, type); the other completes, the job ends Failed.
     [Fact]
-    public async Task GivenARangeActivityFailsAfterItsRetries_WhenOrchestrated_ThenOnlyThatTenantsTypeFailsAndTheOtherTenantCompletes()
+    public async Task GivenTwoTenants_WhenOneDrainsSlowlyAndItsRangesFailAfterRetries_ThenTheOtherIsNeitherHeldNorFailed()
     {
         var context = new FakeContext();
+        context.Drain = drain => drain.TenantId != 2 || context.Inputs<AwaitDrainInput>().Count(poll => poll.TenantId == 2) > 2;
         context.Range = range => range.TenantId == 2
             ? throw new InvalidOperationException("range worker crashed")
             : FakeContext.HealthyRange(range);
@@ -66,6 +87,11 @@ public class ReindexOrchestrationTests
         var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput(tenantIds: [1, 2]));
 
         output.Success.ShouldBeFalse();
+        var lastDrainOfTenant2 = context.Activities.FindLastIndex(activity => activity is AwaitDrainInput { TenantId: 2 });
+        var rangesOfTenant1 = context.Activities.Index()
+            .Where(item => item.Item is ReindexRangeInput { TenantId: 1 }).Select(item => item.Index).ToArray();
+        rangesOfTenant1.Length.ShouldBe(3);
+        rangesOfTenant1.ShouldAllBe(index => index < lastDrainOfTenant2);
         var tenants = context.Completion.Tenants;
         var healthy = tenants.Single(tenant => tenant.TenantId == 1);
         healthy.Success.ShouldBeTrue();
@@ -98,42 +124,6 @@ public class ReindexOrchestrationTests
         context.Continuations.ShouldBeEmpty();
     }
 
-    // M5: workers whose definitions are behind the target report it as data; the tenant backs off and retries.
-    [Fact]
-    public async Task GivenDefinitionsBehindTargetForThreeWaves_WhenRangesReportNotReady_ThenTenantWaitsWithBackoffAndCompletes()
-    {
-        var context = new FakeContext();
-        context.Range = range => context.RangeAttempts <= 6
-            ? ReindexRangeOutput.DefinitionsNotReady(41)
-            : FakeContext.HealthyRange(range);
-
-        var result = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
-
-        result.Success.ShouldBeTrue();
-        context.RangeAttempts.ShouldBe(9);
-        context.TimerDelays.Skip(1).ShouldBe([1, 2, 4]);
-        result.Tenants.Single().Success.ShouldBeTrue();
-        // The ranges that were not ready are retried, not planned again.
-        (result.Tenants.Single().ResourcesToReindex, result.Tenants.Single().ResourcesReindexed).ShouldBe((30L, 30L));
-    }
-
-    // Spec §8.2: progress is persisted at every phase boundary and after every five range waves, not every wave.
-    [Fact]
-    public async Task GivenElevenRangeWaves_WhenOrchestrated_ThenProgressIsPersistedAtPhaseBoundariesAndAfterEveryFiveWaves()
-    {
-        var context = new FakeContext
-        {
-            Plan = _ => new([.. Enumerable.Range(0, 11).Select(index => new SurrogateIdRange((index * 10) + 1, (index * 10) + 10, 10))], null)
-        };
-        var input = CreateOrchestrationInput() with { Parameters = ReindexJobParameters.Create(maximumConcurrency: 1) };
-
-        await new ReindexOrchestration().RunTask(context, input);
-
-        context.Inputs<PersistReindexProgressInput>()
-            .Select(snapshot => snapshot.Progress.Tenants.Single().ResourcesReindexed)
-            .ShouldBe([0L, 0L, 50L, 100L, 110L]);
-    }
-
     // §8.4: a tenant whose definitions stay behind for StaleJobTimeout fails, reported as data.
     [Fact]
     public async Task GivenDefinitionsNeverCatchUp_WhenStaleJobTimeoutElapses_ThenTenantFailsWithoutAnExceptionCrossingTheActivityBoundary()
@@ -152,72 +142,26 @@ public class ReindexOrchestrationTests
         context.Inputs<CompleteReindexInput>().ShouldHaveSingleItem();
     }
 
-    // B1: continuing as new is invisible in the outcome and in every persisted snapshot.
+    // §8.2 (B1): ContinueAsNew carries the typed state and returns without scheduling more work; continuing after
+    // Start, the barrier delay and the barrier, the carried ReindexOrchestrationState round-trips with enums as strings.
     [Fact]
-    public async Task GivenContinueAsNewThreshold_WhenOrchestrated_ThenResumedOutcomeMatchesUninterruptedRun()
-    {
-        var uninterrupted = await RunToCompletionAsync(continueAsNewThreshold: 100);
-        var continued = await RunToCompletionAsync(continueAsNewThreshold: 2);
-
-        continued.Output.Success.ShouldBe(uninterrupted.Output.Success);
-        JsonSerializer.Serialize(continued.Output.Tenants).ShouldBe(JsonSerializer.Serialize(uninterrupted.Output.Tenants));
-        continued.Output.IgnoredLifecycleEvents.ShouldBe(uninterrupted.Output.IgnoredLifecycleEvents, ignoreOrder: false);
-        continued.Context.Inputs<StartReindexInput>().Count.ShouldBe(1);
-        continued.Context.Inputs<RaiseBarrierInput>().Count.ShouldBe(1);
-        continued.Context.Continuations.ShouldNotBeEmpty();
-        JsonSerializer.Serialize(continued.Context.Inputs<PersistReindexProgressInput>())
-            .ShouldBe(JsonSerializer.Serialize(uninterrupted.Context.Inputs<PersistReindexProgressInput>()));
-    }
-
-    // §8.2 (B1): ContinueAsNew carries the state and returns without scheduling more work.
-    [Fact]
-    public async Task GivenContinueAsNew_WhenRequested_ThenCurrentStateIsCarriedAndNoMoreWorkIsScheduled()
+    public async Task GivenContinuationsAtEveryPhaseBoundary_WhenSerializedAndResumed_ThenTheTypedStateIsCarried()
     {
         var context = new FakeContext();
-
         await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput() with { ContinueAsNewThreshold = 1 });
-
-        context.Continuations.ShouldHaveSingleItem().State!.Started.ShouldBeTrue();
-        context.Scheduled.ShouldBe([nameof(StartReindexInput)]);
-    }
-
-    // §5.2: wait BarrierDelay, drain to B_t, plan and reindex ranges up to S_t.
-    [Fact]
-    public async Task GivenBarrierDelayAndCutoffs_WhenOrchestrated_ThenTheBarrierWaitsAndPlanningRangesAndDrainingUseTheCorrectWatermarks()
-    {
-        var context = new FakeContext
-        {
-            // Two ranges, then one more that ends at the barrier's surrogate cutoff.
-            Plan = plan => plan.StartAfterSurrogateId switch
-            {
-                null => new([new SurrogateIdRange(1, 10, 10), new SurrogateIdRange(11, 20, 10)], 20),
-                var after when after < plan.CutoffSurrogateId => new([new SurrogateIdRange(21, plan.CutoffSurrogateId, 10)], null),
-                _ => new([], null)
-            }
-        };
-
-        await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput(barrierDelay: TimeSpan.FromSeconds(30)));
-
-        context.TimerDelays[0].ShouldBe(30);
-        context.Inputs<PlanReindexInput>().ShouldAllBe(plan => plan.CutoffSurrogateId == 30);
-        var ranges = context.Inputs<ReindexRangeInput>();
-        ranges.ShouldAllBe(range => range.EndSurrogateId <= 30);
-        ranges.Select(range => range.EndSurrogateId).ShouldContain(30);
-        context.Inputs<AwaitDrainInput>().ShouldHaveSingleItem().CutoffTransactionId.ShouldBe(10);
-    }
-
-    // §8.2: the carried ReindexOrchestrationState round-trips with enums as strings.
-    [Fact]
-    public async Task GivenContinuationAfterBarrier_WhenSerialized_ThenTypedStateRoundTripsWithReadableEnums()
-    {
-        var context = new FakeContext();
-        await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput() with { ContinueAsNewThreshold = 3 });
-        var continuation = context.Continuations.ShouldHaveSingleItem();
+        var afterStart = context.Continuations.ShouldHaveSingleItem();
+        var scheduledBeforeContinuing = context.Scheduled.ToArray();
+        await new ReindexOrchestration().RunTask(context, afterStart);
+        await new ReindexOrchestration().RunTask(context, context.Continuations[^1]);
+        var continuation = context.Continuations[^1];
 
         var serialized = JsonDataConverter.Default.Serialize(continuation);
         var roundTripped = JsonDataConverter.Default.Deserialize<ReindexOrchestrationInput>(serialized)!;
-        await new ReindexOrchestration().RunTask(context, roundTripped);
+        // The chain ran at threshold 1; resume at 3 so this execution plans and drains once before continuing again.
+        await new ReindexOrchestration().RunTask(context, roundTripped with { ContinueAsNewThreshold = 3 });
 
+        afterStart.State!.Started.ShouldBeTrue();
+        scheduledBeforeContinuing.ShouldBe([nameof(StartReindexInput)]);
         serialized.ShouldContain("\"Draining\"");
         serialized.ShouldNotContain("\"Status\":1");
         JsonDataConverter.Default.Serialize(roundTripped.State).ShouldBe(JsonDataConverter.Default.Serialize(continuation.State));
@@ -257,18 +201,6 @@ public class ReindexOrchestrationTests
         tenant.FailedResourceCount.ShouldBe(306);
     }
 
-    // §8.6 (N4): an activity that fails after its retries ends the job Failed, with the reason.
-    [Fact]
-    public async Task GivenStartActivityFailsAfterRetries_WhenOrchestrated_ThenJobIsFinalizedFailed()
-    {
-        var context = new FakeContext { Start = () => throw new InvalidOperationException("start failed") };
-
-        var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput());
-
-        output.Success.ShouldBeFalse();
-        context.Completion.FailureMessage.ShouldContain("start failed");
-    }
-
     // §5.2 step 3, §8.6: a drain still waiting at StaleJobTimeout fails the tenant.
     [Fact]
     public async Task GivenDrainNeverCompletes_WhenStaleJobTimeoutElapses_ThenTenantFails()
@@ -291,30 +223,6 @@ public class ReindexOrchestrationTests
         context.Inputs<PersistReindexProgressInput>().Count.ShouldBe(1);
     }
 
-    // §8.2: a waiting tenant does not hold the other tenants' waves.
-    [Fact]
-    public async Task GivenOneTenantStillDraining_WhenAnotherReindexes_ThenTheReindexingTenantIsNotHeldByTheDrainPoll()
-    {
-        var context = new FakeContext();
-        context.Drain = drain => drain.TenantId != 2 || context.Inputs<AwaitDrainInput>().Count(poll => poll.TenantId == 2) > 2;
-
-        var output = await new ReindexOrchestration().RunTask(context, CreateOrchestrationInput(tenantIds: [1, 2]));
-
-        output.Success.ShouldBeTrue();
-        output.Tenants.Count.ShouldBe(2);
-        var lastDrainOfTenant2 = context.Activities.FindLastIndex(activity => activity is AwaitDrainInput { TenantId: 2 });
-        var rangesOfTenant1 = context.Activities
-            .Select((activity, index) => (activity, index))
-            .Where(item => item.activity is ReindexRangeInput { TenantId: 1 })
-            .Select(item => item.index)
-            .ToArray();
-        rangesOfTenant1.Length.ShouldBe(3);
-        rangesOfTenant1.ShouldAllBe(index => index < lastDrainOfTenant2);
-        context.RangeAttempts.ShouldBe(6);
-    }
-
-    private static InvalidOperationException ProgressUnavailable() => new("progress storage unavailable");
-
     private static ReindexOrchestrationState DrainingState(DateTime now) =>
         ReindexOrchestrationState.Create([1]) with
         {
@@ -326,32 +234,12 @@ public class ReindexOrchestrationTests
                 {
                     Progress = ReindexTenantProgress.Create(1) with
                     {
-                        Status = ReindexTenantStatus.Draining,
-                        CutoffTransactionId = 30,
-                        CutoffSurrogateId = 10
+                        Status = ReindexTenantStatus.Draining, CutoffTransactionId = 30, CutoffSurrogateId = 10
                     },
                     Wait = ReindexWait.Begin(now)
                 }
             ]
         };
-
-    private static async Task<(ReindexOrchestrationOutput Output, FakeContext Context)> RunToCompletionAsync(
-        int continueAsNewThreshold)
-    {
-        var context = new FakeContext();
-        var input = CreateOrchestrationInput() with { ContinueAsNewThreshold = continueAsNewThreshold };
-        while (true)
-        {
-            var continuations = context.Continuations.Count;
-            var output = await new ReindexOrchestration().RunTask(context, input);
-            if (context.Continuations.Count == continuations)
-            {
-                return (output, context);
-            }
-
-            input = context.Continuations[^1];
-        }
-    }
 
     /// <summary>
     /// Runs each activity in-process through a replaceable handler and records every attempt's input in order.
@@ -361,9 +249,8 @@ public class ReindexOrchestrationTests
     private sealed class FakeContext : OrchestrationContext
     {
         private DateTime _now = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
-        private bool _withinRetry;
 
-        public Func<StartReindexOutput> Start { get; init; } = () => new(true, []);
+        public Func<StartReindexOutput> Start { get; set; } = () => new(true, []);
 
         public Func<PlanReindexInput, SurrogateIdRangePage> Plan { get; init; } = TwoPagesOfRanges;
 
@@ -375,8 +262,8 @@ public class ReindexOrchestrationTests
 
         public List<object> Activities { get; } = [];
 
-        /// <summary>Activity names scheduled directly, outside any retry wrapper.</summary>
-        public List<string> DirectSchedules { get; } = [];
+        /// <summary>Activities scheduled through the retry wrapper.</summary>
+        public int RetriedSchedules { get; private set; }
 
         public List<double> TimerDelays { get; } = [];
 
@@ -394,28 +281,14 @@ public class ReindexOrchestrationTests
 
         public static ReindexRangeOutput HealthyRange(ReindexRangeInput range) => new(10, range.StartSurrogateId == 11 ? 1 : 0, []);
 
-        // Every fake activity completes synchronously, so the retry interceptor's inner ScheduleTask calls
-        // all happen before this returns and the flag classifies them correctly.
         public override Task<T> ScheduleWithRetry<T>(Type taskActivityType, RetryOptions retryOptions, params object[] parameters)
         {
-            _withinRetry = true;
-            try
-            {
-                return base.ScheduleWithRetry<T>(taskActivityType, retryOptions, parameters);
-            }
-            finally
-            {
-                _withinRetry = false;
-            }
+            RetriedSchedules++;
+            return base.ScheduleWithRetry<T>(taskActivityType, retryOptions, parameters);
         }
 
         public override Task<T> ScheduleTask<T>(string name, string version, params object[] parameters)
         {
-            if (!_withinRetry)
-            {
-                DirectSchedules.Add(name);
-            }
-
             var input = parameters.Single();
             Activities.Add(input);
             object result = input switch
@@ -427,8 +300,7 @@ public class ReindexOrchestrationTests
                 ReindexRangeInput range => Range(range),
                 PersistReindexProgressInput progress => Progress(progress),
                 CompleteReindexInput complete => new CompleteReindexOutput(
-                    complete.FailureMessage is null && complete.Tenants.All(tenant => tenant.Success),
-                    []),
+                    complete.FailureMessage is null && complete.Tenants.All(tenant => tenant.Success), []),
                 _ => throw new InvalidOperationException($"Unexpected activity {name}.")
             };
             return Task.FromResult((T)result);

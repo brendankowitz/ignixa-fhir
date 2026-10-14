@@ -44,110 +44,80 @@ public class ReindexRangeProcessorTests
         result.ResourcesReindexed.ShouldBe(20);
     }
 
-    // M5: a worker behind the job's target event refreshes its definitions before deciding it is not ready.
-    [Fact]
-    public async Task GivenDefinitionsBehindTargetEvent_WhenRangeIsProcessed_ThenDefinitionsAreRefreshed()
-    {
-        var versions = Versions(41, 42);
-        var eventStore = TestConformanceRefresher.EmptyEventStore();
-
-        var result = await CreateProcessor(Substitute.For<IReindexStore>(), versions, eventStore).ProcessAsync(Range, CancellationToken.None);
-
-        result.ResourcesReindexed.ShouldBe(0);
-        _ = eventStore.Received(1).ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
-        versions.Received(2).GetDefinitionsHandle(FhirVersion.R4, 1);
-    }
-
-    // §8.4: definitions still behind E return a typed not-ready output, not an exception.
+    // M5, §8.4: a worker behind the job's target event refreshes its definitions once; still behind, it returns a
+    // typed not-ready output that survives DurableTask's activity-boundary converter, without reading or throwing.
     [Fact]
     public async Task GivenDefinitionsStillBehindAfterRefresh_WhenRangeIsProcessed_ThenItReturnsNotReadyWithoutReadingOrThrowing()
     {
         var store = PageStore(1);
+        var versions = Versions(Substitute.For<ISearchIndexer>(), 41, 41);
+        var eventStore = TestConformanceRefresher.EmptyEventStore();
 
-        var result = await CreateProcessor(store, Versions(41)).ProcessAsync(Range, CancellationToken.None);
+        var result = await CreateProcessor(store, versions, eventStore).ProcessAsync(Range, CancellationToken.None);
 
-        // The not-ready signal must survive the converter DurableTask uses at the activity boundary.
         var crossed = JsonDataConverter.Default.Deserialize<ReindexRangeOutput>(JsonDataConverter.Default.Serialize(result));
         crossed.IsDefinitionsNotReady.ShouldBeTrue();
         crossed.StaleDefinitionsEventId.ShouldBe(41);
+        _ = eventStore.Received(1).ReadFromAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+        versions.Received(2).GetDefinitionsHandle(FhirVersion.R4, 1);
         await store.DidNotReceiveWithAnyArgs().ReadRangeAsync(default!, default, default, default, default, default);
     }
 
-    // §8.4 step 3 (M10): extraction runs under a background FhirRequestContext for the tenant.
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task GivenACallerContext_WhenARangeIsProcessedOrItsReadThrows_ThenExtractionUsesTheBackgroundContextAndTheCallersIsRestored(
-        bool readThrows)
+    // M5, §8.4 steps 3 and 6 (M10, F11): a worker behind the target extracts with its refreshed definitions, under a
+    // background FhirRequestContext for the tenant, and restores the caller's; a failure is recorded and skipped while
+    // the rest of the page is written; every failure is counted, at most 100 are returned. Only p1 and p103 extract.
+    [Fact]
+    public async Task GivenACallerContextAndMoreFailuresThanTheSample_WhenRangeIsProcessed_ThenItExtractsInTheBackgroundAndCountsEveryFailure()
     {
         var caller = new FhirRequestContext { TenantId = 99 };
         var accessor = new RecordingContextAccessor { RequestContext = caller };
         var observed = new List<IFhirRequestContext?>();
-        var store = PageStore(1);
-        if (readThrows)
-        {
-            store.ReadRangeAsync(default!, default, default, default, default, default)
-                .ReturnsForAnyArgs<IReadOnlyList<ReindexResource>>(_ => throw new InvalidOperationException("read failed"));
-        }
-
-        var process = () => CreateProcessor(store, Indexer(_ => observed.Add(accessor.RequestContext)), accessor)
-            .ProcessAsync(Range, CancellationToken.None);
-
-        if (readThrows)
-        {
-            await Should.ThrowAsync<InvalidOperationException>(process);
-            observed.ShouldBeEmpty();
-        }
-        else
-        {
-            await process();
-            var background = observed.ShouldHaveSingleItem().ShouldNotBeNull();
-            background.ShouldNotBeSameAs(caller);
-            background.IsBackgroundTask.ShouldBeTrue();
-            background.TenantId.ShouldBe(1);
-            background.FhirVersion.ShouldBe(FhirVersion.R4);
-            background.ResourceType.ShouldBe("Patient");
-        }
-
-        accessor.RequestContext.ShouldBeSameAs(caller);
-    }
-
-    // F11: an extraction failure is recorded and skipped; the rest of the page is still written.
-    [Fact]
-    public async Task GivenOneResourceFailsExtraction_WhenRangeIsProcessed_ThenItIsRecordedAndTheOthersAreWritten()
-    {
-        var store = PageStore(3);
+        var store = PageStore(ReindexTenantProgress.FailedResourceSampleSize + 3);
         var indexer = Indexer(resource =>
         {
-            if (resource.Scalar("id") as string == "p2")
+            observed.Add(accessor.RequestContext);
+            if (resource.Scalar("id") is not ("p1" or "p103"))
             {
                 throw new InvalidOperationException("bad expression");
             }
         });
 
-        var result = await CreateProcessor(store, indexer).ProcessAsync(Range, CancellationToken.None);
+        var result = await CreateProcessor(store, Versions(indexer, 41, 42), accessor: accessor).ProcessAsync(Range, CancellationToken.None);
 
+        var background = observed.Distinct().ShouldHaveSingleItem().ShouldNotBeNull();
+        background.ShouldNotBeSameAs(caller);
+        background.IsBackgroundTask.ShouldBeTrue();
+        background.TenantId.ShouldBe(1);
+        background.FhirVersion.ShouldBe(FhirVersion.R4);
+        background.ResourceType.ShouldBe("Patient");
+        accessor.RequestContext.ShouldBeSameAs(caller);
         result.ResourcesReindexed.ShouldBe(2);
-        result.FailedResourceCount.ShouldBe(1);
-        result.FailedResources.ShouldBe([new ReindexFailedResource("Patient", "p2", "bad expression")]);
+        result.FailedResourceCount.ShouldBe(ReindexTenantProgress.FailedResourceSampleSize + 1);
+        result.FailedResources.Count.ShouldBe(ReindexTenantProgress.FailedResourceSampleSize);
+        result.FailedResources[0].ShouldBe(new ReindexFailedResource("Patient", "p2", "bad expression"));
         await store.Received(1).UpdateSearchIndicesAsync(
             Arg.Is<IReadOnlyList<ReindexResource>>(batch =>
-                string.Join(",", batch.Select(resource => resource.Resource.ResourceId)) == "p1,p3"),
+                string.Join(",", batch.Select(resource => resource.Resource.ResourceId)) == "p1,p103" &&
+                batch.All(resource => resource.Resource.DefinitionsEventId == 42)),
             Arg.Any<CancellationToken>());
     }
 
-    // §8.4 step 6 (F11): every failure is counted; at most 100 are returned.
+    // §8.4 step 3 (M10): a range whose read throws extracts nothing and still restores the caller's context.
     [Fact]
-    public async Task GivenMoreFailuresThanTheSample_WhenRangeIsProcessed_ThenAllAreCountedAndTheSampleIsCapped()
+    public async Task GivenACallerContext_WhenTheRangeReadThrows_ThenTheCallersContextIsRestored()
     {
-        var store = PageStore(ReindexTenantProgress.FailedResourceSampleSize + 1);
-        var indexer = Indexer(_ => throw new InvalidOperationException("bad expression"));
+        var accessor = new RecordingContextAccessor { RequestContext = new FhirRequestContext { TenantId = 99 } };
+        var caller = accessor.RequestContext;
+        var extractions = 0;
+        var store = PageStore(1);
+        store.ReadRangeAsync(default!, default, default, default, default, default)
+            .ReturnsForAnyArgs<IReadOnlyList<ReindexResource>>(_ => throw new InvalidOperationException("read failed"));
 
-        var result = await CreateProcessor(store, indexer).ProcessAsync(Range, CancellationToken.None);
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            CreateProcessor(store, Indexer(_ => extractions++), accessor).ProcessAsync(Range, CancellationToken.None));
 
-        result.FailedResourceCount.ShouldBe(ReindexTenantProgress.FailedResourceSampleSize + 1);
-        result.FailedResources.Count.ShouldBe(ReindexTenantProgress.FailedResourceSampleSize);
-        await store.DidNotReceiveWithAnyArgs().UpdateSearchIndicesAsync(default!, default);
+        extractions.ShouldBe(0);
+        accessor.RequestContext.ShouldBeSameAs(caller);
     }
 
     // Spec §8.4 step 5: with a query delay the worker waits after each page before reading the next one.
@@ -183,7 +153,7 @@ public class ReindexRangeProcessorTests
     }
 
     /// <summary>Definitions for tenant 1 at each successive event id, one per lookup.</summary>
-    private static IFhirVersionContext Versions(long definitionsEventId, params long[] laterEventIds)
+    private static IFhirVersionContext Versions(ISearchIndexer indexer, long definitionsEventId, params long[] laterEventIds)
     {
         var versions = Substitute.For<IFhirVersionContext>();
         var first = Handle(definitionsEventId);
@@ -191,21 +161,12 @@ public class ReindexRangeProcessorTests
         versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(first, later);
         return versions;
 
-        static DefinitionsHandle Handle(long eventId) =>
-            new(Substitute.For<ISearchIndexer>(), FhirVersion.R4.GetSchemaProvider(), eventId);
+        DefinitionsHandle Handle(long eventId) => new(indexer, FhirVersion.R4.GetSchemaProvider(), eventId);
     }
 
     private static ReindexRangeProcessor CreateProcessor(
-        IReindexStore store,
-        ISearchIndexer? indexer = null,
-        IFhirRequestContextAccessor? accessor = null)
-    {
-        // Built before the definitions lookup is configured: NSubstitute cannot configure two substitutes at once.
-        var handle = new DefinitionsHandle(indexer ?? Indexer(_ => { }), FhirVersion.R4.GetSchemaProvider(), 42);
-        var versions = Substitute.For<IFhirVersionContext>();
-        versions.GetDefinitionsHandle(FhirVersion.R4, 1).Returns(handle);
-        return CreateProcessor(store, versions, accessor: accessor);
-    }
+        IReindexStore store, ISearchIndexer? indexer = null, IFhirRequestContextAccessor? accessor = null) =>
+        CreateProcessor(store, Versions(indexer ?? Indexer(_ => { }), 42), accessor: accessor);
 
     private static ReindexRangeProcessor CreateProcessor(
         IReindexStore store,
@@ -231,13 +192,8 @@ public class ReindexRangeProcessorTests
         var store = Substitute.For<IReindexStore>();
         var resources = Enumerable.Range(1, count)
             .Select(index => new ReindexResource(
-                new ResourceWrapper(
-                    "Patient",
-                    $"p{index}",
-                    "1",
-                    DateTimeOffset.UtcNow,
-                    ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"p{{index}}"}"""),
-                    new ResourceRequest("PUT", $"Patient/p{index}")),
+                new ResourceWrapper("Patient", $"p{index}", "1", DateTimeOffset.UtcNow,
+                    ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"p{{index}}"}"""), new ResourceRequest("PUT", $"Patient/p{index}")),
                 index))
             .ToArray();
         store.ReadRangeAsync("Patient", 1, 20, Arg.Any<int>(), Arg.Any<long?>(), Arg.Any<CancellationToken>())

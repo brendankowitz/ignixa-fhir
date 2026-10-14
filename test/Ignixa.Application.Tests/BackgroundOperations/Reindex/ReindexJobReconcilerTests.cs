@@ -7,6 +7,7 @@ using Ignixa.DataLayer.BlobStorage.Features.BackgroundJobs;
 using Ignixa.Domain.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Shouldly;
 using static Ignixa.Application.Tests.BackgroundOperations.Reindex.ReindexTestHelper;
@@ -30,39 +31,29 @@ public sealed class ReindexJobReconcilerTests : IDisposable
     {
         _state.ApplyAndTrack(Activation());
         _lifecycle = new ReindexLifecycleEventWriter(_events, _state);
+        var options = Options.Create(new ReindexOptions { OrphanGrace = TimeSpan.FromMinutes(2) });
         _reconciler = new ReindexJobReconciler(
-            new TaskHubClient(_runtime),
-            _jobs,
-            _lifecycle,
-            _jobLock,
-            Options.Create(new ReindexOptions { OrphanGrace = TimeSpan.FromMinutes(2) }),
-            new FixedTimeProvider(Now),
-            NullLogger<ReindexJobReconciler>.Instance);
+            new TaskHubClient(_runtime), _jobs, _lifecycle, _jobLock, options, new FakeTimeProvider(Now), NullLogger<ReindexJobReconciler>.Instance);
     }
 
     private SearchParameterStatus Status => _state.GetSearchParameter("Patient", "custom")!.Status;
 
     public void Dispose() => _state.Dispose();
 
-    [Fact]
-    public async Task GivenRunningJobWithinOrphanGrace_WhenReconciled_ThenLockIsNotTaken()
+    // Within OrphanGrace the lock is not even taken, whatever the orchestration; past it, a running one is left alone.
+    [Theory]
+    [InlineData(1, null, 0)]
+    [InlineData(10, OrchestrationStatus.Running, 1)]
+    public async Task GivenJobWithinGraceOrWithARunningOrchestration_WhenReconciled_ThenNothingChanges(
+        int minutesSinceObserved,
+        OrchestrationStatus? orchestration,
+        int expectedLockAcquisitions)
     {
-        var job = await StartedJobAsync(Now - TimeSpan.FromMinutes(1), orchestration: null);
+        var job = await StartedJobAsync(Now - TimeSpan.FromMinutes(minutesSinceObserved), orchestration);
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
 
-        _jobLock.Acquisitions.ShouldBe(0);
-        (await GetJobAsync()).Status.ShouldBe("Running");
-        Status.ShouldBe(SearchParameterStatus.Reindexing);
-    }
-
-    [Fact]
-    public async Task GivenOrchestrationStillRunning_WhenReconciled_ThenNothingChanges()
-    {
-        var job = await StartedJobAsync(PastGrace, OrchestrationStatus.Running);
-
-        await _reconciler.ReconcileAsync(job, CancellationToken.None);
-
+        _jobLock.Acquisitions.ShouldBe(expectedLockAcquisitions);
         (await GetJobAsync()).Status.ShouldBe("Running");
         Status.ShouldBe(SearchParameterStatus.Reindexing);
     }
