@@ -136,6 +136,7 @@ docs/features/
 | [fhir-operations](fhir-operations/) | In Progress | advanced-operations, patient-everything, ips-generator, +4 more |
 | [fhirpath](fhirpath/) | In Progress | performance-optimization, gap-analysis |
 | [history](history/) | Research | streaming-migration |
+| [local-cli](local-cli/) | Research | local-cli-mcp-fhir-server |
 | [mcp-integration](mcp-integration/) | Proposed | mcp-overview, tool-design |
 | [multi-tenancy](multi-tenancy/) | Research | partitioning-modes, tenant-providers |
 | [package-management](package-management/) | Research | npm-simplifier, multi-version-ig |
