@@ -111,7 +111,7 @@ public partial class JsonNodeMutator
     public IElement Refresh(IElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        var schema = element is SchemaAwareElement schemaAware ? schemaAware.Schema : GetMappingSchema();
+        var schema = element.Meta<ISchema>() ?? GetMappingSchema();
         var type = RequireMappingType(schema, NormalizeMappingType(element.InstanceType));
         var node = element.Meta<JsonNode>()
             ?? throw new InvalidOperationException($"Element '{element.Location}' is not JSON-backed.");

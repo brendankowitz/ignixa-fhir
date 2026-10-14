@@ -1125,8 +1125,8 @@ public class MappingEvaluator
         if (target is not ITypeExtended definition || _currentMap is not { } currentMap)
             return null;
 
-        var sourceSchema = (source as SchemaAwareElement)?.Schema;
-        var targetSchema = (targetParent as SchemaAwareElement)?.Schema;
+        var sourceSchema = source.Meta<ISchema>();
+        var targetSchema = targetParent.Meta<ISchema>();
         var lookupKey = (currentMap, source.InstanceType, sourceSchema, target, targetSchema);
         if (_defaultGroupMatches.TryGetValue(lookupKey, out var cachedMatch))
             return cachedMatch;
@@ -1649,10 +1649,10 @@ public class MappingEvaluator
 
     private static bool IsPrimitiveElement(IElement element)
     {
-        if (element is not SchemaAwareElement schemaAware)
+        if (element.Meta<ISchema>() is not { } schema)
             return element.Type?.Info.IsPrimitive == true;
 
-        var instanceType = schemaAware.Schema.GetTypeDefinition(element.InstanceType);
+        var instanceType = schema.GetTypeDefinition(element.InstanceType);
         return instanceType?.Info.IsPrimitive ??
             (element.Type is { } definition && definition.Info.Name == element.InstanceType && definition.Info.IsPrimitive);
     }
