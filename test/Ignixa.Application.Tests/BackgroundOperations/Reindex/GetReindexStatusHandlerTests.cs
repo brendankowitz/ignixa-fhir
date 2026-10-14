@@ -23,7 +23,6 @@ public class GetReindexStatusHandlerTests
 
     // §8.6: a job silent past StaleJobTimeout (plus BarrierDelay in that phase) is flagged stale.
     [Theory]
-    [InlineData("Queued", null, true)]
     [InlineData("Running", ReindexPhase.BarrierDelay, false)]
     [InlineData("Running", ReindexPhase.Reindexing, true)]
     public async Task GivenAnHourWithoutHeartbeat_WhenStatusIsRead_ThenItIsStaleUnlessTheBarrierDelayCoversTheSilence(

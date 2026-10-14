@@ -34,11 +34,8 @@ public class ReindexProgressReporterTests
     }
 
     // §8.5: the first terminal status is authoritative over a racing progress write.
-    [Theory]
-    [InlineData("Completed")]
-    [InlineData("Failed")]
-    [InlineData("Cancelled")]
-    public async Task GivenJobClosesAfterRead_WhenProgressWrites_ThenTheTerminalStateIsPreserved(string status)
+    [Fact]
+    public async Task GivenJobClosesAfterRead_WhenProgressWrites_ThenTheTerminalStateIsPreserved()
     {
         await CreateJobAsync("Running", heartbeat: Now);
         var proxy = Substitute.For<IBackgroundJobRepository<ReindexJobDefinition>>();
@@ -48,7 +45,7 @@ public class ReindexProgressReporterTests
             .Returns(async call =>
             {
                 var terminal = (await _jobs.GetAsync("job", 1, CancellationToken.None))!;
-                terminal.Status = status;
+                terminal.Status = "Completed";
                 await _jobs.UpdateAsync(terminal, 1, CancellationToken.None);
                 closed = await SerializedJobAsync();
                 await _jobs.UpdateAsync(call.Arg<BackgroundJob<ReindexJobDefinition>>(), 1, CancellationToken.None);

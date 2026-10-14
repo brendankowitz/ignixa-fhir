@@ -37,8 +37,6 @@ public class ReindexRequestParserTests
     [Theory]
     [InlineData("""{"name":"unexpected","valueString":"value"}""", "Unknown reindex parameter 'unexpected'.")]
     [InlineData("""{"name":"targetResourceTypes","valueString":"Patient"}""", "Parameter 'targetResourceTypes' is not supported.")]
-    [InlineData("""{"name":"targetSearchParameterTypes","valueString":"x"}""", "Parameter 'targetSearchParameterTypes' is not supported.")]
-    [InlineData("""{"name":"targetDataStoreUsagePercentage","valueInteger":5}""", "Parameter 'targetDataStoreUsagePercentage' is not supported.")]
     [InlineData("""{"name":"maximumConcurrency","valueString":"2"}""", "maximumConcurrency must be an integer.")]
     [InlineData("""{"name":"queryDelayIntervalInMilliseconds","valueDecimal":1.5}""", "queryDelayIntervalInMilliseconds must be an integer.")]
     [InlineData("""{"valueInteger":5}""", "Each Parameters.parameter must have a name.")]

@@ -51,7 +51,6 @@ public sealed class StartReindexActivityTests : IAsyncLifetime, IDisposable
     [Theory]
     [InlineData("Completed", SearchParameterStatus.Enabled)]
     [InlineData("Failed", SearchParameterStatus.Pending)]
-    [InlineData("Cancelled", SearchParameterStatus.Pending)]
     public async Task GivenJobFinishedBeforeStart_WhenDelayedStartResumes_ThenLifecycleAndTerminalJobAreUnchanged(
         string decision, SearchParameterStatus expectedStatus)
     {

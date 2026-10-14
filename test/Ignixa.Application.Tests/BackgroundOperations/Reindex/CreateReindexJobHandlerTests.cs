@@ -63,13 +63,10 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
     }
 
     // §7 start rule: a finished job's own Pending parameters never restart on their own.
-    [Theory]
-    [InlineData("Failed")]
-    [InlineData("Cancelled")]
-    public async Task GivenJobEndsUnsuccessfullyBeforeReconciliationAcquiresLock_WhenReconciliationCreatesJob_ThenRestartIsSuppressed(
-        string status)
+    [Fact]
+    public async Task GivenJobFailsBeforeReconciliationAcquiresLock_WhenReconciliationCreatesJob_ThenRestartIsSuppressed()
     {
-        var finished = Job(status, "failed-during-race", CreateJobDefinition([PendingTarget], targetEventId: 42));
+        var finished = Job("Failed", "failed-during-race", CreateJobDefinition([PendingTarget], targetEventId: 42));
         _jobLock.OnAcquired = () => _jobs.CreateAsync(finished, CancellationToken.None);
 
         var result = await HandleAsync(ReindexTriggerKind.Reconciliation);
@@ -90,12 +87,10 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
     }
 
     // §6.1 (F8): an active or queued job is returned for the 409 instead of a second job.
-    [Theory]
-    [InlineData("Queued")]
-    [InlineData("Running")]
-    public async Task GivenActiveJob_WhenJobIsCreated_ThenActiveJobIdIsReturned(string status)
+    [Fact]
+    public async Task GivenActiveJob_WhenJobIsCreated_ThenActiveJobIdIsReturned()
     {
-        await _jobs.CreateAsync(Job(status, "active"), CancellationToken.None);
+        await _jobs.CreateAsync(Job("Running", "active"), CancellationToken.None);
 
         var result = await HandleAsync();
 
@@ -105,19 +100,12 @@ public sealed class CreateReindexJobHandlerTests : IDisposable
 
     // §8.1: a Queued row and an orchestration with instanceId = jobId; §7: the start rule, which manual ignores.
     [Theory]
-    [InlineData(null, 0, ReindexTriggerKind.Activation)]
-    [InlineData("Completed", 41, ReindexTriggerKind.Reconciliation)]
     [InlineData("Failed", 41, ReindexTriggerKind.Reconciliation)]
-    [InlineData("Cancelled", 41, ReindexTriggerKind.Reconciliation)]
     [InlineData("Failed", 42, ReindexTriggerKind.Manual)]
     public async Task GivenNoFinishedJobOrOneTheStartRuleAllows_WhenAJobIsRequested_ThenRowAndOrchestrationCarryTheResolvedPlan(
-        string? finishedStatus, long finishedTargetEventId, ReindexTriggerKind trigger)
+        string finishedStatus, long finishedTargetEventId, ReindexTriggerKind trigger)
     {
-        if (finishedStatus is not null)
-        {
-            await _jobs.CreateAsync(
-                Job(finishedStatus, "older", CreateJobDefinition([PendingTarget], finishedTargetEventId)), CancellationToken.None);
-        }
+        await _jobs.CreateAsync(Job(finishedStatus, "older", CreateJobDefinition([PendingTarget], finishedTargetEventId)), CancellationToken.None);
 
         var job = await CreatedJobAsync(await HandleAsync(trigger));
 

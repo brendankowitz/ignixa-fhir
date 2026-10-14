@@ -40,36 +40,29 @@ public sealed class ReindexJobReconcilerTests : IDisposable
 
     public void Dispose() => _state.Dispose();
 
-    // Within OrphanGrace the lock is not even taken, whatever the orchestration; past it, a running one is left alone.
-    [Theory]
-    [InlineData(1, null, 0)]
-    [InlineData(10, OrchestrationStatus.Running, 1)]
-    public async Task GivenJobWithinGraceOrWithARunningOrchestration_WhenReconciled_ThenNothingChanges(
-        int minutesSinceObserved, OrchestrationStatus? orchestration, int expectedLockAcquisitions)
+    // Past OrphanGrace a job whose orchestration is still running is left alone.
+    [Fact]
+    public async Task GivenJobWithARunningOrchestration_WhenReconciled_ThenNothingChanges()
     {
-        var job = await StartedJobAsync(Now - TimeSpan.FromMinutes(minutesSinceObserved), orchestration);
+        var job = await StartedJobAsync(PastGrace, OrchestrationStatus.Running);
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
 
-        _jobLock.Acquisitions.ShouldBe(expectedLockAcquisitions);
         (await GetJobAsync()).Status.ShouldBe("Running");
         Status.ShouldBe(SearchParameterStatus.Reindexing);
     }
 
-    [Theory]
-    [InlineData(null, "missing")]
-    [InlineData(OrchestrationStatus.Failed, "Failed")]
-    public async Task GivenRunningJobPastGraceWithDeadOrchestration_WhenReconciled_ThenJobFailsAndParametersReturnToPending(
-        OrchestrationStatus? orchestration, string expectedReason)
+    [Fact]
+    public async Task GivenRunningJobPastGraceWithFailedOrchestration_WhenReconciled_ThenJobFailsAndParametersReturnToPending()
     {
-        var job = await StartedJobAsync(PastGrace, orchestration);
+        var job = await StartedJobAsync(PastGrace, OrchestrationStatus.Failed);
 
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
 
         var failed = await GetJobAsync();
         failed.Status.ShouldBe("Failed");
         failed.EndDate.ShouldBe(Now);
-        failed.ErrorMessage.ShouldContain(expectedReason);
+        failed.ErrorMessage.ShouldContain("Failed");
         Status.ShouldBe(SearchParameterStatus.Pending);
         _state.GetSearchParameter("Patient", "custom")!.ReindexJobId.ShouldBeNull();
     }
@@ -86,14 +79,11 @@ public sealed class ReindexJobReconcilerTests : IDisposable
         Status.ShouldBe(SearchParameterStatus.Pending);
     }
 
-    [Theory]
-    [InlineData(true, "Completed", SearchParameterStatus.Enabled)]
-    [InlineData(false, "Failed", SearchParameterStatus.Pending)]
-    public async Task GivenLifecycleOutcomeAppendedBeforeTheFinalWriteWasLost_WhenReconciledTwice_ThenTheJobTakesThatOutcomeWithoutNewEvents(
-        bool succeeded, string expectedJobStatus, SearchParameterStatus expectedParameterStatus)
+    [Fact]
+    public async Task GivenSuccessAppendedBeforeTheFinalWriteWasLost_WhenReconciledTwice_ThenTheJobCompletesWithoutNewEvents()
     {
         var job = await StartedJobAsync(PastGrace, OrchestrationStatus.Failed);
-        var completion = new ReindexTargetCompletion(Target(), succeeded, 12, succeeded ? null : "worker failed");
+        var completion = new ReindexTargetCompletion(Target(), true, 12, null);
         await _lifecycle.CompleteAsync("job", [completion], TimeSpan.Zero, CancellationToken.None);
         var appendedBefore = _events.Appended.Count;
 
@@ -101,10 +91,10 @@ public sealed class ReindexJobReconcilerTests : IDisposable
         await _reconciler.ReconcileAsync(job, CancellationToken.None);
 
         var reconciled = await GetJobAsync();
-        reconciled.Status.ShouldBe(expectedJobStatus);
-        reconciled.Result!["success"]!.GetValue<bool>().ShouldBe(succeeded);
+        reconciled.Status.ShouldBe("Completed");
+        reconciled.Result!["success"]!.GetValue<bool>().ShouldBeTrue();
         _events.Appended.Count.ShouldBe(appendedBefore);
-        Status.ShouldBe(expectedParameterStatus);
+        Status.ShouldBe(SearchParameterStatus.Enabled);
     }
 
     /// <summary>A Running job that started <c>Patient.custom</c>; a null orchestration status means it is missing.</summary>

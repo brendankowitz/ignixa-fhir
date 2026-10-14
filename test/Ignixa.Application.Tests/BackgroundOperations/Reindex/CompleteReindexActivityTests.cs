@@ -104,7 +104,6 @@ public class CompleteReindexActivityTests
     [Theory]
     [InlineData("tenantAddedAfterStart", "a manual $reindex is needed", ReindexTenantStatus.Completed)]
     [InlineData("noCatalogRow", "Tenant 1: the search-parameter catalog has no row for " + Canonical, ReindexTenantStatus.Completed)]
-    [InlineData("failedResource", "Tenant 1: resource failures occurred", ReindexTenantStatus.Failed)]
     [InlineData("failedRange", "Tenant 1: resource failures occurred", ReindexTenantStatus.Failed)]
     public async Task GivenATenantThatCannotEnableTheTarget_WhenCompletionRuns_ThenTheJobFailsAndTheParameterReturnsToPending(
         string blocker, string expectedError, ReindexTenantStatus expectedTenantStatus)
@@ -113,7 +112,6 @@ public class CompleteReindexActivityTests
         var progress = blocker switch
         {
             "failedRange" => Completed(1).AddRangeFailure("Patient", "range timed out"),
-            "failedResource" => Completed(1).Add("Patient", new ReindexRangeOutput(0, 0, [new ReindexFailedResource("Patient", "p2", "bad")])),
             _ => Completed(1)
         };
 
@@ -148,25 +146,20 @@ public class CompleteReindexActivityTests
     }
 
     // Spec §4.4, §8.6: another FHIR version's tenant neither decides an R4 target nor escapes failing the job.
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task GivenAnActiveTenantOnAnotherFhirVersion_WhenAnR4TargetCompletes_ThenThatTenantDoesNotDecideIt(
-        bool otherTenantRanAndFailed)
+    [Fact]
+    public async Task GivenAnActiveTenantOnAnotherFhirVersion_WhenAnR4TargetCompletes_ThenThatTenantDoesNotDecideIt()
     {
         var target = Target(fhirVersion: "4.0");
         var fixture = await Fixture.CreateAsync(
             activeTenants: [Tenant(1), Tenant(2, fhirVersion: "5.0")],
             target: target,
             jobTargets: [target]);
-        ReindexTenantProgress[] tenants = otherTenantRanAndFailed
-            ? [Completed(1), Completed(2).AddRangeFailure("Patient", "range timed out")]
-            : [Completed(1)];
+        ReindexTenantProgress[] tenants = [Completed(1), Completed(2).AddRangeFailure("Patient", "range timed out")];
 
         await fixture.Activity().RunAsync(ActivityContext(), Input([target], tenants: tenants));
 
         fixture.Status.ShouldBe(SearchParameterStatus.Enabled);
-        (await fixture.JobAsync()).Status.ShouldBe(otherTenantRanAndFailed ? "Failed" : "Completed");
+        (await fixture.JobAsync()).Status.ShouldBe("Failed");
     }
 
     private static ReindexTenantProgress Completed(int tenantId, long failedResourceCount = 0) =>

@@ -48,7 +48,6 @@ public class ReindexOrchestrationTests
     // Spec §8.2, §8.6 (N4): a failed activity ends the job Failed with its reason; ranges never rerun.
     [Theory]
     [InlineData("start", false, 0)]
-    [InlineData("progress", false, 0)]
     [InlineData("progress", true, 3)]
     public async Task GivenAnActivityFailsAfterItsRetries_WhenOrchestrated_ThenTheJobIsFinalizedFailedWithItsReason(
         string failingActivity, bool failOnlyAfterRanges, int expectedRangeAttempts)

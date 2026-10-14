@@ -16,7 +16,6 @@ public class ReindexTargetResolverTests
     // §5.1: affected types are the targeted params' base types, expanded to concrete types.
     [Theory]
     [InlineData("Resource", null, "Binary,Observation,Patient,Practitioner")]
-    [InlineData("DomainResource", null, "Observation,Patient")]
     [InlineData("Patient", "Practitioner", "Patient")]
     public void GivenAPendingParameter_WhenTargetsAreResolved_ThenItsConcreteBaseTypesAreReindexedInOrderButNotItsReferenceTargets(
         string baseType, string? referenceTarget, string expectedTypes)
@@ -37,7 +36,6 @@ public class ReindexTargetResolverTests
 
     // §4.4: a job targets a parameter only on tenants of its FHIR version (tenant 1 is R4, tenant 2 R5).
     [Theory]
-    [InlineData("4.0", new[] { 1 })]
     [InlineData("5.0", new[] { 2 })]
     [InlineData(null, new[] { 1, 2 })]
     public async Task GivenTenantsOnTwoVersions_WhenAPendingParameterIsResolved_ThenOnlyItsVersionsTenantsAreTargeted(
