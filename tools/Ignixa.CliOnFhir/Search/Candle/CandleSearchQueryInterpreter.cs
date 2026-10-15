@@ -158,8 +158,18 @@ public sealed class CandleSearchQueryInterpreter : IExpressionVisitorWithInitial
     public SearchPredicate VisitNotReferenced(NotReferencedExpression expression, Context context) =>
         throw new SearchOperationNotSupportedException("_not-referenced is not supported in in-memory search.");
 
+    // Deviation from candle (cli-on-fhir): candle compiled each leaf to its own "any value of the entry" test, so for a
+    // composite the leaves of one component (token system AND code) could be satisfied by different values of that
+    // component (a multi-coded code), cross-matching them. A subtree whose leaves all address the same component is now
+    // compiled to a single value-level matcher and tested against each value of that component once.
     private static Func<SearchIndexEntry, bool> CompileEntryMatcher(Expression expression)
     {
+        if (CommonComponent(expression) is { } component)
+        {
+            Func<ISearchValue, bool> matchesValue = CompileValueMatcher(expression);
+            return entry => ResolveValues(entry.Value, component.Index).Any(matchesValue);
+        }
+
         switch (expression)
         {
             case MultiaryExpression multiary:
@@ -185,14 +195,85 @@ public sealed class CandleSearchQueryInterpreter : IExpressionVisitorWithInitial
                 return entry => !inner(entry);
             }
 
+            default:
+                throw new SearchOperationNotSupportedException($"{expression.GetType().Name} is not supported within a search parameter expression.");
+        }
+    }
+
+    /// <summary>
+    /// The component index every leaf of <paramref name="expression"/> addresses (null for a non-composite parameter),
+    /// or null when the leaves address different components or the expression has no leaves.
+    /// </summary>
+    private static (int? Index, bool Found)? CommonComponent(Expression expression)
+    {
+        List<int?> indexes = [];
+        if (!CollectComponents(expression, indexes) || indexes.Count == 0)
+        {
+            return null;
+        }
+
+        return indexes.All(index => index == indexes[0]) ? (indexes[0], true) : null;
+    }
+
+    private static bool CollectComponents(Expression expression, List<int?> indexes)
+    {
+        switch (expression)
+        {
+            case MultiaryExpression multiary:
+                return multiary.Expressions.All(child => CollectComponents(child, indexes));
+            case UnionExpression union:
+                return union.Expressions.All(child => CollectComponents(child, indexes));
+            case NotExpression not:
+                return CollectComponents(not.Expression, indexes);
             case StringExpression str:
-                return entry => ResolveValues(entry.Value, str.ComponentIndex).Any(value => MatchesString(str, value));
+                indexes.Add(str.ComponentIndex);
+                return true;
+            case BinaryExpression binary:
+                indexes.Add(binary.ComponentIndex);
+                return true;
+            case MissingFieldExpression missing:
+                indexes.Add(missing.ComponentIndex);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static Func<ISearchValue, bool> CompileValueMatcher(Expression expression)
+    {
+        switch (expression)
+        {
+            case MultiaryExpression multiary:
+            {
+                Func<ISearchValue, bool>[] children = [.. multiary.Expressions.Select(CompileValueMatcher)];
+                return multiary.MultiaryOperation switch
+                {
+                    MultiaryOperator.And => value => children.All(child => child(value)),
+                    MultiaryOperator.Or => value => children.Any(child => child(value)),
+                    _ => throw new SearchOperationNotSupportedException($"MultiaryOperator {multiary.MultiaryOperation} is not supported."),
+                };
+            }
+
+            case UnionExpression union:
+            {
+                Func<ISearchValue, bool>[] children = [.. union.Expressions.Select(CompileValueMatcher)];
+                return value => children.Any(child => child(value));
+            }
+
+            case NotExpression not:
+            {
+                Func<ISearchValue, bool> inner = CompileValueMatcher(not.Expression);
+                return value => !inner(value);
+            }
+
+            case StringExpression str:
+                return value => MatchesString(str, value);
 
             case BinaryExpression binary:
-                return entry => ResolveValues(entry.Value, binary.ComponentIndex).Any(value => MatchesBinary(binary, value));
+                return value => MatchesBinary(binary, value);
 
             case MissingFieldExpression missing:
-                return entry => ResolveValues(entry.Value, missing.ComponentIndex).Any(value => IsFieldMissing(missing.FieldName, value));
+                return value => IsFieldMissing(missing.FieldName, value);
 
             default:
                 throw new SearchOperationNotSupportedException($"{expression.GetType().Name} is not supported within a search parameter expression.");

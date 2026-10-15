@@ -36,6 +36,7 @@ public sealed class SearchQueryParser
 
     private readonly IFhirSchemaProvider _schema;
     private readonly SearchOptionsBuilder _builder;
+    private readonly ExpressionParser _expressionParser;
     private readonly QueryParameterParser _queryParameterParser = new();
 
     /// <param name="referenceParser">The parser the index was built with, so references are read the same way on both sides.</param>
@@ -49,8 +50,8 @@ public sealed class SearchQueryParser
 
         // fhir-candle's parser overrides restore search semantics the stock parser diverges from (date ap, empty token
         // systems, composites); the interpreter in Candle/ evaluates what it produces.
-        var expressionParser = new ExpressionParser(() => definitions, new CandleSearchParameterExpressionParser(referenceParser, schema), schema);
-        _builder = new SearchOptionsBuilder(expressionParser, definitions);
+        _expressionParser = new ExpressionParser(() => definitions, new CandleSearchParameterExpressionParser(referenceParser, schema), schema);
+        _builder = new SearchOptionsBuilder(_expressionParser, definitions);
     }
 
     /// <summary>
@@ -224,11 +225,16 @@ public sealed class SearchQueryParser
         }
     }
 
-    private static IEnumerable<IssueItem> IgnoredParameters(string resourceType, List<QueryParameter> parameters, SearchOptions options, List<ParameterTrace> traces)
+    private IEnumerable<IssueItem> IgnoredParameters(string resourceType, List<QueryParameter> parameters, SearchOptions options, List<ParameterTrace> traces)
     {
         foreach (ParameterTrace trace in traces.Where(trace => trace.Outcome is ParameterOutcome.Ignored))
         {
             var ignored = (ParameterOutcome.Ignored)trace.Outcome;
+            if (UnsupportedConstruct(resourceType, trace) is { } construct)
+            {
+                throw SearchFailures.NotSupported($"'{trace.Key}={trace.Value}' is not supported by this tool yet: {construct}");
+            }
+
             yield return Ignored($"{trace.Key}={trace.Value}", ReadableReason(ignored.Reason, resourceType));
         }
 
@@ -243,6 +249,37 @@ public sealed class SearchQueryParser
             {
                 yield return Ignored($"{parameter.Name}={parameter.Value}", "only _summary=count is supported");
             }
+        }
+    }
+
+    /// <summary>
+    /// Why an ignored parameter is a construct the pipeline recognises but this tool cannot evaluate (a chain, <c>_has</c>, a
+    /// prefix or modifier the parser rejects), or null when the name is simply not a search parameter. Ignoring the former
+    /// would silently widen the search, so the caller fails the request instead; the latter stays a warning.
+    /// </summary>
+    private string? UnsupportedConstruct(string resourceType, ParameterTrace trace)
+    {
+        if (trace.Key.Contains('.', StringComparison.Ordinal) || trace.Key.StartsWith("_has", StringComparison.Ordinal))
+        {
+            return "chained and reverse-chained (_has) parameters need a later release";
+        }
+
+        try
+        {
+            _expressionParser.Parse([resourceType], trace.Key, trace.Value);
+            return null;
+        }
+        catch (SearchParameterNotSupportedException)
+        {
+            return null;
+        }
+        catch (InvalidSearchOperationException ex)
+        {
+            return ex.Issues.FirstOrDefault()?.Diagnostics ?? ex.Message;
+        }
+        catch (FhirException)
+        {
+            return null;
         }
     }
 

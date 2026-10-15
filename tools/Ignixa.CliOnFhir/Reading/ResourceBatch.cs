@@ -76,7 +76,15 @@ public sealed record ResourceBatch(
             int cost = Encoding.UTF8.GetByteCount(resource.ToJsonString(EnvelopeJson.Compact)) + EnvelopeJson.SizeOf(item) + 2;
             if (reservedBytes + cost > limit)
             {
-                skipped.Add(new OmittedItem($"{item.Reference} is {cost} bytes and exceeds the size budget; read it with read_resources and elements", "size-budget"));
+                var notice = new OmittedItem($"{item.Reference} is {cost} bytes and exceeds the size budget; read it with read_resources and elements", "size-budget");
+                int noticeSize = EnvelopeJson.SizeOf(notice) + 1;
+                if (used + noticeSize > limit)
+                {
+                    break;
+                }
+
+                used += noticeSize;
+                skipped.Add(notice);
                 consumed++;
                 continue;
             }

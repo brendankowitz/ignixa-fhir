@@ -76,10 +76,12 @@ public static class ResourceFetcher
             issues.AddRange(projection?.Validate(type) ?? []);
         }
 
+        // The closing omitted item names the first reference not returned, so reserve room for the longest one.
+        int longestReference = found.Select(entry => ResourceReader.Describe(entry).Length).DefaultIfEmpty(0).Max();
         int reserved = EnvelopeJson.SizeOf(new ToolEnvelope<ReadFacts?>(
             new ReadFacts(parsed.Count, []),
             [],
-            [.. omitted, new OmittedItem(new string('x', 96 + (48 * found.Count)), "size-budget")],
+            [.. omitted, new OmittedItem(UnreadMessage(int.MaxValue, new string('x', longestReference)), "size-budget")],
             absent,
             issues,
             new FreshnessInfo(builtAt, StaleFiles: int.MaxValue)));
@@ -88,12 +90,15 @@ public static class ResourceFetcher
         omitted.AddRange(batch.Skipped);
         if (batch.Consumed < found.Count)
         {
-            IEnumerable<string> unread = found.Skip(batch.Consumed).Select(ResourceReader.Describe);
-            omitted.Add(new OmittedItem($"{found.Count - batch.Consumed} found resources not returned: {string.Join(", ", unread)}", "size-budget"));
+            omitted.Add(new OmittedItem(UnreadMessage(found.Count - batch.Consumed, ResourceReader.Describe(found[batch.Consumed])), "size-budget"));
         }
 
         return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken);
     }
+
+    /// <summary>The unread resources are the tail of the found list, in request order, so the first one identifies where to resume.</summary>
+    private static string UnreadMessage(int count, string first) =>
+        $"{count} found resources not returned, from {first} on (request them in a further call)";
 
     private static (string Type, string Id) ParseReference(FolderSession session, string reference)
     {

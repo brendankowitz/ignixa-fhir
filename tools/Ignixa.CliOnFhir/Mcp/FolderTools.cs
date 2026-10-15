@@ -4,9 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.ComponentModel;
-using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Inspection;
 using Ignixa.CliOnFhir.Session;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace Ignixa.CliOnFhir.Mcp;
@@ -21,8 +21,8 @@ public sealed class FolderTools(FolderSession session)
         number of patients, files read, and problems found (invalid JSON, duplicate ids, unknown types).
         Call this first to orient yourself. Problems beyond the issue limit are counted in 'omitted'.
         """)]
-    public ToolEnvelope<FolderInspection> FolderInspect(
+    public CallToolResult FolderInspect(
         [Description("Maximum number of individual problems to list (default 20).")] int? issueLimit = null,
         CancellationToken cancellationToken = default) =>
-        FolderInspector.Inspect(session, issueLimit ?? FolderInspector.DefaultIssueLimit, cancellationToken: cancellationToken);
+        ToolResults.From(FolderInspector.Inspect(session, issueLimit ?? FolderInspector.DefaultIssueLimit, cancellationToken: cancellationToken));
 }

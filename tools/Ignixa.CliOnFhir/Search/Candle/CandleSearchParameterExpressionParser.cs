@@ -114,11 +114,8 @@ public sealed class CandleSearchParameterExpressionParser : ISearchParameterExpr
             return (ParseDateWithAp(searchParameter, value), null);
         }
 
-        if (searchParameter.Type == SearchParamType.Token &&
-            (modifier is null || modifier.SearchModifierCode == SearchModifierCode.Not))
-        {
-            value = StripEmptySystems(value);
-        }
+        // Deviation from candle (cli-on-fhir): candle stripped the leading '|' of "|code" so it matched the code under any
+        // system. FHIR (and Ignixa's parser) define "|code" as "no system", so the value is passed through unchanged.
 
         if (searchParameter.Type == SearchParamType.Reference &&
             modifier?.SearchModifierCode == SearchModifierCode.Type &&
@@ -162,17 +159,6 @@ public sealed class CandleSearchParameterExpressionParser : ISearchParameterExpr
 
     private static bool HasApPrefix(string part) =>
         part.Length > 2 && part.StartsWith("ap", StringComparison.Ordinal) && char.IsDigit(part[2]);
-
-    private static string StripEmptySystems(string value)
-    {
-        IReadOnlyList<string> parts = SplitEscaped(value, ',');
-        if (!parts.Any(p => p.StartsWith('|')))
-        {
-            return value;
-        }
-
-        return string.Join(',', parts.Select(p => p.StartsWith('|') ? p[1..] : p));
-    }
 
     private static bool HasContradictoryTypePrefix(string value, string modifierResourceType)
     {
@@ -227,8 +213,15 @@ public sealed class CandleSearchParameterExpressionParser : ISearchParameterExpr
         {
             case SearchParamType.Token:
             {
-                string tokenValue = value.StartsWith('|') ? value[1..] : value;
-                TokenSearchValue token = (TokenSearchValue)TokenSearchValue.Parse(tokenValue);
+                TokenSearchValue token = (TokenSearchValue)TokenSearchValue.Parse(value);
+
+                // Deviation from candle (cli-on-fhir): "|code" means "no system" in FHIR, not "any system".
+                if (token.System is { Length: 0 })
+                {
+                    return Expression.And(
+                        Expression.Missing(FieldName.TokenSystem, componentIndex),
+                        Expression.StringEquals(FieldName.TokenCode, componentIndex, token.Code, false));
+                }
 
                 if (string.IsNullOrEmpty(token.System))
                 {

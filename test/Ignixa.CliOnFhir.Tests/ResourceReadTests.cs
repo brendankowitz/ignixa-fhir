@@ -165,8 +165,7 @@ public class ResourceReadTests
         envelope.Facts.ShouldNotBeNull().Resources.Count.ShouldBe(2);
         OmittedItem omitted = envelope.Omitted.ShouldHaveSingleItem();
         omitted.Why.ShouldBe("size-budget");
-        omitted.What.ShouldContain("Patient/p2");
-        omitted.What.ShouldContain("Patient/p3");
+        omitted.What.ShouldStartWith("2 found resources not returned, from Patient/p2 on");
     }
 
     [Fact]

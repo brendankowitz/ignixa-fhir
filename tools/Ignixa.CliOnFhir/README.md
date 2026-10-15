@@ -51,8 +51,12 @@ Search indexes are persisted per resource type so a new process does not pay for
 
 Search evaluates FHIR queries with a copy of fhir-candle's interpreter (see `Search/Candle/`), which matches multi-field criteria such as `system|code` within one index entry and compares both bounds of periods and partial dates. A parameter that does not filter is a `parameter-ignored` warning; a request that cannot be answered fails with an `error` issue (exit code 1 on the CLI, `isError` over MCP) and no facts.
 
-The 50 KB cap applies to the whole serialized MCP response (resources, evidence, issues, omitted). The CLI prints the same compact JSON by default; `--pretty` indents it (and so exceeds the cap).
+The 50 KB cap applies to the decoded tool-result text, i.e. the whole serialized envelope (resources, evidence, issues, omitted), not to the JSON-RPC frame, which escapes that text again and is larger. The CLI prints the same compact JSON by default; `--pretty` indents it (and so exceeds the cap).
+
+A construct the search pipeline recognises but this tool cannot evaluate yet (chains, `_has`, `_sort`, `_include`, composite `ap`/`sa`/`eb`, unsupported modifiers) fails the request as `search-not-supported`; only unknown parameter names and result parameters the tool does not need (`_format`, `_type`, ...) are `parameter-ignored` warnings. `param=|code` matches a code with no system.
+
+`_lastUpdated` is indexed from `meta.lastUpdated` only when it is a FHIR instant (date, time and timezone); anything else is reported as an `index-extraction-failed` issue and the resource does not match `_lastUpdated`.
 
 `freshness.staleFiles` is recounted by listing the folder and comparing each file's size and last-write time with what the catalog recorded (the count is reused for 2 seconds so back-to-back tools share one walk). If the folder can no longer be listed the value is null and a `freshness-unavailable` warning says why.
 
-Every response uses the shared envelope: `facts`, `derived` (always null, omitted from the JSON), `evidence`, `omitted`, `absent`, `issues`, `freshness`.
+Every response uses the shared envelope: `facts`, `derived` (always null), `evidence`, `omitted`, `absent`, `issues`, `freshness` (`indexBuiltAt`, `staleFiles`). All of them are always present, as `null` where there is no value (for example `facts` of a failed call or `indexBuiltAt` when the folder cannot be read).

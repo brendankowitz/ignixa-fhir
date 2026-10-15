@@ -249,4 +249,126 @@ public class SearchSemanticsTests
             envelope.Omitted[^1].Why.ShouldBe("size-budget");
         }
     }
+
+    private const string MultiCodedObservations = """
+        {"resourceType":"Observation","id":"mixed","status":"final","code":{"coding":[{"system":"http://loinc.org","code":"1234-5"},{"system":"http://snomed.info/sct","code":"8867-4"}]},"valueQuantity":{"value":70,"unit":"/min","system":"http://unitsofmeasure.org","code":"/min"}}
+        {"resourceType":"Observation","id":"hr","status":"final","code":{"coding":[{"system":"http://loinc.org","code":"8867-4"}]},"valueQuantity":{"value":100,"unit":"/min","system":"http://unitsofmeasure.org","code":"/min"}}
+        """;
+
+    [Theory]
+    [InlineData("code-value-quantity=http://loinc.org|8867-4$gt60", "hr")]
+    [InlineData("code-value-quantity=http://snomed.info/sct|8867-4$gt60", "mixed")]
+    [InlineData("code-value-quantity=8867-4$gt60", "mixed,hr")]
+    [InlineData("code-value-quantity=http://loinc.org|8867-4$gt90", "hr")]
+    public void GivenMultiCodedComponent_WhenCompositeSearched_ThenComponentSystemAndCodeMustComeFromTheSameCoding(string query, string expected)
+    {
+        using TestFolder folder = new TestFolder().Write("o.ndjson", MultiCodedObservations);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", query));
+
+        Ids(envelope).ShouldBe(expected.Split(','));
+        envelope.Issues.ShouldBeEmpty();
+    }
+
+    private const string SystemAndSystemless = """
+        {"resourceType":"Observation","id":"nosys","status":"final","code":{"coding":[{"code":"555"}]}}
+        {"resourceType":"Observation","id":"sys","status":"final","code":{"coding":[{"system":"http://s","code":"555"}]}}
+        {"resourceType":"Observation","id":"both","status":"final","code":{"coding":[{"system":"http://s","code":"1"},{"code":"2"}]}}
+        """;
+
+    [Theory]
+    [InlineData("code=|555", "nosys")]
+    [InlineData("code=555", "nosys,sys")]
+    [InlineData("code:not=|555", "sys,both")]
+    [InlineData("code=|2", "both")]
+    [InlineData("code=|1", "")]
+    [InlineData("code=|555,http://s|1", "nosys,both")]
+    public void GivenEmptySystem_WhenTokenSearched_ThenOnlyCodingsWithoutASystemMatch(string query, string expected)
+    {
+        using TestFolder folder = new TestFolder().Write("o.ndjson", SystemAndSystemless);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", query));
+
+        Ids(envelope).ShouldBe(expected.Length == 0 ? [] : expected.Split(','));
+    }
+
+    [Theory]
+    [InlineData("identifier=|555", "b")]
+    [InlineData("identifier:not=|555", "a")]
+    public void GivenEmptySystem_WhenIdentifierSearched_ThenOnlyIdentifiersWithoutASystemMatch(string query, string expected)
+    {
+        using TestFolder folder = new TestFolder().Write("p.ndjson", """
+            {"resourceType":"Patient","id":"a","identifier":[{"system":"http://s","value":"555"}]}
+            {"resourceType":"Patient","id":"b","identifier":[{"value":"555"}]}
+            """);
+
+        Ids(ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", query))).ShouldBe([expected]);
+    }
+
+    [Theory]
+    [InlineData("combo-code-value-quantity=http://loinc.org|8867-4$ap120", "combo-code-value-quantity")]
+    [InlineData("combo-code-value-quantity=http://loinc.org|8867-4$sa120", "combo-code-value-quantity")]
+    [InlineData("subject.name=Smith", "subject.name")]
+    [InlineData("subject:Patient.name=Smith", "subject:Patient.name")]
+    [InlineData("_has:Observation:subject:code=x", "_has:Observation:subject:code")]
+    public void GivenConstructRecognisedButUnsupported_WhenSearched_ThenTheCallFailsInsteadOfIgnoringIt(string query, string parameter)
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", query));
+
+        envelope.Facts.ShouldBeNull();
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("search-not-supported");
+        issue.Diagnostics.ShouldContain(parameter);
+    }
+
+    [Fact]
+    public void GivenUnknownParameterNameAndResultParameters_WhenSearched_ThenTheyStayWarnings()
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", "nonsense=1&_format=json&_foo=2"));
+
+        envelope.Facts.ShouldNotBeNull().Total.ShouldBe(5);
+        envelope.Issues.Select(issue => issue.Code).ShouldBe(["parameter-ignored", "parameter-ignored", "parameter-ignored"]);
+    }
+
+    [Fact]
+    public void GivenAFilledPageFollowedByOversizedResources_WhenSearched_ThenSkipNoticesCountAgainstTheCap()
+    {
+        string fill = new('f', 47_000);
+        string huge = new('h', 70_000);
+        using TestFolder folder = new TestFolder().Write(
+            "observations.ndjson",
+            "{\"resourceType\":\"Observation\",\"id\":\"o1\",\"status\":\"final\",\"code\":{\"text\":\"a\"}}\n"
+            + "{\"resourceType\":\"Observation\",\"id\":\"fill\",\"status\":\"final\",\"code\":{\"text\":\"a\"},\"valueString\":\"" + fill + "\"}\n"
+            + string.Join('\n', Enumerable.Range(0, 60).Select(i =>
+                "{\"resourceType\":\"Observation\",\"id\":\"big" + i + "\",\"status\":\"final\",\"code\":{\"text\":\"a\"},\"valueString\":\"" + huge + "\"}")));
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", Count: 50));
+
+        EnvelopeJson.SizeOf(envelope).ShouldBeLessThanOrEqualTo(EnvelopeJson.MaxBytes);
+        Ids(envelope).ShouldBe(["o1", "fill"]);
+        envelope.Omitted.Any(item => item.What.Contains("exceeds the size budget", StringComparison.Ordinal)).ShouldBeTrue();
+        envelope.Omitted[^1].What.ShouldContain("more matches");
+    }
+
+    [Fact]
+    public void GivenALargeResourceFollowedByManyLongReferences_WhenRead_ThenTheWholeResponseStaysWithinTheCap()
+    {
+        string large = new('y', 45_000);
+        string[] ids = [.. Enumerable.Range(0, 49).Select(i => "r" + i.ToString("00", System.Globalization.CultureInfo.InvariantCulture) + new string('a', 62))];
+        using TestFolder folder = new TestFolder().Write(
+            "m.ndjson",
+            "{\"resourceType\":\"MedicationRequest\",\"id\":\"first\",\"status\":\"active\",\"intent\":\"order\",\"subject\":{\"reference\":\"Patient/x\"},\"note\":[{\"text\":\"" + large + "\"}]}\n"
+            + string.Join('\n', ids.Select(id => "{\"resourceType\":\"MedicationRequest\",\"id\":\"" + id + "\",\"status\":\"active\",\"intent\":\"order\",\"subject\":{\"reference\":\"Patient/x\"},\"note\":[{\"text\":\"" + new string('s', 600) + "\"}]}")));
+        string[] references = ["MedicationRequest/first", .. ids.Select(id => "MedicationRequest/" + id)];
+
+        ToolEnvelope<Reading.ReadFacts?> envelope = Reading.ResourceFetcher.Read(Open(folder), references);
+
+        EnvelopeJson.SizeOf(envelope).ShouldBeLessThanOrEqualTo(EnvelopeJson.MaxBytes);
+        envelope.Facts.ShouldNotBeNull().Resources.Count.ShouldBeLessThan(references.Length);
+        envelope.Omitted.ShouldHaveSingleItem().Why.ShouldBe("size-budget");
+    }
 }
