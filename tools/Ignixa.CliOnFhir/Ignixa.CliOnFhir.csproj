@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Ignixa.CliOnFhir</RootNamespace>
+    <AssemblyName>cli-on-fhir</AssemblyName>
+    <NoWarn>$(NoWarn);CA1303;CA1848;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <!-- NuGet Package & Tool Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageStability>alpha</PackageStability>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>cli-on-fhir</ToolCommandName>
+    <PackageId>Ignixa.CliOnFhir</PackageId>
+    <Description>Prototype CLI and MCP stdio server that lets agents explore a local folder of FHIR resources: catalog, in-memory search index and inspection.</Description>
+    <PackageTags>$(PackageTags);fhir;cli;tool;mcp;agents</PackageTags>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
+  </ItemGroup>
+
+</Project>

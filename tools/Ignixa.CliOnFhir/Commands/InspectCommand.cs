@@ -1,0 +1,50 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.CommandLine;
+using System.Text.Json;
+using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Inspection;
+using Ignixa.CliOnFhir.Session;
+using Microsoft.Extensions.Logging;
+
+namespace Ignixa.CliOnFhir.Commands;
+
+/// <summary><c>cli-on-fhir inspect &lt;path&gt;</c>: the CLI form of the <c>folder_inspect</c> MCP tool.</summary>
+internal static class InspectCommand
+{
+    private static readonly JsonSerializerOptions OutputOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    public static Command Create()
+    {
+        Argument<string> pathArgument = CommonOptions.CreatePathArgument();
+        Option<string> versionOption = CommonOptions.CreateFhirVersionOption();
+        var issueLimitOption = new Option<int>("--issue-limit")
+        {
+            Description = "Maximum number of individual problems to list",
+            DefaultValueFactory = _ => FolderInspector.DefaultIssueLimit,
+        };
+
+        var command = new Command("inspect", "Overview of a folder of FHIR data: resource types, counts and problems found");
+        command.Arguments.Add(pathArgument);
+        command.Options.Add(versionOption);
+        command.Options.Add(issueLimitOption);
+
+        command.SetAction(parseResult =>
+        {
+            using ILoggerFactory loggerFactory = StandardErrorLogging.Create(LogLevel.Warning);
+            var session = new FolderSession(
+                parseResult.GetValue(pathArgument)!,
+                FhirSchemas.Resolve(parseResult.GetValue(versionOption)!),
+                loggerFactory);
+
+            ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session, parseResult.GetValue(issueLimitOption));
+            Console.Out.WriteLine(JsonSerializer.Serialize(envelope, OutputOptions));
+            return 0;
+        });
+
+        return command;
+    }
+}

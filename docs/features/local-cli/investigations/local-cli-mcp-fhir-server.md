@@ -18,8 +18,8 @@ Build one **catalog** from a single walk of the folder, index it once, and serve
  folder of FHIR files ──walk/sniff──▶ Catalog ──parse once──▶ search index (cached under .ignixa/)
  (any layout)                         (type,id,file,offset,len,...)        │
                                                                            ▼
-        ignixa inspect|search|get|fhirpath|validate   ◀──────────  SearchQueryInterpreter
-        ignixa mcp  (stdio)                           ◀──────────  + sort / include post-passes
+        cli-on-fhir inspect|search|get|fhirpath|...  ◀────  SearchQueryInterpreter
+        cli-on-fhir mcp  (stdio)                     ◀────  + sort / include post-passes
 ```
 
 ### Catalog and discovery
@@ -35,7 +35,7 @@ The tool does not detect named "layouts"; one pass classifies files and records 
 
 Rules, each reported by `inspect` rather than silently handled:
 - **Missing `id`**: path hint (`Patient/123.json`) is a fallback only; otherwise a deterministic synthetic id (hash of path + ordinal), flagged non-referenceable.
-- **Duplicate ids**: last-wins by `meta.lastUpdated`, then file mtime; every conflict is recorded; `--strict` fails instead.
+- **Duplicate ids**: every conflict is recorded. The P0 prototype keeps the first occurrence in file order (deterministic); last-wins by `meta.lastUpdated` and a `--strict` mode that fails instead are still to decide.
 - **Invalid JSON / unknown `resourceType`**: recorded as catalog error rows, never dropped.
 - **Mixed FHIR versions**: out of scope. `--fhir-version` (default R4) is explicit, and parse/validation failure counts per version are reported.
 
@@ -64,7 +64,7 @@ Triggers to revisit SQLite: datasets that no longer fit in memory (index must be
 
 ### The `inspect` command
 
-The full capability set, response envelope and tool contracts are formalized in [agent-tool-surface](agent-tool-surface.md). The first thing an agent needs is orientation, not search. `ignixa inspect <dir>` reports: resource types and counts, date ranges, profiles/`meta.profile` in use, FHIR-version hints, broken references, duplicate ids, parse errors, and the search parameters actually populated. It is also the natural first MCP tool.
+The full capability set, response envelope and tool contracts are formalized in [agent-tool-surface](agent-tool-surface.md). The first thing an agent needs is orientation, not search. `cli-on-fhir inspect <dir>` reports: resource types and counts, date ranges, profiles/`meta.profile` in use, FHIR-version hints, broken references, duplicate ids, parse errors, and the search parameters actually populated. It is also the natural first MCP tool.
 
 ### Interface strategy
 
@@ -94,7 +94,7 @@ Do not widen `IFhirRepository` / `ISearchService` in v1. Keep a narrow internal 
 ## Alignment
 
 - [x] Follows architectural layering rules: phase 1 sits in `tools/` over Core libraries; phase 3 adds `src/DataLayer/Ignixa.DataLayer.LocalFolder` implementing Domain interfaces. Nothing in Application references DataLayer implementations.
-- [~] Developer Experience: `dotnet tool install` plus `ignixa mcp <dir>` is minimal. Cold-start latency for large folders is unmeasured; the cache is the mitigation.
+- [~] Developer Experience: `dotnet tool install` plus `cli-on-fhir mcp <dir>` is minimal. Cold index build is about 5–7 s for 10k–27k resources (see P0 results); a lazy per-type index and the persisted cache are the mitigation.
 - [~] Specification compliance: search behavior is whatever `SearchQueryInterpreter` supports plus the new post-passes. The capability statement (phase 3) must say read-only and list unsupported features.
 - [x] Consistent with existing patterns: `System.CommandLine` 2.0.1, `PackAsTool`, existing MCP DTOs and `tool-design.md` limits (`_count` default 10, max 50, `_elements`).
 
@@ -118,7 +118,7 @@ Read at `b26718a`. Unless marked, verified by reading code; nothing was built, r
 fhir-candle already implements most of these gaps on top of Ignixa's packages (includes, forward and `_has` chains, `_sort`, compartments, and matching fixes in a forked interpreter). The prototype copies them rather than writing them again, and upstreams them behind opt-in options once usage justifies it; see [agent-tool-surface: Search extensions](agent-tool-surface.md#search-extensions).
 
 ### Hosting and HTTP coupling
-- The full server boots headless on the file provider in `IgnixaApiFixture` under `TEST_USE_FILESYSTEM=true` (no SQL, no socket), but `Ignixa.Web/Program.cs` also runs OpenIddict and `InitializeDatabasesAsync`.
+- The full server boots on FileSystem tenants without SQL (`IgnixaApiFixture` under `TEST_USE_FILESYSTEM=true`), but **requests do not work without SQL**. Verified on 2026-10-15 by running `Ignixa.Web` with only FileSystem tenants: `/metadata`, REST writes and the `search_fhir_resources` MCP tool all fail with "Tenant 1 is configured for storage type 'FileSystem', not 'SqlServer'". Package and conformance content is stored only in tenant 1's SQL database (`IPackageResourceRepository` is always `SqlServerPackageResourceRepository`, `DataLayerRegistration.cs:297-320`), and `ResourceTypeValidationFilter` needs it on every FHIR request. This rules out reusing the full server (Model A) for a local tool without first giving package content a non-SQL store.
 - `BundleEntryExecutor.cs:115-135` builds a `DefaultHttpContext` and requires a parent `IHttpContextAccessor`; transaction/batch bundles therefore need the HTTP pipeline.
 - `FhirRequestContextFactory.CreateBackgroundContext` already provides a non-HTTP request context and is used by import and bulk-delete activities.
 - Response shaping (paging links, `_elements`, Bundle assembly) lives in `Application/Features/Bundle/Serialization/StreamingBundleSerializer.cs` and `SearchResourcesHandler`, not in `Ignixa.Api`; the endpoints only invoke it. The composition root is granular (`ServiceCollectionExtensions.cs:91-116`) but lives in `Ignixa.Api`.
@@ -127,7 +127,7 @@ fhir-candle already implements most of these gaps on top of Ignixa's packages (i
 ### MCP
 - Existing tools: `search_fhir_resources`, `get_fhir_resource`, `get_fhir_resource_history`, `patch_fhir_resource`, `patch_resource_field`, `fhirpath_query_capability_statement`, package tools, `list_tenants_info`, job tools (`start_import_job`, `start_export_job`, `get_job_status`, `list_jobs`), plus a diagnostic tool. No create/update/delete tool, and no tool evaluates FHIRPath against a stored resource.
 - Registered with `.WithHttpTransport()` only (`BackgroundServicesRegistration.cs:122-125`). `SearchResourcesTool.cs:138-141` throws without a request context and mutates `TenantId`; handlers also need `TenantConfiguration` (`SearchResourcesHandler.cs:59`), so a static single-tenant store is required outside HTTP.
-- **Unverified**: `WithStdioServerTransport()` in `ModelContextProtocol 0.4.0-preview.3`. No restored package exists in this environment. SDK documentation indicates it is in the core `ModelContextProtocol` package, which `ModelContextProtocol.AspNetCore` references, and that tools are plain DI classes usable in a generic host. A spike must confirm the exact version.
+- **Resolved in P0**: the repo now uses `ModelContextProtocol` 2.2.0 (upgraded from 0.4.0-preview.3 with no source changes; the server's HTTP endpoint was re-verified with `initialize`, `tools/list` and `tools/call`). Stdio works from a generic host: `AddMcpServer().WithStdioServerTransport().WithTools<T>()` in `tools/Ignixa.CliOnFhir`, verified with a JSON-RPC client over stdin/stdout.
 
 ### Defects in the existing provider (relevant only if reused)
 - `GetNextVersionAsync` has `catch { return 1; }` (`:316-319`): a corrupt sidecar silently resets the version counter, in conflict with the AGENTS.md rule against swallowed exceptions and success-shaped fallbacks. Similar swallows exist at `:359-362` and `:823-826`.
@@ -135,6 +135,35 @@ fhir-candle already implements most of these gaps on top of Ignixa's packages (i
 
 ### Prior art
 Six `PackAsTool` CLIs exist under `tools/`. `Ignixa.SqlOnFhir.Cli run` already reads NDJSON directories by `*{resource}*.ndjson`. `docs/features/mcp-integration/investigations/tool-design.md` has the LLM response-size guidance to carry over.
+
+## P0 results
+
+Measured on 2026-10-15 with `tools/Ignixa.CliOnFhir` (Release build, 4 cores, .NET 10.0.401) over folders generated by `Ignixa.FhirFakes.Cli` (R4 population, US-style records dominated by Observation and Immunization).
+
+| Folder | Resources | Catalog (walk + sniff) | Index (parse + extract, parallel) | Managed heap after build | Index entries |
+|--------|-----------|------------------------|-----------------------------------|--------------------------|---------------|
+| 40 patients, 7 NDJSON files, 8.3 MB | 10,153 | 0.22 s | 5.4 s (6.0 s sequential) | 28 MB | 106,142 |
+| 100 patients, 1 transaction Bundle, 42 MB | 27,024 | 0.50 s | 7.2 s (10.4 s sequential) | 61 MB | 210,736 |
+| 40 Patients only | 40 | 0.02 s | 0.5 s | — | — |
+| 6,742 Observations only | 6,742 | 0.13 s | 4.7 s | — | — |
+
+What this shows:
+
+- **Memory is not a constraint** at this size: about 3 KB of managed heap per indexed resource. The in-memory design holds well past the target size.
+- **Index build time is the cost**, about 0.5 s fixed warm-up and roughly 0.7 ms per Observation. Parallel extraction gives only 1.1–1.4x on 4 cores, which suggests contention inside indexing; not profiled.
+- **The catalog is cheap** (about 0.2–0.5 s), and everything `folder_inspect` reports except index-entry counts comes from it.
+- **Stdio MCP**: the first `folder_inspect` call took 5.5 s (cold build of the 10k folder); the next took 6 ms.
+
+Consequences for P1:
+
+1. Build the search index lazily, per resource type, on first search; answer `folder_inspect` from the catalog so an agent's first call returns in well under a second.
+2. Persist the index cache (see [Index storage](#index-storage-own-cache-vs-sqlite-vs-duckdb)); a cold 5–7 s build per process is acceptable once, not per CLI invocation.
+3. Profile indexer contention before adding more parallelism.
+
+Known gaps in the P0 code:
+
+- Search-parameter extraction failures are logged by `ElementSearchIndexer`, not reported as issues; they need to reach `issues` in the envelope.
+- Transaction Bundles reference other entries by `urn:uuid` fullUrl. The catalog does not yet map fullUrl to `Type/id`, so such references are indexed verbatim and will not resolve in reference searches.
 
 ## Review and what changed
 
@@ -148,7 +177,7 @@ An independent architecture review (run on a different model, given the draft an
 
 | Phase | Scope | Rough size (estimate) |
 |-------|-------|-----------------------|
-| **P0 spike** | Console under `tools/`: walk folder → catalog → index → `SearchQueryInterpreter`; report index time and memory for ~10k resources; confirm stdio transport on the pinned MCP package | 1-2 days |
+| **P0 spike** (done) | `tools/Ignixa.CliOnFhir`: folder catalog, parallel index build, `inspect` verb and `folder_inspect` MCP tool over stdio; measurements in [P0 results](#p0-results) | done |
 | **P1** | Catalog + sniff; index cache; search extensions copied from fhir-candle (upstreaming deferred until usage shows which matter); the P1 capabilities of [agent-tool-surface](agent-tool-surface.md), including the terminology store, on the CLI; Core libraries plus code copied from Application where faster | ~2-3 weeks |
 | **P2** | Stdio MCP in the same tool with parity to the CLI and the shared response envelope; the P2 capabilities of [agent-tool-surface](agent-tool-surface.md) | ~1 week |
 | **P3** | The P3 capabilities of [agent-tool-surface](agent-tool-surface.md) (`deid`, `fml_transform`); `Ignixa.DataLayer.LocalFolder` adapter to `IFhirRepository`/`ISearchService` plus slim Autofac composition, which unlocks Application-layer operations such as IPS; optional `Storage:Type=LocalFolder` for `Ignixa.Web` | TBD after P1 |

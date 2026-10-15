@@ -35,17 +35,17 @@ Tools are grouped by what the agent is trying to do. "Backing" names the existin
 
 | Tool / CLI verb | Purpose | Key inputs | Backing | Gap |
 |-----------------|---------|-----------|---------|-----|
-| `folder_inspect` / `ignixa inspect` | Corpus overview: resource types and counts, patients, date span, FHIR version hints, `meta.profile` in use, search parameters actually populated, and diagnostics (parse errors, duplicate ids, broken references, resources without ids) | `path` | Catalog | Catalog and diagnostics (new) |
-| `patient_list` / `ignixa patients` | Patients with resource counts, date spans and populated domains, so the agent can choose one | `limit`, `sort` | Catalog + Patient compartment (`Ignixa.Search/Generated/*CompartmentDefinitions.g.cs`) | Compartment membership over the index (new) |
+| `folder_inspect` / `cli-on-fhir inspect` (prototype: implemented) | Corpus overview: resource types and counts, patients, date span, FHIR version hints, `meta.profile` in use, search parameters actually populated, and diagnostics (parse errors, duplicate ids, broken references, resources without ids) | `path` | Catalog | Catalog and diagnostics (new) |
+| `patient_list` / `cli-on-fhir patients` | Patients with resource counts, date spans and populated domains, so the agent can choose one | `limit`, `sort` | Catalog + Patient compartment (`Ignixa.Search/Generated/*CompartmentDefinitions.g.cs`) | Compartment membership over the index (new) |
 
 ### Navigate one patient
 
 | Tool / CLI verb | Purpose | Key inputs | Backing | Gap |
 |-----------------|---------|-----------|---------|-----|
-| `context_get_root` / `ignixa context <patient>` | Root digest: demographics, active problems, active medications, allergies (with absence facts), recent encounters, key lab latest values and trends; one stub per domain | `patient` | Compartment, FHIRPath, sort | Domain builders (new) |
-| `context_expand` / `ignixa context <patient> --node <key>` | One node: problem cluster with linked medications and evidence, lab series for one code over time, encounter with its contents, document sections | `nodeKey`, `limit` | Reference index entries, FHIRPath | Node model and linking rules (new) |
-| `context_find` / `ignixa find <patient> <code\|text>` | Jump to nodes by code (`system\|code`, LOINC/SNOMED/RxNorm), then by text; no embeddings in v1 | `patient`, `query` | Token and string index | Node-to-index mapping (new) |
-| `context_read_leaves` / `ignixa get <ref>...` | Source resources, optionally trimmed with `_elements`, each with its file location | `references[]`, `elements` | Catalog random access | — |
+| `context_get_root` / `cli-on-fhir context <patient>` | Root digest: demographics, active problems, active medications, allergies (with absence facts), recent encounters, key lab latest values and trends; one stub per domain | `patient` | Compartment, FHIRPath, sort | Domain builders (new) |
+| `context_expand` / `cli-on-fhir context <patient> --node <key>` | One node: problem cluster with linked medications and evidence, lab series for one code over time, encounter with its contents, document sections | `nodeKey`, `limit` | Reference index entries, FHIRPath | Node model and linking rules (new) |
+| `context_find` / `cli-on-fhir find <patient> <code\|text>` | Jump to nodes by code (`system\|code`, LOINC/SNOMED/RxNorm), then by text; no embeddings in v1 | `patient`, `query` | Token and string index | Node-to-index mapping (new) |
+| `context_read_leaves` / `cli-on-fhir get <ref>...` | Source resources, optionally trimmed with `_elements`, each with its file location | `references[]`, `elements` | Catalog random access | — |
 
 Domains in v1: demographics, problems (`Condition`), medications (`MedicationRequest`/`MedicationStatement`), allergies (`AllergyIntolerance`), labs and vitals (`Observation`), encounters (`Encounter`), procedures (`Procedure`), immunizations (`Immunization`), documents (`DocumentReference`, `Composition`, `DiagnosticReport`). "Active" uses each resource's status elements per FHIR version, not dates alone.
 
@@ -53,10 +53,10 @@ Domains in v1: demographics, problems (`Condition`), medications (`MedicationReq
 
 | Tool / CLI verb | Purpose | Key inputs | Backing | Gap |
 |-----------------|---------|-----------|---------|-----|
-| `search` / `ignixa search <type> "<query>"` | FHIR search over the folder | `resourceType`, `query`, `count`, `elements` | `SearchQueryInterpreter` | `_sort`, `_include`/`_revinclude`, chaining, `_has` (see [Search extensions](#search-extensions)) |
-| `plan_fhir_search` / `ignixa search --check` | Validate an agent-written query before running it: unknown parameters, unsupported modifiers, and parameters no resource in the folder populates, with suggestions | `resourceType`, `query` | `SearchOptionsBuilder`, search parameter definitions, catalog statistics | Populated-parameter statistics (new) |
-| `fhirpath_evaluate` / `ignixa fhirpath <scope> "<expr>"` | Evaluate FHIRPath over one resource, a patient compartment, or a search result set | `scope`, `expression`, `limit` | `Ignixa.FhirPath` | Scope resolution (new) |
-| `sql_view` / `ignixa view run` | Run a SQL-on-FHIR ViewDefinition over the folder; returns rows (capped) or writes CSV/Parquet/NDJSON | `view`, `filter`, `out?` | `Ignixa.SqlOnFhir`, `tools/Ignixa.SqlOnFhir.Cli` | Catalog as input source (new) |
+| `search` / `cli-on-fhir search <type> "<query>"` | FHIR search over the folder | `resourceType`, `query`, `count`, `elements` | `SearchQueryInterpreter` | `_sort`, `_include`/`_revinclude`, chaining, `_has` (see [Search extensions](#search-extensions)) |
+| `plan_fhir_search` / `cli-on-fhir search --check` | Validate an agent-written query before running it: unknown parameters, unsupported modifiers, and parameters no resource in the folder populates, with suggestions | `resourceType`, `query` | `SearchOptionsBuilder`, search parameter definitions, catalog statistics | Populated-parameter statistics (new) |
+| `fhirpath_evaluate` / `cli-on-fhir fhirpath <scope> "<expr>"` | Evaluate FHIRPath over one resource, a patient compartment, or a search result set | `scope`, `expression`, `limit` | `Ignixa.FhirPath` | Scope resolution (new) |
+| `sql_view` / `cli-on-fhir view run` | Run a SQL-on-FHIR ViewDefinition over the folder; returns rows (capped) or writes CSV/Parquet/NDJSON | `view`, `filter`, `out?` | `Ignixa.SqlOnFhir`, `tools/Ignixa.SqlOnFhir.Cli` | Catalog as input source (new) |
 
 ### Terminology
 
@@ -64,14 +64,14 @@ Terminology is a first-class group, not a validation helper. Agents are weakest 
 
 | Tool / CLI verb | Purpose | Key inputs | Backing | Gap |
 |-----------------|---------|-----------|---------|-----|
-| `terminology_list` / `ignixa term list` | Which code systems, versions, ValueSets and ConceptMaps are loaded, and from where; which systems used in the folder are *not* loaded | — | Terminology store | Store (new) |
-| `terminology_lookup` / `ignixa term lookup <system> <code>` | Display, designations, properties, status (active/inactive, replaced-by), parents | `system`, `code`, `version?` | Terminology store | Properties, designations, status (new) |
-| `terminology_search` / `ignixa term search "<text>"` | Text to candidate codes, optionally restricted to a system or ValueSet; ranked, paged | `text`, `system?`, `valueSet?`, `limit` | Terminology store | Text index over displays and designations (new) |
-| `terminology_validate_code` / `ignixa term validate` | Is this code in this CodeSystem or ValueSet; does the display match | `system`, `code`, `display?`, `valueSet?` | `InMemoryTerminologyService.ValidateCodeAsync` (value-set membership) | Hierarchy-aware ValueSets (new) |
-| `terminology_subsumes` / `ignixa term subsumes <a> <b>` | Subsumption between two codes | `system`, `codeA`, `codeB` | Terminology store | Hierarchy closure (new) |
-| `terminology_navigate` / `ignixa term tree <system> <code>` | Ancestors and descendants, with depth and paging | `system`, `code`, `direction`, `depth` | Terminology store | Hierarchy closure (new) |
-| `terminology_expand` / `ignixa term expand <valueSet>` | ValueSet expansion with filter and paging | `valueSet`, `filter?`, `offset`, `count` | Terminology store | Intensional (filter-based) ValueSets (new) |
-| `terminology_translate` / `ignixa term translate` | ConceptMap translation between systems | `system`, `code`, `targetSystem`, `conceptMap?` | Terminology store | ConceptMap evaluation (new) |
+| `terminology_list` / `cli-on-fhir term list` | Which code systems, versions, ValueSets and ConceptMaps are loaded, and from where; which systems used in the folder are *not* loaded | — | Terminology store | Store (new) |
+| `terminology_lookup` / `cli-on-fhir term lookup <system> <code>` | Display, designations, properties, status (active/inactive, replaced-by), parents | `system`, `code`, `version?` | Terminology store | Properties, designations, status (new) |
+| `terminology_search` / `cli-on-fhir term search "<text>"` | Text to candidate codes, optionally restricted to a system or ValueSet; ranked, paged | `text`, `system?`, `valueSet?`, `limit` | Terminology store | Text index over displays and designations (new) |
+| `terminology_validate_code` / `cli-on-fhir term validate` | Is this code in this CodeSystem or ValueSet; does the display match | `system`, `code`, `display?`, `valueSet?` | `InMemoryTerminologyService.ValidateCodeAsync` (value-set membership) | Hierarchy-aware ValueSets (new) |
+| `terminology_subsumes` / `cli-on-fhir term subsumes <a> <b>` | Subsumption between two codes | `system`, `codeA`, `codeB` | Terminology store | Hierarchy closure (new) |
+| `terminology_navigate` / `cli-on-fhir term tree <system> <code>` | Ancestors and descendants, with depth and paging | `system`, `code`, `direction`, `depth` | Terminology store | Hierarchy closure (new) |
+| `terminology_expand` / `cli-on-fhir term expand <valueSet>` | ValueSet expansion with filter and paging | `valueSet`, `filter?`, `offset`, `count` | Terminology store | Intensional (filter-based) ValueSets (new) |
+| `terminology_translate` / `cli-on-fhir term translate` | ConceptMap translation between systems | `system`, `code`, `targetSystem`, `conceptMap?` | Terminology store | ConceptMap evaluation (new) |
 
 Terminology also feeds the other groups:
 
@@ -84,9 +84,9 @@ Terminology also feeds the other groups:
 
 | Tool / CLI verb | Purpose | Key inputs | Backing | Gap |
 |-----------------|---------|-----------|---------|-----|
-| `validate` / `ignixa validate` | Validate resources against core or loaded IG profiles; summarized by profile and rule, with sample failures | `scope`, `profile?`, `packages?` | `Ignixa.Validation`, `Ignixa.PackageManagement` | Summarizer; lazy package load |
-| `deid` / `ignixa deid` | De-identify the folder, a patient, or a query result into an output folder | `scope`, `config`, `out` | `Ignixa.DeId`, `tools/Ignixa.DeId.Cli` | Catalog as input source |
-| `fml_transform` / `ignixa map` | Apply a StructureMap (FHIR Mapping Language) to resources; preview or write output | `map`, `scope`, `out?` | `Ignixa.FhirMappingLanguage` | Map resolution from folder or `--maps` |
+| `validate` / `cli-on-fhir validate` | Validate resources against core or loaded IG profiles; summarized by profile and rule, with sample failures | `scope`, `profile?`, `packages?` | `Ignixa.Validation`, `Ignixa.PackageManagement` | Summarizer; lazy package load |
+| `deid` / `cli-on-fhir deid` | De-identify the folder, a patient, or a query result into an output folder | `scope`, `config`, `out` | `Ignixa.DeId`, `tools/Ignixa.DeId.Cli` | Catalog as input source |
+| `fml_transform` / `cli-on-fhir map` | Apply a StructureMap (FHIR Mapping Language) to resources; preview or write output | `map`, `scope`, `out?` | `Ignixa.FhirMappingLanguage` | Map resolution from folder or `--maps` |
 
 ### Later (not v1)
 
@@ -210,7 +210,7 @@ For the prototype, these are copied into the tool as-is (with origin noted) and 
 ## Alignment
 
 - [x] Follows architectural layering rules: tools live in `tools/`; search extensions go to `Ignixa.Search` (Core) behind a Core-level contract; no Application or DataLayer dependency in v1.
-- [x] Developer Experience: one command to start (`ignixa mcp <dir>`); the first two calls orient the agent.
+- [x] Developer Experience: one command to start (`cli-on-fhir mcp <dir>`); the first two calls orient the agent.
 - [~] Specification compliance: search semantics follow FHIR R4+ for supported features; unsupported features fail loudly. Clinical "active" rules must be checked per FHIR version (STU3–R5 status value sets differ).
 - [x] Consistent with existing patterns: reuses `tool-design.md` limits, `SearchResultsDto`/`ResourceEntryDto` where they fit, `System.CommandLine` CLIs.
 
