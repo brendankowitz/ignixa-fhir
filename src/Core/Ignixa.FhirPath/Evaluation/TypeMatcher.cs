@@ -128,18 +128,19 @@ internal static class TypeMatcher
     // for a version gate here to switch on.
     private static readonly FrozenSet<string> SystemOnlyTypes = new[]
     {
-        "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
+        "Boolean", "Integer", "Long", "Decimal", "String", "DateTime", "Time"
     }.ToFrozenSet(StringComparer.Ordinal);
 
     // The evaluator carries System primitive values with their FHIR-style runtime spellings, so these
     // canonical names also normalize a System value back to its model name in every version. Separately,
     // R4/R4B explicitly allow as() to cross the same names to FHIR primitives below R5. Neither use is
-    // permission to compare arbitrary casing.
+    // permission to compare arbitrary casing. "long" is runtime-only and is excluded from FHIR aliases.
     private static readonly FrozenDictionary<string, string> CanonicalSystemPrimitiveSpellings =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Boolean"] = "boolean",
             ["Integer"] = "integer",
+            ["Long"] = "long",
             ["Decimal"] = "decimal",
             ["String"] = "string",
             ["Date"] = "date",
@@ -583,7 +584,9 @@ internal static class TypeMatcher
         if (mode != TypeMatchMode.Cast || UsesR5TypeRules(schema))
             return false;
 
-        return matchesSystemSpelling || MatchesAlias(PreR5ArtifactErratumCastAliases);
+        // "long" is an engine spelling, not a FHIR primitive or a legacy cast alias.
+        return (matchesSystemSpelling && requestedTypeName != "Long")
+            || MatchesAlias(PreR5ArtifactErratumCastAliases);
 
         bool MatchesAlias(FrozenDictionary<string, string> aliases) =>
             aliases.TryGetValue(requestedTypeName, out var fhirTypeName)

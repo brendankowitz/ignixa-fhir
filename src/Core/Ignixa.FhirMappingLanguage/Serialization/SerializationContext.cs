@@ -16,6 +16,7 @@ internal sealed class SerializationContext
     private readonly StringBuilder _builder;
     private readonly FmlSerializerOptions _options;
     private int _indentLevel;
+    private bool _isStartOfLine = true;
 
     public SerializationContext(StringBuilder builder, FmlSerializerOptions options, int indentLevel)
     {
@@ -26,19 +27,30 @@ internal sealed class SerializationContext
 
     public void Append(string value)
     {
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        if (_isStartOfLine)
+        {
+            AppendIndent();
+        }
+
         _builder.Append(value);
+        _isStartOfLine = value[^1] is '\r' or '\n';
     }
 
     public void AppendLine()
     {
         _builder.Append(_options.NewLine);
+        _isStartOfLine = true;
     }
 
     public void AppendLine(string value)
     {
-        AppendIndent();
-        _builder.Append(value);
-        _builder.Append(_options.NewLine);
+        Append(value);
+        AppendLine();
     }
 
     public void IncreaseIndent()

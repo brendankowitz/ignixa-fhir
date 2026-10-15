@@ -101,5 +101,12 @@ public enum MappingTokenKind
     BlockComment,        // /* */
 
     // Whitespace (for trivia mode)
-    Whitespace
+    Whitespace,
+
+    Let,
+    TemporalLiteral,
+    LongLiteral,
+    Tilde,
+    NotEquivalent,
+    Dollar
 }

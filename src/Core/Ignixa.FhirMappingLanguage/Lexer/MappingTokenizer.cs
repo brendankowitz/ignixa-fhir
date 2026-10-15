@@ -17,6 +17,11 @@ namespace Ignixa.FhirMappingLanguage.Lexer;
 /// </summary>
 public static class MappingTokenizer
 {
+    private const string MetadataPattern = "(?:///[^\\r\\n]*?=[ \\t]*\"\"\"[\\s\\S]*?\"\"\"[ \\t]*|///[^\\r\\n]*)";
+    private const string StringPattern = "'(?:\\\\(?:u[0-9a-fA-F]{4}|[`\"'\\\\/fnrt])|''|[^'\\\\])*'";
+    private const string IdentifierPattern = "`(?:\\\\(?:u[0-9a-fA-F]{4}|[`\"'\\\\/fnrt])|[^`\\\\])*`";
+    private const string TemporalPattern = @"@(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?)?|[0-9]{4}(?:-[0-9]{2}(?:-[0-9]{2})?)?(?:T(?:[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?)?(?:Z|[+-][0-9]{2}:[0-9]{2})?)?)?)";
+
     /// <summary>
     /// Creates a tokenizer that preserves whitespace and comments for round-tripping.
     /// Use this when you need to reconstruct the original expression text.
@@ -25,7 +30,7 @@ public static class MappingTokenizer
     {
         return new TokenizerBuilder<MappingTokenKind>()
             // Metadata declarations (must precede the comment rules - '///' is a prefix of '//')
-            .Match(Span.Regex(@"///[^\r\n]*"), MappingTokenKind.MetadataLine, requireDelimiters: false)
+            .Match(Span.Regex(MetadataPattern), MappingTokenKind.MetadataLine, requireDelimiters: false)
 
             // Comments (must come before other operators to avoid capturing // as division)
             .Match(Comment.CStyle, MappingTokenKind.BlockComment, requireDelimiters: true)
@@ -63,19 +68,22 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"\bshare\b"), MappingTokenKind.Share, requireDelimiters: false)
             .Match(Span.Regex(@"\bsingle\b"), MappingTokenKind.Single, requireDelimiters: false)
             .Match(Span.Regex(@"\bconstant\b"), MappingTokenKind.Constant, requireDelimiters: false)
+            .Match(Span.Regex(@"\blet\b"), MappingTokenKind.Let, requireDelimiters: false)
 
             // Boolean literals
             .Match(Span.Regex(@"\btrue\b"), MappingTokenKind.True, requireDelimiters: false)
             .Match(Span.Regex(@"\bfalse\b"), MappingTokenKind.False, requireDelimiters: false)
 
-            // String literals (single-quoted, SQL-style escaping)
-            .Match(QuotedString.SqlStyle, MappingTokenKind.StringLiteral)
+            // FHIRPath escapes and legacy SQL-style doubled apostrophes.
+            .Match(Span.Regex(StringPattern), MappingTokenKind.StringLiteral, requireDelimiters: false)
 
             // Delimited identifiers (backtick) and double-quoted strings
-            .Match(Span.Regex("`[^`]*`"), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
+            .Match(Span.Regex(IdentifierPattern), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
             .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DoubleQuotedString, requireDelimiters: false)
 
             // Numeric literals
+            .Match(Span.Regex(TemporalPattern), MappingTokenKind.TemporalLiteral, requireDelimiters: false)
+            .Match(Span.Regex(@"[0-9]+L\b"), MappingTokenKind.LongLiteral, requireDelimiters: false)
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
             .Match(Span.Regex(@"[0-9]+"), MappingTokenKind.IntegerLiteral, requireDelimiters: true)
 
@@ -95,6 +103,7 @@ public static class MappingTokenizer
             .Match(Span.EqualTo("<-"), MappingTokenKind.LeftArrow)
             .Match(Span.EqualTo("<="), MappingTokenKind.LessOrEqual)
             .Match(Span.EqualTo(">="), MappingTokenKind.GreaterOrEqual)
+            .Match(Span.EqualTo("!~"), MappingTokenKind.NotEquivalent)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
@@ -119,6 +128,8 @@ public static class MappingTokenizer
             .Match(Character.EqualTo('/'), MappingTokenKind.Slash)
             .Match(Character.EqualTo('|'), MappingTokenKind.Pipe)
             .Match(Character.EqualTo('&'), MappingTokenKind.Ampersand)
+            .Match(Character.EqualTo('~'), MappingTokenKind.Tilde)
+            .Match(Character.EqualTo('$'), MappingTokenKind.Dollar)
 
             .Build();
     }
@@ -131,7 +142,7 @@ public static class MappingTokenizer
     {
         return new TokenizerBuilder<MappingTokenKind>()
             // Metadata declarations (must precede the comment rules - '///' is a prefix of '//')
-            .Match(Span.Regex(@"///[^\r\n]*"), MappingTokenKind.MetadataLine, requireDelimiters: false)
+            .Match(Span.Regex(MetadataPattern), MappingTokenKind.MetadataLine, requireDelimiters: false)
 
             // Comments (ignore for standard parsing)
             .Ignore(Comment.CStyle)
@@ -166,19 +177,22 @@ public static class MappingTokenizer
             .Match(Span.Regex(@"\bshare\b"), MappingTokenKind.Share, requireDelimiters: false)
             .Match(Span.Regex(@"\bsingle\b"), MappingTokenKind.Single, requireDelimiters: false)
             .Match(Span.Regex(@"\bconstant\b"), MappingTokenKind.Constant, requireDelimiters: false)
+            .Match(Span.Regex(@"\blet\b"), MappingTokenKind.Let, requireDelimiters: false)
 
             // Boolean literals
             .Match(Span.Regex(@"\btrue\b"), MappingTokenKind.True, requireDelimiters: false)
             .Match(Span.Regex(@"\bfalse\b"), MappingTokenKind.False, requireDelimiters: false)
 
-            // String literals (single-quoted, SQL-style escaping)
-            .Match(QuotedString.SqlStyle, MappingTokenKind.StringLiteral)
+            // FHIRPath escapes and legacy SQL-style doubled apostrophes.
+            .Match(Span.Regex(StringPattern), MappingTokenKind.StringLiteral, requireDelimiters: false)
 
             // Delimited identifiers (backtick) and double-quoted strings
-            .Match(Span.Regex("`[^`]*`"), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
+            .Match(Span.Regex(IdentifierPattern), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
             .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DoubleQuotedString, requireDelimiters: false)
 
             // Numeric literals
+            .Match(Span.Regex(TemporalPattern), MappingTokenKind.TemporalLiteral, requireDelimiters: false)
+            .Match(Span.Regex(@"[0-9]+L\b"), MappingTokenKind.LongLiteral, requireDelimiters: false)
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
             .Match(Span.Regex(@"[0-9]+"), MappingTokenKind.IntegerLiteral, requireDelimiters: true)
 
@@ -198,6 +212,7 @@ public static class MappingTokenizer
             .Match(Span.EqualTo("<-"), MappingTokenKind.LeftArrow)
             .Match(Span.EqualTo("<="), MappingTokenKind.LessOrEqual)
             .Match(Span.EqualTo(">="), MappingTokenKind.GreaterOrEqual)
+            .Match(Span.EqualTo("!~"), MappingTokenKind.NotEquivalent)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
@@ -222,6 +237,8 @@ public static class MappingTokenizer
             .Match(Character.EqualTo('/'), MappingTokenKind.Slash)
             .Match(Character.EqualTo('|'), MappingTokenKind.Pipe)
             .Match(Character.EqualTo('&'), MappingTokenKind.Ampersand)
+            .Match(Character.EqualTo('~'), MappingTokenKind.Tilde)
+            .Match(Character.EqualTo('$'), MappingTokenKind.Dollar)
 
             // Whitespace (ignore for standard parsing)
             .Ignore(Span.WhiteSpace)

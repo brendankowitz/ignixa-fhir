@@ -35,9 +35,7 @@ public class FmlSerializer
         var sb = new StringBuilder();
         var context = new SerializationContext(sb, _options, indentLevel: 0);
 
-        // Header: map 'url' = 'identifier'
-        context.AppendLine($"map '{EscapeStringLiteral(map.Url)}' = '{EscapeStringLiteral(map.Identifier)}'");
-        context.AppendLine();
+        SerializeMetadata(map, context);
 
         // ConceptMap declarations
         foreach (var conceptMap in map.ConceptMaps)
@@ -47,6 +45,14 @@ public class FmlSerializer
 
         if (map.ConceptMaps.Count > 0)
         {
+            context.AppendLine();
+        }
+
+        // An explicit header preserves identity when metadata does not supply the same URL and name.
+        if (!map.Metadata.TryGetValue("url", out string? metadataUrl) || metadataUrl != map.Url ||
+            !map.Metadata.TryGetValue("name", out string? metadataName) || metadataName != map.Identifier)
+        {
+            context.AppendLine($"map {FmlText.Quote(map.Url)} = {FmlText.Quote(map.Identifier, '"')}");
             context.AppendLine();
         }
 
@@ -97,6 +103,29 @@ public class FmlSerializer
         return sb.ToString();
     }
 
+    private static void SerializeMetadata(MapExpression map, SerializationContext context)
+    {
+        if (map.MetadataDeclarations.Count > 0)
+        {
+            foreach (var declaration in map.MetadataDeclarations)
+            {
+                context.AppendLine($"/// {declaration.Key} = {declaration.Value}");
+            }
+        }
+        else
+        {
+            foreach (var metadata in map.Metadata)
+            {
+                context.AppendLine($"/// {metadata.Key} = {FmlText.Quote(metadata.Value)}");
+            }
+        }
+
+        if (map.MetadataDeclarations.Count > 0 || map.Metadata.Count > 0)
+        {
+            context.AppendLine();
+        }
+    }
+
     /// <summary>
     /// Serializes a uses declaration.
     /// Format: uses "url" alias AliasName as mode
@@ -114,11 +143,11 @@ public class FmlSerializer
 
         if (uses.Alias is not null)
         {
-            context.AppendLine($"uses '{EscapeStringLiteral(uses.Url)}' alias {uses.Alias} as {mode}");
+            context.AppendLine($"uses {FmlText.Quote(uses.Url)} alias {FmlText.Identifier(uses.Alias)} as {mode}");
         }
         else
         {
-            context.AppendLine($"uses '{EscapeStringLiteral(uses.Url)}' as {mode}");
+            context.AppendLine($"uses {FmlText.Quote(uses.Url)} as {mode}");
         }
     }
 
@@ -128,18 +157,26 @@ public class FmlSerializer
     /// </summary>
     private void SerializeImports(ImportsExpression imports, SerializationContext context)
     {
-        context.AppendLine($"imports '{EscapeStringLiteral(imports.Url)}'");
+        context.AppendLine($"imports {FmlText.Quote(imports.Url)}");
     }
 
     /// <summary>
     /// Serializes a constant declaration.
-    /// Format: constant NAME = value
+    /// Format: let NAME = value;
     /// </summary>
     private void SerializeConstant(ConstantDeclarationExpression constant, SerializationContext context)
     {
-        context.Append($"constant {constant.Name} = ");
-        SerializeExpression(constant.Value, context);
-        context.AppendLine();
+        context.Append($"let {FmlText.Identifier(constant.Name)} = ");
+        if (constant.Value is FhirPathExpression fhirPath)
+        {
+            context.Append(fhirPath.PathExpression);
+        }
+        else
+        {
+            SerializeExpression(constant.Value, context);
+        }
+
+        context.AppendLine(";");
     }
 
     /// <summary>
@@ -148,13 +185,13 @@ public class FmlSerializer
     /// </summary>
     private void SerializeConceptMap(ConceptMapDeclarationExpression conceptMap, SerializationContext context)
     {
-        context.AppendLine($"conceptmap '{EscapeStringLiteral(conceptMap.Identifier)}' {{");
+        context.AppendLine($"conceptmap {FmlText.Quote(conceptMap.Identifier)} {{");
         context.IncreaseIndent();
 
         // Prefixes
         foreach (var prefix in conceptMap.Prefixes)
         {
-            context.AppendLine($"prefix {prefix.PrefixName} = '{EscapeStringLiteral(prefix.Url)}'");
+            context.AppendLine($"prefix {FmlText.Identifier(prefix.PrefixName)} = {FmlText.Quote(prefix.Url)}");
         }
 
         if (conceptMap.Prefixes.Count > 0 && conceptMap.Groups.Any(g => g.CodeMaps.Count > 0))
@@ -169,14 +206,14 @@ public class FmlSerializer
             {
                 var equivOp = codeMap.Equivalence switch
                 {
-                    ConceptMapEquivalence.Equivalent => "==",
+                    ConceptMapEquivalence.Equivalent => "-",
                     ConceptMapEquivalence.RelatedTo => "~=",
                     ConceptMapEquivalence.NotRelatedTo => "!=",
                     ConceptMapEquivalence.Broader => "<-",
                     ConceptMapEquivalence.Narrower => "->",
-                    _ => "=="
+                    _ => throw new InvalidOperationException($"Unknown ConceptMap equivalence: {codeMap.Equivalence}")
                 };
-                context.AppendLine($"{codeMap.SourcePrefix}:{codeMap.SourceCode} {equivOp} {codeMap.TargetPrefix}:{codeMap.TargetCode}");
+                context.AppendLine($"{FmlText.Identifier(codeMap.SourcePrefix)}:{FmlText.Quote(codeMap.SourceCode)} {equivOp} {FmlText.Identifier(codeMap.TargetPrefix)}:{FmlText.Quote(codeMap.TargetCode)}");
             }
         }
 
@@ -190,7 +227,7 @@ public class FmlSerializer
     /// </summary>
     private void SerializeGroup(GroupExpression group, SerializationContext context)
     {
-        context.Append($"group {group.Name}(");
+        context.Append($"group {FmlText.Identifier(group.Name)}(");
 
         // Parameters
         for (int i = 0; i < group.Parameters.Count; i++)
@@ -208,7 +245,7 @@ public class FmlSerializer
         // Extends clause
         if (group.Extends is not null)
         {
-            context.Append($" extends {group.Extends}");
+            context.Append($" extends {FmlText.Identifier(group.Extends)}");
         }
 
         // Type-mode annotation
@@ -257,26 +294,20 @@ public class FmlSerializer
             _ => throw new InvalidOperationException($"Unknown parameter mode: {parameter.Mode}")
         };
 
-        context.Append($"{mode} {parameter.Name}");
+        context.Append($"{mode} {FmlText.Identifier(parameter.Name)}");
 
         if (parameter.Type is not null)
         {
-            context.Append($" : {parameter.Type}");
+            context.Append($" : {FmlText.Identifier(parameter.Type)}");
         }
     }
 
     /// <summary>
     /// Serializes a rule.
-    /// Format: name : sources -> targets dependent;
+    /// Format: sources -> targets dependent "name";
     /// </summary>
     private void SerializeRule(RuleExpression rule, SerializationContext context)
     {
-        // Rule name (optional)
-        if (rule.Name is not null)
-        {
-            context.Append($"{rule.Name} : ");
-        }
-
         // Sources
         for (int i = 0; i < rule.Sources.Count; i++)
         {
@@ -311,28 +342,27 @@ public class FmlSerializer
             SerializeDependent(rule.Dependent, context);
         }
 
+        if (rule.Name is not null)
+        {
+            context.Append($" {FmlText.Quote(rule.Name, '"')}");
+        }
+
         context.AppendLine(";");
     }
 
     /// <summary>
     /// Serializes a source expression.
-    /// Format: context as variable : Type cardinality where (condition) check (check) log (log) default value
+    /// Format: context : Type cardinality default (value) listMode as variable where (condition) check (check) log (log)
     /// </summary>
     private void SerializeSource(SourceExpression source, SerializationContext context)
     {
         // Context
         SerializeExpression(source.Context, context);
 
-        // Variable
-        if (source.Variable is not null)
-        {
-            context.Append($" as {source.Variable}");
-        }
-
         // Type
         if (source.Type is not null)
         {
-            context.Append($" : {source.Type}");
+            context.Append($" : {FmlText.Identifier(source.Type)}");
         }
 
         // Cardinality
@@ -341,38 +371,47 @@ public class FmlSerializer
             context.Append($" {SerializeCardinality(source.Cardinality)}");
         }
 
+        if (source.Default is not null)
+        {
+            context.Append(" default ");
+            SerializeParenthesized(source.Default, context);
+        }
+
+        if (source.ListMode is not null)
+        {
+            context.Append($" {SerializeListMode(source.ListMode.Value)}");
+        }
+
+        if (source.Variable is not null)
+        {
+            context.Append($" as {FmlText.Identifier(source.Variable)}");
+        }
+
         // Where clause
         if (source.Condition is not null)
         {
             context.Append(" where ");
-            SerializeExpression(source.Condition, context);
+            SerializeParenthesized(source.Condition, context);
         }
 
         // Check clause
         if (source.Check is not null)
         {
             context.Append(" check ");
-            SerializeExpression(source.Check, context);
+            SerializeParenthesized(source.Check, context);
         }
 
         // Log clause
         if (source.Log is not null)
         {
             context.Append(" log ");
-            SerializeExpression(source.Log, context);
-        }
-
-        // Default value
-        if (source.Default is not null)
-        {
-            context.Append(" default ");
-            SerializeExpression(source.Default, context);
+            SerializeParenthesized(source.Log, context);
         }
     }
 
     /// <summary>
     /// Serializes a target expression.
-    /// Format: context as variable = transform listMode
+    /// Format: context = transform as variable listMode
     /// </summary>
     private void SerializeTarget(TargetExpression target, SerializationContext context)
     {
@@ -382,42 +421,39 @@ public class FmlSerializer
             SerializeExpression(target.Context, context);
         }
 
-        // Variable
-        if (target.Variable is not null)
-        {
-            if (target.Context is not null)
-            {
-                context.Append($" as {target.Variable}");
-            }
-            else
-            {
-                context.Append(target.Variable);
-            }
-        }
-
         // Transform
         if (target.Transform is not null)
         {
-            context.Append(" = ");
-            SerializeExpression(target.Transform, context);
+            if (target.Context is not null)
+            {
+                context.Append(" = ");
+                SerializeExpression(target.Transform, context);
+            }
+            else if (target.Transform is TransformExpression or GroupInvocationExpression)
+            {
+                SerializeExpression(target.Transform, context);
+            }
+            else
+            {
+                SerializeParenthesized(target.Transform, context);
+            }
+        }
+
+        if (target.Variable is not null)
+        {
+            context.Append(target.Context is not null || target.Transform is not null ? " as " : "");
+            context.Append(FmlText.Identifier(target.Variable));
         }
 
         // List mode
         if (target.ListMode is not null)
         {
-            var listMode = target.ListMode.Value switch
-            {
-                ListMode.First => "first",
-                ListMode.NotFirst => "not_first",
-                ListMode.Last => "last",
-                ListMode.NotLast => "not_last",
-                ListMode.OnlyOne => "only_one",
-                ListMode.Share => "share",
-                ListMode.Single => "single",
-                _ => throw new InvalidOperationException($"Unknown list mode: {target.ListMode}")
-            };
+            context.Append($" {SerializeListMode(target.ListMode.Value)}");
+        }
 
-            context.Append($" {listMode}");
+        if (target.ListRuleId is not null)
+        {
+            context.Append($" {FmlText.Identifier(target.ListRuleId)}");
         }
     }
 
@@ -438,6 +474,29 @@ public class FmlSerializer
                 SerializeRuleSet(ruleSet, context);
                 break;
 
+            case DependentExpression clauses:
+                for (int i = 0; i < clauses.Invocations.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        context.Append(", ");
+                    }
+
+                    SerializeGroupInvocation(clauses.Invocations[i], context);
+                }
+
+                if (clauses.Rules is not null)
+                {
+                    if (clauses.Invocations.Count > 0)
+                    {
+                        context.Append(" ");
+                    }
+
+                    SerializeRuleSet(clauses.Rules, context);
+                }
+
+                break;
+
             default:
                 throw new InvalidOperationException($"Unexpected dependent expression type: {dependent.GetType().Name}");
         }
@@ -449,7 +508,7 @@ public class FmlSerializer
     /// </summary>
     private void SerializeGroupInvocation(GroupInvocationExpression invocation, SerializationContext context)
     {
-        context.Append($"{invocation.GroupName}(");
+        context.Append($"{FmlText.Identifier(invocation.GroupName)}(");
 
         for (int i = 0; i < invocation.Arguments.Count; i++)
         {
@@ -506,7 +565,7 @@ public class FmlSerializer
                 break;
 
             case IdentifierExpression identifier:
-                context.Append(identifier.Name);
+                context.Append(FmlText.Identifier(identifier.Name));
                 break;
 
             case FhirPathExpression fhirPath:
@@ -515,7 +574,7 @@ public class FmlSerializer
 
             case QualifiedIdentifierExpression qualified:
                 SerializeExpression(qualified.Context, context);
-                context.Append($".{qualified.Property}");
+                context.Append($".{FmlText.Identifier(qualified.Property)}");
                 break;
 
             case IndexExpression index:
@@ -525,6 +584,15 @@ public class FmlSerializer
 
             case TransformExpression transform:
                 SerializeTransform(transform, context);
+                break;
+
+            case GroupInvocationExpression invocation:
+                SerializeGroupInvocation(invocation, context);
+                break;
+
+            case NamedArgumentExpression argument:
+                context.Append($"{FmlText.Identifier(argument.Name)}: ");
+                SerializeExpression(argument.Value, context);
                 break;
 
             default:
@@ -540,7 +608,7 @@ public class FmlSerializer
         switch (literal.Value)
         {
             case string str:
-                context.Append($"'{EscapeStringLiteral(str)}'");
+                context.Append(FmlText.Quote(str));
                 break;
 
             case bool b:
@@ -566,7 +634,7 @@ public class FmlSerializer
     /// </summary>
     private void SerializeTransform(TransformExpression transform, SerializationContext context)
     {
-        context.Append($"{transform.FunctionName}(");
+        context.Append($"{FmlText.Identifier(transform.FunctionName)}(");
 
         for (int i = 0; i < transform.Arguments.Count; i++)
         {
@@ -592,12 +660,33 @@ public class FmlSerializer
             : $"{cardinality.Min}..*";
     }
 
-    /// <summary>
-    /// Escapes a string for use in single-quoted literals.
-    /// FML uses '' to escape a single quote within a string.
-    /// </summary>
-    private static string EscapeStringLiteral(string value)
+    private void SerializeParenthesized(Expression expression, SerializationContext context)
     {
-        return value.Replace("'", "''", StringComparison.Ordinal);
+        context.Append("(");
+        if (expression is FhirPathExpression fhirPath)
+        {
+            context.Append(fhirPath.PathExpression);
+        }
+        else
+        {
+            SerializeExpression(expression, context);
+        }
+
+        context.Append(")");
+    }
+
+    private static string SerializeListMode(ListMode listMode)
+    {
+        return listMode switch
+        {
+            ListMode.First => "first",
+            ListMode.NotFirst => "not_first",
+            ListMode.Last => "last",
+            ListMode.NotLast => "not_last",
+            ListMode.OnlyOne => "only_one",
+            ListMode.Share => "share",
+            ListMode.Single => "single",
+            _ => throw new InvalidOperationException($"Unknown list mode: {listMode}")
+        };
     }
 }

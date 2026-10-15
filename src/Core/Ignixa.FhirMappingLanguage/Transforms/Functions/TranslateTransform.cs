@@ -16,18 +16,39 @@ internal class TranslateTransform : ITransformFunction
 
     public object Execute(IReadOnlyList<object> arguments, ITransformContext context)
     {
-        if (arguments.Count < 3)
-            throw new ArgumentException("translate() requires conceptMap, sourceSystem, and sourceCode arguments");
+        if (arguments.Count != 3)
+        {
+            throw new ArgumentException("translate() requires source, map_uri, and output arguments");
+        }
 
-        if (context.ConceptMapResolver == null)
-            throw new InvalidOperationException("ConceptMapResolver not configured in context");
+        var source = arguments[0];
+        var conceptMapUrl = TransformValue.String(arguments[1]);
+        var output = TransformValue.String(arguments[2]);
+        if (output is not ("code" or "system" or "display" or "Coding" or "CodeableConcept"))
+        {
+            throw new ArgumentException($"Unsupported translate() output '{output}'.");
+        }
 
-        var conceptMapUrl = arguments[0].ToString()!;
-        var sourceSystem = arguments[1].ToString()!;
-        var sourceCode = arguments[2].ToString()!;
+        if (context.TranslationResolver is { } resolver)
+        {
+            return resolver(source, conceptMapUrl, output)!;
+        }
 
-        var translated = context.ConceptMapResolver(conceptMapUrl, sourceSystem, sourceCode);
+        if (output != "code")
+        {
+            throw new NotSupportedException($"translate() output '{output}' requires a TranslationResolver.");
+        }
 
-        return translated!; // Return null if translation fails (let caller handle)
+        if (context.ConceptMapResolver is not { } legacyResolver)
+        {
+            throw new InvalidOperationException("TranslationResolver or ConceptMapResolver must be configured in context.");
+        }
+
+        if (TransformValue.Scalar(source) is not string sourceCode)
+        {
+            throw new NotSupportedException("ConceptMapResolver requires a primitive source code; structured sources require a TranslationResolver.");
+        }
+
+        return legacyResolver(conceptMapUrl, sourceCode, string.Empty)!;
     }
 }

@@ -5,12 +5,13 @@
  * Based on FHIR StructureMap specification.
  */
 
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Lexer;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
-using System.Text.RegularExpressions;
 
 namespace Ignixa.FhirMappingLanguage.Parser;
 
@@ -41,35 +42,10 @@ internal static class MappingGrammar
         };
 
     // Helper: Unescape string
-    private static string UnescapeString(string str)
-    {
-        if (str.StartsWith('\'') && str.EndsWith('\'') && str.Length >= 2)
-        {
-            str = str.Substring(1, str.Length - 2);
-            str = str.Replace("''", "'", StringComparison.Ordinal);
-            return str;
-        }
-
-        if (str.StartsWith('"') && str.EndsWith('"') && str.Length >= 2)
-        {
-            str = str.Substring(1, str.Length - 2);
-            str = str.Replace("\\\"", "\"", StringComparison.Ordinal)
-                     .Replace("\\\\", "\\", StringComparison.Ordinal);
-            return str;
-        }
-
-        return str;
-    }
+    private static string UnescapeString(string str) => FmlText.Unquote(str);
 
     // Helper: Unescape identifier
-    private static string UnescapeIdentifier(string id)
-    {
-        if (id.StartsWith('`') && id.EndsWith('`'))
-        {
-            return id.Substring(1, id.Length - 2);
-        }
-        return id;
-    }
+    private static string UnescapeIdentifier(string id) => FmlText.Unquote(id);
 
     // Helper: reconstruct the original source text spanned by a token run.
     // Re-serializing tokens loses whitespace, which corrupts embedded FHIRPath
@@ -170,11 +146,11 @@ internal static class MappingGrammar
 
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> IntegerLiteral =
         Token.EqualTo(MappingTokenKind.IntegerLiteral)
-            .Select(t => new LiteralExpression(int.Parse(t.ToStringValue()), CreatePosition(t)));
+            .Select(t => new LiteralExpression(int.Parse(t.ToStringValue(), CultureInfo.InvariantCulture), CreatePosition(t)));
 
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> DecimalLiteral =
         Token.EqualTo(MappingTokenKind.DecimalLiteral)
-            .Select(t => new LiteralExpression(decimal.Parse(t.ToStringValue()), CreatePosition(t)));
+            .Select(t => new LiteralExpression(decimal.Parse(t.ToStringValue(), CultureInfo.InvariantCulture), CreatePosition(t)));
 
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> BooleanLiteral =
         Token.EqualTo(MappingTokenKind.True)
@@ -196,6 +172,21 @@ internal static class MappingGrammar
             .Or(Token.EqualTo(MappingTokenKind.Type))  // 'type' can be used as property name
             .Or(Token.EqualTo(MappingTokenKind.Default))  // 'default' can be used as property name
             .Or(Token.EqualTo(MappingTokenKind.Prefix))  // 'prefix' can be used as property name
+            .Or(Token.EqualTo(MappingTokenKind.Map))
+            .Or(Token.EqualTo(MappingTokenKind.Uses))
+            .Or(Token.EqualTo(MappingTokenKind.Imports))
+            .Or(Token.EqualTo(MappingTokenKind.Source))
+            .Or(Token.EqualTo(MappingTokenKind.Target))
+            .Or(Token.EqualTo(MappingTokenKind.Group))
+            .Or(Token.EqualTo(MappingTokenKind.Let))
+            .Or(Token.EqualTo(MappingTokenKind.Types))
+            .Or(Token.EqualTo(MappingTokenKind.Extends))
+            .Or(Token.EqualTo(MappingTokenKind.Where))
+            .Or(Token.EqualTo(MappingTokenKind.Check))
+            .Or(Token.EqualTo(MappingTokenKind.Alias))
+            .Or(Token.EqualTo(MappingTokenKind.As))
+            .Or(Token.EqualTo(MappingTokenKind.First))
+            .Or(Token.EqualTo(MappingTokenKind.Last))
             .Select(t => new IdentifierExpression(UnescapeIdentifier(t.ToStringValue()), CreatePosition(t)));
 
     // FHIRPath expression (embedded in parentheses or as unparenthesized expression)
@@ -224,6 +215,12 @@ internal static class MappingGrammar
                     MappingTokenKind.Check,        // check starts new clause
                     MappingTokenKind.Log,          // log starts new clause
                     MappingTokenKind.Comma,        // , separates parameters/arguments
+                    MappingTokenKind.As,
+                    MappingTokenKind.First,
+                    MappingTokenKind.NotFirst,
+                    MappingTokenKind.Last,
+                    MappingTokenKind.NotLast,
+                    MappingTokenKind.OnlyOne,
                 };
 
                 List<Token<MappingTokenKind>> tokens = [];
@@ -323,19 +320,92 @@ internal static class MappingGrammar
         ).Many()
         select rest.Aggregate((Expression)first, (acc, func) => func(acc));
 
-    // Transform argument expression (supports qualified identifiers and literals)
+    // Arguments and constants carry complete FHIRPath expressions, not only identifiers.
     private static readonly TokenListParser<MappingTokenKind, Expression> TransformArgumentExpression =
-        StringLiteral.Select(l => (Expression)l)
-            .Or(IntegerLiteral.Select(l => (Expression)l))
-            .Or(DecimalLiteral.Select(l => (Expression)l))
-            .Or(BooleanLiteral.Select(l => (Expression)l))
-            .Or(QualifiedIdentifier);
+        input => ParseExpressionUntil(input, MappingTokenKind.Comma, MappingTokenKind.RightParen);
+
+    private static TokenListParserResult<MappingTokenKind, Expression> ParseExpressionUntil(
+        TokenList<MappingTokenKind> input,
+        params MappingTokenKind[] terminators)
+    {
+        List<Token<MappingTokenKind>> tokens = [];
+        var current = input;
+        var nesting = new Stack<MappingTokenKind>();
+
+        while (!current.IsAtEnd)
+        {
+            var next = Token.Matching<MappingTokenKind>(_ => true, "expression")(current);
+            var kind = next.Value.Kind;
+            if (nesting.Count == 0 && terminators.Contains(kind))
+            {
+                break;
+            }
+
+            switch (kind)
+            {
+                case MappingTokenKind.LeftParen:
+                    nesting.Push(MappingTokenKind.RightParen);
+                    break;
+                case MappingTokenKind.LeftBracket:
+                    nesting.Push(MappingTokenKind.RightBracket);
+                    break;
+                case MappingTokenKind.LeftBrace:
+                    nesting.Push(MappingTokenKind.RightBrace);
+                    break;
+                case MappingTokenKind.RightParen:
+                case MappingTokenKind.RightBracket:
+                case MappingTokenKind.RightBrace:
+                    if (!nesting.TryPop(out var expected) || expected != kind)
+                    {
+                        return TokenListParserResult.Empty<MappingTokenKind, Expression>(
+                            input, ["Unbalanced delimiters in FHIRPath expression"]);
+                    }
+                    break;
+            }
+
+            tokens.Add(next.Value);
+            current = next.Remainder;
+        }
+
+        if (tokens.Count == 0 || nesting.Count > 0)
+        {
+            return TokenListParserResult.Empty<MappingTokenKind, Expression>(
+                input, ["Expected a complete FHIRPath expression"]);
+        }
+
+        var expressionTokens = new TokenList<MappingTokenKind>(tokens.ToArray());
+        var literal = Literal.AtEnd().TryParse(expressionTokens);
+        if (literal.HasValue)
+        {
+            return TokenListParserResult.Value<MappingTokenKind, Expression>(literal.Value, input, current);
+        }
+
+        var identifier = QualifiedIdentifier.AtEnd().TryParse(expressionTokens);
+        if (identifier.HasValue)
+        {
+            return TokenListParserResult.Value(identifier.Value, input, current);
+        }
+
+        var parenthesized = ParenthesizedFhirPathExpression.AtEnd().TryParse(expressionTokens);
+        Expression expression = parenthesized.HasValue
+            ? parenthesized.Value
+            : new FhirPathExpression(SourceTextOf(tokens), CreatePosition(tokens[0], tokens[^1]));
+        return TokenListParserResult.Value(expression, input, current);
+    }
+
+    private static readonly TokenListParser<MappingTokenKind, Expression> TransformParameter =
+        (from name in Identifier
+         from colon in Token.EqualTo(MappingTokenKind.Colon)
+         from value in TransformArgumentExpression
+         select (Expression)new NamedArgumentExpression(name.Name, value))
+        .Try()
+        .Or(TransformArgumentExpression);
 
     // Transform: functionName(arg1, arg2, ...)
     private static readonly TokenListParser<MappingTokenKind, TransformExpression> Transform =
         from name in Identifier
         from lparen in Token.EqualTo(MappingTokenKind.LeftParen)
-        from args in TransformArgumentExpression
+        from args in TransformParameter
             .ManyDelimitedBy(Token.EqualTo(MappingTokenKind.Comma))
         from rparen in Token.EqualTo(MappingTokenKind.RightParen)
         select new TransformExpression(name.Name, args, name.Location);
@@ -358,8 +428,17 @@ internal static class MappingGrammar
                         .Or(Token.EqualTo(MappingTokenKind.Asterisk).Value((int?)null))
         select new Cardinality(int.Parse(min.ToStringValue()), max);
 
-    // Source: context [: type] [as variable] [cardinality] [default value] [where condition] [check condition] [log message]
-    // Note: Type constraint comes before 'as' variable per FHIR spec
+    private static readonly TokenListParser<MappingTokenKind, string?> Alias =
+        Token.EqualTo(MappingTokenKind.As).IgnoreThen(Identifier).Select(i => (string?)i.Name);
+
+    private static readonly TokenListParser<MappingTokenKind, ListMode?> SourceListMode =
+        Token.EqualTo(MappingTokenKind.First).Value((ListMode?)ListMode.First)
+            .Or(Token.EqualTo(MappingTokenKind.NotFirst).Value((ListMode?)ListMode.NotFirst))
+            .Or(Token.EqualTo(MappingTokenKind.Last).Value((ListMode?)ListMode.Last))
+            .Or(Token.EqualTo(MappingTokenKind.NotLast).Value((ListMode?)ListMode.NotLast))
+            .Or(Token.EqualTo(MappingTokenKind.OnlyOne).Value((ListMode?)ListMode.OnlyOne));
+
+    // Accept the former alias-before-cardinality order as well as the current FML order.
     private static readonly TokenListParser<MappingTokenKind, SourceExpression> Source =
         from context in QualifiedIdentifier
         from type in (
@@ -367,17 +446,16 @@ internal static class MappingGrammar
             from typeName in Identifier
             select typeName.Name
         ).OptionalOrDefault()
-        from variable in (
-            from asToken in Token.EqualTo(MappingTokenKind.As)
-            from varName in Identifier
-            select varName.Name
-        ).OptionalOrDefault()
+        from earlyVariable in Alias.OptionalOrDefault()
         from cardinality in CardinalityParser.Select(c => (Cardinality?)c).OptionalOrDefault()
         from defaultValue in (
             from defaultToken in Token.EqualTo(MappingTokenKind.Default)
             from expr in Parse.Ref(() => FhirPathExpression)
             select expr
         ).OptionalOrDefault()
+        from listMode in SourceListMode.OptionalOrDefault()
+        from variable in Alias.OptionalOrDefault()
+        where earlyVariable is null || variable is null
         from condition in (
             from whereToken in Token.EqualTo(MappingTokenKind.Where)
             from expr in Parse.Ref(() => FhirPathExpression)
@@ -395,13 +473,14 @@ internal static class MappingGrammar
         ).OptionalOrDefault()
         select new SourceExpression(
             context,
-            variable,
+            variable ?? earlyVariable,
             type,
             condition,
             check,
             log,
             defaultValue,
-            cardinality);
+            cardinality,
+            listMode: listMode);
 
     // Grammar rule: transform = '(' fpExpression ')'. Deliberately parenthesized-only — falling back
     // to an unparenthesized form would let FhirPathExpression's greedy branch swallow a trailing
@@ -409,35 +488,38 @@ internal static class MappingGrammar
     private static readonly TokenListParser<MappingTokenKind, FhirPathExpression> ParenthesizedFhirPathExpression =
         ParseParenthesizedFhirPath;
 
-    // Target: [context] [= expression] [as variable] [list mode]
-    // Note: The order is context -> expression -> as variable -> list mode
-    // This matches FHIR spec: "tgt.name = create('Type') as variable listmode"
-    // The expression can be a literal value, a Transform (function call), or a variable reference
-    // Note: Literals are tried first. Transform uses Try() to allow backtracking to QualifiedIdentifier
+    private static readonly TokenListParser<MappingTokenKind, Expression> TargetValue =
+        Transform.Select(t => (Expression)t).Try()
+            .Or(ParenthesizedFhirPathExpression.Select(e => (Expression)e))
+            .Or(Literal.Select(l => (Expression)l))
+            .Or(Token.EqualTo(MappingTokenKind.TemporalLiteral)
+                .Or(Token.EqualTo(MappingTokenKind.LongLiteral))
+                .Select(t => (Expression)new FhirPathExpression(t.ToStringValue(), CreatePosition(t))))
+            .Or(QualifiedIdentifier);
+
+    private static readonly TokenListParser<MappingTokenKind, (Expression? Context, Expression? Transform)> TargetBody =
+        Transform.Select(t => ((Expression?)null, (Expression?)t)).Try()
+            .Or(ParenthesizedFhirPathExpression.Select(e => ((Expression?)null, (Expression?)e)))
+            .Or(from context in QualifiedIdentifier
+                from transform in Token.EqualTo(MappingTokenKind.Equals).IgnoreThen(TargetValue)
+                    .Select(e => (Expression?)e).OptionalOrDefault()
+                select ((Expression?)context, transform))
+            .Or(Token.EqualTo(MappingTokenKind.Equals).IgnoreThen(TargetValue)
+                .Select(e => ((Expression?)null, (Expression?)e)));
+
     private static readonly TokenListParser<MappingTokenKind, TargetExpression> Target =
-        from context in QualifiedIdentifier.Select(e => (Expression?)e).OptionalOrDefault()
-        from expression in (
-            from equalsToken in Token.EqualTo(MappingTokenKind.Equals)
-            from expr in StringLiteral.Select(l => (Expression)l)
-                .Or(IntegerLiteral.Select(l => (Expression)l))
-                .Or(DecimalLiteral.Select(l => (Expression)l))
-                .Or(BooleanLiteral.Select(l => (Expression)l))
-                .Or(Transform.Select(t => (Expression)t).Try())
-                .Or(ParenthesizedFhirPathExpression.Select(e => (Expression)e))
-                .Or(QualifiedIdentifier)
-            select expr
-        ).OptionalOrDefault()
-        from variable in (
-            from asToken in Token.EqualTo(MappingTokenKind.As)
-            from varName in Identifier
-            select varName.Name
-        ).OptionalOrDefault()
+        from body in TargetBody
+        from variable in Alias.OptionalOrDefault()
         from listMode in ListModeParser.Optional()
+        from listRuleId in listMode.HasValue && listMode.Value == ListMode.Share
+            ? Token.EqualTo(MappingTokenKind.Identifier).Select(t => (string?)t.ToStringValue()).OptionalOrDefault()
+            : Parse.Return<MappingTokenKind, string?>(null)
         select new TargetExpression(
-            context,
+            body.Context,
             variable,
-            expression,
-            listMode.HasValue ? listMode.Value : null);
+            body.Transform,
+            listMode.HasValue ? listMode.Value : null,
+            listRuleId: listRuleId);
 
     // Group invocation: GroupName(arg1, arg2, ...)
     private static readonly TokenListParser<MappingTokenKind, GroupInvocationExpression> GroupInvocation =
@@ -451,10 +533,18 @@ internal static class MappingGrammar
     private static readonly TokenListParser<MappingTokenKind, RuleSetExpression> NestedRules =
         from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
 #pragma warning disable CS8603 // Possible null reference return - Many() never returns null
-        from rules in Parse.Ref(() => Rule).Many()
+        from rules in Parse.Ref(() => Rules).Many()
 #pragma warning restore CS8603
         from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
-        select new RuleSetExpression(rules, CreatePosition(lbrace));
+        select new RuleSetExpression(rules.SelectMany(r => r), CreatePosition(lbrace));
+
+    private static readonly TokenListParser<MappingTokenKind, Expression> Dependent =
+        (from calls in GroupInvocation.AtLeastOnceDelimitedBy(Token.EqualTo(MappingTokenKind.Comma))
+         from rules in NestedRules.Select(r => (RuleSetExpression?)r).OptionalOrDefault()
+         select calls.Length == 1 && rules is null
+             ? (Expression)calls[0]
+             : new DependentExpression(calls, rules))
+        .Or(NestedRules.Select(r => (Expression)r));
 
     // Rule: source [, source]* [-> target [, target]*] [then (GroupInvocation | NestedRules)] ["rule name"]
     // FHIR spec uses trailing quoted strings for rule names
@@ -468,7 +558,7 @@ internal static class MappingGrammar
         ).OptionalOrDefault()
         from dependent in (
             from thenToken in Token.EqualTo(MappingTokenKind.Then)
-            from content in GroupInvocation.Select(g => (Expression)g).Or(NestedRules.Select(r => (Expression)r))
+            from content in Dependent
             select content
         ).OptionalOrDefault()
         from ruleName in StringLiteral.Select(lit => lit.Value as string).OptionalOrDefault()
@@ -479,13 +569,43 @@ internal static class MappingGrammar
             targets ?? Array.Empty<TargetExpression>(),
             dependent);
 
-    // Constant: constant NAME = value
+    // Batch identity is syntactic sugar for independent copy rules, not a cross-product.
+    private static readonly TokenListParser<MappingTokenKind, RuleExpression[]> BatchRule =
+        from source in QualifiedIdentifier
+        from arrow in Token.EqualTo(MappingTokenKind.Arrow)
+        from target in QualifiedIdentifier
+        from colon in Token.EqualTo(MappingTokenKind.Colon)
+        from fields in Identifier.AtLeastOnceDelimitedBy(Token.EqualTo(MappingTokenKind.Comma))
+        from name in StringLiteral.Select(l => l.Value as string).OptionalOrDefault()
+        from semicolon in Token.EqualTo(MappingTokenKind.Semicolon)
+        select fields.Select(field => new RuleExpression(
+            name is null ? field.Name : $"{name}-{field.Name}",
+            [new SourceExpression(new QualifiedIdentifierExpression(source, field.Name), null, null, null, null, null)],
+            [new TargetExpression(new QualifiedIdentifierExpression(target, field.Name), null, null, null)],
+            null)).ToArray();
+
+    private static readonly TokenListParser<MappingTokenKind, RuleExpression[]> Rules =
+        BatchRule.Try().Or(Rule.Select(r => new[] { r }));
+
+    private static readonly TokenListParser<MappingTokenKind, Expression> ConstantValue =
+        input => ParseExpressionUntil(input, MappingTokenKind.Semicolon);
+
+    private static readonly TokenListParser<MappingTokenKind, ConstantDeclarationExpression> LetConstant =
+        from letToken in Token.EqualTo(MappingTokenKind.Let)
+        from name in Identifier
+        from eq in Token.EqualTo(MappingTokenKind.Equals)
+        from value in ConstantValue
+        from semicolon in Token.EqualTo(MappingTokenKind.Semicolon)
+        select new ConstantDeclarationExpression(name.Name, value, CreatePosition(letToken));
+
+    // Preserve the older constant declaration syntax for existing maps.
     private static readonly TokenListParser<MappingTokenKind, ConstantDeclarationExpression> Constant =
-        from constToken in Token.EqualTo(MappingTokenKind.Constant)
+        (from constToken in Token.EqualTo(MappingTokenKind.Constant)
         from name in Identifier
         from eq in Token.EqualTo(MappingTokenKind.Equals)
         from value in Literal
-        select new ConstantDeclarationExpression(name.Name, value, CreatePosition(constToken));
+        select new ConstantDeclarationExpression(name.Name, value, CreatePosition(constToken)))
+        .Or(LetConstant);
 
     // ConceptMap prefix: prefix name = "url"
     private static readonly TokenListParser<MappingTokenKind, ConceptMapPrefixExpression> ConceptMapPrefix =
@@ -498,6 +618,7 @@ internal static class MappingGrammar
     // ConceptMap equivalence operator
     private static readonly TokenListParser<MappingTokenKind, ConceptMapEquivalence> EquivalenceOp =
         Token.EqualTo(MappingTokenKind.DoubleEquals).Select(_ => ConceptMapEquivalence.Equivalent)
+        .Or(Token.EqualTo(MappingTokenKind.Minus).Value(ConceptMapEquivalence.Equivalent))
         .Or(Token.EqualTo(MappingTokenKind.RelatedTo).Select(_ => ConceptMapEquivalence.RelatedTo))
         .Or(Token.EqualTo(MappingTokenKind.NotEquals).Select(_ => ConceptMapEquivalence.NotRelatedTo))
         .Or(Token.EqualTo(MappingTokenKind.LeftArrow).Select(_ => ConceptMapEquivalence.Broader))
@@ -507,17 +628,21 @@ internal static class MappingGrammar
     private static readonly TokenListParser<MappingTokenKind, ConceptMapCodeMapExpression> ConceptMapCodeMap =
         from srcPrefix in Identifier
         from colon1 in Token.EqualTo(MappingTokenKind.Colon)
-        from srcCode in Token.EqualTo(MappingTokenKind.Identifier).Or(Token.EqualTo(MappingTokenKind.IntegerLiteral))
+        from srcCode in StringLiteral.Select(l => (string)l.Value)
+            .Or(Identifier.Select(i => i.Name))
+            .Or(Token.EqualTo(MappingTokenKind.IntegerLiteral).Select(t => t.ToStringValue()))
         from equiv in EquivalenceOp
         from tgtPrefix in Identifier
         from colon2 in Token.EqualTo(MappingTokenKind.Colon)
-        from tgtCode in Token.EqualTo(MappingTokenKind.Identifier).Or(Token.EqualTo(MappingTokenKind.IntegerLiteral))
+        from tgtCode in StringLiteral.Select(l => (string)l.Value)
+            .Or(Identifier.Select(i => i.Name))
+            .Or(Token.EqualTo(MappingTokenKind.IntegerLiteral).Select(t => t.ToStringValue()))
         select new ConceptMapCodeMapExpression(
             srcPrefix.Name,
-            srcCode.ToStringValue(),
+            srcCode,
             equiv,
             tgtPrefix.Name,
-            tgtCode.ToStringValue());
+            tgtCode);
 
     // ConceptMap declaration: conceptmap "#id" { prefixes codeMaps }
     private static readonly TokenListParser<MappingTokenKind, ConceptMapDeclarationExpression> ConceptMapDeclaration =
@@ -561,13 +686,13 @@ internal static class MappingGrammar
         ).OptionalOrDefault()
         from typeMode in GroupTypeModeAnnotation.OptionalOrDefault(GroupTypeMode.None)
         from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
-        from rules in Rule.Many()
+        from rules in Rules.Many()
         from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
         select new GroupExpression(
             name.Name,
             parameters,
             extends,
-            rules,
+            rules.SelectMany(r => r),
             typeMode,
             CreatePosition(groupToken));
 
@@ -575,7 +700,7 @@ internal static class MappingGrammar
     //   OR metadata-based R6 form: /// key = 'value' … [groups]*
     private static readonly Regex MetadataLinePattern = new(
         @"^///\s+(?<key>[A-Za-z_][A-Za-z0-9_.\-]*)\s*=\s*(?<value>.*?)\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
 
     private static readonly TokenListParser<MappingTokenKind, KeyValuePair<string, string>> MetadataDeclaration =
         Token.EqualTo(MappingTokenKind.MetadataLine)
@@ -591,7 +716,7 @@ internal static class MappingGrammar
 
                 return new KeyValuePair<string, string>(
                     match.Groups["key"].Value,
-                    UnescapeString(match.Groups["value"].Value));
+                    match.Groups["value"].Value);
             });
 
     private sealed record MapHeaderInfo(string Url, string Identifier, ISourcePositionInfo Position);
@@ -600,8 +725,8 @@ internal static class MappingGrammar
         (from mapToken in Token.EqualTo(MappingTokenKind.Map)
         from url in StringLiteral
         from equalsToken in Token.EqualTo(MappingTokenKind.Equals)
-        from identifier in StringLiteral
-        select new MapHeaderInfo(url.Value.ToString()!, identifier.Value.ToString()!, CreatePosition(mapToken)))
+        from identifier in StringLiteral.Select(l => (string)l.Value).Or(Identifier.Select(i => i.Name))
+        select new MapHeaderInfo(url.Value.ToString()!, identifier, CreatePosition(mapToken)))
         .Select(h => (MapHeaderInfo?)h);
 
     private static MapExpression BuildMap(
@@ -616,7 +741,7 @@ internal static class MappingGrammar
         var metaDict = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var kvp in metadataLines)
         {
-            metaDict[kvp.Key] = kvp.Value;
+            metaDict[kvp.Key] = UnescapeString(kvp.Value);
         }
 
         var url = header?.Url ?? (metaDict.GetValueOrDefault("url") ?? string.Empty);
@@ -631,16 +756,18 @@ internal static class MappingGrammar
             conceptMaps,
             constants,
             metaDict,
-            header?.Position);
+            header?.Position,
+            metadataLines);
     }
 
     public static readonly TokenListParser<MappingTokenKind, MapExpression> Map =
         from metadataLines in MetadataDeclaration.Many()
+        from leadingConceptMaps in ConceptMapDeclaration.Many()
         from header in MapHeader.OptionalOrDefault()
         from conceptMaps in ConceptMapDeclaration.Many()
         from uses in Uses.Many()
         from imports in Imports.Many()
         from constants in Constant.Many()
         from groups in Group.Many()
-        select BuildMap(metadataLines, header, conceptMaps, uses, imports, constants, groups);
+        select BuildMap(metadataLines, header, leadingConceptMaps.Concat(conceptMaps).ToArray(), uses, imports, constants, groups);
 }

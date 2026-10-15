@@ -18,12 +18,12 @@ internal class CodingTransform : ITransformFunction
 
     public object Execute(IReadOnlyList<object> arguments, ITransformContext context)
     {
-        if (arguments.Count < 2)
+        if (arguments.Count is < 2 or > 3)
             throw new ArgumentException("c() requires system and code arguments");
 
-        var system = arguments[0].ToString()!;
-        var code = arguments[1].ToString()!;
-        var display = arguments.Count > 2 ? arguments[2].ToString() : null;
+        var system = TransformValue.String(arguments[0]);
+        var code = TransformValue.String(arguments[1]);
+        var display = arguments.Count > 2 ? TransformValue.String(arguments[2]) : null;
 
         var coding = new JsonObject
         {
