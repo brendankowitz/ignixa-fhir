@@ -9,7 +9,6 @@ using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Inspection;
 using Ignixa.CliOnFhir.Reading;
-using Ignixa.CliOnFhir.Search.Candle;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.InMemory;
@@ -156,7 +155,7 @@ public static class ResourceSearcher
 
     private static HashSet<ResourceKey> Run(Expression expression, IReadOnlyList<IndexedResource> candidates)
     {
-        var interpreter = new CandleSearchQueryInterpreter();
+        var interpreter = new SearchQueryInterpreter();
         SearchPredicate predicate = expression.AcceptVisitor(interpreter, interpreter.InitialContext);
         return [.. predicate(candidates.Select(resource => (resource.Key, resource.Index))).Select(match => match.Location)];
     }

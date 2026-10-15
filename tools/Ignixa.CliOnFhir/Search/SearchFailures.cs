@@ -23,11 +23,18 @@ internal static class SearchFailures
     /// interpreter) does not support is <c>search-not-supported</c>; any other request fault from the pipeline is
     /// <c>invalid-search-request</c>.
     /// </summary>
-    public static ToolRequestException From(FhirException exception)
+    /// <param name="exception">The pipeline's failure.</param>
+    /// <param name="parameters">The query parameters that fail on their own, named in the diagnostics when known.</param>
+    public static ToolRequestException From(FhirException exception, string? parameters = null)
     {
         ArgumentNullException.ThrowIfNull(exception);
 
         string detail = exception.Issues.FirstOrDefault()?.Diagnostics ?? exception.Message;
+        if (parameters is not null)
+        {
+            detail = $"{parameters}: {detail}";
+        }
+
         return exception is SearchOperationNotSupportedException or SearchModifierNotSupportedException
             ? NotSupported(detail)
             : ToolRequestException.Error(InvalidRequestCode, detail);

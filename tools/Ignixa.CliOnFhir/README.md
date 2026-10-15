@@ -49,16 +49,18 @@ Search indexes are persisted per resource type so a new process does not pay for
 | `search_fhir_resources` | `search <path> <type> [query]` | Implemented (no `_sort`, `_include`, chains or `_has` yet: they fail as `search-not-supported`) |
 | `read_resources` | `get <path> <ref>...` | Implemented |
 
-Search evaluates FHIR queries with a copy of fhir-candle's interpreter (see `Search/Candle/`), which matches multi-field criteria such as `system|code` within one index entry and compares both bounds of periods and partial dates. A parameter that does not filter is a `parameter-ignored` warning; a request that cannot be answered fails with an `error` issue (exit code 1 on the CLI, `isError` over MCP) and no facts.
+Search parses queries with Ignixa's own search pipeline and evaluates them with Ignixa's in-memory interpreter (`Ignixa.Search.InMemory.SearchQueryInterpreter`), which matches multi-field criteria such as `system|code` within one index entry (and, for composites, one value of each component), compares the bound of a period, partial date or range that the FHIR prefix table names, and folds accents in string search. A parameter that does not filter is a `parameter-ignored` warning; a request that cannot be answered fails with an `error` issue (exit code 1 on the CLI, `isError` over MCP) and no facts.
 
 The 50 KB cap applies to the decoded tool-result text, i.e. the whole serialized envelope (resources, evidence, issues, omitted), not to the JSON-RPC frame, which escapes that text again and is larger. The CLI prints the same compact JSON by default; `--pretty` indents it (and so exceeds the cap).
 
 What a search may leave unapplied is decided in one place (`Search/ParameterPolicy.cs`):
 
-- A parameter that would change which resources match or which page is returned fails the request as `search-not-supported`: the filters `_text`, `_content`, `_query`, `_list`, `_filter`, `_has` and `_not-referenced`; `_sort`, `_include`, `_revinclude`; chains; continuation tokens (`ct`, `after`; page with `offset`); `_type` unless it names exactly the searched type; and anything the parser recognises but cannot evaluate (composite `ap`/`sa`/`eb`, unsupported modifiers).
+- A parameter that would change which resources match or which page is returned fails the request as `search-not-supported`: the filters `_text`, `_content`, `_query`, `_list`, `_filter`, `_has` and `_not-referenced`; `_sort`, `_include`, `_revinclude`; chains; continuation tokens (`ct`, `after`; page with `offset`); `_type` unless it names exactly the searched type; and anything the parser recognises but cannot evaluate (unsupported modifiers).
 - Only these are ignored, each with a `parameter-ignored` warning naming it: `_format`, `_pretty`, `_contained`, `_containedType`, `_includesCount`, `_includesContinuationToken`, `_summary` values other than `count`, `_type` naming the searched type, a parameter with no value, and names the search pipeline does not recognise (as FHIR allows servers to do for unknown parameters). `param=|code` matches a code with no system.
 
-`_lastUpdated` is indexed from `meta.lastUpdated` only when it is a FHIR instant (date, time and timezone); anything else is reported as an `index-extraction-failed` issue and the resource does not match `_lastUpdated`.
+`_lastUpdated` is indexed (by `Ignixa.Search.InMemory.LastUpdatedSearchIndexer`) from `meta.lastUpdated` only when it is a FHIR instant (date, time and timezone); anything else is reported as an `index-extraction-failed` issue and the resource does not match `_lastUpdated`.
+
+The folder index differs from the server's in three tool-local places (`Indexing/FolderSearchIndexer.cs`): ContactPoint is indexed as `system|value` (`telecom=phone|555-1234`) rather than `use|value`; a Quantity whose `unit` differs from its `code` is also indexed under the unit (`value-quantity=185||lbs`); and R5 `_profile` (a reference parameter) gets entries from `meta.profile`.
 
 `freshness.staleFiles` is recounted by listing the folder and comparing each file's size and last-write time with what the catalog recorded (the count is reused for 2 seconds so back-to-back tools share one walk). If the folder can no longer be listed the value is null and a `freshness-unavailable` warning says why.
 

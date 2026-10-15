@@ -6,7 +6,6 @@
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Reading;
-using Ignixa.CliOnFhir.Search.Candle;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
@@ -39,9 +38,7 @@ public sealed class SearchQueryParser
 
         _schema = schema;
 
-        // fhir-candle's parser overrides restore search semantics the stock parser diverges from (date ap, empty token
-        // systems, composites); the interpreter in Candle/ evaluates what it produces.
-        _expressionParser = new ExpressionParser(() => definitions, new CandleSearchParameterExpressionParser(referenceParser, schema), schema);
+        _expressionParser = new ExpressionParser(() => definitions, new SearchParameterExpressionParser(referenceParser, schema), schema);
         _builder = new SearchOptionsBuilder(_expressionParser, definitions);
     }
 
@@ -136,12 +133,28 @@ public sealed class SearchQueryParser
         }
         catch (FhirException ex)
         {
-            throw SearchFailures.From(ex);
+            // The modifier check names its parameters already; other request faults carry only the value-level message.
+            throw SearchFailures.From(ex, ex is SearchModifierNotSupportedException ? null : FailingAlone(resourceType, parameters));
         }
-        catch (CandleMalformedSearchParameterException ex)
+    }
+
+    /// <summary>The parameters that fail to build on their own, quoted and comma-separated, or null when none does.</summary>
+    private string? FailingAlone(string resourceType, List<QueryParameter> parameters)
+    {
+        List<string> failing = [];
+        foreach (QueryParameter parameter in parameters)
         {
-            throw ToolRequestException.Error(SearchFailures.InvalidRequestCode, $"'{ex.ParameterCode}': {ex.Message}");
+            try
+            {
+                SearchModifierNotSupportedException.ThrowIfAny(_builder.Build(resourceType, [parameter], _schema));
+            }
+            catch (FhirException)
+            {
+                failing.Add($"'{parameter.Name}={parameter.Value}'");
+            }
         }
+
+        return failing.Count > 0 ? string.Join(", ", failing) : null;
     }
 
     private ToolRequestException NamedParseFailure(string resourceType, List<QueryParameter> parameters, Exception failure)

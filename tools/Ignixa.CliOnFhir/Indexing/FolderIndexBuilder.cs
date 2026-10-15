@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Text.Json;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
-using Ignixa.CliOnFhir.Search.Candle;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -41,7 +40,7 @@ public sealed class FolderIndexBuilder
 
         // The indexer keeps only its logger, so the (non-owning) factory wrapper can be disposed right away.
         using ILoggerFactory capturingFactory = ExtractionFailureCapture.Wrap(loggerFactory, typeof(ElementSearchIndexer).FullName!);
-        _indexer = new CandleSearchIndexer(schema, capturingFactory, Definitions, ReferenceParser);
+        _indexer = new FolderSearchIndexer(schema, capturingFactory, Definitions, ReferenceParser);
     }
 
     /// <summary>The search parameter definitions the indexer extracts with; the same instances its entries refer to.</summary>

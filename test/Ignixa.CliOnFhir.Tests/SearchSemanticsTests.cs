@@ -352,8 +352,21 @@ public class SearchSemanticsTests
     }
 
     [Theory]
-    [InlineData("combo-code-value-quantity=http://loinc.org|8867-4$ap120", "combo-code-value-quantity")]
-    [InlineData("combo-code-value-quantity=http://loinc.org|8867-4$sa120", "combo-code-value-quantity")]
+    [InlineData("combo-code-value-quantity=http://loinc.org|8480-6$ap125", "o4")]
+    [InlineData("combo-code-value-quantity=http://loinc.org|8480-6$sa110", "o4")]
+    [InlineData("combo-code-value-quantity=http://loinc.org|8867-4$sa85", "o5")]
+    [InlineData("combo-code-value-quantity=http://loinc.org|8867-4$eb65", "o1")]
+    public void GivenCompositeWithApproximateOrBoundaryPrefix_WhenSearched_ThenTheQuantityComponentAppliesIt(string query, string expected)
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", query));
+
+        Ids(envelope).ShouldBe([expected]);
+        envelope.Issues.ShouldBeEmpty();
+    }
+
+    [Theory]
     [InlineData("subject.name=Smith", "subject.name")]
     [InlineData("subject:Patient.name=Smith", "subject:Patient.name")]
     [InlineData("_has:Observation:subject:code=x", "_has:Observation:subject:code")]
