@@ -6,6 +6,7 @@
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Analysis;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -129,19 +130,16 @@ public class CompositeComponentConsistencyTests
     [Fact]
     public void GivenAKnownInconsistentComposite_WhenSearchedInMemory_ThenTheSearchIsRejectedBeforeAnyEntryIsRead()
     {
-        IFhirSchemaProvider schema = FhirVersion.R6.GetSchemaProvider();
-        SearchParameterDefinitionManager definitions = Definitions(FhirVersion.R6);
-        var builder = new SearchOptionsBuilder(
-            new ExpressionParser(() => definitions, new SearchParameterExpressionParser(new ReferenceSearchValueParser(schema, NullFhirBaseUriProvider.Instance), schema), schema),
-            definitions);
-        SearchOptions options = builder.Build("TestScript", new QueryParameterParser().Parse("scope-artifact-phase=http://x$unit"), schema);
-        options.UnsupportedParams.ShouldBeEmpty();
+        // Guard. Every shipped entry is refused before the interpreter (the binder or the options builder), so the
+        // expression is built by hand to reach the interpreter's backstop.
+        Definitions(FhirVersion.R5).TryGetSearchParameter("Encounter", "location-period", out SearchParameterInfo locationPeriod).ShouldBeTrue();
+        Expression expression = Expression.SearchParameter(locationPeriod, Expression.StringEquals(FieldName.ReferenceResourceId, 0, "l1", false));
         var interpreter = new SearchQueryInterpreter();
 
         SearchOperationNotSupportedException rejected = Should.Throw<SearchOperationNotSupportedException>(
-            () => options.Expression.AcceptVisitor(interpreter, interpreter.InitialContext));
+            () => expression.AcceptVisitor(interpreter, interpreter.InitialContext));
 
-        rejected.Issues.ShouldHaveSingleItem().Diagnostics.ShouldNotBeNull().ShouldContain("scope-artifact-phase");
+        rejected.Issues.ShouldHaveSingleItem().Diagnostics.ShouldNotBeNull().ShouldContain("location-period");
     }
 
     private static SearchParameterDefinitionManager Definitions(FhirVersion version) =>

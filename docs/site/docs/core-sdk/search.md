@@ -147,6 +147,18 @@ public class SearchParameterInfo
 | `uri` | URI values | `url` |
 | `composite` | Multiple values | `component-code-value-quantity` |
 
+### How values are indexed
+
+The converters in `Ignixa.Search.Indexing.Converters` follow the search page's mapping for each data type; the SQL rows, the in-memory index and FileSystem sidecars all store what they produce.
+
+| Element | Indexed as | So |
+|---------|-----------|----|
+| `ContactPoint` | token with `ContactPoint.value` as the code and no system (R4 §3.1.1.4.10, R5 §3.2.1.5.13: the pipe "SHALL NOT be used") | `telecom=555-1234` matches; `telecom=home\|555-1234` and `telecom=phone\|555-1234` do not. Use `phone` / `email` to select by `ContactPoint.system`. |
+| `Quantity` | `system\|code`, plus a second value with the stated `unit` as the code and no system when it differs from the code (R4 §3.1.1.4.11) | `value-quantity=185\|\|lbs` matches code `[lb_av]` with unit `lbs`; `185\|http://unitsofmeasure.org\|lbs` does not. |
+| `Range` | number range (`low.value`..`high.value`) or quantity range with the bound's system, code and unit; an open bound stays open | R4 `probability=lt0.3` matches `probabilityRange` 0.2..0.5. |
+| `canonical` under a reference parameter | reference parsed like a literal reference, with any `\|version` removed (no reference column holds a business version) | R5 `_profile=http://example.org/fhir/StructureDefinition/p` matches `meta.profile` with or without a version; a search naming a version matches every version. |
+| `Reference` / `uri` to `urn:` | untyped reference whose id is the whole urn (contained `#` references stay unindexed) | `subject=urn:uuid:...` matches and `subject:missing=true` does not. |
+
 ## Compartment Support
 
 ### CompartmentDefinitionManager
@@ -238,7 +250,7 @@ The mandatory BenchmarkDotNet result and acceptance decision are recorded in [th
 `IInMemorySearchSource`, `InMemorySearchEngine`, `InMemorySearchFeatures`, `LastUpdatedSearchIndexer` and the `SearchQueryInterpreter(source, features)` constructor are marked `[Experimental("IGNIXAEXP001")]`: Ignixa.Search is a stable package, and these may still change shape. Using them is a compile error until you opt in, for example with `<NoWarn>$(NoWarn);IGNIXAEXP001</NoWarn>` in the consuming project.
 :::
 
-A query shape the interpreter cannot evaluate (a field the parameter's definition can never hold, an unknown operator) is rejected when the predicate is built, before any entry is read. So is a shipped composite whose component expressions select elements that index as another kind than the component declares, since no query could ever match it: R5 `Encounter-location-period`, R5/R6 `Composition-section-code-text` and R6 `TestScript-scope-artifact-*`. They are listed in a static table, which a census test checks against the FHIRPath analyzer for every shipped version, so loading and searching pay nothing for it; composites registered later from packages are not checked. `DocumentReference-relationship`, which every version from STU3 to R6 publishes with its two component expressions swapped, is repaired when the definitions load (component 0, `relatesto`, selects `relatesTo.target`; component 1, `relation`, selects `relatesTo.code`). That reorders the composite's values in the in-memory and FileSystem compact indexes, so an existing FileSystem store needs that parameter reindexed; SQL rows are unchanged, because SQL picks reference-token components by type rather than position, and the search parameter hash does not change. An index entry of an unexpected kind, such as a composite component the indexer typed as a Quantity under a token component, simply does not match. Results are combined by `ResourceKey`, so a source may return fresh index collections on every enumeration.
+A query shape the interpreter cannot evaluate (a field the parameter's definition can never hold, an unknown operator) is rejected when the predicate is built, before any entry is read. So is a shipped composite whose component expressions select elements that index as another kind than the component declares, since no query could ever match it: R5 `Encounter-location-period` and R5/R6 `Composition-section-code-text` (R6 `TestScript-scope-artifact-*` left the table when canonicals began indexing under reference parameters). They are listed in a static table, which a census test checks against the FHIRPath analyzer for every shipped version, so loading and searching pay nothing for it; composites registered later from packages are not checked. `DocumentReference-relationship`, which every version from STU3 to R6 publishes with its two component expressions swapped, is repaired when the definitions load (component 0, `relatesto`, selects `relatesTo.target`; component 1, `relation`, selects `relatesTo.code`). That reorders the composite's values in the in-memory and FileSystem compact indexes, so an existing FileSystem store needs that parameter reindexed; SQL rows are unchanged, because SQL picks reference-token components by type rather than position, and the search parameter hash does not change. An index entry of an unexpected kind, such as a composite component the indexer typed as a Quantity under a token component, simply does not match. Results are combined by `ResourceKey`, so a source may return fresh index collections on every enumeration.
 
 ```csharp
 using Ignixa.Search.InMemory;

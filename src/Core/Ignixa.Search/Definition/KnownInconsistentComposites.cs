@@ -33,10 +33,6 @@ internal static class KnownInconsistentComposites
             [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/Composition-section-code-text")] = SectionText,
             [(FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Encounter-location-period")] =
                 "component 0 ('location.reference') is declared Reference but selects the reference string, which indexes as a String",
-            [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-conformance")] =
-                "component 0 ('artifact') is declared Reference but selects a canonical, which indexes as a Uri",
-            [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-phase")] =
-                "component 0 ('artifact') is declared Reference but selects a canonical, which indexes as a Uri",
         };
 
     /// <summary>Why the composite at <paramref name="url"/> cannot match in <paramref name="version"/>, or null when it is not listed.</summary>

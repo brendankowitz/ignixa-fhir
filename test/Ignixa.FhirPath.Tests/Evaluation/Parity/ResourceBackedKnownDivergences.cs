@@ -88,9 +88,9 @@ internal static class ResourceBackedKnownDivergences
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// <c>canonical</c> under 46 parameters (186 sites) - 45 <c>Reference</c>-typed plus
-    /// <c>MessageHeader-event</c>, which is <c>Token</c>: the deliberate storage
-    /// divergence tracked as #430. Ignixa registers <c>canonical</c> against <c>UriSearchValue</c> only.
+    /// <c>canonical</c> under <c>MessageHeader-event</c>, which is <c>Token</c>. The 45 <c>Reference</c>-typed
+    /// parameters over a <c>canonical</c> (#430) left this list when
+    /// <c>CanonicalToReferenceSearchValueConverter</c> landed; the Token-typed one has no converter.
     /// </description></item>
     /// <item><description>
     /// Backbone element types under a leaf-typed parameter used to cost 28 sites here (issue #454): each
@@ -140,9 +140,9 @@ internal static class ResourceBackedKnownDivergences
     /// </para>
     /// <para>
     /// The signatures carry the search parameter URL because production now logs it;
-    /// <c>Log.FhirElementTypeNotSupported</c> used to record only the element type, so the 46-parameter
-    /// <c>canonical</c> breakdown had to be recovered by replaying the lookup outside the indexer - as
-    /// would anyone diagnosing this on a running server.
+    /// <c>Log.FhirElementTypeNotSupported</c> used to record only the element type, so the per-parameter
+    /// <c>canonical</c> breakdown (46 parameters before #430 closed) had to be recovered by replaying the
+    /// lookup outside the indexer - as would anyone diagnosing this on a running server.
     /// </para>
     /// </remarks>
     public static IReadOnlyDictionary<string, int> ExpectedIgnixaConverterPipelineSkips { get; } =
@@ -157,62 +157,17 @@ internal static class ResourceBackedKnownDivergences
             ["ComponentNullResolvedSearchParameter :: scope-artifact-phase ::  :: "] = 1,
             ["ComponentNullResolvedSearchParameter :: specification-version ::  :: "] = 1,
             ["ComponentNullResolvedSearchParameter :: version-type ::  :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ActivityDefinition-depends-on :: canonical :: "] = 2,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CanonicalResource-identifier :: DeviceDefinition.UdiDeviceIdentifier :: "] = 1,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CapabilityStatement-guide :: canonical :: "] = 7,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CapabilityStatement-resource-profile :: canonical :: "] = 7,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CapabilityStatement-supported-profile :: canonical :: "] = 11,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CarePlan-activity-date :: string :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CarePlan-instantiates-canonical :: canonical :: "] = 7,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/CodeSystem-supplements :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Communication-instantiates-canonical :: canonical :: "] = 6,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-other :: canonical :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-other-map :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-source :: canonical :: "] = 1,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-source-group-system :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-source-scope :: canonical :: "] = 2,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-target :: canonical :: "] = 1,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-target-group-system :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ConceptMap-target-scope :: canonical :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Consent-source :: Attachment :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Consent-source-reference :: Attachment :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Device-udi-carrier :: base64Binary :: "] = 1,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/DeviceRequest-instantiates-canonical :: canonical :: "] = 5,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/FamilyMemberHistory-instantiates-canonical :: canonical :: "] = 6,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ImplementationGuide-depends-on :: canonical :: "] = 8,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ImplementationGuide-global :: canonical :: "] = 4,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Ingredient-manufacturer :: Ingredient.Manufacturer :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Location-near :: Location.Position :: "] = 5,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Location-near-distance :: Location.Position :: "] = 1,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Measure-depends-on :: canonical :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MeasureReport-measure :: canonical :: "] = 4,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageDefinition-event :: uri :: "] = 1,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageDefinition-parent :: canonical :: "] = 4,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageHeader-event :: canonical :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MessageHeader-event :: uri :: "] = 2,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/MetadataResource-depends-on :: canonical :: "] = 9,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/NutritionOrder-instantiates-canonical :: canonical :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/OperationDefinition-base :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/OperationDefinition-input-profile :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/OperationDefinition-output-profile :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/PlanDefinition-definition :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/PlanDefinition-depends-on :: canonical :: "] = 2,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Procedure-instantiates-canonical :: canonical :: "] = 6,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/QuestionnaireResponse-questionnaire :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/RequestGroup-instantiates-canonical :: canonical :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/RequestOrchestration-instantiates-canonical :: canonical :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/RequestOrchestration-participant :: canonical :: "] = 5,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Requirements-actor :: canonical :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/Requirements-derived-from :: canonical :: "] = 2,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ResearchDefinition-depends-on :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ResearchElementDefinition-depends-on :: canonical :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SearchParameter-component :: canonical :: "] = 7,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/SearchParameter-derived-from :: canonical :: "] = 3,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/ServiceRequest-instantiates-canonical :: canonical :: "] = 6,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/StructureDefinition-base :: canonical :: "] = 4,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestReport-testscript :: canonical :: "] = 2,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestScript-artifact :: canonical :: "] = 1,
-            ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact :: canonical :: "] = 1,
             ["FhirElementTypeNotSupported :: http://hl7.org/fhir/SearchParameter/clinical-date :: string :: "] = 3,
         };
 
@@ -232,12 +187,9 @@ internal static class ResourceBackedKnownDivergences
     /// </remarks>
     public static IReadOnlyList<(string FhirType, SearchParamType ParameterType)> UnconvertedPairs { get; } =
     [
-        // The #430 canonical divergence: registered against UriSearchValue, never ReferenceSearchValue.
-        ("canonical", SearchParamType.Reference),
-
-        // MessageHeader-event is Token and its R6 element is a canonical, so this is a second canonical
-        // gap rather than a case of the one above. The check that reads this list matches on the parameter
-        // type as well as the element type, so closing one cannot silently make the other's row vanish.
+        // MessageHeader-event is Token and its R6 element is a canonical. The Reference-typed canonical gap
+        // (#430) closed separately; the check that reads this list matches on the parameter type as well as
+        // the element type, so closing that one could not silently make this row vanish.
         ("canonical", SearchParamType.Token),
 
         // Backbone types the element model hands to a leaf-typed parameter. Neither codebase has a
