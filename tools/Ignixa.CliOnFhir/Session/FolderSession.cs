@@ -74,6 +74,13 @@ public sealed class FolderSession
     public long? IndexerLoadMilliseconds => _indexBuilder.IsValueCreated ? _indexBuilder.Value.LoadMilliseconds : null;
 
     /// <summary>
+    /// Counts the folder's files that differ from what the catalog recorded when it was walked (modified, removed or
+    /// newly added), by listing the folder and comparing each file's size and last-write time again. Cheap, but it
+    /// is a fresh look at the disk each call, so it reports edits made while a long-running session is open.
+    /// </summary>
+    public int CountStaleFiles() => FolderCatalogBuilder.CountStaleFiles(Catalog);
+
+    /// <summary>
     /// The search parameter definitions every index entry of this session refers to. Loading them is the
     /// one-time indexer cost, so reading this starts that load if no index has been requested yet.
     /// </summary>

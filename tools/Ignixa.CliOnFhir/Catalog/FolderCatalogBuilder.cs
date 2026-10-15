@@ -62,6 +62,49 @@ public static class FolderCatalogBuilder
         return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles, state.Files, DateTimeOffset.UtcNow);
     }
 
+    /// <summary>
+    /// Counts the files that differ from what <paramref name="catalog"/> recorded when it was built: scanned files
+    /// that were modified or removed, and files with a supported extension that have appeared since. Costs one
+    /// directory walk and one stat per file; nothing is read.
+    /// </summary>
+    public static int CountStaleFiles(FolderCatalog catalog)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+
+        Dictionary<string, CatalogFile> recorded = catalog.Files.ToDictionary(file => file.Path, StringComparer.Ordinal);
+        int stale = 0;
+        int seenRecorded = 0;
+        foreach (string file in EnumerateFiles(catalog.RootPath).Where(IsScanned))
+        {
+            var info = new FileInfo(file);
+            if (!info.Exists)
+            {
+                continue;
+            }
+
+            string relativePath = Path.GetRelativePath(catalog.RootPath, file).Replace('\\', '/');
+            if (!recorded.TryGetValue(relativePath, out CatalogFile? before))
+            {
+                stale++;
+                continue;
+            }
+
+            seenRecorded++;
+            if (before.Length != info.Length || before.LastWriteTimeUtcTicks != info.LastWriteTimeUtc.Ticks)
+            {
+                stale++;
+            }
+        }
+
+        return stale + (recorded.Count - seenRecorded);
+    }
+
+    private static bool IsScanned(string file)
+    {
+        string extension = Path.GetExtension(file);
+        return NdjsonExtensions.Contains(extension) || string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static IEnumerable<string> EnumerateFiles(string root)
     {
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = false, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };

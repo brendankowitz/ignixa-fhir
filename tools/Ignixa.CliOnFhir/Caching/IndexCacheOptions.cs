@@ -32,9 +32,11 @@ public sealed record IndexCacheOptions(string? RootDirectory, string? Unavailabl
     /// <c>%LOCALAPPDATA%\cli-on-fhir</c> on Windows and <c>~/.cache/cli-on-fhir</c> elsewhere. When the platform
     /// reports no such directory the result is unavailable, with the reason, rather than a guessed location.
     /// </summary>
-    public static IndexCacheOptions UserDefault()
+    public static IndexCacheOptions UserDefault() => UserDefault(Environment.GetEnvironmentVariable("XDG_CACHE_HOME"));
+
+    /// <summary><see cref="UserDefault()"/> with the <c>XDG_CACHE_HOME</c> value supplied, so it can be exercised without touching the process environment.</summary>
+    internal static IndexCacheOptions UserDefault(string? xdgCacheHome)
     {
-        string? xdgCacheHome = Environment.GetEnvironmentVariable("XDG_CACHE_HOME");
         if (!string.IsNullOrWhiteSpace(xdgCacheHome) && Path.IsPathRooted(xdgCacheHome))
         {
             return At(Path.Combine(xdgCacheHome, ApplicationDirectoryName));

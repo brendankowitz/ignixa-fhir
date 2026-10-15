@@ -6,6 +6,7 @@
 using System.CommandLine;
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Caching;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Commands;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
@@ -200,6 +201,7 @@ public class IndexCacheTests
     [InlineData("formatVersion", 0, "cache format differs")]
     [InlineData("toolVersion", "0.0.0-other", "tool version differs")]
     [InlineData("definitionsHash", "00", "search parameter definitions differ")]
+    [InlineData("moduleVersions", "Ignixa.Search=00000000-0000-0000-0000-000000000000", "indexing code differs")]
     [InlineData("fhirVersion", "R5", "FHIR version differs")]
     public void GivenManifestFromAnotherFormatToolDefinitionsOrVersion_WhenSessionOpens_ThenWholeCacheIsRebuilt(string field, object value, string expectedReason)
     {
@@ -508,6 +510,208 @@ public class IndexCacheTests
         envelope.Issues.ShouldContain(issue => issue.Code == "index-cache-rebuilt" && issue.Diagnostics.Contains("1 of the folder's files changed", StringComparison.Ordinal));
         envelope.Facts.Index.ShouldNotBeNull().ResourceTypes.ShouldAllBe(type => type.Source == "built");
         envelope.Freshness.StaleFiles.ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenCacheDirectoryInsideTheDataFolder_WhenIndexed_ThenCacheIsRefusedAndNothingIsWrittenToTheFolder()
+    {
+        using TestFolder folder = CreateFixture();
+        string[] before = Snapshot(folder.Path);
+
+        foreach (IndexCacheOptions options in new[]
+        {
+            IndexCacheOptions.At(Path.Combine(folder.Path, "cache")),
+            IndexCacheOptions.At(folder.Path),
+            IndexCacheOptions.At(folder.Path + Path.DirectorySeparatorChar),
+            IndexCacheOptions.UserDefault(Path.Combine(folder.Path, ".cache")),
+        })
+        {
+            var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, options);
+
+            session.GetIndex("Patient").FromCache.ShouldBeFalse();
+            session.GetIndex("Encounter").Resources.ShouldNotBeEmpty();
+
+            session.CacheDirectory.ShouldBeNull();
+            IssueItem issue = session.CacheIssues.ShouldHaveSingleItem();
+            issue.Code.ShouldBe("index-cache-unavailable");
+            issue.Diagnostics.ShouldContain("inside the data folder");
+        }
+
+        Snapshot(folder.Path).ShouldBe(before);
+    }
+
+    [Fact]
+    public void GivenDataFolderInsideTheCacheRoot_WhenIndexed_ThenCacheIsRefused()
+    {
+        using var cache = new TestFolder();
+        string dataPath = Path.Combine(cache.Path, "data");
+        Directory.CreateDirectory(dataPath);
+        File.WriteAllText(Path.Combine(dataPath, "p.json"), """{"resourceType":"Patient","id":"p1"}""");
+        var session = new FolderSession(dataPath, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cache.Path));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the cache directory");
+        Directory.EnumerateFileSystemEntries(cache.Path).Select(Path.GetFileName).ShouldBe(["data"]);
+    }
+
+    [Fact]
+    public void GivenSiblingDirectoryWithTheSamePrefix_WhenIndexed_ThenItIsNotMistakenForInsideTheFolder()
+    {
+        using TestFolder folder = CreateFixture();
+        string sibling = folder.Path + "-cache";
+        try
+        {
+            var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(sibling));
+
+            session.GetIndex("Patient");
+
+            session.CacheIssues.ShouldBeEmpty();
+            session.CacheDirectory.ShouldNotBeNull().ShouldStartWith(sibling);
+        }
+        finally
+        {
+            Directory.Delete(sibling, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GivenPersistedIndex_WhenTheTypeFileIsSniffed_ThenItIsNeverAFhirResource()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession session = Open(folder, cache);
+        session.GetIndex("Patient");
+
+        foreach (string file in Directory.EnumerateFiles(session.CacheDirectory!, "*.json"))
+        {
+            ResourceSniffer.Sniff(File.ReadAllBytes(file)).ResourceType.ShouldBeNull(file);
+        }
+    }
+
+    [Theory]
+    [InlineData("files-null")]
+    [InlineData("files-duplicate-path")]
+    [InlineData("files-null-element")]
+    [InlineData("module-versions-missing")]
+    public void GivenManifestWithNullOrDuplicateMembers_WhenSessionOpens_ThenItIsReplacedWithAWarningInsteadOfFailing(string damage)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string manifestPath = Path.Combine(first.CacheDirectory!, "manifest.json");
+        JsonNode manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        switch (damage)
+        {
+            case "files-null": manifest["files"] = null; break;
+            case "files-duplicate-path": manifest["files"]!.AsArray().Add(manifest["files"]![0]!.DeepClone()); break;
+            case "files-null-element": manifest["files"]!.AsArray().Add(null); break;
+            default: manifest.AsObject().Remove("moduleVersions"); break;
+        }
+
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+        Open(folder, cache).CacheIssues.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("resources-null")]
+    [InlineData("resources-null-element")]
+    [InlineData("resource-without-id")]
+    [InlineData("entries-null")]
+    [InlineData("entries-null-element")]
+    [InlineData("diagnostics-null")]
+    [InlineData("diagnostics-null-element")]
+    [InlineData("indexed-type-missing")]
+    [InlineData("duplicate-resource")]
+    public void GivenTypeFileWithNullOrDuplicateMembers_WhenSessionOpens_ThenTheTypeIsRebuiltWithAWarningInsteadOfFailing(string damage)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Observation");
+        string path = Path.Combine(first.CacheDirectory!, "Observation.index.json");
+        JsonNode index = JsonNode.Parse(File.ReadAllText(path))!;
+        JsonNode firstResource = index["resources"]![0]!;
+        switch (damage)
+        {
+            case "resources-null": index["resources"] = null; break;
+            case "resources-null-element": index["resources"]!.AsArray().Add(null); break;
+            case "resource-without-id": firstResource.AsObject().Remove("id"); break;
+            case "entries-null": firstResource["entries"] = null; break;
+            case "entries-null-element": firstResource["entries"]!.AsArray().Add(null); break;
+            case "diagnostics-null": index["diagnostics"] = null; break;
+            case "diagnostics-null-element": index["diagnostics"]!.AsArray().Add(null); break;
+            case "indexed-type-missing": index.AsObject().Remove("indexedType"); break;
+            default: index["resources"]!.AsArray().Add(firstResource.DeepClone()); break;
+        }
+
+        File.WriteAllText(path, index.ToJsonString());
+        FolderSession second = Open(folder, cache);
+
+        ResourceTypeIndex observation = second.GetIndex("Observation");
+        ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(second, buildIndexes: true);
+
+        observation.FromCache.ShouldBeFalse();
+        observation.Resources.Count.ShouldBe(2);
+        envelope.Issues.Count(issue => issue.Code == "index-cache-corrupt").ShouldBe(1);
+        Open(folder, cache).GetIndex("Observation").FromCache.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenValueTheCacheCannotReproduce_WhenIndexed_ThenTheTypeIsNotPersistedAndTheValueIsNamed()
+    {
+        using TestFolder folder = CreateFixture();
+        folder.Write("ancient.json", """{"resourceType":"Patient","id":"ancient","birthDate":"0001-01-01"}""");
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+
+        ResourceTypeIndex patients = first.GetIndex("Patient");
+        ResourceTypeIndex encounters = first.GetIndex("Encounter");
+
+        patients.Resources.Count.ShouldBe(2);
+        patients.CacheWriteMilliseconds.ShouldBeNull();
+        IssueItem issue = first.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-unsupported-value");
+        issue.Severity.ShouldBe("warning");
+        issue.Diagnostics.ShouldContain("Patient");
+        issue.Diagnostics.ShouldContain("'birthdate'");
+        issue.Diagnostics.ShouldContain("Patient/ancient");
+        File.Exists(Path.Combine(first.CacheDirectory!, "Patient.index.json")).ShouldBeFalse();
+        encounters.CacheWriteMilliseconds.ShouldNotBeNull();
+
+        FolderSession second = Open(folder, cache);
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+        second.GetIndex("Encounter").FromCache.ShouldBeTrue();
+        second.CacheIssues.Select(i => i.Code).ShouldBe(["index-cache-unsupported-value"]);
+    }
+
+    [Fact]
+    public void GivenStringsWithSearchEscapeCharacters_WhenReloaded_ThenTheStoredTextIsNotUnescapedTwice()
+    {
+        string[] lines =
+        [
+            """{"resourceType":"Patient","id":"a","name":[{"family":"back\\slash","given":["x\\y"]}]}""",
+            """{"resourceType":"Patient","id":"b","name":[{"family":"co,mma","given":["pi|pe","dol$lar"]}]}""",
+            """{"resourceType":"Patient","id":"c","name":[{"family":"mix\\,ed\\|","given":["\\\\"]}]}""",
+            """{"resourceType":"Patient","id":"d","name":[{"family":"keeps\\\\,backslash","given":["pi\\\\|pe","dol\\\\$lar"]}]}""",
+        ];
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", string.Join('\n', lines));
+        using var cache = new TestFolder();
+        ResourceTypeIndex fresh = Open(folder, cache).GetIndex("Patient");
+
+        ResourceTypeIndex loaded = Open(folder, cache).GetIndex("Patient");
+
+        loaded.FromCache.ShouldBeTrue();
+        SearchIndexCanon.Describe(loaded).ShouldBe(SearchIndexCanon.Describe(fresh));
+        string.Join('\n', SearchIndexCanon.Describe(fresh)).ShouldContain("back\\slash");
+        string.Join('\n', SearchIndexCanon.Describe(fresh)).ShouldContain("keeps\\,backslash");
     }
 
     private static (Command Command, Option<string?> CacheDir, Option<bool> NoCache) CreateCacheCommand()

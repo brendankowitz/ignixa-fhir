@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.Search.Definition;
+using Ignixa.Specification.Generated;
 
 namespace Ignixa.CliOnFhir.Caching;
 
@@ -22,6 +23,10 @@ namespace Ignixa.CliOnFhir.Caching;
 /// <param name="FhirVersion">FHIR version the folder was read as.</param>
 /// <param name="ToolVersion">Informational version of the tool assembly that wrote the cache.</param>
 /// <param name="DefinitionsHash">Hash over the search parameter definitions the indexer used.</param>
+/// <param name="ModuleVersions">
+/// Module version ids of the assemblies that build indexes (the tool, Ignixa.Search, Ignixa.Specification). They
+/// derive from the compiled content, so an uncommitted code change invalidates the cache like a release would.
+/// </param>
 /// <param name="Files">The catalogued files with the size and last-write time they had when read.</param>
 internal sealed record CacheManifest(
     int FormatVersion,
@@ -29,6 +34,7 @@ internal sealed record CacheManifest(
     string FhirVersion,
     string ToolVersion,
     string DefinitionsHash,
+    string ModuleVersions,
     IReadOnlyList<CatalogFile> Files)
 {
     public const int CurrentFormatVersion = 1;
@@ -44,7 +50,35 @@ internal sealed record CacheManifest(
             fhirVersion,
             CurrentToolVersion(),
             HashDefinitions(definitions),
+            CurrentModuleVersions(),
             [.. catalog.Files.OrderBy(file => file.Path, StringComparer.Ordinal)]);
+    }
+
+    /// <summary>
+    /// Checks that every member is present and no file is listed twice. JSON can hold a null for any member, so a
+    /// deserialized manifest is not trusted until this passes.
+    /// </summary>
+    /// <exception cref="InvalidDataException">A member is missing or a path repeats.</exception>
+    public void Validate()
+    {
+        if (FolderPath is null || FhirVersion is null || ToolVersion is null || DefinitionsHash is null || ModuleVersions is null || Files is null)
+        {
+            throw new InvalidDataException("a required member of the manifest is missing.");
+        }
+
+        HashSet<string> paths = new(StringComparer.Ordinal);
+        foreach (CatalogFile file in Files)
+        {
+            if (file?.Path is null)
+            {
+                throw new InvalidDataException("a file entry in the manifest is incomplete.");
+            }
+
+            if (!paths.Add(file.Path))
+            {
+                throw new InvalidDataException($"the manifest lists '{file.Path}' twice.");
+            }
+        }
     }
 
     /// <summary>
@@ -61,6 +95,7 @@ internal sealed record CacheManifest(
         AddIfDifferent(reasons, "FHIR version", FhirVersion, current.FhirVersion);
         AddIfDifferent(reasons, "tool version", ToolVersion, current.ToolVersion);
         AddIfDifferent(reasons, "search parameter definitions", DefinitionsHash, current.DefinitionsHash);
+        AddIfDifferent(reasons, "indexing code", ModuleVersions, current.ModuleVersions);
 
         Dictionary<string, CatalogFile> cached = Files.ToDictionary(file => file.Path, StringComparer.Ordinal);
         int added = 0;
@@ -102,6 +137,13 @@ internal sealed record CacheManifest(
             ?? assembly.GetName().Version?.ToString()
             ?? throw new InvalidOperationException("The tool assembly carries no version to key the index cache on.");
     }
+
+    private static string CurrentModuleVersions() => string.Join(
+        ';',
+        new[] { typeof(CacheManifest).Assembly, typeof(SearchParameterDefinitionManager).Assembly, typeof(R4CoreSchemaProvider).Assembly }
+            .Distinct()
+            .Select(assembly => $"{assembly.GetName().Name}={assembly.ManifestModule.ModuleVersionId}")
+            .Order(StringComparer.Ordinal));
 
     // Covers what decides whether a cached entry still means the same thing: which parameters exist per
     // resource type (the code rebinding relies on), their type, and the expression they were extracted with.

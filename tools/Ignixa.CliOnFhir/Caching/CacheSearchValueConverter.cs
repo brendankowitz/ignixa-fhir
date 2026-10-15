@@ -251,7 +251,7 @@ internal sealed class CacheSearchValueConverter : JsonConverter<ISearchValue>
             "token" => new TokenSearchValue(_system, _code, _text, _identifierTypeSystem, _identifierTypeCode),
             "quantity" => new QuantitySearchValue(_system, _code, _low, _high),
             "number" => new NumberSearchValue(_low, _high),
-            "string" => new StringSearchValue(Required(_string, "str")) { IsMin = _isMin, IsMax = _isMax },
+            "string" => BuildString(),
             "reference" => BuildReference(),
             "date" => BuildDate(),
             "uri" => new UriSearchValue(Required(_uri, "uri"), separateCanonicalComponents: false) { Version = _version, Fragment = _fragment },
@@ -291,6 +291,25 @@ internal sealed class CacheSearchValueConverter : JsonConverter<ISearchValue>
 
             return components;
         }
+
+        // StringSearchValue unescapes what it is given and the writer stored the already-unescaped text, so the text
+        // is escaped again first; the check proves the escape and unescape rules invert each other for this value.
+        private StringSearchValue BuildString()
+        {
+            string text = Required(_string, "str");
+            var value = new StringSearchValue(Escape(text)) { IsMin = _isMin, IsMax = _isMax };
+            return string.Equals(value.String, text, StringComparison.Ordinal)
+                ? value
+                : throw new JsonException($"The string '{text}' cannot be reconstructed exactly.");
+        }
+
+        // Mirrors Ignixa.Search.Indexing.StringExtensions.EscapeSearchParameterValue (internal): the escaping
+        // character first, then the token, composite and or separators.
+        private static string Escape(string text) => text
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("|", "\\|", StringComparison.Ordinal)
+            .Replace("$", "\\$", StringComparison.Ordinal)
+            .Replace(",", "\\,", StringComparison.Ordinal);
 
         private ReferenceSearchValue BuildReference()
         {

@@ -79,7 +79,7 @@ public static class FolderInspector
             ? [new OmittedItem($"{diagnostics.Count - issueLimit} more diagnostics", "limit")]
             : [];
 
-        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(builtAt, StaleFiles: 0));
+        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(builtAt, session.CountStaleFiles()));
     }
 
     private static IssueItem ToIssue(CatalogDiagnostic diagnostic) => new(

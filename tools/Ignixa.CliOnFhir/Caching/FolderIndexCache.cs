@@ -34,6 +34,7 @@ internal sealed class FolderIndexCache
     public const string RebuiltCode = "index-cache-rebuilt";
     public const string CorruptCode = "index-cache-corrupt";
     public const string UnavailableCode = "index-cache-unavailable";
+    public const string UnsupportedValueCode = "index-cache-unsupported-value";
 
     private const string ManifestFileName = "manifest.json";
     private const string TypeFileSuffix = ".index.json";
@@ -46,6 +47,7 @@ internal sealed class FolderIndexCache
     private readonly string _folderPath;
     private readonly string _fhirVersion;
     private readonly ISearchParameterDefinitionManager _definitions;
+    private readonly string? _unavailableReason;
     private readonly Lock _gate = new();
     private readonly List<IssueItem> _issues = [];
     private bool _opened;
@@ -65,7 +67,10 @@ internal sealed class FolderIndexCache
         _fhirVersion = fhirVersion;
         _definitions = definitions;
         _folderPath = NormalizeFolderPath(catalog.RootPath);
-        CacheDirectory = options.RootDirectory is null ? null : Path.Combine(options.RootDirectory, FolderDirectoryName(_folderPath, fhirVersion));
+        _unavailableReason = options.UnavailableReason ?? OverlapReason(options.RootDirectory, catalog.RootPath);
+        CacheDirectory = options.RootDirectory is null || _unavailableReason is not null
+            ? null
+            : Path.Combine(options.RootDirectory, FolderDirectoryName(_folderPath, fhirVersion));
     }
 
     /// <summary>This folder's cache directory; null when the cache is not in use.</summary>
@@ -101,9 +106,10 @@ internal sealed class FolderIndexCache
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, FileBufferSize, FileOptions.SequentialScan);
+            using FileStream stream = OpenShared(path, FileOptions.SequentialScan);
             CachedTypeIndex cached = JsonSerializer.Deserialize<CachedTypeIndex>(stream, JsonOptions)
                 ?? throw new InvalidDataException("the file holds a JSON null.");
+            cached.Validate();
 
             // Written under a different manifest (an older run, or a concurrent one): not corrupt, just not ours.
             return string.Equals(cached.ManifestId, manifestId, StringComparison.Ordinal)
@@ -145,15 +151,75 @@ internal sealed class FolderIndexCache
             [.. index.Resources.Select(resource => new CachedResource(
                 resource.Key.Id,
                 [.. resource.Index.Select(entry => new CachedEntry(entry.SearchParameter.Code, entry.Value))]))]);
+
+        // A value type the format does not know throws here (a programmer error); a value it knows but cannot
+        // reproduce exactly is reported and the type is left uncached, so a reload can never differ from a build.
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(cached, JsonOptions);
+        if (FindUnsupportedValue(cached, bytes) is { } unsupported)
+        {
+            AddIssue("warning", UnsupportedValueCode, $"The {index.ResourceType} index was not saved to the cache because {unsupported}");
+            return null;
+        }
+
         try
         {
-            WriteAtomically(TypeFilePath(index.ResourceType), stream => JsonSerializer.Serialize(stream, cached, JsonOptions));
+            WriteAtomically(TypeFilePath(index.ResourceType), stream => stream.Write(bytes));
             return stopwatch.ElapsedMilliseconds;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             ReportUnavailable($"The index cache at '{CacheDirectory}' cannot be written: {Describe(ex)}");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads <paramref name="bytes"/> back the way a later run would and checks that writing the result again gives the
+    /// same bytes, which proves every persisted field reproduces. Returns why not, naming the first offending value.
+    /// </summary>
+    private static string? FindUnsupportedValue(CachedTypeIndex cached, byte[] bytes)
+    {
+        if (RoundTripsTo(bytes, out _))
+        {
+            return null;
+        }
+
+        foreach (CachedResource resource in cached.Resources)
+        {
+            foreach (CachedEntry entry in resource.Entries)
+            {
+                byte[] single = JsonSerializer.SerializeToUtf8Bytes(new[] { entry }, JsonOptions);
+                if (!RoundTripsTo<CachedEntry[]>(single, out string? problem))
+                {
+                    return $"the '{entry.Code}' value of {cached.IndexedType}/{resource.Id} does not survive it ({problem}).";
+                }
+            }
+        }
+
+        return "the file does not read back identically.";
+    }
+
+    private static bool RoundTripsTo(byte[] bytes, out string? problem) => RoundTripsTo<CachedTypeIndex>(bytes, out problem);
+
+    private static bool RoundTripsTo<T>(byte[] bytes, out string? problem)
+        where T : class
+    {
+        try
+        {
+            T? reloaded = JsonSerializer.Deserialize<T>(bytes, JsonOptions);
+            if (reloaded is CachedTypeIndex typeIndex)
+            {
+                typeIndex.Validate();
+            }
+
+            bool identical = reloaded is not null && JsonSerializer.SerializeToUtf8Bytes(reloaded, JsonOptions).AsSpan().SequenceEqual(bytes);
+            problem = identical ? null : "it reads back different";
+            return identical;
+        }
+        catch (Exception ex) when (IsUnreadableCacheFile(ex))
+        {
+            problem = Describe(ex);
+            return false;
         }
     }
 
@@ -172,6 +238,42 @@ internal sealed class FolderIndexCache
     private static bool IsUnreadableCacheFile(Exception ex) =>
         ex is JsonException or InvalidDataException or ArgumentException or FormatException or InvalidOperationException
             or NotSupportedException or OverflowException or IOException or UnauthorizedAccessException;
+
+    // Delete sharing lets another process replace the file (File.Move over it) while this one is still reading.
+    private static FileStream OpenShared(string path, FileOptions options) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, FileBufferSize, options);
+
+    /// <summary>
+    /// The cache must neither sit inside the data folder (the folder stays read-only, and cache files would be
+    /// catalogued as data) nor contain it (another run's cache would then be inside the folder it indexes).
+    /// </summary>
+    private static string? OverlapReason(string? cacheRoot, string folderRoot)
+    {
+        if (cacheRoot is null)
+        {
+            return null;
+        }
+
+        string cache = Path.GetFullPath(cacheRoot);
+        string folder = Path.GetFullPath(folderRoot);
+        if (IsSameOrUnder(cache, folder))
+        {
+            return $"the cache directory '{cache}' is inside the data folder '{folder}'; the folder is never written and cache files would be read as data. Use --cache-dir outside the folder";
+        }
+
+        return IsSameOrUnder(folder, cache)
+            ? $"the data folder '{folder}' is inside the cache directory '{cache}'; cache files would be read as data. Use --cache-dir outside the folder"
+            : null;
+    }
+
+    private static bool IsSameOrUnder(string path, string parent)
+    {
+        StringComparison comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        string child = Path.TrimEndingDirectorySeparator(path);
+        string root = Path.TrimEndingDirectorySeparator(parent);
+        string rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
+        return string.Equals(child, root, comparison) || child.StartsWith(rootWithSeparator, comparison);
+    }
 
     private static string Describe(Exception ex) => $"{ex.GetType().Name}: {ex.Message}";
 
@@ -252,7 +354,7 @@ internal sealed class FolderIndexCache
     {
         if (CacheDirectory is null)
         {
-            if (_options.UnavailableReason is { } reason)
+            if (_unavailableReason is { } reason)
             {
                 ReportUnavailable($"The index cache is not available: {reason}.");
             }
@@ -285,7 +387,10 @@ internal sealed class FolderIndexCache
     {
         try
         {
-            return File.ReadAllBytes(manifestPath);
+            using FileStream stream = OpenShared(manifestPath, FileOptions.None);
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return buffer.ToArray();
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -300,24 +405,20 @@ internal sealed class FolderIndexCache
 
     private bool TryMatch(byte[] stored, CacheManifest current, string manifestPath)
     {
-        CacheManifest? manifest;
+        ManifestMismatch? mismatch;
         try
         {
-            manifest = JsonSerializer.Deserialize<CacheManifest>(stored, JsonOptions);
+            CacheManifest manifest = JsonSerializer.Deserialize<CacheManifest>(stored, JsonOptions)
+                ?? throw new InvalidDataException("the manifest holds a JSON null.");
+            manifest.Validate();
+            mismatch = manifest.Compare(current);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (IsUnreadableCacheFile(ex))
         {
             AddIssue("warning", CorruptCode, $"The cache manifest at '{manifestPath}' could not be used and the cache was rebuilt: {Describe(ex)}");
             return false;
         }
 
-        if (manifest is null)
-        {
-            AddIssue("warning", CorruptCode, $"The cache manifest at '{manifestPath}' is empty and the cache was rebuilt.");
-            return false;
-        }
-
-        ManifestMismatch? mismatch = manifest.Compare(current);
         if (mismatch is not null)
         {
             AddIssue("information", RebuiltCode, $"The cached index was discarded and is being rebuilt: {mismatch.Reason}.");
@@ -330,9 +431,9 @@ internal sealed class FolderIndexCache
 
     private ResourceTypeIndex Materialize(CachedTypeIndex cached, string resourceType, Stopwatch stopwatch)
     {
-        if (!string.Equals(cached.ResourceType, resourceType, StringComparison.Ordinal))
+        if (!string.Equals(cached.IndexedType, resourceType, StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"the file holds a {cached.ResourceType} index.");
+            throw new InvalidDataException($"the file holds a {cached.IndexedType} index.");
         }
 
         CatalogEntry[] entries = EntriesOf(resourceType);
@@ -375,7 +476,7 @@ internal sealed class FolderIndexCache
                 parametersByCode.Add(code, parameter);
             }
 
-            bound.Add(new SearchIndexEntry(parameter, entry.Value ?? throw new InvalidDataException($"an entry for '{code}' has no value.")));
+            bound.Add(new SearchIndexEntry(parameter, entry.Value));
         }
 
         return bound;

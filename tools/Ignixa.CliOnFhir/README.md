@@ -36,9 +36,9 @@ Problems (invalid JSON, objects without `resourceType`, duplicate ids, resource 
 
 Search indexes are persisted per resource type so a new process does not pay for indexing again. The cache lives outside the data folder, in `$XDG_CACHE_HOME/cli-on-fhir` (else `~/.cache/cli-on-fhir`, or `%LOCALAPPDATA%\cli-on-fhir` on Windows), in one subdirectory per folder and FHIR version.
 
-- `--cache-dir <path>` moves the cache root; `--no-cache` neither reads nor writes it.
-- A manifest records the cache format, FHIR version, tool build, a hash of the search parameter definitions and every scanned file's size and last-write time. Any difference discards the whole cache and is reported as an `index-cache-rebuilt` issue with the reason and the number of changed files.
-- An unreadable or inconsistent cache file is rebuilt and reported as `index-cache-corrupt`; an unwritable cache directory is reported once as `index-cache-unavailable`. Neither fails the call.
+- `--cache-dir <path>` moves the cache root; `--no-cache` neither reads nor writes it. A cache directory inside the data folder (or a data folder inside the cache root) is refused with an `index-cache-unavailable` issue, because the folder is never written and cache files would be read as data.
+- A manifest records the cache format, FHIR version, tool build, the module versions of the indexing assemblies, a hash of the search parameter definitions and every scanned file's size and last-write time. Any difference discards the whole cache and is reported as an `index-cache-rebuilt` issue with the reason and the number of changed files.
+- An unreadable or inconsistent cache file is rebuilt and reported as `index-cache-corrupt`; an unwritable cache directory is reported once as `index-cache-unavailable`; a type holding a value the cache cannot reproduce exactly is left uncached and reported as `index-cache-unsupported-value`. Neither fails the call.
 - `inspect --build-index` reports per type whether the index came from the cache or was built, with load, build and write times.
 
 ## Tools
@@ -46,5 +46,7 @@ Search indexes are persisted per resource type so a new process does not pay for
 | MCP tool | CLI verb | Status |
 |----------|----------|--------|
 | `folder_inspect` | `inspect` | Implemented |
+
+`freshness.staleFiles` is recounted on every response by listing the folder and comparing each file's size and last-write time with what the catalog recorded.
 
 Every response uses the shared envelope: `facts`, `derived` (always null), `evidence`, `omitted`, `issues`, `freshness`.

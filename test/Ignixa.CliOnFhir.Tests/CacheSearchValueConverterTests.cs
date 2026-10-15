@@ -145,7 +145,7 @@ public class CacheSearchValueConverterTests
 
     private static IEnumerable<(string, ISearchValue)> Strings()
     {
-        foreach (string text in new[] { "Smith", "MiXed ünï \"quoted\" 中文" })
+        foreach (string text in new[] { "Smith", "MiXed ünï \"quoted\" 中文", @"a\b", @"a\\b", "a,b", @"a\,b", "x$y", @"x\$y", "p|q", @"p\|q", @"\", @"trailing\", @"\\", @"\|\,\$", "a, b | c $ d", @"a\,b", @"x\$y", @"p\|q", @"\\\\", @"\\\|" })
         {
             foreach (bool isMin in new[] { false, true })
             {
@@ -204,9 +204,11 @@ public class CacheSearchValueConverterTests
         var quantity = new QuantitySearchValue("http://unitsofmeasure.org", "cm", 77.5m);
         var date = new DateTimeSearchValue(PartialDateTime.Parse("2020-01-02"));
         var text = new StringSearchValue("Abc") { IsMin = true };
+        var escaped = new StringSearchValue(@"a\\\,b") { IsMax = true };
         yield return ("composite token+quantity", new CompositeIndexSearchValue([[token], [quantity]]));
         yield return ("composite multi-valued components", new CompositeIndexSearchValue([[token, textOnly], [quantity, quantity], [date]]));
         yield return ("composite string+date", new CompositeIndexSearchValue([[text], [date]]));
+        yield return ("composite with escaped string members", new CompositeIndexSearchValue([[escaped, text], [date]]));
         yield return ("composite single component", new CompositeIndexSearchValue([[textOnly]]));
     }
 }
