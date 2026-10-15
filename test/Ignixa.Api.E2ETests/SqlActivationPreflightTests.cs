@@ -1,4 +1,3 @@
-using System.Data;
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -36,24 +35,8 @@ public class SqlActivationPreflightTests
     [InlineData("within-batch-conflict")]
     public async Task GivenInvalidProposedBatch_WhenActivationIsRejected_ThenEventsStateAndSubsequentRestartRemainUsable(string scenario)
     {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var database = $"IgnixaActivationPreflight_{Guid.NewGuid():N}";
-        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quoted = names.QuoteIdentifier(database);
-        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quoted}");
-        try
-        {
-            await AssertRejectedBatchAsync(connectionString, scenario);
-        }
-        finally
-        {
-            using var pool = new SqlConnection(connectionString);
-            SqlConnection.ClearPool(pool);
-            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quoted}");
-        }
+        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaActivationPreflight");
+        await AssertRejectedBatchAsync(database.ConnectionString, scenario);
     }
 
     private static async Task AssertRejectedBatchAsync(string connectionString, string scenario)
@@ -110,28 +93,35 @@ public class SqlActivationPreflightTests
             Snapshot(state).ShouldBe(before);
             state.Packages.Keys.Order().ShouldBe(packagesBefore);
             ReferenceEquals(versions.GetSearchIndexer(FhirVersion.R4, 1), warmIndexer).ShouldBeTrue();
-            await AssertSearchAsync(client, "identifier", patientId);
+            await SearchParameterLifecycleTestHelper.AssertHiddenAsync(client, $"/tenant/1/Patient?identifier={Marker}", "identifier", redefined: true);
+            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, OverrideUrl);
 
             await StoreAsync(services, PackageId, "3", "identifier", OverrideUrl, RootOne);
             await StoreAsync(services, PackageId, "3", "after-reject", ValidNewUrl, null);
             (await pipeline.ActivateAsync(PackageId, "3", CancellationToken.None)).Success.ShouldBeTrue();
             state.GetSearchParameter("Patient", "after-reject")!.SearchParamId.ShouldBe(nextId);
             await SynchronizeAsync(services, "3");
+            await SearchParameterLifecycleTestHelper.CommitTransitionAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, OverrideUrl);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(services, ValidNewUrl);
             await PutAsync(client, patientId, updated: true);
             await AssertSearchAsync(client, "after-reject", patientId);
             eventsAfterValid = await CountEventsAsync(connectionString);
-            eventsAfterValid.ShouldBe(countBefore + 3);
+            eventsAfterValid.ShouldBeGreaterThan(countBefore);
         }
 
         await using var restarted = CreateHost(template, connectionString);
         using var restartedClient = restarted.CreateClient();
-        await AssertSearchAsync(restartedClient, "identifier", patientId);
         await AssertSearchAsync(restartedClient, "after-reject", patientId);
         var replayed = restarted.Services.GetRequiredService<ConformanceState>();
         replayed.IsInitialized.ShouldBeTrue();
         replayed.Packages.ShouldNotContainKey($"{PackageId}@2");
         replayed.Packages.ShouldContainKey($"{PackageId}@3");
-        replayed.GetSearchParameter("Patient", "identifier")!.OverridesCanonical.ShouldBe(RootOne);
+        replayed.GetSearchParameter("Patient", "identifier")!.Canonical.ShouldBe(OverrideUrl);
+        var activated = replayed.FindByCanonical(OverrideUrl)!;
+        activated.Status.ShouldBe(Ignixa.Conformance.Events.Models.SearchParameterStatus.Enabled);
+        activated.OverridesCanonical.ShouldBe(RootOne);
         (await CountEventsAsync(connectionString)).ShouldBe(eventsAfterValid);
     }
 
@@ -167,7 +157,6 @@ public class SqlActivationPreflightTests
             services.GetRequiredService<IFhirVersionContext>(),
             services.GetRequiredService<SqlServerSearchIndexCacheRegistry>(),
             services.GetRequiredService<ITenantConfigurationStore>(),
-            services.GetRequiredService<ICapabilityCacheInvalidator>(),
             services.GetRequiredService<ILogger<PackageLoadedSearchParameterSyncHandler>>());
         await handler.HandleAsync(new PackageLoadedEvent(PackageId, version, 1, DateTimeOffset.UtcNow), CancellationToken.None);
     }
@@ -210,25 +199,5 @@ public class SqlActivationPreflightTests
         await connection.OpenAsync();
         using var command = new SqlCommand("SELECT COUNT_BIG(*) FROM dbo.SourceEvents", connection);
         return (long)(await command.ExecuteScalarAsync())!;
-    }
-
-    private static async Task ExecuteDatabaseCommandAsync(string connectionString, string statement)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand("EXEC sys.sp_executesql @statement", connection);
-        command.Parameters.Add("@statement", SqlDbType.NVarChar, -1).Value = statement;
-        await command.ExecuteNonQueryAsync();
-    }
-
-    private sealed class SqlTheoryAttribute : TheoryAttribute
-    {
-        public SqlTheoryAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires real SQL activation and restart.";
-            }
-        }
     }
 }

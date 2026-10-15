@@ -106,6 +106,7 @@ public sealed class LegacyExpressionParser : IExpressionParser
 
         SearchParameterInfo refSearchParameter;
         List<string> referencedTypes = null;
+        IReadOnlyList<SearchParameterInfo> wildcardReferenceSearchParameters = [];
         bool wildCard = false;
         string targetType = null;
 
@@ -152,16 +153,26 @@ public sealed class LegacyExpressionParser : IExpressionParser
         if (wildCard)
         {
             referencedTypes = new List<string>();
-            IEnumerable<SearchParameterInfo> searchParameters = resourceTypes.SelectMany(t => _searchParameterDefinitionManager.GetSearchParameters(t))
-                .Where(p => p.Type == SearchParamType.Reference);
+            wildcardReferenceSearchParameters = WildcardIncludeParameters
+                .Resolve(_searchParameterDefinitionManager, resourceTypes, originalType.ToString(), isReversed)
+                .ToList();
 
-            foreach (SearchParameterInfo p in searchParameters)
+            foreach (SearchParameterInfo p in wildcardReferenceSearchParameters)
             foreach (string t in p.TargetResourceTypes)
                 if (!referencedTypes.Contains(t))
                     referencedTypes.Add(t);
         }
 
-        return new IncludeExpression(resourceTypes, refSearchParameter, originalType.ToString(), targetType, referencedTypes, wildCard, isReversed, iterate);
+        return new IncludeExpression(
+            resourceTypes,
+            refSearchParameter,
+            originalType.ToString(),
+            targetType,
+            referencedTypes,
+            wildCard,
+            isReversed,
+            iterate,
+            wildcardReferenceSearchParameters);
     }
 
     private Expression ParseImpl(string[] resourceTypes, ReadOnlySpan<char> key, string value)

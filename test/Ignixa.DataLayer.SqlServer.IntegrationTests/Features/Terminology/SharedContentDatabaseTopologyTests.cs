@@ -97,6 +97,15 @@ public class SharedContentDatabaseTopologyTests
     /// </summary>
     private static string EquivalentAlias(string dataSource)
     {
+        const string LocalDbPrefix = "(localdb)";
+        if (dataSource.StartsWith(LocalDbPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var alternatePrefix = dataSource.StartsWith(LocalDbPrefix, StringComparison.Ordinal)
+                ? "(LocalDB)"
+                : LocalDbPrefix;
+            return alternatePrefix + dataSource[LocalDbPrefix.Length..];
+        }
+
         foreach (var prefix in (string[])["tcp:", "np:", "lpc:"])
         {
             if (dataSource.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))

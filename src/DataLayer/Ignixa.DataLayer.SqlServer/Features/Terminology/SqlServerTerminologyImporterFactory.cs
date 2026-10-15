@@ -1,5 +1,6 @@
 using Ignixa.DataLayer.SqlServer.Features.PackageManagement;
 using Ignixa.DataLayer.SqlServer.Indexing;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Terminology;
 using Microsoft.Extensions.Logging;
 
@@ -31,7 +32,7 @@ public sealed class SqlServerTerminologyImporterFactory(
     int systemPartitionId,
     ILoggerFactory loggerFactory,
     int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds,
-    int packageTenantId = 1) : ITerminologyImporterFactory
+    int packageTenantId = SystemConstants.GlobalTenantId) : ITerminologyImporterFactory
 {
     private readonly int _commandTimeoutSeconds = commandTimeoutSeconds > 0
         ? commandTimeoutSeconds

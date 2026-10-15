@@ -25,10 +25,9 @@ public class SqlFreshTenantDefinitionSeedTests : IAsyncLifetime
     public async Task GivenColdAuthoritativeDefinitions_WhenCoreDefinitionsAreSeeded_ThenAuthorityAndAllStorageRootsArePreserved()
     {
         using var cache = new SqlServerSearchIndexReferenceDataCache(
-            _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance,
-            searchParameterDefinitionManager: CreatePackageDefinitions());
+            _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
 
-        await cache.SeedSearchParametersToDatabaseAsync(CreateCoreDefinitions(), CancellationToken.None);
+        await cache.SeedSearchParametersToDatabaseAsync(CreatePackageAndCoreDefinitions(), CancellationToken.None);
 
         await AssertAllMappingsAsync(cache);
         await cache.PreloadSearchParamsAsync(null, CancellationToken.None);
@@ -62,12 +61,12 @@ public class SqlFreshTenantDefinitionSeedTests : IAsyncLifetime
         var first = await registry.GetOrCreateAsync(_database.TenantId, CancellationToken.None);
         first.SearchParameterMappings.ShouldContainKey(CustomUrl);
         first.SearchParameterMappings.ShouldContainKey(RootUrl);
-        first.SearchParameterMappings[OverrideUrl].ShouldBe(first.SearchParameterMappings[RootUrl]);
+        first.SearchParameterMappings[OverrideUrl].ShouldNotBe(first.SearchParameterMappings[RootUrl]);
         registry.Invalidate(_database.TenantId).ShouldBeTrue();
         var recreated = await registry.GetOrCreateAsync(_database.TenantId, CancellationToken.None);
         ReferenceEquals(first, recreated).ShouldBeFalse();
         recreated.SearchParameterMappings.ShouldContainKey(CustomUrl);
-        recreated.SearchParameterMappings[OverrideUrl].ShouldBe(recreated.SearchParameterMappings[RootUrl]);
+        recreated.SearchParameterMappings[OverrideUrl].ShouldNotBe(recreated.SearchParameterMappings[RootUrl]);
     }
 
     private async Task AssertAllMappingsAsync(SqlServerSearchIndexReferenceDataCache cache)
@@ -83,7 +82,7 @@ public class SqlFreshTenantDefinitionSeedTests : IAsyncLifetime
         var customId = await _database.ExecuteScalarAsync<short>(
             $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{CustomUrl}'");
         overrideId.ShouldNotBe(rootId);
-        cache.SearchParameterMappings[OverrideUrl].ShouldBe(rootId);
+        cache.SearchParameterMappings[OverrideUrl].ShouldBe(overrideId);
         cache.SearchParameterMappings[RootUrl].ShouldBe(rootId);
         cache.SearchParameterMappings[CustomUrl].ShouldBe(customId);
     }
@@ -103,4 +102,9 @@ public class SqlFreshTenantDefinitionSeedTests : IAsyncLifetime
             },
             [CustomUrl] = new("custom", "custom", SearchParamType.Token, new Uri(CustomUrl))
         });
+
+    private static StubSearchParameterDefinitionManager CreatePackageAndCoreDefinitions() => new(
+        CreatePackageDefinitions().AllSearchParameters
+            .Append(new SearchParameterInfo("core", "core", SearchParamType.Token, new Uri(CoreUrl)))
+            .ToDictionary(parameter => parameter.Url!.ToString(), StringComparer.Ordinal));
 }

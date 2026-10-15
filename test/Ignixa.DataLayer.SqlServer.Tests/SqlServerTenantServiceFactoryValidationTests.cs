@@ -6,6 +6,8 @@
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Definition;
+using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 using NSubstitute;
@@ -80,7 +82,10 @@ public sealed class SqlServerTenantServiceFactoryValidationTests : IDisposable
             initializer,
             new ManagedIdentityConnectionStringValidator(
                 environmentName, NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
-            Substitute.For<ISqlExecutionService>());
+            Substitute.For<ISqlExecutionService>(),
+            (version, _) => new SearchParameterDefinitionManager(
+                version.GetSchemaProvider(),
+                NullLogger<SearchParameterDefinitionManager>.Instance));
 
         return (factory, schemaDeployer);
     }

@@ -8,6 +8,7 @@ using Ignixa.Conformance.Events.Events;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
+using Ignixa.DataLayer.SqlServer.RowGenerators;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
@@ -75,28 +76,23 @@ public class SqlOverrideCacheRegistrationTests
             tenantStore,
             new ManagedIdentityConnectionStringValidator("Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance),
             NullLogger<SqlExecutionService>.Instance);
-        short? originalId;
+        short originalId;
+        short physicalOverrideId;
         using (var seed = new SqlServerSearchIndexReferenceDataCache(
             sqlExecutionService, 1, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance))
         {
             await seed.SyncSearchParametersToDatabaseAsync([OriginalUrl, OverrideUrl], null, CancellationToken.None);
-            originalId = await seed.GetSearchParamIdAsync(OriginalUrl, CancellationToken.None);
-            originalId.ShouldNotBeNull();
-            var physicalOverrideId = await seed.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None);
-            physicalOverrideId.ShouldNotBeNull();
+            originalId = await seed.GetSearchParamIdAsync(OriginalUrl, CancellationToken.None)
+                ?? throw new InvalidOperationException("Original search parameter was not seeded.");
+            physicalOverrideId = await seed.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)
+                ?? throw new InvalidOperationException("Override search parameter was not seeded.");
             physicalOverrideId.ShouldNotBe(originalId);
         }
 
         using var state = new ConformanceState();
         var eventStore = Substitute.For<ISourceEventStore>();
         eventStore.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
-        var baseManager = new SearchParameterDefinitionManager(
-            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
-        var definitions = new CompositeSearchParameterDefinitionManager(
-            baseManager, state, "4.0", NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
-            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = false });
         var context = Substitute.For<IFhirVersionContext>();
-        context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1).Returns(definitions);
 
         var services = new ServiceCollection();
         services.AddLogging();
@@ -112,14 +108,35 @@ public class SqlOverrideCacheRegistrationTests
             () => registry.GetOrCreateAsync(1, CancellationToken.None));
         notReady.Message.ShouldContain("conformance event replay");
         await state.InitializeFromEventsAsync(eventStore, CancellationToken.None);
+        var baseManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        var definitions = new CompositeSearchParameterDefinitionManager(
+            baseManager, state.CreateSnapshot(), "4.0", NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = false });
+        context.GetSearchParameterDefinitionManager(FhirVersion.R4, 1).Returns(definitions);
 
         var cache = await registry.GetOrCreateAsync(1, CancellationToken.None);
-        (await cache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldBe(originalId);
+        await AssertPhysicalCacheAndGenerationResolutionAsync(cache, definitions, physicalOverrideId, originalId);
         registry.Invalidate(1).ShouldBeTrue();
         definitions.ClearCache();
         var replacement = await registry.GetOrCreateAsync(1, CancellationToken.None);
-        (await replacement.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldBe(originalId);
+        await AssertPhysicalCacheAndGenerationResolutionAsync(replacement, definitions, physicalOverrideId, originalId);
         context.Received(2).GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+    }
+
+    private static async Task AssertPhysicalCacheAndGenerationResolutionAsync(
+        SqlServerSearchIndexReferenceDataCache cache,
+        ISearchParameterDefinitionManager definitions,
+        short physicalOverrideId,
+        short originalId)
+    {
+        (await cache.GetSearchParamIdAsync(OverrideUrl, CancellationToken.None)).ShouldBe(physicalOverrideId);
+        var overrideParameter = definitions.GetSearchParameter("Patient", "identifier");
+        SearchParameterIdLookupHelper.TryGetSearchParamId(
+            overrideParameter,
+            cache.SearchParameterMappings,
+            out var resolvedId).ShouldBeTrue();
+        resolvedId.ShouldBe(originalId);
     }
 
     private static async Task ExecuteAsync(string connectionString, string sql)

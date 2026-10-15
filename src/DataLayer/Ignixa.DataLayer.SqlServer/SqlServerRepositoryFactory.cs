@@ -14,8 +14,8 @@ namespace Ignixa.DataLayer.SqlServer;
 /// into this class instead of constructing these types inline). Preserves the original's
 /// two-scope construction split exactly: <see cref="CreateReferenceDataCacheAsync"/> is called ONCE
 /// PER TENANT (outside any per-request scope), seeding supplied authoritative definitions and eagerly preloading;
-/// <see cref="CreateRepository"/> and <see cref="CreateSearchService"/> are called PER REQUEST,
-/// reusing the tenant-scoped cache passed in. Flattening these into one per-request call would
+/// <see cref="CreateRepository"/>, <see cref="CreateSearchService"/> and <see cref="CreateReindexStore"/>
+/// are called PER REQUEST, reusing the tenant-scoped cache passed in. Flattening these into one per-request call would
 /// change the cache's cardinality and re-run both preloads on every repository/search-service
 /// creation -- a real, silent behavior/performance regression, not a refactor-neutral change.
 /// </summary>
@@ -31,8 +31,7 @@ public static class SqlServerRepositoryFactory
         var cache = new SqlServerSearchIndexReferenceDataCache(
             sqlExecutionService,
             tenantId,
-            loggerFactory.CreateLogger<SqlServerSearchIndexReferenceDataCache>(),
-            searchParameterDefinitionManager: searchParameterDefinitionManager);
+            loggerFactory.CreateLogger<SqlServerSearchIndexReferenceDataCache>());
 
         try
         {
@@ -71,6 +70,25 @@ public static class SqlServerRepositoryFactory
         return new SqlServerFhirRepository(
             sqlExecutionService, tenantId, compressor, cache, mergeRepository,
             loggerFactory.CreateLogger<SqlServerFhirRepository>());
+    }
+
+    public static IReindexStore CreateReindexStore(
+        ISqlExecutionService sqlExecutionService,
+        int tenantId,
+        SqlServerSearchIndexReferenceDataCache cache,
+        RecyclableMemoryStreamManager memoryStreamManager,
+        ILoggerFactory loggerFactory)
+    {
+        var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
+            sqlExecutionService, tenantId, loggerFactory.CreateLogger<SqlServerPostMergeExtensionUpdater>());
+
+        return new SqlServerReindexStore(
+            sqlExecutionService,
+            tenantId,
+            new GzipResourceCompressor(memoryStreamManager),
+            cache,
+            extensionUpdater,
+            loggerFactory.CreateLogger<SqlServerReindexStore>());
     }
 
     public static ISearchService CreateSearchService(

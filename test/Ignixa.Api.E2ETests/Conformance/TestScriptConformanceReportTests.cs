@@ -45,7 +45,6 @@ public sealed class TestScriptConformanceReportTests
         "Microsoft/ms-import-history-soft-delete.json",
         "Microsoft/ms-import-rebuild-indexes.json",
         "Microsoft/ms-operation-versions.json",
-        "Microsoft/ms-reindex.json",
 
         // Terminology and document operations are not implemented
         "Operations/docref-operation.json",

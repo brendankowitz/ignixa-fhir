@@ -223,6 +223,7 @@ public class DefaultMemberMatchStrategySubscriberIdTests
             _searchServiceFactory,
             _contextAccessor,
             _versionContext,
+            TestConformanceLease.Held(),
             NullLogger<DefaultMemberMatchStrategy>.Instance);
     }
 

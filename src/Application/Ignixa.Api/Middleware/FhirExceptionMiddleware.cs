@@ -6,6 +6,7 @@
 using System.Net;
 using System.Text.Json;
 using Ignixa.Api.Http;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Abstractions;
@@ -66,6 +67,10 @@ public class FhirExceptionMiddleware
         {
             context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
             context.Response.StatusCode = fhirException.StatusCode;
+            if (fhirException is ConformanceStaleException conformanceStale)
+            {
+                context.Response.Headers.RetryAfter = Math.Max(1, Math.Ceiling(conformanceStale.RetryAfter.TotalSeconds)).ToString();
+            }
 
             return context.Response.Body.WriteAsync(fhirException.OperationOutcome.SerializeToBytes()).AsTask();
         }

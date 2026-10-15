@@ -8,4 +8,5 @@ public record PackageLoadedEvent(
     string PackageId,
     string PackageVersion,
     int TenantId,
-    DateTimeOffset LoadedAt) : IPackageLoaded;
+    DateTimeOffset LoadedAt,
+    bool RequiresConformanceRefresh = true) : IPackageLoaded;

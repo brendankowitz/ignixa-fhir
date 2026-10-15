@@ -77,10 +77,7 @@ public class CapabilityStatementHashCultureInvarianceTests
                 new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-assessor")),
         });
 
-        var versionContext = Substitute.For<IFhirVersionContext>();
-        versionContext.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>()).Returns(manager);
-
-        var segment = new SearchParameterCapabilitySegment(versionContext, NullLogger<SearchParameterCapabilitySegment>.Instance);
+        var segment = new SearchParameterCapabilitySegment(Searchable(manager), NullLogger<SearchParameterCapabilitySegment>.Instance);
         var context = new CapabilityContext(FhirVersion.R4);
 
         // Act
@@ -112,10 +109,7 @@ public class CapabilityStatementHashCultureInvarianceTests
                 baseResourceTypes: ObservationOnly),
         });
 
-        var versionContext = Substitute.For<IFhirVersionContext>();
-        versionContext.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>()).Returns(manager);
-
-        var segment = new IncludeRevIncludeCapabilitySegment(versionContext, NullLogger<IncludeRevIncludeCapabilitySegment>.Instance);
+        var segment = new IncludeRevIncludeCapabilitySegment(Searchable(manager), NullLogger<IncludeRevIncludeCapabilitySegment>.Instance);
         var context = new CapabilityContext(FhirVersion.R4);
 
         // Act
@@ -123,6 +117,31 @@ public class CapabilityStatementHashCultureInvarianceTests
 
         // Assert
         hash.ShouldBe(ExpectedIncludeRevIncludeHash);
+    }
+
+    // F13: the CapabilityStatement advertises only searchable parameters, so a pending one does not contribute to the hash.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GivenOnlyAPendingSearchParameter_WhenBuildingASegmentVersionHash_ThenItIsExcluded(bool includeSegment)
+    {
+        var manager = Substitute.For<ISearchParameterDefinitionManager>();
+        manager.AllSearchParameters.Returns([new SearchParameterInfo("pending-reference", "pending-reference", SearchParamType.Reference,
+            targetResourceTypes: PatientOnly, baseResourceTypes: EncounterOnly, url: new Uri("http://example.org/SearchParameter/pending-reference")) { IsSearchable = false }]);
+        ICapabilitySegment segment = includeSegment
+            ? new IncludeRevIncludeCapabilitySegment(Searchable(manager), NullLogger<IncludeRevIncludeCapabilitySegment>.Instance)
+            : new SearchParameterCapabilitySegment(Searchable(manager), NullLogger<SearchParameterCapabilitySegment>.Instance);
+
+        string hash = await segment.GetVersionHashAsync(new CapabilityContext(FhirVersion.R4), CancellationToken.None);
+
+        hash.ShouldBe("47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=");
+    }
+
+    private static IFhirVersionContext Searchable(ISearchParameterDefinitionManager manager)
+    {
+        var versionContext = Substitute.For<IFhirVersionContext>();
+        versionContext.GetSearchableSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>(), Arg.Any<Func<bool>?>()).Returns(manager);
+        return versionContext;
     }
 
     private static string UnderCulture(string cultureName, Func<string> act)

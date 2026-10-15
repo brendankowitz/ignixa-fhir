@@ -1,4 +1,7 @@
+using Ignixa.Api.Http;
 using Ignixa.Application.Features.Admin;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Serialization;
 using Medino;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,8 +24,10 @@ public static class AdminPackageEndpoints
             .WithName("LoadPackage")
             .WithDescription("Load a FHIR package from NPM registry into a tenant's database")
             .Accepts<LoadPackageRequest>("application/json")
-            .Produces<LoadPackageResult>(StatusCodes.Status200OK, contentType: "application/json")
+            .Produces<LoadPackageResponse>(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status409Conflict, contentType: "application/fhir+json")
+            .Produces(StatusCodes.Status422UnprocessableEntity, contentType: "application/fhir+json")
             .Produces(StatusCodes.Status500InternalServerError);
 
         // GET /tenant/{tenantId:int}/admin/packages - List packages loaded in tenant
@@ -83,10 +88,24 @@ public static class AdminPackageEndpoints
                 TotalResources = result.TotalResources,
                 ImportedResources = result.ImportedResources,
                 DurationMilliseconds = result.DurationMilliseconds,
-                ResourcesByType = result.ResourcesByType
+                ResourcesByType = result.ResourcesByType,
+                PendingReindex = result.PendingReindex,
+                ReindexJobId = result.ReindexJobId,
+                ReindexStatusUrl = result.ReindexStatusUrl,
+                Issues = result.Issues
+                    .Select(issue => new LoadPackageIssue(
+                        issue.SeverityCode,
+                        issue.Code,
+                        issue.Message))
+                    .ToArray()
             };
 
             return Results.Ok(response);
+        }
+        catch (PackageActivationRejectedException ex)
+        {
+            // Logged once by the activation pipeline; the caller gets every issue code.
+            return new FhirResult(ex.StatusCode, ex.OperationOutcome.SerializeToBytes());
         }
         catch (ArgumentException ex)
         {
@@ -271,7 +290,27 @@ public static class AdminPackageEndpoints
         /// Breakdown by resource type.
         /// </summary>
         public Dictionary<string, int> ResourcesByType { get; init; } = new();
+
+        public IReadOnlyList<string> PendingReindex { get; init; } = [];
+
+        public string? ReindexJobId { get; init; }
+
+        public string? ReindexStatusUrl { get; init; }
+
+        /// <summary>
+        /// Warning and information issues of the durable activation, such as search parameter codes hidden
+        /// until their transition commits, or follow-up work that is deferred.
+        /// </summary>
+        public IReadOnlyList<LoadPackageIssue> Issues { get; init; } = [];
     }
+
+    /// <summary>
+    /// An issue of a successful package activation.
+    /// </summary>
+    /// <param name="Severity"><c>warning</c> or <c>information</c>.</param>
+    /// <param name="Code">Stable activation issue code, such as <c>SP_TRANSITION_PENDING</c>.</param>
+    /// <param name="Message">Human-readable description.</param>
+    public record LoadPackageIssue(string Severity, string Code, string Message);
 
     /// <summary>
     /// Response from listing packages.

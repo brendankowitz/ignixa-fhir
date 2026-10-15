@@ -5,7 +5,6 @@
 
 using Autofac;
 using Ignixa.Abstractions;
-using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
 using Ignixa.Application.Infrastructure;
@@ -67,8 +66,7 @@ public static class SearchServicesRegistration
                 c.Resolve<IFhirBaseUriProvider>(),
                 c.Resolve<IPackageResourceRepository>(),
                 c.Resolve<IPackageResourceProvider>(),
-                c.Resolve<ICompositeSchemaProviderRegistry>(),
-                c.Resolve<ConformanceState>());
+                c.Resolve<ICompositeSchemaProviderRegistry>());
         }).SingleInstance();
 
         // The single authority for a tenant's service base URIs. "Fhir:BaseUri" is the deployment's public
@@ -205,13 +203,6 @@ public static class SearchServicesRegistration
         {
             var versionContext = c.Resolve<IFhirVersionContext>();
             return versionContext.GetSearchParameterDefinitionManager(FhirVersion.R4);
-        }).SingleInstance();
-
-        // Searchable resolver
-        builder.Register<ISearchParameterDefinitionManager.SearchableSearchParameterDefinitionManagerResolver>(c =>
-        {
-            var manager = c.Resolve<ISearchParameterDefinitionManager>();
-            return () => manager;
         }).SingleInstance();
 
         // Default compartment definition manager (R4)

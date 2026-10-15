@@ -1,20 +1,14 @@
-using System.Text;
-using System.Text.Json;
-using DurableTask.Core;
 using Ignixa.Abstractions;
-using Ignixa.Application.BackgroundOperations.Import.Activities;
-using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
-using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
+using static Ignixa.Application.Tests.BackgroundOperations.ImportActivityRunner;
 
 namespace Ignixa.Application.Tests.BackgroundOperations;
 
@@ -32,12 +26,9 @@ public class BulkImportStorageFailureTests
     {
         using var versions = new FhirVersionContext(NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance);
-        var tenants = Substitute.For<ITenantConfigurationStore>();
-        tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(
-            new TenantConfiguration { TenantId = 1, DisplayName = "Bulk failure test", FhirVersion = "4.0" });
         var repository = Substitute.For<IFhirRepository>();
         var stored = new List<string>();
-        repository.GetNextTransactionIdAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        repository.GetNextTransactionIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(_ =>
             phase == "allocate" ? throw new IOException("allocate response unavailable") : new TransactionId(1));
         repository.BatchWriteAsync(Arg.Any<TransactionId>(),
             Arg.Any<IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>>(),
@@ -53,25 +44,9 @@ public class BulkImportStorageFailureTests
         });
         repository.CommitTransactionAsync(Arg.Any<TransactionId>(), Arg.Any<CancellationToken>())
             .Returns(_ => phase == "commit" ? throw new IOException("commit response unavailable") : ValueTask.CompletedTask);
-        var factory = Substitute.For<IFhirRepositoryFactory>();
-        factory.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
-        const string patient = """{"resourceType":"Patient","id":"p1"}""";
-        var blobs = Substitute.For<IBlobStorageClient>();
-        blobs.ReadBlobAsync("input.ndjson", Arg.Any<CancellationToken>()).Returns(
-            new MemoryStream(Encoding.UTF8.GetBytes(string.Join('\n', Enumerable.Repeat(patient, 20)))));
-        TaskActivity activity = streaming
-            ? new StreamingImportFileActivity(factory, versions, tenants, blobs,
-                new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
-                new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance)
-            : new ImportBatchActivity(factory, versions, tenants, new FhirRequestContextAccessor(), NullLogger<ImportBatchActivity>.Instance);
-        object input = streaming
-            ? new StreamingImportFileInput { JobId = "job", TenantId = 1, ResourceType = "Patient", FileUrl = "input.ndjson",
-                Mode = "IncrementalLoad", BatchSize = 1, ChannelCapacity = 1 }
-            : new ImportBatchInput { JobId = "job", TenantId = 1, ResourceType = "Patient", Mode = "IncrementalLoad", Resources = [patient] };
 
-        var failure = await Should.ThrowAsync<Exception>(() => activity.RunAsync(
-            new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
-            JsonSerializer.Serialize(new[] { input })).WaitAsync(TimeSpan.FromSeconds(10)));
+        var failure = await Should.ThrowAsync<Exception>(() =>
+            RunActivityAsync(streaming, versions, repository, fileLines: 20).WaitAsync(TimeSpan.FromSeconds(10)));
 
         failure.ToString().ShouldContain($"{phase}");
         if (phase == "commit")

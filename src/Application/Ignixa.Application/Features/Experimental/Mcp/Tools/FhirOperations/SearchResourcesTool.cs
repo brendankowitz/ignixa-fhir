@@ -124,7 +124,7 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         var schemaProvider = _versionContext.GetBaseSchemaProvider(fhirVersion);
 
         // Use SearchOptionsBuilder to parse all parameters and build expressions
-        var builder = _builderFactory.Create(fhirVersion);
+        var builder = _builderFactory.Create(fhirVersion, resolvedTenantId);
         var searchOptions = builder.Build(resourceType, queryParameters, schemaProvider);
 
         // searchParams is a client-supplied Dictionary<string, string> with no key constraint, so an

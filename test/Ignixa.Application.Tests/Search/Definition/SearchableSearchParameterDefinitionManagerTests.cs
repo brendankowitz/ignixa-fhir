@@ -9,7 +9,9 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 using Shouldly;
 using Xunit;
 
@@ -153,6 +155,31 @@ public class SearchableSearchParameterDefinitionManagerTests
         Should.Throw<InvalidOperationException>(() => _ = searchable.AllSearchParameters);
         Should.Throw<InvalidOperationException>(
             () => searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> _));
+    }
+
+    // §4.2: hidden (pending or redefined) and unsupported are distinct answers whichever key the caller looks up by.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GivenANonSearchableParameter_WhenGotByCodeOrCanonical_ThenOnlyASupportedOneIsReportedHidden(bool isSupported)
+    {
+        SetStatus(isSearchable: false, isSupported: isSupported);
+        var searchable = new SearchableSearchParameterDefinitionManager(_inner);
+
+        var byCode = Should.Throw<SearchParameterNotSupportedException>(() => searchable.GetSearchParameter("Patient", CustomCode));
+        var byCanonical = Should.Throw<SearchParameterNotSupportedException>(() => searchable.GetSearchParameter(new Uri(CustomUrl)));
+
+        foreach (var exception in new[] { byCode, byCanonical })
+        {
+            if (isSupported)
+            {
+                exception.ShouldBeOfType<HiddenSearchParameterException>().SearchParameter.Code.ShouldBe(CustomCode);
+            }
+            else
+            {
+                exception.ShouldNotBeOfType<HiddenSearchParameterException>();
+            }
+        }
     }
 
     [Fact]

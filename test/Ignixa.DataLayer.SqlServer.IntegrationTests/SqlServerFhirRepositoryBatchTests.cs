@@ -28,7 +28,7 @@ public class SqlServerFhirRepositoryBatchTests : IAsyncLifetime
     [Fact]
     public async Task GivenThreeNewResourcesInOneBatch_WhenBatchWriteAsyncCalled_ThenAllThreeAreCreated()
     {
-        var transactionId = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+        var transactionId = await _repository.GetNextTransactionIdAsync(0, CancellationToken.None);
         var operations = new (string, string, ResourceJsonNode, IReadOnlyList<object>, string, int)[]
         {
             ("Patient", "batch-1", ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"batch-1"}"""), [], "PUT", 0),
@@ -62,7 +62,7 @@ public class SqlServerFhirRepositoryBatchTests : IAsyncLifetime
     [Fact]
     public async Task GivenABatchReusesAStaleTransactionIdForAResourceWrittenLater_WhenBatchWriteAsyncCalled_ThenThrowsResourceVersionConflictException()
     {
-        var staleTransactionId = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+        var staleTransactionId = await _repository.GetNextTransactionIdAsync(0, CancellationToken.None);
 
         var existing = new ResourceWrapper("Patient", "batch-conflict-1", "1", DateTimeOffset.UtcNow,
             ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"batch-conflict-1"}"""), new ResourceRequest("PUT", "Patient/batch-conflict-1"));
@@ -89,7 +89,7 @@ public class SqlServerFhirRepositoryBatchTests : IAsyncLifetime
     [Fact]
     public async Task GivenAFiveResourceBatch_WhenBatchWriteAsyncCalled_ThenEachDboResourceRowHoldsItsOwnResourceContent()
     {
-        var transactionId = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+        var transactionId = await _repository.GetNextTransactionIdAsync(0, CancellationToken.None);
         var operations = Enumerable.Range(0, 5)
             .Select(i => ("Patient", $"batch-content-{i}",
                 ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"batch-content-{{i}}","name":[{"family":"Family{{i}}"}]}"""),
@@ -143,7 +143,7 @@ public class SqlServerFhirRepositoryBatchTests : IAsyncLifetime
     [Fact]
     public async Task GivenAnUncommittedTransaction_WhenGetStalledTransactionsAsyncCalledWithAZeroThreshold_ThenTheUncommittedTransactionIsReturned()
     {
-        var transactionId = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+        var transactionId = await _repository.GetNextTransactionIdAsync(0, CancellationToken.None);
 
         var stalled = await _repository.GetStalledTransactionsAsync(TimeSpan.Zero, CancellationToken.None);
 

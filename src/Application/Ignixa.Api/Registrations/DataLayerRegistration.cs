@@ -201,20 +201,27 @@ public static class DataLayerRegistration
             .AsSelf()
             .SingleInstance();
 
-        // SQL Server factory (implements both interfaces). The "SqlEf" name is the DI key the composite
+        // SQL Server factory (implements all three interfaces). The "SqlEf" name is the DI key the composite
         // factories resolve by, not a statement about the implementation: it is kept so
         // CompositeRepositoryFactory/CompositeSearchServiceFactory -- which take the inner factory as a
         // plain interface -- need no change. Tenant storage types "SqlEntityFramework" and "SqlServer" are
         // a separate, unrelated vocabulary and both remain accepted.
-        builder.Register(c => new SqlServerTenantServiceFactory(
+        builder.Register(c =>
+        {
+            var versionContext = c.Resolve<IFhirVersionContext>();
+            return new SqlServerTenantServiceFactory(
                 c.Resolve<ITenantConfigurationStore>(),
                 c.Resolve<ILoggerFactory>(),
                 c.Resolve<RecyclableMemoryStreamManager>(),
                 c.Resolve<SqlServerTenantInitializer>(),
                 c.Resolve<ManagedIdentityConnectionStringValidator>(),
-                c.Resolve<ISqlExecutionService>()))
+                c.Resolve<ISqlExecutionService>(),
+                (fhirVersion, tenantId) => versionContext
+                    .GetSearchableSearchParameterDefinitionManager(fhirVersion, tenantId));
+        })
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")
+            .Named<IReindexStoreFactory>("SqlEf")
             .AsSelf()
             .SingleInstance();
     }
@@ -222,11 +229,15 @@ public static class DataLayerRegistration
     private static void RegisterCompositeFactories(ContainerBuilder builder)
     {
         // Composite repository factory
-        builder.Register<IFhirRepositoryFactory>(c =>
+        builder.Register(c =>
             new CompositeRepositoryFactory(
                 c.Resolve<ITenantConfigurationStore>(),
                 c.ResolveNamed<IFhirRepositoryFactory>("FileSystem"),
-                c.ResolveNamed<IFhirRepositoryFactory>("SqlEf")))
+                c.ResolveNamed<IFhirRepositoryFactory>("SqlEf"),
+                c.ResolveNamed<IReindexStoreFactory>("SqlEf")))
+            .As<IFhirRepositoryFactory>()
+            .As<IReindexStoreFactory>()
+            .AsSelf()
             .SingleInstance();
 
         // Composite search service factory
@@ -294,13 +305,10 @@ public static class DataLayerRegistration
         .SingleInstance();
     }
 
-    // Package and conformance content is global rather than per-tenant, and lives in tenant 1's database.
-    private const int GlobalPackageTenantId = 1;
-
     private static void RegisterPackageRepository(ContainerBuilder builder)
     {
         builder.Register(c => new SharedContentDatabaseGuard(
-                c.Resolve<ISqlExecutionService>(), GlobalPackageTenantId, SystemConstants.SystemPartitionId))
+                c.Resolve<ISqlExecutionService>(), SystemConstants.GlobalTenantId, SystemConstants.SystemPartitionId))
             .SingleInstance();
 
         // PackageRepositoryDbContextFactory is deliberately not registered. Its only two consumers -- the EF
@@ -315,12 +323,12 @@ public static class DataLayerRegistration
         builder.Register<IPackageResourceRepository>(c =>
             new SqlServerPackageResourceRepository(
                 c.Resolve<ISqlExecutionService>(),
-                GlobalPackageTenantId,
+                SystemConstants.GlobalTenantId,
                 c.Resolve<ILogger<SqlServerPackageResourceRepository>>(),
                 c.Resolve<SharedContentDatabaseGuard>()))
             .InstancePerDependency();
 
-        // Terminology importer factory. SystemPartitionId rather than GlobalPackageTenantId above: the
+        // Terminology importer factory. SystemPartitionId rather than GlobalTenantId above: the
         // terminology tables are server-wide and live in the system partition's database, matching the
         // SqlServerTerminologyService registration in ValidationServicesRegistration. A factory rather than
         // a direct ITerminologyImporter registration because the importer needs a reference-data cache that
@@ -332,7 +340,7 @@ public static class DataLayerRegistration
                 SystemConstants.SystemPartitionId,
                 c.Resolve<ILoggerFactory>(),
                 c.Resolve<IOptions<SqlServerOptions>>().Value.TerminologyImportCommandTimeoutSeconds,
-                GlobalPackageTenantId))
+                SystemConstants.GlobalTenantId))
             .InstancePerDependency();
     }
 }

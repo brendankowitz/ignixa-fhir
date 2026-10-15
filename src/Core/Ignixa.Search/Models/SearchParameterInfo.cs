@@ -130,6 +130,11 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     public bool IsSupported { get; set; } = true;
 
     /// <summary>
+    /// Returns true when a two-phase SearchParameter lifecycle transition temporarily hides this parameter.
+    /// </summary>
+    public bool IsHiddenByTransition { get; set; }
+
+    /// <summary>
     /// Returns true if the search parameter resolves to more than one type (FhirString, FhirUri, etc...)
     /// but not all types are able to be indexed / searched
     /// </summary>

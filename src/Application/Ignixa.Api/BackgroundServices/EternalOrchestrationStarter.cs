@@ -9,6 +9,8 @@ using Ignixa.Application.BackgroundOperations.TtlCleanup.Models;
 using Ignixa.Application.BackgroundOperations.TtlCleanup.Orchestrations;
 using Ignixa.Application.BackgroundOperations.TransactionWatcher.Models;
 using Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrations;
+using Ignixa.Application.BackgroundOperations.Reindex;
+using Ignixa.Application.Features.Conformance;
 using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.BackgroundServices;
@@ -22,6 +24,9 @@ public sealed class EternalOrchestrationStarter(
     TaskHubClient taskHubClient,
     IOptions<TtlCleanupOptions> ttlCleanupOptions,
     IOptions<TransactionWatcherOptions> transactionWatcherOptions,
+    ConformanceState conformanceState,
+    SearchParameterTransitionReconciler transitionReconciler,
+    ReindexTrigger reindexTrigger,
     ILogger<EternalOrchestrationStarter> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -49,11 +54,26 @@ public sealed class EternalOrchestrationStarter(
             transactionWatcherOptions.Value.Enabled,
             stoppingToken);
 
+        await ReconcileTransitionsAsync(stoppingToken);
+
+        // The first reindex tick; ConformanceStateSyncService repeats it every sync interval.
+        await reindexTrigger.ReconcileAsync(stoppingToken);
+
         logger.LogInformation("EternalOrchestrationStarter completed startup");
 
         // Future eternal orchestrations go here:
         // await EnsureOrchestrationAsync<ReindexOrchestration>(...);
         // await EnsureOrchestrationAsync<AuditCleanupOrchestration>(...);
+    }
+
+    private async Task ReconcileTransitionsAsync(CancellationToken cancellationToken)
+    {
+        while (!conformanceState.IsInitialized)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        await transitionReconciler.ReconcileAsync(cancellationToken);
     }
 
     /// <summary>

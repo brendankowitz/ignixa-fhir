@@ -5,6 +5,7 @@
 
 using Ignixa.Application.Features.Patch;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.ConditionalOperations;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
@@ -70,7 +71,7 @@ public class ConditionalPatchHandler : IRequestHandler<ConditionalPatchCommand, 
 
         // Step 3: Build search options with _count=2 (we only need to know if 0, 1, or multiple)
         var searchOptions = searchOptionsBuilder.Build(request.ResourceType, queryParameters);
-        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+        ConditionalSearchParameterValidator.ThrowIfInvalid(searchOptions);
         searchOptions.MaxItemCount = 2;
 
         // Step 4: Execute search via SearchResourcesHandler

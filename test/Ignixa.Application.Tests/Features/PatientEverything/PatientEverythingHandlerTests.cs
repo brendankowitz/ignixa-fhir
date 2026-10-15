@@ -8,6 +8,8 @@
 using System.Runtime.CompilerServices;
 using Shouldly;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Conformance;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Application.Operations.Features.PatientEverything;
 using Ignixa.Domain.Abstractions;
@@ -44,20 +46,48 @@ public class PatientEverythingHandlerTests
             _partitionStrategy,
             _executionStrategy,
             _contextAccessor,
+            Substitute.For<IFhirVersionContext>(),
+            TestConformanceLease.Held(),
             _logger);
+    }
+
+    // M-L6: $everything membership comes from the searchable snapshot; a hidden member parameter is reported.
+    [Theory]
+    [InlineData(HiddenMembershipScenario.Disabling, null, "is being redefined")]
+    [InlineData(HiddenMembershipScenario.Pending, null, "is pending reindex")]
+    [InlineData(HiddenMembershipScenario.Pending, "Condition", null)]
+    public async Task GivenAMembershipParameterIsHidden_WhenEverythingRuns_ThenTheBundleWarnsOnlyWhenItsTypeIsIncluded(
+        HiddenMembershipScenario scenario,
+        string? onlyType,
+        string? expectedReason)
+    {
+        SetupDefaultMocks(fhirVersion: "4.0");
+        var handler = new PatientEverythingHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            await HiddenMembershipFixture.CreateVersionContextAsync(scenario),
+            TestConformanceLease.Held(),
+            _logger);
+
+        var result = await handler.HandleAsync(
+            new PatientEverythingQuery("123", Types: onlyType is null ? null : new HashSet<string> { onlyType }),
+            CancellationToken.None);
+
+        result.SearchOptions.ShouldWarnOfHiddenMembership(expectedReason);
     }
 
     #region Setup
 
     private static readonly int[] SinglePartitionArray = new[] { 1 };
 
-    private void SetupDefaultMocks()
+    private void SetupDefaultMocks(string fhirVersion = "R4")
     {
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
             DisplayName = "Test Tenant",
-            FhirVersion = "R4",
+            FhirVersion = fhirVersion,
             ValidationDepth = "Spec"
         };
 
@@ -120,6 +150,25 @@ public class PatientEverythingHandlerTests
             Arg.Is<PartitionResolutionContext>(ctx => ctx.TenantId == 1),
             Arg.Any<string>(),
             Arg.Any<IReadOnlyDictionary<string, string>>());
+    }
+
+    // §4.5 (F15): $everything fails closed without the lease.
+    [Fact]
+    public async Task GivenStaleLease_WhenHandlingEverything_ThenItFailsClosed()
+    {
+        SetupDefaultMocks();
+        var handler = new PatientEverythingHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            Substitute.For<IFhirVersionContext>(),
+            TestConformanceLease.NotHeld(),
+            _logger);
+
+        var exception = await Should.ThrowAsync<ConformanceStaleException>(() =>
+            handler.HandleAsync(new PatientEverythingQuery("patient-123"), CancellationToken.None));
+
+        exception.RetryAfter.ShouldBe(TimeSpan.FromSeconds(30));
     }
 
     #endregion

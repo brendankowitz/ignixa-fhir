@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.Json.Nodes;
 using Ignixa.DataLayer.SqlServer.Features.PackageManagement;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
 using Ignixa.Search.Sql.Catalog;
@@ -43,7 +44,7 @@ public sealed class SqlServerCodeSystemImporter(
     ISystemRepository systemRepository,
     ILogger<SqlServerCodeSystemImporter> logger,
     int commandTimeoutSeconds = SqlServerOptions.DefaultTerminologyImportCommandTimeoutSeconds,
-    int packageTenantId = 1) : ITerminologyImporter
+    int packageTenantId = SystemConstants.GlobalTenantId) : ITerminologyImporter
 {
     private const int DefinitionMaxLength = 4000;
 

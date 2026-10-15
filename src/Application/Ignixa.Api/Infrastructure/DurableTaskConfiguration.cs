@@ -6,11 +6,13 @@ using DurableTask.Core;
 using DurableTask.SqlServer;
 using Ignixa.Application.BackgroundOperations.BulkDelete.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
+using Ignixa.Application.BackgroundOperations.Conformance;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Import.Orchestrations;
 using Ignixa.Application.BackgroundOperations.Terminology.Orchestrations;
 using Ignixa.Application.BackgroundOperations.TransactionWatcher.Orchestrations;
 using Ignixa.Application.BackgroundOperations.TtlCleanup.Orchestrations;
+using Ignixa.Application.BackgroundOperations.Reindex.Orchestrations;
 using Ignixa.DataLayer.FileSystem.DurableTask;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain.Abstractions;
@@ -21,6 +23,7 @@ using ImportActivities = Ignixa.Application.BackgroundOperations.Import.Activiti
 using TerminologyActivities = Ignixa.Application.BackgroundOperations.Terminology.Activities;
 using TransactionWatcherActivities = Ignixa.Application.BackgroundOperations.TransactionWatcher.Activities;
 using TtlCleanupActivities = Ignixa.Application.BackgroundOperations.TtlCleanup.Activities;
+using ReindexActivities = Ignixa.Application.BackgroundOperations.Reindex.Activities;
 
 namespace Ignixa.Api.Infrastructure;
 
@@ -59,6 +62,8 @@ public static class DurableTaskConfiguration
             worker.AddTaskOrchestrations(typeof(ExportOrchestration));
             worker.AddTaskOrchestrations(typeof(ImportOrchestration));
             worker.AddTaskOrchestrations(typeof(TerminologyImportOrchestration));
+            worker.AddTaskOrchestrations(typeof(SearchParameterTransitionOrchestration));
+            worker.AddTaskOrchestrations(typeof(ReindexOrchestration));
             worker.AddTaskOrchestrations(typeof(BulkDeleteOrchestration));
 
             // Register orchestrations with DI dependencies
@@ -88,6 +93,14 @@ public static class DurableTaskConfiguration
 
             // Register TTL Cleanup activities with service provider for DI
             worker.AddTaskActivitiesFromInterface<TtlCleanupActivities.TtlCleanupActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<SearchParameterTransitionCommitActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ReindexActivities.StartReindexActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ReindexActivities.RaiseBarrierActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ReindexActivities.AwaitDrainActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ReindexActivities.PlanReindexActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ReindexActivities.ReindexRangeActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ReindexActivities.PersistReindexProgressActivity>(sp);
+            worker.AddTaskActivitiesFromInterface<ReindexActivities.CompleteReindexActivity>(sp);
 
             return worker;
         });

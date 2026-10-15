@@ -686,6 +686,17 @@ See [Bulk Delete Configuration](#bulk-delete-configuration) below for a sample `
 snippet. The configured value is snapshotted into each job's orchestration input at kickoff, so
 changing it only affects jobs started afterwards.
 
+### Stale Search-Parameter Definitions
+
+Each batch selects its matches with the instance's current search-parameter definitions. A batch
+that runs on an instance whose conformance synchronization has failed for longer than
+`Conformance:MaxStaleness` (it no longer holds the staleness lease) neither searches nor deletes:
+selecting with an outgoing definition could delete the wrong set. The job keeps its `Running`
+status and the same batch runs again after a wait that grows from 5 seconds to 1 minute, on
+whichever instance picks it up. If no instance holds the lease for 15 minutes the job fails with an
+error that names the conformance staleness lease. `$export` is read-only and is not held back this
+way.
+
 ### Known Limitations
 
 - **Remove-references scope is per batch** (matching fhir-server). Each batch rewrites referrers of

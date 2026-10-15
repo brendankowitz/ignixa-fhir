@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Data.Common;
 using System.Text.Json;
 using DurableTask.Core;
 using Ignixa.Abstractions;
@@ -13,6 +12,7 @@ using Ignixa.Domain.Constants;
 using Ignixa.Domain;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization;
@@ -42,6 +42,7 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly IFhirRequestContextAccessor _fhirContextAccessor;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
     private readonly ILogger<ImportBatchActivity> _logger;
 
     public ImportBatchActivity(
@@ -49,12 +50,14 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
         IFhirVersionContext fhirVersionContext,
         ITenantConfigurationStore tenantConfigurationStore,
         IFhirRequestContextAccessor fhirContextAccessor,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<ImportBatchActivity> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _tenantConfigurationStore = tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
         _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
+        _barrierRetryPolicy = barrierRetryPolicy ?? throw new ArgumentNullException(nameof(barrierRetryPolicy));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -122,8 +125,7 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
             var operations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>();
             var errors = new List<ImportErrorLogEntry>();
 
-            var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
-            var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion, input.TenantId);
+            var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
 
             for (int entryIndex = 0; entryIndex < input.Resources.Count; entryIndex++)
             {
@@ -156,8 +158,8 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
                         _logger.LogDebug("Generated ID for {ResourceType}: {Id}", input.ResourceType, resourceId);
                     }
 
-                    var typedElement = jsonNode.ToElement(schemaProvider);
-                    IReadOnlyList<object> searchIndices = searchIndexer.Extract((IElement)typedElement).ToArray();
+                    var typedElement = jsonNode.ToElement(definitionsHandle.SchemaProvider);
+                    IReadOnlyList<object> searchIndices = definitionsHandle.Indexer.Extract((IElement)typedElement).ToArray();
 
                     // Add to batch operations with entry index for surrogate ID calculation
                     operations.Add((input.ResourceType, resourceId, jsonNode, searchIndices, "PUT", entryIndex)); // Import uses PUT (upsert)
@@ -180,21 +182,13 @@ public class ImportBatchActivity : AsyncTaskActivity<ImportBatchInput, ImportBat
             var successCount = 0;
             if (operations.Count > 0)
             {
-                var transactionId = await repository.GetNextTransactionIdAsync(CancellationToken.None);
-                _logger.LogDebug(
-                    "Executing BatchWriteAsync for {Count} resources with transaction {TransactionId}",
-                    operations.Count, transactionId);
-                var keys = await repository.BatchWriteAsync(transactionId, operations, CancellationToken.None);
-                try
-                {
-                    await repository.CommitTransactionAsync(transactionId, CancellationToken.None);
-                }
-                catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
-                {
-                    throw new InvalidOperationException(
-                        $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({operations.Count} resources). {ex.Message}", ex);
-                }
-                successCount = keys.Count;
+                successCount = await ImportBatchWriter.WriteAsync(
+                    repository,
+                    operations,
+                    definitionsHandle,
+                    () => _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId),
+                    _barrierRetryPolicy,
+                    CancellationToken.None);
                 _logger.LogInformation("Batch write completed: {SuccessCount} resources written", successCount);
             }
 

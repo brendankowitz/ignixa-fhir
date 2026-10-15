@@ -93,6 +93,9 @@ internal static class Program
         {
             BlockOnPossibleDataLoss = !allowDataLoss,
             AllowIncompatiblePlatform = allowIncompatiblePlatform,
+            // The same bounds as the automatic upgrade, which can build an index ONLINE over a large table.
+            CommandTimeout = SchemaDeployer.DeployCommandTimeoutSeconds,
+            LongRunningCommandTimeout = SchemaDeployer.DeployLongRunningCommandTimeoutSeconds,
         };
 
         var deployReportXml = dacServices.GenerateDeployReport(

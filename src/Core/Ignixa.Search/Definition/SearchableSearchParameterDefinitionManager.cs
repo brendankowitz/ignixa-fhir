@@ -16,7 +16,7 @@ namespace Ignixa.Search.Definition;
 /// </summary>
 public class SearchableSearchParameterDefinitionManager : ISearchParameterDefinitionManager
 {
-    private readonly SearchParameterDefinitionManager _inner;
+    private readonly ISearchParameterDefinitionManager _inner;
     private readonly Func<bool> _includePartiallyIndexedSearchParameters;
 
     /// <param name="inner">The definition manager holding every known parameter, searchable or not.</param>
@@ -35,7 +35,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     /// </para>
     /// </param>
     public SearchableSearchParameterDefinitionManager(
-        SearchParameterDefinitionManager inner,
+        ISearchParameterDefinitionManager inner,
         Func<bool> includePartiallyIndexedSearchParameters = null)
     {
         EnsureArg.IsNotNull(inner, nameof(inner));
@@ -45,6 +45,13 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     }
 
     public IEnumerable<SearchParameterInfo> AllSearchParameters => GetAllSearchParameters();
+
+    /// <inheritdoc />
+    public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters() => _inner.GetAllKnownSearchParameters();
+
+    /// <inheritdoc />
+    public IEnumerable<SearchParameterInfo> GetAllKnownSearchParameters(string resourceType) =>
+        _inner.GetAllKnownSearchParameters(resourceType);
 
     public IReadOnlyDictionary<string, string> SearchParameterHashMap => _inner.SearchParameterHashMap;
 
@@ -93,6 +100,11 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
             return parameter;
         }
 
+        if (parameter.IsHiddenByTransition || parameter.IsSupported)
+        {
+            throw new HiddenSearchParameterException(parameter);
+        }
+
         throw new SearchParameterNotSupportedException(resourceType, code);
     }
 
@@ -101,6 +113,11 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
         SearchParameterInfo parameter = _inner.GetSearchParameter(definitionUri);
 
         if (IsVisible(parameter, _includePartiallyIndexedSearchParameters())) return parameter;
+
+        if (parameter.IsHiddenByTransition || parameter.IsSupported)
+        {
+            throw new HiddenSearchParameterException(parameter);
+        }
 
         throw new SearchParameterNotSupportedException(definitionUri);
     }
@@ -152,6 +169,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     /// testing a different combination of the two than the rest.</summary>
     private static bool IsVisible(SearchParameterInfo parameter, bool includePartiallyIndexed)
     {
-        return parameter.IsSearchable || (includePartiallyIndexed && parameter.IsSupported);
+        return !parameter.IsHiddenByTransition
+            && (parameter.IsSearchable || (includePartiallyIndexed && parameter.IsSupported));
     }
 }

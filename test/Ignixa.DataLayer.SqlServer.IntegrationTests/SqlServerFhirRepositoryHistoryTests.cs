@@ -98,6 +98,7 @@ public class SqlServerFhirRepositoryHistoryTests : IAsyncLifetime
         await _repository.DeleteAsync(
             new ResourceKey("Patient", "history-deleted-1"),
             new ResourceRequest("DELETE", "Patient/history-deleted-1"),
+            0,
             null,
             CancellationToken.None);
 

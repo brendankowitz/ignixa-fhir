@@ -1,5 +1,4 @@
-using Ignixa.Application.Features.Specification;
-using Ignixa.Application.Infrastructure.Caching;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Specification;
 using Medino;
 using Microsoft.Extensions.Logging;
@@ -7,28 +6,23 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Application.Events.Package;
 
 /// <summary>
-/// Handles IPackageLoaded events to invalidate validation schema caches.
-/// Ensures CompositeStructureDefinitionSummaryProvider picks up newly loaded profiles.
+/// Handles IPackageLoaded events by publishing fresh conformance consumers.
 /// </summary>
 public class PackageLoadedNotificationHandler : INotificationHandler<IPackageLoaded>, INotificationHandler<PackageLoadedEvent>
 {
-    private readonly ICompositeSchemaProviderRegistry _registry;
-    private readonly ICapabilityCacheInvalidator _capabilityCacheInvalidator;
+    private readonly ConformanceRefresher _conformanceRefresher;
     private readonly ILogger<PackageLoadedNotificationHandler> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PackageLoadedNotificationHandler"/> class.
     /// </summary>
-    /// <param name="registry">Composite schema provider registry</param>
-    /// <param name="capabilityCacheInvalidator">Capability cache invalidation after schema publication.</param>
+    /// <param name="conformanceRefresher">Conformance definitions refresher</param>
     /// <param name="logger">Logger instance</param>
     public PackageLoadedNotificationHandler(
-        ICompositeSchemaProviderRegistry registry,
-        ICapabilityCacheInvalidator capabilityCacheInvalidator,
+        ConformanceRefresher conformanceRefresher,
         ILogger<PackageLoadedNotificationHandler> logger)
     {
-        _registry = registry;
-        _capabilityCacheInvalidator = capabilityCacheInvalidator;
+        _conformanceRefresher = conformanceRefresher ?? throw new ArgumentNullException(nameof(conformanceRefresher));
         _logger = logger;
     }
 
@@ -43,14 +37,30 @@ public class PackageLoadedNotificationHandler : INotificationHandler<IPackageLoa
         _logger.LogInformation(
             "Handling PackageLoaded event: {PackageId}@{Version} (tenant {TenantId})",
             evt.PackageId, evt.PackageVersion, evt.TenantId);
-
-        // Invalidate validation schema caches for this tenant
-        // This ensures CompositeStructureDefinitionSummaryProvider picks up new profiles
-        await _registry.InvalidateCacheForPackageAsync(evt.PackageId, evt.TenantId, cancellationToken);
-        await _capabilityCacheInvalidator.InvalidateForTenantAsync(evt.TenantId, cancellationToken);
+        try
+        {
+            if (evt.RequiresConformanceRefresh)
+            {
+                await _conformanceRefresher.RefreshAsync(force: true, CancellationToken.None);
+            }
+            else
+            {
+                await _conformanceRefresher.RefreshAsync(force: false, cancellationToken);
+            }
+        }
+        catch (ConformanceConsumerRefreshException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Package {PackageId}@{Version} loaded durably, but local conformance refresh is deferred",
+                evt.PackageId,
+                evt.PackageVersion);
+            ConformanceMetrics.RecordConsumerRefreshFailure("package-load");
+            return;
+        }
 
         _logger.LogInformation(
-            "Validation cache invalidated for {PackageId} (tenant {TenantId})",
+            "Conformance snapshot refreshed for {PackageId} (tenant {TenantId})",
             evt.PackageId, evt.TenantId);
     }
 }

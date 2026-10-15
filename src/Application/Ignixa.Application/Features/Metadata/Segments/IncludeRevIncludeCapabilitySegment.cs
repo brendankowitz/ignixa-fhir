@@ -45,7 +45,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
         _logger.LogDebug("Applying include/revinclude capability segment for {FhirVersion}", context.FhirVersion);
 
         // Get manager and schema provider for this FHIR version
-        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
+        var manager = _versionContext.GetSearchableSearchParameterDefinitionManager(context.FhirVersion, context.TenantId);
         var schemaProvider = _versionContext.GetBaseSchemaProvider(context.FhirVersion);
 
         if (statement.Rest == null || statement.Rest.Count == 0)
@@ -120,10 +120,10 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
         CancellationToken cancellationToken)
     {
         // Hash is based on all reference search parameters and their targets
-        var manager = _versionContext.GetSearchParameterDefinitionManager(context.FhirVersion);
+        var manager = _versionContext.GetSearchableSearchParameterDefinitionManager(context.FhirVersion, context.TenantId);
 
         var referenceParams = manager.AllSearchParameters
-            .Where(sp => sp.IsSupported && sp.Type == SearchParamType.Reference)
+            .Where(sp => sp.IsSearchable && sp.Type == SearchParamType.Reference)
             .OrderBy(sp => sp.Code, StringComparer.Ordinal)
             .ThenBy(sp => string.Join(",", sp.BaseResourceTypes ?? Array.Empty<string>()), StringComparer.Ordinal)
             .Select(sp => $"{sp.Code}:{string.Join(",", sp.BaseResourceTypes ?? Array.Empty<string>())}:{string.Join(",", sp.TargetResourceTypes ?? Array.Empty<string>())}")
@@ -148,7 +148,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
 
         // Add specific reference parameters
         var referenceParams = searchParams
-            .Where(sp => sp.IsSupported && sp.Type == SearchParamType.Reference)
+            .Where(sp => sp.IsSearchable && sp.Type == SearchParamType.Reference)
             .OrderBy(sp => sp.Code, StringComparer.Ordinal)
             .ToList();
 
@@ -188,7 +188,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
             var searchParams = searchParamsEnumerable;
 
             var referenceParams = searchParams
-                .Where(sp => sp.IsSupported &&
+                .Where(sp => sp.IsSearchable &&
                            sp.Type == SearchParamType.Reference &&
                            (sp.TargetResourceTypes == null ||
                             sp.TargetResourceTypes.Count == 0 ||
@@ -205,4 +205,3 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
         return revIncludes.Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
     }
 }
-

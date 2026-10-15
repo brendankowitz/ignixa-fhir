@@ -5,11 +5,15 @@
 
 using Autofac;
 using Ignixa.Api.Services;
+using Ignixa.Application.BackgroundOperations.Reindex;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.EventStore;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Ignixa.Api.Registrations;
 
@@ -31,13 +35,10 @@ public static class ConformanceServicesRegistration
 
         // Register the ConformanceState sync service for multi-instance scenarios (polls periodically)
         services.AddHostedService<ConformanceStateSyncService>();
+        services.AddSingleton(TimeProvider.System);
 
         return services;
     }
-
-    // Conformance and package state is global, not per-tenant, and has always lived in tenant 1's
-    // database (see GlobalPackageTenantId in DataLayerRegistration).
-    private const int GlobalConformanceTenantId = 1;
 
     /// <summary>
     /// Registers conformance services in the Autofac container.
@@ -55,7 +56,7 @@ public static class ConformanceServicesRegistration
         // implementation to raw ADO.NET; it did not change which database the store reads and writes.
         builder.Register<ISourceEventStore>(c => new SqlServerSourceEventStore(
                 c.Resolve<ISqlExecutionService>(),
-                GlobalConformanceTenantId,
+                SystemConstants.GlobalTenantId,
                 c.Resolve<ILogger<SqlServerSourceEventStore>>()))
             .SingleInstance();
 
@@ -64,11 +65,46 @@ public static class ConformanceServicesRegistration
             .AsSelf()
             .SingleInstance();
 
-        builder.RegisterType<ConformanceCacheRefresher>()
+        builder.RegisterType<SqlSearchParameterCatalogSynchronizer>()
+            .As<ISearchParameterCatalogSynchronizer>()
+            .SingleInstance();
+
+        builder.RegisterType<ConformanceRefresher>()
             .AsSelf()
             .SingleInstance();
 
-        // PackageActivationPipeline
+        builder.Register(c => new ConformanceLease(
+                c.Resolve<IOptions<ConformanceTransitionOptions>>(),
+                TimeProvider.System,
+                c.Resolve<ILogger<ConformanceLease>>()))
+            .AsSelf()
+            .SingleInstance();
+
+        builder.RegisterType<ReindexTrigger>()
+            .As<IReindexTrigger>()
+            .AsSelf()
+            .SingleInstance();
+
+        builder.RegisterType<ReindexJobLock>()
+            .As<IReindexJobLock>()
+            .SingleInstance();
+
+        builder.RegisterType<SearchParameterTransitionCommitter>()
+            .AsSelf()
+            .SingleInstance();
+
+        builder.RegisterType<SearchParameterTransitionReconciler>()
+            .AsSelf()
+            .SingleInstance();
+
+        builder.RegisterType<DurableSearchParameterTransitionScheduler>()
+            .As<ISearchParameterTransitionScheduler>()
+            .SingleInstance();
+
+        builder.RegisterType<PackageActivationPlanner>()
+            .AsSelf()
+            .SingleInstance();
+
         builder.RegisterType<PackageActivationPipeline>()
             .AsSelf()
             .InstancePerDependency();

@@ -12,6 +12,7 @@ using Ignixa.Application.BackgroundOperations.Export;
 using Ignixa.Application.BackgroundOperations.Export.Activities;
 using Ignixa.Application.BackgroundOperations.Export.Models;
 using Ignixa.Application.BackgroundOperations.Export.Orchestrations;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
@@ -96,7 +97,9 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
 
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddHttpContextAccessor();
         services.AddSingleton<IFhirVersionContext>(_versions);
+        services.AddSingleton(CreateHeldConformanceLease());
         services.AddSingleton<ITenantConfigurationStore>(tenants);
         services.AddSingleton<IFhirBaseUriProvider>(baseUris);
         services.AddSingleton<IFhirRequestContextAccessor>(_contextAccessor);
@@ -521,6 +524,16 @@ public sealed class ExportWorkerSqlContractTests : IAsyncLifetime
     private sealed class RepositoryFactory(IFhirRepository repository) : IFhirRepositoryFactory
     {
         public Task<IFhirRepository> GetRepositoryAsync(int tenantId, CancellationToken ct = default) => Task.FromResult(repository);
+    }
+
+    private static ConformanceLease CreateHeldConformanceLease()
+    {
+        var lease = new ConformanceLease(
+            Options.Create(new ConformanceTransitionOptions { MaxStaleness = TimeSpan.FromHours(1) }),
+            TimeProvider.System,
+            NullLogger<ConformanceLease>.Instance);
+        lease.Renew(lease.CaptureStart());
+        return lease;
     }
 
     private sealed class SearchFactory(ISearchService service) : ISearchServiceFactory

@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Ignixa.Api.Endpoints;
 using Ignixa.Api.Middleware;
 using Ignixa.Application.Features.Admin;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Medino;
@@ -143,6 +144,48 @@ public sealed class AdminPackageEndpointRoutingTests : IAsyncLifetime
         body["resource"]!.GetValue<string>().ShouldBe("Patient/admin");
         _requests.ShouldBeEmpty();
     }
+
+    // Review 5 N2: a stored package that does not activate fails the load with an OperationOutcome naming each issue.
+    [Theory]
+    [InlineData("SP_MIXED_BASE_SHADOW", StatusCodes.Status422UnprocessableEntity, "business-rule")]
+    [InlineData("CONFORMANCE_CONFLICT", StatusCodes.Status409Conflict, "conflict")]
+    public async Task GivenActivationRejectsTheStoredPackage_WhenLoading_ThenItReturnsAnOperationOutcomeNamingTheIssue(
+        string issueCode, int expectedStatus, string expectedIssueType)
+    {
+        const string reason = "SearchParameter 'identifier' resolves to different storage roots.";
+        _app.Services.GetRequiredService<IMediator>().SendAsync(Arg.Any<LoadPackageCommand>(), Arg.Any<CancellationToken>())
+            .Returns<LoadPackageResult>(_ => throw new PackageActivationRejectedException("example.ig", "1.2.3", [new ValidationIssue(issueCode, reason)]));
+
+        var (context, body) = await SendAsync(true, "POST", "/tenant/1/admin/packages/load");
+
+        (context.Response.StatusCode, context.Response.ContentType).ShouldBe((expectedStatus, "application/fhir+json"));
+        body["resourceType"]!.GetValue<string>().ShouldBe("OperationOutcome");
+        var issue = body["issue"]!.AsArray().ShouldHaveSingleItem()!;
+        var coding = issue["details"]!["coding"]![0]!;
+        (Text(issue["severity"]), Text(issue["code"]), Text(issue["diagnostics"])).ShouldBe(("error", expectedIssueType, reason));
+        (Text(coding["system"]), Text(coding["code"])).ShouldBe((PackageActivationRejectedException.IssueCodeSystem, issueCode));
+        Text(issue["details"]!["text"]).ShouldBe("Package example.ig@1.2.3 was stored but not activated.");
+    }
+
+    [Fact]
+    public async Task GivenDurableActivationWithWarnings_WhenLoading_ThenItReturnsOkWithTheIssues()
+    {
+        _app.Services.GetRequiredService<IMediator>().SendAsync(Arg.Any<LoadPackageCommand>(), Arg.Any<CancellationToken>()).Returns(new LoadPackageResult
+        {
+            PackageId = "example.ig",
+            PackageVersion = "1.2.3",
+            Issues = [ValidationIssue.Warning("SP_TRANSITION_PENDING", "1 search parameter code(s) are hidden: Patient.identifier.")],
+        });
+
+        var (context, body) = await SendAsync(true, "POST", "/tenant/1/admin/packages/load");
+
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+        var issue = body["issues"]!.AsArray().ShouldHaveSingleItem()!;
+        (Text(issue["severity"]), Text(issue["code"])).ShouldBe(("warning", "SP_TRANSITION_PENDING"));
+        Text(issue["message"]).ShouldContain("Patient.identifier");
+    }
+
+    private static string Text(JsonNode? node) => node!.GetValue<string>();
 
     private async Task<(HttpContext Context, JsonNode Body)> SendAsync(bool adminFirst, string method, string path)
     {

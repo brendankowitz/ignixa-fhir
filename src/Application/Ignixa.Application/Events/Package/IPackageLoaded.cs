@@ -27,4 +27,9 @@ public interface IPackageLoaded : INotification
     /// When the package was loaded
     /// </summary>
     DateTimeOffset LoadedAt { get; }
+
+    /// <summary>
+    /// Whether the receiving instance must force a local conformance refresh.
+    /// </summary>
+    bool RequiresConformanceRefresh { get; }
 }

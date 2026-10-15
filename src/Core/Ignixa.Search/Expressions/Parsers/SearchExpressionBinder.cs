@@ -53,7 +53,8 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
             include.ReferencedTypes,
             include.Wildcard,
             isReversed,
-            iterate);
+            iterate,
+            include.WildcardReferenceSearchParameters);
 
     internal static NotReferencedExpression BindNotReferenced(
         BoundNotReferencedKey notReferenced) =>

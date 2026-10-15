@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Data.Common;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +11,7 @@ using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
@@ -49,6 +49,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
     private readonly IBlobStorageClient _blobStorageClient;
     private readonly IConfiguration _configuration;
     private readonly IFhirRequestContextAccessor _fhirContextAccessor;
+    private readonly ConformanceBarrierRetryPolicy _barrierRetryPolicy;
     private readonly ILogger<StreamingImportFileActivity> _logger;
 
     public StreamingImportFileActivity(
@@ -58,6 +59,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         IBlobStorageClient blobStorageClient,
         IConfiguration configuration,
         IFhirRequestContextAccessor fhirContextAccessor,
+        ConformanceBarrierRetryPolicy barrierRetryPolicy,
         ILogger<StreamingImportFileActivity> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
@@ -66,6 +68,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         _blobStorageClient = blobStorageClient ?? throw new ArgumentNullException(nameof(blobStorageClient));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
+        _barrierRetryPolicy = barrierRetryPolicy ?? throw new ArgumentNullException(nameof(barrierRetryPolicy));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -112,10 +115,9 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 throw new InvalidOperationException($"Tenant {input.TenantId} not found or inactive");
             }
 
-            // Get FHIR schema and indexer using tenant's configured FHIR version
+            // Resolve the tenant's configured FHIR version. Each batch acquires one definitions handle
+            // containing the matching schema provider and indexer.
             var fhirVersion = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
-            var schemaProvider = _fhirVersionContext.GetSchemaProvider(fhirVersion, input.TenantId);
-            var searchIndexer = _fhirVersionContext.GetSearchIndexer(fhirVersion, input.TenantId);
 
             // Read global configuration for consumer count
             var consumerCount = _configuration.GetValue<int>("Import:ConsumerCount", 8);
@@ -176,14 +178,15 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                         await foreach (var entry in channel.Reader.ReadAllAsync(pipelineCancellation.Token))
                         {
                             pipelineCancellation.Token.ThrowIfCancellationRequested();
+                            var definitionsHandle = _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId);
                             var batchOperations = new List<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)>();
 
                             // Add current entry to batch
                             batchOperations.Add(PrepareResource(
                                 entry,
                                 input.ResourceType,
-                                schemaProvider,
-                                searchIndexer,
+                                definitionsHandle.SchemaProvider,
+                                definitionsHandle.Indexer,
                                 localErrors));
 
                             // Try to fill batch with more entries (non-blocking)
@@ -193,8 +196,8 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                 batchOperations.Add(PrepareResource(
                                     nextEntry,
                                     input.ResourceType,
-                                    schemaProvider,
-                                    searchIndexer,
+                                    definitionsHandle.SchemaProvider,
+                                    definitionsHandle.Indexer,
                                     localErrors));
                             }
 
@@ -211,23 +214,17 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                     "Consumer {ConsumerId} executing batch of {Count} resources",
                                     consumerId, validOperations.Count);
 
-                                // A file can outgrow a reserved range, and blank lines are not resource offsets.
-                                var transactionId = await consumerRepository.GetNextTransactionIdAsync(CancellationToken.None);
-                                var keys = await consumerRepository.BatchWriteAsync(
-                                    transactionId, validOperations, CancellationToken.None);
-                                try
-                                {
-                                    await consumerRepository.CommitTransactionAsync(transactionId, CancellationToken.None);
-                                }
-                                catch (Exception ex) when (ex is IOException or DbException or TimeoutException or InvalidOperationException or OperationCanceledException)
-                                {
-                                    throw new InvalidOperationException(
-                                        $"Import commit outcome is indeterminate for transaction {transactionId.Value} ({validOperations.Count} resources). {ex.Message}", ex);
-                                }
-                                localSuccessCount += keys.Count;
+                                var writtenCount = await ImportBatchWriter.WriteAsync(
+                                    consumerRepository,
+                                    validOperations,
+                                    definitionsHandle,
+                                    () => _fhirVersionContext.GetDefinitionsHandle(fhirVersion, input.TenantId),
+                                    _barrierRetryPolicy,
+                                    CancellationToken.None);
+                                localSuccessCount += writtenCount;
                                 _logger.LogDebug(
                                     "Consumer {ConsumerId} completed batch: {Count} resources written",
-                                    consumerId, keys.Count);
+                                    consumerId, writtenCount);
                             }
                         }
                         completed = true;

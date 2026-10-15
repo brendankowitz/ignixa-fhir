@@ -8,6 +8,7 @@ using Ignixa.Abstractions;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
+using Ignixa.Conformance.Events.Abstractions;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
@@ -34,26 +35,8 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
     [SqlFact]
     public async Task GivenTwoWarmedHosts_WhenRemoteRefreshFailsAfterReplay_ThenAnEmptyPollRetriesBeforePublishingAndIndexesWrites()
     {
-        var configured = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("A SQL test connection is required.");
-        var database = $"IgnixaRemoteConformance_{Guid.NewGuid():N}";
-        var connectionString = new SqlConnectionStringBuilder(configured) { InitialCatalog = database }.ConnectionString;
-        var master = new SqlConnectionStringBuilder(configured) { InitialCatalog = "master" }.ConnectionString;
-        using var names = new SqlCommandBuilder();
-        var quotedDatabase = names.QuoteIdentifier(database);
-        await ExecuteDatabaseCommandAsync(master, $"CREATE DATABASE {quotedDatabase}");
-        output.WriteLine($"Owned SQL catalog: {database}");
-        try
-        {
-            await AssertRemoteRefreshAsync(connectionString);
-        }
-        finally
-        {
-            using var pool = new SqlConnection(connectionString);
-            SqlConnection.ClearPool(pool);
-            await ExecuteDatabaseCommandAsync(master, $"DROP DATABASE {quotedDatabase}");
-            output.WriteLine($"Removed owned SQL catalog: {database}");
-        }
+        await using var database = await TemporarySqlDatabase.CreateAsync("IgnixaRemoteConformance");
+        await AssertRemoteRefreshAsync(database.ConnectionString);
     }
 
     private async Task AssertRemoteRefreshAsync(string connectionString)
@@ -142,12 +125,23 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
             await AssertUnsupportedAsync(clientB, identifier);
             gate.AllowRetry.TrySetResult();
 
-            await AssertEventuallySupportedAsync(clientB, identifier);
+            await SearchParameterLifecycleTestHelper.AssertHiddenAsync(clientB, Query(identifier), SearchCode, redefined: false, within: TimeSpan.FromSeconds(20));
             ReferenceEquals(versionsB.GetSearchIndexer(FhirVersion.R4, 1), warmIndexer).ShouldBeFalse();
             ReferenceEquals(await registryB.GetOrCreateAsync(1, CancellationToken.None), warmCache).ShouldBeTrue();
-            warmDefinitions.GetSearchParameter("Patient", SearchCode).Url.ShouldBe(new Uri(Canonical));
+            // Managers are immutable per published generation: the warm one keeps the old definitions.
+            var refreshedDefinitions = versionsB.GetSearchParameterDefinitionManager(FhirVersion.R4, 1);
+            refreshedDefinitions.ShouldNotBeSameAs(warmDefinitions);
+            refreshedDefinitions.GetSearchParameter("Patient", SearchCode).Url.ShouldBe(new Uri(Canonical));
+            warmDefinitions.TryGetSearchParameter("Patient", SearchCode, out _).ShouldBeFalse();
             (await warmCache.GetSearchParamIdAsync(Canonical, CancellationToken.None)).ShouldNotBeNull();
+            await AssertCapabilityAsync(clientB, expected: false, waitForRefresh: true);
+            await SearchParameterLifecycleTestHelper.CompleteReindexAsync(hostB.Services, Canonical);
+            await AssertEventuallySupportedAsync(clientB, identifier);
             await AssertCapabilityAsync(clientB, expected: true, waitForRefresh: true);
+            // Host A never polls; it catches up explicitly before its own search sees the enabled parameter.
+            await stateA.CatchUpAsync(hostA.Services.GetRequiredService<ISourceEventStore>(), CancellationToken.None);
+            await hostA.Services.GetRequiredService<ConformanceRefresher>().RefreshAsync(force: false, CancellationToken.None);
+            await AssertEventuallySupportedAsync(clientA, identifier);
             await PutPatientAsync(clientB, afterId, identifier);
             await AssertPatientsAsync(clientB, identifier, afterId);
             await AssertPatientsAsync(clientA, identifier, afterId);
@@ -164,6 +158,12 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
     private static WebApplicationFactory<Program> CreateHost(
         IgnixaApiFixture template, string connectionString, int pollSeconds) =>
         template.WithWebHostBuilder(builder =>
+        {
+            // The blocked refresh window, and host A that never polls, must both stay inside the lease (§4.5),
+            // even under a loaded full-suite run.
+            builder.UseSetting("Conformance:SyncIntervalSeconds", pollSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            builder.UseSetting("Conformance:MaxStaleness", "00:02:00");
+            builder.UseSetting("Reindex:BarrierDelay", "00:02:00");
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -172,7 +172,8 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
                     ["Tenants:Configurations:0:Storage:Type"] = "SqlServer",
                     ["Tenants:Configurations:0:Storage:InheritConnectionStringFromTenant"] = "1",
                     ["Conformance:SyncIntervalSeconds"] = pollSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                })));
+                }));
+        });
 
     private static async Task AssertSignalAsync(Task signal, string reason)
     {
@@ -192,15 +193,6 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
         state.LastProcessedEventId.ShouldBe(expectedCursor, "The real hosted poller must replay A's persisted activation.");
     }
 
-    private static async Task ExecuteDatabaseCommandAsync(string connectionString, string statement)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand("EXEC sys.sp_executesql @statement", connection);
-        command.Parameters.Add("@statement", SqlDbType.NVarChar, -1).Value = statement;
-        await command.ExecuteNonQueryAsync();
-    }
-
     private static async Task PutPatientAsync(HttpClient client, string id, string identifier)
     {
         using var content = new StringContent($$"""
@@ -212,10 +204,11 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
         response.StatusCode.ShouldBe(HttpStatusCode.Created, body);
     }
 
+    private static string Query(string identifier) => $"/tenant/1/Patient?{SearchCode}={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}";
+
     private static async Task<HttpResponseMessage> SearchAsync(HttpClient client, string identifier)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get,
-            $"/tenant/1/Patient?{SearchCode}={Uri.EscapeDataString($"{IdentifierSystem}|{identifier}")}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, Query(identifier));
         request.Headers.Add("Prefer", "handling=strict");
         return await client.SendAsync(request);
     }
@@ -359,16 +352,5 @@ public class SqlRemoteConformanceRefreshTests(ITestOutputHelper output)
         public Task ExecuteInTransactionAsync(
             int tenantId, Func<ISqlTransactionContext, CancellationToken, Task> work,
             CancellationToken cancellationToken) => inner.ExecuteInTransactionAsync(tenantId, work, cancellationToken);
-    }
-
-    private sealed class SqlFactAttribute : FactAttribute
-    {
-        public SqlFactAttribute()
-        {
-            if (Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Skip = "Requires independent SQL-backed Web hosts and persisted package activation.";
-            }
-        }
     }
 }

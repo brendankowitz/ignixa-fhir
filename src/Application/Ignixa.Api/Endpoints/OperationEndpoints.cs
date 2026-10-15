@@ -701,13 +701,10 @@ public static class OperationEndpoints
 
         var queryParameters = queryParser.Parse(context.Request.Query);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
-        // Not unconditional: an explicit Prefer: handling=lenient asks the server to ignore what it
-        // could not honour rather than fail, and R4 http.html#2.21.0.2 has it report that instead --
-        // 200, a warning issue in the bundle, and the parameter dropped from the self link, all of
-        // which the builder has already arranged. Matches the plain search endpoint's CheckStrictHandling.
-        if (!PreferHeaderParser.IsLenientHandling(context.Request.Headers))
+        var strictResult = SearchRequestHandling.CheckStrictHandling(context, searchOptions, resourceType, logger);
+        if (strictResult is not null)
         {
-            SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+            return strictResult;
         }
 
         searchOptions.IncludesContinuationToken = includesContinuationToken;

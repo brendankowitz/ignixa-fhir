@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using Shouldly;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Resource;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -45,18 +46,44 @@ public class SearchCompartmentHandlerTests
             _partitionStrategy,
             _executionStrategy,
             _contextAccessor,
+            Substitute.For<IFhirVersionContext>(),
             _logger);
+    }
+
+    // M-L6: compartment membership comes from the searchable snapshot; a hidden member parameter is reported.
+    [Theory]
+    [InlineData(HiddenMembershipScenario.Disabling, "Observation", "is being redefined")]
+    [InlineData(HiddenMembershipScenario.Pending, "Observation", "is pending reindex")]
+    [InlineData(HiddenMembershipScenario.Pending, "Condition", null)]
+    public async Task GivenAMembershipParameterIsHidden_WhenTheCompartmentIsSearched_ThenTheBundleWarnsOnlyForTheAffectedType(
+        HiddenMembershipScenario scenario,
+        string resourceType,
+        string? expectedReason)
+    {
+        SetupDefaultMocks(fhirVersion: "4.0");
+        var handler = new SearchCompartmentHandler(
+            _partitionStrategy,
+            _executionStrategy,
+            _contextAccessor,
+            await HiddenMembershipFixture.CreateVersionContextAsync(scenario),
+            _logger);
+
+        var result = await handler.HandleAsync(
+            new SearchCompartmentQuery("Patient", "123", resourceType, new SearchOptions()),
+            CancellationToken.None);
+
+        result.SearchOptions.ShouldWarnOfHiddenMembership(expectedReason);
     }
 
     private static readonly int[] SinglePartitionArray = new[] { 1 };
 
-    private void SetupDefaultMocks()
+    private void SetupDefaultMocks(string fhirVersion = "R4")
     {
         var tenantConfig = new TenantConfiguration
         {
             TenantId = 1,
             DisplayName = "Test Tenant",
-            FhirVersion = "R4",
+            FhirVersion = fhirVersion,
             ValidationDepth = "Spec"
         };
 

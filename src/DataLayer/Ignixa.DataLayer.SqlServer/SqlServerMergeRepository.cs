@@ -3,6 +3,7 @@ using System.Text.Json;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.RowGenerators;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient;
@@ -42,41 +43,24 @@ public class SqlServerMergeRepository(
     private readonly ResourceRowGenerator _resourceRowGenerator =
         new(compressor ?? throw new ArgumentNullException(nameof(compressor)));
     private readonly ResourceWriteClaimRowGenerator _resourceWriteClaimRowGenerator = new();
-    private readonly TokenSearchParameterRowGenerator _tokenRowGenerator = new(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _referenceRowGenerator = new ReferenceSearchParameterRowGenerator();
-    private readonly ISearchParameterRowGenerator _stringRowGenerator = new StringSearchParameterRowGenerator();
-    private readonly ISearchParameterRowGenerator _numberRowGenerator = new NumberSearchParameterRowGenerator();
-    private readonly ISearchParameterRowGenerator _quantityRowGenerator =
-        new QuantitySearchParameterRowGenerator(referenceDataCache.SystemMappings, referenceDataCache.QuantityCodeMappings);
-    private readonly ISearchParameterRowGenerator _dateTimeRowGenerator = new DateTimeSearchParameterRowGenerator();
-    private readonly UriSearchParameterRowGenerator _uriRowGenerator = new();
-    private readonly ISearchParameterRowGenerator _tokenTextRowGenerator = new TokenTextRowGenerator();
-    private readonly ISearchParameterRowGenerator _refTokenCompositeRowGenerator =
-        new RefTokenCompositeRowGenerator(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _tokenTokenCompositeRowGenerator =
-        new TokenTokenCompositeRowGenerator(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _tokenDateTimeCompositeRowGenerator =
-        new TokenDateTimeCompositeRowGenerator(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _tokenQuantityCompositeRowGenerator =
-        new TokenQuantityCompositeRowGenerator(referenceDataCache.SystemMappings, referenceDataCache.QuantityCodeMappings);
-    private readonly ISearchParameterRowGenerator _tokenStringCompositeRowGenerator =
-        new TokenStringCompositeRowGenerator(referenceDataCache.SystemMappings);
-    private readonly ISearchParameterRowGenerator _tokenNumberNumberCompositeRowGenerator =
-        new TokenNumberNumberCompositeRowGenerator(referenceDataCache.SystemMappings);
+    private readonly SearchIndexRowSetBuilder _searchIndexRowSetBuilder = new(referenceDataCache);
 
     /// <summary>
     /// Begins a merge transaction, allocating transaction ID and sequence range.
     /// </summary>
     /// <param name="resourceCount">Number of resources to be merged in this transaction.</param>
+    /// <param name="definitionsEventId">Conformance position of the definitions used to extract indexes.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A tuple containing (TransactionId, SequenceRangeFirstValue).</returns>
     public async Task<(long TransactionId, int SequenceStart)> BeginTransactionAsync(
         int resourceCount,
+        long definitionsEventId,
         CancellationToken cancellationToken = default)
     {
         // A full-cycle request cannot advance the procedure's wrap-retry loop.
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resourceCount);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(resourceCount, 80000);
+        ArgumentOutOfRangeException.ThrowIfNegative(definitionsEventId);
 
         _logger.LogDebug("Beginning merge transaction for {ResourceCount} resources", resourceCount);
 
@@ -95,7 +79,16 @@ public class SqlServerMergeRepository(
         };
 
         using var command = new SqlCommand(
-            "EXEC dbo.MergeResourcesBeginTransaction @Count, @TransactionId OUTPUT, @SequenceRangeFirstValue OUTPUT, @HeartbeatDate")
+            """
+            EXEC dbo.MergeResourcesBeginTransaction
+                @Count,
+                @TransactionId OUTPUT,
+                @SequenceRangeFirstValue OUTPUT,
+                @HeartbeatDate;
+            SELECT Bigint
+            FROM dbo.Parameters
+            WHERE Id = 'Conformance.MinAcceptedDefinitionsEventId';
+            """)
         {
             CommandType = CommandType.Text
         };
@@ -106,26 +99,43 @@ public class SqlServerMergeRepository(
 
         try
         {
-            await _sqlExecutionService.ExecuteNonQueryAsync(
-                tenantId, command, cancellationToken, SqlCommandIdempotency.NonIdempotent);
+            var barrierValues = await _sqlExecutionService.ExecuteReaderAsync(
+                tenantId,
+                command,
+                reader => reader.IsDBNull(0) ? 0L : reader.GetInt64(0),
+                cancellationToken,
+                SqlCommandIdempotency.NonIdempotent);
+            var barrier = barrierValues.Count == 0 ? 0 : barrierValues[0];
+            var transactionId = (long)transactionIdParam.Value!;
+            var sequenceStart = (int)sequenceStartParam.Value!;
+
+            if (definitionsEventId < barrier)
+            {
+                var staleException = new StaleConformanceDefinitionsException(
+                    transactionId,
+                    definitionsEventId,
+                    barrier);
+                await CommitTransactionAsync(
+                    transactionId,
+                    staleException.Message,
+                    CancellationToken.None);
+                throw staleException;
+            }
+
+            _logger.LogInformation(
+                "Merge transaction started: TransactionId={TransactionId}, SequenceStart={SequenceStart}",
+                transactionId,
+                sequenceStart);
+
+            return (transactionId, sequenceStart);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not StaleConformanceDefinitionsException)
         {
             _logger.LogError(ex,
                 "Merge transaction allocation failed with an uncertain outcome for tenant {TenantId}; allocation was not replayed and requires transaction reconciliation",
                 tenantId);
             throw;
         }
-
-        var transactionId = (long)transactionIdParam.Value!;
-        var sequenceStart = (int)sequenceStartParam.Value!;
-
-        _logger.LogInformation(
-            "Merge transaction started: TransactionId={TransactionId}, SequenceStart={SequenceStart}",
-            transactionId,
-            sequenceStart);
-
-        return (transactionId, sequenceStart);
     }
 
     /// <summary>
@@ -191,27 +201,10 @@ public class SqlServerMergeRepository(
         var resourceRecords = _resourceRowGenerator.GenerateSqlDataRecords(transactionId, resources, resourceTypeIdMap, entryIndices).ToList();
         var resourceWriteClaimRecords = MaterializeIfNotEmpty(_resourceWriteClaimRowGenerator.GenerateSqlDataRecords(resources, resourceSurrogateIdMap));
 
-        // Generate SqlDataRecord streams directly (eliminates DataTable intermediate step)
-        // Materialize and check for empty - SQL Client requires NULL (not empty) for TVPs
-        var referenceSearchParams = MaterializeIfNotEmpty(_referenceRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        _logger.LogInformation("ReferenceSearchParams count: {Count}", referenceSearchParams?.Count ?? 0);
-        var tokenSearchParams = MaterializeIfNotEmpty(_tokenRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        _logger.LogInformation("TokenSearchParams count: {Count}", tokenSearchParams?.Count ?? 0);
-        var tokenTexts = MaterializeIfNotEmpty(_tokenTextRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var stringSearchParams = MaterializeIfNotEmpty(_stringRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var uriSearchParams = MaterializeIfNotEmpty(_uriRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var numberSearchParams = MaterializeIfNotEmpty(_numberRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var quantitySearchParams = MaterializeIfNotEmpty(_quantityRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var dateTimeSearchParams = MaterializeIfNotEmpty(_dateTimeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-
-        // Generate composite search param SqlDataRecord streams
-        // Materialize and check for empty - SQL Client requires NULL (not empty) for TVPs
-        var refTokenCompositeParams = MaterializeIfNotEmpty(_refTokenCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var tokenTokenCompositeParams = MaterializeIfNotEmpty(_tokenTokenCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var tokenDateTimeCompositeParams = MaterializeIfNotEmpty(_tokenDateTimeCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var tokenQuantityCompositeParams = MaterializeIfNotEmpty(_tokenQuantityCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var tokenStringCompositeParams = MaterializeIfNotEmpty(_tokenStringCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
-        var tokenNumberNumberCompositeParams = MaterializeIfNotEmpty(_tokenNumberNumberCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        // Each set is materialized and NULL when empty - SQL Client requires NULL (not empty) for TVPs
+        var searchIndexRowSets = _searchIndexRowSetBuilder.Build(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger);
+        _logger.LogInformation("ReferenceSearchParams count: {Count}", searchIndexRowSets.Reference?.Count ?? 0);
+        _logger.LogInformation("TokenSearchParams count: {Count}", searchIndexRowSets.Token?.Count ?? 0);
 
         // Create stored procedure parameters
         // NOTE: Using SqlDataRecord streaming (proper TVP pattern) instead of DataTable
@@ -224,7 +217,7 @@ public class SqlServerMergeRepository(
             "EXEC dbo.MergeResources @AffectedRows OUTPUT, @RaiseExceptionOnConflict, @IsResourceChangeCaptureEnabled, " +
             "@TransactionId, @SingleTransaction, @Resources, @ResourceWriteClaims, " +
             "@ReferenceSearchParams, @TokenSearchParams, @TokenTexts, @StringSearchParams, @UriSearchParams, " +
-            "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParms, " +
+            "@NumberSearchParams, @QuantitySearchParams, @DateTimeSearchParams, " +
             "@ReferenceTokenCompositeSearchParams, @TokenTokenCompositeSearchParams, " +
             "@TokenDateTimeCompositeSearchParams, @TokenQuantityCompositeSearchParams, @TokenStringCompositeSearchParams, " +
             "@TokenNumberNumberCompositeSearchParams";
@@ -248,81 +241,12 @@ public class SqlServerMergeRepository(
             TypeName = "dbo.ResourceWriteClaimList",
             Value = resourceWriteClaimRecords
         });
-        command.Parameters.Add(new SqlParameter("@ReferenceSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.ReferenceSearchParamList",
-            Value = referenceSearchParams
-        });
-        command.Parameters.Add(new SqlParameter("@TokenSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenSearchParamList",
-            Value = tokenSearchParams
-        });
-        command.Parameters.Add(new SqlParameter("@TokenTexts", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenTextList",
-            Value = tokenTexts
-        });
-        command.Parameters.Add(new SqlParameter("@StringSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.StringSearchParamList",
-            Value = stringSearchParams
-        });
-        command.Parameters.Add(new SqlParameter("@UriSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.UriSearchParamList",
-            Value = uriSearchParams
-        });
-        command.Parameters.Add(new SqlParameter("@NumberSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.NumberSearchParamList",
-            Value = numberSearchParams
-        });
-        command.Parameters.Add(new SqlParameter("@QuantitySearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.QuantitySearchParamList",
-            Value = quantitySearchParams
-        });
-        command.Parameters.Add(new SqlParameter("@DateTimeSearchParms", SqlDbType.Structured)
-        {
-            TypeName = "dbo.DateTimeSearchParamList",
-            Value = dateTimeSearchParams
-        });
-        command.Parameters.Add(new SqlParameter("@ReferenceTokenCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.ReferenceTokenCompositeSearchParamList",
-            Value = refTokenCompositeParams
-        });
-        command.Parameters.Add(new SqlParameter("@TokenTokenCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenTokenCompositeSearchParamList",
-            Value = tokenTokenCompositeParams
-        });
-        command.Parameters.Add(new SqlParameter("@TokenDateTimeCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenDateTimeCompositeSearchParamList",
-            Value = tokenDateTimeCompositeParams
-        });
-        command.Parameters.Add(new SqlParameter("@TokenQuantityCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenQuantityCompositeSearchParamList",
-            Value = tokenQuantityCompositeParams
-        });
-        command.Parameters.Add(new SqlParameter("@TokenStringCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenStringCompositeSearchParamList",
-            Value = tokenStringCompositeParams
-        });
-        command.Parameters.Add(new SqlParameter("@TokenNumberNumberCompositeSearchParams", SqlDbType.Structured)
-        {
-            TypeName = "dbo.TokenNumberNumberCompositeSearchParamList",
-            Value = tokenNumberNumberCompositeParams
-        });
+        searchIndexRowSets.AddTableValuedParameters(command);
 
         // Extract extension data before calling the SP (needed for post-merge update)
-        var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
+        var tokenExtensions = _searchIndexRowSetBuilder.TokenRowGenerator.ExtractExtensionData(
             resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToList();
-        var uriExtensions = _uriRowGenerator.ExtractExtensionData(
+        var uriExtensions = _searchIndexRowSetBuilder.UriRowGenerator.ExtractExtensionData(
             resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToList();
 
         var expectedVersions = resources.Where(r => r.ExpectedVersionId != null)

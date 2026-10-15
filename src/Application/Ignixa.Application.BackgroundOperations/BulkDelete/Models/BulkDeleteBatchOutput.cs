@@ -25,4 +25,16 @@ public record BulkDeleteBatchOutput(
     bool HasMore,
     string? NextContinuationToken,
     string? FirstMatchKey,
-    bool Superseded);
+    bool Superseded)
+{
+    /// <summary>
+    /// Set when this instance's conformance staleness lease was not held, so the batch neither searched nor
+    /// deleted: a delete selected with outgoing search-parameter definitions could remove the wrong set. The
+    /// orchestration waits and runs the same batch again. A typed output rather than an exception, because
+    /// DurableTask cannot rebuild an activity exception's type on the orchestrator side.
+    /// </summary>
+    public bool ConformanceStale { get; init; }
+
+    public static BulkDeleteBatchOutput WaitForConformance() =>
+        new([], HasMore: true, NextContinuationToken: null, FirstMatchKey: null, Superseded: false) { ConformanceStale = true };
+}

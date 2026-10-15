@@ -29,4 +29,11 @@ public static class SystemConstants
     /// - BaseDirectory typically set to "system" for clarity
     /// </summary>
     public const int SystemPartitionId = 0;
+
+    /// <summary>
+    /// The tenant whose database holds the server's global, non-partitioned state: conformance events,
+    /// package content, the shared background-job table (including reindex jobs) and the reindex singleton
+    /// lock. None of these tables has a tenant column to scope it by.
+    /// </summary>
+    public const int GlobalTenantId = 1;
 }
