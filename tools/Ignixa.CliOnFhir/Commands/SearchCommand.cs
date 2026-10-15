@@ -42,6 +42,11 @@ internal static class SearchCommand
             Description = "Ignore query parameter names the search does not recognise, with a parameter-ignored warning, instead of failing; this can widen the results",
         };
 
+        var compartmentOption = new Option<string?>("--compartment")
+        {
+            Description = "Search only within a compartment, for example Patient/123 (as Patient/123/Observation does); membership follows the FHIR version's CompartmentDefinitions",
+        };
+
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
@@ -56,6 +61,7 @@ internal static class SearchCommand
         command.Options.Add(summaryOption);
         command.Options.Add(elementsOption);
         command.Options.Add(lenientOption);
+        command.Options.Add(compartmentOption);
         command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
@@ -70,7 +76,8 @@ internal static class SearchCommand
                 parseResult.GetValue(offsetOption),
                 parseResult.GetValue(summaryOption),
                 parseResult.GetValue(elementsOption),
-                parseResult.GetValue(lenientOption));
+                parseResult.GetValue(lenientOption),
+                parseResult.GetValue(compartmentOption));
 
             return Task.FromResult(EnvelopeOutput.Write(ResourceSearcher.Search(session, request, cancellationToken), parseResult.GetValue(prettyOption)));
         });

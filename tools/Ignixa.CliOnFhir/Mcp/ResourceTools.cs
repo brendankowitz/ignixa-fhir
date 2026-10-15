@@ -25,6 +25,9 @@ public sealed class ResourceTools(FolderSession session)
         Also supported: chains ('subject:Patient.name=Smith', or 'subject.gender=female' when only one target type has
         the parameter), reverse chains ('_has:Observation:subject:code=8867-4'), '_sort=-date,_id' and
         '_include'/'_revinclude' (with ':iterate'), for example '_include=Encounter:subject'.
+        Pass 'compartment' (for example 'Patient/123') to search only resources in that compartment, as
+        'Patient/123/Observation?...' does: by the FHIR version's CompartmentDefinition, an Observation is in a Patient's
+        compartment when its subject or performer references that patient. 'facts.compartment' echoes it.
         Returns the total number of matches, one page of resources (in _sort order, else catalog order) and the file
         location of each as evidence. Pages hold 'count' resources (default 10, maximum 50): when more exist, 'omitted'
         says how many and which 'offset' to use next. Included resources come back whole in 'included' (at most 50; more
@@ -44,8 +47,9 @@ public sealed class ResourceTools(FolderSession session)
         [Description("Pass 'count' to get only the total number of matches and no resources.")] string? summary = null,
         [Description("Comma-separated top-level elements to keep, for example 'code,valueQuantity'. resourceType, id and meta are always kept and trimmed resources are tagged SUBSETTED. Use the JSON property name (valueQuantity, not value[x]). Included resources are not trimmed.")] string? elements = null,
         [Description("True to ignore parameter names the search does not recognise (each reported as a 'parameter-ignored' warning) instead of failing. This can widen the results. Default false.")] bool lenient = false,
+        [Description("Compartment to search within, 'Type/id', for example 'Patient/123'. Compartment types: Patient, Encounter, Practitioner, RelatedPerson, Device. A type that is never in such a compartment matches nothing, with a 'compartment-excludes-type' warning.")] string? compartment = null,
         CancellationToken cancellationToken = default) =>
-        ToolResults.From(ResourceSearcher.Search(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient), cancellationToken));
+        ToolResults.From(ResourceSearcher.Search(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment), cancellationToken));
 
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
     [Description("""

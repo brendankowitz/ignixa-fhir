@@ -12,6 +12,7 @@ using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Search;
 using Ignixa.Search.Definition;
+using Ignixa.Search.InMemory;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.CliOnFhir.Session;
@@ -29,6 +30,8 @@ public sealed class FolderSession
     private readonly Lazy<SearchQueryParser> _queryParser;
     private readonly Lazy<Dictionary<(string ResourceType, string Id), CatalogEntry>> _entriesByReference;
     private readonly Lazy<BundleReferenceResolver> _bundleReferences;
+    private readonly Lazy<InMemoryCompartmentMembership> _compartments;
+    private readonly Lazy<HashSet<string>> _catalogTypes;
     private readonly TimeProvider _timeProvider;
     private readonly Lock _staleGate = new();
     private StaleFilesCount? _lastStaleCount;
@@ -74,6 +77,15 @@ public sealed class FolderSession
         // Read with the index's own reference parser, so a fullUrl parses the way a reference to it does.
         _bundleReferences = new Lazy<BundleReferenceResolver>(
             () => new BundleReferenceResolver(Catalog.FullUrls, _indexBuilder.Value.Builder.ReferenceParser),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        _catalogTypes = new Lazy<HashSet<string>>(
+            () => new HashSet<string>(Catalog.Entries.Select(entry => entry.ResourceType), StringComparer.Ordinal),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        // Compartment codes resolve against the same definitions the index was extracted with.
+        _compartments = new Lazy<InMemoryCompartmentMembership>(
+            () => new InMemoryCompartmentMembership(new CompartmentDefinitionManager(schema.Version), _indexBuilder.Value.Builder.Definitions),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         // Validating the cache needs the catalog and the definitions, so it also waits for the first index request.
@@ -138,6 +150,15 @@ public sealed class FolderSession
     /// one-time indexer cost, so reading this starts that load if no index has been requested yet.
     /// </summary>
     public ISearchParameterDefinitionManager Definitions => _indexBuilder.Value.Builder.Definitions;
+
+    /// <summary>
+    /// Compartment membership by the session's FHIR version's CompartmentDefinitions, over the session's search parameter
+    /// definitions; created on first use (which loads the definitions, as <see cref="Definitions"/> does).
+    /// </summary>
+    public InMemoryCompartmentMembership Compartments => _compartments.Value;
+
+    /// <summary>Whether the catalog holds at least one resource of <paramref name="resourceType"/>.</summary>
+    public bool HoldsType(string resourceType) => _catalogTypes.Value.Contains(resourceType);
 
     /// <summary>The session's FHIR search query parser, created on first use.</summary>
     public SearchQueryParser QueryParser => _queryParser.Value;

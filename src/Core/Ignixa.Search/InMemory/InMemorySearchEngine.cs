@@ -32,9 +32,10 @@ public sealed class InMemorySearchEngine
 {
     private readonly IInMemorySearchSource _source;
     private readonly InMemorySearchFeatures _features;
+    private readonly InMemoryCompartmentMembership? _compartments;
     private readonly SearchQueryInterpreter _interpreter;
 
-    /// <summary>Creates an engine over <paramref name="source"/> with the given <paramref name="features"/> enabled.</summary>
+    /// <summary>Creates an engine over <paramref name="source"/> with the given <paramref name="features"/> enabled; compartment searches throw.</summary>
     /// <param name="source">The indexed resources to search; read on every call, never cached by the engine.</param>
     /// <param name="features">The features beyond filtering that searches may use; any other requested feature throws.</param>
     public InMemorySearchEngine(IInMemorySearchSource source, InMemorySearchFeatures features)
@@ -47,13 +48,34 @@ public sealed class InMemorySearchEngine
     }
 
     /// <summary>
+    /// Creates an engine like <see cref="InMemorySearchEngine(IInMemorySearchSource, InMemorySearchFeatures)"/> that also
+    /// evaluates compartment searches (<see cref="Expressions.CompartmentSearchExpression"/>, such as the one
+    /// <c>Patient/123/Observation</c> parses to) with <paramref name="compartments"/>. A compartment search filters the
+    /// searched type's own index entries, so it needs no feature flag.
+    /// </summary>
+    /// <param name="source">The indexed resources to search; read on every call, never cached by the engine.</param>
+    /// <param name="features">The features beyond filtering that searches may use; any other requested feature throws.</param>
+    /// <param name="compartments">Compartment membership for the FHIR version the source was indexed with.</param>
+    public InMemorySearchEngine(IInMemorySearchSource source, InMemorySearchFeatures features, InMemoryCompartmentMembership compartments)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(compartments);
+
+        _source = source;
+        _features = features;
+        _compartments = compartments;
+        _interpreter = new SearchQueryInterpreter(source, features, compartments);
+    }
+
+    /// <summary>
     /// The resources of <see cref="SearchOptions.ResourceType"/> matching <see cref="SearchOptions.Expression"/>
     /// (every resource when it is null), ordered by <see cref="SearchOptions.Sort"/> when given and in source order
     /// otherwise.
     /// </summary>
     /// <exception cref="SearchOperationNotSupportedException">
-    /// The options ask for a feature that is not enabled, contain an expression in-memory search cannot evaluate, or
-    /// include through a parameter it cannot follow (checked here too, so such a search fails before it matches anything).
+    /// The options ask for a feature that is not enabled, contain an expression in-memory search cannot evaluate, include
+    /// through a parameter it cannot follow, or search a compartment the searched type's membership in cannot be evaluated
+    /// (each checked here, so such a search fails before it matches anything).
     /// </exception>
     public IReadOnlyList<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> Search(SearchOptions options)
     {
@@ -64,6 +86,7 @@ public sealed class InMemorySearchEngine
         Require(InMemorySearchFeatures.Include, options.Include.Count > 0, "_include");
         Require(InMemorySearchFeatures.RevInclude, options.RevInclude.Count > 0, "_revinclude");
         InMemoryIncludeResolver.Validate(options.Include, options.RevInclude);
+        RefuseUnevaluableCompartments(options.Expression, options.ResourceType);
 
         // Read once: each predicate in the tree enumerates its input, and a source need not be cheap to enumerate.
         List<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> candidates = [.. _source.Enumerate(options.ResourceType)];
@@ -101,6 +124,36 @@ public sealed class InMemorySearchEngine
 
         return InMemoryIncludeResolver.Resolve(_source, page, options.Include, options.RevInclude, maxIncluded);
     }
+
+    /// <summary>
+    /// Refuses a compartment search of a type whose membership cannot be evaluated before anything is matched, so the refusal
+    /// depends on the definitions and never on whether the source holds resources of that type.
+    /// </summary>
+    private void RefuseUnevaluableCompartments(Expressions.Expression? expression, string resourceType)
+    {
+        if (_compartments is null)
+        {
+            return;
+        }
+
+        foreach (Expressions.CompartmentSearchExpression compartment in Compartments(expression))
+        {
+            if (_compartments.CompartmentTypes.Contains(compartment.CompartmentType, StringComparer.Ordinal))
+            {
+                _compartments.ThrowIfUnevaluable(compartment.CompartmentType, resourceType);
+            }
+        }
+    }
+
+    private static IEnumerable<Expressions.CompartmentSearchExpression> Compartments(Expressions.Expression? expression) =>
+        expression switch
+        {
+            Expressions.CompartmentSearchExpression compartment => [compartment],
+            Expressions.MultiaryExpression multiary => multiary.Expressions.SelectMany(Compartments),
+            Expressions.UnionExpression union => union.Expressions.SelectMany(Compartments),
+            Expressions.NotExpression not => Compartments(not.Expression),
+            _ => [],
+        };
 
     private void Require(InMemorySearchFeatures feature, bool requested, string parameter)
     {

@@ -29,6 +29,18 @@ public class SearchAndGetCommandTests
     }
 
     [Fact]
+    public async Task GivenACompartmentOnTheCli_WhenRun_ThenTheSearchIsLimitedToItAndTheFactsSaySo()
+    {
+        using TestFolder folder = Clinic();
+
+        (int exitCode, JsonNode output) = await RunAsync(SearchCommand.Create(), "search", folder.Path, "Observation", "--compartment", "Patient/p2", "--no-cache");
+
+        exitCode.ShouldBe(0);
+        ((int)output["facts"]!["total"]!).ShouldBe(2);
+        ((string)output["facts"]!["compartment"]!).ShouldBe("Patient/p2");
+    }
+
+    [Fact]
     public async Task GivenUnsupportedSearch_WhenRun_ThenIssueJsonIsPrintedAndExitCodeIsNonZero()
     {
         using TestFolder folder = Clinic();

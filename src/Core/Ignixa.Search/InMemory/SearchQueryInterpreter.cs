@@ -29,8 +29,9 @@ namespace Ignixa.Search.InMemory;
 /// <para>
 /// <c>_id</c> and <c>_type</c> are read from <see cref="Abstractions.ResourceKey"/>, since they never have index
 /// entries. Chained and reverse-chained (<c>_has</c>) parameters are evaluated only when the interpreter was
-/// created with an <see cref="IInMemorySearchSource"/> and the matching <see cref="InMemorySearchFeatures"/>;
-/// otherwise they throw <see cref="SearchOperationNotSupportedException"/>.
+/// created with an <see cref="IInMemorySearchSource"/> and the matching <see cref="InMemorySearchFeatures"/>, and
+/// compartment searches only when it was also given an <see cref="InMemoryCompartmentMembership"/>; otherwise they
+/// throw <see cref="SearchOperationNotSupportedException"/>.
 /// </para>
 /// </remarks>
 [CLSCompliant(false)]
@@ -38,6 +39,7 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
 {
     private readonly IInMemorySearchSource? _source;
     private readonly InMemorySearchFeatures _features;
+    private readonly InMemoryCompartmentMembership? _compartments;
 
     /// <summary>Creates an interpreter that filters one resource type; chains and <c>_has</c> are not supported.</summary>
     public SearchQueryInterpreter()
@@ -55,6 +57,20 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
 
         _source = source;
         _features = features;
+    }
+
+    /// <summary>
+    /// Creates an interpreter like <see cref="SearchQueryInterpreter(IInMemorySearchSource, InMemorySearchFeatures)"/> that
+    /// also evaluates compartment searches (<see cref="CompartmentSearchExpression"/>) with <paramref name="compartments"/>.
+    /// Experimental (<c>IGNIXAEXP001</c>).
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.Experimental(InMemoryExperimental.DiagnosticId)]
+    public SearchQueryInterpreter(IInMemorySearchSource source, InMemorySearchFeatures features, InMemoryCompartmentMembership compartments)
+        : this(source, features)
+    {
+        ArgumentNullException.ThrowIfNull(compartments);
+
+        _compartments = compartments;
     }
 
     /// <summary>
@@ -225,11 +241,30 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
             : ForwardChain(expression, inner, _source);
     }
 
+    /// <summary>
+    /// Matches the resources in the expression's compartment (see <see cref="InMemoryCompartmentMembership"/>), limited to its
+    /// <see cref="CompartmentSearchExpression.FilteredResourceTypes"/> when it names any.
+    /// </summary>
+    /// <exception cref="SearchOperationNotSupportedException">The interpreter was created without compartment definitions.</exception>
+    /// <exception cref="BadSearchRequestException">The compartment type is not one the FHIR version defines.</exception>
     public SearchPredicate VisitCompartment(CompartmentSearchExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
 
-        throw new SearchOperationNotSupportedException("Compartment search is not supported.");
+        if (_compartments is not { } compartments)
+        {
+            throw new SearchOperationNotSupportedException("Compartment search is not enabled for this in-memory search; create it with compartment definitions to enable it.");
+        }
+
+        if (!compartments.CompartmentTypes.Contains(expression.CompartmentType, StringComparer.Ordinal))
+        {
+            throw new BadSearchRequestException($"'{expression.CompartmentType}' is not a compartment type; the compartment types are {string.Join(", ", compartments.CompartmentTypes)}.");
+        }
+
+        string type = expression.CompartmentType;
+        string id = expression.CompartmentId;
+        ISet<string> only = expression.FilteredResourceTypes;
+        return input => input.Where(x => (only.Count == 0 || only.Contains(x.Location.ResourceType)) && compartments.IsInCompartment(x.Location, x.Index, type, id));
     }
 
     public SearchPredicate VisitPatientEverything(PatientEverythingExpression expression, Context context)

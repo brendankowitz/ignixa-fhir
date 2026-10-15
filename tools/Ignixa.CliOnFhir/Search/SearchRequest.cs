@@ -16,6 +16,10 @@ namespace Ignixa.CliOnFhir.Search;
 /// When true, a parameter name the search pipeline does not recognise is ignored with a <c>parameter-ignored</c> warning
 /// (which can widen the results) instead of failing the request.
 /// </param>
+/// <param name="Compartment">
+/// A compartment such as <c>Patient/123</c> to search within, as <c>Patient/123/Observation?query</c> does; null searches
+/// the whole folder.
+/// </param>
 public sealed record SearchRequest(
     string ResourceType,
     string? Query = null,
@@ -23,4 +27,5 @@ public sealed record SearchRequest(
     int Offset = 0,
     string? Summary = null,
     string? Elements = null,
-    bool Lenient = false);
+    bool Lenient = false,
+    string? Compartment = null);

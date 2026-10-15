@@ -41,6 +41,33 @@ internal sealed class FolderSearchSource(FolderSession session) : IInMemorySearc
     /// <summary>The indexed resources of <paramref name="resourceType"/>, in catalog order.</summary>
     public IReadOnlyList<IndexedResource> Resources(string resourceType) => Type(resourceType).Index.Resources;
 
+    /// <summary>
+    /// Every resource in compartment <paramref name="compartmentType"/>/<paramref name="compartmentId"/>, across the types that
+    /// can be in it and that the folder holds, type by type in ordinal order and in catalog order within a type. Only those
+    /// types' indexes are read. A type whose membership cannot be evaluated (see
+    /// <see cref="InMemoryCompartmentMembership.UnevaluableParameters"/>) is not read and is returned in
+    /// <c>UnevaluableTypes</c>, so a caller can report what the enumeration left out.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="compartmentType"/> is not a compartment type of the session's FHIR version.</exception>
+    public (IReadOnlyList<IndexedResource> Members, IReadOnlyList<string> UnevaluableTypes) CompartmentMembers(string compartmentType, string compartmentId)
+    {
+        InMemoryCompartmentMembership membership = session.Compartments;
+        List<IndexedResource> members = [];
+        List<string> unevaluable = [];
+        foreach (string type in membership.ResourceTypes(compartmentType).Where(session.HoldsType))
+        {
+            if (membership.UnevaluableParameters(compartmentType, type).Count > 0)
+            {
+                unevaluable.Add(type);
+                continue;
+            }
+
+            members.AddRange(Resources(type).Where(resource => membership.IsInCompartment(resource.Key, resource.Index, compartmentType, compartmentId)));
+        }
+
+        return (members, unevaluable);
+    }
+
     /// <summary>The indexed resource behind a location this source returned.</summary>
     public IndexedResource Indexed(ResourceKey location) => Type(location.ResourceType).ById[location.Id];
 

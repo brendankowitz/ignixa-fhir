@@ -28,7 +28,10 @@ public static class ResourceSearcher
     /// <summary>Most included resources returned with one page.</summary>
     public const int IncludeLimit = 50;
 
-    /// <summary>Every in-memory search feature: chains, <c>_has</c>, <c>_sort</c>, <c>_include</c> and <c>_revinclude</c>.</summary>
+    /// <summary>
+    /// Every in-memory search feature: chains, <c>_has</c>, <c>_sort</c>, <c>_include</c> and <c>_revinclude</c>; compartments
+    /// are enabled by giving the engine the session's compartment membership.
+    /// </summary>
     private const InMemorySearchFeatures Features = InMemorySearchFeatures.All;
 
     /// <summary>Stands in for an omitted item added after a batch is read, when reserving room for it.</summary>
@@ -63,10 +66,16 @@ public static class ResourceSearcher
         ValidatePaging(request);
         ParsedSearch parsed = session.QueryParser.Parse(request);
         List<IssueItem> issues = [.. parsed.Warnings];
+        if (request.Compartment is { } compartment)
+        {
+            (SearchOptions scoped, IReadOnlyList<IssueItem> compartmentIssues) = CompartmentArgument.Apply(session, parsed.Options, compartment);
+            parsed = parsed with { Options = scoped };
+            issues.AddRange(compartmentIssues);
+        }
 
         int count = EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
         var source = new FolderSearchSource(session);
-        var engine = new InMemorySearchEngine(source, Features);
+        var engine = new InMemorySearchEngine(source, Features, session.Compartments);
         List<IndexedResource> matches = Match(engine, source, parsed);
 
         string query = request.Query ?? string.Empty;
@@ -75,7 +84,7 @@ public static class ResourceSearcher
         {
             issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));
             AddDiagnostics(source, issues, omitted);
-            var countFacts = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, Returned: 0, Resources: null);
+            var countFacts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, Returned: 0, Resources: null);
             return Envelope(session, source, countFacts, [], omitted, issues, cancellationToken);
         }
 
@@ -105,7 +114,7 @@ public static class ResourceSearcher
         IReadOnlyList<System.Text.Json.Nodes.JsonNode>? includedResources = null;
         if (included is not null)
         {
-            var pageOnly = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, []);
+            var pageOnly = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, []);
             ResourceBatch includedBatch = CollectIncluded(session, pageOnly, included, evidence, omitted, issues, cancellationToken);
             includedResources = includedBatch.Resources;
         }
@@ -117,7 +126,7 @@ public static class ResourceSearcher
             omitted.Add(new OmittedItem($"{matches.Count - next} more matches (offset={next})", why));
         }
 
-        var facts = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources);
+        var facts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources);
         return Envelope(session, source, facts, evidence, omitted, issues, cancellationToken);
     }
 
@@ -194,7 +203,7 @@ public static class ResourceSearcher
     private static int ReservedBytes(SearchRequest request, string query, int total, List<IndexedResource>? included, List<IssueItem> issues, List<OmittedItem> omitted)
     {
         var skeleton = new ToolEnvelope<SearchFacts?>(
-            new SearchFacts(request.ResourceType, query, total, request.Offset, Returned: 0, Resources: [], included is null ? null : []),
+            new SearchFacts(request.ResourceType, query, request.Compartment, total, request.Offset, Returned: 0, Resources: [], included is null ? null : []),
             [],
             [.. omitted, .. Enumerable.Repeat(Placeholder, included is null ? 1 : 2)],
             [],
@@ -275,7 +284,12 @@ public static class ResourceSearcher
             }
             catch (FhirException)
             {
-                failing.Add(parsed.Traces.FirstOrDefault(trace => ReferenceEquals(trace.Ir, part)) is { } trace ? $"'{trace.Key}={trace.Value}'" : $"({part.GetType().Name})");
+                failing.Add(part switch
+                {
+                    CompartmentSearchExpression compartment => $"'compartment={compartment.CompartmentType}/{compartment.CompartmentId}'",
+                    _ when parsed.Traces.FirstOrDefault(trace => ReferenceEquals(trace.Ir, part)) is { } trace => $"'{trace.Key}={trace.Value}'",
+                    _ => $"({part.GetType().Name})",
+                });
             }
         }
 

@@ -159,7 +159,7 @@ public sealed class FolderIndexBuilder
             BundleReferenceResolver.UnresolvedCode,
             first.FilePath,
             first.Line,
-            $"{unresolved.Count} urn: references in {resourceType} resources name no Bundle entry fullUrl in the folder, or name more than one resource, so they are indexed as written and reference searches, chains and includes do not follow them{more}: {string.Join(", ", samples)}.");
+            $"{unresolved.Count} urn: references in {resourceType} resources name no Bundle entry fullUrl in the folder, or name more than one resource, so they are indexed as written and reference searches, chains, includes and compartments do not follow them{more}: {string.Join(", ", samples)}.");
     }
 
     /// <summary>
