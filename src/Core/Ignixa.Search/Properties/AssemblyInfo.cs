@@ -8,4 +8,5 @@ using System.Runtime.CompilerServices;
 
 [assembly: NeutralResourcesLanguage("en-us")]
 [assembly: CLSCompliant(true)]
+[assembly: InternalsVisibleTo("Ignixa.Application")]
 [assembly: InternalsVisibleTo("Ignixa.Application.Tests")]
