@@ -215,8 +215,9 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                                 // defect and must fail the import rather than be reported as bad input.
                                 foreach (var operation in validOperations)
                                 {
-                                    _elementOrdering.OrderForStorage(operation.resource, schemaProvider);
+                                    OrderForStorage(operation.resourceType, operation.resourceId, operation.resource, schemaProvider);
                                 }
+
                                 _logger.LogDebug(
                                     "Consumer {ConsumerId} executing batch of {Count} resources",
                                     consumerId, validOperations.Count);
@@ -355,6 +356,26 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 "Producer finished: {LineNumber} lines read from {FileUrl}",
                 lineNumber,
                 fileUrl);
+        }
+    }
+
+    /// <summary>
+    /// Orders a prepared resource, naming it in any failure so the offending resource can be found.
+    /// </summary>
+    private void OrderForStorage(
+        string resourceType,
+        string resourceId,
+        ResourceJsonNode resource,
+        IFhirSchemaProvider schemaProvider)
+    {
+        try
+        {
+            _elementOrdering.OrderForStorage(resource, schemaProvider);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Element ordering failed for {resourceType}/{resourceId}.", ex);
         }
     }
 

@@ -53,6 +53,21 @@ public class ResourceJsonNodeOrderElementsTests
         Serialize(resource).ShouldBe("""{"resourceType":"Patient","id":"a","zeta":1,"alpha":2}""");
     }
 
+    [Theory]
+    [InlineData("valuequantity", """{"unit":"u","value":1}""")]
+    [InlineData("valueQUANTITY", """{"unit":"u","value":1}""")]
+    [InlineData("valuestring", "\"x\"")]
+    public void GivenChoiceNameWithWrongTypeCasing_WhenOrderElements_ThenItIsTreatedAsUnknown(string name, string value)
+    {
+        ResourceJsonNode resource = ResourceJsonNode.Parse(
+            $$"""{"{{name}}":{{value}},"note":[{"text":"n"}],"status":"final","resourceType":"Observation"}""");
+
+        resource.OrderElements(_schema);
+
+        Serialize(resource).ShouldBe(
+            $$"""{"resourceType":"Observation","status":"final","note":[{"text":"n"}],"{{name}}":{{value}}}""");
+    }
+
     [Fact]
     public void GivenMetaAccessedBeforeOrdering_WhenOrderElementsThenMetaChanged_ThenChangeIsSerialized()
     {

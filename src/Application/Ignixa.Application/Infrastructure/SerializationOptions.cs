@@ -12,7 +12,7 @@ public class SerializationOptions
     /// <summary>
     /// Reorders each resource's properties into StructureDefinition element order before it is stored.
     /// Applies only to writes made while enabled; resources already stored are not rewritten.
-    /// Off by default: the client's property order is kept (a missing <c>meta</c> is appended).
+    /// Off by default: the client's property order is kept, and properties the server adds (<c>id</c>, <c>meta</c>) are appended.
     /// </summary>
     public bool OrderElementsOnWrite { get; set; }
 }

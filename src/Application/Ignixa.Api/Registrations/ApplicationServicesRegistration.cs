@@ -188,15 +188,18 @@ public static class ApplicationServicesRegistration
 
     private static void RegisterResourceHandlers(ContainerBuilder builder, IConfiguration configuration)
     {
-        // Bound on first resolve rather than at registration so configuration sources added later apply.
+        // Bound when resolved rather than at registration so configuration sources added later apply,
+        // and resolved once the container is built so a bad value fails startup instead of every write.
         builder.Register(_ =>
             {
                 var options = new SerializationOptions();
-                configuration.GetSection(SerializationOptions.SectionName).Bind(options);
+                configuration.GetSection(SerializationOptions.SectionName)
+                    .Bind(options, binder => binder.ErrorOnUnknownConfiguration = true);
                 return options;
             })
             .AsSelf()
             .SingleInstance();
+        builder.RegisterBuildCallback(scope => scope.Resolve<SerializationOptions>());
 
         builder.RegisterType<GetResourceHandler>()
             .As<IRequestHandler<GetResourceQuery, SearchEntryResult?>>()

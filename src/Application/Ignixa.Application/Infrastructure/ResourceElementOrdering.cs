@@ -35,9 +35,9 @@ public sealed class ResourceElementOrdering(SerializationOptions options)
             return;
         }
 
-        // Storage stamps meta.versionId and meta.lastUpdated after ordering (bulk import arrives without
-        // them). Assigning an existing property keeps its position, so the slots are created now to be
-        // ordered with the rest; otherwise storage would append them, and a missing meta, at the end.
+        // Storage stamps meta.versionId and meta.lastUpdated after ordering, and $import resources may lack
+        // them. Assigning an existing property keeps its position, so the slots are created now to be
+        // ordered with the rest rather than appended by storage.
         // Plain assignment rather than ??= avoids reading client values, which may not be strings.
         Meta meta = resource.Meta;
         meta.VersionId = "1";

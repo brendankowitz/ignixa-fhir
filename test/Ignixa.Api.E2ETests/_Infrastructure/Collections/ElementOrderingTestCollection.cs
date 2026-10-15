@@ -9,7 +9,7 @@ namespace Ignixa.Api.E2ETests._Infrastructure.Collections;
 /// xUnit collection for tests that need <see cref="ElementOrderingApiFixture"/>'s non-default
 /// serialization setting, kept apart from the shared <see cref="E2ETestCollection"/> server.
 /// </summary>
-// CA1711 suppressed: xUnit requires collection definitions to end with "Collection".
+// CA1711 suppressed: repository convention names xUnit collection definitions with a "Collection" suffix.
 #pragma warning disable CA1711
 [CollectionDefinition(Name)]
 public class ElementOrderingTestCollection : ICollectionFixture<ElementOrderingApiFixture>

@@ -175,8 +175,8 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
     }
 
     /// <summary>
-    /// Reorders this resource's properties in place into StructureDefinition element order, matching
-    /// the Firely SDK serializer. Properties the schema does not describe move after known elements.
+    /// Reorders this resource's properties in place into StructureDefinition element order.
+    /// Properties the schema does not describe move after known elements.
     /// </summary>
     /// <param name="schema">Schema for the resource's FHIR version.</param>
     public void OrderElements(ISchema schema)

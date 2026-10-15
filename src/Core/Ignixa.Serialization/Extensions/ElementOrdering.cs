@@ -10,7 +10,7 @@ using Ignixa.Abstractions;
 namespace Ignixa.Serialization.Extensions;
 
 /// <summary>
-/// Ranks JSON properties into StructureDefinition element order - the order the Firely SDK serializer emits.
+/// Ranks JSON properties into StructureDefinition element order.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -105,7 +105,7 @@ internal static class ElementOrdering
             }
 
             string suffix = elementName[baseName.Length..];
-            ITypeReference? declared = extended.Types.FirstOrDefault(type => string.Equals(type.Code, suffix, StringComparison.OrdinalIgnoreCase));
+            ITypeReference? declared = extended.Types.FirstOrDefault(type => IsChoiceSuffix(suffix, type.Code));
             if (declared is not null)
             {
                 return (child, declared.Code);
@@ -114,6 +114,15 @@ internal static class ElementOrdering
 
         return (null, null);
     }
+
+    /// <summary>
+    /// The JSON suffix is the type code with only its first letter capitalized ("string" -> "valueString").
+    /// Any other casing is unknown, so client-chosen casings cannot each add a cache entry.
+    /// </summary>
+    private static bool IsChoiceSuffix(string suffix, string code) =>
+        suffix.Length == code.Length
+        && suffix[0] == char.ToUpperInvariant(code[0])
+        && suffix.AsSpan(1).SequenceEqual(code.AsSpan(1));
 
     private static IType? ResolveElementType(IType parent, IType element, ISchema schema)
     {
