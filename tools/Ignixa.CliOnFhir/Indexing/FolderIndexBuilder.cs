@@ -31,13 +31,16 @@ public sealed class FolderIndexBuilder
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
         _schema = schema;
-        var definitions = new SearchParameterDefinitionManager(schema, loggerFactory.CreateLogger<SearchParameterDefinitionManager>());
+        Definitions = new SearchParameterDefinitionManager(schema, loggerFactory.CreateLogger<SearchParameterDefinitionManager>());
 
         // A local folder has no service base URI, so absolute references are kept verbatim.
         // The indexer keeps only its logger, so the (non-owning) factory wrapper can be disposed right away.
         using ILoggerFactory capturingFactory = ExtractionFailureCapture.Wrap(loggerFactory, typeof(ElementSearchIndexer).FullName!);
-        _indexer = SearchIndexerFactory.CreateInstance(schema, capturingFactory, definitions, NullFhirBaseUriProvider.Instance);
+        _indexer = SearchIndexerFactory.CreateInstance(schema, capturingFactory, Definitions, NullFhirBaseUriProvider.Instance);
     }
+
+    /// <summary>The search parameter definitions the indexer extracts with; the same instances its entries refer to.</summary>
+    public ISearchParameterDefinitionManager Definitions { get; }
 
     /// <summary>
     /// Indexes every catalogued resource of <paramref name="resourceType"/>. Extraction runs in parallel
@@ -75,7 +78,7 @@ public sealed class FolderIndexBuilder
             }
         }
 
-        return new ResourceTypeIndex(resourceType, resources, diagnostics, DateTimeOffset.UtcNow, stopwatch.ElapsedMilliseconds);
+        return new ResourceTypeIndex(resourceType, resources, diagnostics, DateTimeOffset.UtcNow, stopwatch.ElapsedMilliseconds, FromCache: false);
     }
 
     private (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics) TryIndex(CatalogEntry entry, byte[] fileBytes)

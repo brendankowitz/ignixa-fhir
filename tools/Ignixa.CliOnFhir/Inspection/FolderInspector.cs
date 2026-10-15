@@ -45,8 +45,15 @@ public static class FolderInspector
             indexFacts = new IndexFacts(
                 indexes.Sum(index => index.IndexEntryCount),
                 session.IndexerLoadMilliseconds,
-                indexes.Sum(index => index.BuildMilliseconds),
-                [.. indexes.Select(index => new TypeIndexFacts(index.ResourceType, index.Resources.Count, index.IndexEntryCount, index.BuildMilliseconds))]);
+                indexes.Sum(index => index.ElapsedMilliseconds),
+                session.CacheDirectory,
+                [.. indexes.Select(index => new TypeIndexFacts(
+                    index.ResourceType,
+                    index.Resources.Count,
+                    index.IndexEntryCount,
+                    index.FromCache ? TypeIndexFacts.CacheSource : TypeIndexFacts.BuiltSource,
+                    index.ElapsedMilliseconds,
+                    index.CacheWriteMilliseconds))]);
             builtAt = indexes.Select(index => index.BuiltAt).Prepend(builtAt).Max();
         }
 
@@ -67,12 +74,12 @@ public static class FolderInspector
             session.CatalogStats,
             indexFacts);
 
-        List<IssueItem> issues = [.. diagnostics.Take(issueLimit).Select(ToIssue)];
+        List<IssueItem> issues = [.. diagnostics.Take(issueLimit).Select(ToIssue), .. session.CacheIssues];
         List<OmittedItem> omitted = diagnostics.Count > issueLimit
             ? [new OmittedItem($"{diagnostics.Count - issueLimit} more diagnostics", "limit")]
             : [];
 
-        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(builtAt, StaleFiles: null));
+        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(builtAt, StaleFiles: 0));
     }
 
     private static IssueItem ToIssue(CatalogDiagnostic diagnostic) => new(

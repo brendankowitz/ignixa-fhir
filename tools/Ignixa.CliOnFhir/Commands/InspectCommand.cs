@@ -33,11 +33,15 @@ internal static class InspectCommand
                 + "(measurement aid; inspect itself answers from the catalog without indexing)",
         };
 
+        Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
+        Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
+
         var command = new Command("inspect", "Overview of a folder of FHIR data: resource types, counts and problems found");
         command.Arguments.Add(pathArgument);
         command.Options.Add(versionOption);
         command.Options.Add(issueLimitOption);
         command.Options.Add(buildIndexOption);
+        CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
         command.SetAction(parseResult =>
         {
@@ -45,7 +49,8 @@ internal static class InspectCommand
             var session = new FolderSession(
                 parseResult.GetValue(pathArgument)!,
                 FhirSchemas.Resolve(parseResult.GetValue(versionOption)!),
-                loggerFactory);
+                loggerFactory,
+                CommonOptions.ResolveCache(parseResult, cacheDirOption, noCacheOption));
 
             ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session, parseResult.GetValue(issueLimitOption), parseResult.GetValue(buildIndexOption));
             Console.Out.WriteLine(JsonSerializer.Serialize(envelope, OutputOptions));

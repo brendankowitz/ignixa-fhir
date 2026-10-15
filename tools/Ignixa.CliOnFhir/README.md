@@ -28,9 +28,18 @@ Example MCP client configuration (Claude Code, `.mcp.json`):
 
 - `*.json`: a single resource, or a Bundle whose `entry[].resource` items are catalogued individually.
 - `*.ndjson`, `*.jsonl`: one resource per line.
-- The folder is never modified. `.ignixa/` is reserved for a future index cache and is skipped.
+- The folder is never modified. A `.ignixa/` directory inside it is skipped by the catalog but nothing writes there.
 
 Problems (invalid JSON, objects without `resourceType`, duplicate ids, resource types unknown to the chosen FHIR version) are reported in `issues`, never dropped silently.
+
+## Index cache
+
+Search indexes are persisted per resource type so a new process does not pay for indexing again. The cache lives outside the data folder, in `$XDG_CACHE_HOME/cli-on-fhir` (else `~/.cache/cli-on-fhir`, or `%LOCALAPPDATA%\cli-on-fhir` on Windows), in one subdirectory per folder and FHIR version.
+
+- `--cache-dir <path>` moves the cache root; `--no-cache` neither reads nor writes it.
+- A manifest records the cache format, FHIR version, tool build, a hash of the search parameter definitions and every scanned file's size and last-write time. Any difference discards the whole cache and is reported as an `index-cache-rebuilt` issue with the reason and the number of changed files.
+- An unreadable or inconsistent cache file is rebuilt and reported as `index-cache-corrupt`; an unwritable cache directory is reported once as `index-cache-unavailable`. Neither fails the call.
+- `inspect --build-index` reports per type whether the index came from the cache or was built, with load, build and write times.
 
 ## Tools
 

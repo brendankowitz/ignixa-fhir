@@ -16,7 +16,7 @@ namespace Ignixa.CliOnFhir.Catalog;
 /// </summary>
 public static class FolderCatalogBuilder
 {
-    /// <summary>Directory the tool reserves for its own cache; never catalogued.</summary>
+    /// <summary>Directory name that is never catalogued; the index cache lives outside the folder, but a stray one is still skipped.</summary>
     public const string CacheDirectoryName = ".ignixa";
 
     private static readonly HashSet<string> NdjsonExtensions = new(StringComparer.OrdinalIgnoreCase) { ".ndjson", ".jsonl" };
@@ -59,7 +59,7 @@ public static class FolderCatalogBuilder
             }
         }
 
-        return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles, DateTimeOffset.UtcNow);
+        return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles, state.Files, DateTimeOffset.UtcNow);
     }
 
     private static IEnumerable<string> EnumerateFiles(string root)
@@ -73,8 +73,8 @@ public static class FolderCatalogBuilder
 
     private static void ReadJson(string file, BuildState state)
     {
+        string relativePath = state.RecordFile(file);
         byte[] bytes = File.ReadAllBytes(file);
-        string relativePath = state.Relative(file);
         try
         {
             var (resourceType, _) = ResourceSniffer.Sniff(bytes);
@@ -101,8 +101,8 @@ public static class FolderCatalogBuilder
 
     private static void ReadNdjson(string file, BuildState state)
     {
+        string relativePath = state.RecordFile(file);
         byte[] bytes = File.ReadAllBytes(file);
-        string relativePath = state.Relative(file);
         int lineStart = 0;
         int lineNumber = 0;
         while (lineStart < bytes.Length)
@@ -136,6 +136,8 @@ public static class FolderCatalogBuilder
 
         public List<CatalogDiagnostic> Diagnostics { get; } = [];
 
+        public List<CatalogFile> Files { get; } = [];
+
         public int FilesScanned { get; set; }
 
         public int FilesSkipped { get; set; }
@@ -143,6 +145,18 @@ public static class FolderCatalogBuilder
         public int ContainerBundles { get; set; }
 
         public string Relative(string file) => Path.GetRelativePath(root, file).Replace('\\', '/');
+
+        /// <summary>
+        /// Records the file's size and last-write time and returns its relative path. Called before the file is
+        /// read, so a write racing the read can only make the recorded stamp older than the content, never newer.
+        /// </summary>
+        public string RecordFile(string file)
+        {
+            var info = new FileInfo(file);
+            string relativePath = Relative(file);
+            Files.Add(new CatalogFile(relativePath, info.Length, info.LastWriteTimeUtc.Ticks));
+            return relativePath;
+        }
 
         public void Add(string relativePath, ReadOnlySpan<byte> json, long offset, int? line, int ordinal)
         {

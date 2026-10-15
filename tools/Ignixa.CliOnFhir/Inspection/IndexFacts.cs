@@ -11,6 +11,10 @@ namespace Ignixa.CliOnFhir.Inspection;
 /// One-time cost of loading the search parameter definitions and creating the indexer; null when no
 /// index was built. It is not part of any per-type or total build time.
 /// </param>
-/// <param name="BuildMilliseconds">Wall time spent building the type indexes (they are built one after another), excluding the definitions load.</param>
+/// <param name="ElapsedMilliseconds">
+/// Wall time spent obtaining the type indexes (one after another), whether built or loaded from the cache,
+/// excluding the definitions load and any cache writes.
+/// </param>
+/// <param name="CacheDirectory">This folder's persisted-index directory; null when the cache is off.</param>
 /// <param name="ResourceTypes">Per-type figures, in the same order as the inspection's resource types.</param>
-public sealed record IndexFacts(long IndexEntries, long? DefinitionsLoadMilliseconds, long BuildMilliseconds, IReadOnlyList<TypeIndexFacts> ResourceTypes);
+public sealed record IndexFacts(long IndexEntries, long? DefinitionsLoadMilliseconds, long ElapsedMilliseconds, string? CacheDirectory, IReadOnlyList<TypeIndexFacts> ResourceTypes);

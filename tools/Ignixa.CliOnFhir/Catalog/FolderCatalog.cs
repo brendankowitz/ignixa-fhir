@@ -14,6 +14,7 @@ namespace Ignixa.CliOnFhir.Catalog;
 /// <param name="FilesScanned">Number of files with a supported extension that were read.</param>
 /// <param name="FilesSkipped">Number of files ignored because of their extension.</param>
 /// <param name="ContainerBundles">Number of Bundles whose entries were catalogued instead of the Bundle itself.</param>
+/// <param name="Files">Every scanned file with the size and last-write time it had when read, in walk order.</param>
 /// <param name="BuiltAt">When the walk finished.</param>
 public sealed record FolderCatalog(
     string RootPath,
@@ -22,4 +23,5 @@ public sealed record FolderCatalog(
     int FilesScanned,
     int FilesSkipped,
     int ContainerBundles,
+    IReadOnlyList<CatalogFile> Files,
     DateTimeOffset BuiltAt);

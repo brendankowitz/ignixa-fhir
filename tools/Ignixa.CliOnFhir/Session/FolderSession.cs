@@ -6,8 +6,11 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Ignixa.Abstractions;
+using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
+using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.CliOnFhir.Session;
@@ -21,9 +24,14 @@ public sealed class FolderSession
 {
     private readonly Lazy<(FolderCatalog Catalog, BuildStats Stats)> _catalog;
     private readonly Lazy<(FolderIndexBuilder Builder, long LoadMilliseconds)> _indexBuilder;
+    private readonly Lazy<FolderIndexCache> _cache;
     private readonly ConcurrentDictionary<string, Lazy<ResourceTypeIndex>> _indexes = new(StringComparer.Ordinal);
 
-    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory)
+    /// <param name="rootPath">The folder of FHIR data. It is only ever read.</param>
+    /// <param name="schema">The FHIR version the folder is read as.</param>
+    /// <param name="loggerFactory">Receives the search indexer's own log output.</param>
+    /// <param name="cacheOptions">Where to persist indexes between processes; null (the default) keeps them in memory only.</param>
+    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(schema);
@@ -43,6 +51,12 @@ public sealed class FolderSession
                 return (builder, stopwatch.ElapsedMilliseconds);
             },
             LazyThreadSafetyMode.ExecutionAndPublication);
+
+        // Validating the cache needs the catalog and the definitions, so it also waits for the first index request.
+        IndexCacheOptions options = cacheOptions ?? IndexCacheOptions.Disabled;
+        _cache = new Lazy<FolderIndexCache>(
+            () => new FolderIndexCache(options, Catalog, schema.Version.ToString(), _indexBuilder.Value.Builder.Definitions),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public string RootPath { get; }
@@ -59,6 +73,23 @@ public sealed class FolderSession
     /// </summary>
     public long? IndexerLoadMilliseconds => _indexBuilder.IsValueCreated ? _indexBuilder.Value.LoadMilliseconds : null;
 
+    /// <summary>
+    /// The search parameter definitions every index entry of this session refers to. Loading them is the
+    /// one-time indexer cost, so reading this starts that load if no index has been requested yet.
+    /// </summary>
+    public ISearchParameterDefinitionManager Definitions => _indexBuilder.Value.Builder.Definitions;
+
+    /// <summary>
+    /// Directory holding this folder's persisted indexes; null when the cache is off or no index has been requested yet.
+    /// </summary>
+    public string? CacheDirectory => _cache.IsValueCreated ? _cache.Value.CacheDirectory : null;
+
+    /// <summary>
+    /// Problems met while loading or saving persisted indexes (a discarded or corrupt cache, an unwritable
+    /// directory); each also means the affected index was built instead of loaded.
+    /// </summary>
+    public IReadOnlyList<IssueItem> CacheIssues => _cache.IsValueCreated ? _cache.Value.Issues : [];
+
     /// <summary>Resource types whose index has been built so far, in ordinal order.</summary>
     public IReadOnlyList<string> BuiltIndexTypes => [.. _indexes
         .Where(pair => pair.Value.IsValueCreated)
@@ -66,8 +97,9 @@ public sealed class FolderSession
         .Order(StringComparer.Ordinal)];
 
     /// <summary>
-    /// Returns the index for <paramref name="resourceType"/>, building it on the first request. A type
-    /// with no catalogued resources yields an empty index.
+    /// Returns the index for <paramref name="resourceType"/>, loading it from the persisted cache when a valid
+    /// one exists and building it otherwise, on the first request. A type with no catalogued resources yields
+    /// an empty index.
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="resourceType"/> is not a resource type of the session's FHIR version.</exception>
     public ResourceTypeIndex GetIndex(string resourceType)
@@ -79,10 +111,22 @@ public sealed class FolderSession
         }
 
         return _indexes
-            .GetOrAdd(resourceType, type => new Lazy<ResourceTypeIndex>(
-                () => _indexBuilder.Value.Builder.Build(Catalog, type, CancellationToken.None),
-                LazyThreadSafetyMode.ExecutionAndPublication))
+            .GetOrAdd(resourceType, type => new Lazy<ResourceTypeIndex>(() => LoadOrBuild(type), LazyThreadSafetyMode.ExecutionAndPublication))
             .Value;
+    }
+
+    private ResourceTypeIndex LoadOrBuild(string resourceType)
+    {
+        FolderIndexBuilder builder = _indexBuilder.Value.Builder;
+        FolderIndexCache cache = _cache.Value;
+        ResourceTypeIndex? cached = cache.TryLoad(resourceType);
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        ResourceTypeIndex built = builder.Build(Catalog, resourceType, CancellationToken.None);
+        return built with { CacheWriteMilliseconds = cache.Store(built) };
     }
 
     private static (FolderCatalog, BuildStats) BuildCatalog(string rootPath, IFhirSchemaProvider schema)

@@ -98,7 +98,7 @@ public class FolderInspectorTests
         index.IndexEntries.ShouldBe(index.ResourceTypes.Sum(t => t.IndexEntries));
         index.IndexEntries.ShouldBeGreaterThan(0);
         index.DefinitionsLoadMilliseconds.ShouldNotBeNull();
-        index.BuildMilliseconds.ShouldBe(index.ResourceTypes.Sum(t => t.BuildMilliseconds));
+        index.ElapsedMilliseconds.ShouldBe(index.ResourceTypes.Sum(t => t.ElapsedMilliseconds));
         session.BuiltIndexTypes.ShouldBe(["Observation", "Patient"]);
         envelope.Facts.DiagnosticCounts["index-extraction-failed"].ShouldBe(1);
         envelope.Issues.ShouldHaveSingleItem().Code.ShouldBe("index-extraction-failed");

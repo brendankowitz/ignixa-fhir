@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.CommandLine;
+using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Mcp;
 using Ignixa.CliOnFhir.Session;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,14 +24,19 @@ internal static class McpCommand
         Argument<string> pathArgument = CommonOptions.CreatePathArgument();
         Option<string> versionOption = CommonOptions.CreateFhirVersionOption();
 
+        Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
+        Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
+
         var command = new Command("mcp", "Serve a folder of FHIR data to an agent over MCP (stdio)");
         command.Arguments.Add(pathArgument);
         command.Options.Add(versionOption);
+        CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
         command.SetAction(async (parseResult, cancellationToken) =>
         {
             string path = parseResult.GetValue(pathArgument)!;
             string version = parseResult.GetValue(versionOption)!;
+            IndexCacheOptions cacheOptions = CommonOptions.ResolveCache(parseResult, cacheDirOption, noCacheOption);
 
             HostApplicationBuilder builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings { Args = [] });
             builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
@@ -39,7 +45,8 @@ internal static class McpCommand
             builder.Services.AddSingleton(services => new FolderSession(
                 path,
                 FhirSchemas.Resolve(version),
-                services.GetRequiredService<ILoggerFactory>()));
+                services.GetRequiredService<ILoggerFactory>(),
+                cacheOptions));
             builder.Services
                 .AddMcpServer(options => options.ServerInfo = new() { Name = "cli-on-fhir", Version = typeof(McpCommand).Assembly.GetName().Version?.ToString() ?? "0.0.0" })
                 .WithStdioServerTransport()
