@@ -15,9 +15,17 @@ namespace Ignixa.CliOnFhir.Indexing;
 /// does not match from one that could not be indexed.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Failures are attributed to the entry being indexed on the logging thread, which is correct because the
-/// indexer is synchronous: each entry is extracted start to finish on one thread. Everything is still
-/// forwarded to the wrapped logger.
+/// indexer is synchronous: each entry is extracted start to finish on one thread.
+/// </para>
+/// <para>
+/// The indexer's own text quotes folder data (the resource id, the raw value an exception failed on), which is untrusted
+/// (agent-tool-surface.md, risk 1) and reaches whoever reads the envelope or stderr. So neither the diagnostic nor what is
+/// forwarded to the wrapped logger uses it: both are built from the event's structured state, keeping only the fields the
+/// search parameter definitions and the schema supply (<see cref="DefinitionFields"/>), naming the resource as every tool
+/// names it (<see cref="FhirIds"/>), and reducing a value and an exception's message to digests.
+/// </para>
 /// </remarks>
 internal static class ExtractionFailureCapture
 {
@@ -25,6 +33,14 @@ internal static class ExtractionFailureCapture
 
     /// <summary>The event <c>ElementSearchIndexer</c> logs for an element type no converter of the parameter accepts.</summary>
     private const string ElementTypeNotSupportedEvent = "FhirElementTypeNotSupported";
+
+    /// <summary>Event fields that come from the search parameter definitions or the schema, never from a resource, so they are shown.</summary>
+    private static readonly HashSet<string> DefinitionFields = new(
+        ["SearchParameterUrl", "SearchParameterCode", "FhirPathExpression", "ElementType", "FhirElementType", "ConverterType", "ComponentIndex", "ResourceType"],
+        StringComparer.Ordinal);
+
+    /// <summary>Event fields that hold a value read from a resource, shown only as a digest.</summary>
+    private static readonly HashSet<string> ValueFields = new(["Value"], StringComparer.Ordinal);
 
     [ThreadStatic]
     private static Scope? _current;
@@ -80,6 +96,35 @@ internal static class ExtractionFailureCapture
         return elementType == "canonical" ? url : null;
     }
 
+    /// <summary>
+    /// The event as the tool reports it: its name, the definition fields as they are, value fields and the exception's message
+    /// as digests, and the resource being indexed by its tool-wide name. Never the indexer's formatted text.
+    /// </summary>
+    internal static string Redacted<TState>(EventId eventId, TState state, Exception? exception, CatalogEntry? entry)
+    {
+        List<string> fields = [];
+        if (state is IEnumerable<KeyValuePair<string, object?>> structured)
+        {
+            foreach ((string key, object? value) in structured)
+            {
+                if (DefinitionFields.Contains(key))
+                {
+                    fields.Add($"{key} '{value}'");
+                }
+                else if (ValueFields.Contains(key) && value is not null)
+                {
+                    fields.Add($"{key} {FhirIds.Digest(value.ToString() ?? string.Empty)}");
+                }
+            }
+        }
+
+        string name = eventId.Name ?? eventId.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string resource = entry is null ? string.Empty : $" on {FhirIds.Reference(entry)}";
+        string detail = fields.Count == 0 ? string.Empty : $": {string.Join(", ", fields)}";
+        string failure = exception is null ? string.Empty : $"; {exception.GetType().Name} (message digest {FhirIds.Digest(exception.Message)})";
+        return $"The search indexer reported {name}{resource}{detail}{failure}.";
+    }
+
     private sealed class Scope(CatalogEntry entry)
     {
         public CatalogEntry Entry { get; } = entry;
@@ -112,29 +157,20 @@ internal static class ExtractionFailureCapture
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
+            Scope? scope = _current;
+            string message = Redacted(eventId, state, exception, scope?.Entry);
+
+            // Forwarded in the redacted form only, without the exception, whose message may quote the resource: the wrapped
+            // logger (stderr for the CLI and the MCP server) sees exactly what the diagnostic says.
             if (inner.IsEnabled(logLevel))
             {
-                inner.Log(logLevel, eventId, state, exception, formatter);
+                inner.Log(logLevel, eventId, message, null, static (text, _) => text);
             }
 
-            if (logLevel < LogLevel.Warning || _current is not { } scope)
+            if (logLevel >= LogLevel.Warning && scope is not null)
             {
-                return;
+                scope.Captured.Add((new CatalogDiagnostic(DiagnosticCode, scope.Entry.FilePath, scope.Entry.Line, message), UnsupportedCanonicalUrl(eventId, state)));
             }
-
-            string message = formatter(state, exception);
-            if (exception is not null)
-            {
-                message = $"{message} {exception.GetType().Name}: {exception.Message}";
-            }
-
-            // The indexer names the resource by its raw id; an id that is not a FHIR id is named by its digest instead.
-            if (!FhirIds.IsValid(scope.Entry.Id))
-            {
-                message = message.Replace(scope.Entry.Id, FhirIds.Safe(scope.Entry.Id), StringComparison.Ordinal);
-            }
-
-            scope.Captured.Add((new CatalogDiagnostic(DiagnosticCode, scope.Entry.FilePath, scope.Entry.Line, message), UnsupportedCanonicalUrl(eventId, state)));
         }
     }
 }

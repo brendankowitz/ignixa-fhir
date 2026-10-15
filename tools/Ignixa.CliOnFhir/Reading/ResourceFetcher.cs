@@ -62,7 +62,11 @@ public static class ResourceFetcher
         {
             if (session.FindByName(type, id) is { } entry)
             {
-                found.Add(entry);
+                // A resource asked for by two names (its id and its digest) is returned once.
+                if (!found.Contains(entry))
+                {
+                    found.Add(entry);
+                }
             }
             else
             {

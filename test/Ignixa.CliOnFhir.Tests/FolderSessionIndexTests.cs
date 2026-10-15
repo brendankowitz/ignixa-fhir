@@ -127,7 +127,7 @@ public class FolderSessionIndexTests
         first.Diagnostics.Select(d => d.Line).ShouldBe([.. Enumerable.Range(0, 20).Select(i => (int?)(i * 10 + 1))]);
         for (int i = 0; i < 20; i++)
         {
-            first.Diagnostics[i].Message.ShouldContain($"Observation/o{i * 10}'");
+            first.Diagnostics[i].Message.ShouldContain($" on Observation/o{i * 10}:");
         }
     }
 
@@ -200,7 +200,9 @@ public class FolderSessionIndexTests
         diagnostic.Line.ShouldBe(2);
         diagnostic.Message.ShouldContain("http://hl7.org/fhir/SearchParameter/clinical-date");
         diagnostic.Message.ShouldContain("Observation/bad");
-        diagnostic.Message.ShouldContain("garbage");
+
+        // The value the indexer rejected is folder text, so the diagnostic shows its type of failure, not the value.
+        diagnostic.Message.ShouldNotContain("garbage");
     }
 
     [Fact]
@@ -215,6 +217,8 @@ public class FolderSessionIndexTests
         new FolderSession(folder.Path, new R4CoreSchemaProvider(), loggerFactory).GetIndex("Observation").Diagnostics.ShouldHaveSingleItem();
 
         provider.Messages.ShouldContain(message => message.Contains("Observation/bad", StringComparison.Ordinal));
+        // Guard (Task 6 round 3): what is forwarded never carries the rejected value.
+        provider.Messages.ShouldNotContain(message => message.Contains("garbage", StringComparison.Ordinal));
     }
 
     private static FolderSession Open(TestFolder folder) => new(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);

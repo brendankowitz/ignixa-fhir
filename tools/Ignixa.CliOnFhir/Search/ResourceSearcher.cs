@@ -309,7 +309,7 @@ public static class ResourceSearcher
             {
                 failing.Add(part switch
                 {
-                    CompartmentSearchExpression compartment => $"'compartment={compartment.CompartmentType}/{compartment.CompartmentId}'",
+                    CompartmentSearchExpression compartment => $"'compartment={FhirIds.Reference(compartment.CompartmentType, compartment.CompartmentId)}'",
                     _ when parsed.Traces.FirstOrDefault(trace => ReferenceEquals(trace.Ir, part)) is { } trace => $"'{trace.Key}={trace.Value}'",
                     _ => $"({part.GetType().Name})",
                 });

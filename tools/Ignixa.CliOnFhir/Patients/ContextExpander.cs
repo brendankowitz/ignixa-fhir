@@ -81,7 +81,8 @@ public static class ContextExpander
     private static Node Problem(PatientContext context, string nodeKey)
     {
         ContextEntry condition = context.Problems.FirstOrDefault(entry => entry.Item.NodeKey == nodeKey) ?? throw Unknown(context, nodeKey);
-        string reference = condition.Item.Reference;
+        // Matched against the reference as resolved, so by the Condition's own id; the item's name may be its digest.
+        string reference = $"Condition/{condition.Resource.Key.Id}";
         List<CodedConcept> codes = [.. CodedConcept.MainCodes("Condition", context.Element(condition)!)];
         List<ContextEntry> linked = [];
         foreach (ContextEntry medication in context.Medications)
