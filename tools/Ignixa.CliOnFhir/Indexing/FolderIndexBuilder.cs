@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Diagnostics;
 using System.Text.Json;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
@@ -15,9 +16,9 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.CliOnFhir.Indexing;
 
 /// <summary>
-/// Parses every catalogued resource once and extracts its search index with Ignixa's
-/// <see cref="ElementSearchIndexer"/>. Each file is read once; resources are parsed from their
-/// recorded byte ranges.
+/// Parses the catalogued resources of one type and extracts their search index with Ignixa's
+/// <see cref="ElementSearchIndexer"/>. Only the files that contain resources of that type are read, and
+/// resources are parsed from their recorded byte ranges.
 /// </summary>
 public sealed class FolderIndexBuilder
 {
@@ -33,65 +34,52 @@ public sealed class FolderIndexBuilder
         var definitions = new SearchParameterDefinitionManager(schema, loggerFactory.CreateLogger<SearchParameterDefinitionManager>());
 
         // A local folder has no service base URI, so absolute references are kept verbatim.
-        _indexer = SearchIndexerFactory.CreateInstance(schema, loggerFactory, definitions, NullFhirBaseUriProvider.Instance);
+        // The indexer keeps only its logger, so the (non-owning) factory wrapper can be disposed right away.
+        using ILoggerFactory capturingFactory = ExtractionFailureCapture.Wrap(loggerFactory, typeof(ElementSearchIndexer).FullName!);
+        _indexer = SearchIndexerFactory.CreateInstance(schema, capturingFactory, definitions, NullFhirBaseUriProvider.Instance);
     }
 
     /// <summary>
-    /// Indexes every catalogued resource. Extraction runs in parallel (the indexer is shared across
-    /// concurrent requests in the server too); results are assembled in catalog order, so the index
-    /// and its diagnostics are identical from run to run. All catalogued files are held in memory
-    /// for the duration of the build.
+    /// Indexes every catalogued resource of <paramref name="resourceType"/>. Extraction runs in parallel
+    /// (the indexer is shared across concurrent requests in the server too); results are assembled in
+    /// catalog order, so the index and its diagnostics are identical from run to run. The files holding
+    /// the type's resources are held in memory for the duration of the build.
     /// </summary>
-    public FolderIndex Build(FolderCatalog catalog, CancellationToken cancellationToken)
+    public ResourceTypeIndex Build(FolderCatalog catalog, string resourceType, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceType);
 
-        IReadOnlyList<CatalogEntry> entries = catalog.Entries;
+        var stopwatch = Stopwatch.StartNew();
+        CatalogEntry[] entries = [.. catalog.Entries.Where(entry => string.Equals(entry.ResourceType, resourceType, StringComparison.Ordinal))];
         Dictionary<string, byte[]> files = entries
             .Select(entry => entry.FilePath)
             .Distinct(StringComparer.Ordinal)
             .ToDictionary(path => path, path => File.ReadAllBytes(Path.Combine(catalog.RootPath, path)), StringComparer.Ordinal);
 
-        var results = new (IndexedResource? Resource, CatalogDiagnostic? Diagnostic)[entries.Count];
+        var results = new (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics)[entries.Length];
         Parallel.For(
             0,
-            entries.Count,
+            entries.Length,
             new ParallelOptions { CancellationToken = cancellationToken },
             i => results[i] = TryIndex(entries[i], files[entries[i].FilePath]));
 
-        var byType = new Dictionary<string, List<IndexedResource>>(StringComparer.Ordinal);
+        var resources = new List<IndexedResource>(entries.Length);
         var diagnostics = new List<CatalogDiagnostic>();
-        foreach (var (resource, diagnostic) in results)
+        foreach (var (resource, entryDiagnostics) in results)
         {
-            if (diagnostic is not null)
+            diagnostics.AddRange(entryDiagnostics);
+            if (resource is not null)
             {
-                diagnostics.Add(diagnostic);
-                continue;
+                resources.Add(resource);
             }
-
-            if (!byType.TryGetValue(resource!.Key.ResourceType, out List<IndexedResource>? list))
-            {
-                list = [];
-                byType.Add(resource.Key.ResourceType, list);
-            }
-
-            list.Add(resource);
         }
 
-        return new FolderIndex(
-            catalog,
-            byType.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<IndexedResource>)pair.Value, StringComparer.Ordinal),
-            diagnostics,
-            DateTimeOffset.UtcNow);
+        return new ResourceTypeIndex(resourceType, resources, diagnostics, DateTimeOffset.UtcNow, stopwatch.ElapsedMilliseconds);
     }
 
-    private (IndexedResource? Resource, CatalogDiagnostic? Diagnostic) TryIndex(CatalogEntry entry, byte[] fileBytes)
+    private (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics) TryIndex(CatalogEntry entry, byte[] fileBytes)
     {
-        if (!_schema.ResourceTypeNames.Contains(entry.ResourceType))
-        {
-            return (null, new CatalogDiagnostic("unknown-resource-type", entry.FilePath, entry.Line, $"'{entry.ResourceType}' is not a {_schema.Version} resource type."));
-        }
-
         ResourceJsonNode node;
         try
         {
@@ -99,11 +87,11 @@ public sealed class FolderIndexBuilder
         }
         catch (JsonException ex)
         {
-            return (null, new CatalogDiagnostic("invalid-resource", entry.FilePath, entry.Line, $"{entry.ResourceType}/{entry.Id}: {ex.Message}"));
+            return (null, [new CatalogDiagnostic("invalid-resource", entry.FilePath, entry.Line, $"{entry.ResourceType}/{entry.Id}: {ex.Message}")]);
         }
 
         IElement element = node.ToElement(_schema);
-        IReadOnlyCollection<SearchIndexEntry> index = _indexer.Extract(element);
-        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), null);
+        var (index, diagnostics) = ExtractionFailureCapture.Capture(entry, () => _indexer.Extract(element));
+        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), diagnostics);
     }
 }

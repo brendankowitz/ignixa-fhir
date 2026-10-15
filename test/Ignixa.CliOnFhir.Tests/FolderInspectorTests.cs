@@ -50,5 +50,58 @@ public class FolderInspectorTests
         envelope.Facts.DiagnosticCounts["invalid-json"].ShouldBe(5);
     }
 
+    [Fact]
+    public void GivenFolder_WhenInspected_ThenNoIndexIsBuilt()
+    {
+        using var folder = new TestFolder()
+            .Write("p.json", """{"resourceType":"Patient","id":"p1"}""")
+            .Write("o.json", """{"resourceType":"Observation","id":"o1","status":"final","code":{"text":"a"},"effectiveDateTime":"garbage"}""");
+        FolderSession session = Open(folder);
+
+        ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session);
+
+        session.BuiltIndexTypes.ShouldBeEmpty();
+        envelope.Facts.Index.ShouldBeNull();
+        envelope.Facts.DiagnosticCounts.ShouldBeEmpty();
+        envelope.Facts.Build.CatalogMilliseconds.ShouldBeGreaterThanOrEqualTo(0);
+    }
+
+    [Fact]
+    public void GivenUnknownResourceType_WhenInspected_ThenItIsReportedAsDiagnosticAndNotCounted()
+    {
+        using var folder = new TestFolder()
+            .Write("x.json", """{"resourceType":"NotAResource","id":"x"}""")
+            .Write("p.json", """{"resourceType":"Patient","id":"p1"}""");
+
+        ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(Open(folder));
+
+        envelope.Facts.ResourceCount.ShouldBe(1);
+        envelope.Facts.DiagnosticCounts["unknown-resource-type"].ShouldBe(1);
+        envelope.Issues.ShouldHaveSingleItem().Location.ShouldBe("x.json");
+    }
+
+    [Fact]
+    public void GivenBuildIndexesRequested_WhenInspected_ThenIndexFactsAndIndexDiagnosticsAreIncluded()
+    {
+        using var folder = new TestFolder()
+            .Write("p.json", """{"resourceType":"Patient","id":"p1","birthDate":"1980-01-02"}""")
+            .Write("obs.ndjson", """
+                {"resourceType":"Observation","id":"o1","status":"final","code":{"text":"a"},"effectiveDateTime":"garbage"}
+                {"resourceType":"Observation","id":"o2","status":"final","code":{"text":"b"}}
+                """);
+        FolderSession session = Open(folder);
+
+        ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session, buildIndexes: true);
+
+        IndexFacts index = envelope.Facts.Index.ShouldNotBeNull();
+        index.ResourceTypes.Select(t => (t.ResourceType, t.ResourceCount)).ShouldBe([("Observation", 2), ("Patient", 1)]);
+        index.IndexEntries.ShouldBe(index.ResourceTypes.Sum(t => t.IndexEntries));
+        index.IndexEntries.ShouldBeGreaterThan(0);
+        index.BuildMilliseconds.ShouldBe(index.ResourceTypes.Sum(t => t.BuildMilliseconds));
+        session.BuiltIndexTypes.ShouldBe(["Observation", "Patient"]);
+        envelope.Facts.DiagnosticCounts["index-extraction-failed"].ShouldBe(1);
+        envelope.Issues.ShouldHaveSingleItem().Code.ShouldBe("index-extraction-failed");
+    }
+
     private static FolderSession Open(TestFolder folder) => new(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
 }

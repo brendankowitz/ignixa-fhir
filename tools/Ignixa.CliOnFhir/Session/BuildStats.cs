@@ -5,9 +5,8 @@
 
 namespace Ignixa.CliOnFhir.Session;
 
-/// <summary>Cost of building the catalog and index, measured in-process.</summary>
+/// <summary>Cost of building the catalog, measured in-process.</summary>
 /// <param name="CatalogMilliseconds">Wall time to walk and sniff the folder.</param>
-/// <param name="IndexMilliseconds">Wall time to parse and index every catalogued resource.</param>
-/// <param name="ManagedHeapBytes">Managed heap after a full collection, with the index alive.</param>
+/// <param name="ManagedHeapBytes">Managed heap after a full collection, with the catalog alive.</param>
 /// <param name="WorkingSetBytes">Process working set after the build.</param>
-public sealed record BuildStats(long CatalogMilliseconds, long IndexMilliseconds, long ManagedHeapBytes, long WorkingSetBytes);
+public sealed record BuildStats(long CatalogMilliseconds, long ManagedHeapBytes, long WorkingSetBytes);

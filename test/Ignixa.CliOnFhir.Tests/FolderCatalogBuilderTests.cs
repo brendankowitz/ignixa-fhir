@@ -6,18 +6,36 @@
 using System.Text;
 using System.Text.Json;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.Specification.Generated;
 using Shouldly;
 
 namespace Ignixa.CliOnFhir.Tests;
 
 public class FolderCatalogBuilderTests
 {
+    private static readonly IReadOnlySet<string> ValidTypes = new R4CoreSchemaProvider().ResourceTypeNames;
+
+    [Fact]
+    public void GivenResourceTypeUnknownToVersion_WhenBuilt_ThenDiagnosticIsReportedAndEntryIsNotCatalogued()
+    {
+        using var folder = new TestFolder()
+            .Write("x.json", """{"resourceType":"NotAResource","id":"x"}""")
+            .Write("obs.ndjson", "{\"resourceType\":\"Observation\",\"id\":\"o1\"}\n{\"resourceType\":\"Bogus\",\"id\":\"b\"}\n")
+            .Write("p.json", """{"resourceType":"Patient","id":"p"}""");
+
+        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None);
+
+        catalog.Entries.Select(e => e.ResourceType).ShouldBe(["Observation", "Patient"]);
+        catalog.Diagnostics.Select(d => (d.Code, d.FilePath, d.Line)).ShouldBe(
+            [("unknown-resource-type", "obs.ndjson", (int?)2), ("unknown-resource-type", "x.json", null)]);
+    }
+
     [Fact]
     public void GivenSingleResourceFile_WhenBuilt_ThenEntryCoversWholeFile()
     {
         using var folder = new TestFolder().Write("Patient/p1.json", """{"resourceType":"Patient","id":"p1"}""");
 
-        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None);
+        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None);
 
         CatalogEntry entry = catalog.Entries.ShouldHaveSingleItem();
         entry.ShouldBe(new CatalogEntry("Patient", "p1", "Patient/p1.json", 0, folder.ReadBytes("Patient/p1.json").Length, null, false));
@@ -32,7 +50,7 @@ public class FolderCatalogBuilderTests
             "obs.ndjson",
             "{\"resourceType\":\"Observation\",\"id\":\"o1\"}\r\n\r\n{\"resourceType\":\"Observation\",\"id\":\"o2\"}\n");
 
-        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None);
+        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None);
 
         catalog.Entries.Select(e => (e.Id, e.Line)).ShouldBe([("o1", (int?)1), ("o2", 3)]);
         byte[] bytes = folder.ReadBytes("obs.ndjson");
@@ -57,7 +75,7 @@ public class FolderCatalogBuilderTests
             }
             """);
 
-        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None);
+        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None);
 
         catalog.ContainerBundles.ShouldBe(1);
         catalog.Entries.Select(e => $"{e.ResourceType}/{e.Id}").ShouldBe(["Patient/a", "Encounter/e1"]);
@@ -75,7 +93,7 @@ public class FolderCatalogBuilderTests
             .Write("bad.json", """{"resourceType":"Patient", "id": """)
             .Write("good.json", """{"resourceType":"Patient","id":"ok"}""");
 
-        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None);
+        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None);
 
         catalog.Entries.ShouldHaveSingleItem().Id.ShouldBe("ok");
         CatalogDiagnostic diagnostic = catalog.Diagnostics.ShouldHaveSingleItem();
@@ -88,7 +106,7 @@ public class FolderCatalogBuilderTests
     {
         using var folder = new TestFolder().Write("config.json", """{"name":"not fhir"}""");
 
-        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None);
+        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None);
 
         catalog.Entries.ShouldBeEmpty();
         catalog.Diagnostics.ShouldHaveSingleItem().Code.ShouldBe("not-a-resource");
@@ -101,7 +119,7 @@ public class FolderCatalogBuilderTests
             "patients.ndjson",
             "{\"resourceType\":\"Patient\",\"id\":\"p1\",\"gender\":\"male\"}\n{\"resourceType\":\"Patient\",\"id\":\"p1\",\"gender\":\"female\"}\n");
 
-        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None);
+        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None);
 
         catalog.Entries.ShouldHaveSingleItem().Line.ShouldBe(1);
         CatalogDiagnostic diagnostic = catalog.Diagnostics.ShouldHaveSingleItem();
@@ -115,8 +133,8 @@ public class FolderCatalogBuilderTests
     {
         using var folder = new TestFolder().Write("x.json", """{"resourceType":"Basic"}""");
 
-        CatalogEntry first = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None).Entries.ShouldHaveSingleItem();
-        CatalogEntry second = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None).Entries.ShouldHaveSingleItem();
+        CatalogEntry first = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None).Entries.ShouldHaveSingleItem();
+        CatalogEntry second = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None).Entries.ShouldHaveSingleItem();
 
         first.HasSyntheticId.ShouldBeTrue();
         first.Id.ShouldStartWith("synthetic-");
@@ -131,7 +149,7 @@ public class FolderCatalogBuilderTests
             .Write("notes.txt", "not json")
             .Write("p.json", """{"resourceType":"Patient","id":"p"}""");
 
-        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, CancellationToken.None);
+        FolderCatalog catalog = FolderCatalogBuilder.Build(folder.Path, ValidTypes, CancellationToken.None);
 
         catalog.Entries.ShouldHaveSingleItem().Id.ShouldBe("p");
         catalog.FilesScanned.ShouldBe(1);

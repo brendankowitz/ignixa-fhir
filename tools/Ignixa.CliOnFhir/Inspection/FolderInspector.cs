@@ -16,40 +16,62 @@ public static class FolderInspector
     /// <summary>Diagnostics listed individually as issues; the rest are counted and reported as omitted.</summary>
     public const int DefaultIssueLimit = 20;
 
-    public static ToolEnvelope<FolderInspection> Inspect(FolderSession session, int issueLimit = DefaultIssueLimit)
+    /// <summary>
+    /// Summarizes the folder from its catalog alone; no index is built unless
+    /// <paramref name="buildIndexes"/> is set, which exists to measure indexing cost.
+    /// </summary>
+    public static ToolEnvelope<FolderInspection> Inspect(FolderSession session, int issueLimit = DefaultIssueLimit, bool buildIndexes = false)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentOutOfRangeException.ThrowIfNegative(issueLimit);
 
-        FolderIndex index = session.Index;
-        List<CatalogDiagnostic> diagnostics = [.. index.Catalog.Diagnostics, .. index.Diagnostics];
+        FolderCatalog catalog = session.Catalog;
+        List<ResourceTypeCount> resourceTypes =
+        [
+            .. catalog.Entries
+                .GroupBy(entry => entry.ResourceType, StringComparer.Ordinal)
+                .Select(group => new ResourceTypeCount(group.Key, group.Count()))
+                .OrderByDescending(count => count.Count)
+                .ThenBy(count => count.ResourceType, StringComparer.Ordinal),
+        ];
+
+        List<CatalogDiagnostic> diagnostics = [.. catalog.Diagnostics];
+        IndexFacts? indexFacts = null;
+        DateTimeOffset builtAt = catalog.BuiltAt;
+        if (buildIndexes)
+        {
+            List<ResourceTypeIndex> indexes = [.. resourceTypes.Select(count => session.GetIndex(count.ResourceType))];
+            diagnostics.AddRange(indexes.SelectMany(index => index.Diagnostics));
+            indexFacts = new IndexFacts(
+                indexes.Sum(index => index.IndexEntryCount),
+                indexes.Sum(index => index.BuildMilliseconds),
+                [.. indexes.Select(index => new TypeIndexFacts(index.ResourceType, index.Resources.Count, index.IndexEntryCount, index.BuildMilliseconds))]);
+            builtAt = indexes.Select(index => index.BuiltAt).Prepend(builtAt).Max();
+        }
 
         var facts = new FolderInspection(
-            index.Catalog.RootPath,
+            catalog.RootPath,
             session.Schema.Version.ToString(),
-            index.Catalog.FilesScanned,
-            index.Catalog.FilesSkipped,
-            index.Catalog.ContainerBundles,
-            index.ResourceCount,
-            index.ByResourceType.TryGetValue("Patient", out IReadOnlyList<IndexedResource>? patients) ? patients.Count : 0,
-            index.ByResourceType.Values.Sum(list => list.Count(resource => resource.Entry.HasSyntheticId)),
-            index.IndexEntryCount,
-            [.. index.ByResourceType
-                .Select(pair => new ResourceTypeCount(pair.Key, pair.Value.Count))
-                .OrderByDescending(count => count.Count)
-                .ThenBy(count => count.ResourceType, StringComparer.Ordinal)],
+            catalog.FilesScanned,
+            catalog.FilesSkipped,
+            catalog.ContainerBundles,
+            catalog.Entries.Count,
+            resourceTypes.FirstOrDefault(count => count.ResourceType == "Patient")?.Count ?? 0,
+            catalog.Entries.Count(entry => entry.HasSyntheticId),
+            resourceTypes,
             diagnostics
                 .GroupBy(diagnostic => diagnostic.Code, StringComparer.Ordinal)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal),
-            session.Stats);
+            session.CatalogStats,
+            indexFacts);
 
         List<IssueItem> issues = [.. diagnostics.Take(issueLimit).Select(ToIssue)];
         List<OmittedItem> omitted = diagnostics.Count > issueLimit
             ? [new OmittedItem($"{diagnostics.Count - issueLimit} more diagnostics", "limit")]
             : [];
 
-        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(index.BuiltAt, StaleFiles: null));
+        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(builtAt, StaleFiles: null));
     }
 
     private static IssueItem ToIssue(CatalogDiagnostic diagnostic) => new(

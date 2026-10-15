@@ -27,10 +27,17 @@ internal static class InspectCommand
             DefaultValueFactory = _ => FolderInspector.DefaultIssueLimit,
         };
 
+        var buildIndexOption = new Option<bool>("--build-index")
+        {
+            Description = "Also build the search index for every resource type and report entry counts and build times "
+                + "(measurement aid; inspect itself answers from the catalog without indexing)",
+        };
+
         var command = new Command("inspect", "Overview of a folder of FHIR data: resource types, counts and problems found");
         command.Arguments.Add(pathArgument);
         command.Options.Add(versionOption);
         command.Options.Add(issueLimitOption);
+        command.Options.Add(buildIndexOption);
 
         command.SetAction(parseResult =>
         {
@@ -40,7 +47,7 @@ internal static class InspectCommand
                 FhirSchemas.Resolve(parseResult.GetValue(versionOption)!),
                 loggerFactory);
 
-            ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session, parseResult.GetValue(issueLimitOption));
+            ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session, parseResult.GetValue(issueLimitOption), parseResult.GetValue(buildIndexOption));
             Console.Out.WriteLine(JsonSerializer.Serialize(envelope, OutputOptions));
             return 0;
         });

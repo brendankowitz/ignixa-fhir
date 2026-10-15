@@ -21,16 +21,24 @@ public static class FolderCatalogBuilder
 
     private static readonly HashSet<string> NdjsonExtensions = new(StringComparer.OrdinalIgnoreCase) { ".ndjson", ".jsonl" };
 
-    public static FolderCatalog Build(string rootPath, CancellationToken cancellationToken)
+    /// <summary>Walks <paramref name="rootPath"/> and locates every resource in it.</summary>
+    /// <param name="rootPath">Folder to catalogue.</param>
+    /// <param name="validResourceTypes">
+    /// Resource type names valid for the FHIR version in use. Entries of any other type are not
+    /// catalogued and produce an <c>unknown-resource-type</c> diagnostic.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the walk between files.</param>
+    public static FolderCatalog Build(string rootPath, IReadOnlySet<string> validResourceTypes, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+        ArgumentNullException.ThrowIfNull(validResourceTypes);
         string root = Path.GetFullPath(rootPath);
         if (!Directory.Exists(root))
         {
             throw new DirectoryNotFoundException($"Folder '{root}' does not exist.");
         }
 
-        var state = new BuildState(root);
+        var state = new BuildState(root, validResourceTypes);
         foreach (string file in EnumerateFiles(root))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -51,7 +59,7 @@ public static class FolderCatalogBuilder
             }
         }
 
-        return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles);
+        return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles, DateTimeOffset.UtcNow);
     }
 
     private static IEnumerable<string> EnumerateFiles(string root)
@@ -120,7 +128,7 @@ public static class FolderCatalogBuilder
         }
     }
 
-    private sealed class BuildState(string root)
+    private sealed class BuildState(string root, IReadOnlySet<string> validResourceTypes)
     {
         private readonly Dictionary<(string ResourceType, string Id), CatalogEntry> _seen = [];
 
@@ -142,6 +150,12 @@ public static class FolderCatalogBuilder
             if (string.IsNullOrEmpty(resourceType))
             {
                 Diagnostics.Add(new CatalogDiagnostic("not-a-resource", relativePath, line, "JSON object has no resourceType."));
+                return;
+            }
+
+            if (!validResourceTypes.Contains(resourceType))
+            {
+                Diagnostics.Add(new CatalogDiagnostic("unknown-resource-type", relativePath, line, $"'{resourceType}' is not a resource type of the selected FHIR version."));
                 return;
             }
 
