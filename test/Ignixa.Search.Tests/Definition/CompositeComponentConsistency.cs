@@ -23,11 +23,16 @@ namespace Ignixa.Search.Tests.Definition;
 internal static class CompositeComponentConsistency
 {
     /// <summary>
-    /// The verdict for <paramref name="composite"/>: <see cref="CompositeConsistencyVerdict.Inconsistent"/> with the
-    /// component at fault, <see cref="CompositeConsistencyVerdict.Unresolved"/> with the index of a component whose definition
-    /// did not resolve, <see cref="CompositeConsistencyVerdict.Unknown"/> when the analyzer cannot type a component's
-    /// expression (never to be read as consistent), or <see cref="CompositeConsistencyVerdict.Consistent"/>.
+    /// The verdict for <paramref name="composite"/>, from every component: <see cref="CompositeConsistencyVerdict.Inconsistent"/>
+    /// with each component at fault when any is, otherwise <see cref="CompositeConsistencyVerdict.Unresolved"/> with the
+    /// comma-separated indices of the components whose definitions did not resolve, otherwise
+    /// <see cref="CompositeConsistencyVerdict.Unknown"/> when the analyzer cannot type a component's expression (never to be
+    /// read as consistent), otherwise <see cref="CompositeConsistencyVerdict.Consistent"/>.
     /// </summary>
+    /// <remarks>
+    /// Every component is checked before a verdict is chosen, so an unresolved or untyped component cannot hide an
+    /// inconsistent one: those two verdicts are excused by the census tables, an inconsistent one never is.
+    /// </remarks>
     public static (CompositeConsistencyVerdict Verdict, string? Detail) Check(
         SearchParameterInfo composite,
         FhirPathAnalyzer analyzer,
@@ -37,37 +42,55 @@ internal static class CompositeComponentConsistency
         ArgumentNullException.ThrowIfNull(analyzer);
         ArgumentNullException.ThrowIfNull(converters);
 
-        for (int index = 0; index < composite.Component.Count; index++)
+        List<(CompositeConsistencyVerdict Verdict, string Detail)> findings = [.. Enumerable.Range(0, composite.Component.Count)
+            .SelectMany(index => CheckComponent(composite, index, analyzer, converters))];
+
+        foreach (CompositeConsistencyVerdict verdict in new[] { CompositeConsistencyVerdict.Inconsistent, CompositeConsistencyVerdict.Unresolved, CompositeConsistencyVerdict.Unknown })
         {
-            SearchParameterComponentInfo component = composite.Component[index];
-            if (component.ResolvedSearchParameter is not { } declared || string.IsNullOrWhiteSpace(component.Expression))
+            List<string> details = [.. findings.Where(finding => finding.Verdict == verdict).Select(finding => finding.Detail)];
+            if (details.Count > 0)
             {
-                return (CompositeConsistencyVerdict.Unresolved, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            }
-
-            foreach (string resourceType in composite.BaseResourceTypes)
-            {
-                string expression = $"({composite.Expression}).{component.Expression}";
-                FhirPathTypeSet types = analyzer.InferTypes(expression, resourceType);
-                if (types.HasUnknown || types.Types.Count == 0)
-                {
-                    return (CompositeConsistencyVerdict.Unknown, $"'{expression}' on {resourceType} could not be typed ({types})");
-                }
-
-                // An element type with neither a converter to the declared kind nor an inferable kind is skipped by the
-                // indexer, so it contributes nothing.
-                Type declaredValueType = ElementSearchIndexer.GetSearchValueTypeForSearchParamType(declared.Type);
-                List<string> kinds = [.. types.Types.Select(type => converters.Contains((type.TypeName, declaredValueType))
-                    ? declared.Type.ToString()
-                    : ElementSearchIndexer.InferSearchParamTypeFromFhirType(type.TypeName)?.ToString() ?? $"nothing ({type.TypeName})")];
-                if (!kinds.Contains(declared.Type.ToString()))
-                {
-                    return (CompositeConsistencyVerdict.Inconsistent,
-                        $"component {index} ('{component.Expression}') is declared {declared.Type} by '{declared.Code}' but indexes as {string.Join(" | ", kinds.Distinct())} on {resourceType}");
-                }
+                return (verdict, string.Join(verdict == CompositeConsistencyVerdict.Unresolved ? "," : "; ", details.Distinct()));
             }
         }
 
         return (CompositeConsistencyVerdict.Consistent, null);
+    }
+
+    private static IEnumerable<(CompositeConsistencyVerdict Verdict, string Detail)> CheckComponent(
+        SearchParameterInfo composite,
+        int index,
+        FhirPathAnalyzer analyzer,
+        IReadOnlySet<(string FhirType, Type SearchValueType)> converters)
+    {
+        SearchParameterComponentInfo component = composite.Component[index];
+        if (component.ResolvedSearchParameter is not { } declared || string.IsNullOrWhiteSpace(component.Expression))
+        {
+            yield return (CompositeConsistencyVerdict.Unresolved, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            yield break;
+        }
+
+        foreach (string resourceType in composite.BaseResourceTypes)
+        {
+            string expression = $"({composite.Expression}).{component.Expression}";
+            FhirPathTypeSet types = analyzer.InferTypes(expression, resourceType);
+            if (types.HasUnknown || types.Types.Count == 0)
+            {
+                yield return (CompositeConsistencyVerdict.Unknown, $"'{expression}' on {resourceType} could not be typed ({types})");
+                continue;
+            }
+
+            // An element type with neither a converter to the declared kind nor an inferable kind is skipped by the
+            // indexer, so it contributes nothing.
+            Type declaredValueType = ElementSearchIndexer.GetSearchValueTypeForSearchParamType(declared.Type);
+            List<string> kinds = [.. types.Types.Select(type => converters.Contains((type.TypeName, declaredValueType))
+                ? declared.Type.ToString()
+                : ElementSearchIndexer.InferSearchParamTypeFromFhirType(type.TypeName)?.ToString() ?? $"nothing ({type.TypeName})")];
+            if (!kinds.Contains(declared.Type.ToString()))
+            {
+                yield return (CompositeConsistencyVerdict.Inconsistent,
+                    $"component {index} ('{component.Expression}') is declared {declared.Type} by '{declared.Code}' but indexes as {string.Join(" | ", kinds.Distinct())} on {resourceType}");
+            }
+        }
     }
 }

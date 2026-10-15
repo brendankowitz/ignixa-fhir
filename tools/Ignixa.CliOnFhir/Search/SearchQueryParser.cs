@@ -112,26 +112,11 @@ public sealed class SearchQueryParser
         return parameters.Any(parameter => parameter.Category == ParameterCategory.Count) ? options.MaxItemCount : null;
     }
 
+    /// <remarks>
+    /// Only the pipeline's request faults (<see cref="FhirException"/>) are reported as the caller's; anything else is a
+    /// defect and propagates unchanged rather than being relabelled as unparseable input.
+    /// </remarks>
     private SearchOptions Build(string resourceType, List<QueryParameter> parameters, List<ParameterTrace> traces)
-    {
-        try
-        {
-            return BuildChecked(resourceType, parameters, traces);
-        }
-        catch (ToolRequestException)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // The parsing pipeline throws arbitrary exception types for input it cannot handle (for example a
-            // KeyNotFoundException for '_filter'), so name the parameter(s) that fail on their own.
-            traces.Clear();
-            throw NamedParseFailure(resourceType, parameters, ex);
-        }
-    }
-
-    private SearchOptions BuildChecked(string resourceType, List<QueryParameter> parameters, List<ParameterTrace> traces)
     {
         try
         {
@@ -165,27 +150,6 @@ public sealed class SearchQueryParser
         }
 
         return failing.Count > 0 ? string.Join(", ", failing) : null;
-    }
-
-    private ToolRequestException NamedParseFailure(string resourceType, List<QueryParameter> parameters, Exception failure)
-    {
-        List<string> offenders = [];
-        foreach (QueryParameter parameter in parameters)
-        {
-            try
-            {
-                _builder.Build(resourceType, [parameter], _schema);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                offenders.Add($"'{parameter.Name}={parameter.Value}' ({ex.GetType().Name})");
-            }
-        }
-
-        string named = offenders.Count > 0
-            ? string.Join(", ", offenders)
-            : $"the query ({failure.GetType().Name}: {failure.Message})";
-        return ToolRequestException.Error(SearchFailures.InvalidRequestCode, $"Could not parse {named}; check the parameter name, modifier and value syntax.");
     }
 
     private static void AddSummary(string? summary, List<QueryParameter> parameters)

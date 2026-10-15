@@ -13,6 +13,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.InMemory;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
+using Ignixa.Search.Tests.Indexing;
 using Ignixa.Specification.Extensions;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -74,8 +75,9 @@ public class CompositeComponentConsistencyTests
             .ShouldBe([.. Untyped.Keys.Where(key => key.Version == version).Select(key => key.Url)], ignoreOrder: true, customMessage: "an Untyped entry the analyzer now types must be removed");
         HashSet<(FhirVersion, string, int)> documentedUnresolved = [.. KnownCompositeComponentDivergences.All.Select(divergence => divergence.Key)];
         verdicts.Where(row => row.Verdict == CompositeConsistencyVerdict.Unresolved)
-            .Where(row => !documentedUnresolved.Contains((version, row.Url, int.Parse(row.Detail!, System.Globalization.CultureInfo.InvariantCulture))))
-            .Select(row => $"{row.Url} component {row.Detail}")
+            .SelectMany(row => row.Detail!.Split(',').Select(index => (row.Url, Index: int.Parse(index, System.Globalization.CultureInfo.InvariantCulture))))
+            .Where(row => !documentedUnresolved.Contains((version, row.Url, row.Index)))
+            .Select(row => $"{row.Url} component {row.Index}")
             .ShouldBeEmpty("an unresolved component must be recorded in KnownCompositeComponentDivergences");
         verdicts.Where(row => row.Verdict == CompositeConsistencyVerdict.Inconsistent).Select(row => row.Url)
             .ShouldBe(
@@ -125,6 +127,61 @@ public class CompositeComponentConsistencyTests
 
         verdict.ShouldBe(CompositeConsistencyVerdict.Inconsistent);
         detail.ShouldNotBeNull().ShouldContain("component 0 ('code') is declared Reference");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GivenAnUnresolvedOrUntypedComponentBeforeAnInconsistentOne_WhenChecked_ThenTheInconsistencyIsStillReported(bool unresolved)
+    {
+        // Regression: the oracle returned at the first component that was not consistent, so an earlier unresolved or
+        // untyped component - verdicts the census excuses - hid a later inconsistent one.
+        IFhirSchemaProvider schema = FhirVersion.R4.GetSchemaProvider();
+        SearchParameterDefinitionManager definitions = Definitions(FhirVersion.R4);
+        definitions.TryGetSearchParameter("DocumentReference", "relatesto", out SearchParameterInfo relatesTo).ShouldBeTrue();
+        SearchParameterComponentInfo first = unresolved
+            ? new SearchParameterComponentInfo(new Uri("http://example.org/SearchParameter/missing"), "target")
+            : new SearchParameterComponentInfo(relatesTo.Url, "%resource.nothing") { ResolvedSearchParameter = relatesTo };
+        var composite = new SearchParameterInfo(
+            "masked",
+            "masked",
+            SearchParamType.Composite,
+            new Uri("http://example.org/SearchParameter/masked"),
+            [first, new SearchParameterComponentInfo(relatesTo.Url, "code") { ResolvedSearchParameter = relatesTo }],
+            "DocumentReference.relatesTo",
+            baseResourceTypes: ["DocumentReference"]);
+
+        (CompositeConsistencyVerdict verdict, string? detail) = CompositeComponentConsistency.Check(composite, new FhirPathAnalyzer(schema), Converters(schema));
+
+        verdict.ShouldBe(CompositeConsistencyVerdict.Inconsistent);
+        detail.ShouldNotBeNull().ShouldContain("component 1 ('code') is declared Reference");
+    }
+
+    [Fact]
+    public void GivenEveryShippedTableEntry_WhenSearched_ThenItIsRefusedBeforeInMemorySearchReadsTheTable()
+    {
+        // Guard on the documented reach of KnownInconsistentComposites: none of its entries reaches the interpreter's
+        // check, so the table is a backstop. A new entry needs a row here saying where it is refused.
+        Dictionary<(FhirVersion, string), (string ResourceType, string Query, bool RefusedByBinder)> refusals = new()
+        {
+            [(FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Composition-section-code-text")] = ("Composition", "section-code-text=10154-3$chief", true),
+            [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/Composition-section-code-text")] = ("Composition", "section-code-text=10154-3$chief", true),
+            [(FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Encounter-location-period")] = ("Encounter", "location-period=Location/l1$ge2020", false),
+        };
+
+        refusals.Keys.ShouldBe(KnownInconsistentComposites.All.Keys, ignoreOrder: true);
+        foreach (((FhirVersion version, string url), (string resourceType, string query, bool refusedByBinder)) in refusals)
+        {
+            VersionedCorpus corpus = VersionedCorpus.For(version);
+            if (refusedByBinder)
+            {
+                Should.Throw<SearchOperationNotSupportedException>(() => corpus.Options(resourceType, query), $"{version} {url}");
+            }
+            else
+            {
+                corpus.Options(resourceType, query).UnsupportedParams.ShouldNotBeEmpty($"{version} {url}");
+            }
+        }
     }
 
     [Fact]

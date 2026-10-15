@@ -211,6 +211,15 @@ namespace Ignixa.Search {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Composite search parameter &apos;{0}&apos; cannot be searched: component {1} (&apos;{2}&apos;) is of type {3}, which has no searchable value..
+        /// </summary>
+        internal static string CompositeComponentTypeNotSearchable {
+            get {
+                return ResourceManager.GetString("CompositeComponentTypeNotSearchable", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Composite search parameter &apos;{0}&apos; component {1} (definition: {2}) is not properly resolved. This indicates the search parameter was not properly built during initialization..
         /// </summary>
         internal static string CompositeSearchParameterComponentNotResolved {
@@ -1315,6 +1324,15 @@ namespace Ignixa.Search {
         internal static string WeakETagFormatRequired {
             get {
                 return ResourceManager.GetString("WeakETagFormatRequired", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Search parameters of type {0} cannot be searched by value..
+        /// </summary>
+        internal static string SearchParamTypeNotSearchableByValue {
+            get {
+                return ResourceManager.GetString("SearchParamTypeNotSearchableByValue", resourceCulture);
             }
         }
     }

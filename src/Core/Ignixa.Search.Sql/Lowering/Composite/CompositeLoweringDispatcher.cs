@@ -9,8 +9,9 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 /// <summary>
 /// Dispatches a composite's components to their composite lowering rule by the runtime types of the wrapped
 /// ISearchValues, ordering by Position first since callers need not pass them in order. TokenToken,
-/// TokenNumberNumber, TokenString, TokenQuantity, TokenDateTime, and ReferenceToken (either order) are
-/// wired; any other combination throws — a loud gap over a silent wrong answer.
+/// TokenNumberNumber, TokenString, TokenQuantity, TokenDateTime, and ReferenceToken (either value order; the rule then
+/// matches each value's position against the declared component types) are wired; any other combination throws — a
+/// loud gap over a silent wrong answer.
 /// </summary>
 internal static class CompositeLoweringDispatcher
 {

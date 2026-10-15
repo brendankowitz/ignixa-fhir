@@ -19,11 +19,17 @@ namespace Ignixa.Search.Definition;
 /// <c>Ignixa.Search.Tests</c>' consistency census runs <see cref="CompositeComponentConsistency"/> over every shipped
 /// version and fails unless its findings equal this table exactly, so a regenerated definition set cannot drift from it.
 /// Composites registered later (from packages, through <see cref="SearchParameterDefinitionBuilder"/>) are not checked.
+/// <para>
+/// No shipped entry reaches the in-memory interpreter's check today, so the table is a backstop: the binder refuses
+/// <c>Composition-section-code-text</c> because its second component is <c>Special</c>, and the options builder records
+/// R5 <c>Encounter-location-period</c> as unsupported because a component does not resolve. It catches an entry whose
+/// earlier refusal is lifted, and composites built by hand.
+/// </para>
 /// </remarks>
 internal static class KnownInconsistentComposites
 {
     private const string SectionText =
-        "component 1 ('section.text') is declared String but selects a Narrative, which the indexer cannot convert, so the composite is never indexed";
+        "component 1 ('section.text') is declared Special and selects a Narrative, which no converter indexes, so the composite is never indexed";
 
     /// <summary>The known-inconsistent composites by version and canonical URL (ordinal), with why each cannot match.</summary>
     public static IReadOnlyDictionary<(FhirVersion Version, string Url), string> All { get; } =

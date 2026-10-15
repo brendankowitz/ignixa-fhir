@@ -226,6 +226,21 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
                     searchParameter.Code,
                     index,
                     component.DefinitionUrl?.ToString() ?? "unknown"));
+
+            // A Special component (R5/R6 Composition-section-code-text's section.text, a Narrative) has no value
+            // grammar and no converter, so nothing is indexed for it. Refused here, before the value-shape inference
+            // below could read a '|' in the value as a token and answer a query no index entry can match.
+            if (resolved.Type == SearchParamType.Special)
+            {
+                throw new SearchOperationNotSupportedException(string.Format(
+                    CultureInfo.InvariantCulture,
+                    Resources.CompositeComponentTypeNotSearchable,
+                    searchParameter.Code,
+                    index,
+                    resolved.Code,
+                    resolved.Type));
+            }
+
             SearchParameterInfo effective = InferEffectiveParameter(
                 resolved,
                 syntax.Components[index].RawText);
