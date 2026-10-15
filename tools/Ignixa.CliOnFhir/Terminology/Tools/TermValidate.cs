@@ -23,9 +23,9 @@ public static class TermValidate
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return TerminologyCall.RunAsync(
+        return TerminologyCall.RunAsync<TermValidateFacts>(
             session,
-            state =>
+            async state =>
             {
                 string checkedCode = TermArguments.Required(code, "code");
                 string? checkedSystem = TermArguments.Optional(system, "system");
@@ -35,9 +35,14 @@ public static class TermValidate
                     throw ToolRequestException.Error("invalid-parameter", "Give 'system' (to check the code against that CodeSystem), 'valueSet', or both.");
                 }
 
-                return checkedValueSet is null
-                    ? AgainstSystem(state.Store, checkedSystem!, checkedCode, TermArguments.Optional(display, "display"), TermArguments.Optional(version, "version"))
-                    : AgainstValueSet(state.Store, checkedValueSet, checkedSystem, checkedCode, TermArguments.Optional(display, "display"), TermArguments.Optional(version, "version"));
+                string? checkedDisplay = TermArguments.Optional(display, "display");
+                string? checkedVersion = TermArguments.Optional(version, "version");
+                TerminologyAnswer<TermValidateFacts> local = checkedValueSet is null
+                    ? AgainstSystem(state.Store, checkedSystem!, checkedCode, checkedDisplay, checkedVersion)
+                    : AgainstValueSet(state.Store, checkedValueSet, checkedSystem, checkedCode, checkedDisplay, checkedVersion);
+                return session.Terminology.Options.TxServer is { } tx && TxFallback.ValidationMissing(local.Facts.Reason)
+                    ? await TxAnswers.ValidateAsync(tx, checkedCode, checkedSystem, checkedDisplay, checkedValueSet, checkedVersion, TxFallback.Why(local.Absent, local.Facts.Reason), cancellationToken)
+                    : local;
             },
             cancellationToken);
     }

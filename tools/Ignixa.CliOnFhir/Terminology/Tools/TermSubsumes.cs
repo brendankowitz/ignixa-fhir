@@ -25,9 +25,19 @@ public static class TermSubsumes
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return TerminologyCall.RunAsync(
+        return TerminologyCall.RunAsync<TermSubsumesFacts>(
             session,
-            state => Answer(state.Store, TermArguments.Required(system, "system"), TermArguments.Required(codeA, "codeA"), TermArguments.Required(codeB, "codeB"), TermArguments.Optional(version, "version")),
+            async state =>
+            {
+                string checkedSystem = TermArguments.Required(system, "system");
+                string a = TermArguments.Required(codeA, "codeA");
+                string b = TermArguments.Required(codeB, "codeB");
+                string? checkedVersion = TermArguments.Optional(version, "version");
+                TerminologyAnswer<TermSubsumesFacts> local = Answer(state.Store, checkedSystem, a, b, checkedVersion);
+                return session.Terminology.Options.TxServer is { } tx && TxFallback.SystemMissing(local.Facts.Outcome)
+                    ? await TxAnswers.SubsumesAsync(tx, checkedSystem, a, b, checkedVersion, TxFallback.Why(local.Absent), cancellationToken)
+                    : local;
+            },
             cancellationToken);
     }
 

@@ -10,6 +10,7 @@ namespace Ignixa.CliOnFhir.Terminology.Tools;
 /// <param name="HeapBytes">Managed heap after the most recent load.</param>
 /// <param name="WorkingSetBytes">Process working set after the most recent load.</param>
 /// <param name="Offline">Whether the network is disabled.</param>
+/// <param name="TxServer">The remote terminology server asked for content not loaded locally; null when none is configured.</param>
 /// <param name="Sources">The loaded sources in precedence order (the folder, then packages in load order).</param>
 /// <param name="Kind">What is listed: <c>codeSystems</c>, <c>valueSets</c> or <c>conceptMaps</c>.</param>
 /// <param name="Package">The source the listing is limited to, when given.</param>
@@ -24,6 +25,7 @@ public sealed record TermListFacts(
     long HeapBytes,
     long WorkingSetBytes,
     bool Offline,
+    string? TxServer,
     IReadOnlyList<TermSourceSummary> Sources,
     string Kind,
     string? Package,

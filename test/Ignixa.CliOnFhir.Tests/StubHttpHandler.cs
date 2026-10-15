@@ -8,10 +8,28 @@ using System.Net;
 namespace Ignixa.CliOnFhir.Tests;
 
 /// <summary>An HTTP handler that answers from a function and records every request; tests never reach the network.</summary>
-internal sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+internal sealed class StubHttpHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
 {
+    private readonly List<HttpRequestMessage> _messages = [];
     private readonly List<Uri> _requests = [];
     private readonly Lock _gate = new();
+
+    public StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
+        : this((request, _) => Task.FromResult(respond(request)))
+    {
+    }
+
+    /// <summary>Every request received, with its method and headers.</summary>
+    public IReadOnlyList<HttpRequestMessage> Messages
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _messages];
+            }
+        }
+    }
 
     public IReadOnlyList<Uri> Requests
     {
@@ -36,8 +54,9 @@ internal sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessa
         lock (_gate)
         {
             _requests.Add(request.RequestUri!);
+            _messages.Add(request);
         }
 
-        return Task.FromResult(respond(request));
+        return respond(request, cancellationToken);
     }
 }

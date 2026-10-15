@@ -25,9 +25,20 @@ public static class TermTranslate
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return TerminologyCall.RunAsync(
+        return TerminologyCall.RunAsync<TermTranslateFacts>(
             session,
-            state => Answer(state.Store, TermArguments.Required(system, "system"), TermArguments.Required(code, "code"), TermArguments.Optional(targetSystem, "targetSystem"), TermArguments.Optional(conceptMap, "conceptMap")),
+            async state =>
+            {
+                string checkedSystem = TermArguments.Required(system, "system");
+                string checkedCode = TermArguments.Required(code, "code");
+                string? checkedTarget = TermArguments.Optional(targetSystem, "targetSystem");
+                string? checkedMap = TermArguments.Optional(conceptMap, "conceptMap");
+                TerminologyAnswer<TermTranslateFacts> local = Answer(state.Store, checkedSystem, checkedCode, checkedTarget, checkedMap);
+                bool missing = local.Facts.Outcome is NoMapForSystem or ConceptMapNotLoaded;
+                return session.Terminology.Options.TxServer is { } tx && missing
+                    ? await TxAnswers.TranslateAsync(tx, checkedSystem, checkedCode, checkedTarget, checkedMap, session.Schema.Version >= Abstractions.FhirVersion.R5, TxFallback.Why(local.Absent, local.Facts.Outcome), cancellationToken)
+                    : local;
+            },
             cancellationToken);
     }
 

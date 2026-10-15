@@ -8,6 +8,7 @@ using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Terminology;
 using Ignixa.CliOnFhir.Terminology.Packages;
+using Ignixa.CliOnFhir.Terminology.Remote;
 
 namespace Ignixa.CliOnFhir.Commands;
 
@@ -31,6 +32,13 @@ internal sealed class TerminologyCliOptions
         Description = "The standard FHIR package cache to read packages from, read only (default: ~/.fhir/packages when it exists)",
     };
 
+    public Option<string?> TxServer { get; } = new("--tx-server")
+    {
+        Description = "A FHIR terminology server (for example https://tx.fhir.org/r4) asked only for code systems, ValueSets and ConceptMaps "
+            + "not loaded locally (SNOMED CT, LOINC, ...). Off by default; requests carry only codes, systems, versions, displays, urls and filter text, "
+            + "never resource content. Not with --offline",
+    };
+
     public void AddTo(Command command)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -38,8 +46,25 @@ internal sealed class TerminologyCliOptions
         command.Options.Add(Packages);
         command.Options.Add(Offline);
         command.Options.Add(FhirPackageCache);
+        command.Options.Add(TxServer);
         command.Validators.Add(result =>
         {
+            if (result.GetValue(TxServer) is { } server)
+            {
+                if (result.GetValue(Offline))
+                {
+                    result.AddError("--tx-server and --offline cannot be used together: --offline disables the network.");
+                }
+                else if (!Uri.TryCreate(server, UriKind.Absolute, out Uri? uri))
+                {
+                    result.AddError($"--tx-server {server}: not an absolute URL.");
+                }
+                else if (TxServerClient.Validate(uri) is { } problem)
+                {
+                    result.AddError($"--tx-server {server}: {problem}");
+                }
+            }
+
             foreach (string package in result.GetValue(Packages) ?? [])
             {
                 try
@@ -67,6 +92,7 @@ internal sealed class TerminologyCliOptions
             Store = root.RootDirectory is { } directory ? PackageStore.Under(directory) : null,
             FhirPackageCache = fhirCache,
             Registry = parseResult.GetValue(Offline) ? null : new FhirPackageRegistry(),
+            TxServer = parseResult.GetValue(TxServer) is { } server ? new TxServerClient(new Uri(server)) : null,
         };
     }
 

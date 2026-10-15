@@ -58,7 +58,7 @@ public static class TermList
         List<TermResourceSummary> page = [.. items.Skip(offset).Take(pageSize)];
         (TermListFacts facts, int kept) = TermText.FitPage(
             page,
-            shown => new TermListFacts(state.InitialLoadMilliseconds, state.HeapBytes, state.WorkingSetBytes, session.Terminology.Options.Offline, sources, listed, package, filter, items.Count, offset, shown.Count, shown, usage),
+            shown => new TermListFacts(state.InitialLoadMilliseconds, state.HeapBytes, state.WorkingSetBytes, session.Terminology.Options.Offline, session.Terminology.Options.TxServer?.BaseUri.AbsoluteUri, sources, listed, package, filter, items.Count, offset, shown.Count, shown, usage),
             "resources",
             omitted);
         issues.AddRange(Paging.BeyondTotal(offset, items.Count, "resources"));

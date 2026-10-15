@@ -15,7 +15,19 @@ public static class TermLookup
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return TerminologyCall.RunAsync(session, state => Answer(state.Store, TermArguments.Required(system, "system"), TermArguments.Required(code, "code"), TermArguments.Optional(version, "version")), cancellationToken);
+        return TerminologyCall.RunAsync<TermLookupFacts>(
+            session,
+            async state =>
+            {
+                string checkedSystem = TermArguments.Required(system, "system");
+                string checkedCode = TermArguments.Required(code, "code");
+                string? checkedVersion = TermArguments.Optional(version, "version");
+                TerminologyAnswer<TermLookupFacts> local = Answer(state.Store, checkedSystem, checkedCode, checkedVersion);
+                return session.Terminology.Options.TxServer is { } tx && TxFallback.SystemMissing(local.Facts.Outcome)
+                    ? await TxAnswers.LookupAsync(tx, checkedSystem, checkedCode, checkedVersion, TxFallback.Why(local.Absent), cancellationToken)
+                    : local;
+            },
+            cancellationToken);
     }
 
     internal static TerminologyAnswer<TermLookupFacts> Answer(TerminologyStore store, string system, string code, string? version)

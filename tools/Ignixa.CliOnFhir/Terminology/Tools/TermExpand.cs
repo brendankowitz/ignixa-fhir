@@ -22,7 +22,19 @@ public static class TermExpand
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return TerminologyCall.RunAsync(session, state => Answer(state.Store, TermArguments.Required(valueSet, "valueSet"), TermArguments.Optional(filter, "filter"), count, offset), cancellationToken);
+        return TerminologyCall.RunAsync<TermExpandFacts>(
+            session,
+            async state =>
+            {
+                string checkedValueSet = TermArguments.Required(valueSet, "valueSet");
+                string? checkedFilter = TermArguments.Optional(filter, "filter");
+                TerminologyAnswer<TermExpandFacts> local = Answer(state.Store, checkedValueSet, checkedFilter, count, offset);
+                bool missing = local.Facts.Outcome != Expanded || local.Facts.Complete == false;
+                return session.Terminology.Options.TxServer is { } tx && missing
+                    ? await TxAnswers.ExpandAsync(tx, checkedValueSet, checkedFilter, Patients.Paging.Resolve(count, offset, []), offset, TxFallback.Why(local.Absent, local.Facts.Outcome == Expanded ? ValueSetExpansion.IncompleteCode : local.Facts.Outcome), cancellationToken)
+                    : local;
+            },
+            cancellationToken);
     }
 
     internal static AbsentItem NotLoadedAbsent(TerminologyStore store, CanonicalResolution<ValueSetEntry> resolution) => resolution.LoadedVersions.Count > 0

@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Terminology.Packages;
+using Ignixa.CliOnFhir.Terminology.Remote;
 
 namespace Ignixa.CliOnFhir.Terminology;
 
@@ -24,6 +25,12 @@ public sealed record TerminologyOptions
 
     /// <summary>The FHIR package registry client; null when the network is disabled (<c>--offline</c>).</summary>
     public FhirPackageRegistry? Registry { get; init; }
+
+    /// <summary>
+    /// The remote terminology server asked when the store cannot answer (<c>--tx-server</c>); null (the default) when there is
+    /// none, which <c>--offline</c> also requires.
+    /// </summary>
+    public TxServerClient? TxServer { get; init; }
 
     public bool Offline => Registry is null;
 }
