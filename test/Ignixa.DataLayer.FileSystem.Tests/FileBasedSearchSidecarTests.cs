@@ -78,8 +78,10 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
         await WriteIndexedAsync(WeightObservation);
         string sidecar = CorruptSidecar("Observation", "o1");
 
-        await Should.ThrowAsync<JsonException>(() => _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None).AsTask());
+        SidecarUnreadableException failure = await Should.ThrowAsync<SidecarUnreadableException>(() => _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None).AsTask());
 
+        failure.InnerException.ShouldBeOfType<JsonException>();
+        failure.Message.ShouldNotContain(_baseDirectory);
         _logger.Entries.ShouldContain(entry => entry.Level == LogLevel.Error && entry.Message.Contains(sidecar, StringComparison.Ordinal) && entry.Exception is JsonException);
     }
 
@@ -89,7 +91,7 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
         await WriteIndexedAsync(WeightObservation);
         CorruptSidecar("Observation", "o1");
 
-        await Should.ThrowAsync<JsonException>(() => _repository.GetAsync(new ResourceKey("Observation", "o1")).AsTask());
+        await Should.ThrowAsync<SidecarUnreadableException>(() => _repository.GetAsync(new ResourceKey("Observation", "o1")).AsTask());
     }
 
     [Fact]
@@ -98,7 +100,26 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
         await WriteIndexedAsync(WeightObservation);
         CorruptSidecar("Observation", "o1");
 
-        await Should.ThrowAsync<JsonException>(() => WriteIndexedAsync(WeightObservation));
+        await Should.ThrowAsync<SidecarUnreadableException>(() => WriteIndexedAsync(WeightObservation));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{\"SearchIndexes\":{\"status\":[{\"n_s\":\"FINAL\"}]}}")]
+    [InlineData("{not json")]
+    public async Task GivenASidecarThatIsNotMetadata_WhenSearched_ThenItSurfacesAsAServerFaultThatNamesNoFile(string content)
+    {
+        // Regression: a literal null sidecar threw InvalidOperationException, which the API reports as a 400 carrying the
+        // message - the sidecar's path. Every unreadable sidecar is now the same server fault.
+        await WriteIndexedAsync(WeightObservation);
+        string sidecar = CorruptSidecar("Observation", "o1", content);
+
+        SidecarUnreadableException failure = await Should.ThrowAsync<SidecarUnreadableException>(
+            () => _search.SearchAsync(Options("Observation", "status=final"), CancellationToken.None).AsTask());
+
+        failure.Message.ShouldNotContain(sidecar);
+        failure.Message.ShouldNotContain(_baseDirectory);
+        failure.InnerException.ShouldNotBeNull();
     }
 
     public void Dispose()
@@ -128,10 +149,10 @@ public sealed class FileBasedSearchSidecarTests : IDisposable
         return index;
     }
 
-    private string CorruptSidecar(string resourceType, string id)
+    private string CorruptSidecar(string resourceType, string id, string content = """{"TransactionId":"x","SearchIndexes":{"status":[{"n_s":"FINAL"}]}}""")
     {
         string sidecar = Directory.GetFiles(Path.Combine(_baseDirectory, "_internal", resourceType, id), "*.metadata.json").ShouldHaveSingleItem();
-        File.WriteAllText(sidecar, """{"TransactionId":"x","SearchIndexes":{"status":[{"n_s":"FINAL"}]}}""");
+        File.WriteAllText(sidecar, content);
         return sidecar;
     }
 

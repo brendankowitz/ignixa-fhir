@@ -112,4 +112,28 @@ public static class SearchValueConstants
 
     /// <summary>Composite components: an array with one array of values per component, in component order.</summary>
     public const string ComponentsName = "cs";
+
+    /// <summary>Search parameter code in the legacy per-value format. Not written by the current format.</summary>
+    [Obsolete("Not written by the current compact format, which groups values under their parameter code.")]
+    public const string ParamName = "p";
+
+    /// <summary>Exact number in the format before the kind discriminator. Not written by the current format.</summary>
+    [Obsolete("Not written by the current compact format; an exact number is written as equal LowNumberName and HighNumberName.")]
+    public const string NumberName = "n";
+
+    /// <summary>Exact quantity in the format before the kind discriminator. Not written by the current format.</summary>
+    [Obsolete("Not written by the current compact format; an exact quantity is written as equal LowQuantityName and HighQuantityName.")]
+    public const string QuantityName = "q";
+
+    /// <summary>Uppercased string in the format before the kind discriminator. Not written by the current format.</summary>
+    [Obsolete("Not written by the current compact format, which keeps the string as indexed (StringName).")]
+    public const string NormalizedStringName = "n_s";
+
+    /// <summary>Uppercased token text in the format before the kind discriminator. Not written by the current format.</summary>
+    [Obsolete("Not written by the current compact format, which keeps token text as indexed (TextName).")]
+    public const string NormalizedTextName = "n_t";
+
+    /// <summary>Suffix of flattened composite component properties. Not written by the current format.</summary>
+    [Obsolete("Not written by the current compact format, which nests composite components (ComponentsName).")]
+    public const string ComponentIndexSuffix = "_";
 }

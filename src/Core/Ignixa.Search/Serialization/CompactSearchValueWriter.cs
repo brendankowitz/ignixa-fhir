@@ -33,6 +33,20 @@ public class CompactSearchValueWriter : ISearchValueVisitor
         _writer = writer;
     }
 
+    /// <summary>
+    /// Kept for binary compatibility with the format that flattened composites into suffixed properties.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="componentIndex"/> named the composite component whose properties got an <c>_index</c> suffix. The
+    /// lossless format writes a composite's components as nested objects, so there is no suffix to apply and the index is
+    /// ignored; the writer behaves exactly as <see cref="CompactSearchValueWriter(Utf8JsonWriter)"/>.
+    /// </remarks>
+    [Obsolete("The compact format nests composite components; componentIndex is ignored. Use CompactSearchValueWriter(Utf8JsonWriter).")]
+    public CompactSearchValueWriter(Utf8JsonWriter writer, int? componentIndex)
+        : this(writer)
+    {
+    }
+
     /// <summary>Writes <paramref name="value"/> as one complete JSON object.</summary>
     public static void WriteObject(Utf8JsonWriter writer, ISearchValue value)
     {

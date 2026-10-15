@@ -349,9 +349,10 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     }
 
     /// <summary>
-    /// Reads one sidecar. A sidecar that cannot be read (corrupt, written by an older search index format, or
-    /// inaccessible) is logged with its path and the failure is rethrown: skipping it would make the resource vanish
-    /// from reads, searches and history, and would restart its version numbering on the next write.
+    /// Reads one sidecar. A sidecar that cannot be read (corrupt, a literal <c>null</c>, written by an older search index
+    /// format, or inaccessible) is logged with its path and surfaced as <see cref="SidecarUnreadableException"/>, a server
+    /// fault whose message names no file: skipping it would make the resource vanish from reads, searches and history, and
+    /// would restart its version numbering on the next write.
     /// </summary>
     private async ValueTask<ResourceMetadata> ReadMetadataFileAsync(string path, CancellationToken cancellationToken)
     {
@@ -359,26 +360,22 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
         {
             string metadataJson = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.Deserialize<ResourceMetadata>(metadataJson, _jsonOptions)
-                ?? throw new InvalidOperationException($"Failed to deserialize metadata from {path}");
+                ?? throw new JsonException("The sidecar holds no metadata object.");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogFailedToReadMetadataFile(_logger, ex, path);
-            throw;
+            throw new SidecarUnreadableException(
+                "A stored resource's metadata could not be read; the server log names the file.", ex);
         }
     }
 
     /// <summary>
-    /// Writes one sidecar through a temporary file renamed into place, so a concurrent reader - which no longer skips a
-    /// sidecar it cannot read - never sees one half written. The temporary name does not match <c>*.metadata.json</c>.
+    /// Writes one sidecar atomically (<see cref="AtomicFile"/>), so a concurrent reader - which no longer skips a sidecar
+    /// it cannot read - never sees one half written.
     /// </summary>
-    private async ValueTask WriteMetadataFileAsync(string path, ResourceMetadata metadata, CancellationToken cancellationToken)
-    {
-        string metadataJson = JsonSerializer.Serialize(metadata, _jsonOptions);
-        string temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
-        await File.WriteAllTextAsync(temporaryPath, metadataJson, cancellationToken).ConfigureAwait(false);
-        File.Move(temporaryPath, path, overwrite: true);
-    }
+    private Task WriteMetadataFileAsync(string path, ResourceMetadata metadata, CancellationToken cancellationToken) =>
+        AtomicFile.WriteAllTextAsync(path, JsonSerializer.Serialize(metadata, _jsonOptions), cancellationToken);
 
     private async ValueTask<string> ReadResourceFromNdjsonByIdAsync(string path, string resourceId, CancellationToken cancellationToken)
     {
