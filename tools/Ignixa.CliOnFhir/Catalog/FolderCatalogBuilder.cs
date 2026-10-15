@@ -59,7 +59,7 @@ public static class FolderCatalogBuilder
             }
         }
 
-        return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles, state.Files, DateTimeOffset.UtcNow, state.FullUrls);
+        return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles, state.Files, DateTimeOffset.UtcNow, state.FullUrls, state.Duplicates);
     }
 
     /// <summary>
@@ -186,6 +186,8 @@ public static class FolderCatalogBuilder
 
         public List<BundleFullUrl> FullUrls { get; } = [];
 
+        public List<CatalogDuplicate> Duplicates { get; } = [];
+
         public int FilesScanned { get; set; }
 
         public int FilesSkipped { get; set; }
@@ -232,6 +234,7 @@ public static class FolderCatalogBuilder
 
             if (_seen.TryGetValue((resourceType, resourceId), out CatalogEntry? first))
             {
+                Duplicates.Add(new CatalogDuplicate(resourceType, resourceId, Describe(first), Describe(entry)));
                 Diagnostics.Add(new CatalogDiagnostic(
                     "duplicate-id",
                     relativePath,

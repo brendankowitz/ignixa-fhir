@@ -92,6 +92,17 @@ public class CompartmentSearchTests
         issue.Diagnostics.ShouldContain("only other Patient resources referencing it through link can match (R5 adds {def}");
     }
 
+    // Regression (Task 5 review): at 523e80d the message named only the MCP tool, which a CLI user cannot call.
+    [Fact]
+    public void GivenTheR4PatientCompartment_WhenPatientsAreSearchedInIt_ThenTheMessageNamesTheToolAndTheVerb()
+    {
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", """{"resourceType":"Patient","id":"p2"}""");
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", Compartment: "Patient/p2"));
+
+        envelope.Issues.ShouldHaveSingleItem().Diagnostics.ShouldEndWith("Read Patient/p2 with the read_resources tool or the get verb.");
+    }
+
     // Guard: where the definition lists {def} the own resource matches and nothing is said about it.
     [Fact]
     public void GivenTheR5PatientCompartment_WhenPatientsAreSearchedInIt_ThenTheOwnPatientMatchesWithoutAnIssue()

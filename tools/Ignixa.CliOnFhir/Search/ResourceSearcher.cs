@@ -83,7 +83,7 @@ public static class ResourceSearcher
         if (parsed.CountOnly)
         {
             issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));
-            AddDiagnostics(source, issues, omitted);
+            AddDiagnostics(session, source, issues, omitted);
             var countFacts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, Returned: 0, Resources: null);
             return Envelope(session, source, countFacts, [], omitted, issues, cancellationToken);
         }
@@ -103,7 +103,7 @@ public static class ResourceSearcher
         }
 
         issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, parsed.Options, [.. page, .. included ?? []]));
-        AddDiagnostics(source, issues, omitted);
+        AddDiagnostics(session, source, issues, omitted);
 
         // The listed resolutions can only shrink once the resources are read, so reserving the candidates keeps the cap.
         Dictionary<string, Dictionary<string, string>> pageCandidates = ResolvedReferences.Candidates(page, ResolvedReferences.Limit);
@@ -183,7 +183,7 @@ public static class ResourceSearcher
         }
         else if (batch.Consumed < included.Count)
         {
-            omitted.Add(new OmittedItem($"{included.Count - batch.Consumed} more included resources (read them with read_resources, or ask for a smaller page)", why));
+            omitted.Add(new OmittedItem($"{included.Count - batch.Consumed} more included resources (read them with read_resources or the get verb, or ask for a smaller page)", why));
         }
 
         return batch;
@@ -191,10 +191,12 @@ public static class ResourceSearcher
 
     /// <summary>
     /// Reports the diagnostics of every index the search read: the searched type, and the types chains and includes read,
-    /// whose unindexable resources a chain or include would otherwise miss without a trace.
+    /// whose unindexable resources a chain or include would otherwise miss without a trace; and, first, for each of those
+    /// types, the duplicates the catalog dropped, which the search never saw.
     /// </summary>
-    private static void AddDiagnostics(FolderSearchSource source, List<IssueItem> issues, List<OmittedItem> omitted)
+    internal static void AddDiagnostics(FolderSession session, FolderSearchSource source, List<IssueItem> issues, List<OmittedItem> omitted)
     {
+        issues.AddRange(DuplicateIdIssues.For(session.Catalog, source.IndexesRead.Select(index => index.ResourceType)));
         List<CatalogDiagnostic> diagnostics = [.. source.IndexesRead.SelectMany(index => index.Diagnostics)];
         issues.AddRange(diagnostics.Take(FolderInspector.DefaultIssueLimit).Select(EnvelopeAssembler.ToIssue));
         if (diagnostics.Count > FolderInspector.DefaultIssueLimit)

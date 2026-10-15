@@ -17,6 +17,7 @@ namespace Ignixa.CliOnFhir.Catalog;
 /// <param name="Files">Every scanned file with the size and last-write time it had when read, in walk order.</param>
 /// <param name="BuiltAt">When the walk finished.</param>
 /// <param name="FullUrls">The <c>fullUrl</c> of every catalogued Bundle entry that has one, in walk order, duplicates included.</param>
+/// <param name="Duplicates">Every occurrence dropped for repeating an earlier type and id, in walk order; each also has a <c>duplicate-id</c> diagnostic.</param>
 public sealed record FolderCatalog(
     string RootPath,
     IReadOnlyList<CatalogEntry> Entries,
@@ -26,4 +27,5 @@ public sealed record FolderCatalog(
     int ContainerBundles,
     IReadOnlyList<CatalogFile> Files,
     DateTimeOffset BuiltAt,
-    IReadOnlyList<BundleFullUrl> FullUrls);
+    IReadOnlyList<BundleFullUrl> FullUrls,
+    IReadOnlyList<CatalogDuplicate> Duplicates);

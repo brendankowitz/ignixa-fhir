@@ -276,6 +276,46 @@ public class BundleReferenceTests
         byId.Facts.ShouldNotBeNull().Total.ShouldBe(1);
     }
 
+    // Guard (Task 5 review N2): a relative reference in an entry with a RESTful fullUrl is made absolute against that base
+    // first, so it names the entry at that URL, whatever that entry's own id is.
+    [Fact]
+    public void GivenAnEntryWhoseFullUrlAndIdDiffer_WhenAnotherEntryUnderTheSameBaseReferencesTheFullUrl_ThenItResolvesToTheEntryId()
+    {
+        using TestFolder folder = new TestFolder().Write("bundle.json", """
+            {"resourceType":"Bundle","type":"collection","entry":[
+              {"fullUrl":"http://a.example.org/fhir/Patient/123","resource":{"resourceType":"Patient","id":"abc","gender":"male"}},
+              {"fullUrl":"http://a.example.org/fhir/Encounter/e1","resource":{"resourceType":"Encounter","id":"e1","status":"finished","class":{"code":"AMB"},"subject":{"reference":"Patient/123"}}}
+            ]}
+            """);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Encounter", "subject=Patient/abc"));
+
+        Ids(envelope).ShouldBe(["e1"]);
+        Resolved(envelope).ShouldBe(["Encounter/e1: Patient/123 -> Patient/abc"]);
+    }
+
+    // Guard (Task 5 review N2): without a RESTful base of the same server the relative reference stays as written.
+    [Theory]
+    [InlineData("urn:uuid:4f9a1c1e-0000-4000-8000-000000000001")]
+    [InlineData("http://b.example.org/fhir/Encounter/e1")]
+    public void GivenAReferencingEntryUnderAnotherBaseOrAUrn_WhenItReferencesPatient123_ThenTheReferenceStaysAsWritten(string encounterFullUrl)
+    {
+        using TestFolder folder = new TestFolder().Write("bundle.json", """
+            {"resourceType":"Bundle","type":"collection","entry":[
+              {"fullUrl":"http://a.example.org/fhir/Patient/123","resource":{"resourceType":"Patient","id":"abc","gender":"male"}},
+              {"fullUrl":"ENCOUNTER-FULL-URL","resource":{"resourceType":"Encounter","id":"e1","status":"finished","class":{"code":"AMB"},"subject":{"reference":"Patient/123"}}}
+            ]}
+            """.Replace("ENCOUNTER-FULL-URL", encounterFullUrl, StringComparison.Ordinal));
+        FolderSession session = Open(folder);
+
+        ToolEnvelope<SearchFacts?> asWritten = ResourceSearcher.Search(session, new SearchRequest("Encounter", "subject=Patient/123"));
+        ToolEnvelope<SearchFacts?> resolved = ResourceSearcher.Search(session, new SearchRequest("Encounter", "subject=Patient/abc"));
+
+        Ids(asWritten).ShouldBe(["e1"]);
+        Ids(resolved).ShouldBeEmpty();
+        asWritten.Facts!.ResolvedReferences.ShouldBeNull();
+    }
+
     // Regression (fix round 1): returned resources keep their urn:uuid text; resolvedReferences says what each was matched as.
     [Fact]
     public void GivenReturnedResourcesWithResolvedReferences_WhenSearched_ThenFactsMapEachShownReferenceToItsTypeAndId()

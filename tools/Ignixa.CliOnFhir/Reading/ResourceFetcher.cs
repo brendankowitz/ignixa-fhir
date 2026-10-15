@@ -70,7 +70,7 @@ public static class ResourceFetcher
             }
         }
 
-        List<IssueItem> issues = [];
+        List<IssueItem> issues = [.. DuplicateIdIssues.For(session.Catalog, parsed.Select(reference => reference.Type))];
         foreach (string type in found.Select(entry => entry.ResourceType).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             issues.AddRange(projection?.Validate(type) ?? []);

@@ -68,7 +68,7 @@ internal static partial class CompartmentArgument
         {
             IReadOnlyList<string> through = membership.Parameters(type, searched);
             string others = through.Count == 0 ? "no other" : $"only other {searched} resources referencing it through {string.Join(", ", through)}";
-            issues.Add(new IssueItem("information", ExcludesOwnResourceCode, $"{type}/{id} itself is not in its own compartment under the {session.Schema.Version} CompartmentDefinition, which has no {InMemoryCompartmentMembership.FocalResourceCode} for {type}, so {others} can match{(type == "Patient" ? $" (R5 adds {InMemoryCompartmentMembership.FocalResourceCode}, which makes it a member)" : string.Empty)}. Read {type}/{id} with read_resources.", Location: null));
+            issues.Add(new IssueItem("information", ExcludesOwnResourceCode, $"{type}/{id} itself is not in its own compartment under the {session.Schema.Version} CompartmentDefinition, which has no {InMemoryCompartmentMembership.FocalResourceCode} for {type}, so {others} can match{(type == "Patient" ? $" (R5 adds {InMemoryCompartmentMembership.FocalResourceCode}, which makes it a member)" : string.Empty)}. Read {type}/{id} with the read_resources tool or the get verb.", Location: null));
         }
 
         if (session.FindEntry(type, id) is null)

@@ -84,4 +84,6 @@ Transaction and collection Bundles reference their own entries by `fullUrl`, usu
 
 `freshness.staleFiles` is recounted by listing the folder and comparing each file's size and last-write time with what the catalog recorded (the count is reused for 2 seconds so back-to-back tools share one walk). If the folder can no longer be listed the value is null and a `freshness-unavailable` warning says why.
 
+A type that a search or a read reads carries a `duplicate-id` warning when the catalog dropped resources of that type for repeating an earlier type and id (count, and up to five as `Type/id used from <file>, ignored in <file>`): the answer comes from the first occurrence only. An id-less Bundle entry whose RESTful fullUrl gives it the id of a resource in a later file shadows that resource this way.
+
 Every response uses the shared envelope: `facts`, `derived` (always null), `evidence`, `omitted`, `absent`, `issues`, `freshness` (`indexBuiltAt`, `staleFiles`). All of them are always present, as `null` where there is no value (for example `facts` of a failed call or `indexBuiltAt` when the folder cannot be read).
