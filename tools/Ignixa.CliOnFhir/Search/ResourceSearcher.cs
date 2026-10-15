@@ -64,7 +64,7 @@ public static class ResourceSearcher
     private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, CancellationToken cancellationToken)
     {
         ValidatePaging(request);
-        ParsedSearch parsed = session.QueryParser.Parse(request);
+        ParsedSearch parsed = session.QueryParser.Parse(request with { Query = DigestIdQuery.Rewrite(session, request.ResourceType, request.Query) });
         List<IssueItem> issues = [.. parsed.Warnings];
         if (request.Compartment is { } compartment)
         {
@@ -104,6 +104,7 @@ public static class ResourceSearcher
 
         issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, parsed.Options, [.. page, .. included ?? []]));
         AddDiagnostics(session, source, issues, omitted);
+        issues.AddRange(NameIssues.For([.. page.Select(match => match.Entry), .. (included ?? []).Take(IncludeLimit).Select(resource => resource.Entry)]));
 
         // The listed resolutions can only shrink once the resources are read, so reserving the candidates keeps the cap.
         Dictionary<string, Dictionary<string, string>> pageCandidates = ResolvedReferences.Candidates(page, ResolvedReferences.Limit);
@@ -119,7 +120,7 @@ public static class ResourceSearcher
         {
             List<IndexedResource> wanted = [.. included.Take(IncludeLimit)];
             Dictionary<string, Dictionary<string, string>> includedCandidates = ResolvedReferences.Candidates(wanted, ResolvedReferences.Limit - ResolvedReferences.Count(resolved));
-            var pageOnly = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, [], Facts(ResolvedReferences.Merge(resolved, includedCandidates)));
+            var pageOnly = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, [], ResolvedReferences.ToFacts(ResolvedReferences.Merge(resolved, includedCandidates)));
             ResourceBatch includedBatch = CollectIncluded(session, pageOnly, included, evidence, omitted, issues, cancellationToken);
             includedResources = includedBatch.Resources;
             (Dictionary<string, Dictionary<string, string>> includedShown, int includedNotListed) = ResolvedReferences.Shown(wanted, includedBatch, includedCandidates);
@@ -139,13 +140,9 @@ public static class ResourceSearcher
             omitted.Add(new OmittedItem($"{matches.Count - next} more matches (offset={next})", why));
         }
 
-        var facts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources, Facts(resolved));
+        var facts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources, ResolvedReferences.ToFacts(resolved));
         return Envelope(session, source, facts, evidence, omitted, issues, cancellationToken);
     }
-
-    /// <summary>The facts form of a resolved-references map: null when it lists nothing, so the member is left out.</summary>
-    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? Facts(Dictionary<string, Dictionary<string, string>> resolved) =>
-        resolved.Count == 0 ? null : resolved.ToDictionary(pair => pair.Key, pair => (IReadOnlyDictionary<string, string>)pair.Value, StringComparer.Ordinal);
 
     private static bool HasIncludes(SearchOptions options) => options.Include.Count > 0 || options.RevInclude.Count > 0;
 
@@ -197,7 +194,6 @@ public static class ResourceSearcher
     internal static void AddDiagnostics(FolderSession session, FolderSearchSource source, List<IssueItem> issues, List<OmittedItem> omitted)
     {
         issues.AddRange(DuplicateIdIssues.For(session.Catalog, source.IndexesRead.Select(index => index.ResourceType)));
-        issues.AddRange(DuplicateIdIssues.InvalidIds(session.Catalog, source.IndexesRead.Select(index => index.ResourceType)));
         List<CatalogDiagnostic> diagnostics = [.. source.IndexesRead.SelectMany(index => index.Diagnostics)];
         issues.AddRange(diagnostics.Take(FolderInspector.DefaultIssueLimit).Select(EnvelopeAssembler.ToIssue));
         if (diagnostics.Count > FolderInspector.DefaultIssueLimit)
@@ -230,7 +226,7 @@ public static class ResourceSearcher
         Dictionary<string, Dictionary<string, string>> resolved)
     {
         var skeleton = new ToolEnvelope<SearchFacts?>(
-            new SearchFacts(request.ResourceType, query, request.Compartment, total, request.Offset, Returned: 0, Resources: [], included is null ? null : [], Facts(resolved)),
+            new SearchFacts(request.ResourceType, query, request.Compartment, total, request.Offset, Returned: 0, Resources: [], included is null ? null : [], ResolvedReferences.ToFacts(resolved)),
             [],
             [.. omitted, .. Enumerable.Repeat(Placeholder, included is null ? 2 : 3)],
             [],

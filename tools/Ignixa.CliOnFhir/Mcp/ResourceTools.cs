@@ -39,6 +39,8 @@ public sealed class ResourceTools(FolderSession session)
         Parameter names are case-sensitive: an unknown name fails with 'unknown-search-parameter' and a suggestion, unless
         'lenient' is true. Check 'issues' every time: a 'parameter-ignored' warning means that parameter did NOT apply; an
         'error' issue (null facts) means the query was not answered, for example 'search-not-supported' for _text or _filter.
+        A resource whose id is not a FHIR id is named by its digest ('Type/~' and 16 hex digits) in evidence and issues, and
+        '_id' and 'compartment' accept that digest; the returned JSON keeps the id as written.
         Call folder_inspect first to see which resource types exist.
         """)]
     public CallToolResult SearchFhirResources(
@@ -55,7 +57,8 @@ public sealed class ResourceTools(FolderSession session)
 
     [McpServerTool(Name = "read_resources", ReadOnly = true, Idempotent = true)]
     [Description("""
-        Reads resources by reference (for example 'Patient/123') straight from their files, each with its file
+        Reads resources by reference (for example 'Patient/123', or 'Patient/~<16 hex digits>', the digest every tool names a
+        resource whose id is not a FHIR id by) straight from their files, each with its file
         location (file, line, byte offset) as evidence. A reference the folder does not hold is listed in 'absent'
         with what was checked. Resources keep their Bundle references as written (urn:uuid:...); 'facts.resolvedReferences'
         maps each one shown to the Type/id it names. Pass 'elements' to return only some top-level elements and keep responses small

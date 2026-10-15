@@ -86,7 +86,7 @@ public static class ContextRoot
 
         List<EvidenceItem> evidence = Evidence([context.Compartment.Patient.Entry, .. shown.SelectMany(entry => entry.Sources)]);
         List<OmittedItem> omitted = [];
-        List<IssueItem> issues = context.Issues(omitted);
+        List<IssueItem> issues = context.Issues(omitted, shown.SelectMany(entry => entry.Sources));
         List<NextCall> next =
         [
             .. new[] { problems, medications, allergies, encounters, labs }

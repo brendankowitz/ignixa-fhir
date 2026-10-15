@@ -17,7 +17,7 @@ public static class EnvelopeAssembler
 {
     /// <summary>
     /// Builds the envelope for <paramref name="facts"/>. Counts changed files afresh (reused briefly, see
-    /// <see cref="FolderSession.CountStaleFiles"/>) and appends the session's cache issues and, when the folder
+    /// <see cref="FolderSession.CountStaleFiles"/>) and appends the session's cache issues (warnings every time, information events once, see <see cref="FolderSession.TakeCacheIssues"/>) and, when the folder
     /// could not be re-listed, a <c>freshness-unavailable</c> warning after the caller's <paramref name="issues"/>.
     /// Call it after the response's indexes were requested so their cache problems are included.
     /// </summary>
@@ -36,7 +36,7 @@ public static class EnvelopeAssembler
         ArgumentNullException.ThrowIfNull(issues);
 
         StaleFilesCount stale = session.CountStaleFiles(cancellationToken);
-        List<IssueItem> allIssues = [.. issues, .. session.CacheIssues];
+        List<IssueItem> allIssues = [.. issues, .. session.TakeCacheIssues()];
         if (stale.Unavailable is { } reason)
         {
             allIssues.Add(new IssueItem("warning", "freshness-unavailable", $"Could not check whether files changed since they were read, so freshness.staleFiles is unknown: {reason}", Location: null));

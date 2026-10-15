@@ -239,7 +239,7 @@ public static class FolderCatalogBuilder
                     "duplicate-id",
                     relativePath,
                     line,
-                    $"{resourceType}/{resourceId} also appears in {Describe(first)}; the first occurrence is used."));
+                    $"{FhirIds.Reference(resourceType, resourceId)} also appears in {Describe(first)}; the first occurrence is used."));
                 return;
             }
 
@@ -252,7 +252,7 @@ public static class FolderCatalogBuilder
                     FhirIds.InvalidCode,
                     relativePath,
                     line,
-                    $"A {resourceType} resource has an id that is not a FHIR id (1 to 64 letters, digits, '-' or '.'); the patient tools name it {FhirIds.Reference(resourceType, resourceId)}, and searches and reads return it as written."));
+                    $"A {resourceType} resource has an id that is not a FHIR id (1 to 64 letters, digits, '-' or '.'); every tool names it {FhirIds.Reference(resourceType, resourceId)}, which get, search (_id, compartment) and the patient tools accept, and returns its JSON as written."));
             }
         }
 

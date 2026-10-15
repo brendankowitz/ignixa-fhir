@@ -62,7 +62,8 @@ public static class PatientLister
             patient => patient.Key.Id,
             patient => elements.Get(patient.Entry) is { } element ? ClinicalValues.PatientName(element) : null,
             StringComparer.Ordinal);
-        var summaries = new Summaries(folder, elements, names, cancellationToken);
+        var shapes = new ValueShapes(session.Schema.Version);
+        var summaries = new Summaries(folder, elements, names, shapes, cancellationToken);
 
         // Sorting by date needs every patient's span; by name, only the page's.
         IEnumerable<IndexedResource> ordered = sort == ByName
@@ -96,6 +97,8 @@ public static class PatientLister
 
         issues.AddRange(summaries.UnevaluableIssue());
         issues.AddRange(elements.Problems);
+        issues.AddRange(shapes.Issues());
+        issues.AddRange(NameIssues.For(page.Select(patient => patient.Entry)));
         ResourceSearcher.AddDiagnostics(session, folder, issues, omitted);
 
         List<AbsentItem> absent = patients.Count == 0
@@ -115,7 +118,7 @@ public static class PatientLister
     /// Each patient's summary from its compartment, the compartments of a batch of patients found in one pass over the folder
     /// (<see cref="FolderSearchSource.CompartmentMembersOf"/>); the date span reads every member's main date with FHIRPath.
     /// </summary>
-    private sealed class Summaries(FolderSearchSource folder, ResourceElements elements, Dictionary<string, string?> names, CancellationToken cancellationToken)
+    private sealed class Summaries(FolderSearchSource folder, ResourceElements elements, Dictionary<string, string?> names, ValueShapes shapes, CancellationToken cancellationToken)
     {
         private readonly Dictionary<string, (PatientSummary Summary, FhirTemporal? Latest)> _summaries = new(StringComparer.Ordinal);
         private readonly SortedSet<string> _unevaluable = new(StringComparer.Ordinal);
@@ -162,8 +165,8 @@ public static class PatientLister
             var summary = new PatientSummary(
                 FhirIds.Safe(patient.Key.Id),
                 names[patient.Key.Id],
-                element is null ? null : ClinicalValues.Literal(element, "gender"),
-                element is null ? null : ClinicalValues.Literal(element, "birthDate"),
+                element is null ? null : shapes.Gender("Patient", ClinicalValues.Literal(element, "gender")),
+                element is null ? null : shapes.Date("Patient", "birthDate", ClinicalValues.Literal(element, "birthDate")),
                 compartment.Members.Count,
                 earliest?.Literal,
                 latest?.Literal,

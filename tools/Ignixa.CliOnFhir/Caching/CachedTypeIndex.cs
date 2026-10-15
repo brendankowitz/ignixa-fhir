@@ -51,7 +51,7 @@ internal sealed record CachedTypeIndex(
 
             if (!ids.Add(resource.Id))
             {
-                throw new InvalidDataException($"{IndexedType}/{resource.Id} appears twice.");
+                throw new InvalidDataException($"{FhirIds.Reference(IndexedType, resource.Id)} appears twice.");
             }
         }
     }

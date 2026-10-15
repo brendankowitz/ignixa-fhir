@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text.RegularExpressions;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.Search.Expressions;
@@ -18,7 +18,7 @@ namespace Ignixa.CliOnFhir.Search;
 /// and combined with the query as the server's compartment handler combines <c>Patient/123/Observation?code=...</c>
 /// (<c>src/Application/Ignixa.Application/Features/Compartment/SearchCompartmentHandler.cs</c>).
 /// </summary>
-internal static partial class CompartmentArgument
+internal static class CompartmentArgument
 {
     /// <summary>The searched type is never in compartments of the requested type, by the version's definition.</summary>
     public const string ExcludesTypeCode = "compartment-excludes-type";
@@ -71,12 +71,14 @@ internal static partial class CompartmentArgument
             issues.Add(new IssueItem("information", ExcludesOwnResourceCode, $"{type}/{id} itself is not in its own compartment under the {session.Schema.Version} CompartmentDefinition, which has no {InMemoryCompartmentMembership.FocalResourceCode} for {type}, so {others} can match{(type == "Patient" ? $" (R5 adds {InMemoryCompartmentMembership.FocalResourceCode}, which makes it a member)" : string.Empty)}. Read {type}/{id} with the read_resources tool or the get verb.", Location: null));
         }
 
-        if (session.FindEntry(type, id) is null)
+        // A digest names the resource whose id is not a FHIR id (FhirIds); membership is decided on that resource's own id.
+        CatalogEntry? owner = session.FindByName(type, id);
+        if (owner is null)
         {
             issues.Add(new IssueItem("information", ResourceAbsentCode, $"{type}/{id} is not in the folder; resources that reference it are still matched.", Location: null));
         }
 
-        var expression = new CompartmentSearchExpression(type, id);
+        var expression = new CompartmentSearchExpression(type, owner?.Id ?? id);
         Expression combined = options.Expression switch
         {
             null => expression,
@@ -100,14 +102,11 @@ internal static partial class CompartmentArgument
             throw ToolRequestException.Error("invalid-parameter", $"'{parts[0]}' in 'compartment={compartment}' is not a {session.Schema.Version} compartment type; use one of {string.Join(", ", membership.CompartmentTypes)}.");
         }
 
-        if (!FhirId().IsMatch(parts[1]))
+        if (!FhirIds.IsValid(parts[1]) && !FhirIds.IsDigest(parts[1]))
         {
-            throw ToolRequestException.Error("invalid-parameter", $"'{parts[1]}' in 'compartment={compartment}' is not a FHIR id (1 to 64 letters, digits, '-' or '.').");
+            throw ToolRequestException.Error("invalid-parameter", $"'{parts[1]}' in 'compartment={compartment}' is not a FHIR id (1 to 64 letters, digits, '-' or '.') or the digest the tools name a resource with an invalid id by.");
         }
 
         return (parts[0], parts[1]);
     }
-
-    [GeneratedRegex("^[A-Za-z0-9\\-\\.]{1,64}$")]
-    private static partial Regex FhirId();
 }

@@ -68,6 +68,7 @@ internal sealed class PatientContext
             ? parsed
             : throw new InvalidOperationException($"asOf {asOf:O} did not parse as a FHIR instant.");
         Elements = new ResourceElements(session);
+        Shapes = new ValueShapes(session.Schema.Version);
         RulesApplied = ClinicalRules.Verified(session.Schema.Version);
         _problems = new(() => ActiveFirst(Newest(Describe(Compartment.OfType("Condition"))), ClinicalRules.ActiveCondition));
         _medications = new(() => ActiveFirst(
@@ -86,6 +87,9 @@ internal sealed class PatientContext
     public DateTimeOffset AsOf { get; }
 
     public ResourceElements Elements { get; }
+
+    /// <summary>The shape checks on the statuses, comparators and demographics this context's summaries copy.</summary>
+    public ValueShapes Shapes { get; }
 
     /// <summary>Whether the session's FHIR version is one the status and category rules were written for, so they were applied.</summary>
     public bool RulesApplied { get; }
@@ -139,15 +143,33 @@ internal sealed class PatientContext
         IElement? patient = Elements.Get(Compartment.Patient.Entry);
         return patient is null
             ? new Demographics(PatientReference, null, null, null, null)
-            : new Demographics(PatientReference, ClinicalValues.PatientName(patient), ClinicalValues.Literal(patient, "gender"), ClinicalValues.Literal(patient, "birthDate"), ClinicalValues.Literal(patient, "deceased"));
+            : new Demographics(
+                PatientReference,
+                ClinicalValues.PatientName(patient),
+                Shapes.Gender("Patient", ClinicalValues.Literal(patient, "gender")),
+                Shapes.Date("Patient", "birthDate", ClinicalValues.Literal(patient, "birthDate")),
+                Deceased(patient));
     }
+
+    /// <summary>
+    /// <c>deceased[x]</c> as written: <c>true</c>/<c>false</c>, or the date of death (a dateTime literal, so a valid date by the
+    /// parser), or null; anything else is shape-checked as a date.
+    /// </summary>
+    private string? Deceased(IElement patient) => patient.Select("deceased").Select(element => element.Value).FirstOrDefault() switch
+    {
+        bool flag => flag ? "true" : "false",
+        FhirTemporal date => date.Literal,
+        null => null,
+        object other => Shapes.Date("Patient", "deceased", other.ToString()),
+    };
 
     /// <summary>
     /// The issues every patient tool reports: the unsupported-version warning, types left out of the compartment, warnings from
     /// the rule queries, unreadable resources, and the duplicates and diagnostics of every index read (diagnostics beyond the
-    /// limit are counted in <paramref name="omitted"/>). Call after the answer is computed, so everything it read is covered.
+    /// limit are counted in <paramref name="omitted"/>), and the explanation of names given by the tools for the Patient and the
+    /// <paramref name="shown"/> resources. Call after the answer is computed, so everything it read is covered.
     /// </summary>
-    public List<IssueItem> Issues(List<OmittedItem> omitted)
+    public List<IssueItem> Issues(List<OmittedItem> omitted, IEnumerable<CatalogEntry> shown)
     {
         List<IssueItem> issues = [];
         if (!RulesApplied)
@@ -161,7 +183,9 @@ internal sealed class PatientContext
         }
 
         issues.AddRange(Elements.Problems);
+        issues.AddRange(Shapes.Issues());
         ResourceSearcher.AddDiagnostics(Session, Compartment.Folder, issues, omitted);
+        issues.AddRange(NameIssues.For([Compartment.Patient.Entry, .. shown]));
         return issues;
     }
 
@@ -205,10 +229,10 @@ internal sealed class PatientContext
             NodeKey.Of(type, resource.Key.Id, labCoding),
             concept?.Key,
             concept?.Display,
-            ClinicalValues.Status(type, element),
+            Shapes.Code(type, "status", ClinicalValues.Status(type, element)),
             date?.Literal,
             Value: quantity?.Scalar("value") as decimal?,
-            Comparator: quantity?.Scalar("comparator") as string,
+            Comparator: Shapes.Comparator(type, quantity?.Scalar("comparator") as string),
             Unit: quantity is null ? null : (quantity.Scalar("unit") ?? quantity.Scalar("code")) as string,
             ValueType: valueType);
         return new ContextEntry(resource, item, sources, absent, date);

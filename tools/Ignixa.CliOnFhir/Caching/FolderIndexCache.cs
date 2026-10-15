@@ -494,7 +494,7 @@ internal sealed class FolderIndexCache
         {
             if (!entriesById.TryGetValue(resource.Id, out CatalogEntry? entry))
             {
-                throw new InvalidDataException($"{resourceType}/{resource.Id} is not in the folder's catalog.");
+                throw new InvalidDataException($"{FhirIds.Reference(resourceType, resource.Id)} is not in the folder's catalog.");
             }
 
             resources.Add(new IndexedResource(new ResourceKey(resourceType, resource.Id), entry, Rebind(resource, resourceType, parametersByCode), resource.ToResolution()));

@@ -63,7 +63,7 @@ internal static class ContextPage
         issues.AddRange(Paging.BeyondTotal(offset, entries.Count, "items"));
         List<ContextEntry> page = [.. entries.Skip(offset).Take(count)];
         List<OmittedItem> omitted = [];
-        issues.AddRange(context.Issues(omitted));
+        issues.AddRange(context.Issues(omitted, page.SelectMany(entry => entry.Sources)));
         if (projection is not null && !withResources)
         {
             issues.Add(new IssueItem("warning", "parameter-ignored", "'elements' was ignored because this node returns no resources.", Location: null));
@@ -110,7 +110,7 @@ internal static class ContextPage
         // The listed resolutions can only shrink once the resources are read, so reserving the candidates keeps the cap.
         Dictionary<string, Dictionary<string, string>> candidates = ResolvedReferences.Candidates(page.Select(entry => entry.Resource), ResolvedReferences.Limit);
         int reserved = EnvelopeJson.SizeOf(new ToolEnvelope<TFacts>(
-            facts(new Contents([.. page.Select(entry => entry.Item)], [], Facts(candidates))),
+            facts(new Contents([.. page.Select(entry => entry.Item)], [], ResolvedReferences.ToFacts(candidates))),
             ContextRoot.Evidence(page.SelectMany(entry => entry.Sources)),
             [.. omitted, Placeholder, Placeholder],
             [.. absent, .. page.SelectMany(entry => entry.Absent)],
@@ -132,21 +132,6 @@ internal static class ContextPage
             omitted.Add(new OmittedItem($"{notListed} more resolved Bundle references in the returned resources (resolvedReferences lists at most {ResolvedReferences.Limit})", "limit"));
         }
 
-        return (new Contents([.. returned.Select(entry => entry.Item)], batch.Resources, Facts(shown)), batch.Consumed);
+        return (new Contents([.. returned.Select(entry => entry.Item)], batch.Resources, ResolvedReferences.ToFacts(shown)), batch.Consumed);
     }
-
-    /// <summary>
-    /// The facts form of a resolved-references map: null when it lists nothing, so the member is left out. Resources and
-    /// targets are named as summaries name them (<see cref="FhirIds.Reference(string, string)"/>); the references as written
-    /// are those the returned JSON shows.
-    /// </summary>
-    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? Facts(Dictionary<string, Dictionary<string, string>> resolved) =>
-        resolved.Count == 0 ? null : resolved.ToDictionary(
-            pair => Safe(pair.Key),
-            pair => (IReadOnlyDictionary<string, string>)pair.Value.ToDictionary(reference => reference.Key, reference => Safe(reference.Value), StringComparer.Ordinal),
-            StringComparer.Ordinal);
-
-    /// <summary>A <c>Type/id</c> the index produced, with the id made safe.</summary>
-    private static string Safe(string reference) =>
-        reference.IndexOf('/', StringComparison.Ordinal) is int slash and > 0 ? FhirIds.Reference(reference[..slash], reference[(slash + 1)..]) : FhirIds.Safe(reference);
 }

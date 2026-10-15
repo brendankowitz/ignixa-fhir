@@ -62,9 +62,9 @@ internal sealed class PatientCompartment
         PatientIds.Validate(patientId);
         var folder = new FolderSearchSource(session);
         // A digest names the Patient whose id is not a FHIR id and hashes to it, as patient_list lists it.
-        IndexedResource? patient = !session.HoldsType("Patient") ? null
-            : FhirIds.IsDigest(patientId) ? folder.Resources("Patient").FirstOrDefault(candidate => !FhirIds.IsValid(candidate.Key.Id) && FhirIds.Digest(candidate.Key.Id) == patientId)
-            : folder.Resolve("Patient", patientId) is { } location ? folder.Indexed(location.Location) : null;
+        IndexedResource? patient = session.FindByName("Patient", patientId) is { } entry && folder.Resolve("Patient", entry.Id) is { } location
+            ? folder.Indexed(location.Location)
+            : null;
         if (patient is null)
         {
             int patients = session.HoldsType("Patient") ? folder.Resources("Patient").Count : 0;

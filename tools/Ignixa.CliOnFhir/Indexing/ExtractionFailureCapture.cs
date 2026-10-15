@@ -128,6 +128,12 @@ internal static class ExtractionFailureCapture
                 message = $"{message} {exception.GetType().Name}: {exception.Message}";
             }
 
+            // The indexer names the resource by its raw id; an id that is not a FHIR id is named by its digest instead.
+            if (!FhirIds.IsValid(scope.Entry.Id))
+            {
+                message = message.Replace(scope.Entry.Id, FhirIds.Safe(scope.Entry.Id), StringComparison.Ordinal);
+            }
+
             scope.Captured.Add((new CatalogDiagnostic(DiagnosticCode, scope.Entry.FilePath, scope.Entry.Line, message), UnsupportedCanonicalUrl(eventId, state)));
         }
     }

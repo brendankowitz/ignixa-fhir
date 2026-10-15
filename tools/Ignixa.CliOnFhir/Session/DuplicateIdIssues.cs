@@ -40,36 +40,12 @@ internal static class DuplicateIdIssues
             }
 
             string more = duplicates.Count > SampleLimit ? $" (first {SampleLimit})" : string.Empty;
-            string samples = string.Join("; ", duplicates.Take(SampleLimit).Select(duplicate => $"{type}/{duplicate.Id} used from {duplicate.Kept}, ignored in {duplicate.Ignored}"));
+            string samples = string.Join("; ", duplicates.Take(SampleLimit).Select(duplicate => $"{FhirIds.Reference(type, duplicate.Id)} used from {duplicate.Kept}, ignored in {duplicate.Ignored}"));
             yield return new IssueItem(
                 "warning",
                 Code,
                 $"{duplicates.Count} {type} resources repeat the type and id of an earlier one and were dropped, so every answer about {type} comes from the first occurrence only{more}: {samples}.",
                 duplicates[0].Ignored);
-        }
-    }
-
-    /// <summary>
-    /// One <see cref="FhirIds.InvalidCode"/> warning per type among <paramref name="resourceTypes"/> whose catalogued resources
-    /// include ids that are not FHIR ids, located at the first; the ids themselves are not echoed.
-    /// </summary>
-    public static IEnumerable<IssueItem> InvalidIds(FolderCatalog catalog, IEnumerable<string> resourceTypes)
-    {
-        ArgumentNullException.ThrowIfNull(catalog);
-        ArgumentNullException.ThrowIfNull(resourceTypes);
-
-        HashSet<string> types = [.. resourceTypes];
-        foreach (IGrouping<string, CatalogEntry> invalid in catalog.Entries
-            .Where(entry => !entry.HasSyntheticId && types.Contains(entry.ResourceType) && !FhirIds.IsValid(entry.Id))
-            .GroupBy(entry => entry.ResourceType, StringComparer.Ordinal)
-            .OrderBy(group => group.Key, StringComparer.Ordinal))
-        {
-            CatalogEntry first = invalid.First();
-            yield return new IssueItem(
-                "warning",
-                FhirIds.InvalidCode,
-                $"{invalid.Count()} {invalid.Key} resources have ids that are not FHIR ids (1 to 64 letters, digits, '-' or '.'): the patient tools name each by a digest ({invalid.Key}/~<16 hex digits>), and searches and reads return them as written.",
-                first.Line is int line ? $"{first.FilePath}:{line}" : first.FilePath);
         }
     }
 }

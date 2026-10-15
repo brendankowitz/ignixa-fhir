@@ -60,7 +60,7 @@ public static class ResourceFetcher
         List<AbsentItem> absent = [];
         foreach ((string type, string id) in parsed)
         {
-            if (session.FindEntry(type, id) is { } entry)
+            if (session.FindByName(type, id) is { } entry)
             {
                 found.Add(entry);
             }
@@ -71,7 +71,7 @@ public static class ResourceFetcher
             }
         }
 
-        List<IssueItem> issues = [.. DuplicateIdIssues.For(session.Catalog, parsed.Select(reference => reference.Type)), .. DuplicateIdIssues.InvalidIds(session.Catalog, parsed.Select(reference => reference.Type))];
+        List<IssueItem> issues = [.. DuplicateIdIssues.For(session.Catalog, parsed.Select(reference => reference.Type)), .. NameIssues.For(found)];
         foreach (string type in found.Select(entry => entry.ResourceType).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             issues.AddRange(projection?.Validate(type) ?? []);
@@ -86,7 +86,7 @@ public static class ResourceFetcher
         // The closing omitted items name the first reference not returned and count unlisted resolutions, so reserve room for both.
         int longestReference = found.Select(entry => ResourceReader.Describe(entry).Length).DefaultIfEmpty(0).Max();
         int reserved = EnvelopeJson.SizeOf(new ToolEnvelope<ReadFacts?>(
-            new ReadFacts(parsed.Count, [], Facts(candidates)),
+            new ReadFacts(parsed.Count, [], ResolvedReferences.ToFacts(candidates)),
             [],
             [.. omitted, new OmittedItem(UnreadMessage(int.MaxValue, new string('x', longestReference)), "size-budget"), new OmittedItem(NotListedMessage(int.MaxValue), "limit")],
             absent,
@@ -106,7 +106,7 @@ public static class ResourceFetcher
             omitted.Add(new OmittedItem(UnreadMessage(found.Count - batch.Consumed, ResourceReader.Describe(found[batch.Consumed])), "size-budget"));
         }
 
-        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources, Facts(shown)), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken);
+        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources, ResolvedReferences.ToFacts(shown)), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken);
     }
 
     /// <summary>
@@ -127,10 +127,6 @@ public static class ResourceFetcher
 
         return resolutions;
     }
-
-    /// <summary>The facts form of a resolved-references map: null when it lists nothing, so the member is left out.</summary>
-    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? Facts(Dictionary<string, Dictionary<string, string>> resolved) =>
-        resolved.Count == 0 ? null : resolved.ToDictionary(pair => pair.Key, pair => (IReadOnlyDictionary<string, string>)pair.Value, StringComparer.Ordinal);
 
     private static string NotListedMessage(int count) =>
         $"{count} more resolved Bundle references in the returned resources (resolvedReferences lists at most {ResolvedReferences.Limit})";

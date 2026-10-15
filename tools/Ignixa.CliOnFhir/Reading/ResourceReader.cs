@@ -96,7 +96,7 @@ public static class ResourceReader
             if (!string.Equals(foundType, entry.ResourceType, StringComparison.Ordinal)
                 || (!entry.HasSyntheticId && !string.Equals(foundId, entry.Id, StringComparison.Ordinal)))
             {
-                return Problem(entry, "catalog-stale", $"{Describe(entry)} is no longer where the catalog recorded it (found {foundType ?? "(no resourceType)"}/{foundId ?? "(no id)"}); the file changed after it was catalogued.").Problem;
+                return Problem(entry, "catalog-stale", $"{Describe(entry)} is no longer where the catalog recorded it (found {foundType ?? "(no resourceType)"}/{(foundId is null ? "(no id)" : FhirIds.Safe(foundId))}); the file changed after it was catalogued.").Problem;
             }
         }
         catch (JsonException ex)
@@ -107,7 +107,8 @@ public static class ResourceReader
         return null;
     }
 
-    public static string Describe(CatalogEntry entry) => $"{entry.ResourceType}/{entry.Id}";
+    /// <summary>The resource as every tool names it: <c>Type/id</c>, the id as its digest when it is not a FHIR id (<see cref="FhirIds"/>).</summary>
+    public static string Describe(CatalogEntry entry) => FhirIds.Reference(entry);
 
     private static ResourceReadResult Problem(CatalogEntry entry, string code, string diagnostics) => new(
         Resource: null,

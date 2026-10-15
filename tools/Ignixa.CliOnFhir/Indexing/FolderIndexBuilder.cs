@@ -112,7 +112,7 @@ public sealed class FolderIndexBuilder
                 BundleReferenceResolver.UnresolvedCode,
                 unresolved,
                 $"{unresolved.Count} urn: references in {resourceType} resources name no Bundle entry fullUrl in the folder, or name more than one resource, so they are indexed as written and reference searches, chains, includes and compartments do not follow them",
-                item => $"{Describe(item.Resource)} -> {item.Reference}"));
+                item => $"{Describe(item.Resource)} -> {FhirIds.Written(item.Reference)}"));
         }
 
         if (crossScope.Count > 0)
@@ -121,7 +121,7 @@ public sealed class FolderIndexBuilder
                 BundleReferenceResolver.CrossScopeCode,
                 crossScope,
                 $"{crossScope.Count} references in {resourceType} resources were resolved through a fullUrl outside their own Bundle (FHIR resolves Bundle references only within the Bundle; this relies on the urn:uuid or URL being unique across the folder)",
-                item => $"{Describe(item.Resource)} -> {item.Reference} = {item.Resource.BundleReferences.Resolved[item.Reference]}"));
+                item => $"{Describe(item.Resource)} -> {FhirIds.Written(item.Reference)} = {FhirIds.Target(item.Resource.BundleReferences.Resolved[item.Reference])}"));
         }
 
         return new ResourceTypeIndex(resourceType, resources, diagnostics, DateTimeOffset.UtcNow, stopwatch.ElapsedMilliseconds, FromCache: false);
@@ -143,8 +143,8 @@ public sealed class FolderIndexBuilder
             if (!string.Equals(foundType, entry.ResourceType, StringComparison.Ordinal)
                 || (!entry.HasSyntheticId && !string.Equals(foundId, entry.Id, StringComparison.Ordinal)))
             {
-                string expected = entry.HasSyntheticId ? entry.ResourceType : $"{entry.ResourceType}/{entry.Id}";
-                string found = entry.HasSyntheticId ? foundType ?? "(no resourceType)" : $"{foundType ?? "(no resourceType)"}/{foundId ?? "(no id)"}";
+                string expected = entry.HasSyntheticId ? entry.ResourceType : FhirIds.Reference(entry);
+                string found = entry.HasSyntheticId ? foundType ?? "(no resourceType)" : $"{foundType ?? "(no resourceType)"}/{(foundId is null ? "(no id)" : FhirIds.Safe(foundId))}";
                 return (null, [Stale(entry, $"expected {expected} but found {found}")], []);
             }
 
@@ -152,7 +152,7 @@ public sealed class FolderIndexBuilder
         }
         catch (JsonException ex)
         {
-            return (null, [new CatalogDiagnostic("invalid-resource", entry.FilePath, entry.Line, $"{entry.ResourceType}/{entry.Id}: {ex.Message}")], []);
+            return (null, [new CatalogDiagnostic("invalid-resource", entry.FilePath, entry.Line, $"{FhirIds.Reference(entry)}: {ex.Message}")], []);
         }
 
         // Rewritten in the tool's own parse, before conversion, so every parameter sees the resolved reference.
@@ -174,7 +174,7 @@ public sealed class FolderIndexBuilder
         return new CatalogDiagnostic(code, first.FilePath, first.Line, $"{summary}{more}: {string.Join(", ", items.Take(BundleReferenceResolver.SampleLimit).Select(sample))}.");
     }
 
-    private static string Describe(IndexedResource resource) => $"{resource.Key.ResourceType}/{resource.Key.Id}";
+    private static string Describe(IndexedResource resource) => FhirIds.Reference(resource.Key.ResourceType, resource.Key.Id);
 
     /// <summary>
     /// The reference parameters whose canonicals <see cref="CanonicalReferenceSearchIndexer"/> indexed on this resource, so
@@ -190,5 +190,5 @@ public sealed class FolderIndexBuilder
         "catalog-stale",
         entry.FilePath,
         entry.Line,
-        $"{entry.ResourceType}/{entry.Id} is no longer where the catalog recorded it ({detail}); the file changed after it was catalogued, so the resource was not indexed.");
+        $"{FhirIds.Reference(entry)} is no longer where the catalog recorded it ({detail}); the file changed after it was catalogued, so the resource was not indexed.");
 }

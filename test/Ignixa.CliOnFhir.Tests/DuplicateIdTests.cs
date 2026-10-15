@@ -50,7 +50,10 @@ public class DuplicateIdTests
         ToolEnvelope<ReadFacts?> envelope = ResourceFetcher.Read(Open(folder), ["Patient/123"]);
 
         ((string)envelope.Facts.ShouldNotBeNull().Resources.ShouldHaveSingleItem()["gender"]!).ShouldBe("male");
-        envelope.Issues.ShouldHaveSingleItem().Diagnostics.ShouldStartWith(Expected);
+        envelope.Issues.Where(issue => issue.Code == "duplicate-id").ShouldHaveSingleItem().Diagnostics.ShouldStartWith(Expected);
+
+        // The shown Patient's id came from its fullUrl, which the synthetic-id note explains.
+        envelope.Issues.Select(issue => issue.Code).ShouldBe(["duplicate-id", "synthetic-id"]);
     }
 
     // Regression: at 523e80d a chain through the shadowed type was silent too; the warning follows every type a search reads.
@@ -71,7 +74,7 @@ public class DuplicateIdTests
     {
         using TestFolder folder = Shadowed();
 
-        IssueItem fromList = PatientLister.List(Open(folder)).Issues.ShouldHaveSingleItem();
+        IssueItem fromList = PatientLister.List(Open(folder)).Issues.Where(issue => issue.Code == "duplicate-id").ShouldHaveSingleItem();
         IssueItem fromRoot = ContextRoot.Get(Open(folder), "123").Issues.Where(issue => issue.Code == "duplicate-id").ShouldHaveSingleItem();
 
         fromList.Diagnostics.ShouldStartWith(Expected);

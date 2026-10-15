@@ -29,11 +29,14 @@ public sealed class FolderSession
     private readonly Lazy<FolderIndexCache> _cache;
     private readonly Lazy<SearchQueryParser> _queryParser;
     private readonly Lazy<Dictionary<(string ResourceType, string Id), CatalogEntry>> _entriesByReference;
+    private readonly Lazy<Dictionary<(string ResourceType, string Digest), CatalogEntry>> _entriesByDigest;
     private readonly Lazy<BundleReferenceResolver> _bundleReferences;
     private readonly Lazy<InMemoryCompartmentMembership> _compartments;
     private readonly Lazy<HashSet<string>> _catalogTypes;
     private readonly TimeProvider _timeProvider;
     private readonly Lock _staleGate = new();
+    private readonly Lock _deliveredGate = new();
+    private readonly HashSet<IssueItem> _deliveredCacheEvents = [];
     private StaleFilesCount? _lastStaleCount;
     private long _lastStaleCountTimestamp;
     private readonly ConcurrentDictionary<string, Lazy<ResourceTypeIndex>> _indexes = new(StringComparer.Ordinal);
@@ -75,6 +78,14 @@ public sealed class FolderSession
 
         _entriesByReference = new Lazy<Dictionary<(string, string), CatalogEntry>>(
             () => Catalog.Entries.ToDictionary(entry => (entry.ResourceType, entry.Id)),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        // Only ids that are not FHIR ids are named by digest; the first of two that share a digest keeps it, in catalog order.
+        _entriesByDigest = new Lazy<Dictionary<(string, string), CatalogEntry>>(
+            () => Catalog.Entries
+                .Where(entry => !FhirIds.IsValid(entry.Id))
+                .GroupBy(entry => (entry.ResourceType, FhirIds.Digest(entry.Id)))
+                .ToDictionary(group => group.Key, group => group.First()),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         // Read with the index's own reference parser, so a fullUrl parses the way a reference to it does.
@@ -183,6 +194,17 @@ public sealed class FolderSession
         _entriesByReference.Value.GetValueOrDefault((resourceType, id));
 
     /// <summary>
+    /// The catalogued resource the tools name <paramref name="resourceType"/>/<paramref name="name"/>: by its id, or, for a
+    /// digest (<see cref="FhirIds.Digest"/>), the resource whose id is not a FHIR id and hashes to it; null when none.
+    /// </summary>
+    public CatalogEntry? FindByName(string resourceType, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        return FhirIds.IsDigest(name) ? _entriesByDigest.Value.GetValueOrDefault((resourceType, name)) : FindEntry(resourceType, name);
+    }
+
+    /// <summary>
     /// Directory holding this folder's persisted indexes; null when the cache is off or no index has been requested yet.
     /// </summary>
     public string? CacheDirectory => _cache.IsValueCreated ? _cache.Value.CacheDirectory : null;
@@ -192,6 +214,19 @@ public sealed class FolderSession
     /// directory); each also means the affected index was built instead of loaded.
     /// </summary>
     public IReadOnlyList<IssueItem> CacheIssues => _cache.IsValueCreated ? _cache.Value.Issues : [];
+
+    /// <summary>
+    /// The cache problems a response carries: every <c>warning</c> (a corrupt or unavailable cache, which degrades every call
+    /// while it lasts), and each <c>information</c> event (the cache was rebuilt) only on the first response after it
+    /// occurred, after which it counts as delivered. Safe to call concurrently; each event is delivered once.
+    /// </summary>
+    public IReadOnlyList<IssueItem> TakeCacheIssues()
+    {
+        lock (_deliveredGate)
+        {
+            return [.. CacheIssues.Where(issue => issue.Severity != "information" || _deliveredCacheEvents.Add(issue))];
+        }
+    }
 
     /// <summary>Resource types whose index has been built so far, in ordinal order.</summary>
     public IReadOnlyList<string> BuiltIndexTypes => [.. _indexes

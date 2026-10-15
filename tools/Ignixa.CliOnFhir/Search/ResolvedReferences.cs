@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Reading;
 
@@ -100,6 +101,23 @@ internal static class ResolvedReferences
         }
 
         return merged;
+    }
+
+    /// <summary>
+    /// The facts form of a resolved-references map: null when it lists nothing, so the member is left out. Resources and
+    /// targets are named as every tool names them (<see cref="FhirIds"/>), and each reference as written by
+    /// <see cref="FhirIds.Written"/>, so no prose id or reference text reaches facts outside the returned resources.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? ToFacts(Dictionary<string, Dictionary<string, string>> resolved)
+    {
+        ArgumentNullException.ThrowIfNull(resolved);
+
+        return resolved.Count == 0 ? null : resolved.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyDictionary<string, string>)pair.Value
+                .GroupBy(reference => FhirIds.Written(reference.Key), StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => FhirIds.Target(group.First().Value), StringComparer.Ordinal),
+            StringComparer.Ordinal);
     }
 
     /// <summary>How many references <paramref name="map"/> lists.</summary>
