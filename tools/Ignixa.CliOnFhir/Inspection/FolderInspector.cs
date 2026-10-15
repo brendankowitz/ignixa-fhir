@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.CodeSystems;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Session;
@@ -112,8 +113,11 @@ public static class FolderInspector
                 .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal),
             session.CatalogStats,
             indexFacts,
+            FolderCodeSystems.Summary(session),
             terminology);
 
-        return EnvelopeAssembler.Create(session, facts, builtAt, [], omitted, [], diagnostics.Take(issueLimit).Select(EnvelopeAssembler.ToIssue), cancellationToken);
+        // Structure only: the tool that lists every code system.
+        List<NextCall> next = [new NextCall("folder_code_systems", new Dictionary<string, object> { ["offset"] = 0, ["count"] = 10 })];
+        return EnvelopeAssembler.Create(session, facts, builtAt, [], omitted, [], diagnostics.Take(issueLimit).Select(EnvelopeAssembler.ToIssue), cancellationToken) with { Next = next };
     }
 }

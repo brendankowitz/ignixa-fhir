@@ -8,6 +8,7 @@ using Ignixa.CliOnFhir.Commands;
 
 var root = new RootCommand("cli-on-fhir: explore a local folder of FHIR data from the command line or over MCP (prototype)");
 root.Subcommands.Add(InspectCommand.Create());
+root.Subcommands.Add(SystemsCommand.Create());
 root.Subcommands.Add(SearchCommand.Create());
 root.Subcommands.Add(GetCommand.Create());
 root.Subcommands.Add(PatientsCommand.Create());
