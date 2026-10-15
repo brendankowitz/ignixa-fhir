@@ -98,6 +98,10 @@ internal static class TerminologyJson
         return Convert.ToHexStringLower(SHA256.HashData(buffer.WrittenSpan));
     }
 
+    /// <summary>R5 <c>versionAlgorithmString</c>, or the code of <c>versionAlgorithmCoding</c>; null when neither is present.</summary>
+    public static string? VersionAlgorithm(JsonElement resource) =>
+        NonEmpty(resource, "versionAlgorithmString") ?? (Object(resource, "versionAlgorithmCoding") is { } coding ? NonEmpty(coding, "code") : null);
+
     /// <summary>A member as a JSON element, or null when absent.</summary>
     public static JsonElement? Member(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out JsonElement value) ? value : null;

@@ -13,6 +13,7 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// <param name="Groups">The groups in source order.</param>
 /// <param name="Origin">Where it was read from.</param>
 /// <param name="Fingerprint">Hash of the groups, to tell a true canonical collision from a repeat.</param>
+/// <param name="VersionAlgorithm">R5 versionAlgorithm[x]; null when not declared.</param>
 public sealed record ConceptMapEntry(
     string Url,
     string? Version,
@@ -20,4 +21,5 @@ public sealed record ConceptMapEntry(
     string? TargetScope,
     IReadOnlyList<ConceptMapGroup> Groups,
     ResourceOrigin Origin,
-    string Fingerprint);
+    string Fingerprint,
+    string? VersionAlgorithm = null);

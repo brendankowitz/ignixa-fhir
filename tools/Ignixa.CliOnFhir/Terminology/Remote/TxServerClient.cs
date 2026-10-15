@@ -40,6 +40,7 @@ public sealed class TxServerClient : IDisposable
     private readonly HttpClient _client;
     private readonly TimeSpan _timeout;
     private readonly ConcurrentDictionary<string, JsonObject> _answers = new(StringComparer.Ordinal);
+    private readonly Lazy<Task<string?>> _fhirVersion;
     private int _requests;
 
 #pragma warning disable CA2000 // The HttpClient created by the other constructor owns and disposes the handler.
@@ -58,6 +59,7 @@ public sealed class TxServerClient : IDisposable
         BaseUri = Validate(baseUri) is { } problem ? throw new ArgumentException(problem, nameof(baseUri)) : WithTrailingSlash(baseUri);
         _timeout = timeout;
         _client = new HttpClient(handler, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
+        _fhirVersion = new Lazy<Task<string?>>(ReadFhirVersionAsync, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public Uri BaseUri { get; }
@@ -85,7 +87,16 @@ public sealed class TxServerClient : IDisposable
     /// <paramref name="expectedType"/>; answers are cached by request URL.
     /// </summary>
     /// <exception cref="ToolRequestException">The server could not be reached in time, or did not answer as expected.</exception>
-    public async Task<JsonObject> GetAsync(string operation, IReadOnlyList<(string Name, string Value)> parameters, string expectedType, CancellationToken cancellationToken)
+    public async Task<JsonObject> GetAsync(string operation, IReadOnlyList<(string Name, string Value)> parameters, string expectedType, CancellationToken cancellationToken) =>
+        await GetOrNotFoundAsync(operation, parameters, expectedType, notFoundIsAnswer: false, cancellationToken)
+            ?? throw new InvalidOperationException("A not-found answer was not asked for.");
+
+    /// <summary>
+    /// <see cref="GetAsync"/>, except that with <paramref name="notFoundIsAnswer"/> an HTTP 404 whose OperationOutcome has the
+    /// issue code <c>not-found</c> returns null: the server does not know the code (or system), which is an answer for
+    /// <c>$lookup</c> and <c>$validate-code</c>, though not one that proves absence anywhere else. Not cached.
+    /// </summary>
+    public async Task<JsonObject?> GetOrNotFoundAsync(string operation, IReadOnlyList<(string Name, string Value)> parameters, string expectedType, bool notFoundIsAnswer, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(operation);
         ArgumentNullException.ThrowIfNull(parameters);
@@ -98,20 +109,42 @@ public sealed class TxServerClient : IDisposable
             }
         }
 
-        var uri = new Uri(BaseUri, operation + "?" + string.Join('&', parameters.Select(parameter => $"{Uri.EscapeDataString(parameter.Name)}={Uri.EscapeDataString(parameter.Value)}")));
+        var uri = new Uri(BaseUri, operation + (parameters.Count == 0 ? string.Empty : "?") + string.Join('&', parameters.Select(parameter => $"{Uri.EscapeDataString(parameter.Name)}={Uri.EscapeDataString(parameter.Value)}")));
         if (_answers.TryGetValue(uri.AbsoluteUri, out JsonObject? cached))
         {
             return (JsonObject)cached.DeepClone();
         }
 
-        JsonObject resource = await SendAsync(uri, operation, expectedType, cancellationToken);
+        JsonObject? resource = await SendAsync(uri, operation, expectedType, notFoundIsAnswer, cancellationToken);
+        if (resource is null)
+        {
+            return null;
+        }
+
         _answers.TryAdd(uri.AbsoluteUri, resource);
         return (JsonObject)resource.DeepClone();
     }
 
+    /// <summary>The FHIR version the server's CapabilityStatement reports (read once); null when it cannot be read or reports none.</summary>
+    public Task<string?> FhirVersionAsync() => _fhirVersion.Value;
+
+    // Read once per session; any failure means "not known", which callers handle by sending both parameter spellings.
+    private async Task<string?> ReadFhirVersionAsync()
+    {
+        try
+        {
+            JsonObject statement = await GetAsync("metadata", [], "CapabilityStatement", CancellationToken.None);
+            return statement["fhirVersion"] is JsonValue version && version.GetValueKind() == JsonValueKind.String ? version.GetValue<string>() : null;
+        }
+        catch (ToolRequestException)
+        {
+            return null;
+        }
+    }
+
     public void Dispose() => _client.Dispose();
 
-    private async Task<JsonObject> SendAsync(Uri uri, string operation, string expectedType, CancellationToken cancellationToken)
+    private async Task<JsonObject?> SendAsync(Uri uri, string operation, string expectedType, bool notFoundIsAnswer, CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(_timeout);
@@ -124,6 +157,11 @@ public sealed class TxServerClient : IDisposable
             using HttpResponseMessage response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             byte[] body = await ReadBoundedAsync(response, what, deadline.Token);
             JsonObject? resource = Parse(body);
+            if (notFoundIsAnswer && response.StatusCode == HttpStatusCode.NotFound && OutcomeCodes(resource).Contains("not-found", StringComparer.Ordinal))
+            {
+                return null;
+            }
+
             if (response.StatusCode != HttpStatusCode.OK)
             {
                 throw Error($"{what} answered HTTP {(int)response.StatusCode}{Outcome(resource)}{((int)response.StatusCode is >= 300 and < 400 ? "; redirects are not followed" : string.Empty)}");
@@ -188,19 +226,23 @@ public sealed class TxServerClient : IDisposable
     // The OperationOutcome's issue codes only, each shape-checked: its diagnostics and details are server text.
     private static string Outcome(JsonObject? resource)
     {
-        if (resource?["resourceType"]?.GetValueKind() != JsonValueKind.String || (string)resource["resourceType"]! != "OperationOutcome" || resource["issue"] is not JsonArray issues)
+        if (resource?["resourceType"]?.GetValueKind() != JsonValueKind.String || (string)resource["resourceType"]! != "OperationOutcome")
         {
             return string.Empty;
         }
 
-        List<string> codes = [.. issues
-            .Select(issue => issue?["code"])
-            .Where(code => code?.GetValueKind() == JsonValueKind.String)
-            .Select(code => TerminologyNames.Token((string)code!))
-            .Distinct(StringComparer.Ordinal)
-            .Take(5)];
+        List<string> codes = [.. OutcomeCodes(resource).Take(5)];
         return codes.Count == 0 ? " (an OperationOutcome)" : $" (OperationOutcome issue codes: {string.Join(", ", codes)})";
     }
+
+    private static IEnumerable<string> OutcomeCodes(JsonObject? resource) =>
+        resource?["resourceType"]?.GetValueKind() == JsonValueKind.String && (string)resource["resourceType"]! == "OperationOutcome" && resource["issue"] is JsonArray issues
+            ? issues
+                .Select(issue => issue?["code"])
+                .Where(code => code?.GetValueKind() == JsonValueKind.String)
+                .Select(code => TerminologyNames.Token((string)code!))
+                .Distinct(StringComparer.Ordinal)
+            : [];
 
     private static ToolRequestException Error(string reason) =>
         ToolRequestException.Error(ErrorCode, $"The terminology server did not give a usable answer: {reason}. Nothing was concluded from it.");

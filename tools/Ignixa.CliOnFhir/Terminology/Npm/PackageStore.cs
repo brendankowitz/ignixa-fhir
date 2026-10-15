@@ -8,7 +8,7 @@ using System.Text.Json;
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>
 /// The tool's package store, <c>&lt;cache root&gt;/packages</c>: each downloaded package as <c>&lt;id&gt;#&lt;version&gt;.tgz</c>

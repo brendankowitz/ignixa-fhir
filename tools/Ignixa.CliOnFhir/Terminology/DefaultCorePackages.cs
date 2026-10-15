@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
-using Ignixa.CliOnFhir.Terminology.Packages;
+using Ignixa.CliOnFhir.Terminology.Npm;
 
 namespace Ignixa.CliOnFhir.Terminology;
 

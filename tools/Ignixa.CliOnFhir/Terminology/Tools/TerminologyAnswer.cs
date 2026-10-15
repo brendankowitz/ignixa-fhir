@@ -16,4 +16,10 @@ internal sealed record TerminologyAnswer<TFacts>(
     IReadOnlyList<IssueItem> Issues)
 {
     public IReadOnlyList<NextCall> Next { get; init; } = [];
+
+    /// <summary>
+    /// The load issues of the state the answer came from, when that is not the state the call started with (a package load
+    /// publishes a new one); null means the starting state's.
+    /// </summary>
+    public IReadOnlyList<IssueItem>? LoadIssues { get; init; }
 }

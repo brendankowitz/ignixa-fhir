@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>The parts of a FHIR npm package the terminology store reads.</summary>
 /// <param name="Name">package.json <c>name</c>.</param>

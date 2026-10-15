@@ -26,7 +26,8 @@ internal static class ConceptMapReader
             FirstOf(resource, "targetUri", "targetCanonical", "targetScopeUri", "targetScopeCanonical"),
             [.. TerminologyJson.Array(resource, "group").Select(Group)],
             origin,
-            TerminologyJson.Fingerprint(TerminologyJson.Member(resource, "group"))), null);
+            TerminologyJson.Fingerprint(TerminologyJson.Member(resource, "group")),
+            TerminologyJson.VersionAlgorithm(resource)), null);
     }
 
     private static string? FirstOf(JsonElement resource, params string[] names) =>

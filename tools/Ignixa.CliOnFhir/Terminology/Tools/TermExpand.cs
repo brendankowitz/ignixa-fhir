@@ -60,6 +60,11 @@ public static class TermExpand
         }
 
         ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry);
+        if (resolution.OtherVersions is { } others)
+        {
+            issues.Add(others);
+        }
+
         if (!expansion.IsComplete)
         {
             issues.Add(IncompleteIssue(expansion));
@@ -94,7 +99,10 @@ public static class TermExpand
                 args["filter"] = filter;
             }
 
-            next.Add(new NextCall("terminology_expand", args));
+            if (TermNext.Echoable(valueSet))
+            {
+                next.Add(new NextCall("terminology_expand", args));
+            }
         }
 
         List<AbsentItem> absent = codes.Count == 0

@@ -36,7 +36,8 @@ internal static class ValueSetReader
             compose is not null,
             stored,
             origin,
-            TerminologyJson.Fingerprint(compose, expansion is { } x ? TerminologyJson.Member(x, "contains") : null)), null);
+            TerminologyJson.Fingerprint(compose, expansion is { } x ? TerminologyJson.Member(x, "contains") : null),
+            TerminologyJson.VersionAlgorithm(resource)), null);
     }
 
     private static ValueSetRule Rule(JsonElement rule) => new(

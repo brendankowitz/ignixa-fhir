@@ -9,9 +9,9 @@ using Ignixa.CliOnFhir.Contracts;
 namespace Ignixa.CliOnFhir.Terminology;
 
 /// <summary>
-/// An immutable snapshot of every loaded terminology source, in precedence order: the folder first, then packages in the
-/// order they were loaded. A url asked for without a version resolves to the first source's version that provides
-/// concepts. Two sources defining the same <c>url|version</c> with the same content count once; with different content the
+/// An immutable snapshot of every loaded terminology source, in load order. A url asked for without a version resolves by
+/// <see cref="VersionPrecedence"/> (the folder, then packages loaded explicitly, then the default core package; the highest
+/// orderable version within that tier). Two sources defining the same <c>url|version</c> with the same content count once; with different content the
 /// first is used and a <see cref="CanonicalConflict"/> is recorded, which every answer that uses it reports.
 /// Loading a package builds a new snapshot (<see cref="With"/>), so a call always answers from one consistent state.
 /// </summary>
@@ -26,10 +26,13 @@ public sealed class TerminologyStore
     {
         Sources = sources;
         BuiltAt = builtAt;
+
+        // Indexed by precedence (tier, then load order), so a conflict keeps the higher-precedence definition.
+        List<LoadedSource> ranked = [.. sources.OrderBy(source => source.Info.Tier)];
         List<CanonicalConflict> conflicts = [];
-        _codeSystems = Index(sources.SelectMany(source => source.CodeSystems), "CodeSystem", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
-        _valueSets = Index(sources.SelectMany(source => source.ValueSets), "ValueSet", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
-        _conceptMaps = Index(sources.SelectMany(source => source.ConceptMaps), "ConceptMap", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
+        _codeSystems = Index(ranked.SelectMany(source => source.CodeSystems), "CodeSystem", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
+        _valueSets = Index(ranked.SelectMany(source => source.ValueSets), "ValueSet", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
+        _conceptMaps = Index(ranked.SelectMany(source => source.ConceptMaps), "ConceptMap", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
         Conflicts = conflicts;
         _conflicts = conflicts.GroupBy(conflict => (conflict.ResourceType, conflict.Url, conflict.Version)).ToDictionary(group => group.Key, group => group.ToList());
     }
@@ -69,6 +72,10 @@ public sealed class TerminologyStore
         return new TerminologyStore([.. Sources, source], builtAt);
     }
 
+    /// <summary>
+    /// The CodeSystem version that answers for <paramref name="url"/>: exactly <paramref name="version"/>, or without one the
+    /// candidate <see cref="VersionPrecedence"/> chooses, with an <c>other-versions-loaded</c> note when there were several.
+    /// </summary>
     public CodeSystemResolution ResolveCodeSystem(string url, string? version)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
@@ -76,31 +83,38 @@ public sealed class TerminologyStore
         List<CodeSystemEntry> entries = _codeSystems.GetValueOrDefault(url) ?? [];
         List<CodeSystemEntry> providing = [.. entries.Where(entry => entry.ProvidesConcepts)];
         CodeSystemEntry? entry = version is null
-            ? providing.FirstOrDefault()
+            ? VersionPrecedence.Choose(providing, candidate => candidate.Version, candidate => candidate.VersionAlgorithm, candidate => candidate.Origin.Source)
             : providing.FirstOrDefault(candidate => string.Equals(candidate.Version, version, StringComparison.Ordinal));
-        return new CodeSystemResolution(url, version, entry, entry is null ? providing : [], [.. entries.Where(candidate => !candidate.ProvidesConcepts)]);
+        IssueItem? others = version is null && entry is not null && providing.Count > 1
+            ? OtherVersions("CodeSystem", url, entry.Version, entry.Origin, providing.Select(candidate => (candidate.Version, candidate.Origin)))
+            : null;
+        return new CodeSystemResolution(url, version, entry, entry is null ? providing : [], [.. entries.Where(candidate => !candidate.ProvidesConcepts)], others);
     }
 
-    public CanonicalResolution<ValueSetEntry> ResolveValueSet(string canonical) => Resolve(_valueSets, canonical, entry => entry.Version);
+    public CanonicalResolution<ValueSetEntry> ResolveValueSet(string canonical) =>
+        Resolve(_valueSets, "ValueSet", canonical, entry => entry.Version, entry => entry.VersionAlgorithm, entry => entry.Origin);
 
-    public CanonicalResolution<ConceptMapEntry> ResolveConceptMap(string canonical) => Resolve(_conceptMaps, canonical, entry => entry.Version);
+    public CanonicalResolution<ConceptMapEntry> ResolveConceptMap(string canonical) =>
+        Resolve(_conceptMaps, "ConceptMap", canonical, entry => entry.Version, entry => entry.VersionAlgorithm, entry => entry.Origin);
 
     /// <summary>The <c>canonical-conflict</c> warnings for one url and version.</summary>
     public IEnumerable<IssueItem> ConflictIssues(string resourceType, string url, string? version) =>
         _conflicts.GetValueOrDefault((resourceType, url, version))?.Select(conflict => conflict.ToIssue()) ?? [];
 
-    /// <summary>The precedence of a source: 0 for the first.</summary>
+    /// <summary>The precedence of a source, lower first: by tier (folder, explicit packages, default core), then load order.</summary>
     public int PrecedenceOf(TerminologySourceInfo source)
     {
+        ArgumentNullException.ThrowIfNull(source);
+
         for (int index = 0; index < Sources.Count; index++)
         {
             if (ReferenceEquals(Sources[index].Info, source))
             {
-                return index;
+                return (source.Tier * Sources.Count) + index;
             }
         }
 
-        return Sources.Count;
+        return int.MaxValue;
     }
 
     /// <summary>What a "not found" checked: the counts of loaded resources and the sources, by name.</summary>
@@ -117,14 +131,26 @@ public sealed class TerminologyStore
         return bar > 0 ? (canonical[..bar], canonical[(bar + 1)..] is { Length: > 0 } version ? version : null) : (canonical, null);
     }
 
-    private static CanonicalResolution<T> Resolve<T>(Dictionary<string, List<T>> index, string canonical, Func<T, string?> version)
+    private static CanonicalResolution<T> Resolve<T>(Dictionary<string, List<T>> index, string resourceType, string canonical, Func<T, string?> version, Func<T, string?> algorithm, Func<T, ResourceOrigin> origin)
         where T : class
     {
         (string url, string? requested) = SplitCanonical(canonical);
         List<T> entries = index.GetValueOrDefault(url) ?? [];
-        T? entry = requested is null ? entries.FirstOrDefault() : entries.FirstOrDefault(candidate => string.Equals(version(candidate), requested, StringComparison.Ordinal));
-        return new CanonicalResolution<T>(url, requested, entry, [.. entries.Select(version)]);
+        T? entry = requested is null
+            ? VersionPrecedence.Choose(entries, version, algorithm, candidate => origin(candidate).Source)
+            : entries.FirstOrDefault(candidate => string.Equals(version(candidate), requested, StringComparison.Ordinal));
+        IssueItem? others = requested is null && entry is not null && entries.Count > 1
+            ? OtherVersions(resourceType, url, version(entry), origin(entry), entries.Select(candidate => (version(candidate), origin(candidate))))
+            : null;
+        return new CanonicalResolution<T>(url, requested, entry, [.. entries.Select(version)], others);
     }
+
+    private static IssueItem OtherVersions(string resourceType, string url, string? chosen, ResourceOrigin chosenOrigin, IEnumerable<(string? Version, ResourceOrigin Origin)> candidates) => new(
+        "information",
+        CodeSystemResolution.OtherVersionsCode,
+        $"{resourceType} {TerminologyNames.Canonical(url, null)} is loaded in several versions ({string.Join(", ", candidates.Select(candidate => $"{(candidate.Version is null ? "(no version)" : TerminologyNames.Version(candidate.Version))} from {candidate.Origin.Source.Name}"))}); "
+            + $"this answer uses {(chosen is null ? "(no version)" : TerminologyNames.Version(chosen))} from {chosenOrigin.Source.Name} ({VersionPrecedence.RuleText}). Pass a version to choose another.",
+        chosenOrigin.ToEvidence().File);
 
     private static Dictionary<string, List<T>> Index<T>(
         IEnumerable<T> entries,

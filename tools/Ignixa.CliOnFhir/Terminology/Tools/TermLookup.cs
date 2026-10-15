@@ -24,7 +24,7 @@ public static class TermLookup
                 string? checkedVersion = TermArguments.Optional(version, "version");
                 TerminologyAnswer<TermLookupFacts> local = Answer(state.Store, checkedSystem, checkedCode, checkedVersion);
                 return session.Terminology.Options.TxServer is { } tx && TxFallback.SystemMissing(local.Facts.Outcome)
-                    ? await TxAnswers.LookupAsync(tx, checkedSystem, checkedCode, checkedVersion, TxFallback.Why(local.Absent), cancellationToken)
+                    ? await TxAnswers.LookupAsync(tx, checkedSystem, checkedCode, checkedVersion, TxFallback.Why(local.Absent), session.UtcNow(), cancellationToken)
                     : local;
             },
             cancellationToken);
@@ -82,7 +82,7 @@ public static class TermLookup
             null);
 
         // Arguments are the caller's own system and code, never content from the CodeSystem.
-        List<NextCall> next = concept.Children.Count > 0
+        List<NextCall> next = concept.Children.Count > 0 && TermNext.Echoable(system) && TerminologyNames.Code(code) == code
             ? [new NextCall("terminology_navigate", new Dictionary<string, object> { ["system"] = system, ["code"] = code, ["direction"] = "descendants" })]
             : [];
         return new TerminologyAnswer<TermLookupFacts>(facts, [entry.Origin.ToEvidence()], omitted, [], issues) { Next = next };

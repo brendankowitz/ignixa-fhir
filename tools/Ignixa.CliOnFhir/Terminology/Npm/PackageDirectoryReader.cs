@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>
 /// Reads an extracted package directory (<c>&lt;dir&gt;/package/package.json</c> and the JSON files beside it), as the

@@ -10,7 +10,7 @@ using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Reading;
 using Ignixa.CliOnFhir.Session;
-using Ignixa.CliOnFhir.Terminology.Packages;
+using Ignixa.CliOnFhir.Terminology.Npm;
 
 namespace Ignixa.CliOnFhir.Terminology;
 
@@ -50,7 +50,13 @@ public sealed class TerminologySession
     public TerminologyState? Current => _state;
 
     /// <summary>The current state, loading it on the first call.</summary>
-    public async Task<TerminologyState> GetAsync(CancellationToken cancellationToken)
+    public Task<TerminologyState> GetAsync(CancellationToken cancellationToken) => GetAsync(firstLoad: null, cancellationToken);
+
+    /// <param name="firstLoad">
+    /// The package a load call asks for. When it is the default core package and the session has not loaded yet, the
+    /// default load is skipped so that this call loads it, explicitly.
+    /// </param>
+    internal async Task<TerminologyState> GetAsync(PackageRequest? firstLoad, CancellationToken cancellationToken)
     {
         if (_state is { } state)
         {
@@ -60,7 +66,7 @@ public sealed class TerminologySession
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            return _state ??= await InitialLoadAsync(cancellationToken);
+            return _state ??= await InitialLoadAsync(firstLoad, cancellationToken);
         }
         finally
         {
@@ -74,7 +80,7 @@ public sealed class TerminologySession
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        await GetAsync(cancellationToken);
+        await GetAsync(request, cancellationToken);
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -90,10 +96,10 @@ public sealed class TerminologySession
                 return new PackageLoadOutcome(loaded, acquired, AlreadyLoaded: true, state);
             }
 
-            LoadedSource source = Load(acquired, cancellationToken);
+            LoadedSource source = Load(acquired, isDefault: false, cancellationToken);
             TerminologyStore store = state.Store.With(source, _folder.UtcNow());
             (long heap, long workingSet) = Memory();
-            _state = state with { Store = store, LoadIssues = [.. state.LoadIssues, .. acquired.Warnings, .. source.Problems], HeapBytes = heap, WorkingSetBytes = workingSet };
+            _state = state with { Store = store, LoadIssues = [.. state.LoadIssues, .. acquired.Warnings, .. FhirVersionIssues(source), .. source.Problems], HeapBytes = heap, WorkingSetBytes = workingSet };
             return new PackageLoadOutcome(source, acquired, AlreadyLoaded: false, _state);
         }
         finally
@@ -102,7 +108,7 @@ public sealed class TerminologySession
         }
     }
 
-    private async Task<TerminologyState> InitialLoadAsync(CancellationToken cancellationToken)
+    private async Task<TerminologyState> InitialLoadAsync(PackageRequest? firstLoad, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         List<LoadedSource> sources = [];
@@ -113,10 +119,13 @@ public sealed class TerminologySession
             issues.AddRange(folder.Problems);
         }
 
-        IReadOnlyList<PackageRequest> requests = _options.Packages.Count > 0
+        bool usingDefault = _options.Packages.Count == 0;
+        PackageRequest? core = DefaultCorePackages.For(_folder.Schema.Version);
+        bool loadingCoreExplicitly = usingDefault && core is not null && firstLoad is not null && firstLoad.Id == core.Id && (firstLoad.Version is null || firstLoad.Version == core.Version);
+        IReadOnlyList<PackageRequest> requests = !usingDefault
             ? _options.Packages
-            : DefaultCorePackages.For(_folder.Schema.Version) is { } core ? [core] : [];
-        if (requests.Count == 0)
+            : core is not null && !loadingCoreExplicitly ? [core] : [];
+        if (usingDefault && core is null)
         {
             issues.Add(new IssueItem("information", "no-default-core-package", $"No core package is loaded by default for FHIR {_folder.Schema.Version}; load one with terminology_load_package.", Location: null));
         }
@@ -131,9 +140,10 @@ public sealed class TerminologySession
                     continue;
                 }
 
-                LoadedSource source = Load(acquired, cancellationToken);
+                LoadedSource source = Load(acquired, usingDefault, cancellationToken);
                 sources.Add(source);
                 issues.AddRange(acquired.Warnings);
+                issues.AddRange(FhirVersionIssues(source));
                 issues.AddRange(source.Problems);
             }
             catch (ToolRequestException ex)
@@ -177,10 +187,31 @@ public sealed class TerminologySession
         return TerminologySourceLoader.Load(TerminologySourceInfo.Folder(catalog.RootPath), [], files, filesIgnored: 0, cancellationToken);
     }
 
-    private static LoadedSource Load(AcquiredPackage acquired, CancellationToken cancellationToken)
+    // A package declaring only other FHIR versions may define the same canonicals differently (R4 versus R5 core).
+    private IEnumerable<IssueItem> FhirVersionIssues(LoadedSource source)
+    {
+        string prefix = _folder.Schema.Version switch
+        {
+            Abstractions.FhirVersion.Stu3 => "3.0",
+            Abstractions.FhirVersion.R4 => "4.0",
+            Abstractions.FhirVersion.R4B => "4.3",
+            Abstractions.FhirVersion.R5 => "5.0",
+            _ => "6.0",
+        };
+        if (source.FhirVersions.Count > 0 && !source.FhirVersions.Any(version => version.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            yield return new IssueItem(
+                "warning",
+                "package-fhir-version-mismatch",
+                $"{source.Info.Name} declares FHIR {string.Join(", ", source.FhirVersions.Select(TerminologyNames.Version))}, not the session's {_folder.Schema.Version}; its terminology may differ from what this FHIR version defines.",
+                source.Info.EvidencePrefix + "package/package.json");
+        }
+    }
+
+    private static LoadedSource Load(AcquiredPackage acquired, bool isDefault, CancellationToken cancellationToken)
     {
         LoadedSource source = TerminologySourceLoader.Load(
-            TerminologySourceInfo.Package(acquired.Id, acquired.Version, acquired.Origin, acquired.Location),
+            TerminologySourceInfo.Package(acquired.Id, acquired.Version, acquired.Origin, acquired.Location, isDefault),
             acquired.Contents.FhirVersions,
             acquired.Contents.Files,
             acquired.Contents.FilesIgnored,

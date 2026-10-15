@@ -21,11 +21,13 @@ internal static class TerminologyCall
     /// <param name="evenWhenUnusable">
     /// Answer even when nothing could be loaded: for <c>terminology_load_package</c>, the remedy the unusable-store error names.
     /// </param>
+    /// <param name="loadState">How to obtain the state, in place of the session's lazy first load; request errors it throws fail the call.</param>
     public static async Task<ToolEnvelope<TFacts?>> RunAsync<TFacts>(
         FolderSession session,
         Func<TerminologyState, Task<TerminologyAnswer<TFacts>>> answer,
         CancellationToken cancellationToken,
-        bool evenWhenUnusable = false)
+        bool evenWhenUnusable = false,
+        Func<CancellationToken, Task<TerminologyState>>? loadState = null)
         where TFacts : class
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -38,7 +40,7 @@ internal static class TerminologyCall
 
         try
         {
-            TerminologyState state = await session.Terminology.GetAsync(cancellationToken);
+            TerminologyState state = await (loadState ?? session.Terminology.GetAsync)(cancellationToken);
             if (state.IsUnusable && !evenWhenUnusable)
             {
                 return EnvelopeAssembler.Create<TFacts?>(session, null, session.Catalog.BuiltAt, [], [], [], state.FailureIssues(), cancellationToken);
@@ -52,7 +54,7 @@ internal static class TerminologyCall
                 result.Evidence,
                 result.Omitted,
                 result.Absent,
-                [.. result.Issues, .. session.Terminology.Current?.LoadIssues ?? state.LoadIssues],
+                [.. result.Issues, .. result.LoadIssues ?? state.LoadIssues],
                 cancellationToken) with { Next = result.Next };
         }
         catch (ToolRequestException ex)

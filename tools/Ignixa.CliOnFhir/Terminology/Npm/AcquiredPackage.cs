@@ -5,7 +5,7 @@
 
 using Ignixa.CliOnFhir.Contracts;
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>A package read and checked against the identity asked for.</summary>
 /// <param name="Id">The package id.</param>

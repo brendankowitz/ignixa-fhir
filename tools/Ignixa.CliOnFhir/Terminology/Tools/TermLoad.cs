@@ -6,7 +6,7 @@
 using System.Diagnostics;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
-using Ignixa.CliOnFhir.Terminology.Packages;
+using Ignixa.CliOnFhir.Terminology.Npm;
 
 namespace Ignixa.CliOnFhir.Terminology.Tools;
 
@@ -21,16 +21,22 @@ public static class TermLoad
 
         // Timed from the start: on the session's first terminology call this includes loading the folder and default sources.
         var stopwatch = Stopwatch.StartNew();
+        PackageRequest? request = null;
         return TerminologyCall.RunAsync<TermLoadFacts>(
             session,
             async _ =>
             {
-                PackageRequest request = PackageRequest.Parse(TermArguments.Required(package, "package"));
-                PackageLoadOutcome outcome = await session.Terminology.LoadPackageAsync(request, cancellationToken);
-                return Answer(request, outcome, stopwatch.ElapsedMilliseconds);
+                PackageLoadOutcome outcome = await session.Terminology.LoadPackageAsync(request!, cancellationToken);
+                return Answer(request!, outcome, stopwatch.ElapsedMilliseconds);
             },
             cancellationToken,
-            evenWhenUnusable: true);
+            evenWhenUnusable: true,
+            loadState: token =>
+            {
+                // Parsed first, so the session's first load knows when this call is itself loading the default core package.
+                request = PackageRequest.Parse(TermArguments.Required(package, "package"));
+                return session.Terminology.GetAsync(request, token);
+            });
     }
 
     private static TerminologyAnswer<TermLoadFacts> Answer(PackageRequest request, PackageLoadOutcome outcome, long elapsed)
@@ -59,6 +65,6 @@ public static class TermLoad
             ? [new IssueItem("information", "package-already-loaded", $"{source.Info.Name} was already loaded in this session; nothing was read again.", Location: null)]
             : [];
         var evidence = new EvidenceItem(source.Info.Name, source.Info.EvidencePrefix + "package/package.json", null, 0);
-        return new TerminologyAnswer<TermLoadFacts>(facts, [evidence], omitted, [], issues) { Next = next };
+        return new TerminologyAnswer<TermLoadFacts>(facts, [evidence], omitted, [], issues) { Next = next, LoadIssues = outcome.State.LoadIssues };
     }
 }

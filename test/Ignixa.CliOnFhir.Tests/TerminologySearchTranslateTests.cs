@@ -137,4 +137,23 @@ public class TerminologySearchTranslateTests
         ((string)result["facts"]!["outcome"]!).ShouldBe(outcome);
         result["absent"]!.AsArray().ShouldHaveSingleItem();
     }
+
+    // Regression (Task 7 review item 4): at 96d6150 a disjoint or not-related-to target counted as mapped.
+    [Theory]
+    [InlineData("\"equivalence\":\"disjoint\"")]
+    [InlineData("\"relationship\":\"not-related-to\"")]
+    public async Task GivenOnlyAnUnrelatedTarget_WhenTranslatedLocally_ThenTheOutcomeIsNotMapped(string relation)
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        string map = $$$"""{"resourceType":"ConceptMap","url":"http://example.org/map","group":[{"source":"{{{Body}}}","target":"{{{Icd}}}","element":[{"code":"mi","target":[{"code":"Z00",{{{relation}}}}]}]}]}""";
+#pragma warning disable CA2000 // The registry client owns the stub handler for the session's lifetime.
+        FolderSession session = Open(folder, Online(Registry([("pkg.map", "1.0.0", Archive(PackageFiles("pkg.map", "1.0.0", "4.0.1", map)), null)]), store, "pkg.map@1.0.0"));
+#pragma warning restore CA2000
+
+        JsonNode result = Json(await TermTranslate.TranslateAsync(session, Body, "mi", null, null, CancellationToken.None));
+
+        ((string)result["facts"]!["outcome"]!).ShouldBe("not-mapped");
+        ((string)result["facts"]!["translations"]![0]!["code"]!).ShouldBe("Z00");
+    }
 }

@@ -19,11 +19,6 @@ public static class FolderInspector
     public const int DefaultIssueLimit = 20;
 
     /// <summary>
-    /// Summarizes the folder from its catalog alone; no index is built unless
-    /// <paramref name="buildIndexes"/> is set, which exists to measure indexing cost, or the terminology store is loaded,
-    /// when the terminology section is computed from every type's token index entries.
-    /// </summary>
-    /// <summary>
     /// <see cref="Inspect"/> after loading the terminology store when <paramref name="withTerminology"/> is set (which can
     /// download the default core package unless the session is offline), so the terminology section is computed.
     /// </summary>
@@ -42,6 +37,11 @@ public static class FolderInspector
         return envelope with { Issues = [.. envelope.Issues, .. loadIssues] };
     }
 
+    /// <summary>
+    /// Summarizes the folder from its catalog alone; no index is built unless
+    /// <paramref name="buildIndexes"/> is set, which exists to measure indexing cost, or the terminology store is loaded,
+    /// when the terminology section is computed from every type's token index entries.
+    /// </summary>
     public static ToolEnvelope<FolderInspection> Inspect(FolderSession session, int issueLimit = DefaultIssueLimit, bool buildIndexes = false, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);

@@ -15,6 +15,7 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// <param name="StoredExpansion">expansion.contains flattened, as the package shipped it; empty when none.</param>
 /// <param name="Origin">Where it was read from.</param>
 /// <param name="Fingerprint">Hash of compose and expansion.contains, to tell a true canonical collision from a repeat.</param>
+/// <param name="VersionAlgorithm">R5 versionAlgorithm[x]; null when not declared.</param>
 public sealed record ValueSetEntry(
     string Url,
     string? Version,
@@ -24,4 +25,5 @@ public sealed record ValueSetEntry(
     bool HasCompose,
     IReadOnlyList<ExpansionCode> StoredExpansion,
     ResourceOrigin Origin,
-    string Fingerprint);
+    string Fingerprint,
+    string? VersionAlgorithm = null);

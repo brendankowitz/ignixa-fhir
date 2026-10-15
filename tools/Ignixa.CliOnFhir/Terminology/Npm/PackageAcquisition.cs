@@ -6,7 +6,7 @@
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>
 /// Finds a package, in order: the tool's package store, the standard FHIR package cache (read only), then, unless offline,
@@ -35,7 +35,7 @@ internal sealed class PackageAcquisition(PackageStore? store, string? fhirPackag
         {
             document = await Document(request.Id, cancellationToken);
             version = document.Latest is { } latest
-                ? PackageRequest.Exact(request.Id, latest).Version!
+                ? ExactLatest(request.Id, latest)
                 : throw ToolRequestException.Error(FhirPackageRegistry.NotFoundCode, $"The FHIR package registry names no latest version of {request.Id}; ask for an exact version.");
         }
 
@@ -73,6 +73,19 @@ internal sealed class PackageAcquisition(PackageStore? store, string? fhirPackag
         byte[] archive = await registry!.DownloadAsync(request.Id, version, shasum, cancellationToken);
         AcquiredPackage downloaded = Checked(request.Id, version, Read(archive, cancellationToken), "downloaded", FhirPackageRegistry.ArchiveUri(request.Id, version).AbsoluteUri, fromRegistry, []);
         return downloaded with { Warnings = Store(downloaded, archive, shasum) };
+    }
+
+    // The registry's dist-tags.latest is registry data: a value that is not an exact version is the registry's problem, said so.
+    private static string ExactLatest(string id, string latest)
+    {
+        try
+        {
+            return PackageRequest.Exact(id, latest).Version!;
+        }
+        catch (ToolRequestException)
+        {
+            throw ToolRequestException.Error(PackageRequest.InvalidCode, $"The FHIR package registry {FhirPackageRegistry.BaseUri} names a latest version of {id} ('{TerminologyNames.Version(latest)}') that is not an exact SemVer version; ask for an exact version.");
+        }
     }
 
     /// <summary>The versions of <paramref name="id"/> available without the network, for an offline request without a version.</summary>

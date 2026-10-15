@@ -24,6 +24,8 @@ internal sealed class RawConcept
 
     public bool Inactive { get; private set; }
 
+    public bool NotSelectable { get; private set; }
+
     public List<ConceptProperty> Properties { get; } = [];
 
     public List<ConceptDesignation> Designations { get; } = [];
@@ -84,6 +86,10 @@ internal sealed class RawConcept
         else if (roles.Inactive.Contains(propertyCode))
         {
             Inactive |= value == "true";
+        }
+        else if (roles.NotSelectable.Contains(propertyCode))
+        {
+            NotSelectable |= value == "true";
         }
     }
 }

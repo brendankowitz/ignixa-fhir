@@ -149,15 +149,18 @@ public class TerminologyValueSetTests
         ((string)answer["facts"]!["reason"]!).ShouldBe("expansion-incomplete");
     }
 
+    // Regression (Task 7 review, ruling 7): at 96d6150 a wrong display was 'valid' with a warning; R4 $validate-code and
+    // tx.fhir.org answer result false.
     [Fact]
-    public async Task GivenACodeAndAWrongDisplay_WhenValidatedAgainstTheSystem_ThenItIsValidWithADisplayMismatch()
+    public async Task GivenACodeAndAWrongDisplay_WhenValidatedAgainstTheSystem_ThenItIsInvalidForTheDisplayWithTheExpectedOne()
     {
         using var folder = new TestFolder();
         using var store = new TestFolder();
 
         JsonNode answer = Json(await TermValidate.ValidateAsync(OpenWithPackage(folder, store), "heart", Body, "Kidney", null, null, CancellationToken.None));
 
-        ((string)answer["facts"]!["result"]!).ShouldBe("valid");
+        ((string)answer["facts"]!["result"]!).ShouldBe("invalid");
+        ((string)answer["facts"]!["reason"]!).ShouldBe("display-mismatch");
         ((bool)answer["facts"]!["displayMatches"]!).ShouldBeFalse();
         ((string)answer["facts"]!["display"]!).ShouldBe("Heart disorder");
         answer["issues"]!.AsArray().Select(issue => (string)issue!["code"]!).ShouldBe(["display-mismatch"]);

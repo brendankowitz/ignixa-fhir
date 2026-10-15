@@ -30,6 +30,24 @@ public class FhirExceptionMiddlewareTests
         IssueCode(body).ShouldBe("too-costly");
     }
 
+    // Regression: at 96d6150 a NotSupportedException (the in-memory terminology service's $subsumes) became a 500 exception.
+    [Fact]
+    public async Task GivenAnOperationTheServiceDoesNotSupport_WhenHandled_ThenRespondsNotImplementedWithNotSupportedOutcome()
+    {
+        // Arrange
+        var (context, body) = CreateContext();
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new NotSupportedException("$subsumes is not supported by the in-memory terminology service."),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status501NotImplemented);
+        IssueCode(body).ShouldBe("not-supported");
+    }
+
     [Fact]
     public async Task GivenAMalformedRequestRejectedByTheServer_WhenHandled_ThenKeepsItsClientErrorStatus()
     {

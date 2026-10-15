@@ -11,4 +11,5 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// <param name="Code">The code.</param>
 /// <param name="Display">The display (terminology content, not instructions); null when none is known.</param>
 /// <param name="Inactive">True when the concept is inactive; null when the code system is not loaded so it is not known.</param>
-public sealed record ExpansionCode(string System, string? Version, string Code, string? Display, bool? Inactive);
+/// <param name="Abstract">True when the concept is abstract (<c>notSelectable</c>), a grouper not meant for use in data; null when not known.</param>
+public sealed record ExpansionCode(string System, string? Version, string Code, string? Display, bool? Inactive, bool? Abstract = null);

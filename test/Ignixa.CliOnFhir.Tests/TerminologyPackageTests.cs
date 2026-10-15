@@ -7,7 +7,7 @@ using System.Net;
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Terminology;
-using Ignixa.CliOnFhir.Terminology.Packages;
+using Ignixa.CliOnFhir.Terminology.Npm;
 using Ignixa.CliOnFhir.Terminology.Tools;
 using Shouldly;
 using static Ignixa.CliOnFhir.Tests.TerminologyFixture;
@@ -262,6 +262,56 @@ public class TerminologyPackageTests
     public void GivenBytesThatAreNotGzip_WhenRead_ThenTheyAreRejected()
     {
         Should.Throw<PackageFormatException>(() => PackageArchiveReader.Read([1, 2, 3, 4], CancellationToken.None));
+    }
+#pragma warning restore CA2000
+
+#pragma warning disable CA2000 // Each registry client owns its stub handler and lives as long as its session.
+    // Regression (Task 7 review 9c): at 96d6150 the first load of the default core package reported alreadyLoaded, because the
+    // implicit default load had just run.
+    [Fact]
+    public async Task GivenNothingConfigured_WhenTheFirstCallLoadsTheCorePackage_ThenItIsLoadedByThisCallExplicitly()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        StubHttpHandler registry = Registry([("hl7.fhir.r4.core", "4.0.1", Archive(PackageFiles("hl7.fhir.r4.core", "4.0.1", "4.0.1", CodeSystem("http://example.org/core", "1", "", "a"))), null)]);
+        FolderSession session = Open(folder, Online(registry, store) with { Packages = [] });
+
+        JsonNode result = Json(await TermLoad.LoadAsync(session, "hl7.fhir.r4.core@4.0.1", CancellationToken.None));
+
+        ((bool)result["facts"]!["alreadyLoaded"]!).ShouldBeFalse();
+        ((string)result["facts"]!["origin"]!).ShouldBe("downloaded");
+        session.Terminology.Current!.Store.Sources.ShouldHaveSingleItem().Info.IsDefault.ShouldBeFalse();
+    }
+
+    // Regression (Task 7 review 9f): at 96d6150 a registry latest that is not a version was reported as the caller's mistake.
+    [Fact]
+    public async Task GivenARegistryLatestThatIsNotAVersion_WhenABareIdIsLoaded_ThenTheMessageBlamesTheRegistry()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        var registry = new StubHttpHandler(_ => StubHttpHandler.Bytes(System.Text.Encoding.UTF8.GetBytes("""{"name":"pkg.odd","dist-tags":{"latest":"current"},"versions":{}}"""), "application/json"));
+
+        JsonNode result = Json(await TermLoad.LoadAsync(Open(folder, Online(registry, store) with { Packages = [] }), "pkg.odd", CancellationToken.None));
+
+        JsonNode issue = result["issues"]![0]!;
+        ((string)issue["code"]!).ShouldBe(PackageRequest.InvalidCode);
+        ((string)issue["diagnostics"]!).ShouldContain("The FHIR package registry https://packages.fhir.org/ names a latest version");
+    }
+
+    // Regression (Task 7 review 9g, 9j): at 96d6150 a package for another FHIR version loaded silently, and a load answer
+    // carried the load issues of the state before the load.
+    [Fact]
+    public async Task GivenAPackageForAnotherFhirVersion_WhenLoaded_ThenTheLoadAnswerItselfWarnsAboutIt()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        StubHttpHandler registry = Registry([(PackageId, PackageVersion, Archive(Files()), null), ("pkg.r5", "1.0.0", Archive(PackageFiles("pkg.r5", "1.0.0", "5.0.0", CodeSystem("http://example.org/r5", "1", "", "a"))), null)]);
+        FolderSession session = Open(folder, Online(registry, store));
+
+        JsonNode result = Json(await TermLoad.LoadAsync(session, "pkg.r5@1.0.0", CancellationToken.None));
+
+        JsonNode warning = result["issues"]!.AsArray().Single(issue => (string)issue!["code"]! == "package-fhir-version-mismatch")!;
+        ((string)warning["diagnostics"]!).ShouldContain("pkg.r5@1.0.0 declares FHIR 5.0.0");
     }
 #pragma warning restore CA2000
 }

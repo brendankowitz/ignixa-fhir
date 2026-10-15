@@ -64,17 +64,24 @@ public static class TermNavigate
         issues.AddRange(Paging.BeyondTotal(offset, reached.Count, "concepts"));
 
         List<NextCall> next = [];
+        bool echoable = TermNext.Echoable(system, version) && TerminologyNames.Code(code) == code;
         int remaining = reached.Count - offset - kept;
         if (remaining > 0)
         {
             omitted.Add(new OmittedItem($"{remaining} more concepts", "limit"));
-            next.Add(new NextCall("terminology_navigate", Args(system, code, way, levels, version, offset + kept, pageSize)));
+            if (echoable)
+            {
+                next.Add(new NextCall("terminology_navigate", Args(system, code, way, levels, version, offset + kept, pageSize)));
+            }
         }
         else if (levels < MaxDepth && reached.Exists(step => step.Distance == levels) && entry.Walk(concept, up: way == "ancestors", levels + 1).Count > reached.Count)
         {
             // More levels exist beyond the depth asked for: say so, and how to read them.
             omitted.Add(new OmittedItem($"{way} deeper than {levels} levels", "depth"));
-            next.Add(new NextCall("terminology_navigate", Args(system, code, way, levels + 1, version, 0, pageSize)));
+            if (echoable)
+            {
+                next.Add(new NextCall("terminology_navigate", Args(system, code, way, levels + 1, version, 0, pageSize)));
+            }
         }
 
         List<AbsentItem> absent = reached.Count == 0

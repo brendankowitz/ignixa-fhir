@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>A read-only view of a stream that fails once more than a set number of bytes has been read through it.</summary>
 internal sealed class BoundedReadStream(Stream inner, long maxBytes) : Stream

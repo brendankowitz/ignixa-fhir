@@ -88,7 +88,10 @@ public static class TermSearch
                 args["valueSet"] = valueSet;
             }
 
-            next.Add(new NextCall("terminology_search", args));
+            if (TermNext.Echoable(system, valueSet))
+            {
+                next.Add(new NextCall("terminology_search", args));
+            }
         }
 
         List<AbsentItem> absent = notLoaded is not null
@@ -98,6 +101,17 @@ public static class TermSearch
                 : [];
 
         HashSet<string> shownSystems = [.. facts.Matches.Select(match => match.System)];
+
+        // Every CodeSystem a shown match came from answered: its conflicts apply (a ValueSet search already has them).
+        if (valueSet is null)
+        {
+            issues.AddRange(facts.Matches
+                .Select(match => (match.System, match.Version))
+                .Distinct()
+                .SelectMany(used => store.ConflictIssues("CodeSystem", used.System, used.Version))
+                .Distinct());
+        }
+
         List<EvidenceItem> evidence = [.. sourceEvidence
             .Concat(candidates.Where(candidate => candidate.Origin is not null && shownSystems.Contains(candidate.System)).Select(candidate => candidate.Origin!.ToEvidence()))
             .Distinct()
@@ -139,11 +153,20 @@ public static class TermSearch
             }
 
             ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry);
+            if (resolution.OtherVersions is { } otherValueSets)
+            {
+                issues.Add(otherValueSets);
+            }
+
+            issues.AddRange(store.ConflictIssues("ValueSet", entry.Url, entry.Version));
             if (!expansion.IsComplete)
             {
                 issues.Add(TermExpand.IncompleteIssue(expansion));
                 issues.AddRange(expansion.Incomplete);
             }
+
+            // Includes the conflicts and other versions of the CodeSystems the expansion read.
+            issues.AddRange(expansion.Notes);
 
             List<SearchCandidate> fromValueSet = [.. expansion.Codes
                 .Where(code => system is null || code.System == system)
@@ -159,6 +182,11 @@ public static class TermSearch
             {
                 ConceptQuery query = new(system, null, string.Empty, resolution, null);
                 return ([], 0, resolution.Outcome, query.Absent(store), null, []);
+            }
+
+            if (resolution.OtherVersions is { } otherVersions)
+            {
+                issues.Add(otherVersions);
             }
 
             systems = [entry];

@@ -9,7 +9,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Ignixa.CliOnFhir.Contracts;
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>
 /// Downloads FHIR npm packages from the FHIR package registry, <c>https://packages.fhir.org/</c>, and from nowhere else:

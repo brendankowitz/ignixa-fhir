@@ -11,7 +11,8 @@ namespace Ignixa.CliOnFhir.Terminology.Tools;
 /// <summary>
 /// <c>terminology_subsumes</c> / <c>cli-on-fhir term subsumes</c>: subsumption between two codes of one system, from the
 /// loaded hierarchy. <c>not-subsumed</c> is answered only when both codes are in a complete CodeSystem and neither is an
-/// ancestor of the other; a system that is not loaded, a missing code or incomplete content is never <c>not-subsumed</c>.
+/// ancestor of the other; a system that is not loaded, a missing code or incomplete content is never <c>not-subsumed</c>,
+/// and a hierarchy declared as other than <c>is-a</c> answers <c>unknown</c> for distinct codes.
 /// </summary>
 public static class TermSubsumes
 {
@@ -67,6 +68,12 @@ public static class TermSubsumes
             : entry.AncestorsOf(conceptB).Contains(conceptA.Code)
                 ? Subsumes
                 : entry.AncestorsOf(conceptA).Contains(conceptB.Code) ? SubsumedBy : NotSubsumed;
+
+        // A hierarchy that is not is-a (grouped-by, part-of, classified-with) says nothing about subsumption.
+        if (relation != Equivalent && entry.HierarchyMeaning is { } meaning && meaning != "is-a")
+        {
+            relation = Unknown;
+        }
 
         // An unrelated pair is only known to be unrelated when the hierarchy is the whole system.
         if (relation == NotSubsumed && !entry.IsComplete)

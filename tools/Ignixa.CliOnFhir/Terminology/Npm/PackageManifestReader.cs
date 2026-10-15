@@ -5,7 +5,7 @@
 
 using System.Text.Json;
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>Reads <c>package/package.json</c>: name, version and FHIR versions (<c>fhirVersions</c>, <c>fhir-version-list</c> or <c>fhirVersion</c>).</summary>
 internal static class PackageManifestReader

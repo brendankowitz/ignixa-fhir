@@ -16,7 +16,7 @@ public sealed record CanonicalConflict(string ResourceType, string Url, string? 
         "warning",
         Code,
         $"{ResourceType} {TerminologyNames.Canonical(Url, Version)} is defined differently by {Describe(Kept)} and by {Describe(Other)}. "
-            + $"Answers use {Kept.Source.Name}: the folder comes first, then packages in the order they were loaded.",
+            + $"Answers use {Kept.Source.Name}: the folder comes first, then packages loaded explicitly, then the default core package, each in load order.",
         Kept.ToEvidence().File);
 
     private static string Describe(ResourceOrigin origin) => $"{origin.Source.Name} ({origin.Source.EvidencePrefix}{TerminologyNames.Path(origin.File)})";

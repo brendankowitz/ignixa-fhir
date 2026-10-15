@@ -27,7 +27,8 @@ public sealed class CodeSystemEntry
         IReadOnlyDictionary<string, IReadOnlySet<string>> ancestors,
         HierarchyProblems hierarchyProblems,
         ResourceOrigin origin,
-        string fingerprint)
+        string fingerprint,
+        string? versionAlgorithm)
     {
         Url = url;
         Version = version;
@@ -38,14 +39,16 @@ public sealed class CodeSystemEntry
         InOrder = concepts;
         _concepts = concepts.ToDictionary(concept => concept.Code, StringComparer.Ordinal);
 
-        // FHIR: a CodeSystem that is not case sensitive matches codes ignoring case; the first spelling in definition order wins.
-        _conceptsIgnoringCase = caseSensitive == false
+        // FHIR: a CodeSystem that is not case sensitive matches codes ignoring case; one that does not say should accept codes
+        // in any case (R4 CodeSystem.caseSensitive), which answers flag. The first spelling in definition order wins.
+        _conceptsIgnoringCase = caseSensitive != true
             ? concepts.DistinctBy(concept => concept.Code, StringComparer.OrdinalIgnoreCase).ToDictionary(concept => concept.Code, StringComparer.OrdinalIgnoreCase)
             : null;
         _ancestors = ancestors;
         HierarchyProblems = hierarchyProblems;
         Origin = origin;
         Fingerprint = fingerprint;
+        VersionAlgorithm = versionAlgorithm;
         _folded = new Lazy<IReadOnlyList<FoldedConcept>>(
             () => [.. concepts.Select(concept => new FoldedConcept(
                 concept,
@@ -57,6 +60,9 @@ public sealed class CodeSystemEntry
     public string Url { get; }
 
     public string? Version { get; }
+
+    /// <summary>R5 <c>versionAlgorithm[x]</c> (<c>semver</c>, <c>integer</c>, <c>date</c>, <c>alpha</c>, ...); null when not declared.</summary>
+    public string? VersionAlgorithm { get; }
 
     /// <summary>CodeSystem.content: complete, fragment, example, not-present or supplement (null when missing).</summary>
     public string? Content { get; }
@@ -90,7 +96,10 @@ public sealed class CodeSystemEntry
     /// <summary>Whether a code missing from this entry is authoritatively not in the system version (<c>content = complete</c>).</summary>
     public bool IsComplete => Content == "complete";
 
-    /// <summary>The concept with <paramref name="code"/>, ignoring case when the CodeSystem says it is not case sensitive; null when absent.</summary>
+    /// <summary>
+    /// The concept with <paramref name="code"/>, ignoring case unless the CodeSystem says it is case sensitive; null when absent.
+    /// A match in another case when <see cref="CaseSensitive"/> is not stated is reported by the answer (<c>case-insensitive-match</c>).
+    /// </summary>
     public Concept? Find(string code)
     {
         ArgumentNullException.ThrowIfNull(code);

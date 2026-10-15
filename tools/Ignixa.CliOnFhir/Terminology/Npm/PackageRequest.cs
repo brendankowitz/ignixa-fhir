@@ -6,7 +6,7 @@
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.PackageManagement.Models;
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>
 /// A FHIR npm package asked for: <c>id@version</c>, <c>id#version</c> (the FHIR package cache spelling) or a bare

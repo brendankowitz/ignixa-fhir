@@ -22,20 +22,18 @@ internal sealed class ValueSetExpander(TerminologyStore store)
 
     public const string TooLargeCode = "expansion-too-large";
 
+    /// <summary>The expansion of <paramref name="valueSet"/>, computed once per snapshot.</summary>
     public ValueSetExpansion Expand(ValueSetEntry valueSet)
     {
         ArgumentNullException.ThrowIfNull(valueSet);
 
-        return Expand(valueSet, []);
-    }
-
-    private ValueSetExpansion Expand(ValueSetEntry valueSet, IReadOnlyList<string> stack) =>
-        store.Expansions.GetOrAdd(
+        // Only whole requests are cached. A nested ValueSet is expanded afresh with the caller's own stack (below), so no
+        // cached factory ever holds another thread's stack, which is what lets the cycle check see every include path.
+        return store.Expansions.GetOrAdd(
             (valueSet.Url, valueSet.Version),
-            // PublicationOnly: two calls expanding ValueSets that include each other on different threads must not wait on
-            // each other's lock; the stack check already stops recursion on one thread.
-            _ => new Lazy<ValueSetExpansion>(() => Compute(valueSet, [.. stack, valueSet.Url]), LazyThreadSafetyMode.PublicationOnly))
+            _ => new Lazy<ValueSetExpansion>(() => Compute(valueSet, [valueSet.Url]), LazyThreadSafetyMode.ExecutionAndPublication))
         .Value;
+    }
 
     private ValueSetExpansion Compute(ValueSetEntry valueSet, IReadOnlyList<string> stack)
     {
@@ -109,6 +107,11 @@ internal sealed class ValueSetExpander(TerminologyStore store)
     {
         var codes = new ExpansionBuilder();
         CodeSystemResolution resolution = store.ResolveCodeSystem(system, rule.Version);
+        if (resolution.OtherVersions is { } others)
+        {
+            context.Notes.Add(others);
+        }
+
         if (resolution.Entry is not { } codeSystem)
         {
             if (rule.Concepts.Count > 0 && rule.Filters.Count == 0)
@@ -159,7 +162,7 @@ internal sealed class ValueSetExpander(TerminologyStore store)
 
         foreach (Concept concept in selected)
         {
-            codes.Add(new ExpansionCode(codeSystem.Url, codeSystem.Version, concept.Code, concept.Display, concept.Inactive));
+            codes.Add(new ExpansionCode(codeSystem.Url, codeSystem.Version, concept.Code, concept.Display, concept.Inactive, concept.NotSelectable));
             ThrowIfTooLarge(codes.Count, context.ValueSet);
         }
 
@@ -173,7 +176,7 @@ internal sealed class ValueSetExpander(TerminologyStore store)
         {
             if (codeSystem.Find(listed.Code) is { } concept)
             {
-                codes.Add(new ExpansionCode(codeSystem.Url, codeSystem.Version, concept.Code, listed.Display ?? concept.Display, concept.Inactive));
+                codes.Add(new ExpansionCode(codeSystem.Url, codeSystem.Version, concept.Code, listed.Display ?? concept.Display, concept.Inactive, concept.NotSelectable));
             }
             else if (codeSystem.IsComplete)
             {
@@ -194,6 +197,11 @@ internal sealed class ValueSetExpander(TerminologyStore store)
     private ExpansionBuilder EvaluateValueSet(string canonical, ExpansionContext context, string part)
     {
         CanonicalResolution<ValueSetEntry> resolution = store.ResolveValueSet(canonical);
+        if (resolution.OtherVersions is { } others)
+        {
+            context.Notes.Add(others);
+        }
+
         if (resolution.Entry is not { } nested)
         {
             context.Incomplete.Add(Problem(context, "value-set-not-loaded", $"ValueSet {TerminologyNames.Canonical(resolution.Url, resolution.Version)}, used by a compose.{part} of ValueSet {Name(context.ValueSet)}, is not loaded"));
@@ -206,7 +214,7 @@ internal sealed class ValueSetExpander(TerminologyStore store)
             return new ExpansionBuilder();
         }
 
-        ValueSetExpansion expansion = Expand(nested, context.Stack);
+        ValueSetExpansion expansion = Compute(nested, [.. context.Stack, nested.Url]);
         context.Used.AddRange(expansion.Used);
         context.Incomplete.AddRange(expansion.Incomplete);
         context.Notes.AddRange(expansion.Notes);

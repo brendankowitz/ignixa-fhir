@@ -11,13 +11,18 @@ namespace Ignixa.CliOnFhir.Terminology.Tools;
 /// <summary>
 /// <c>terminology_validate_code</c> / <c>cli-on-fhir term validate</c>: whether a code is in a CodeSystem or a ValueSet, and
 /// whether a display matches. Only a complete answer is <c>valid</c> or <c>invalid</c>; anything the loaded terminology
-/// cannot decide is <c>unknown</c> with the reason, never <c>invalid</c>.
+/// cannot decide is <c>unknown</c> with the reason, never <c>invalid</c>. A right code with a display that matches neither
+/// its display nor a designation is <c>invalid</c> with reason <c>display-mismatch</c>, as R4 $validate-code and tx.fhir.org
+/// answer it, and the expected display is in the facts.
 /// </summary>
 public static class TermValidate
 {
     public const string Valid = "valid";
     public const string Invalid = "invalid";
     public const string Unknown = "unknown";
+
+    /// <summary>The reason when the code is right but the display matches neither its display nor a designation (R4 $validate-code: result false).</summary>
+    public const string DisplayMismatch = "display-mismatch";
 
     public static Task<ToolEnvelope<TermValidateFacts?>> ValidateAsync(FolderSession session, string? code, string? system, string? display, string? valueSet, string? version, CancellationToken cancellationToken)
     {
@@ -41,7 +46,7 @@ public static class TermValidate
                     ? AgainstSystem(state.Store, checkedSystem!, checkedCode, checkedDisplay, checkedVersion)
                     : AgainstValueSet(state.Store, checkedValueSet, checkedSystem, checkedCode, checkedDisplay, checkedVersion);
                 return session.Terminology.Options.TxServer is { } tx && TxFallback.ValidationMissing(local.Facts.Reason)
-                    ? await TxAnswers.ValidateAsync(tx, checkedCode, checkedSystem, checkedDisplay, checkedValueSet, checkedVersion, TxFallback.Why(local.Absent, local.Facts.Reason), cancellationToken)
+                    ? await TxAnswers.ValidateAsync(tx, checkedCode, checkedSystem, checkedDisplay, checkedValueSet, checkedVersion, TxFallback.Why(local.Absent, local.Facts.Reason), session.UtcNow(), cancellationToken)
                     : local;
             },
             cancellationToken);
@@ -59,6 +64,11 @@ public static class TermValidate
         };
 
         (bool? matches, string? shown) = DisplayCheck(query.Concept, display, query.Entry, issues);
+        if (result == Valid && matches == false)
+        {
+            (result, reason) = (Invalid, DisplayMismatch);
+        }
+
         var facts = new TermValidateFacts(result, reason, system, query.Entry?.Version ?? version, query.Concept?.Code ?? code, null, null, query.Source(), shown, display, matches, query.Concept?.Inactive);
         return new TerminologyAnswer<TermValidateFacts>(facts, query.Evidence(), [], query.Absent(store) is { } absent ? [absent] : [], issues);
     }
@@ -73,8 +83,11 @@ public static class TermValidate
         }
 
         ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry);
-        List<IssueItem> issues = [.. store.ConflictIssues("ValueSet", entry.Url, entry.Version)];
-        List<ExpansionCode> found = [.. expansion.Matching(system, code).Where(candidate => version is null || candidate.Version is null || candidate.Version == version)];
+
+        // The answer used the ValueSet and, through its expansion, every CodeSystem and ValueSet it read: their notes
+        // (conflicts, other loaded versions, codes taken unchecked) apply to it.
+        List<IssueItem> issues = [.. Optional(resolution.OtherVersions), .. store.ConflictIssues("ValueSet", entry.Url, entry.Version), .. expansion.Notes];
+        List<ExpansionCode> found = [.. Members(store, expansion, system, code, issues).Where(candidate => version is null || candidate.Version is null || candidate.Version == version)];
         List<EvidenceItem> evidence = [.. expansion.Used.Select(origin => origin.ToEvidence()).Distinct().Take(20)];
         if (found.Count > 1)
         {
@@ -110,16 +123,18 @@ public static class TermValidate
             return new TerminologyAnswer<TermValidateFacts>(undecided, evidence, [], [], issues);
         }
 
-        Concept? concept = store.ResolveCodeSystem(member.System, member.Version).Entry?.Find(member.Code);
+        CodeSystemEntry? memberSystem = store.ResolveCodeSystem(member.System, member.Version).Entry;
+        Concept? concept = memberSystem?.Find(member.Code);
         (bool? matches, string? shown) = concept is not null
-            ? DisplayCheck(concept, display, store.ResolveCodeSystem(member.System, member.Version).Entry, issues)
+            ? DisplayCheck(concept, display, memberSystem, issues)
             : (display is null || member.Display is null ? null : Same(display, member.Display), member.Display);
         if (matches == false && concept is null)
         {
-            issues.Add(DisplayMismatch(member.System, member.Code, null));
+            issues.Add(MismatchIssue(member.System, member.Code, null));
         }
 
-        var facts = new TermValidateFacts(Valid, "code-in-value-set", member.System, member.Version, member.Code, entry.Url, entry.Version, AnswerSource.Local(entry.Origin), shown, display, matches, member.Inactive);
+        (string memberResult, string memberReason) = matches == false ? (Invalid, DisplayMismatch) : (Valid, "code-in-value-set");
+        var facts = new TermValidateFacts(memberResult, memberReason, member.System, member.Version, member.Code, entry.Url, entry.Version, AnswerSource.Local(entry.Origin), shown, display, matches, member.Inactive);
         return new TerminologyAnswer<TermValidateFacts>(facts, evidence, [], [], issues);
     }
 
@@ -143,16 +158,44 @@ public static class TermValidate
         bool matches = (concept.Display is { } own && Same(display, own)) || concept.Designations.Any(designation => Same(display, designation.Value));
         if (!matches)
         {
-            issues.Add(DisplayMismatch(entry.Url, concept.Code, entry));
+            issues.Add(MismatchIssue(entry.Url, concept.Code, entry));
         }
 
         return (matches, concept.Display);
     }
 
-    private static IssueItem DisplayMismatch(string system, string code, CodeSystemEntry? entry) => new(
+    // A code is a member when it equals an expansion code, or matches it ignoring case where that code's system is not case
+    // sensitive (or does not say, which is reported).
+    private static IEnumerable<ExpansionCode> Members(TerminologyStore store, ValueSetExpansion expansion, string? system, string code, List<IssueItem> issues)
+    {
+        List<ExpansionCode> exact = [.. expansion.Matching(system, code)];
+        if (exact.Count > 0)
+        {
+            return exact;
+        }
+
+        List<ExpansionCode> folded = [];
+        foreach (ExpansionCode candidate in expansion.Codes.Where(candidate => (system is null || candidate.System == system) && string.Equals(candidate.Code, code, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (store.ResolveCodeSystem(candidate.System, candidate.Version).Entry is { CaseSensitive: not true } codeSystem)
+            {
+                folded.Add(candidate);
+                if (codeSystem.CaseSensitive is null)
+                {
+                    issues.Add(ConceptQuery.CaseInsensitiveMatch(codeSystem, candidate.Code));
+                }
+            }
+        }
+
+        return folded;
+    }
+
+    private static IEnumerable<IssueItem> Optional(IssueItem? issue) => issue is null ? [] : [issue];
+
+    private static IssueItem MismatchIssue(string system, string code, CodeSystemEntry? entry) => new(
         "warning",
-        "display-mismatch",
-        $"The display given for {TerminologyNames.Coded(system, code)} matches neither its display nor any designation{(entry is null ? string.Empty : $" in {TerminologyNames.Canonical(entry.Url, entry.Version)}")}; 'facts.display' has the expected one.",
+        DisplayMismatch,
+        $"The display given for {TerminologyNames.Coded(system, code)} matches neither its display nor any designation{(entry is null ? string.Empty : $" in {TerminologyNames.Canonical(entry.Url, entry.Version)}")}, so the code is not valid with it ('facts.result' is invalid); 'facts.display' has the expected one.",
         entry?.Origin.ToEvidence().File);
 
     private static bool Same(string left, string right) => string.Equals(TextFolding.Fold(left), TextFolding.Fold(right), StringComparison.Ordinal);

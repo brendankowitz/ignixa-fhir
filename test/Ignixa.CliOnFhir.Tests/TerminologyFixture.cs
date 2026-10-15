@@ -12,7 +12,7 @@ using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Terminology;
-using Ignixa.CliOnFhir.Terminology.Packages;
+using Ignixa.CliOnFhir.Terminology.Npm;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
@@ -78,6 +78,17 @@ internal static class TerminologyFixture
         ("package/example/CodeSystem-ignored.json", """{"resourceType":"CodeSystem","id":"ignored","url":"http://example.org/fhir/CodeSystem/ignored","content":"complete"}"""),
         ("other/spec.internals", "not json"),
     ];
+
+    /// <summary>The files of a package <paramref name="id"/>@<paramref name="version"/> declaring <paramref name="fhirVersion"/>, with <paramref name="resources"/> under <c>package/</c> as <c>&lt;n&gt;.json</c>.</summary>
+    public static IReadOnlyList<(string Path, string Content)> PackageFiles(string id, string version, string fhirVersion, params string[] resources) =>
+    [
+        ("package/package.json", $$"""{"name":"{{id}}","version":"{{version}}","fhirVersions":["{{fhirVersion}}"]}"""),
+        .. resources.Select((json, index) => ($"package/resource-{index}.json", json)),
+    ];
+
+    /// <summary>A complete CodeSystem <paramref name="url"/>|<paramref name="version"/> with flat concepts given as <c>code</c> or <c>code:display</c>; <paramref name="extra"/> adds members (a leading comma included).</summary>
+    public static string CodeSystem(string url, string version, string extra, params string[] concepts) =>
+        $$"""{"resourceType":"CodeSystem","url":"{{url}}","version":"{{version}}","content":"complete"{{extra}},"concept":[{{string.Join(',', concepts.Select(concept => concept.Split(':') is [var code, var display] ? $$$"""{"code":"{{{code}}}","display":"{{{display}}}"}""" : $$$"""{"code":"{{{concept}}}"}"""))}}]}""";
 
     /// <summary>A gzip tar of <paramref name="files"/>, written the way npm packs (regular file entries, POSIX paths).</summary>
     public static byte[] Archive(IEnumerable<(string Path, string Content)> files)

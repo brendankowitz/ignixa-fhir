@@ -6,7 +6,7 @@
 using System.Text.Json;
 using Ignixa.CliOnFhir.Catalog;
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>
 /// Decides which package files the store keeps, the same way for an archive and a directory: JSON files directly under

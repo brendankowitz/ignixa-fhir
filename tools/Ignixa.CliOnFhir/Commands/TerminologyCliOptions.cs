@@ -7,7 +7,7 @@ using System.CommandLine;
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Terminology;
-using Ignixa.CliOnFhir.Terminology.Packages;
+using Ignixa.CliOnFhir.Terminology.Npm;
 using Ignixa.CliOnFhir.Terminology.Remote;
 
 namespace Ignixa.CliOnFhir.Commands;

@@ -36,7 +36,7 @@ public static class TermTranslate
                 TerminologyAnswer<TermTranslateFacts> local = Answer(state.Store, checkedSystem, checkedCode, checkedTarget, checkedMap);
                 bool missing = local.Facts.Outcome is NoMapForSystem or ConceptMapNotLoaded;
                 return session.Terminology.Options.TxServer is { } tx && missing
-                    ? await TxAnswers.TranslateAsync(tx, checkedSystem, checkedCode, checkedTarget, checkedMap, session.Schema.Version >= Abstractions.FhirVersion.R5, TxFallback.Why(local.Absent, local.Facts.Outcome), cancellationToken)
+                    ? await TxAnswers.TranslateAsync(tx, checkedSystem, checkedCode, checkedTarget, checkedMap, TxFallback.Why(local.Absent, local.Facts.Outcome), cancellationToken)
                     : local;
             },
             cancellationToken);
@@ -49,6 +49,11 @@ public static class TermTranslate
         if (conceptMap is not null)
         {
             CanonicalResolution<ConceptMapEntry> resolution = store.ResolveConceptMap(conceptMap);
+            if (resolution.OtherVersions is { } others)
+            {
+                issues.Add(others);
+            }
+
             if (resolution.Entry is not { } named)
             {
                 var notLoaded = new TermTranslateFacts(ConceptMapNotLoaded, system, code, targetSystem, conceptMap, 0, []);
@@ -74,7 +79,7 @@ public static class TermTranslate
             }
         }
 
-        bool anyTarget = translations.Exists(translation => translation.Code is not null);
+        bool anyTarget = translations.Exists(IsMapping);
         string outcome = checkedMaps.Count == 0 ? NoMapForSystem : anyTarget ? Mapped : NotMapped;
         List<OmittedItem> omitted = [];
         (TermTranslateFacts facts, _) = TermText.FitPage(
@@ -98,6 +103,19 @@ public static class TermTranslate
 
         List<EvidenceItem> evidence = [.. checkedMaps.Select(map => map.Origin.ToEvidence()).Distinct().Take(20)];
         return new TerminologyAnswer<TermTranslateFacts>(facts, evidence, omitted, absent, issues);
+    }
+
+    /// <summary>
+    /// Whether a translation maps to something: it has a target code and does not say the concepts are unrelated (R4
+    /// equivalence <c>unmatched</c> or <c>disjoint</c>, R5 relationship <c>not-related-to</c>).
+    /// </summary>
+    public static bool IsMapping(TermTranslation translation)
+    {
+        ArgumentNullException.ThrowIfNull(translation);
+
+        return translation.Code is not null
+            && translation.Equivalence is not ("unmatched" or "disjoint")
+            && translation.Relationship is not "not-related-to";
     }
 
     private static IEnumerable<ConceptMapGroup> Groups(ConceptMapEntry map, string system, string? targetSystem) =>

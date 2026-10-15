@@ -66,9 +66,19 @@ internal sealed record ConceptQuery(string System, string? Version, string Code,
     {
         ArgumentNullException.ThrowIfNull(store);
 
+        if (Resolution.OtherVersions is { } others)
+        {
+            yield return others;
+        }
+
         if (Entry is not { } entry)
         {
             yield break;
+        }
+
+        if (Concept is { } concept && entry.CaseSensitive is null && !string.Equals(concept.Code, Code, StringComparison.Ordinal))
+        {
+            yield return CaseInsensitiveMatch(entry, concept.Code);
         }
 
         foreach (IssueItem conflict in store.ConflictIssues("CodeSystem", entry.Url, entry.Version))
@@ -96,6 +106,13 @@ internal sealed record ConceptQuery(string System, string? Version, string Code,
     }
 
     /// <summary>The answering CodeSystem's location; for a system only declared (a content-not-present stub), the stub's.</summary>
+    /// <summary>The note for a code matched in another case in a CodeSystem that does not state whether it is case sensitive.</summary>
+    public static IssueItem CaseInsensitiveMatch(CodeSystemEntry entry, string matched) => new(
+        "information",
+        "case-insensitive-match",
+        $"The code was matched to {TerminologyNames.Coded(entry.Url, matched)} ignoring case: CodeSystem {TerminologyNames.Canonical(entry.Url, entry.Version)} does not state caseSensitive, so codes are accepted in any case (R4 CodeSystem.caseSensitive); produce the code as {TerminologyNames.Code(matched)}.",
+        entry.Origin.ToEvidence().File);
+
     public IReadOnlyList<EvidenceItem> Evidence() => Entry is { } entry
         ? [entry.Origin.ToEvidence()]
         : [.. Resolution.Stubs.Select(stub => stub.Origin.ToEvidence()).Distinct()];

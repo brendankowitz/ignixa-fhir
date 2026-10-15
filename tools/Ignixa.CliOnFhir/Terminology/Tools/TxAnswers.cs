@@ -19,12 +19,19 @@ namespace Ignixa.CliOnFhir.Terminology.Tools;
 internal static class TxAnswers
 {
     public const string UsedCode = "tx-server-answered";
+    public const string NotFoundOutcome = "not-found-by-tx-server";
 
     private static readonly string[] SubsumptionOutcomes = [TermSubsumes.Equivalent, TermSubsumes.Subsumes, TermSubsumes.SubsumedBy, TermSubsumes.NotSubsumed];
 
-    public static async Task<TerminologyAnswer<TermLookupFacts>> LookupAsync(TxServerClient tx, string system, string code, string? version, string why, CancellationToken cancellationToken)
+    public static async Task<TerminologyAnswer<TermLookupFacts>> LookupAsync(TxServerClient tx, string system, string code, string? version, string why, DateTimeOffset checkedAt, CancellationToken cancellationToken)
     {
-        JsonObject parameters = await tx.GetAsync("CodeSystem/$lookup", With([("system", system), ("code", code)], ("version", version)), "Parameters", cancellationToken);
+        JsonObject? found = await tx.GetOrNotFoundAsync("CodeSystem/$lookup", With([("system", system), ("code", code)], ("version", version)), "Parameters", notFoundIsAnswer: true, cancellationToken);
+        if (found is not { } parameters)
+        {
+            var unknown = new TermLookupFacts(NotFoundOutcome, system, version, code, AnswerSource.Remote(tx.BaseUri, null), null, null, null, null, null, null, null, null, null, null, null);
+            return new TerminologyAnswer<TermLookupFacts>(unknown, [], [], [NotFoundAbsent(tx, system, code, checkedAt)], [Used(tx, why), NotFound(tx, system, code)]);
+        }
+
         string? reported = TxParameters.Value(parameters, "version");
         List<ConceptProperty> properties = [];
         foreach (JsonObject property in TxParameters.All(parameters, "property"))
@@ -67,12 +74,18 @@ internal static class TxAnswers
         return new TerminologyAnswer<TermLookupFacts>(facts, [], omitted, [], [Used(tx, why)]);
     }
 
-    public static async Task<TerminologyAnswer<TermValidateFacts>> ValidateAsync(TxServerClient tx, string code, string? system, string? display, string? valueSet, string? version, string why, CancellationToken cancellationToken)
+    public static async Task<TerminologyAnswer<TermValidateFacts>> ValidateAsync(TxServerClient tx, string code, string? system, string? display, string? valueSet, string? version, string why, DateTimeOffset checkedAt, CancellationToken cancellationToken)
     {
         (string Name, string Value)[] request = valueSet is null
             ? With([("url", system!), ("code", code)], ("version", version), ("display", display))
             : With([("url", valueSet), ("code", code)], ("system", system), ("version", version), ("display", display));
-        JsonObject parameters = await tx.GetAsync(valueSet is null ? "CodeSystem/$validate-code" : "ValueSet/$validate-code", request, "Parameters", cancellationToken);
+        JsonObject? found = await tx.GetOrNotFoundAsync(valueSet is null ? "CodeSystem/$validate-code" : "ValueSet/$validate-code", request, "Parameters", notFoundIsAnswer: true, cancellationToken);
+        if (found is not { } parameters)
+        {
+            var unknown = new TermValidateFacts(TermValidate.Unknown, NotFoundOutcome, system, version, code, valueSet, null, AnswerSource.Remote(tx.BaseUri, null), null, display, null, null);
+            return new TerminologyAnswer<TermValidateFacts>(unknown, [], [], [NotFoundAbsent(tx, system ?? valueSet!, code, checkedAt)], [Used(tx, why), NotFound(tx, system ?? valueSet!, code)]);
+        }
+
         if (TxParameters.All(parameters, "result").FirstOrDefault()?["valueBoolean"] is not JsonValue result || result.GetValueKind() is not (JsonValueKind.True or JsonValueKind.False))
         {
             throw ToolRequestException.Error(TxServerClient.ErrorCode, $"The terminology server's $validate-code answer has no boolean 'result'; nothing was concluded from it.");
@@ -81,18 +94,25 @@ internal static class TxAnswers
         bool valid = result.GetValue<bool>();
         string? reported = TxParameters.Value(parameters, "version");
         string? inactive = TxParameters.Value(parameters, "inactive");
+        string? expected = TxParameters.Value(parameters, "display");
+
+        // Aligned with the local answer: a rejection where the server's display differs from the one given is a display mismatch.
+        bool? displayMatches = display is null || expected is null ? null : string.Equals(TextFolding.Fold(display), TextFolding.Fold(expected), StringComparison.Ordinal);
+        string reason = valid
+            ? (valueSet is null ? "code-in-system" : "code-in-value-set")
+            : displayMatches == false ? TermValidate.DisplayMismatch : "rejected-by-tx-server";
         var facts = new TermValidateFacts(
             valid ? TermValidate.Valid : TermValidate.Invalid,
-            valid ? (valueSet is null ? "code-in-system" : "code-in-value-set") : "rejected-by-tx-server",
+            reason,
             TxParameters.Value(parameters, "system") ?? system,
             reported,
             code,
             valueSet,
             null,
             AnswerSource.Remote(tx.BaseUri, reported),
-            TxParameters.Value(parameters, "display") is { } shown ? shown[..Math.Min(shown.Length, TermText.MaxShortText)] : null,
+            expected is null ? null : expected[..Math.Min(expected.Length, TermText.MaxShortText)],
             display,
-            null,
+            displayMatches,
             inactive is null ? null : inactive == "true");
         return new TerminologyAnswer<TermValidateFacts>(facts, [], [], [], [Used(tx, why)]);
     }
@@ -151,9 +171,22 @@ internal static class TxAnswers
         return new TerminologyAnswer<TermExpandFacts>(facts, [], omitted, [], issues) { Next = next };
     }
 
-    public static async Task<TerminologyAnswer<TermTranslateFacts>> TranslateAsync(TxServerClient tx, string system, string code, string? targetSystem, string? conceptMap, bool r5, string why, CancellationToken cancellationToken)
+    public static async Task<TerminologyAnswer<TermTranslateFacts>> TranslateAsync(TxServerClient tx, string system, string code, string? targetSystem, string? conceptMap, string why, CancellationToken cancellationToken)
     {
-        (string Name, string Value)[] request = With([("system", system), (r5 ? "sourceCode" : "code", code)], (r5 ? "targetSystem" : "targetsystem", targetSystem), ("url", conceptMap));
+        // The parameter names differ by the SERVER's FHIR version (R4 code/targetsystem, R5 sourceCode/targetSystem); when it
+        // does not say, both spellings are sent.
+        string? serverVersion = await tx.FhirVersionAsync();
+        bool r5 = serverVersion?.StartsWith('5') == true || serverVersion?.StartsWith('6') == true;
+        bool both = serverVersion is null;
+        List<IssueItem> issues = [Used(tx, why)];
+        if (both)
+        {
+            issues.Add(new IssueItem("information", "tx-server-version-unknown", $"The terminology server {tx.BaseUri} did not report its FHIR version, so $translate was sent both the R4 (code, targetsystem) and the R5 (sourceCode, targetSystem) parameter names.", Location: null));
+        }
+
+        (string Name, string Value)[] request = both
+            ? With([("system", system), ("code", code), ("sourceCode", code)], ("targetsystem", targetSystem), ("targetSystem", targetSystem), ("url", conceptMap))
+            : With([("system", system), (r5 ? "sourceCode" : "code", code)], (r5 ? "targetSystem" : "targetsystem", targetSystem), ("url", conceptMap));
         JsonObject parameters = await tx.GetAsync("ConceptMap/$translate", request, "Parameters", cancellationToken);
         if (TxParameters.All(parameters, "result").FirstOrDefault()?["valueBoolean"] is not JsonValue result || result.GetValueKind() is not (JsonValueKind.True or JsonValueKind.False))
         {
@@ -181,11 +214,20 @@ internal static class TxAnswers
                 "tx-server"));
         }
 
-        string outcome = result.GetValue<bool>() && translations.Exists(translation => translation.Code is not null) ? TermTranslate.Mapped : TermTranslate.NotMapped;
+        string outcome = result.GetValue<bool>() && translations.Exists(TermTranslate.IsMapping) ? TermTranslate.Mapped : TermTranslate.NotMapped;
         List<OmittedItem> omitted = [];
         var facts = new TermTranslateFacts(outcome, system, code, targetSystem, conceptMap, 0, TermText.Take<TermTranslation>(translations, "translations", omitted));
-        return new TerminologyAnswer<TermTranslateFacts>(facts, [], omitted, [], [Used(tx, why)]);
+        return new TerminologyAnswer<TermTranslateFacts>(facts, [], omitted, [], issues);
     }
+
+    private static AbsentItem NotFoundAbsent(TxServerClient tx, string system, string code, DateTimeOffset checkedAt) =>
+        new(TerminologyNames.Coded(system, code), $"the terminology server {tx.BaseUri}, which answered HTTP 404 with OperationOutcome issue code not-found", checkedAt);
+
+    private static IssueItem NotFound(TxServerClient tx, string system, string code) => new(
+        "warning",
+        NotFoundOutcome,
+        $"The terminology server {tx.BaseUri} does not know {TerminologyNames.Coded(system, code)} (HTTP 404, not-found). That is the server's answer, not proof the code does not exist: the server may lack that system or edition.",
+        Location: null);
 
     private static IssueItem Used(TxServerClient tx, string why) => new(
         "information",

@@ -19,6 +19,7 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// <param name="Parents">Direct parents (from nesting and the parent, child and subsumedBy properties), in definition order.</param>
 /// <param name="Children">Direct children, in definition order.</param>
 /// <param name="Order">Position in the CodeSystem's definition order (depth first).</param>
+/// <param name="NotSelectable">True when the property declared as <c>#notSelectable</c> (or named <c>notSelectable</c>) is true: an abstract grouper.</param>
 public sealed record Concept(
     string Code,
     string? Display,
@@ -29,4 +30,5 @@ public sealed record Concept(
     IReadOnlyList<ConceptDesignation> Designations,
     IReadOnlyList<string> Parents,
     IReadOnlyList<string> Children,
-    int Order);
+    int Order,
+    bool NotSelectable = false);

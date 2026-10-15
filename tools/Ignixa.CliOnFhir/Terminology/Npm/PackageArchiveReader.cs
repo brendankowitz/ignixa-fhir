@@ -6,7 +6,7 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 
-namespace Ignixa.CliOnFhir.Terminology.Packages;
+namespace Ignixa.CliOnFhir.Terminology.Npm;
 
 /// <summary>
 /// Reads a FHIR npm package <c>.tgz</c> in memory, within <see cref="PackageLimits"/>. Nothing is written to disk, so entry

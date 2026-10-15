@@ -52,7 +52,8 @@ internal static class CodeSystemReader
             concept.Designations,
             [.. parents[concept.Code].OrderBy(code => byCode[code].Order)],
             [.. children[concept.Code].OrderBy(code => byCode[code].Order)],
-            order))];
+            order,
+            concept.NotSelectable))];
 
         var entry = new CodeSystemEntry(
             url,
@@ -69,7 +70,8 @@ internal static class CodeSystemReader
                 TerminologyJson.Member(resource, "content"),
                 TerminologyJson.Member(resource, "caseSensitive"),
                 TerminologyJson.Member(resource, "hierarchyMeaning"),
-                TerminologyJson.Member(resource, "concept")));
+                TerminologyJson.Member(resource, "concept")),
+            TerminologyJson.VersionAlgorithm(resource));
         return (entry, null);
     }
 
