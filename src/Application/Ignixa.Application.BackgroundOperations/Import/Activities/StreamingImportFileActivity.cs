@@ -210,6 +210,13 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                             if (validOperations.Count > 0)
                             {
                                 pipelineCancellation.Token.ThrowIfCancellationRequested();
+
+                                // Outside PrepareResource's parse-error catch: an ordering failure is a server
+                                // defect and must fail the import rather than be reported as bad input.
+                                foreach (var operation in validOperations)
+                                {
+                                    _elementOrdering.OrderForStorage(operation.resource, schemaProvider);
+                                }
                                 _logger.LogDebug(
                                     "Consumer {ConsumerId} executing batch of {Count} resources",
                                     consumerId, validOperations.Count);
@@ -390,8 +397,6 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 jsonNode.Id = resourceId;
                 _logger.LogDebug("Generated ID for {ResourceType}: {Id}", expectedResourceType, resourceId);
             }
-
-            _elementOrdering.OrderForStorage(jsonNode, schemaProvider);
 
             var typedElement = jsonNode.ToElement(schemaProvider);
             IReadOnlyList<object> searchIndices = searchIndexer.Extract((IElement)typedElement).ToArray();

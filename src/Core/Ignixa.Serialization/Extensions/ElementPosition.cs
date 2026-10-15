@@ -11,5 +11,5 @@ namespace Ignixa.Serialization.Extensions;
 /// Where a JSON property sorts within its parent object, and the type definition of its value.
 /// </summary>
 /// <param name="Rank">Sort key; lower ranks are written first.</param>
-/// <param name="Type">Definition of the property's value, or null when the schema does not describe it.</param>
+/// <param name="Type">Definition used to order the value's own properties; null when there is none to apply (primitives, <c>resourceType</c>, unknown properties).</param>
 internal readonly record struct ElementPosition(int Rank, IType? Type);

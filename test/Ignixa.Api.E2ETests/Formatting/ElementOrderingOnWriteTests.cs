@@ -47,6 +47,44 @@ public class ElementOrderingOnWriteTests(ElementOrderingApiFixture fixture)
         (await PropertyNamesAsync(read)).ShouldBe(SpecOrder);
     }
 
+    [Fact]
+    public async Task GivenOrderingEnabled_WhenPatchAddsElement_ThenResponseAndReadAreSpecOrdered()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        using var seed = Json($$"""{"resourceType":"Patient","id":"{{id}}","gender":"male"}""");
+        using var created = await fixture.Client.PutAsync($"/tenant/1/Patient/{id}", seed);
+        created.StatusCode.ShouldBe(HttpStatusCode.Created);
+        using var patch = Json("""
+            {"resourceType":"Parameters","parameter":[{"name":"operation","part":[
+              {"name":"type","valueCode":"add"},{"name":"path","valueString":"Patient.name"},
+              {"name":"value","valueHumanName":{"given":["Jo"],"family":"Smith"}}]}]}
+            """);
+
+        using var patched = await fixture.Client.PatchAsync($"/tenant/1/Patient/{id}", patch);
+        using var read = await fixture.Client.GetAsync($"/tenant/1/Patient/{id}");
+
+        patched.StatusCode.ShouldBe(HttpStatusCode.OK, await patched.Content.ReadAsStringAsync());
+        string[] expected = ["resourceType", "id", "meta", "name", "gender"];
+        (await PropertyNamesAsync(patched)).ShouldBe(expected);
+        (await PropertyNamesAsync(read)).ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task GivenOrderingEnabled_WhenWritingWithXProvenance_ThenStoredProvenanceIsSpecOrdered()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/tenant/1/Patient/{id}") { Content = Json(ScrambledPatient(id)) };
+        request.Headers.Add("X-Provenance", """{"agent":[{"who":{"display":"importer"}}],"recorded":"2024-01-01T00:00:00Z","resourceType":"Provenance"}""");
+
+        using var created = await fixture.Client.SendAsync(request);
+        using var search = await fixture.Client.GetAsync($"/tenant/1/Provenance?target=Patient/{id}");
+
+        created.StatusCode.ShouldBe(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        search.StatusCode.ShouldBe(HttpStatusCode.OK);
+        JsonObject provenance = JsonNode.Parse(await search.Content.ReadAsStringAsync())!["entry"]![0]!["resource"]!.AsObject();
+        provenance.Select(property => property.Key).ShouldBe(["resourceType", "id", "meta", "target", "recorded", "agent"]);
+    }
+
     private static string ScrambledPatient(string id) =>
         $$"""{"birthDate":"1970-01-01","gender":"male","active":true,"id":"{{id}}","resourceType":"Patient"}""";
 

@@ -73,8 +73,6 @@ public static class CoreServicesRegistration
         services.Configure<Ignixa.Application.Features.Authorization.AuthorizationOptions>(
             configuration.GetSection(Ignixa.Application.Features.Authorization.AuthorizationOptions.SectionName));
 
-        services.Configure<SerializationOptions>(configuration.GetSection(SerializationOptions.SectionName));
-
         // JWT Bearer authentication
         ConfigureJwtAuthentication(services, configuration, environment);
 

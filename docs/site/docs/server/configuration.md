@@ -47,14 +47,18 @@ transaction cap changes behavior for clients that previously submitted transacti
 | `Serialization:OrderElementsOnWrite` | `false` | Store resources with their properties in StructureDefinition element order, the order the Firely SDK serializer uses. |
 
 By default the server keeps the property order the client sent, with `meta` appended when the
-client omitted it. When enabled, every stored resource is reordered on write: create, update,
-patch, conditional operations, batch and transaction bundles, `X-Provenance`, and bulk `$import`.
-The order applies to `resourceType` first, then elements as defined for the resource's FHIR
-version; a primitive's extension sibling (`_birthDate`) follows its value, and properties the
-specification does not define are kept after the defined ones. Array element order never changes.
+client omitted it. When enabled, resources are reordered as they are written through the FHIR API
+and bulk `$import`: create, update, patch, conditional operations, batch and transaction bundles,
+`X-Provenance`, and `$import`.
 
-Reads return stored bytes unchanged, so resources written before the setting was enabled keep
-their original order until they are next updated.
+Properties are ordered with `resourceType` first, then elements in the order the resource's FHIR
+version defines them. A primitive's extension sibling (`_birthDate`) follows its value, properties
+the specification does not define are kept after the defined ones, and embedded resources
+(`contained`, `Bundle.entry.resource`) are ordered by their own `resourceType`. Array element order
+never changes.
+
+Reads serve the stored JSON and do not reorder it, so resources written before the setting was
+enabled keep their original order until they are next updated.
 
 ## Tenant Configuration (Required)
 

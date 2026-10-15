@@ -23,7 +23,11 @@ internal static class JsonObjectElementOrderer
 
     private static bool OrderObject(JsonObject obj, IType? type, ISchema schema)
     {
-        if (obj[ElementOrdering.ResourceTypeProperty] is JsonValue resourceType && resourceType.TryGetValue(out string? typeName))
+        // Only a resource position (the root, contained, Bundle.entry.resource) is typed by its own resourceType;
+        // elsewhere "resourceType" can be an ordinary element, as in ExampleScenario.instance.
+        if (ElementOrdering.IsResourcePosition(type)
+            && obj[ElementOrdering.ResourceTypeProperty] is JsonValue resourceType
+            && resourceType.TryGetValue(out string? typeName))
         {
             type = schema.GetTypeDefinition(typeName) ?? type;
         }

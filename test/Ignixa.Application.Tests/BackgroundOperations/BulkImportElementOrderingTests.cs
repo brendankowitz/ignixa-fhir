@@ -21,7 +21,6 @@ using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 using Xunit;
@@ -32,6 +31,26 @@ public class BulkImportElementOrderingTests
 {
     [Fact]
     public async Task GivenOrderingEnabled_WhenImportingUnorderedResource_ThenWrittenResourceIsSpecOrdered()
+    {
+        ResourceJsonNode? written = await ImportAsync("{\"active\":true,\"id\":\"p1\",\"resourceType\":\"Patient\"}");
+
+        written.ShouldNotBeNull();
+        PropertyNames(written).ShouldBe(["resourceType", "id", "meta", "active"]);
+    }
+
+    [Fact]
+    public async Task GivenOrderingEnabledAndNumericMetaVersionId_WhenImporting_ThenResourceIsStillWritten()
+    {
+        ResourceJsonNode? written = await ImportAsync("{\"active\":true,\"meta\":{\"versionId\":3},\"id\":\"p1\",\"resourceType\":\"Patient\"}");
+
+        written.ShouldNotBeNull();
+        PropertyNames(written).ShouldBe(["resourceType", "id", "meta", "active"]);
+    }
+
+    private static string[] PropertyNames(ResourceJsonNode resource) =>
+        System.Text.Json.Nodes.JsonNode.Parse(resource.SerializeToString())!.AsObject().Select(property => property.Key).ToArray();
+
+    private static async Task<ResourceJsonNode?> ImportAsync(string ndjsonLine)
     {
         var tenants = Substitute.For<ITenantConfigurationStore>();
         tenants.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>()).Returns(
@@ -51,10 +70,10 @@ public class BulkImportElementOrderingTests
         factory.GetRepositoryAsync(1, Arg.Any<CancellationToken>()).Returns(repository);
         var blobs = Substitute.For<IBlobStorageClient>();
         blobs.ReadBlobAsync("input.ndjson", Arg.Any<CancellationToken>())
-            .Returns(new MemoryStream(Encoding.UTF8.GetBytes("{\"active\":true,\"id\":\"p1\",\"resourceType\":\"Patient\"}\n")));
+            .Returns(new MemoryStream(Encoding.UTF8.GetBytes(ndjsonLine + "\n")));
         var activity = new StreamingImportFileActivity(factory, versions, tenants, blobs,
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
-            new FhirRequestContextAccessor(), new ResourceElementOrdering(Options.Create(new SerializationOptions { OrderElementsOnWrite = true })),
+            new FhirRequestContextAccessor(), new ResourceElementOrdering(new SerializationOptions { OrderElementsOnWrite = true }),
             NullLogger<StreamingImportFileActivity>.Instance);
         var input = new StreamingImportFileInput
         {
@@ -64,9 +83,6 @@ public class BulkImportElementOrderingTests
 
         await activity.RunAsync(new TaskContext(new OrchestrationInstance { InstanceId = "job" }), JsonSerializer.Serialize(new[] { input }));
 
-        written.ShouldNotBeNull();
-        System.Text.Json.Nodes.JsonNode.Parse(written.SerializeToString())!.AsObject()
-            .Select(property => property.Key)
-            .ShouldBe(["resourceType", "id", "meta", "active"]);
+        return written;
     }
 }

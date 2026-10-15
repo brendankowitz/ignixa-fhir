@@ -41,9 +41,9 @@ public interface IType
     bool InSummary { get; }
 
     /// <summary>
-    /// Element serialization order (from StructureDefinition snapshot array position).
-    /// REQUIRED for XML serialization (FHIR spec: "Elements must appear in documented order").
-    /// NOT used for canonical JSON (alphabetical property name order instead).
+    /// Position of this element among its siblings in the StructureDefinition snapshot.
+    /// Drives spec element ordering of JSON on write (Serialization:OrderElementsOnWrite) and is the
+    /// documented order XML requires. FHIR canonical JSON sorts properties alphabetically and does not use it.
     /// </summary>
     int Order { get; }
 

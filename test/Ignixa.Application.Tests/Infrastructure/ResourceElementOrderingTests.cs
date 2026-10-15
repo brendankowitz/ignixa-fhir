@@ -10,7 +10,6 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
-using Microsoft.Extensions.Options;
 using Shouldly;
 using Xunit;
 
@@ -48,5 +47,5 @@ public class ResourceElementOrderingTests
     }
 
     private static ResourceElementOrdering CreateOrdering(bool enabled) =>
-        new(Options.Create(new SerializationOptions { OrderElementsOnWrite = enabled }));
+        new(new SerializationOptions { OrderElementsOnWrite = enabled });
 }
