@@ -34,7 +34,6 @@ internal sealed class FolderIndexCache
     public const string RebuiltCode = "index-cache-rebuilt";
     public const string CorruptCode = "index-cache-corrupt";
     public const string UnavailableCode = "index-cache-unavailable";
-    public const string UnsupportedValueCode = "index-cache-unsupported-value";
 
     private const string ManifestFileName = "manifest.json";
     private const string TypeFileSuffix = ".index.json";
@@ -182,14 +181,10 @@ internal sealed class FolderIndexCache
                 resource.Key.Id,
                 [.. resource.Index.Select(entry => new CachedEntry(entry.SearchParameter.Code, entry.Value))]))]);
 
-        // A value type the format does not know throws here (a programmer error); a value it knows but cannot
-        // reproduce exactly is reported and the type is left uncached, so a reload can never differ from a build.
+        // A value type the format does not know throws here (a programmer error). Ignixa's compact value format is
+        // lossless for every value the indexer produces (Ignixa.Search.Tests' CompactSearchValueFormatTests), so what is
+        // written reloads as it was built; a file that does not read back is reported as corrupt and rebuilt.
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(cached, JsonOptions);
-        if (FindUnsupportedValue(cached, bytes) is { } unsupported)
-        {
-            AddIssue("warning", UnsupportedValueCode, $"The {index.ResourceType} index was not saved to the cache because {unsupported}");
-            return null;
-        }
 
         try
         {
@@ -200,56 +195,6 @@ internal sealed class FolderIndexCache
         {
             ReportUnavailable($"The index cache at '{CacheDirectory}' cannot be written: {Describe(ex)}");
             return null;
-        }
-    }
-
-    /// <summary>
-    /// Reads <paramref name="bytes"/> back the way a later run would and checks that writing the result again gives the
-    /// same bytes, which proves every persisted field reproduces. Returns why not, naming the first offending value.
-    /// </summary>
-    private static string? FindUnsupportedValue(CachedTypeIndex cached, byte[] bytes)
-    {
-        if (RoundTripsTo(bytes, out _))
-        {
-            return null;
-        }
-
-        foreach (CachedResource resource in cached.Resources)
-        {
-            foreach (CachedEntry entry in resource.Entries)
-            {
-                byte[] single = JsonSerializer.SerializeToUtf8Bytes(new[] { entry }, JsonOptions);
-                if (!RoundTripsTo<CachedEntry[]>(single, out string? problem))
-                {
-                    return $"the '{entry.Code}' value of {cached.IndexedType}/{resource.Id} does not survive it ({problem}).";
-                }
-            }
-        }
-
-        return "the file does not read back identically.";
-    }
-
-    private static bool RoundTripsTo(byte[] bytes, out string? problem) => RoundTripsTo<CachedTypeIndex>(bytes, out problem);
-
-    private static bool RoundTripsTo<T>(byte[] bytes, out string? problem)
-        where T : class
-    {
-        try
-        {
-            T? reloaded = JsonSerializer.Deserialize<T>(bytes, JsonOptions);
-            if (reloaded is CachedTypeIndex typeIndex)
-            {
-                typeIndex.Validate();
-            }
-
-            bool identical = reloaded is not null && JsonSerializer.SerializeToUtf8Bytes(reloaded, JsonOptions).AsSpan().SequenceEqual(bytes);
-            problem = identical ? null : "it reads back different";
-            return identical;
-        }
-        catch (Exception ex) when (IsUnreadableCacheFile(ex))
-        {
-            problem = Describe(ex);
-            return false;
         }
     }
 

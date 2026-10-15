@@ -5,10 +5,11 @@
 
 using System.Text.Json.Serialization;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Serialization;
 
 namespace Ignixa.CliOnFhir.Caching;
 
 /// <summary>One persisted search index entry: the parameter's code, re-bound to the real definition on load, and its value.</summary>
 internal sealed record CachedEntry(
     string Code,
-    [property: JsonConverter(typeof(CacheSearchValueConverter))] ISearchValue Value);
+    [property: JsonConverter(typeof(CompactSearchValueConverter))] ISearchValue Value);

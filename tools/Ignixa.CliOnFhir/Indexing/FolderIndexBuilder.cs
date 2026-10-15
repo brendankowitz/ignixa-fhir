@@ -10,6 +10,7 @@ using Ignixa.CliOnFhir.Catalog;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.InMemory;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
@@ -38,9 +39,14 @@ public sealed class FolderIndexBuilder
         // serves the query side (see SearchQueryParser), so index and queries agree on reference forms.
         ReferenceParser = new ReferenceSearchValueParser(schema, NullFhirBaseUriProvider.Instance);
 
-        // The indexer keeps only its logger, so the (non-owning) factory wrapper can be disposed right away.
+        // Ignixa's own indexer plus the in-memory _lastUpdated entry. The indexer keeps only its loggers, so the
+        // (non-owning) factory wrapper can be disposed right away; both report through the ElementSearchIndexer category
+        // the capture listens on.
         using ILoggerFactory capturingFactory = ExtractionFailureCapture.Wrap(loggerFactory, typeof(ElementSearchIndexer).FullName!);
-        _indexer = new FolderSearchIndexer(schema, capturingFactory, Definitions, ReferenceParser);
+        _indexer = new LastUpdatedSearchIndexer(
+            SearchIndexerFactory.CreateInstance(schema, capturingFactory, Definitions, NullFhirBaseUriProvider.Instance),
+            Definitions,
+            capturingFactory.CreateLogger<ElementSearchIndexer>());
     }
 
     /// <summary>The search parameter definitions the indexer extracts with; the same instances its entries refer to.</summary>

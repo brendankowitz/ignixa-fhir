@@ -26,7 +26,7 @@ internal static class ReferenceFollowChecks
     /// <summary>
     /// One <c>information</c> issue per reference parameter a chain, <c>_has</c> or include followed whose index holds
     /// references the engine cannot follow: not a local <c>Type/id</c> (an absolute URL, a bare id, or a <c>urn:</c> such as
-    /// a Bundle's <c>urn:uuid</c> fullUrl, which <see cref="UrnAwareReferenceConverter"/> keeps in the index for this). Read
+    /// a Bundle's <c>urn:uuid</c> fullUrl, which Ignixa's reference converter keeps in the index). Read
     /// from the index entries of the parameter followed, over every resource of a chain's referencing type, the page and
     /// its included resources for a forward include, and every resource of a reverse include's source type.
     /// </summary>
