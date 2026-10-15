@@ -65,7 +65,7 @@ public class IndexCacheTests
         canon.ShouldContain("Quantity[");
         canon.ShouldContain("Composite[");
         canon.ShouldContain("text=\"Annual Check-up Visit\"");
-        canon.ShouldContain("-03:-30");
+        canon.ShouldContain("-03:30\"");
     }
 
     [Fact]
@@ -663,32 +663,27 @@ public class IndexCacheTests
         Open(folder, cache).GetIndex("Observation").FromCache.ShouldBeTrue();
     }
 
-    [Fact]
-    public void GivenValueTheCacheCannotReproduce_WhenIndexed_ThenTheTypeIsNotPersistedAndTheValueIsNamed()
+    [Theory]
+    [InlineData("""{"resourceType":"Patient","id":"ancient","birthDate":"0001-01-01"}""")]
+    [InlineData("""{"resourceType":"Patient","id":"ancient","birthDate":"0042"}""")]
+    [InlineData("""{"resourceType":"Patient","id":"ancient","birthDate":"1980-02-03","deceasedDateTime":"2020-01-02T03:04:05-05:30"}""")]
+    public void GivenADateTheSharedFormatOnceCouldNotReproduce_WhenIndexed_ThenTheTypeIsPersistedAndReloadsIdentically(string patient)
     {
+        // Regression for the two small-year rows: PartialDateTime printed years below 1000 unpadded, so they did not
+        // survive the cache and the whole type was left uncached. The -05:30 row is a guard: the tool's own converter
+        // compensated for the "-05:-30" rendering, which the shared format no longer needs to.
         using TestFolder folder = CreateFixture();
-        folder.Write("ancient.json", """{"resourceType":"Patient","id":"ancient","birthDate":"0001-01-01"}""");
+        folder.Write("ancient.json", patient);
         using var cache = new TestFolder();
         FolderSession first = Open(folder, cache);
 
-        ResourceTypeIndex patients = first.GetIndex("Patient");
-        ResourceTypeIndex encounters = first.GetIndex("Encounter");
+        ResourceTypeIndex built = first.GetIndex("Patient");
 
-        patients.Resources.Count.ShouldBe(2);
-        patients.CacheWriteMilliseconds.ShouldBeNull();
-        IssueItem issue = first.CacheIssues.ShouldHaveSingleItem();
-        issue.Code.ShouldBe("index-cache-unsupported-value");
-        issue.Severity.ShouldBe("warning");
-        issue.Diagnostics.ShouldContain("Patient");
-        issue.Diagnostics.ShouldContain("'birthdate'");
-        issue.Diagnostics.ShouldContain("Patient/ancient");
-        File.Exists(Path.Combine(first.CacheDirectory!, "Patient.index.json")).ShouldBeFalse();
-        encounters.CacheWriteMilliseconds.ShouldNotBeNull();
-
-        FolderSession second = Open(folder, cache);
-        second.GetIndex("Patient").FromCache.ShouldBeFalse();
-        second.GetIndex("Encounter").FromCache.ShouldBeTrue();
-        second.CacheIssues.Select(i => i.Code).ShouldBe(["index-cache-unsupported-value"]);
+        built.CacheWriteMilliseconds.ShouldNotBeNull();
+        first.CacheIssues.ShouldBeEmpty();
+        ResourceTypeIndex loaded = Open(folder, cache).GetIndex("Patient");
+        loaded.FromCache.ShouldBeTrue();
+        SearchIndexCanon.Describe(loaded).ShouldBe(SearchIndexCanon.Describe(built));
     }
 
     [Fact]

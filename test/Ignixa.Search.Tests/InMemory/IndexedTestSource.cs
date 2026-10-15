@@ -53,7 +53,7 @@ internal sealed class IndexedTestSource : IInMemorySearchSource
     public string[] Included(string resourceType, string query)
     {
         var engine = new InMemorySearchEngine(this, InMemorySearchFeatures.All);
-        Models.SearchOptions options = SearchCorpus.Options(resourceType, query);
+        Ignixa.Search.Models.SearchOptions options = SearchCorpus.Options(resourceType, query);
         return [.. engine.Include(engine.Search(options), options, int.MaxValue).Select(resource => resource.Location.ToString())];
     }
 }

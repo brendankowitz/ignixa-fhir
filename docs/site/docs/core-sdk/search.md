@@ -159,6 +159,8 @@ The converters in `Ignixa.Search.Indexing.Converters` follow the search page's m
 | `canonical` under a reference parameter | reference parsed like a literal reference, with any `\|version` removed (no reference column holds a business version) | R5 `_profile=http://example.org/fhir/StructureDefinition/p` matches `meta.profile` with or without a version; a search naming a version matches every version. |
 | `Reference` / `uri` to `urn:` | untyped reference whose id is the whole urn (contained `#` references stay unindexed) | `subject=urn:uuid:...` matches and `subject:missing=true` does not. |
 
+`CompactSearchIndexConverter` (FileSystem sidecars) and `CompactSearchValueConverter` (one value) write each value as an object with a kind discriminator `k` and only its non-default fields, and read it back exactly: token text case, identifier type, reference kind, min/max sort flags, canonical version and fragment, empty-versus-absent system and code, and composites component by component. Reading anything else (including a sidecar written by the earlier, lossy format) throws `JsonException`; the FileSystem data layer logs the sidecar's path and fails the read, search or write rather than skipping the resource.
+
 ## Compartment Support
 
 ### CompartmentDefinitionManager

@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+#nullable enable
+
 using System.Globalization;
 using System.Text.Json;
 using Ignixa.Search.Indexing.SearchValues;
@@ -10,243 +12,139 @@ using Ignixa.Search.Indexing.SearchValues;
 namespace Ignixa.Search.Serialization;
 
 /// <summary>
-/// Writes search values in compact JSON format using abbreviated property names.
-/// Implements visitor pattern to handle all ISearchValue types.
-/// Reduces storage size by 25-35% compared to default serialization.
+/// Writes a search value's properties in the compact format (<see cref="SearchValueConstants"/>) into the JSON object the
+/// caller has opened. The format is lossless: <see cref="CompactSearchValueReader"/> rebuilds a value that every search,
+/// sort and include reads exactly as it was indexed, including token text case, identifier types, reference kinds,
+/// min/max sort flags, canonical version and fragment, the empty-versus-absent distinction of systems and codes, and
+/// composites component by component.
 /// </summary>
 public class CompactSearchValueWriter : ISearchValueVisitor
 {
     private readonly Utf8JsonWriter _writer;
-    private readonly int? _componentIndex;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CompactSearchValueWriter"/> class.
     /// </summary>
-    /// <param name="writer">The JSON writer.</param>
-    /// <param name="componentIndex">Optional component index for composite search values.</param>
-    public CompactSearchValueWriter(Utf8JsonWriter writer, int? componentIndex = null)
+    /// <param name="writer">The JSON writer, positioned inside the object that will hold the value.</param>
+    public CompactSearchValueWriter(Utf8JsonWriter writer)
     {
-        _writer = writer ?? throw new ArgumentNullException(nameof(writer));
-        _componentIndex = componentIndex;
+        ArgumentNullException.ThrowIfNull(writer);
+
+        _writer = writer;
+    }
+
+    /// <summary>Writes <paramref name="value"/> as one complete JSON object.</summary>
+    public static void WriteObject(Utf8JsonWriter writer, ISearchValue value)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(value);
+
+        writer.WriteStartObject();
+        value.AcceptVisitor(new CompactSearchValueWriter(writer));
+        writer.WriteEndObject();
     }
 
     /// <inheritdoc />
     public void Visit(CompositeIndexSearchValue composite)
     {
-        // For composite values, we need to flatten the components into a single object
-        // with indexed property names (e.g., "c_0", "c_1" for component indices)
-        // This matches the Cartesian product approach from Microsoft's implementation
+        ArgumentNullException.ThrowIfNull(composite);
 
-        // Iterate through each component combination (Cartesian product)
-        foreach (var componentValues in composite.Components.CartesianProduct())
+        // Components are written as they are, not as their Cartesian product: a component with several values (a
+        // CodeableConcept with two codings) keeps them together, which is what the in-memory matcher reads.
+        _writer.WriteString(SearchValueConstants.KindName, SearchValueConstants.CompositeKind);
+        _writer.WriteStartArray(SearchValueConstants.ComponentsName);
+        foreach (IReadOnlyList<ISearchValue> component in composite.Components)
         {
-            int index = 0;
-            foreach (var componentValue in componentValues)
+            _writer.WriteStartArray();
+            foreach (ISearchValue member in component)
             {
-                // Create a new writer with component index for nested values
-                var componentWriter = new CompactSearchValueWriter(_writer, index);
-                componentValue.AcceptVisitor(componentWriter);
-                index++;
+                WriteObject(_writer, member);
             }
+
+            _writer.WriteEndArray();
         }
+
+        _writer.WriteEndArray();
     }
 
     /// <inheritdoc />
     public void Visit(DateTimeSearchValue dateTime)
     {
-        // Use "o" format (ISO 8601 round-trip) to ensure consistent fractional seconds
-        // This is critical for Cosmos DB range indexing to work correctly
-        string propertyPrefix = _componentIndex.HasValue
-            ? $"{SearchValueConstants.DateTimeStartName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-            : SearchValueConstants.DateTimeStartName;
+        ArgumentNullException.ThrowIfNull(dateTime);
 
-        _writer.WriteString(
-            _componentIndex.HasValue
-                ? $"{SearchValueConstants.DateTimeStartName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                : SearchValueConstants.DateTimeStartName,
-            dateTime.Start.ToString("o", CultureInfo.InvariantCulture));
+        _writer.WriteString(SearchValueConstants.KindName, SearchValueConstants.DateTimeKind);
 
-        _writer.WriteString(
-            _componentIndex.HasValue
-                ? $"{SearchValueConstants.DateTimeEndName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                : SearchValueConstants.DateTimeEndName,
-            dateTime.End.ToString("o", CultureInfo.InvariantCulture));
+        // "o" (ISO 8601 round-trip) keeps every fractional digit, so the reloaded bounds compare equal.
+        _writer.WriteString(SearchValueConstants.DateTimeStartName, dateTime.Start.ToString("o", CultureInfo.InvariantCulture));
+        _writer.WriteString(SearchValueConstants.DateTimeEndName, dateTime.End.ToString("o", CultureInfo.InvariantCulture));
+
+        // ToString is the original partial date when the value was built from one (2020-01), and start-end otherwise;
+        // persisting it only when it differs keeps ToString identical after a reload.
+        string text = dateTime.ToString();
+        if (!string.Equals(text, CompactSearchValueReader.DefaultDateText(dateTime.Start, dateTime.End), StringComparison.Ordinal))
+        {
+            _writer.WriteString(SearchValueConstants.DateTimeTextName, text);
+        }
+
+        WriteFlags(dateTime.IsMin, dateTime.IsMax);
     }
 
     /// <inheritdoc />
     public void Visit(NumberSearchValue number)
     {
-        string propertyPrefix = _componentIndex.HasValue ? SearchValueConstants.ComponentIndexSuffix + _componentIndex : string.Empty;
+        ArgumentNullException.ThrowIfNull(number);
 
-        // Write exact value if low == high (optimization)
-        if (number.Low.HasValue && number.High.HasValue && number.Low == number.High)
-        {
-            _writer.WriteNumber(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.NumberName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.NumberName,
-                number.Low.Value);
-        }
-
-        // Always write range values for range queries (if present)
-        if (number.Low.HasValue)
-        {
-            _writer.WriteNumber(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.LowNumberName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.LowNumberName,
-                number.Low.Value);
-        }
-
-        if (number.High.HasValue)
-        {
-            _writer.WriteNumber(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.HighNumberName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.HighNumberName,
-                number.High.Value);
-        }
+        _writer.WriteString(SearchValueConstants.KindName, SearchValueConstants.NumberKind);
+        WriteOptional(SearchValueConstants.LowNumberName, number.Low);
+        WriteOptional(SearchValueConstants.HighNumberName, number.High);
     }
 
     /// <inheritdoc />
     public void Visit(QuantitySearchValue quantity)
     {
-        string propertyPrefix = _componentIndex.HasValue ? SearchValueConstants.ComponentIndexSuffix + _componentIndex : string.Empty;
+        ArgumentNullException.ThrowIfNull(quantity);
 
-        // Write system and code if present
-        if (!string.IsNullOrEmpty(quantity.System))
-        {
-            _writer.WriteString(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.SystemName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.SystemName,
-                quantity.System);
-        }
-
-        if (!string.IsNullOrEmpty(quantity.Code))
-        {
-            _writer.WriteString(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.CodeName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.CodeName,
-                quantity.Code);
-        }
-
-        // Write exact value if low == high (optimization)
-        if (quantity.Low.HasValue && quantity.High.HasValue && quantity.Low == quantity.High)
-        {
-            _writer.WriteNumber(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.QuantityName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.QuantityName,
-                quantity.Low.Value);
-        }
-
-        // Always write range values for range queries (if present)
-        if (quantity.Low.HasValue)
-        {
-            _writer.WriteNumber(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.LowQuantityName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.LowQuantityName,
-                quantity.Low.Value);
-        }
-
-        if (quantity.High.HasValue)
-        {
-            _writer.WriteNumber(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.HighQuantityName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.HighQuantityName,
-                quantity.High.Value);
-        }
+        _writer.WriteString(SearchValueConstants.KindName, SearchValueConstants.QuantityKind);
+        WriteOptional(SearchValueConstants.SystemName, quantity.System);
+        WriteOptional(SearchValueConstants.CodeName, quantity.Code);
+        WriteOptional(SearchValueConstants.LowQuantityName, quantity.Low);
+        WriteOptional(SearchValueConstants.HighQuantityName, quantity.High);
     }
 
     /// <inheritdoc />
     public void Visit(ReferenceSearchValue reference)
     {
-        string propertyPrefix = _componentIndex.HasValue ? SearchValueConstants.ComponentIndexSuffix + _componentIndex : string.Empty;
+        ArgumentNullException.ThrowIfNull(reference);
 
-        // Write base URI if present
-        if (reference.BaseUri != null)
-        {
-            _writer.WriteString(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.ReferenceBaseUriName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.ReferenceBaseUriName,
-                reference.BaseUri.ToString());
-        }
-
-        // Write resource type if present
-        if (!string.IsNullOrEmpty(reference.ResourceType))
-        {
-            _writer.WriteString(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.ReferenceResourceTypeName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.ReferenceResourceTypeName,
-                reference.ResourceType);
-        }
-
-        // Always write resource ID
-        _writer.WriteString(
-            _componentIndex.HasValue
-                ? $"{SearchValueConstants.ReferenceResourceIdName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                : SearchValueConstants.ReferenceResourceIdName,
-            reference.ResourceId);
+        _writer.WriteString(SearchValueConstants.KindName, SearchValueConstants.ReferenceKind);
+        _writer.WriteString(SearchValueConstants.ReferenceKindName, reference.Kind.ToString());
+        WriteOptional(SearchValueConstants.ReferenceBaseUriName, reference.BaseUri?.OriginalString);
+        WriteOptional(SearchValueConstants.ReferenceResourceTypeName, reference.ResourceType);
+        _writer.WriteString(SearchValueConstants.ReferenceResourceIdName, reference.ResourceId);
     }
 
     /// <inheritdoc />
     public void Visit(StringSearchValue s)
     {
-        // For non-composite components, write the original string
-        if (!_componentIndex.HasValue)
-        {
-            _writer.WriteString(SearchValueConstants.StringName, s.String);
-        }
+        ArgumentNullException.ThrowIfNull(s);
 
-        // Always write normalized string (uppercase) for case-insensitive search
-        _writer.WriteString(
-            _componentIndex.HasValue
-                ? $"{SearchValueConstants.NormalizedStringName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                : SearchValueConstants.NormalizedStringName,
-            s.String.ToUpperInvariant());
+        _writer.WriteString(SearchValueConstants.KindName, SearchValueConstants.StringKind);
+        _writer.WriteString(SearchValueConstants.StringName, s.String);
+        WriteFlags(s.IsMin, s.IsMax);
     }
 
     /// <inheritdoc />
     public void Visit(TokenSearchValue token)
     {
-        string propertyPrefix = _componentIndex.HasValue ? SearchValueConstants.ComponentIndexSuffix + _componentIndex : string.Empty;
+        ArgumentNullException.ThrowIfNull(token);
 
-        // Write system if present
-        if (!string.IsNullOrEmpty(token.System))
-        {
-            _writer.WriteString(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.SystemName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.SystemName,
-                token.System);
-        }
-
-        // Write code if present
-        if (!string.IsNullOrEmpty(token.Code))
-        {
-            _writer.WriteString(
-                _componentIndex.HasValue
-                    ? $"{SearchValueConstants.CodeName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                    : SearchValueConstants.CodeName,
-                token.Code);
-        }
-
-        // Write normalized text if present (for non-composite components only)
-        if (!string.IsNullOrEmpty(token.Text) && !_componentIndex.HasValue)
-        {
-            _writer.WriteString(
-                SearchValueConstants.NormalizedTextName,
-                token.Text.ToUpperInvariant());
-        }
+        _writer.WriteString(SearchValueConstants.KindName, SearchValueConstants.TokenKind);
+        WriteOptional(SearchValueConstants.SystemName, token.System);
+        WriteOptional(SearchValueConstants.CodeName, token.Code);
+        WriteOptional(SearchValueConstants.TextName, token.Text);
+        WriteOptional(SearchValueConstants.IdentifierTypeSystemName, token.IdentifierTypeSystem);
+        WriteOptional(SearchValueConstants.IdentifierTypeCodeName, token.IdentifierTypeCode);
     }
-
-    /// <inheritdoc />
 
     /// <inheritdoc />
     public void Visit(OfTypeTokenSearchValue ofTypeToken)
@@ -254,34 +152,43 @@ public class CompactSearchValueWriter : ISearchValueVisitor
         throw new NotSupportedException("OfTypeTokenSearchValue is for search queries only and should not be serialized.");
     }
 
+    /// <inheritdoc />
     public void Visit(UriSearchValue uri)
     {
-        _writer.WriteString(
-            _componentIndex.HasValue
-                ? $"{SearchValueConstants.UriName}{SearchValueConstants.ComponentIndexSuffix}{_componentIndex}"
-                : SearchValueConstants.UriName,
-            uri.Uri);
+        ArgumentNullException.ThrowIfNull(uri);
+
+        _writer.WriteString(SearchValueConstants.KindName, SearchValueConstants.UriKind);
+        _writer.WriteString(SearchValueConstants.UriName, uri.Uri);
+        WriteOptional(SearchValueConstants.UriVersionName, uri.Version);
+        WriteOptional(SearchValueConstants.UriFragmentName, uri.Fragment);
     }
-}
 
-/// <summary>
-/// Extension methods for Cartesian product calculation.
-/// </summary>
-internal static class CartesianProductExtensions
-{
-    /// <summary>
-    /// Calculates the Cartesian product of component value collections.
-    /// Used for composite search values where each component can have multiple values.
-    /// </summary>
-    public static IEnumerable<IEnumerable<T>> CartesianProduct<T>(this IEnumerable<IReadOnlyList<T>> sequences)
+    private void WriteFlags(bool isMin, bool isMax)
     {
-        IEnumerable<IEnumerable<T>> emptyProduct = new[] { Enumerable.Empty<T>() };
+        if (isMin)
+        {
+            _writer.WriteBoolean(SearchValueConstants.IsMinName, true);
+        }
 
-        return sequences.Aggregate(
-            emptyProduct,
-            (accumulator, sequence) =>
-                from accSeq in accumulator
-                from item in sequence
-                select accSeq.Concat(new[] { item }));
+        if (isMax)
+        {
+            _writer.WriteBoolean(SearchValueConstants.IsMaxName, true);
+        }
+    }
+
+    private void WriteOptional(string name, string? value)
+    {
+        if (value is not null)
+        {
+            _writer.WriteString(name, value);
+        }
+    }
+
+    private void WriteOptional(string name, decimal? value)
+    {
+        if (value is { } number)
+        {
+            _writer.WriteNumber(name, number);
+        }
     }
 }
