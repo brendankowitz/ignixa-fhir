@@ -10,6 +10,12 @@ Status: alpha prototype. Design and roadmap: [`docs/features/local-cli/`](../../
 # Overview of a folder: resource types and counts, patients, problems found, build cost
 cli-on-fhir inspect ./my-fhir-data --fhir-version r4
 
+# Patients, then one patient's context: root digest, one node, a code or text
+cli-on-fhir patients ./my-fhir-data --sort latest
+cli-on-fhir context ./my-fhir-data <patientId>
+cli-on-fhir context ./my-fhir-data <patientId> --node "labs/http://loinc.org|8302-2"
+cli-on-fhir find ./my-fhir-data <patientId> asthma
+
 # Serve the folder to an MCP client over stdio
 cli-on-fhir mcp ./my-fhir-data
 ```
@@ -48,6 +54,10 @@ Search indexes are persisted per resource type so a new process does not pay for
 | `folder_inspect` | `inspect` | Implemented |
 | `search_fhir_resources` | `search <path> <type> [query]` | Implemented, including chains, `_has`, `_sort`, `_include`, `_revinclude` and compartments (`compartment` / `--compartment`) |
 | `read_resources` | `get <path> <ref>...` | Implemented |
+| `patient_list` | `patients <path>` | Implemented, see [Patient tools](#patient-tools) |
+| `context_get_root` | `context <path> <patientId>` | Implemented |
+| `context_expand` | `context <path> <patientId> --node <key>` | Implemented |
+| `context_find` | `find <path> <patientId> <query>` | Implemented |
 
 Search parses queries with Ignixa's own search pipeline and evaluates them with Ignixa's in-memory interpreter (`Ignixa.Search.InMemory.SearchQueryInterpreter`), which matches multi-field criteria such as `system|code` within one index entry (and, for composites, one value of each component), compares the bound of a period, partial date or range that the FHIR prefix table names, and folds accents in string search. The same engine (`Ignixa.Search.InMemory.InMemorySearchEngine`, every feature enabled) evaluates:
 
@@ -84,6 +94,31 @@ Transaction and collection Bundles reference their own entries by `fullUrl`, usu
 
 `freshness.staleFiles` is recounted by listing the folder and comparing each file's size and last-write time with what the catalog recorded (the count is reused for 2 seconds so back-to-back tools share one walk). If the folder can no longer be listed the value is null and a `freshness-unavailable` warning says why.
 
-A type that a search or a read reads carries a `duplicate-id` warning when the catalog dropped resources of that type for repeating an earlier type and id (count, and up to five as `Type/id used from <file>, ignored in <file>`): the answer comes from the first occurrence only. An id-less Bundle entry whose RESTful fullUrl gives it the id of a resource in a later file shadows that resource this way.
+A type that a search, a read or a patient tool reads carries a `duplicate-id` warning when the catalog dropped resources of that type for repeating an earlier type and id (count, and up to five as `Type/id used from <file>, ignored in <file>`): the answer comes from the first occurrence only. An id-less Bundle entry whose RESTful fullUrl gives it the id of a resource in a later file shadows that resource this way.
 
-Every response uses the shared envelope: `facts`, `derived` (always null), `evidence`, `omitted`, `absent`, `issues`, `freshness` (`indexBuiltAt`, `staleFiles`). All of them are always present, as `null` where there is no value (for example `facts` of a failed call or `indexBuiltAt` when the folder cannot be read).
+Every response uses the shared envelope: `facts`, `derived` (always null), `evidence`, `omitted`, `absent`, `issues`, `freshness` (`indexBuiltAt`, `staleFiles`) and `next`. All of them are always present, as `null` where there is no value (for example `facts` of a failed call or `indexBuiltAt` when the folder cannot be read); `next` is a list of suggested calls `{ "tool", "args" }` (the MCP tool name; the CLI verb of that tool takes the same arguments), empty when there is none. `next` is built from the response's structure only (node keys, ids, offsets, type names), never from resource content.
+
+## Patient tools
+
+A patient's context is the Patient resource plus every resource in its Patient compartment by the FHIR version's CompartmentDefinition (the same membership as `--compartment`). The Patient is added explicitly, because the R4 definition has no `{def}` and so does not make it a member of its own compartment; under R5 it is counted once. Types whose membership cannot be evaluated (STU3 `AuditEvent`, `Provenance`) are left out with a `compartment-type-unevaluable` warning naming them. Membership comes from the compartment, order from the in-memory engine's `_sort` within the compartment, and every value from FHIRPath (`Ignixa.FhirPath.Evaluation`) over the resources with their Bundle references resolved (`Patients/ClinicalRules.cs` holds every expression). The answers are deterministic for a folder, an index and an `asOf`.
+
+- `patient_list` (`patients`): per Patient, `name` (the first `official`, else `usual`, else use-less name, as its `text` or given names then family), `gender`, `birthDate`, `resourceCount` (the context's size), `earliestDate`/`latestDate` (each resource's main date, see below, as written; no time window) and the `domains` present (demographics, problems, medications, allergies, encounters, labs, procedures, immunizations, documents). Sorted by `name` (case-insensitively, unnamed last, then id) or `latest` (newest first, undated last, then id), paged (`count` 10, at most 50, `offset`). Evidence is the page's Patient resources.
+- `context_get_root` (`context`): demographics and one stub per domain (`nodeKey`, `count`, at most five `items`, the `rule` as applied, `excluded` = resources of the domain's types the rule left out, `window` for time-dependent domains), and `otherTypes` counting compartment resources no stub covers. `next` lists `context_expand` for each non-empty domain and `search_fhir_resources` with the compartment for each other type. It cites as evidence every resource whose values it shows. On the samples it measures about 9 KB, over the 5 KB the design aims at (15 cited items with UUID ids and long file names).
+- `context_expand` (`context --node`): `problems`, `medications`, `allergies`, `encounters`, `labs` (lab codes, no resources), `problem/Condition-<id>` (the condition, then each MedicationRequest or MedicationStatement whose `reasonReference` references it or whose `reasonCode` shares a system and code with its code, with `linkedBy`), `encounter/Encounter-<id>` (the encounter, then every resource in its Encounter compartment) and `labs/<system>|<code>` (the series, newest first). Items come with their resources as written, trimmed by `elements`, within the 50 KB budget, with `facts.resolvedReferences` as search gives it; `omitted` and `next` give the next `offset`. A malformed key is `invalid-node-key`, a key naming nothing in this patient's context `unknown-node-key`, both request errors.
+- `context_find` (`find`): `system|code` matches that code in each resource's main code; `|code` a code without a system; a bare token codes in any system first, then texts; a query with whitespace texts only (case-insensitive substring of the main code's `text` or a coding `display`). Code matches come first, each group in compartment order, with `matchedBy`, the distinct `nodeKeys`, and the page's resources. Nothing found is an `absent` entry naming what was searched.
+
+Rules (R4; stated in `facts` as applied):
+
+| Domain | Membership and order |
+|--------|----------------------|
+| problems | `clinicalStatus.coding.where(system = 'http://terminology.hl7.org/CodeSystem/condition-clinical' and (code = 'active' or code = 'recurrence' or code = 'relapse')).exists()`; active first, each newest first by `onset-date`, then `recorded-date` |
+| medications | `status = 'active'`; MedicationRequests by `-authoredon`, then MedicationStatements by `-effective`, active first. The display is the `medicationCodeableConcept`, else the referenced Medication's `code` (contained or `Medication/id`; the Medication is cited, or `absent` when the folder lacks it) |
+| allergies | every AllergyIntolerance, any status, by `-date`. None is an `absent` entry with the compartment, the parameters that put AllergyIntolerance in it and the folder's count: no record is not "no known allergies" |
+| encounters | `date=le{asOf}` and `status != 'cancelled' and status != 'entered-in-error'`, by `-date` |
+| labs | Observations with `date=le{asOf}`, not cancelled or entered-in-error, and `category.empty() or category.coding.where(system = 'http://terminology.hl7.org/CodeSystem/observation-category' and (code = 'laboratory' or code = 'vital-signs')).exists()`; one series per `code.coding.where(system.exists() and code.exists()).first()`; most observations first, then key. Latest = newest by `-date`; trend = newest against oldest of the last three values when all are numeric `valueQuantity` in one unit (`unit`, else `code`), `flat` within 5% of the oldest, otherwise `n/a` |
+
+Main clinical date (first expression yielding a date; types not listed have none): Condition and AllergyIntolerance `onset.ofType(dateTime)`, `onset.ofType(Period).start`, `recordedDate`; Observation `effective.ofType(dateTime)`, `effective.ofType(Period).start`, `effective.ofType(instant)`, `issued`; DiagnosticReport the same without `instant`; Encounter `period.start`; MedicationRequest `authoredOn`; MedicationStatement `effective` (dateTime, Period start), `dateAsserted`; MedicationAdministration `effective`; MedicationDispense `whenHandedOver`, `whenPrepared`; Procedure `performed` (dateTime, Period start); Immunization `occurrence.ofType(dateTime)`, `recorded`; DocumentReference `context.period.start`, `date`; Composition `date`; CarePlan `period.start`, `created`; ImagingStudy `started`; ServiceRequest `occurrence` (dateTime, Period start), `authoredOn`. `patient_list` returns this table in `facts.dateRule` for the types the folder holds. Main codes (what `context_find` matches and items display): `code` for Condition, Observation, AllergyIntolerance, Procedure, DiagnosticReport and ServiceRequest; Encounter `type`; the medication's CodeableConcept; Immunization `vaccineCode`; DocumentReference and Composition `type`; CarePlan `category`; ImagingStudy `procedureCode`.
+
+Time: encounters and labs are read as of `asOf`, the session clock's current instant truncated to the second (`FolderSession` takes a `TimeProvider`), stated in `facts.asOf` and in each `window` (`from` null, `to` = `asOf`). Under STU3, R4B or R5 the rules were not checked: a `domain-rule-unsupported-version` warning says so, the status and category rules are not applied (every Condition, medication and Observation is listed), a sort parameter the version lacks is dropped with a `sort-parameter-missing` warning, and dates and codes are read by the R4 element paths.
+
+Untrusted content: items, node keys and `next` never carry narrative (`text.div`), notes, attachments or string values; those stay inside the returned resources. Items do carry coded values and their displays as written. A node-key part that is not a plain token (letters, digits and `-._:/#%+`, at most 200 characters) is replaced by `~` and 16 hex digits of its SHA-256, so no free text from a resource can reach a key or `next`.

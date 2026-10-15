@@ -42,7 +42,10 @@ public sealed class FolderSession
     /// <param name="schema">The FHIR version the folder is read as.</param>
     /// <param name="loggerFactory">Receives the search indexer's own log output.</param>
     /// <param name="cacheOptions">Where to persist indexes between processes; null (the default) keeps them in memory only.</param>
-    /// <param name="timeProvider">Clock for the freshness count's short reuse window; the system clock by default.</param>
+    /// <param name="timeProvider">
+    /// Clock for the freshness count's short reuse window and for <see cref="UtcNow"/>, which time-dependent answers are
+    /// anchored to; the system clock by default.
+    /// </param>
     public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null, TimeProvider? timeProvider = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
@@ -159,6 +162,18 @@ public sealed class FolderSession
 
     /// <summary>Whether the catalog holds at least one resource of <paramref name="resourceType"/>.</summary>
     public bool HoldsType(string resourceType) => _catalogTypes.Value.Contains(resourceType);
+
+    /// <summary>
+    /// The current time by the session's clock. Every time-dependent answer (recent encounters, latest lab values) reads
+    /// it once per call and passes that instant on, so a test clock, or a requested point in time, anchors the whole answer.
+    /// </summary>
+    public DateTimeOffset UtcNow() => _timeProvider.GetUtcNow();
+
+    /// <summary>
+    /// Rewrites a resource's Bundle references to the <c>Type/id</c> the index resolved them to, so FHIRPath over the tool's own
+    /// parse sees the same references searches, chains and compartments do; created on first use.
+    /// </summary>
+    internal BundleReferenceResolver BundleReferences => _bundleReferences.Value;
 
     /// <summary>The session's FHIR search query parser, created on first use.</summary>
     public SearchQueryParser QueryParser => _queryParser.Value;

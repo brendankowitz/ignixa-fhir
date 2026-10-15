@@ -19,7 +19,8 @@ namespace Ignixa.CliOnFhir.Tests;
 [Collection("Console")]
 public class EnvelopeShapeTests
 {
-    private static readonly string[] TopLevel = ["facts", "evidence", "omitted", "absent", "issues", "freshness", "derived"];
+    // Regression (Task 6): at 523e80d there was no 'next'.
+    private static readonly string[] TopLevel = ["facts", "evidence", "omitted", "absent", "issues", "freshness", "derived", "next"];
 
     private static readonly string[] Freshness = ["indexBuiltAt", "staleFiles"];
 
@@ -28,6 +29,7 @@ public class EnvelopeShapeTests
     {
         using TestFolder folder = Clinic();
         var tools = new ResourceTools(Open(folder));
+        var patients = new PatientTools(Open(folder));
         string missing = Path.Combine(Path.GetTempPath(), "cli-on-fhir-tests", Guid.NewGuid().ToString("N"));
         var missingTools = new ResourceTools(new Ignixa.CliOnFhir.Session.FolderSession(missing, new R4CoreSchemaProvider(), NullLoggerFactory.Instance));
 
@@ -40,6 +42,12 @@ public class EnvelopeShapeTests
             tools.ReadResources(["nonsense"]),
             missingTools.SearchFhirResources("Patient"),
             new FolderTools(Open(folder)).FolderInspect(),
+            patients.PatientList(),
+            patients.ContextGetRoot("p1"),
+            patients.ContextGetRoot("nobody"),
+            patients.ContextExpand("p1", "labs"),
+            patients.ContextExpand("p1", "nonsense"),
+            patients.ContextFind("p1", "8867-4"),
         ];
 
         foreach (CallToolResult result in results)
@@ -48,6 +56,7 @@ public class EnvelopeShapeTests
             envelope.Select(property => property.Key).ShouldBe(TopLevel, ignoreOrder: true);
             envelope["freshness"]!.AsObject().Select(property => property.Key).ShouldBe(Freshness, ignoreOrder: true);
             envelope["derived"].ShouldBeNull();
+            envelope["next"].ShouldBeOfType<JsonArray>();
         }
     }
 
@@ -63,10 +72,21 @@ public class EnvelopeShapeTests
             new[] { "search", folder.Path, "Patient", "_sort=family", "--no-cache" },
             new[] { "search", missing, "Patient", "--no-cache" },
             new[] { "get", folder.Path, "Patient/none", "--no-cache" },
+            new[] { "patients", folder.Path, "--no-cache" },
+            new[] { "context", folder.Path, "p1", "--no-cache" },
+            new[] { "context", folder.Path, "p1", "--node", "labs/http://loinc.org|8867-4", "--count", "1", "--no-cache" },
+            new[] { "find", folder.Path, "p1", "8867-4", "--no-cache" },
         })
         {
             var root = new RootCommand();
-            root.Subcommands.Add(args[0] == "search" ? SearchCommand.Create() : GetCommand.Create());
+            root.Subcommands.Add(args[0] switch
+            {
+                "search" => SearchCommand.Create(),
+                "get" => GetCommand.Create(),
+                "patients" => PatientsCommand.Create(),
+                "context" => ContextCommand.Create(),
+                _ => FindCommand.Create(),
+            });
             TextWriter original = Console.Out;
             using var captured = new StringWriter();
             Console.SetOut(captured);

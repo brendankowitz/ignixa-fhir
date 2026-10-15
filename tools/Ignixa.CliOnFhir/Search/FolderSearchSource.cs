@@ -7,6 +7,7 @@ using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.InMemory;
 
 namespace Ignixa.CliOnFhir.Search;
@@ -66,6 +67,54 @@ internal sealed class FolderSearchSource(FolderSession session) : IInMemorySearc
         }
 
         return (members, unevaluable);
+    }
+
+    /// <summary>
+    /// The members of each compartment <paramref name="compartmentType"/>/id for every id in <paramref name="compartmentIds"/>,
+    /// in one pass over the types that can be in such a compartment: a resource is a candidate for the compartments its index
+    /// references locally (and, for the compartment's own type, its own), and a member of each one
+    /// <see cref="InMemoryCompartmentMembership.IsInCompartment"/> confirms. So each id gets exactly what
+    /// <see cref="CompartmentMembers"/> returns for it, in the same order, at the cost of one pass instead of one per id.
+    /// </summary>
+    public (IReadOnlyDictionary<string, List<IndexedResource>> Members, IReadOnlyList<string> UnevaluableTypes) CompartmentMembersOf(string compartmentType, IReadOnlySet<string> compartmentIds)
+    {
+        ArgumentNullException.ThrowIfNull(compartmentIds);
+
+        InMemoryCompartmentMembership membership = session.Compartments;
+        Dictionary<string, List<IndexedResource>> members = compartmentIds.ToDictionary(id => id, _ => new List<IndexedResource>(), StringComparer.Ordinal);
+        List<string> unevaluable = [];
+        foreach (string type in membership.ResourceTypes(compartmentType).Where(session.HoldsType))
+        {
+            if (membership.UnevaluableParameters(compartmentType, type).Count > 0)
+            {
+                unevaluable.Add(type);
+                continue;
+            }
+
+            foreach (IndexedResource resource in Resources(type))
+            {
+                foreach (string candidate in Candidates(resource, compartmentType))
+                {
+                    if (members.TryGetValue(candidate, out List<IndexedResource>? list) && membership.IsInCompartment(resource.Key, resource.Index, compartmentType, candidate))
+                    {
+                        list.Add(resource);
+                    }
+                }
+            }
+        }
+
+        return (members, unevaluable);
+    }
+
+    /// <summary>The ids of the <paramref name="compartmentType"/> compartments <paramref name="resource"/> could be in, each once.</summary>
+    private static IEnumerable<string> Candidates(IndexedResource resource, string compartmentType)
+    {
+        IEnumerable<string> referenced = resource.Index
+            .Select(entry => entry.Value)
+            .OfType<ReferenceSearchValue>()
+            .Where(reference => reference.BaseUri is null && reference.ResourceType == compartmentType)
+            .Select(reference => reference.ResourceId);
+        return (resource.Key.ResourceType == compartmentType ? referenced.Prepend(resource.Key.Id) : referenced).Distinct(StringComparer.Ordinal);
     }
 
     /// <summary>The indexed resource behind a location this source returned.</summary>

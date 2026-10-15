@@ -10,6 +10,9 @@ var root = new RootCommand("cli-on-fhir: explore a local folder of FHIR data fro
 root.Subcommands.Add(InspectCommand.Create());
 root.Subcommands.Add(SearchCommand.Create());
 root.Subcommands.Add(GetCommand.Create());
+root.Subcommands.Add(PatientsCommand.Create());
+root.Subcommands.Add(ContextCommand.Create());
+root.Subcommands.Add(FindCommand.Create());
 root.Subcommands.Add(McpCommand.Create());
 
 return await root.Parse(args).InvokeAsync();

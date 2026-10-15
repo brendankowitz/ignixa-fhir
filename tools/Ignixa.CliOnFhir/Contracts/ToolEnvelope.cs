@@ -26,4 +26,7 @@ public sealed record ToolEnvelope<TFacts>(
 {
     /// <summary>Always null until summaries are explicitly enabled; reserved so the shape never changes.</summary>
     public object? Derived => null;
+
+    /// <summary>Suggested follow-up calls, built from structure only (see <see cref="NextCall"/>); empty when there are none.</summary>
+    public IReadOnlyList<NextCall> Next { get; init; } = [];
 }

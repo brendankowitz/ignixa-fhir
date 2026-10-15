@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Patients;
 using Ignixa.CliOnFhir.Reading;
 using Ignixa.CliOnFhir.Search;
 using Shouldly;
@@ -63,6 +64,18 @@ public class DuplicateIdTests
         ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Encounter", "subject:Patient.gender=female"));
 
         envelope.Issues.ShouldHaveSingleItem().Code.ShouldBe("duplicate-id");
+    }
+
+    [Fact]
+    public void GivenAShadowedPatient_WhenPatientToolsReadIt_ThenTheyCarryTheWarning()
+    {
+        using TestFolder folder = Shadowed();
+
+        IssueItem fromList = PatientLister.List(Open(folder)).Issues.ShouldHaveSingleItem();
+        IssueItem fromRoot = ContextRoot.Get(Open(folder), "123").Issues.Where(issue => issue.Code == "duplicate-id").ShouldHaveSingleItem();
+
+        fromList.Diagnostics.ShouldStartWith(Expected);
+        fromRoot.Diagnostics.ShouldStartWith(Expected);
     }
 
     // Guard: a type without duplicates carries no such warning even when another type has some.
