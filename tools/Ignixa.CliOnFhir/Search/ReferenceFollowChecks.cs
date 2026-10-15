@@ -32,9 +32,9 @@ internal static class ReferenceFollowChecks
     /// include's source type.
     /// </summary>
     /// <remarks>
-    /// A <c>urn:</c> reference is not counted here. The folder index resolves those that name a Bundle entry, and reports
-    /// the rest once per type index as <see cref="BundleReferenceResolver.UnresolvedCode"/>, which every search reading
-    /// that index carries, so counting them here too would report the same references twice.
+    /// A <c>urn:</c> the folder index reported for the resource (<see cref="ReferenceResolution.UnresolvedUrns"/>) is not
+    /// counted here: it is reported once per type index as <see cref="BundleReferenceResolver.UnresolvedCode"/>, which every
+    /// search reading that index carries. Every other <c>urn:</c> (one in a <c>uri</c> element) is counted as before.
     /// </remarks>
     public static IEnumerable<IssueItem> UnresolvedReferences(FolderSearchSource source, SearchOptions options, IReadOnlyCollection<IndexedResource> pageAndIncluded)
     {
@@ -62,7 +62,7 @@ internal static class ReferenceFollowChecks
             .Select(count => new IssueItem(
                 "information",
                 UnresolvedCode,
-                $"{count.Count} references through {count.Key.ResourceType}:{count.Key.Parameter} are not local 'Type/id' references (canonicals, absolute URLs or bare ids) and were not followed, so the chain or include may be missing resources.",
+                $"{count.Count} references through {count.Key.ResourceType}:{count.Key.Parameter} are not local 'Type/id' references (canonicals, absolute URLs, bare ids, or a urn: in a uri element) and were not followed, so the chain or include may be missing resources.",
                 Location: null));
     }
 
@@ -141,10 +141,22 @@ internal static class ReferenceFollowChecks
             && entry.Value switch
             {
                 UriSearchValue => true,
-                ReferenceSearchValue reference => !BundleReferenceResolver.IsUrn(reference)
-                    && (reference.BaseUri is not null || string.IsNullOrEmpty(reference.ResourceType) || string.IsNullOrEmpty(reference.ResourceId)),
+                ReferenceSearchValue reference => NotLocal(reference) && !ReportedAsUnresolvedBundleReference(resource, reference),
                 _ => false,
             }));
+
+    private static bool NotLocal(ReferenceSearchValue reference) =>
+        reference.BaseUri is not null
+        || string.IsNullOrEmpty(reference.ResourceType)
+        || string.IsNullOrEmpty(reference.ResourceId)
+        || BundleReferenceResolver.UrnOf(reference) is not null;
+
+    /// <summary>
+    /// Whether <paramref name="reference"/> is a <c>urn:</c> the folder index already reported for <paramref name="resource"/>
+    /// as an unresolved Bundle reference; any other <c>urn:</c> (one in a <c>uri</c> element, R4 <c>ConceptMap.sourceUri</c>) is counted here.
+    /// </summary>
+    private static bool ReportedAsUnresolvedBundleReference(IndexedResource resource, ReferenceSearchValue reference) =>
+        BundleReferenceResolver.UrnOf(reference) is { } urn && resource.BundleReferences.UnresolvedUrns.Contains(urn, StringComparer.Ordinal);
 
     private static IEnumerable<ChainedExpression> Chains(Expression? expression) =>
         expression switch

@@ -177,9 +177,15 @@ internal sealed class FolderIndexCache
             EntriesOf(index.ResourceType).Length,
             index.BuiltAt,
             index.Diagnostics,
-            [.. index.Resources.Select(resource => new CachedResource(
-                resource.Key.Id,
-                [.. resource.Index.Select(entry => new CachedEntry(entry.SearchParameter.Code, entry.Value))]))]);
+            [.. index.Resources.Select(resource =>
+            {
+                (IReadOnlyDictionary<string, string>? resolved, IReadOnlyList<string>? unresolved) = CachedResource.From(resource.BundleReferences);
+                return new CachedResource(
+                    resource.Key.Id,
+                    [.. resource.Index.Select(entry => new CachedEntry(entry.SearchParameter.Code, entry.Value))],
+                    resolved,
+                    unresolved);
+            })]);
 
         // A value type the format does not know throws here (a programmer error). Ignixa's compact value format is
         // lossless for every value the indexer produces (Ignixa.Search.Tests' CompactSearchValueFormatTests), so what is
@@ -491,7 +497,7 @@ internal sealed class FolderIndexCache
                 throw new InvalidDataException($"{resourceType}/{resource.Id} is not in the folder's catalog.");
             }
 
-            resources.Add(new IndexedResource(new ResourceKey(resourceType, resource.Id), entry, Rebind(resource, resourceType, parametersByCode)));
+            resources.Add(new IndexedResource(new ResourceKey(resourceType, resource.Id), entry, Rebind(resource, resourceType, parametersByCode), resource.ToResolution()));
         }
 
         return new ResourceTypeIndex(resourceType, resources, cached.Diagnostics, cached.BuiltAt, stopwatch.ElapsedMilliseconds, FromCache: true);

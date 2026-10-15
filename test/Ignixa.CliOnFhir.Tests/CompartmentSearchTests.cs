@@ -73,6 +73,41 @@ public class CompartmentSearchTests
         issue.Diagnostics.ShouldContain("Organization resources are never in a Patient compartment");
     }
 
+    // Regression (fix round 1): at 1a5b7ec an R4 patient searched in its own compartment returned nothing without a word.
+    [Fact]
+    public void GivenTheR4PatientCompartment_WhenPatientsAreSearchedInIt_ThenAnInformationIssueSaysTheOwnPatientIsNotAMember()
+    {
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", """
+            {"resourceType":"Patient","id":"p1","link":[{"other":{"reference":"Patient/p2"},"type":"seealso"}]}
+            {"resourceType":"Patient","id":"p2"}
+            """);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", Compartment: "Patient/p2"));
+
+        Ids(envelope).ShouldBe(["p1"]);
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        issue.Severity.ShouldBe("information");
+        issue.Code.ShouldBe("compartment-excludes-own-resource");
+        issue.Diagnostics.ShouldContain("Patient/p2 itself is not in its own compartment under the R4 CompartmentDefinition");
+        issue.Diagnostics.ShouldContain("only other Patient resources referencing it through link can match (R5 adds {def}");
+    }
+
+    // Guard: where the definition lists {def} the own resource matches and nothing is said about it.
+    [Fact]
+    public void GivenTheR5PatientCompartment_WhenPatientsAreSearchedInIt_ThenTheOwnPatientMatchesWithoutAnIssue()
+    {
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", """
+            {"resourceType":"Patient","id":"p1"}
+            {"resourceType":"Patient","id":"p2"}
+            """);
+        var session = new FolderSession(folder.Path, new R5CoreSchemaProvider(), NullLoggerFactory.Instance);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(session, new SearchRequest("Patient", Compartment: "Patient/p2"));
+
+        Ids(envelope).ShouldBe(["p2"]);
+        envelope.Issues.ShouldBeEmpty();
+    }
+
     [Fact]
     public void GivenACompartmentWhoseResourceTheFolderLacks_WhenSearched_ThenReferencingResourcesStillMatchWithAnInformationIssue()
     {

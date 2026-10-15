@@ -17,7 +17,11 @@ namespace Ignixa.CliOnFhir.Catalog;
 /// <param name="Offset">Byte offset of the resource JSON within the file.</param>
 /// <param name="Length">Byte length of the resource JSON.</param>
 /// <param name="Line">1-based line number for NDJSON entries; null otherwise.</param>
-/// <param name="HasSyntheticId">True when the resource had no <c>id</c> and one was derived from its location.</param>
+/// <param name="HasSyntheticId">
+/// True when the resource had no <c>id</c> and one was derived: from its Bundle entry's RESTful <c>fullUrl</c> when that names
+/// its type (R4 bundle.html §2.36.4.1), otherwise a hash of its location.
+/// </param>
+/// <param name="FullUrl">The Bundle entry's <c>fullUrl</c>; null outside a Bundle or when the entry has none.</param>
 public sealed record CatalogEntry(
     string ResourceType,
     string Id,
@@ -25,4 +29,5 @@ public sealed record CatalogEntry(
     long Offset,
     int Length,
     int? Line,
-    bool HasSyntheticId);
+    bool HasSyntheticId,
+    string? FullUrl = null);

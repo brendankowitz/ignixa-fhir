@@ -26,10 +26,15 @@ internal static partial class CompartmentArgument
     /// <summary>The compartment's own resource is not in the folder.</summary>
     public const string ResourceAbsentCode = "compartment-resource-absent";
 
+    /// <summary>The compartment's own type is searched, and the version's definition does not make its own resource a member.</summary>
+    public const string ExcludesOwnResourceCode = "compartment-excludes-own-resource";
+
     /// <summary>
     /// <paramref name="options"/> restricted to the compartment <paramref name="compartment"/> names, and the issues that
-    /// qualify the answer: a <see cref="ExcludesTypeCode"/> warning when nothing of the searched type can match, and a
-    /// <see cref="ResourceAbsentCode"/> information when the folder does not hold the compartment's resource.
+    /// qualify the answer: a <see cref="ExcludesTypeCode"/> warning when nothing of the searched type can match, an
+    /// <see cref="ExcludesOwnResourceCode"/> information when the compartment's own type is searched and the definition leaves
+    /// its own resource out (R4 Patient), and a <see cref="ResourceAbsentCode"/> information when the folder does not hold
+    /// the compartment's resource.
     /// </summary>
     /// <exception cref="ToolRequestException">
     /// <paramref name="compartment"/> is not <c>Type/id</c> with a compartment type and a FHIR id, or the searched type's
@@ -57,6 +62,13 @@ internal static partial class CompartmentArgument
         if (!membership.ResourceTypes(type).Contains(searched, StringComparer.Ordinal))
         {
             issues.Add(new IssueItem("warning", ExcludesTypeCode, $"{searched} resources are never in a {type} compartment (the {session.Schema.Version} CompartmentDefinition lists no parameter for {searched}), so nothing matches.", Location: null));
+        }
+
+        if (searched == type && !membership.IncludesCompartmentResource(type))
+        {
+            IReadOnlyList<string> through = membership.Parameters(type, searched);
+            string others = through.Count == 0 ? "no other" : $"only other {searched} resources referencing it through {string.Join(", ", through)}";
+            issues.Add(new IssueItem("information", ExcludesOwnResourceCode, $"{type}/{id} itself is not in its own compartment under the {session.Schema.Version} CompartmentDefinition, which has no {InMemoryCompartmentMembership.FocalResourceCode} for {type}, so {others} can match{(type == "Patient" ? $" (R5 adds {InMemoryCompartmentMembership.FocalResourceCode}, which makes it a member)" : string.Empty)}. Read {type}/{id} with read_resources.", Location: null));
         }
 
         if (session.FindEntry(type, id) is null)

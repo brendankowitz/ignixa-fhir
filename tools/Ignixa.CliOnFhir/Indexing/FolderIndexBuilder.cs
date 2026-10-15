@@ -84,7 +84,7 @@ public sealed class FolderIndexBuilder
             .Distinct(StringComparer.Ordinal)
             .ToDictionary(path => path, path => File.ReadAllBytes(Path.Combine(catalog.RootPath, path)), StringComparer.Ordinal);
 
-        var results = new (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics, IReadOnlyList<string> UnresolvedUrns)[entries.Length];
+        var results = new (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics, IReadOnlyList<string> CrossScope)[entries.Length];
         Parallel.For(
             0,
             entries.Length,
@@ -93,26 +93,41 @@ public sealed class FolderIndexBuilder
 
         var resources = new List<IndexedResource>(entries.Length);
         var diagnostics = new List<CatalogDiagnostic>();
-        var unresolved = new List<(CatalogEntry Entry, string Urn)>();
-        foreach (var (resource, entryDiagnostics, unresolvedUrns) in results)
+        var unresolved = new List<(IndexedResource Resource, string Reference)>();
+        var crossScope = new List<(IndexedResource Resource, string Reference)>();
+        foreach (var (resource, entryDiagnostics, crossScopeReferences) in results)
         {
             diagnostics.AddRange(entryDiagnostics);
             if (resource is not null)
             {
                 resources.Add(resource);
-                unresolved.AddRange(unresolvedUrns.Select(urn => (resource.Entry, urn)));
+                unresolved.AddRange(resource.BundleReferences.UnresolvedUrns.Select(urn => (resource, urn)));
+                crossScope.AddRange(crossScopeReferences.Select(reference => (resource, reference)));
             }
         }
 
         if (unresolved.Count > 0)
         {
-            diagnostics.Add(UnresolvedBundleReferences(resourceType, unresolved));
+            diagnostics.Add(BundleDiagnostic(
+                BundleReferenceResolver.UnresolvedCode,
+                unresolved,
+                $"{unresolved.Count} urn: references in {resourceType} resources name no Bundle entry fullUrl in the folder, or name more than one resource, so they are indexed as written and reference searches, chains, includes and compartments do not follow them",
+                item => $"{Describe(item.Resource)} -> {item.Reference}"));
+        }
+
+        if (crossScope.Count > 0)
+        {
+            diagnostics.Add(BundleDiagnostic(
+                BundleReferenceResolver.CrossScopeCode,
+                crossScope,
+                $"{crossScope.Count} references in {resourceType} resources were resolved through a fullUrl outside their own Bundle (FHIR resolves Bundle references only within the Bundle; this relies on the urn:uuid or URL being unique across the folder)",
+                item => $"{Describe(item.Resource)} -> {item.Reference} = {item.Resource.BundleReferences.Resolved[item.Reference]}"));
         }
 
         return new ResourceTypeIndex(resourceType, resources, diagnostics, DateTimeOffset.UtcNow, stopwatch.ElapsedMilliseconds, FromCache: false);
     }
 
-    private (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics, IReadOnlyList<string> UnresolvedUrns) TryIndex(CatalogEntry entry, byte[] fileBytes, BundleReferenceResolver bundleReferences)
+    private (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics, IReadOnlyList<string> CrossScope) TryIndex(CatalogEntry entry, byte[] fileBytes, BundleReferenceResolver bundleReferences)
     {
         if (entry.Offset + entry.Length > fileBytes.Length)
         {
@@ -141,26 +156,25 @@ public sealed class FolderIndexBuilder
         }
 
         // Rewritten in the tool's own parse, before conversion, so every parameter sees the resolved reference.
-        IReadOnlyList<string> unresolvedUrns = bundleReferences.Rewrite(entry, ((IMutableJsonNode)node).MutableNode);
+        var (resolution, crossScope) = bundleReferences.Rewrite(entry, ((IMutableJsonNode)node).MutableNode);
         IElement element = node.ToElement(_schema);
         var (index, diagnostics) = ExtractionFailureCapture.Capture(entry, () => _indexer.Extract(element), IndexedCanonicals);
-        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), diagnostics, unresolvedUrns);
+        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index, resolution), diagnostics, crossScope);
     }
 
-    /// <summary>One diagnostic for the type's unresolved <c>urn:</c> references: how many (distinct per resource), and the first few.</summary>
-    private static CatalogDiagnostic UnresolvedBundleReferences(string resourceType, List<(CatalogEntry Entry, string Urn)> unresolved)
+    /// <summary>One diagnostic for a type's Bundle references of one kind: how many (distinct per resource), located at the first, naming the first few.</summary>
+    private static CatalogDiagnostic BundleDiagnostic(
+        string code,
+        List<(IndexedResource Resource, string Reference)> items,
+        string summary,
+        Func<(IndexedResource Resource, string Reference), string> sample)
     {
-        CatalogEntry first = unresolved[0].Entry;
-        IEnumerable<string> samples = unresolved
-            .Take(BundleReferenceResolver.SampleLimit)
-            .Select(item => $"{item.Entry.ResourceType}/{item.Entry.Id} -> {item.Urn}");
-        string more = unresolved.Count > BundleReferenceResolver.SampleLimit ? $" (first {BundleReferenceResolver.SampleLimit})" : string.Empty;
-        return new CatalogDiagnostic(
-            BundleReferenceResolver.UnresolvedCode,
-            first.FilePath,
-            first.Line,
-            $"{unresolved.Count} urn: references in {resourceType} resources name no Bundle entry fullUrl in the folder, or name more than one resource, so they are indexed as written and reference searches, chains, includes and compartments do not follow them{more}: {string.Join(", ", samples)}.");
+        CatalogEntry first = items[0].Resource.Entry;
+        string more = items.Count > BundleReferenceResolver.SampleLimit ? $" (first {BundleReferenceResolver.SampleLimit})" : string.Empty;
+        return new CatalogDiagnostic(code, first.FilePath, first.Line, $"{summary}{more}: {string.Join(", ", items.Take(BundleReferenceResolver.SampleLimit).Select(sample))}.");
     }
+
+    private static string Describe(IndexedResource resource) => $"{resource.Key.ResourceType}/{resource.Key.Id}";
 
     /// <summary>
     /// The reference parameters whose canonicals <see cref="CanonicalReferenceSearchIndexer"/> indexed on this resource, so

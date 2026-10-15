@@ -105,18 +105,31 @@ public static class ResourceSearcher
         issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, parsed.Options, [.. page, .. included ?? []]));
         AddDiagnostics(source, issues, omitted);
 
-        int reserved = ReservedBytes(request, query, matches.Count, included, issues, omitted);
+        // The listed resolutions can only shrink once the resources are read, so reserving the candidates keeps the cap.
+        Dictionary<string, Dictionary<string, string>> pageCandidates = ResolvedReferences.Candidates(page, ResolvedReferences.Limit);
+        int reserved = ReservedBytes(request, query, matches.Count, included, issues, omitted, pageCandidates);
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, [.. page.Select(match => match.Entry)], parsed.Elements, reserved, cancellationToken);
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
         List<EvidenceItem> evidence = [.. batch.Evidence];
+        (Dictionary<string, Dictionary<string, string>> resolved, int notListed) = ResolvedReferences.Shown(page, batch, pageCandidates);
 
         IReadOnlyList<System.Text.Json.Nodes.JsonNode>? includedResources = null;
         if (included is not null)
         {
-            var pageOnly = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, []);
+            List<IndexedResource> wanted = [.. included.Take(IncludeLimit)];
+            Dictionary<string, Dictionary<string, string>> includedCandidates = ResolvedReferences.Candidates(wanted, ResolvedReferences.Limit - ResolvedReferences.Count(resolved));
+            var pageOnly = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, [], Facts(ResolvedReferences.Merge(resolved, includedCandidates)));
             ResourceBatch includedBatch = CollectIncluded(session, pageOnly, included, evidence, omitted, issues, cancellationToken);
             includedResources = includedBatch.Resources;
+            (Dictionary<string, Dictionary<string, string>> includedShown, int includedNotListed) = ResolvedReferences.Shown(wanted, includedBatch, includedCandidates);
+            resolved = ResolvedReferences.Merge(resolved, includedShown);
+            notListed += includedNotListed;
+        }
+
+        if (notListed > 0)
+        {
+            omitted.Add(new OmittedItem($"{notListed} more resolved Bundle references in the returned resources (resolvedReferences lists at most {ResolvedReferences.Limit})", "limit"));
         }
 
         int next = request.Offset + batch.Consumed;
@@ -126,9 +139,13 @@ public static class ResourceSearcher
             omitted.Add(new OmittedItem($"{matches.Count - next} more matches (offset={next})", why));
         }
 
-        var facts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources);
+        var facts = new SearchFacts(request.ResourceType, query, request.Compartment, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources, Facts(resolved));
         return Envelope(session, source, facts, evidence, omitted, issues, cancellationToken);
     }
+
+    /// <summary>The facts form of a resolved-references map: null when it lists nothing, so the member is left out.</summary>
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? Facts(Dictionary<string, Dictionary<string, string>> resolved) =>
+        resolved.Count == 0 ? null : resolved.ToDictionary(pair => pair.Key, pair => (IReadOnlyDictionary<string, string>)pair.Value, StringComparer.Ordinal);
 
     private static bool HasIncludes(SearchOptions options) => options.Include.Count > 0 || options.RevInclude.Count > 0;
 
@@ -149,7 +166,7 @@ public static class ResourceSearcher
         int reserved = EnvelopeJson.SizeOf(new ToolEnvelope<SearchFacts?>(
             pageOnly,
             evidence,
-            [.. omitted, Placeholder, Placeholder],
+            [.. omitted, Placeholder, Placeholder, Placeholder],
             [],
             issues,
             new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue)));
@@ -200,12 +217,19 @@ public static class ResourceSearcher
     /// The serialized size of the response with no resources, evidence or batch issues, leaving room for the omitted items
     /// added after the batch is read.
     /// </summary>
-    private static int ReservedBytes(SearchRequest request, string query, int total, List<IndexedResource>? included, List<IssueItem> issues, List<OmittedItem> omitted)
+    private static int ReservedBytes(
+        SearchRequest request,
+        string query,
+        int total,
+        List<IndexedResource>? included,
+        List<IssueItem> issues,
+        List<OmittedItem> omitted,
+        Dictionary<string, Dictionary<string, string>> resolved)
     {
         var skeleton = new ToolEnvelope<SearchFacts?>(
-            new SearchFacts(request.ResourceType, query, request.Compartment, total, request.Offset, Returned: 0, Resources: [], included is null ? null : []),
+            new SearchFacts(request.ResourceType, query, request.Compartment, total, request.Offset, Returned: 0, Resources: [], included is null ? null : [], Facts(resolved)),
             [],
-            [.. omitted, .. Enumerable.Repeat(Placeholder, included is null ? 1 : 2)],
+            [.. omitted, .. Enumerable.Repeat(Placeholder, included is null ? 2 : 3)],
             [],
             issues,
             new FreshnessInfo(DateTimeOffset.MaxValue, StaleFiles: int.MaxValue));

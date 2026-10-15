@@ -28,6 +28,8 @@ public sealed class ResourceTools(FolderSession session)
         Pass 'compartment' (for example 'Patient/123') to search only resources in that compartment, as
         'Patient/123/Observation?...' does: by the FHIR version's CompartmentDefinition, an Observation is in a Patient's
         compartment when its subject or performer references that patient. 'facts.compartment' echoes it.
+        Bundle references (urn:uuid fullUrls) are matched as the Type/id they name; returned resources keep the urn, and
+        'facts.resolvedReferences' maps each one shown to its Type/id.
         Returns the total number of matches, one page of resources (in _sort order, else catalog order) and the file
         location of each as evidence. Pages hold 'count' resources (default 10, maximum 50): when more exist, 'omitted'
         says how many and which 'offset' to use next. Included resources come back whole in 'included' (at most 50; more

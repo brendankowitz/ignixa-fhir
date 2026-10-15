@@ -222,8 +222,8 @@ public static class FolderCatalogBuilder
             }
 
             bool synthetic = string.IsNullOrEmpty(id);
-            string resourceId = synthetic ? SyntheticId(relativePath, ordinal) : id!;
-            var entry = new CatalogEntry(resourceType, resourceId, relativePath, offset, json.Length, line, synthetic);
+            string resourceId = synthetic ? FullUrlId(fullUrl, resourceType) ?? SyntheticId(relativePath, ordinal) : id!;
+            var entry = new CatalogEntry(resourceType, resourceId, relativePath, offset, json.Length, line, synthetic, fullUrl);
             if (fullUrl is not null)
             {
                 // Recorded for a duplicate too: its fullUrl still names this Type/id, which the first occurrence holds.
@@ -246,6 +246,10 @@ public static class FolderCatalogBuilder
 
         private static string Describe(CatalogEntry entry) =>
             entry.Line is int line ? $"{entry.FilePath}:{line}" : $"{entry.FilePath}@{entry.Offset}";
+
+        /// <summary>The id a RESTful fullUrl gives an entry of <paramref name="resourceType"/>, or null when it gives none.</summary>
+        private static string? FullUrlId(string? fullUrl, string resourceType) =>
+            fullUrl is not null && RestfulUrl.TryParse(fullUrl, out _, out string type, out string id) && type == resourceType ? id : null;
 
         private static string SyntheticId(string relativePath, int ordinal)
         {

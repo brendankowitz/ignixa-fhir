@@ -78,6 +78,19 @@ public class InMemoryCompartmentTests
         other.ShouldBeFalse();
     }
 
+    [Theory]
+    [InlineData(FhirVersion.R4, "Patient", false, "link")]
+    [InlineData(FhirVersion.R5, "Patient", true, "link")]
+    [InlineData(FhirVersion.R4, "Encounter", true, "")]
+    public void GivenACompartmentType_WhenItsOwnTypesRuleIsRead_ThenItSaysWhetherTheOwnResourceAndWhichParametersCount(FhirVersion version, string compartmentType, bool own, string parameters)
+    {
+        InMemoryCompartmentMembership membership = Membership(version);
+
+        membership.IncludesCompartmentResource(compartmentType).ShouldBe(own);
+        membership.Parameters(compartmentType, compartmentType).ShouldBe(parameters.Length == 0 ? [] : parameters.Split(','));
+        R4.Parameters("Patient", "Observation").ShouldBe(["performer", "subject"]);
+    }
+
     [Fact]
     public void GivenCompartmentFilteredResourceTypes_WhenSearched_ThenOtherTypesDoNotMatch()
     {

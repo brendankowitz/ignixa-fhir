@@ -253,7 +253,7 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
 
         if (_compartments is not { } compartments)
         {
-            throw new SearchOperationNotSupportedException("Compartment search is not enabled for this in-memory search; create it with compartment definitions to enable it.");
+            throw new SearchOperationNotSupportedException("Compartment search is not enabled for this in-memory search.");
         }
 
         if (!compartments.CompartmentTypes.Contains(expression.CompartmentType, StringComparer.Ordinal))

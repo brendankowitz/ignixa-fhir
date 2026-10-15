@@ -42,7 +42,9 @@ internal sealed record CachedTypeIndex(
         HashSet<string> ids = new(StringComparer.Ordinal);
         foreach (CachedResource resource in Resources)
         {
-            if (resource?.Id is null || resource.Entries is null || resource.Entries.Any(entry => entry?.Code is null || entry.Value is null))
+            if (resource?.Id is null || resource.Entries is null || resource.Entries.Any(entry => entry?.Code is null || entry.Value is null)
+                || (resource.Resolved?.Values.Any(target => target is null) ?? false)
+                || (resource.UnresolvedUrns?.Any(urn => urn is null) ?? false))
             {
                 throw new InvalidDataException("a resource in the file is incomplete.");
             }

@@ -73,6 +73,26 @@ public sealed class InMemoryCompartmentMembership
         [.. RulesOf(compartmentType).Keys.Order(StringComparer.Ordinal)];
 
     /// <summary>
+    /// The reference search parameter codes through which a <paramref name="resourceType"/> resource can be in a
+    /// <paramref name="compartmentType"/> compartment, in ordinal order; empty when the type is never a member that way.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="compartmentType"/> is not one of <see cref="CompartmentTypes"/>.</exception>
+    public IReadOnlyList<string> Parameters(string compartmentType, string resourceType)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+
+        return RulesOf(compartmentType).TryGetValue(resourceType, out var rule) ? [.. rule.References.Order(StringComparer.Ordinal)] : [];
+    }
+
+    /// <summary>
+    /// Whether a compartment's own resource (<c>Patient/123</c> in <c>Patient/123</c>'s compartment) is a member, which the
+    /// definition says with <see cref="FocalResourceCode"/>: true for R4 <c>Encounter</c> and R5 <c>Patient</c>, false for R4 <c>Patient</c>.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="compartmentType"/> is not one of <see cref="CompartmentTypes"/>.</exception>
+    public bool IncludesCompartmentResource(string compartmentType) =>
+        RulesOf(compartmentType).TryGetValue(compartmentType, out var rule) && rule.Focal;
+
+    /// <summary>
     /// The codes the <paramref name="compartmentType"/> definition lists for <paramref name="resourceType"/> that are not
     /// reference search parameters of it, in ordinal order; membership of that type is refused when any exist.
     /// </summary>

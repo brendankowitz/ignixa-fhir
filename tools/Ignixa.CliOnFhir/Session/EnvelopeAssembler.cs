@@ -86,7 +86,7 @@ public static class EnvelopeAssembler
         string severity = diagnostic.Code switch
         {
             "duplicate-id" => "warning",
-            BundleReferenceResolver.UnresolvedCode => "information",
+            BundleReferenceResolver.UnresolvedCode or BundleReferenceResolver.CrossScopeCode => "information",
             _ => "error",
         };
 

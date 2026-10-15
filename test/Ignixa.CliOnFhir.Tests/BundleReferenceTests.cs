@@ -23,6 +23,8 @@ public class BundleReferenceTests
 {
     private const string UnresolvedCode = "unresolved-bundle-reference";
 
+    private const string CrossScopeCode = "bundle-reference-resolved-cross-scope";
+
     /// <summary>A transaction Bundle: two patients by urn:uuid, two encounters of the first (one by urn, one relative), one of the second.</summary>
     private static TestFolder Transaction() => new TestFolder().Write("bundle.json", """
         {"resourceType":"Bundle","type":"transaction","entry":[
@@ -149,7 +151,13 @@ public class BundleReferenceTests
         Ids(one).ShouldBe(["o1"]);
         Ids(two).ShouldBe(["o2"]);
         Ids(unique).ShouldBe(["o4"]);
-        one.Issues.ShouldHaveSingleItem().Diagnostics.ShouldContain("Observation/o3 -> urn:uuid:same");
+        one.Issues.Select(issue => (issue.Severity, issue.Code)).ShouldBe([("information", UnresolvedCode), ("information", CrossScopeCode)]);
+        one.Issues[0].Diagnostics.ShouldContain("Observation/o3 -> urn:uuid:same");
+
+        // Regression (fix round 1): resolving outside the reference's own Bundle goes beyond FHIR, so it is reported.
+        one.Issues[1].Location.ShouldBe("loose.ndjson:2");
+        one.Issues[1].Diagnostics.ShouldStartWith("1 references in Observation resources were resolved through a fullUrl outside their own Bundle");
+        one.Issues[1].Diagnostics.ShouldEndWith(": Observation/o4 -> urn:uuid:o1 = Observation/o1.");
     }
 
     // Regression: at 2e56e3f an absolute reference was never followed by a chain or include, even when an entry's fullUrl named it.
@@ -206,6 +214,7 @@ public class BundleReferenceTests
         reader.GetIndex("Encounter").FromCache.ShouldBeTrue();
         Ids(envelope).ShouldBe(["e1", "e3"]);
         envelope.Issues.Select(issue => issue.Code).ShouldBe([UnresolvedCode]);
+        Resolved(envelope).ShouldBe(["Encounter/e1: urn:uuid:aaaa-1 -> Patient/pa"]);
     }
 
     // Regression: a Bundle edit changes what another file's references resolve to, and the manifest lists every file.
@@ -225,6 +234,89 @@ public class BundleReferenceTests
         reopened.GetIndex("Encounter").FromCache.ShouldBeFalse();
         Ids(envelope).ShouldBe(["e1"]);
     }
+
+    // Regression (fix round 1): at 1a5b7ec a urn in a uri element under a Reference parameter (R4 ConceptMap-source-uri,
+    // ConceptMap.source as uri) was neither resolved nor counted; it is a references-unresolved count again, as at 2e56e3f.
+    [Theory]
+    [InlineData("_include=ConceptMap:source-uri")]
+    [InlineData("source-uri:ValueSet.status=active")]
+    public void GivenAUrnInAUriElementUnderAReferenceParameter_WhenFollowed_ThenItIsCountedAsUnresolved(string query)
+    {
+        using TestFolder folder = new TestFolder().Write("cm.ndjson", """
+            {"resourceType":"ConceptMap","id":"cm1","status":"active","sourceUri":"urn:oid:1.2.3"}
+            """);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("ConceptMap", query));
+
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("references-unresolved");
+        issue.Diagnostics.ShouldStartWith("1 references through ConceptMap:source-uri are not local");
+    }
+
+    // Regression (fix round 1): a RESTful fullUrl gives an id-less entry its id, and a relative reference in such a Bundle is
+    // resolved against its entry's fullUrl base (R4 bundle.html §2.36.4.1).
+    [Fact]
+    public void GivenARestfulBundleWithAnIdlessEntry_WhenAnotherEntryReferencesItRelatively_ThenTheReferenceResolvesToIt()
+    {
+        using TestFolder folder = new TestFolder().Write("bundle.json", """
+            {"resourceType":"Bundle","type":"collection","entry":[
+              {"fullUrl":"http://a.example.org/fhir/Patient/123","resource":{"resourceType":"Patient","gender":"male"}},
+              {"fullUrl":"http://a.example.org/fhir/Encounter/e1","resource":{"resourceType":"Encounter","id":"e1","status":"finished","class":{"code":"AMB"},"subject":{"reference":"Patient/123"}}},
+              {"fullUrl":"http://a.example.org/fhir/Encounter/e2","resource":{"resourceType":"Encounter","id":"e2","status":"finished","class":{"code":"AMB"},"subject":{"reference":"Patient/999"}}}
+            ]}
+            """);
+        FolderSession session = Open(folder);
+
+        ToolEnvelope<SearchFacts?> chained = ResourceSearcher.Search(session, new SearchRequest("Encounter", "subject:Patient.gender=male"));
+        ToolEnvelope<SearchFacts?> byId = ResourceSearcher.Search(session, new SearchRequest("Patient", "_id=123"));
+
+        Ids(chained).ShouldBe(["e1"]);
+        chained.Issues.ShouldBeEmpty();
+        chained.Facts!.ResolvedReferences.ShouldBeNull();
+        byId.Facts.ShouldNotBeNull().Total.ShouldBe(1);
+    }
+
+    // Regression (fix round 1): returned resources keep their urn:uuid text; resolvedReferences says what each was matched as.
+    [Fact]
+    public void GivenReturnedResourcesWithResolvedReferences_WhenSearched_ThenFactsMapEachShownReferenceToItsTypeAndId()
+    {
+        using TestFolder folder = Transaction();
+        FolderSession session = Open(folder);
+
+        ToolEnvelope<SearchFacts?> page = ResourceSearcher.Search(session, new SearchRequest("Observation", "_include=Observation:encounter"));
+        ToolEnvelope<SearchFacts?> trimmed = ResourceSearcher.Search(session, new SearchRequest("Observation", Elements: "code"));
+
+        Resolved(page).ShouldBe([
+            "Observation/o1: urn:uuid:aaaa-1 -> Patient/pa",
+            "Observation/o1: urn:uuid:e-1 -> Encounter/e1",
+            "Encounter/e1: urn:uuid:aaaa-1 -> Patient/pa"]);
+        ((string)page.Facts!.Resources![0]["subject"]!["reference"]!).ShouldBe("urn:uuid:aaaa-1");
+        trimmed.Facts!.ResolvedReferences.ShouldBeNull();
+    }
+
+    // Regression (fix round 1): the map is capped and what it leaves out is counted.
+    [Fact]
+    public void GivenMoreResolvedReferencesThanTheLimit_WhenSearched_ThenTheFirstHundredAreListedAndTheRestOmitted()
+    {
+        IEnumerable<string> encounters = Enumerable.Range(1, 50).Select(i =>
+            "{\"fullUrl\":\"urn:uuid:e" + i + "\",\"resource\":{\"resourceType\":\"Encounter\",\"id\":\"e" + i + "\",\"status\":\"finished\",\"class\":{\"code\":\"AMB\"},"
+            + "\"subject\":{\"reference\":\"urn:uuid:p\"},\"serviceProvider\":{\"reference\":\"urn:uuid:org\"},\"partOf\":{\"reference\":\"urn:uuid:e" + (i == 1 ? 2 : 1) + "\"}}}");
+        using TestFolder folder = new TestFolder().Write("bundle.json",
+            "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:p\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"p\"}},"
+            + "{\"fullUrl\":\"urn:uuid:org\",\"resource\":{\"resourceType\":\"Organization\",\"id\":\"org\"}}," + string.Join(',', encounters) + "]}");
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Encounter", Count: 50));
+
+        envelope.Facts.ShouldNotBeNull().Returned.ShouldBe(50);
+        Resolved(envelope).Length.ShouldBe(100);
+        envelope.Omitted.ShouldContain(item => item.What == "50 more resolved Bundle references in the returned resources (resolvedReferences lists at most 100)" && item.Why == "limit");
+        EnvelopeJson.SizeOf(envelope).ShouldBeLessThanOrEqualTo(EnvelopeJson.MaxBytes);
+    }
+
+    /// <summary>Every entry of <c>facts.resolvedReferences</c> as <c>resource: reference -> Type/id</c>, in order.</summary>
+    private static string[] Resolved(ToolEnvelope<SearchFacts?> envelope) =>
+        [.. (envelope.Facts.ShouldNotBeNull().ResolvedReferences ?? new Dictionary<string, IReadOnlyDictionary<string, string>>())
+            .SelectMany(resource => resource.Value.Select(reference => $"{resource.Key}: {reference.Key} -> {reference.Value}"))];
 
     private static FolderSession OpenCached(TestFolder folder, TestFolder cache) =>
         new(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cache.Path));
