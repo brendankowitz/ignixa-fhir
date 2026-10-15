@@ -74,23 +74,10 @@ public static class FolderInspector
             session.CatalogStats,
             indexFacts);
 
-        StaleFilesCount stale = session.CountStaleFiles(cancellationToken);
-        List<IssueItem> issues = [.. diagnostics.Take(issueLimit).Select(ToIssue), .. session.CacheIssues];
-        if (stale.Unavailable is { } reason)
-        {
-            issues.Add(new IssueItem("warning", "freshness-unavailable", $"Could not check whether files changed since they were read, so freshness.staleFiles is unknown: {reason}", Location: null));
-        }
-
         List<OmittedItem> omitted = diagnostics.Count > issueLimit
             ? [new OmittedItem($"{diagnostics.Count - issueLimit} more diagnostics", "limit")]
             : [];
 
-        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(builtAt, stale.Count));
+        return EnvelopeAssembler.Create(session, facts, builtAt, [], omitted, [], diagnostics.Take(issueLimit).Select(EnvelopeAssembler.ToIssue), cancellationToken);
     }
-
-    private static IssueItem ToIssue(CatalogDiagnostic diagnostic) => new(
-        diagnostic.Code == "duplicate-id" ? "warning" : "error",
-        diagnostic.Code,
-        diagnostic.Message,
-        diagnostic.Line is int line ? $"{diagnostic.FilePath}:{line}" : diagnostic.FilePath);
 }

@@ -4,7 +4,6 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.CommandLine;
-using System.Text.Json;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Inspection;
 using Ignixa.CliOnFhir.Session;
@@ -15,8 +14,6 @@ namespace Ignixa.CliOnFhir.Commands;
 /// <summary><c>cli-on-fhir inspect &lt;path&gt;</c>: the CLI form of the <c>folder_inspect</c> MCP tool.</summary>
 internal static class InspectCommand
 {
-    private static readonly JsonSerializerOptions OutputOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-
     public static Command Create()
     {
         Argument<string> pathArgument = CommonOptions.CreatePathArgument();
@@ -46,15 +43,10 @@ internal static class InspectCommand
         command.SetAction(parseResult =>
         {
             using ILoggerFactory loggerFactory = StandardErrorLogging.Create(LogLevel.Warning);
-            var session = new FolderSession(
-                parseResult.GetValue(pathArgument)!,
-                FhirSchemas.Resolve(parseResult.GetValue(versionOption)!),
-                loggerFactory,
-                CommonOptions.ResolveCache(parseResult, cacheDirOption, noCacheOption));
+            FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory);
 
             ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session, parseResult.GetValue(issueLimitOption), parseResult.GetValue(buildIndexOption));
-            Console.Out.WriteLine(JsonSerializer.Serialize(envelope, OutputOptions));
-            return 0;
+            return EnvelopeOutput.Write(envelope);
         });
 
         return command;

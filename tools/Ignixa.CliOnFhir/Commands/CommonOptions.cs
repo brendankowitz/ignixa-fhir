@@ -5,6 +5,8 @@
 
 using System.CommandLine;
 using Ignixa.CliOnFhir.Caching;
+using Ignixa.CliOnFhir.Session;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.CliOnFhir.Commands;
 
@@ -59,5 +61,16 @@ internal static class CommonOptions
         }
 
         return parseResult.GetValue(cacheDirOption) is { } cacheDir ? IndexCacheOptions.At(cacheDir) : IndexCacheOptions.UserDefault();
+    }
+
+    public static FolderSession CreateSession(ParseResult parseResult, Argument<string> pathArgument, Option<string> versionOption, Option<string?> cacheDirOption, Option<bool> noCacheOption, ILoggerFactory loggerFactory)
+    {
+        ArgumentNullException.ThrowIfNull(parseResult);
+
+        return new FolderSession(
+            parseResult.GetValue(pathArgument)!,
+            FhirSchemas.Resolve(parseResult.GetValue(versionOption)!),
+            loggerFactory,
+            ResolveCache(parseResult, cacheDirOption, noCacheOption));
     }
 }

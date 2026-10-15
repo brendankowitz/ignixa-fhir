@@ -10,6 +10,7 @@ using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
+using Ignixa.CliOnFhir.Search;
 using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging;
 
@@ -25,6 +26,8 @@ public sealed class FolderSession
     private readonly Lazy<(FolderCatalog Catalog, BuildStats Stats)> _catalog;
     private readonly Lazy<(FolderIndexBuilder Builder, long LoadMilliseconds)> _indexBuilder;
     private readonly Lazy<FolderIndexCache> _cache;
+    private readonly Lazy<SearchQueryParser> _queryParser;
+    private readonly Lazy<Dictionary<(string ResourceType, string Id), CatalogEntry>> _entriesByReference;
     private readonly TimeProvider _timeProvider;
     private readonly Lock _staleGate = new();
     private StaleFilesCount? _lastStaleCount;
@@ -56,6 +59,15 @@ public sealed class FolderSession
                 var builder = new FolderIndexBuilder(schema, loggerFactory);
                 return (builder, stopwatch.ElapsedMilliseconds);
             },
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        // Query parsing must use the same definitions the index was extracted with, so it shares the index builder's.
+        _queryParser = new Lazy<SearchQueryParser>(
+            () => new SearchQueryParser(schema, _indexBuilder.Value.Builder.Definitions),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        _entriesByReference = new Lazy<Dictionary<(string, string), CatalogEntry>>(
+            () => Catalog.Entries.ToDictionary(entry => (entry.ResourceType, entry.Id)),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         // Validating the cache needs the catalog and the definitions, so it also waits for the first index request.
@@ -120,6 +132,13 @@ public sealed class FolderSession
     /// one-time indexer cost, so reading this starts that load if no index has been requested yet.
     /// </summary>
     public ISearchParameterDefinitionManager Definitions => _indexBuilder.Value.Builder.Definitions;
+
+    /// <summary>The session's FHIR search query parser, created on first use.</summary>
+    public SearchQueryParser QueryParser => _queryParser.Value;
+
+    /// <summary>The catalogued resource <paramref name="resourceType"/>/<paramref name="id"/>, or null when the catalog holds none.</summary>
+    public CatalogEntry? FindEntry(string resourceType, string id) =>
+        _entriesByReference.Value.GetValueOrDefault((resourceType, id));
 
     /// <summary>
     /// Directory holding this folder's persisted indexes; null when the cache is off or no index has been requested yet.

@@ -50,7 +50,8 @@ internal static class McpCommand
             builder.Services
                 .AddMcpServer(options => options.ServerInfo = new() { Name = "cli-on-fhir", Version = typeof(McpCommand).Assembly.GetName().Version?.ToString() ?? "0.0.0" })
                 .WithStdioServerTransport()
-                .WithTools<FolderTools>();
+                .WithTools<FolderTools>()
+                .WithTools<ResourceTools>();
 
             await builder.Build().RunAsync(cancellationToken);
             return 0;
