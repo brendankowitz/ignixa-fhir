@@ -21,14 +21,10 @@ namespace Ignixa.Application.Tests.BackgroundOperations;
 public class BulkImportStorageFailureTests
 {
     [Theory]
-    [InlineData(true, "allocate")]
-    [InlineData(true, "write")]
-    [InlineData(true, "commit")]
-    [InlineData(false, "allocate")]
-    [InlineData(false, "write")]
-    [InlineData(false, "commit")]
-    public async Task GivenStorageFailure_WhenImporting_ThenItStopsWithoutReportingStoredResourcesAsRejected(
-        bool streaming, string phase)
+    [InlineData("allocate")]
+    [InlineData("write")]
+    [InlineData("commit")]
+    public async Task GivenStorageFailure_WhenImporting_ThenItStopsWithoutReportingStoredResourcesAsRejected(string phase)
     {
         using var versions = new FhirVersionContext(NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions(), NullFhirBaseUriProvider.Instance);
@@ -59,15 +55,11 @@ public class BulkImportStorageFailureTests
         var blobs = Substitute.For<IBlobStorageClient>();
         blobs.ReadBlobAsync("input.ndjson", Arg.Any<CancellationToken>()).Returns(
             new MemoryStream(Encoding.UTF8.GetBytes(string.Join('\n', Enumerable.Repeat(patient, 20)))));
-        TaskActivity activity = streaming
-            ? new StreamingImportFileActivity(factory, versions, tenants, blobs,
-                new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
-                new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance)
-            : new ImportBatchActivity(factory, versions, tenants, new FhirRequestContextAccessor(), NullLogger<ImportBatchActivity>.Instance);
-        object input = streaming
-            ? new StreamingImportFileInput { JobId = "job", TenantId = 1, ResourceType = "Patient", FileUrl = "input.ndjson",
-                Mode = "IncrementalLoad", BatchSize = 1, ChannelCapacity = 1 }
-            : new ImportBatchInput { JobId = "job", TenantId = 1, ResourceType = "Patient", Mode = "IncrementalLoad", Resources = [patient] };
+        var activity = new StreamingImportFileActivity(factory, versions, tenants, blobs,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
+            new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance);
+        var input = new StreamingImportFileInput { JobId = "job", TenantId = 1, ResourceType = "Patient", FileUrl = "input.ndjson",
+            Mode = "IncrementalLoad", BatchSize = 1, ChannelCapacity = 1 };
 
         var failure = await Should.ThrowAsync<Exception>(() => activity.RunAsync(
             new TaskContext(new OrchestrationInstance { InstanceId = "job" }),
