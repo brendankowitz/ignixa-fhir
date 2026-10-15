@@ -5,11 +5,14 @@
 
 #nullable enable
 
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.InMemory;
 
@@ -30,14 +33,31 @@ namespace Ignixa.Search.InMemory;
 /// <see cref="NumericRangeComparisonSemantics"/> chose. A bound the index value does not have (an open range)
 /// never satisfies a comparison, as in the SQL backend where the column is NULL.
 /// </para>
+/// <para>
+/// What a query can ask is checked once, when it is compiled, against the parameter's definition; an index value
+/// of another kind than the leaf compares (a composite component the indexer typed from the element, such as a
+/// Quantity under a token component) simply does not match, so one unusual resource never fails a search.
+/// </para>
 /// </remarks>
 internal static class SearchIndexEntryMatcher
 {
     /// <summary>Compiles <paramref name="expression"/>, the lowered body of one search parameter, into an entry test.</summary>
+    /// <param name="parameter">
+    /// The searched parameter, whose definition (and, for a composite, whose components' definitions) bounds the fields
+    /// the expression may compare; null when the caller does not know it, in which case only the expression's own
+    /// shape is checked.
+    /// </param>
     /// <exception cref="SearchOperationNotSupportedException">The expression contains a node this matcher cannot evaluate.</exception>
-    public static Func<SearchIndexEntry, bool> Compile(Expression expression)
+    public static Func<SearchIndexEntry, bool> Compile(Expression expression, SearchParameterInfo? parameter)
     {
         ArgumentNullException.ThrowIfNull(expression);
+
+        Validate(expression, parameter);
+        return CompileEntryMatcher(expression);
+    }
+
+    private static Func<SearchIndexEntry, bool> CompileEntryMatcher(Expression expression)
+    {
 
         if (TryGetCommonComponent(expression, out int? component))
         {
@@ -49,7 +69,7 @@ internal static class SearchIndexEntryMatcher
         {
             case MultiaryExpression multiary:
             {
-                Func<SearchIndexEntry, bool>[] children = [.. multiary.Expressions.Select(Compile)];
+                Func<SearchIndexEntry, bool>[] children = [.. multiary.Expressions.Select(CompileEntryMatcher)];
                 return multiary.MultiaryOperation switch
                 {
                     MultiaryOperator.And => entry => children.All(child => child(entry)),
@@ -60,13 +80,13 @@ internal static class SearchIndexEntryMatcher
 
             case UnionExpression union:
             {
-                Func<SearchIndexEntry, bool>[] children = [.. union.Expressions.Select(Compile)];
+                Func<SearchIndexEntry, bool>[] children = [.. union.Expressions.Select(CompileEntryMatcher)];
                 return entry => children.Any(child => child(entry));
             }
 
             case NotExpression not:
             {
-                Func<SearchIndexEntry, bool> inner = Compile(not.Expression);
+                Func<SearchIndexEntry, bool> inner = CompileEntryMatcher(not.Expression);
                 return entry => !inner(entry);
             }
 
@@ -171,33 +191,25 @@ internal static class SearchIndexEntryMatcher
                 return value => MatchesBinary(binary, value);
 
             case MissingFieldExpression missing:
-                return value => GetStringField(missing.FieldName, value) is null;
+                return value => TryGetStringField(missing.FieldName, value, out string? present) && present is null;
 
             default:
                 throw new SearchOperationNotSupportedException($"{expression.GetType().Name} is not supported within a search parameter expression in in-memory search.");
         }
     }
 
-    private static IReadOnlyList<ISearchValue> ResolveValues(ISearchValue value, int? component)
-    {
-        if (component is not int index)
+    /// <summary>The values a leaf addressing <paramref name="component"/> is tested against; none when the entry has no such component.</summary>
+    private static IReadOnlyList<ISearchValue> ResolveValues(ISearchValue value, int? component) =>
+        (component, value) switch
         {
-            return [value];
-        }
-
-        if (value is not CompositeIndexSearchValue composite)
-        {
-            throw new SearchOperationNotSupportedException(
-                $"A composite component expression cannot be evaluated against a {value.GetType().Name} index value.");
-        }
-
-        return index < composite.Components.Count ? composite.Components[index] : [];
-    }
+            (null, _) => [value],
+            (int index, CompositeIndexSearchValue composite) when index < composite.Components.Count => composite.Components[index],
+            _ => [],
+        };
 
     private static bool MatchesString(StringExpression expression, ISearchValue value)
     {
-        string? fieldValue = GetStringField(expression.FieldName, value);
-        if (fieldValue is null)
+        if (!TryGetStringField(expression.FieldName, value, out string? fieldValue) || fieldValue is null)
         {
             return false;
         }
@@ -226,34 +238,41 @@ internal static class SearchIndexEntryMatcher
             StringOperator.NotContains => !fieldValue.Contains(expressionValue, comparison),
             StringOperator.NotEndsWith => !fieldValue.EndsWith(expressionValue, comparison),
             StringOperator.LeftSideStartsWith => expressionValue.StartsWith(fieldValue, comparison),
-            _ => throw new SearchOperationNotSupportedException($"StringOperator {expression.StringOperator} is not supported in in-memory search."),
+            _ => throw new UnreachableException($"StringOperator {expression.StringOperator} passed validation."),
         };
     }
 
-    /// <summary>The value of <paramref name="fieldName"/> on <paramref name="value"/>, or null when the value has none.</summary>
-    /// <exception cref="SearchOperationNotSupportedException">The field does not exist on that kind of index value.</exception>
-    private static string? GetStringField(FieldName fieldName, ISearchValue value) =>
-        (fieldName, value) switch
+    /// <summary>
+    /// Reads <paramref name="fieldName"/> from <paramref name="value"/>: false when the value is not of a kind that has the
+    /// field (it cannot match), otherwise true with the field's value, null when it is absent or empty.
+    /// </summary>
+    private static bool TryGetStringField(FieldName fieldName, ISearchValue value, out string? fieldValue)
+    {
+        (bool applies, string? read) = (fieldName, value) switch
         {
-            (FieldName.String, StringSearchValue s) => s.String,
-            (FieldName.TokenCode, TokenSearchValue token) => token.Code,
-            (FieldName.TokenSystem, TokenSearchValue token) => token.System,
-            (FieldName.TokenText, TokenSearchValue token) => token.Text,
-            (FieldName.IdentifierTypeSystem, TokenSearchValue token) => token.IdentifierTypeSystem,
-            (FieldName.IdentifierTypeCode, TokenSearchValue token) => token.IdentifierTypeCode,
-            (FieldName.TokenCode, OfTypeTokenSearchValue ofType) => ofType.IdentifierValue,
-            (FieldName.IdentifierTypeSystem, OfTypeTokenSearchValue ofType) => ofType.TypeSystem,
-            (FieldName.IdentifierTypeCode, OfTypeTokenSearchValue ofType) => ofType.TypeCode,
-            (FieldName.ReferenceResourceId, ReferenceSearchValue reference) => reference.ResourceId,
-            (FieldName.ReferenceResourceType, ReferenceSearchValue reference) => reference.ResourceType,
-            (FieldName.ReferenceBaseUri, ReferenceSearchValue reference) => reference.BaseUri?.ToString(),
-            (FieldName.QuantitySystem, QuantitySearchValue quantity) => quantity.System,
-            (FieldName.QuantityCode, QuantitySearchValue quantity) => quantity.Code,
-            (FieldName.Uri, UriSearchValue uri) => uri.Uri,
-            (FieldName.UriVersion, UriSearchValue uri) => uri.Version,
-            (FieldName.UriFragment, UriSearchValue uri) => uri.Fragment,
-            _ => throw FieldNotOnValue(fieldName, value),
-        } is { Length: > 0 } present ? present : null;
+            (FieldName.String, StringSearchValue s) => (true, s.String),
+            (FieldName.TokenCode, TokenSearchValue token) => (true, token.Code),
+            (FieldName.TokenSystem, TokenSearchValue token) => (true, token.System),
+            (FieldName.TokenText, TokenSearchValue token) => (true, token.Text),
+            (FieldName.IdentifierTypeSystem, TokenSearchValue token) => (true, token.IdentifierTypeSystem),
+            (FieldName.IdentifierTypeCode, TokenSearchValue token) => (true, token.IdentifierTypeCode),
+            (FieldName.TokenCode, OfTypeTokenSearchValue ofType) => (true, ofType.IdentifierValue),
+            (FieldName.IdentifierTypeSystem, OfTypeTokenSearchValue ofType) => (true, ofType.TypeSystem),
+            (FieldName.IdentifierTypeCode, OfTypeTokenSearchValue ofType) => (true, ofType.TypeCode),
+            (FieldName.ReferenceResourceId, ReferenceSearchValue reference) => (true, reference.ResourceId),
+            (FieldName.ReferenceResourceType, ReferenceSearchValue reference) => (true, reference.ResourceType),
+            (FieldName.ReferenceBaseUri, ReferenceSearchValue reference) => (true, reference.BaseUri?.ToString()),
+            (FieldName.QuantitySystem, QuantitySearchValue quantity) => (true, quantity.System),
+            (FieldName.QuantityCode, QuantitySearchValue quantity) => (true, quantity.Code),
+            (FieldName.Uri, UriSearchValue uri) => (true, uri.Uri),
+            (FieldName.UriVersion, UriSearchValue uri) => (true, uri.Version),
+            (FieldName.UriFragment, UriSearchValue uri) => (true, uri.Fragment),
+            _ => (false, null),
+        };
+
+        fieldValue = read is { Length: > 0 } ? read : null;
+        return applies;
+    }
 
     private static bool MatchesBinary(BinaryExpression expression, ISearchValue value) =>
         (expression.FieldName, value) switch
@@ -264,7 +283,7 @@ internal static class SearchIndexEntryMatcher
             (FieldName.NumberHigh, NumberSearchValue number) => Satisfies(number.High, (decimal)expression.Value, expression.BinaryOperator),
             (FieldName.QuantityLow, QuantitySearchValue quantity) => Satisfies(quantity.Low, (decimal)expression.Value, expression.BinaryOperator),
             (FieldName.QuantityHigh, QuantitySearchValue quantity) => Satisfies(quantity.High, (decimal)expression.Value, expression.BinaryOperator),
-            _ => throw FieldNotOnValue(expression.FieldName, value),
+            _ => false,
         };
 
     private static bool Satisfies(decimal? bound, decimal target, BinaryOperator binaryOperator) =>
@@ -279,9 +298,87 @@ internal static class SearchIndexEntryMatcher
             BinaryOperator.GreaterThanOrEqual => comparison >= 0,
             BinaryOperator.LessThan => comparison < 0,
             BinaryOperator.LessThanOrEqual => comparison <= 0,
-            _ => throw new SearchOperationNotSupportedException($"BinaryOperator {binaryOperator} is not supported in in-memory search."),
+            _ => throw new UnreachableException($"BinaryOperator {binaryOperator} passed validation."),
         };
 
-    private static SearchOperationNotSupportedException FieldNotOnValue(FieldName fieldName, ISearchValue value) =>
-        new($"Field {fieldName} cannot be compared with a {value.GetType().Name} index value in in-memory search.");
+    /// <summary>
+    /// Rejects, before any entry is read, an expression this matcher cannot evaluate: an unknown node, field or operator, a
+    /// comparison the field does not support, or a field the parameter's definition can never hold. A composite component
+    /// may also hold a token or reference, the kinds the parser infers from a component value's shape.
+    /// </summary>
+    private static void Validate(Expression expression, SearchParameterInfo? parameter)
+    {
+        switch (expression)
+        {
+            case MultiaryExpression multiary when multiary.MultiaryOperation is MultiaryOperator.And or MultiaryOperator.Or:
+                multiary.Expressions.ToList().ForEach(child => Validate(child, parameter));
+                return;
+            case UnionExpression union:
+                union.Expressions.ToList().ForEach(child => Validate(child, parameter));
+                return;
+            case NotExpression not:
+                Validate(not.Expression, parameter);
+                return;
+            case BinaryExpression binary when IsBound(binary.FieldName) && Enum.IsDefined(binary.BinaryOperator) && HasValueFor(binary):
+                ValidateField(binary, parameter);
+                return;
+            case StringExpression str when !IsBound(str.FieldName) && Enum.IsDefined(str.StringOperator) && str.Value is not null:
+                ValidateField(str, parameter);
+                return;
+            case MissingFieldExpression missing when !IsBound(missing.FieldName):
+                ValidateField(missing, parameter);
+                return;
+            default:
+                throw new SearchOperationNotSupportedException($"{expression} is not supported within a search parameter expression in in-memory search.");
+        }
+    }
+
+    private static void ValidateField(IFieldExpression field, SearchParameterInfo? parameter)
+    {
+        SearchParamType family = Family(field.FieldName)
+            ?? throw new SearchOperationNotSupportedException($"Field {field.FieldName} is not supported in in-memory search.");
+        if (parameter is null)
+        {
+            return;
+        }
+
+        bool allowed = field.ComponentIndex switch
+        {
+            null => parameter.Type == family,
+            int index when parameter.Type == SearchParamType.Composite && index >= 0 && index < parameter.Component.Count =>
+                family is SearchParamType.Token or SearchParamType.Reference
+                || parameter.Component[index].ResolvedSearchParameter?.Type == family,
+            _ => false,
+        };
+
+        if (!allowed)
+        {
+            string where = field.ComponentIndex is int component ? $"component {component} of " : string.Empty;
+            throw new SearchOperationNotSupportedException(
+                $"Field {field.FieldName} cannot be compared for {where}{parameter.Type} search parameter '{parameter.Code}' in in-memory search.");
+        }
+    }
+
+    private static bool HasValueFor(BinaryExpression binary) =>
+        binary.FieldName is FieldName.DateTimeStart or FieldName.DateTimeEnd ? binary.Value is DateTimeOffset : binary.Value is decimal;
+
+    private static bool IsBound(FieldName fieldName) =>
+        fieldName is FieldName.DateTimeStart or FieldName.DateTimeEnd
+            or FieldName.NumberLow or FieldName.NumberHigh
+            or FieldName.QuantityLow or FieldName.QuantityHigh;
+
+    /// <summary>The parameter type whose index values carry <paramref name="fieldName"/>; null for a field this matcher does not read.</summary>
+    private static SearchParamType? Family(FieldName fieldName) =>
+        fieldName switch
+        {
+            FieldName.String => SearchParamType.String,
+            FieldName.TokenCode or FieldName.TokenSystem or FieldName.TokenText
+                or FieldName.IdentifierTypeSystem or FieldName.IdentifierTypeCode => SearchParamType.Token,
+            FieldName.ReferenceBaseUri or FieldName.ReferenceResourceType or FieldName.ReferenceResourceId => SearchParamType.Reference,
+            FieldName.QuantitySystem or FieldName.QuantityCode or FieldName.QuantityLow or FieldName.QuantityHigh => SearchParamType.Quantity,
+            FieldName.NumberLow or FieldName.NumberHigh => SearchParamType.Number,
+            FieldName.DateTimeStart or FieldName.DateTimeEnd => SearchParamType.Date,
+            FieldName.Uri or FieldName.UriVersion or FieldName.UriFragment => SearchParamType.Uri,
+            _ => null,
+        };
 }

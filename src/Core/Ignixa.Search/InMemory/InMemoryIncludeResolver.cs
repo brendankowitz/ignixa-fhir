@@ -25,6 +25,7 @@ namespace Ignixa.Search.InMemory;
 /// <c>:iterate</c> includes are applied again to what the previous round added, until a round adds nothing. A
 /// resource is included at most once and never when it is itself a match. The result is in discovery order: round by
 /// round, forward includes before reverse ones, each in the order the page, its entries and the source enumerate.
+/// Resolution stops once the caller's maximum is reached, so <c>:iterate</c> cannot expand without bound.
 /// </para>
 /// </remarks>
 internal static class InMemoryIncludeResolver
@@ -33,7 +34,8 @@ internal static class InMemoryIncludeResolver
         IInMemorySearchSource source,
         IReadOnlyCollection<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> matches,
         IReadOnlyList<IncludeExpression> includes,
-        IReadOnlyList<IncludeExpression> revIncludes)
+        IReadOnlyList<IncludeExpression> revIncludes,
+        int maxIncluded)
     {
         if (revIncludes.FirstOrDefault(revInclude => revInclude.WildCard) is { } wildcard)
         {
@@ -46,12 +48,17 @@ internal static class InMemoryIncludeResolver
         IReadOnlyCollection<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> round = matches;
         IReadOnlyList<IncludeExpression> forward = includes;
         IReadOnlyList<IncludeExpression> reverse = revIncludes;
-        while (round.Count > 0 && (forward.Count > 0 || reverse.Count > 0))
+        while (round.Count > 0 && (forward.Count > 0 || reverse.Count > 0) && included.Count < maxIncluded)
         {
             List<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> added = [];
             foreach ((ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index) resource in
                 Forward(source, round, forward).Concat(Reverse(source, round, reverse)))
             {
+                if (included.Count + added.Count == maxIncluded)
+                {
+                    break;
+                }
+
                 if (seen.Add(Key(resource.Location)))
                 {
                     added.Add(resource);

@@ -23,13 +23,21 @@ internal sealed class IndexedTestSource : IInMemorySearchSource
         _resources = [.. resources.Select(json => SearchCorpus.Index(WithLastUpdated, json))];
     }
 
+    /// <summary>
+    /// When true, every enumeration and resolution hands back a fresh copy of each index collection, as a source that
+    /// deserializes its entries on demand would; the contract allows it.
+    /// </summary>
+    public bool FreshCollections { get; init; }
+
     /// <summary>How many times each type was enumerated, so tests can see what a search read.</summary>
     public Dictionary<string, int> Enumerations { get; } = new(StringComparer.Ordinal);
 
     public IEnumerable<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> Enumerate(string resourceType)
     {
         Enumerations[resourceType] = Enumerations.GetValueOrDefault(resourceType) + 1;
-        return _resources.Where(resource => resource.Location.ResourceType == resourceType);
+        return _resources
+            .Where(resource => resource.Location.ResourceType == resourceType)
+            .Select(resource => FreshCollections ? (resource.Location, (IReadOnlyCollection<SearchIndexEntry>)[.. resource.Index]) : resource);
     }
 
     public (ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)? Resolve(string resourceType, string id) =>
@@ -46,6 +54,6 @@ internal sealed class IndexedTestSource : IInMemorySearchSource
     {
         var engine = new InMemorySearchEngine(this, InMemorySearchFeatures.All);
         Models.SearchOptions options = SearchCorpus.Options(resourceType, query);
-        return [.. engine.Include(engine.Search(options), options).Select(resource => resource.Location.ToString())];
+        return [.. engine.Include(engine.Search(options), options, int.MaxValue).Select(resource => resource.Location.ToString())];
     }
 }

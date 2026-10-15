@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Ignixa.Search.InMemory;
 
 /// <summary>
@@ -11,7 +13,9 @@ namespace Ignixa.Search.InMemory;
 /// <see cref="Indexing.SearchOperationNotSupportedException"/> rather than being skipped, since skipping would
 /// return results that look filtered, ordered or expanded when they are not.
 /// </summary>
+/// <remarks>Experimental (<c>IGNIXAEXP001</c>), like the rest of the in-memory search engine API.</remarks>
 [Flags]
+[Experimental(InMemoryExperimental.DiagnosticId)]
 public enum InMemorySearchFeatures
 {
     /// <summary>Filtering only.</summary>

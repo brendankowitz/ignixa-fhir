@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Mcp;
 using Ignixa.CliOnFhir.Search;
+using Ignixa.CliOnFhir.Session;
 using ModelContextProtocol.Protocol;
 using Shouldly;
 using static Ignixa.CliOnFhir.Tests.SearchFixture;
@@ -103,7 +104,6 @@ public class SearchExtensionTests
         Ids(envelope).ShouldBe(["o1", "o2"]);
         facts.Total.ShouldBe(5);
         facts.Returned.ShouldBe(2);
-        facts.IncludedTotal.ShouldBe(1);
         ((string)facts.Included.ShouldNotBeNull().ShouldHaveSingleItem()["id"]!).ShouldBe("p1");
         envelope.Evidence.Select(item => item.Reference).ShouldBe(["Observation/o1", "Observation/o2", "Patient/p1"]);
         envelope.Evidence[2].File.ShouldBe(PatientsFile);
@@ -156,10 +156,9 @@ public class SearchExtensionTests
         ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "_revinclude=Observation:subject"));
 
         SearchFacts facts = envelope.Facts.ShouldNotBeNull();
-        facts.IncludedTotal.ShouldBe(60);
         facts.Included.ShouldNotBeNull().Count.ShouldBe(ResourceSearcher.IncludeLimit);
         OmittedItem omitted = envelope.Omitted.ShouldHaveSingleItem();
-        omitted.What.ShouldContain("10 more included resources");
+        omitted.What.ShouldContain("more included resources than the 50 returned");
         omitted.Why.ShouldBe("limit");
     }
 
@@ -194,7 +193,6 @@ public class SearchExtensionTests
         SearchFacts facts = envelope.Facts.ShouldNotBeNull();
         facts.Total.ShouldBe(5);
         facts.Included.ShouldBeNull();
-        facts.IncludedTotal.ShouldBeNull();
     }
 
     [Fact]
@@ -222,7 +220,7 @@ public class SearchExtensionTests
 
         (result.IsError ?? false).ShouldBeFalse();
         JsonNode envelope = JsonNode.Parse(result.Content.OfType<TextContentBlock>().ShouldHaveSingleItem().Text)!;
-        ((int)envelope["facts"]!["includedTotal"]!).ShouldBe(1);
+        envelope["facts"]!["included"]!.AsArray().Count.ShouldBe(1);
         ((string)envelope["facts"]!["included"]![0]!["id"]!).ShouldBe("p1");
     }
 
@@ -239,5 +237,125 @@ public class SearchExtensionTests
         (lenient.IsError ?? false).ShouldBeFalse();
         JsonNode envelope = JsonNode.Parse(lenient.Content.OfType<TextContentBlock>().ShouldHaveSingleItem().Text)!;
         ((string)envelope["issues"]![0]!["code"]!).ShouldBe("parameter-ignored");
+    }
+
+    [Theory]
+    [InlineData("Patient", "general-practitioner:Practitioner.familly=x", "Did you mean 'family'?")]
+    [InlineData("Observation", "subject:Patient.nmae=Smith", "Did you mean 'name'?")]
+    [InlineData("Patient", "_has:Observation:subjekt:code=x", "Did you mean 'subject'?")]
+    [InlineData("Patient", "_has:Observation:subject:cod=x", "Did you mean 'code'")]
+    public void GivenATypoInsideAChain_WhenSearched_ThenTheCallFailsAsAnUnknownParameterOfTheLinksType(string type, string query, string hint)
+    {
+        using TestFolder folder = Clinic();
+
+        IssueItem issue = ResourceSearcher.Search(Open(folder), new SearchRequest(type, query)).Issues.ShouldHaveSingleItem();
+
+        issue.Code.ShouldBe("unknown-search-parameter");
+        issue.Diagnostics.ShouldContain(hint);
+        issue.Diagnostics.ShouldNotContain("..");
+    }
+
+    [Fact]
+    public void GivenATypoInsideAChainInLenientMode_WhenSearched_ThenItIsIgnoredWithAWarning()
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", "subject:Patient.nmae=Smith", Lenient: true));
+
+        envelope.Facts.ShouldNotBeNull().Total.ShouldBe(5);
+        IssueItem warning = envelope.Issues.ShouldHaveSingleItem();
+        warning.Code.ShouldBe("parameter-ignored");
+        warning.Diagnostics.ShouldNotContain("Pass lenient");
+    }
+
+    [Theory]
+    [InlineData("Observation", "_has:Observation:subject:code=x", "never references Observation")]
+    [InlineData("Patient", "_has:Nope:subject:code=x", "'Nope' is not a")]
+    [InlineData("Patient", "_has:Observation:code:code=x", "_has needs a reference parameter")]
+    [InlineData("Observation", "subject:Practitioner.name=x", "never references Practitioner")]
+    public void GivenAChainLinkThatCanNeverResolve_WhenSearched_ThenTheCallFailsAsAnInvalidRequest(string type, string query, string reason)
+    {
+        using TestFolder folder = Clinic();
+
+        IssueItem issue = ResourceSearcher.Search(Open(folder), new SearchRequest(type, query)).Issues.ShouldHaveSingleItem();
+
+        issue.Code.ShouldBe("invalid-search-request");
+        issue.Diagnostics.ShouldContain(reason);
+    }
+
+    [Theory]
+    [InlineData("Observation", "_include=Patient:organization", "_include=Patient:organization")]
+    [InlineData("Patient", "_revinclude=Encounter:service-provider", "_revinclude=Encounter:service-provider")]
+    public void GivenAnIncludeThatCanAddNothing_WhenSearched_ThenAWarningSaysSo(string type, string query, string named)
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest(type, query));
+
+        envelope.Facts.ShouldNotBeNull().Included.ShouldNotBeNull().ShouldBeEmpty();
+        IssueItem warning = envelope.Issues.ShouldHaveSingleItem();
+        warning.Code.ShouldBe("include-not-applicable");
+        warning.Diagnostics.ShouldContain(named);
+    }
+
+    [Fact]
+    public void GivenAnIterateIncludeReachedThroughAnotherInclude_WhenSearched_ThenNoApplicabilityWarningIsRaised()
+    {
+        using TestFolder folder = Clinic();
+
+        ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", "_include=Observation:subject&_include:iterate=Patient:organization"))
+            .Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenReferencesThatAreNotLocal_WhenChainedOrIncluded_ThenAnInformationIssueCountsWhatWasNotFollowed()
+    {
+        using TestFolder folder = new TestFolder()
+            .Write("pat.json", """{"resourceType":"Patient","id":"p1","gender":"male"}""")
+            .Write("enc.ndjson", """
+                {"resourceType":"Encounter","id":"e1","status":"finished","class":{"code":"AMB"},"subject":{"reference":"urn:uuid:5fec133b-2286-84c5-2d10-5fe2ddbc3e76"}}
+                {"resourceType":"Encounter","id":"e2","status":"finished","class":{"code":"AMB"},"subject":{"reference":"http://elsewhere.example.org/fhir/Patient/p1"}}
+                {"resourceType":"Encounter","id":"e3","status":"finished","class":{"code":"AMB"},"subject":{"reference":"Patient/p1"}}
+                """);
+        FolderSession session = Open(folder);
+
+        ToolEnvelope<SearchFacts?> chained = ResourceSearcher.Search(session, new SearchRequest("Encounter", "subject:Patient.gender=male"));
+        ToolEnvelope<SearchFacts?> included = ResourceSearcher.Search(session, new SearchRequest("Encounter", "_id=e1&_include=Encounter:subject"));
+
+        Ids(chained).ShouldBe(["e3"]);
+        IssueItem issue = chained.Issues.ShouldHaveSingleItem();
+        issue.Severity.ShouldBe("information");
+        issue.Code.ShouldBe("references-unresolved");
+        issue.Diagnostics.ShouldContain("Encounter:subject");
+        issue.Diagnostics.ShouldContain("1 absolute or untyped references, and 1 Encounter resources holding urn: references");
+        included.Issues.ShouldHaveSingleItem().Diagnostics.ShouldContain("0 absolute or untyped references, and 1 Encounter resources holding urn: references");
+    }
+
+    [Fact]
+    public void GivenAnIdWithASystem_WhenSearched_ThenTheCallFailsAsAnInvalidRequestNamingTheParameter()
+    {
+        using TestFolder folder = Clinic();
+
+        IssueItem issue = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "_id=|p1")).Issues.ShouldHaveSingleItem();
+
+        issue.Code.ShouldBe("invalid-search-request");
+        issue.Diagnostics.ShouldContain("_id=|p1");
+    }
+
+    [Theory]
+    [InlineData("characteristic-value=age$40", 0)]
+    [InlineData("characteristic-value=gender$male", 1)]
+    public void GivenCompositeComponentsOfDifferentKinds_WhenSearched_ThenAnOddResourceDoesNotFailTheSearch(string query, int total)
+    {
+        using TestFolder folder = new TestFolder().Write("groups.ndjson", """
+            {"resourceType":"Group","id":"g1","type":"person","actual":true,"characteristic":[{"code":{"coding":[{"system":"http://s","code":"gender"}]},"valueCodeableConcept":{"coding":[{"code":"male"}]},"exclude":false}]}
+            {"resourceType":"Group","id":"g2","type":"person","actual":true,"characteristic":[{"code":{"coding":[{"system":"http://s","code":"age"}]},"valueQuantity":{"value":40,"unit":"a","system":"http://unitsofmeasure.org","code":"a"},"exclude":false}]}
+            {"resourceType":"Group","id":"g3","type":"person","actual":true,"characteristic":[{"code":{"coding":[{"system":"http://s","code":"flag"}]},"valueBoolean":true,"exclude":false}]}
+            """);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Group", query));
+
+        envelope.Facts.ShouldNotBeNull().Total.ShouldBe(total);
+        envelope.Issues.ShouldBeEmpty();
     }
 }

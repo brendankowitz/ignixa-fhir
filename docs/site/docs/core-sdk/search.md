@@ -234,6 +234,12 @@ The mandatory BenchmarkDotNet result and acceptance decision are recorded in [th
 
 `InMemorySearchEngine` adds the features that read other resource types, each opted into with `InMemorySearchFeatures`. A feature that is not enabled throws `SearchOperationNotSupportedException`; the default interpreter enables none.
 
+:::caution Experimental API
+`IInMemorySearchSource`, `InMemorySearchEngine`, `InMemorySearchFeatures`, `LastUpdatedSearchIndexer` and the `SearchQueryInterpreter(source, features)` constructor are marked `[Experimental("IGNIXAEXP001")]`: Ignixa.Search is a stable package, and these may still change shape. Using them is a compile error until you opt in, for example with `<NoWarn>$(NoWarn);IGNIXAEXP001</NoWarn>` in the consuming project.
+:::
+
+A query shape the interpreter cannot evaluate (a field the parameter's definition can never hold, an unknown operator) is rejected when the predicate is built, before any entry is read. An index entry of an unexpected kind, such as a composite component the indexer typed as a Quantity under a token component, simply does not match. Results are combined by `ResourceKey`, so a source may return fresh index collections on every enumeration.
+
 ```csharp
 using Ignixa.Search.InMemory;
 
@@ -242,7 +248,7 @@ var engine = new InMemorySearchEngine(source, InMemorySearchFeatures.All);
 
 var matches = engine.Search(options);                  // filter (chains, _has) and _sort
 var page = matches.Take(options.MaxItemCount).ToList(); // paging is the caller's
-var included = engine.Include(page, options);          // _include / _revinclude (with :iterate) for that page
+var included = engine.Include(page, options, 51);      // _include / _revinclude (with :iterate) for that page, at most 51
 ```
 
 | Feature | Behavior |
@@ -250,7 +256,7 @@ var included = engine.Include(page, options);          // _include / _revinclude
 | `Chains` | Forward chains to any depth; a reference with a base URI, without a type, or to a resource the source does not hold matches nothing |
 | `ReverseChains` | `_has`, including nested and chained forms |
 | `Sort` | Date, number, quantity, string, token, uri and `_id`; lowest value ascending, highest descending; missing values last; ties by `_lastUpdated`, then id |
-| `Include` / `RevInclude` | Resolved for the page passed in, in discovery order, each resource once and never a match; `:iterate` repeats until nothing new is added; a reverse include must name its parameter |
+| `Include` / `RevInclude` | Resolved for the page passed in, in discovery order, each resource once and never a match; `:iterate` repeats until nothing new is added or the caller's maximum is reached; a reverse include must name its parameter |
 
 `ElementSearchIndexer` emits no `_lastUpdated` entry because a database reads it from a column. Wrap an in-memory index's indexer in `LastUpdatedSearchIndexer` to add one from `meta.lastUpdated`; only a FHIR instant (with a time zone) is indexed, and anything else is logged as a warning.
 

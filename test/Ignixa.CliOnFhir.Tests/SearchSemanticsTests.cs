@@ -431,7 +431,6 @@ public class SearchSemanticsTests
 
     [Theory]
     [InlineData("subject.name=Smith", "subject.name")]
-    [InlineData("_has:Observation:subject:code=x", "_has:Observation:subject:code")]
     public void GivenConstructRecognisedButUnsupported_WhenSearched_ThenTheCallFailsInsteadOfIgnoringIt(string query, string parameter)
     {
         using TestFolder folder = Clinic();

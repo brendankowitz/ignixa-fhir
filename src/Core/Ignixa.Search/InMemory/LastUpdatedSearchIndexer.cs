@@ -30,7 +30,9 @@ namespace Ignixa.Search.InMemory;
 /// computer to the next; such a value, a partial date, or text is logged as a warning and the resource is left
 /// unindexed for <c>_lastUpdated</c> rather than guessed at.
 /// </para>
+/// <para>Experimental (<c>IGNIXAEXP001</c>).</para>
 /// </remarks>
+[Experimental(InMemoryExperimental.DiagnosticId)]
 public sealed partial class LastUpdatedSearchIndexer : ISearchIndexer
 {
     private readonly ISearchIndexer _inner;

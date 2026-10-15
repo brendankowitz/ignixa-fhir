@@ -14,6 +14,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.InMemory;
 using Ignixa.Search.Models;
+using Ignixa.Serialization.Abstractions;
 
 namespace Ignixa.CliOnFhir.Search;
 
@@ -72,6 +73,7 @@ public static class ResourceSearcher
         List<OmittedItem> omitted = [];
         if (parsed.CountOnly)
         {
+            issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(session.RootPath, source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));
             AddDiagnostics(source, issues, omitted);
             var countFacts = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, Returned: 0, Resources: null);
             return Envelope(session, source, countFacts, [], omitted, issues, cancellationToken);
@@ -83,7 +85,15 @@ public static class ResourceSearcher
         }
 
         List<IndexedResource> page = [.. matches.Skip(request.Offset).Take(count)];
-        List<IndexedResource>? included = HasIncludes(parsed.Options) ? Include(engine, source, page, parsed) : null;
+        List<IndexedResource>? included = null;
+        if (HasIncludes(parsed.Options))
+        {
+            // One past the cap tells whether more exist without resolving every one :iterate could reach.
+            included = Include(engine, source, page, parsed, IncludeLimit + 1);
+            issues.AddRange(ReferenceFollowChecks.InapplicableIncludes(parsed.Options));
+        }
+
+        issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(session.RootPath, source, parsed.Options, [.. page, .. included ?? []]));
         AddDiagnostics(source, issues, omitted);
 
         int reserved = ReservedBytes(request, query, matches.Count, included, issues, omitted);
@@ -95,7 +105,7 @@ public static class ResourceSearcher
         IReadOnlyList<System.Text.Json.Nodes.JsonNode>? includedResources = null;
         if (included is not null)
         {
-            var pageOnly = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, included.Count, []);
+            var pageOnly = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, []);
             ResourceBatch includedBatch = CollectIncluded(session, pageOnly, included, evidence, omitted, issues, cancellationToken);
             includedResources = includedBatch.Resources;
         }
@@ -107,7 +117,7 @@ public static class ResourceSearcher
             omitted.Add(new OmittedItem($"{matches.Count - next} more matches (offset={next})", why));
         }
 
-        var facts = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, included?.Count, includedResources);
+        var facts = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, batch.Resources.Count, batch.Resources, includedResources);
         return Envelope(session, source, facts, evidence, omitted, issues, cancellationToken);
     }
 
@@ -140,9 +150,13 @@ public static class ResourceSearcher
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
 
-        if (batch.Consumed < included.Count)
+        string why = batch.Consumed < wanted.Count ? "size-budget" : "limit";
+        if (included.Count > IncludeLimit)
         {
-            string why = batch.Consumed < wanted.Count ? "size-budget" : "limit";
+            omitted.Add(new OmittedItem($"more included resources than the {batch.Consumed} returned (at most {IncludeLimit} are resolved per page; ask for a smaller page or a narrower include)", why));
+        }
+        else if (batch.Consumed < included.Count)
+        {
             omitted.Add(new OmittedItem($"{included.Count - batch.Consumed} more included resources (read them with read_resources, or ask for a smaller page)", why));
         }
 
@@ -180,7 +194,7 @@ public static class ResourceSearcher
     private static int ReservedBytes(SearchRequest request, string query, int total, List<IndexedResource>? included, List<IssueItem> issues, List<OmittedItem> omitted)
     {
         var skeleton = new ToolEnvelope<SearchFacts?>(
-            new SearchFacts(request.ResourceType, query, total, request.Offset, Returned: 0, Resources: [], included?.Count, included is null ? null : []),
+            new SearchFacts(request.ResourceType, query, total, request.Offset, Returned: 0, Resources: [], included is null ? null : []),
             [],
             [.. omitted, .. Enumerable.Repeat(Placeholder, included is null ? 1 : 2)],
             [],
@@ -220,21 +234,25 @@ public static class ResourceSearcher
         {
             return [.. engine.Search(parsed.Options).Select(match => source.Indexed(match.Location))];
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (SearchOperationNotSupportedException ex)
         {
-            // The interpreter signals unsupported expressions (and some unexpected input) with assorted exception types,
-            // so find which parameter's expression fails on its own and name it.
+            // The engine evaluates the whole tree at once, so find which parameter's expression fails on its own and name it.
             throw SearchFailures.NotSupported($"{NameFailingParameter(engine, parsed)} cannot be evaluated: {Detail(ex)}");
+        }
+        catch (FhirException ex)
+        {
+            // A value the pipeline parsed but the engine rejects as a request fault (for example an _id with a system).
+            throw SearchFailures.From(ex, NameFailingParameter(engine, parsed));
         }
     }
 
-    private static List<IndexedResource> Include(InMemorySearchEngine engine, FolderSearchSource source, List<IndexedResource> page, ParsedSearch parsed)
+    private static List<IndexedResource> Include(InMemorySearchEngine engine, FolderSearchSource source, List<IndexedResource> page, ParsedSearch parsed, int maxIncluded)
     {
         try
         {
-            return [.. engine.Include([.. page.Select(match => (match.Key, match.Index))], parsed.Options).Select(resource => source.Indexed(resource.Location))];
+            return [.. engine.Include([.. page.Select(match => (match.Key, match.Index))], parsed.Options, maxIncluded).Select(resource => source.Indexed(resource.Location))];
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (SearchOperationNotSupportedException ex)
         {
             throw SearchFailures.NotSupported($"The includes cannot be resolved: {Detail(ex)}");
         }
@@ -255,7 +273,7 @@ public static class ResourceSearcher
             {
                 engine.Search(new SearchOptions { ResourceType = parsed.Options.ResourceType, Expression = part });
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (FhirException)
             {
                 failing.Add(parsed.Traces.FirstOrDefault(trace => ReferenceEquals(trace.Ir, part)) is { } trace ? $"'{trace.Key}={trace.Value}'" : $"({part.GetType().Name})");
             }
@@ -264,8 +282,5 @@ public static class ResourceSearcher
         return failing.Count > 0 ? $"Query parameter {string.Join(", ", failing)}" : "The query";
     }
 
-    private static string Detail(Exception ex) =>
-        ex is Ignixa.Serialization.Abstractions.FhirException { Issues.Count: > 0 } fhir
-            ? fhir.Issues.First().Diagnostics ?? ex.Message
-            : $"{ex.GetType().Name}: {ex.Message}";
+    private static string Detail(FhirException ex) => ex.Issues.FirstOrDefault()?.Diagnostics ?? ex.Message;
 }

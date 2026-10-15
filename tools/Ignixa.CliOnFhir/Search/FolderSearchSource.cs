@@ -38,6 +38,9 @@ internal sealed class FolderSearchSource(FolderSession session) : IInMemorySearc
         return Type(resourceType).ById.TryGetValue(id, out IndexedResource? resource) ? (resource.Key, resource.Index) : null;
     }
 
+    /// <summary>The indexed resources of <paramref name="resourceType"/>, in catalog order.</summary>
+    public IReadOnlyList<IndexedResource> Resources(string resourceType) => Type(resourceType).Index.Resources;
+
     /// <summary>The indexed resource behind a location this source returned.</summary>
     public IndexedResource Indexed(ResourceKey location) => Type(location.ResourceType).ById[location.Id];
 

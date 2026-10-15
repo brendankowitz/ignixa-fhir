@@ -213,7 +213,7 @@ public class InMemorySearchEngineTests
         SearchOptions options = SearchCorpus.Options("Patient", query);
 
         Should.Throw<SearchOperationNotSupportedException>(() => engine.Search(options));
-        Should.Throw<SearchOperationNotSupportedException>(() => engine.Include([], options));
+        Should.Throw<SearchOperationNotSupportedException>(() => engine.Include([], options, int.MaxValue));
     }
 
     [Fact]
@@ -222,6 +222,45 @@ public class InMemorySearchEngineTests
         new InMemorySearchEngine(Clinic(), InMemorySearchFeatures.None).Search(new SearchOptions { ResourceType = "Patient" })
             .Select(match => match.Location.Id)
             .ShouldBe(["pat-1", "pat-2"]);
+    }
+
+    [Theory]
+    [InlineData("Patient", "family=Chalmers&gender=male", "pat-1")]
+    [InlineData("Patient", "gender=male,female&_id:not=pat-1", "pat-2")]
+    [InlineData("Patient", "_has:Observation:subject:code=8480-6&gender=male", "pat-1")]
+    [InlineData("Observation", "subject:Patient.gender=male&code=8480-6", "obs-1")]
+    [InlineData("Patient", "family=Chalmers,Ng&_sort=-birthdate", "pat-2,pat-1")]
+    public void GivenASourceThatReturnsFreshIndexCollections_WhenSearched_ThenResultsAreTheSameAsFromAStableSource(string type, string query, string expected)
+    {
+        IndexedTestSource stable = Clinic();
+        IndexedTestSource fresh = new(
+            Acme,
+            Chalmers,
+            Ng,
+            """{"resourceType":"Practitioner","id":"dr-1","name":[{"family":"House"}]}""",
+            Observation("obs-1", "Patient/pat-1", performer: "Practitioner/dr-1"),
+            Observation("obs-2", "Patient/pat-2", code: "8867-4"))
+        {
+            FreshCollections = true,
+        };
+
+        fresh.Search(type, query).ShouldBe(Ids(expected));
+        stable.Search(type, query).ShouldBe(Ids(expected));
+    }
+
+    [Theory]
+    [InlineData(0, "")]
+    [InlineData(1, "Observation/obs-1")]
+    [InlineData(2, "Observation/obs-1,Observation/obs-2")]
+    [InlineData(3, "Observation/obs-1,Observation/obs-2,Practitioner/dr-1")]
+    [InlineData(10, "Observation/obs-1,Observation/obs-2,Practitioner/dr-1")]
+    public void GivenAMaximum_WhenIncludesAreResolved_ThenResolutionStopsThere(int maximum, string expected)
+    {
+        IndexedTestSource source = Clinic();
+        var engine = new InMemorySearchEngine(source, InMemorySearchFeatures.All);
+        SearchOptions options = SearchCorpus.Options("Patient", "_revinclude:iterate=Observation:subject&_include:iterate=Observation:performer");
+
+        engine.Include(engine.Search(options), options, maximum).Select(resource => resource.Location.ToString()).ShouldBe(Ids(expected));
     }
 
     private static string[] Ids(string expected) => expected.Length == 0 ? [] : expected.Split(',');

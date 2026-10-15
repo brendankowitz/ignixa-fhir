@@ -6,6 +6,7 @@
 #nullable enable
 
 using EnsureThat;
+using Ignixa.Search.Exceptions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -43,7 +44,11 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
     {
     }
 
-    /// <summary>Creates an interpreter that can follow references into <paramref name="source"/> for the enabled <paramref name="features"/>.</summary>
+    /// <summary>
+    /// Creates an interpreter that can follow references into <paramref name="source"/> for the enabled
+    /// <paramref name="features"/>. Experimental (<c>IGNIXAEXP001</c>).
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.Experimental(InMemoryExperimental.DiagnosticId)]
     public SearchQueryInterpreter(IInMemorySearchSource source, InMemorySearchFeatures features)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -66,21 +71,23 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
 
         if (expression.Parameter.Code == SearchParameterNames.ResourceType)
         {
-            return input => input.Where(x => MatchesKeyField(body, x.Location.ResourceType, SearchParameterNames.ResourceType));
+            Func<string, bool> matchesType = CompileKeyField(body, SearchParameterNames.ResourceType);
+            return input => input.Where(x => matchesType(x.Location.ResourceType));
         }
 
         if (expression.Parameter.Code == SearchParameterNames.Id)
         {
-            return input => input.Where(x => MatchesKeyField(body, x.Location.Id, SearchParameterNames.Id));
+            Func<string, bool> matchesId = CompileKeyField(body, SearchParameterNames.Id);
+            return input => input.Where(x => matchesId(x.Location.Id));
         }
 
         if (body is NotExpression not)
         {
-            Func<SearchIndexEntry, bool> negated = SearchIndexEntryMatcher.Compile(not.Expression);
+            Func<SearchIndexEntry, bool> negated = SearchIndexEntryMatcher.Compile(not.Expression, expression.Parameter);
             return input => input.Where(x => !x.Index.Any(y => y.SearchParameter.Name == parameterName && negated(y)));
         }
 
-        Func<SearchIndexEntry, bool> matcher = SearchIndexEntryMatcher.Compile(body);
+        Func<SearchIndexEntry, bool> matcher = SearchIndexEntryMatcher.Compile(body, expression.Parameter);
         return input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName && matcher(y)));
     }
 
@@ -113,7 +120,8 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
 
         if (context.ParameterName == SearchParameterNames.ResourceType)
         {
-            return input => input.Where(x => MatchesKeyField(expression, x.Location.ResourceType, SearchParameterNames.ResourceType));
+            Func<string, bool> matchesType = CompileKeyField(expression, SearchParameterNames.ResourceType);
+            return input => input.Where(x => matchesType(x.Location.ResourceType));
         }
 
         return VisitFieldLevel(expression, context);
@@ -153,8 +161,8 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
             .Select(x => x.AcceptVisitor(this, context))
             .Aggregate((x, y) => expression.MultiaryOperation switch
             {
-                MultiaryOperator.And => p => x(p).Intersect(y(p)),
-                MultiaryOperator.Or => p => x(p).Union(y(p)),
+                MultiaryOperator.And => p => x(p).Intersect(y(p), ByLocation.Instance),
+                MultiaryOperator.Or => p => x(p).Union(y(p), ByLocation.Instance),
                 _ => throw new SearchOperationNotSupportedException($"MultiaryOperator {expression.MultiaryOperation} is not supported in in-memory search."),
             });
     }
@@ -165,7 +173,7 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
 
         return expression.Expressions
             .Select(x => x.AcceptVisitor(this, context))
-            .Aggregate((x, y) => p => x(p).Union(y(p)));
+            .Aggregate((x, y) => p => x(p).Union(y(p), ByLocation.Instance));
     }
 
     public SearchPredicate VisitNotExpression(NotExpression expression, Context context)
@@ -173,7 +181,7 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         EnsureArg.IsNotNull(expression, nameof(expression));
 
         SearchPredicate inner = expression.Expression.AcceptVisitor(this, context);
-        return input => input.Except(inner(input));
+        return input => input.Except(inner(input), ByLocation.Instance);
     }
 
     public SearchPredicate VisitChained(ChainedExpression expression, Context context)
@@ -240,7 +248,7 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
     private static SearchPredicate VisitFieldLevel(Expression expression, Context context)
     {
         string? parameterName = context.ParameterName;
-        Func<SearchIndexEntry, bool> matcher = SearchIndexEntryMatcher.Compile(LegacyExpressionLowerer.LowerToLegacy(expression));
+        Func<SearchIndexEntry, bool> matcher = SearchIndexEntryMatcher.Compile(LegacyExpressionLowerer.LowerToLegacy(expression), parameter: null);
         return input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName && matcher(y)));
     }
 
@@ -285,22 +293,40 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
             .Where(reference => reference.BaseUri is null && !string.IsNullOrEmpty(reference.ResourceType) && !string.IsNullOrEmpty(reference.ResourceId))
             .Select(reference => (reference.ResourceType, reference.ResourceId));
 
-    /// <summary>Evaluates the lowered body of <c>_id</c> or <c>_type</c> against the resource key field it searches.</summary>
-    private static bool MatchesKeyField(Expression expression, string value, string parameterCode) =>
+    /// <summary>
+    /// Compiles the lowered body of <c>_id</c> or <c>_type</c> into a test of the resource key field it searches. Each
+    /// resource has exactly one id and one type, so negating the comparison is "no value matches".
+    /// </summary>
+    /// <exception cref="BadSearchRequestException">The value names a system, which an id or type never has.</exception>
+    private static Func<string, bool> CompileKeyField(Expression expression, string parameterCode)
+    {
+        switch (expression)
+        {
+            case StringExpression { StringOperator: StringOperator.Equals, FieldName: not (FieldName.TokenSystem or FieldName.IdentifierTypeSystem or FieldName.IdentifierTypeCode) } str:
+                StringComparison comparison = str.IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                return value => string.Equals(value, str.Value, comparison);
+            case StringExpression { FieldName: FieldName.TokenSystem } or MissingFieldExpression { FieldName: FieldName.TokenSystem }:
+                throw new BadSearchRequestException($"{parameterCode} values have no system; search {parameterCode}=value without a '|'.");
+            case NotExpression not:
+                Func<string, bool> negated = CompileKeyField(not.Expression, parameterCode);
+                return value => !negated(value);
+            case MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or UnionExpression:
+                Func<string, bool>[] alternatives = [.. Children(expression).Select(child => CompileKeyField(child, parameterCode))];
+                return value => alternatives.Any(alternative => alternative(value));
+            case MultiaryExpression { MultiaryOperation: MultiaryOperator.And } multiary:
+                Func<string, bool>[] all = [.. multiary.Expressions.Select(child => CompileKeyField(child, parameterCode))];
+                return value => all.All(condition => condition(value));
+            default:
+                throw new SearchOperationNotSupportedException($"{expression} is not supported for {parameterCode} in in-memory search.");
+        }
+    }
+
+    private static IReadOnlyList<Expression> Children(Expression expression) =>
         expression switch
         {
-            StringExpression str => str.StringOperator switch
-            {
-                StringOperator.Equals => string.Equals(value, str.Value, str.IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal),
-                _ => throw new SearchOperationNotSupportedException($"StringOperator {str.StringOperator} is not supported for {parameterCode} in in-memory search."),
-            },
-
-            // Each resource has exactly one id and one type, so negating the comparison is "no entry matches".
-            NotExpression not => !MatchesKeyField(not.Expression, value, parameterCode),
-            MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } multiary => multiary.Expressions.Any(x => MatchesKeyField(x, value, parameterCode)),
-            MultiaryExpression { MultiaryOperation: MultiaryOperator.And } multiary => multiary.Expressions.All(x => MatchesKeyField(x, value, parameterCode)),
-            UnionExpression union => union.Expressions.Any(x => MatchesKeyField(x, value, parameterCode)),
-            _ => throw new SearchOperationNotSupportedException($"{expression.GetType().Name} is not supported for {parameterCode} in in-memory search."),
+            MultiaryExpression multiary => multiary.Expressions,
+            UnionExpression union => union.Expressions,
+            _ => [expression],
         };
 
     /// <summary>

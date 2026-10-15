@@ -27,8 +27,8 @@ public sealed class ResourceTools(FolderSession session)
         '_include'/'_revinclude' (with ':iterate'), for example '_include=Encounter:subject'.
         Returns the total number of matches, one page of resources (in _sort order, else catalog order) and the file
         location of each as evidence. Pages hold 'count' resources (default 10, maximum 50): when more exist, 'omitted'
-        says how many and which 'offset' to use next. Included resources come back whole in 'included' (at most 50, with
-        'includedTotal'), are not counted in 'total' or 'returned', and have evidence too. The whole response (the decoded
+        says how many and which 'offset' to use next. Included resources come back whole in 'included' (at most 50; more
+        are listed in 'omitted'), are not counted in 'total' or 'returned', and have evidence too. The whole response (the decoded
         tool-result text) is capped at 50 KB; if resources do not fit, fewer are returned and 'omitted' says so (a resource
         too large to ever fit is named there), so pass 'elements' to shrink them.
         Parameter names are case-sensitive: an unknown name fails with 'unknown-search-parameter' and a suggestion, unless

@@ -12,9 +12,9 @@ using static Ignixa.Search.Tests.InMemory.SearchCorpus;
 namespace Ignixa.Search.Tests.InMemory;
 
 /// <summary>
-/// What <see cref="Search.InMemory.SearchQueryInterpreter"/> matches. Every case here returned a wrong result or threw
-/// before the interpreter compiled each parameter into a test of one index entry: multi-field criteria must be met by
-/// one entry, comparisons follow the lowered field, and range bounds follow the FHIR prefix table.
+/// Regressions: what <see cref="Search.InMemory.SearchQueryInterpreter"/> matches where it returned a wrong result or
+/// threw before it compiled each parameter into a test of one index entry. Every row here fails at 419b668; rows that
+/// pin unchanged behavior live in <see cref="SearchQueryInterpreterMatchingGuardTests"/>.
 /// </summary>
 public class SearchQueryInterpreterMatchingTests
 {
@@ -24,7 +24,6 @@ public class SearchQueryInterpreterMatchingTests
 
     [Theory]
     [InlineData("code=http://loinc.org|8867-4", "hr")]
-    [InlineData("code=http://snomed.info/sct|8867-4", "mixed")]
     [InlineData("code=http://snomed.info/sct|1234-5", "")]
     [InlineData("code:not=http://loinc.org|8867-4", "mixed")]
     public void GivenCodingsFromDifferentSystems_WhenSearchedBySystemAndCode_ThenBothMustComeFromTheSameCoding(string query, string expected)
@@ -65,11 +64,7 @@ public class SearchQueryInterpreterMatchingTests
     [InlineData("date=ge2021-01-01T00:30:00Z", true)]
     [InlineData("date=eq2021-01-01T00:00:00Z", false)]
     [InlineData("date=ne2021-01-01T00:00:00Z", true)]
-    [InlineData("date=sa2020-12-31T23:59:00Z", true)]
     [InlineData("date=eb2021-01-01T00:20:00Z", false)]
-    [InlineData("date=gt2021-01-01T01:00:00Z", false)]
-    [InlineData("date=lt2021-01-01T00:15:00Z", true)]
-    [InlineData("date=sa2021-01-01T00:10:00Z", false)]
     public void GivenAPeriod_WhenSearchedWithDatePrefixes_ThenTheBoundTheFhirPrefixTableNamesIsCompared(string query, bool matches)
     {
         string[] matched = Match(
@@ -82,8 +77,6 @@ public class SearchQueryInterpreterMatchingTests
 
     [Theory]
     [InlineData("probability=sa0.3", false)]
-    [InlineData("probability=gt0.3", true)]
-    [InlineData("probability=eb0.6", true)]
     [InlineData("probability=lt0.3", true)]
     public void GivenARange_WhenSearchedWithNumberPrefixes_ThenTheLowOrHighBoundTheTableNamesIsCompared(string query, bool matches)
     {
@@ -149,8 +142,6 @@ public class SearchQueryInterpreterMatchingTests
 
     [Theory]
     [InlineData("family=odegaard")]
-    [InlineData("family=Ödegaard")]
-    [InlineData("family:contains=DEGA")]
     public void GivenAccentedName_WhenSearchedWithoutAccents_ThenItMatches(string query)
     {
         Match("Patient", query, """{"resourceType":"Patient","id":"p3","name":[{"family":"Ödegaard"}]}""").ShouldBe(["p3"]);
@@ -177,7 +168,6 @@ public class SearchQueryInterpreterMatchingTests
     [InlineData("_id=p1", "p1")]
     [InlineData("_id=p1,p3", "p1,p3")]
     [InlineData("_id:not=p1", "p2,p3")]
-    [InlineData("_id=nope", "")]
     public void GivenIds_WhenSearchedById_ThenTheResourceKeyIsMatched(string query, string expected)
     {
         Match(

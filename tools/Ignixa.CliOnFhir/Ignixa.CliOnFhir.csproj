@@ -8,6 +8,8 @@
     <RootNamespace>Ignixa.CliOnFhir</RootNamespace>
     <AssemblyName>cli-on-fhir</AssemblyName>
     <NoWarn>$(NoWarn);CA1303;CA1848;CA2007</NoWarn>
+    <!-- Opts into Ignixa.Search's experimental in-memory search engine API ([Experimental("IGNIXAEXP001")]). -->
+    <NoWarn>$(NoWarn);IGNIXAEXP001</NoWarn>
   </PropertyGroup>
 
   <!-- NuGet Package & Tool Configuration -->

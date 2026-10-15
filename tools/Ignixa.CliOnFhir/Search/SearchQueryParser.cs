@@ -27,10 +27,14 @@ public sealed class SearchQueryParser
     /// <summary>The issue code for a parameter name the pipeline does not recognise, unless the search is lenient.</summary>
     public const string UnknownParameterCode = "unknown-search-parameter";
 
+    /// <summary>Ends every <see cref="UnknownParameterCode"/> diagnostic.</summary>
+    public const string LenientHint = " Pass lenient to ignore unknown parameters instead.";
+
     private readonly IFhirSchemaProvider _schema;
     private readonly ISearchParameterDefinitionManager _definitions;
     private readonly SearchOptionsBuilder _builder;
     private readonly ExpressionParser _expressionParser;
+    private readonly ChainKeyDiagnosis _chains;
     private readonly QueryParameterParser _queryParameterParser = new();
 
     /// <param name="referenceParser">The parser the index was built with, so references are read the same way on both sides.</param>
@@ -44,6 +48,7 @@ public sealed class SearchQueryParser
         _definitions = definitions;
         _expressionParser = new ExpressionParser(() => definitions, new SearchParameterExpressionParser(referenceParser, schema), schema);
         _builder = new SearchOptionsBuilder(_expressionParser, definitions);
+        _chains = new ChainKeyDiagnosis(schema, definitions, KnownNames);
     }
 
     /// <summary>
@@ -237,7 +242,7 @@ public sealed class SearchQueryParser
         List<IssueItem> ignored = [];
         foreach (ParameterTrace trace in traces.Where(trace => trace.Outcome is ParameterOutcome.Ignored))
         {
-            string? unknown = Classify(resourceType, trace);
+            string? unknown = Classify(resourceType, trace, lenient);
             ignored.Add(Unknown(resourceType, trace.Key, trace.Value, unknown, lenient));
         }
 
@@ -281,18 +286,18 @@ public sealed class SearchQueryParser
             throw SearchFailures.NotSupported($"'{name}={value}' is not supported by this tool: {baseName} is a search parameter of {resourceType} that the search pipeline does not evaluate.");
         }
 
-        string reason = detail ?? $"'{baseName}' is not a search parameter of {resourceType}";
+        string reason = detail?.TrimEnd('.') ?? $"'{baseName}' is not a search parameter of {resourceType}";
         if (lenient)
         {
             return Ignored($"{name}={value}", $"{reason} (ignored because the search is lenient, so the results may be broader than asked)");
         }
 
         string hint = detail is null ? ParameterSuggestions.For(baseName, resourceType, codes) : "Check each parameter name in the chain.";
-        throw ToolRequestException.Error(UnknownParameterCode, $"'{name}={value}': {reason}. {hint} Pass lenient to ignore unknown parameters instead.");
+        throw ToolRequestException.Error(UnknownParameterCode, $"'{name}={value}': {reason}. {hint}{LenientHint}");
     }
 
     /// <summary>Every parameter name a search of <paramref name="resourceType"/> accepts: its search parameter codes and the result parameters.</summary>
-    private List<string> KnownNames(string resourceType)
+    private IReadOnlyList<string> KnownNames(string resourceType)
     {
         IEnumerable<string> codes = _definitions.TryGetSearchParameters(resourceType, out IEnumerable<SearchParameterInfo> parameters)
             ? parameters.Select(parameter => parameter.Code)
@@ -302,17 +307,28 @@ public sealed class SearchQueryParser
 
     /// <summary>
     /// Why the pipeline ignored <paramref name="trace"/>: null when its name is simply not a search parameter of the type,
-    /// the pipeline's account when a name inside a chain is not, and a failure when it is a construct the pipeline
+    /// an account of the link at fault when a name inside a chain is not (which lenient mode may ignore), and a failure
+    /// when the key can never bind (a link of the wrong type, an impossible target) or is a construct the pipeline
     /// recognises but cannot evaluate (an ambiguous chain, a prefix or modifier the parser rejects), since ignoring that
     /// would silently widen the search.
     /// </summary>
-    private string? Classify(string resourceType, ParameterTrace trace)
+    private string? Classify(string resourceType, ParameterTrace trace, bool lenient)
     {
         bool chained = trace.Key.Contains('.', StringComparison.Ordinal) || trace.Key.StartsWith("_has:", StringComparison.Ordinal);
         try
         {
             _expressionParser.Parse([resourceType], trace.Key, trace.Value);
             return null;
+        }
+        catch (FhirException ex) when (chained && ex is SearchParameterNotSupportedException or InvalidSearchOperationException
+            && _chains.Diagnose(resourceType, trace.Key, trace.Value) is { } diagnosis)
+        {
+            if (lenient && diagnosis.Issue.Code == UnknownParameterCode)
+            {
+                return diagnosis.Issue.Diagnostics!.Replace(LenientHint, string.Empty, StringComparison.Ordinal);
+            }
+
+            throw diagnosis;
         }
         catch (SearchParameterNotSupportedException ex)
         {
