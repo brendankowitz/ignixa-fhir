@@ -24,7 +24,11 @@ namespace Ignixa.CliOnFhir.Search;
 /// </summary>
 public sealed class SearchQueryParser
 {
+    /// <summary>The issue code for a parameter name the pipeline does not recognise, unless the search is lenient.</summary>
+    public const string UnknownParameterCode = "unknown-search-parameter";
+
     private readonly IFhirSchemaProvider _schema;
+    private readonly ISearchParameterDefinitionManager _definitions;
     private readonly SearchOptionsBuilder _builder;
     private readonly ExpressionParser _expressionParser;
     private readonly QueryParameterParser _queryParameterParser = new();
@@ -37,14 +41,15 @@ public sealed class SearchQueryParser
         ArgumentNullException.ThrowIfNull(referenceParser);
 
         _schema = schema;
-
+        _definitions = definitions;
         _expressionParser = new ExpressionParser(() => definitions, new SearchParameterExpressionParser(referenceParser, schema), schema);
         _builder = new SearchOptionsBuilder(_expressionParser, definitions);
     }
 
     /// <summary>
-    /// Parses <paramref name="request"/>. Every parameter that will not filter the results is returned as a
-    /// <c>parameter-ignored</c> warning, so the caller knows which filters did not apply.
+    /// Parses <paramref name="request"/>. A parameter name the pipeline does not recognise fails the request as
+    /// <c>unknown-search-parameter</c>, unless <see cref="SearchRequest.Lenient"/> is set, when it is a
+    /// <c>parameter-ignored</c> warning instead; result parameters the tool does not apply are always such warnings.
     /// </summary>
     /// <exception cref="ToolRequestException">The request is malformed or asks for a feature this tool does not support.</exception>
     public ParsedSearch Parse(SearchRequest request)
@@ -81,7 +86,7 @@ public sealed class SearchQueryParser
             elements = null;
         }
 
-        warnings.AddRange(IgnoredParameters(request.ResourceType, forBuilder, options, traces));
+        warnings.AddRange(IgnoredParameters(request.ResourceType, forBuilder, options, traces, request.Lenient));
         if (elements is not null)
         {
             warnings.AddRange(elements.Validate(request.ResourceType));
@@ -194,25 +199,13 @@ public sealed class SearchQueryParser
     }
 
     /// <summary>
-    /// Rejects features the in-memory interpreter cannot honour. Silently dropping them would return results
-    /// that look filtered, sorted or expanded when they are not.
+    /// Rejects standard parameters the tool does not evaluate (see <see cref="ParameterPolicy"/>). Silently dropping them
+    /// would return results that look filtered when they are not.
     /// </summary>
     private static void RejectUnsupportedFeatures(List<QueryParameter> parameters, string resourceType)
     {
         foreach (QueryParameter parameter in parameters)
         {
-            string? feature = parameter.Category switch
-            {
-                ParameterCategory.Sort => "sorting",
-                ParameterCategory.Include => "_include",
-                ParameterCategory.RevInclude => "_revinclude",
-                _ => null,
-            };
-            if (feature is not null)
-            {
-                throw SearchFailures.NotSupported($"'{parameter.Name}': {feature} is not supported by this tool yet.");
-            }
-
             if (ParameterPolicy.Rejection(parameter, resourceType) is { } reason)
             {
                 throw SearchFailures.NotSupported($"'{parameter.Name}={parameter.Value}' is not supported by this tool: {reason}.");
@@ -233,17 +226,19 @@ public sealed class SearchQueryParser
         }
     }
 
-    private IEnumerable<IssueItem> IgnoredParameters(string resourceType, List<QueryParameter> parameters, SearchOptions options, List<ParameterTrace> traces)
+    private IEnumerable<IssueItem> IgnoredParameters(string resourceType, List<QueryParameter> parameters, SearchOptions options, List<ParameterTrace> traces, bool lenient)
     {
+        // A sort key the builder cannot use is dropped from the order, which changes which page is returned.
+        if (options.UnsupportedParams.FirstOrDefault(name => name.StartsWith("_sort=", StringComparison.Ordinal)) is { } sort)
+        {
+            throw SearchFailures.NotSupported($"'{sort}' cannot be sorted by: it is not a sortable (date, number, quantity, string, token or uri) search parameter of {resourceType}.");
+        }
+
+        List<IssueItem> ignored = [];
         foreach (ParameterTrace trace in traces.Where(trace => trace.Outcome is ParameterOutcome.Ignored))
         {
-            var ignored = (ParameterOutcome.Ignored)trace.Outcome;
-            if (UnsupportedConstruct(resourceType, trace) is { } construct)
-            {
-                throw SearchFailures.NotSupported($"'{trace.Key}={trace.Value}' is not supported by this tool yet: {construct}");
-            }
-
-            yield return Ignored($"{trace.Key}={trace.Value}", ReadableReason(ignored.Reason, resourceType));
+            string? unknown = Classify(resourceType, trace);
+            ignored.Add(Unknown(resourceType, trace.Key, trace.Value, unknown, lenient));
         }
 
         HashSet<string> traced = [.. traces.Select(trace => trace.Key)];
@@ -254,59 +249,84 @@ public sealed class SearchQueryParser
             bool resultParameter = parameter.Category is ParameterCategory.Type or ParameterCategory.Formatting
                 or ParameterCategory.IncludesCount or ParameterCategory.IncludesContinuationToken
                 || ParameterPolicy.ResultParameters.Contains(ParameterPolicy.BaseName(parameter.Name));
-            if (options.UnsupportedParams.Contains(parameter.Name) || resultParameter)
+            if (resultParameter)
             {
-                string reason = resultParameter
-                    ? "it does not change which resources match, so this tool does not apply it"
-                    : $"it is not a search parameter of {resourceType}";
-                yield return Ignored($"{parameter.Name}={parameter.Value}", reason);
+                ignored.Add(Ignored($"{parameter.Name}={parameter.Value}", "it does not change which resources match, so this tool does not apply it"));
+            }
+            else if (options.UnsupportedParams.Contains(parameter.Name))
+            {
+                ignored.Add(Unknown(resourceType, parameter.Name, parameter.Value, detail: null, lenient));
             }
             else if (parameter.Category == ParameterCategory.Summary && options.Summary is not (SummaryType.Count or SummaryType.False or SummaryType.None))
             {
-                yield return Ignored($"{parameter.Name}={parameter.Value}", "only _summary=count is supported");
+                ignored.Add(Ignored($"{parameter.Name}={parameter.Value}", "only _summary=count is supported"));
             }
         }
+
+        return ignored;
     }
 
     /// <summary>
-    /// Why an ignored parameter is a construct the pipeline recognises but this tool cannot evaluate (a chain, <c>_has</c>, a
-    /// prefix or modifier the parser rejects), or null when the name is simply not a search parameter. Ignoring the former
-    /// would silently widen the search, so the caller fails the request instead; the latter stays a warning.
+    /// A parameter the pipeline did not apply because its name is not recognised: a <c>parameter-ignored</c> warning in
+    /// lenient mode, otherwise an <c>unknown-search-parameter</c> failure with a hint. A name the type does define (such
+    /// as <c>_source</c>) but the pipeline does not evaluate always fails as <c>search-not-supported</c>.
     /// </summary>
-    private string? UnsupportedConstruct(string resourceType, ParameterTrace trace)
+    /// <param name="detail">The pipeline's own account, for a name inside a chain; null for a top-level name.</param>
+    private IssueItem Unknown(string resourceType, string name, string value, string? detail, bool lenient)
     {
-        if (trace.Key.Contains('.', StringComparison.Ordinal) || trace.Key.StartsWith("_has", StringComparison.Ordinal))
+        string baseName = ParameterPolicy.BaseName(name);
+        IReadOnlyList<string> codes = KnownNames(resourceType);
+        if (detail is null && codes.Contains(baseName, StringComparer.Ordinal))
         {
-            return "chained and reverse-chained (_has) parameters need a later release";
+            throw SearchFailures.NotSupported($"'{name}={value}' is not supported by this tool: {baseName} is a search parameter of {resourceType} that the search pipeline does not evaluate.");
         }
 
+        string reason = detail ?? $"'{baseName}' is not a search parameter of {resourceType}";
+        if (lenient)
+        {
+            return Ignored($"{name}={value}", $"{reason} (ignored because the search is lenient, so the results may be broader than asked)");
+        }
+
+        string hint = detail is null ? ParameterSuggestions.For(baseName, resourceType, codes) : "Check each parameter name in the chain.";
+        throw ToolRequestException.Error(UnknownParameterCode, $"'{name}={value}': {reason}. {hint} Pass lenient to ignore unknown parameters instead.");
+    }
+
+    /// <summary>Every parameter name a search of <paramref name="resourceType"/> accepts: its search parameter codes and the result parameters.</summary>
+    private List<string> KnownNames(string resourceType)
+    {
+        IEnumerable<string> codes = _definitions.TryGetSearchParameters(resourceType, out IEnumerable<SearchParameterInfo> parameters)
+            ? parameters.Select(parameter => parameter.Code)
+            : [];
+        return [.. codes.Concat(ParameterPolicy.ControlParameters).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Why the pipeline ignored <paramref name="trace"/>: null when its name is simply not a search parameter of the type,
+    /// the pipeline's account when a name inside a chain is not, and a failure when it is a construct the pipeline
+    /// recognises but cannot evaluate (an ambiguous chain, a prefix or modifier the parser rejects), since ignoring that
+    /// would silently widen the search.
+    /// </summary>
+    private string? Classify(string resourceType, ParameterTrace trace)
+    {
+        bool chained = trace.Key.Contains('.', StringComparison.Ordinal) || trace.Key.StartsWith("_has:", StringComparison.Ordinal);
         try
         {
             _expressionParser.Parse([resourceType], trace.Key, trace.Value);
             return null;
         }
-        catch (SearchParameterNotSupportedException)
+        catch (SearchParameterNotSupportedException ex)
         {
-            return null;
+            return chained ? ex.Issues.FirstOrDefault()?.Diagnostics ?? ex.Message : null;
         }
         catch (InvalidSearchOperationException ex)
         {
-            return ex.Issues.FirstOrDefault()?.Diagnostics ?? ex.Message;
+            throw SearchFailures.NotSupported($"'{trace.Key}={trace.Value}' is not supported by this tool: {ex.Issues.FirstOrDefault()?.Diagnostics ?? ex.Message}");
         }
         catch (FhirException)
         {
             return null;
         }
     }
-
-    /// <summary>
-    /// The pipeline records an unsupported parameter by its exception's message, which for an unknown parameter is the
-    /// framework's generic "Exception of type ..." text because the detail lives in the exception's issues.
-    /// </summary>
-    private static string ReadableReason(string reason, string resourceType) =>
-        reason.StartsWith("Exception of type ", StringComparison.Ordinal)
-            ? $"it is not a search parameter of {resourceType}"
-            : reason;
 
     private static IssueItem Ignored(string parameter, string reason) =>
         new("warning", "parameter-ignored", $"'{parameter}' did not filter the results: {reason}", Location: null);

@@ -131,11 +131,11 @@ public class ResourceSearchTests
     }
 
     [Fact]
-    public void GivenUnknownParameter_WhenSearched_ThenAWarningNamesItAndOtherFiltersStillApply()
+    public void GivenUnknownParameterInLenientMode_WhenSearched_ThenAWarningNamesItAndOtherFiltersStillApply()
     {
         using TestFolder folder = Clinic();
 
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "bogusparam=1&family=Jones"));
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "bogusparam=1&family=Jones", Lenient: true));
 
         Ids(envelope).ShouldBe(["p2"]);
         IssueItem warning = envelope.Issues.ShouldHaveSingleItem();
@@ -145,11 +145,11 @@ public class ResourceSearchTests
     }
 
     [Fact]
-    public void GivenUnrecognizedControlParameter_WhenSearched_ThenAWarningNamesIt()
+    public void GivenUnrecognizedControlParameterInLenientMode_WhenSearched_ThenAWarningNamesIt()
     {
         using TestFolder folder = Clinic();
 
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "_foo=1"));
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "_foo=1", Lenient: true));
 
         envelope.Issues.ShouldHaveSingleItem().Diagnostics.ShouldContain("_foo=1");
         envelope.Issues[0].Code.ShouldBe("parameter-ignored");
@@ -179,32 +179,15 @@ public class ResourceSearchTests
         envelope.Issues.ShouldHaveSingleItem().Code.ShouldBe("parameter-ignored");
     }
 
-    [Theory]
-    [InlineData("_sort=family", "_sort")]
-    [InlineData("_include=Observation:subject", "_include")]
-    [InlineData("_revinclude=Observation:subject", "_revinclude")]
-    public void GivenUnsupportedFeature_WhenSearched_ThenTheCallFailsNamingTheFeature(string query, string feature)
-    {
-        using TestFolder folder = Clinic();
-
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", query));
-
-        envelope.Facts.ShouldBeNull();
-        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
-        issue.Severity.ShouldBe("error");
-        issue.Code.ShouldBe("search-not-supported");
-        issue.Diagnostics.ShouldContain(feature);
-    }
-
     [Fact]
-    public void GivenChainedParameter_WhenSearched_ThenTheCallFailsAsNotSupported()
+    public void GivenChainedParameter_WhenSearched_ThenTheReferencedPatientMustMatch()
     {
         using TestFolder folder = Clinic();
 
         ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", "subject:Patient.family=Smith"));
 
-        envelope.Facts.ShouldBeNull();
-        envelope.Issues.ShouldHaveSingleItem().Code.ShouldBe("search-not-supported");
+        Ids(envelope).ShouldBe(["o1", "o2", "o5"]);
+        envelope.Issues.ShouldBeEmpty();
     }
 
     [Fact]

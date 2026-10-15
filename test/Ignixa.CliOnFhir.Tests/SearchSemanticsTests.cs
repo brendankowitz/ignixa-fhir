@@ -195,7 +195,6 @@ public class SearchSemanticsTests
     [InlineData("_query=q", "_query")]
     [InlineData("_list=L1", "_list")]
     [InlineData("_list:exact=L1", "_list")]
-    [InlineData("_has:Observation:subject:code=x", "_has")]
     [InlineData("_type=Observation", "_type")]
     [InlineData("_type=Patient,Observation", "_type")]
     [InlineData("_type:not=Patient", "_type")]
@@ -220,8 +219,6 @@ public class SearchSemanticsTests
     [InlineData("_contained=true")]
     [InlineData("_containedType=contained")]
     [InlineData("_type=Patient")]
-    [InlineData("_foo=1")]
-    [InlineData("nonsense=1")]
     public void GivenParameterOnTheAllowList_WhenSearched_ThenTheResultsAreUnfilteredWithAWarningNamingIt(string query)
     {
         using TestFolder folder = Clinic();
@@ -233,6 +230,72 @@ public class SearchSemanticsTests
         warning.Severity.ShouldBe("warning");
         warning.Code.ShouldBe("parameter-ignored");
         warning.Diagnostics.ShouldContain(query);
+    }
+
+    [Theory]
+    [InlineData("nonsense=1", "'nonsense' is not a search parameter of Patient")]
+    [InlineData("_foo=1", "'_foo' is not a search parameter of Patient")]
+    [InlineData("familly=Smith", "Did you mean 'family'?")]
+    [InlineData("Family=Smith", "Did you mean 'family'?")]
+    [InlineData("_Id=a", "Did you mean '_id'?")]
+    [InlineData("_lastupdated=gt2020", "Did you mean '_lastUpdated'?")]
+    [InlineData("_Text=zz", "Did you mean '_text'?")]
+    [InlineData("familly:exact=Smith&gender=male", "Did you mean 'family'?")]
+    [InlineData("_offset=1", "'offset' argument")]
+    [InlineData("_page=2", "'offset' argument")]
+    public void GivenUnknownOrWrongCaseParameterName_WhenSearched_ThenTheCallFailsWithAHintInsteadOfReturningEverything(string query, string hint)
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", query));
+
+        envelope.Facts.ShouldBeNull();
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        issue.Severity.ShouldBe("error");
+        issue.Code.ShouldBe("unknown-search-parameter");
+        issue.Diagnostics.ShouldContain(query.Split('&')[0]);
+        issue.Diagnostics.ShouldContain(hint);
+        issue.Diagnostics.ShouldContain("lenient");
+    }
+
+    [Fact]
+    public void GivenUnknownParameterName_WhenSearched_ThenTheHintListsTheTypesParametersWhenThereAreFew()
+    {
+        using TestFolder folder = Clinic();
+
+        IssueItem issue = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "nonsense=1")).Issues.ShouldHaveSingleItem();
+
+        issue.Diagnostics.ShouldContain("Search parameters of Patient:");
+        issue.Diagnostics.ShouldContain("birthdate");
+        issue.Diagnostics.ShouldContain("_count");
+    }
+
+    [Fact]
+    public void GivenDefinedParameterThePipelineDoesNotEvaluate_WhenSearched_ThenTheCallFailsAsNotSupportedEvenWhenLenient()
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "_source=http://x", Lenient: true));
+
+        envelope.Facts.ShouldBeNull();
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("search-not-supported");
+        issue.Diagnostics.ShouldContain("_source");
+    }
+
+    [Theory]
+    [InlineData("nonsense=1&family=Smith", "p1,p3")]
+    [InlineData("Family=Smith", "p1,p2,p3")]
+    public void GivenUnknownParameterNameInLenientMode_WhenSearched_ThenItIsIgnoredWithAWarningThatTheResultsMayBeBroader(string query, string expected)
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", query, Lenient: true));
+
+        Ids(envelope).ShouldBe(expected.Split(','));
+        IssueItem warning = envelope.Issues.ShouldHaveSingleItem();
+        warning.Code.ShouldBe("parameter-ignored");
+        warning.Diagnostics.ShouldContain("broader");
     }
 
     [Fact]
@@ -368,7 +431,6 @@ public class SearchSemanticsTests
 
     [Theory]
     [InlineData("subject.name=Smith", "subject.name")]
-    [InlineData("subject:Patient.name=Smith", "subject:Patient.name")]
     [InlineData("_has:Observation:subject:code=x", "_has:Observation:subject:code")]
     public void GivenConstructRecognisedButUnsupported_WhenSearched_ThenTheCallFailsInsteadOfIgnoringIt(string query, string parameter)
     {
@@ -383,11 +445,11 @@ public class SearchSemanticsTests
     }
 
     [Fact]
-    public void GivenUnknownParameterNameAndResultParameters_WhenSearched_ThenTheyStayWarnings()
+    public void GivenUnknownParameterNameAndResultParametersInLenientMode_WhenSearched_ThenTheyStayWarnings()
     {
         using TestFolder folder = Clinic();
 
-        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", "nonsense=1&_format=json&_foo=2"));
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", "nonsense=1&_format=json&_foo=2", Lenient: true));
 
         envelope.Facts.ShouldNotBeNull().Total.ShouldBe(5);
         envelope.Issues.Select(issue => issue.Code).ShouldBe(["parameter-ignored", "parameter-ignored", "parameter-ignored"]);

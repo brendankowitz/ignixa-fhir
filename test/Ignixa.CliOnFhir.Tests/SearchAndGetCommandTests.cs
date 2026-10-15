@@ -33,11 +33,25 @@ public class SearchAndGetCommandTests
     {
         using TestFolder folder = Clinic();
 
-        (int exitCode, JsonNode output) = await RunAsync(SearchCommand.Create(), "search", folder.Path, "Patient", "_sort=family", "--no-cache");
+        (int exitCode, JsonNode output) = await RunAsync(SearchCommand.Create(), "search", folder.Path, "Patient", "_text=Smith", "--no-cache");
 
         exitCode.ShouldNotBe(0);
         output["facts"].ShouldBeNull();
         ((string)output["issues"]![0]!["code"]!).ShouldBe("search-not-supported");
+    }
+
+    [Fact]
+    public async Task GivenLenientOnTheCli_WhenAnUnknownParameterIsPassed_ThenTheSearchSucceedsWithAWarning()
+    {
+        using TestFolder folder = Clinic();
+
+        (int strictExit, JsonNode strict) = await RunAsync(SearchCommand.Create(), "search", folder.Path, "Patient", "Family=Smith", "--no-cache");
+        (int lenientExit, JsonNode lenient) = await RunAsync(SearchCommand.Create(), "search", folder.Path, "Patient", "Family=Smith", "--lenient", "--no-cache");
+
+        strictExit.ShouldNotBe(0);
+        ((string)strict["issues"]![0]!["code"]!).ShouldBe("unknown-search-parameter");
+        lenientExit.ShouldBe(0);
+        ((int)lenient["facts"]!["total"]!).ShouldBe(3);
     }
 
     [Fact]

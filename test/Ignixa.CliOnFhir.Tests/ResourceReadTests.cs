@@ -228,7 +228,7 @@ public class ResourceReadTests
         using TestFolder folder = Clinic();
         var tools = new ResourceTools(Open(folder));
 
-        JsonNode search = Envelope(tools.SearchFhirResources("Patient", "_sort=family"), expectError: true);
+        JsonNode search = Envelope(tools.SearchFhirResources("Patient", "_text=Smith"), expectError: true);
         JsonNode read = Envelope(tools.ReadResources(["nonsense"]), expectError: true);
 
         search["facts"].ShouldBeNull();

@@ -15,8 +15,11 @@ namespace Ignixa.CliOnFhir.Search;
 /// <list type="number">
 /// <item>a name in <see cref="UnappliedFilters"/>, a continuation token, or a <c>_type</c> that names another type fails the request;</item>
 /// <item>a name in <see cref="ResultParameters"/> (or <c>_type</c> naming the searched type) is ignored with a <c>parameter-ignored</c> warning;</item>
-/// <item>any other name the search pipeline does not recognise is ignored with a <c>parameter-ignored</c> warning, as FHIR lets a server do for unknown parameters.</item>
+/// <item>any other name the search pipeline does not recognise fails the request as <c>unknown-search-parameter</c> with a
+/// "did you mean" hint, or, in lenient mode, is ignored with a <c>parameter-ignored</c> warning, as FHIR lets a server do for
+/// unknown parameters (<c>handling=lenient</c>).</item>
 /// </list>
+/// <c>_sort</c>, <c>_include</c>, <c>_revinclude</c>, chains and <c>_has</c> are evaluated by Ignixa's in-memory search engine.
 /// </summary>
 internal static class ParameterPolicy
 {
@@ -28,7 +31,6 @@ internal static class ParameterPolicy
         "_query",
         "_list",
         "_filter",
-        "_has",
         "_not-referenced",
     }.ToFrozenSet(StringComparer.Ordinal);
 
@@ -43,11 +45,26 @@ internal static class ParameterPolicy
         "_includesContinuationToken",
     }.ToFrozenSet(StringComparer.Ordinal);
 
-    /// <summary>The parameter name without its modifier.</summary>
+    /// <summary>
+    /// Names a search accepts besides the type's search parameter codes, offered when suggesting a name for an unknown one.
+    /// </summary>
+    public static readonly FrozenSet<string> ControlParameters = new[]
+    {
+        "_count",
+        "_elements",
+        "_include",
+        "_revinclude",
+        "_sort",
+        "_summary",
+        "_total",
+        "_type",
+    }.Concat(ResultParameters).ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>The parameter name without its modifier or chain.</summary>
     public static string BaseName(string name)
     {
-        int colon = name.IndexOf(':', StringComparison.Ordinal);
-        return colon < 0 ? name : name[..colon];
+        int end = name.AsSpan().IndexOfAny(':', '.');
+        return end < 0 ? name : name[..end];
     }
 
     /// <summary>Why <paramref name="parameter"/> cannot be left unapplied, or null when it may be.</summary>

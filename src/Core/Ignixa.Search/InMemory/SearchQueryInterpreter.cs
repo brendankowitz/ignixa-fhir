@@ -8,7 +8,9 @@
 using EnsureThat;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.InMemory;
 
@@ -25,12 +27,31 @@ namespace Ignixa.Search.InMemory;
 /// </para>
 /// <para>
 /// <c>_id</c> and <c>_type</c> are read from <see cref="Abstractions.ResourceKey"/>, since they never have index
-/// entries.
+/// entries. Chained and reverse-chained (<c>_has</c>) parameters are evaluated only when the interpreter was
+/// created with an <see cref="IInMemorySearchSource"/> and the matching <see cref="InMemorySearchFeatures"/>;
+/// otherwise they throw <see cref="SearchOperationNotSupportedException"/>.
 /// </para>
 /// </remarks>
 [CLSCompliant(false)]
 public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContext<SearchQueryInterpreter.Context, SearchPredicate>
 {
+    private readonly IInMemorySearchSource? _source;
+    private readonly InMemorySearchFeatures _features;
+
+    /// <summary>Creates an interpreter that filters one resource type; chains and <c>_has</c> are not supported.</summary>
+    public SearchQueryInterpreter()
+    {
+    }
+
+    /// <summary>Creates an interpreter that can follow references into <paramref name="source"/> for the enabled <paramref name="features"/>.</summary>
+    public SearchQueryInterpreter(IInMemorySearchSource source, InMemorySearchFeatures features)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        _source = source;
+        _features = features;
+    }
+
     /// <summary>
     /// Gets the initial context for expression visiting.
     /// </summary>
@@ -159,7 +180,18 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
 
-        throw new SearchOperationNotSupportedException("ChainedExpression is not supported.");
+        InMemorySearchFeatures required = expression.Reversed ? InMemorySearchFeatures.ReverseChains : InMemorySearchFeatures.Chains;
+        if (_source is null || !_features.HasFlag(required))
+        {
+            throw new SearchOperationNotSupportedException(expression.Reversed
+                ? "Reverse chained (_has) search is not enabled for in-memory search."
+                : "ChainedExpression is not supported.");
+        }
+
+        SearchPredicate inner = expression.Expression.AcceptVisitor(this, InitialContext);
+        return expression.Reversed
+            ? ReverseChain(expression, inner, _source)
+            : ForwardChain(expression, inner, _source);
     }
 
     public SearchPredicate VisitCompartment(CompartmentSearchExpression expression, Context context)
@@ -176,18 +208,19 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         throw new SearchOperationNotSupportedException("Patient $everything is not supported in in-memory search.");
     }
 
+    // _include and _sort are not filters; InMemorySearchEngine applies them from SearchOptions.
     public SearchPredicate VisitInclude(IncludeExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
 
-        throw new SearchOperationNotSupportedException("IncludeExpression is not supported in in-memory search.");
+        throw new SearchOperationNotSupportedException("IncludeExpression is not a filter; use InMemorySearchEngine to resolve includes.");
     }
 
     public SearchPredicate VisitSortParameter(SortExpression expression, Context context)
     {
         EnsureArg.IsNotNull(expression, nameof(expression));
 
-        throw new SearchOperationNotSupportedException("SortExpression is not supported in in-memory search.");
+        throw new SearchOperationNotSupportedException("SortExpression is not a filter; use InMemorySearchEngine to sort.");
     }
 
     public SearchPredicate VisitIn<T>(InExpression<T> expression, Context context)
@@ -210,6 +243,47 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         Func<SearchIndexEntry, bool> matcher = SearchIndexEntryMatcher.Compile(LegacyExpressionLowerer.LowerToLegacy(expression));
         return input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName && matcher(y)));
     }
+
+    /// <summary>
+    /// A resource matches when one of its references through the chain's parameter points at a resource of a
+    /// target type that matches the chain's inner expression. The targets are evaluated once per predicate call.
+    /// </summary>
+    private static SearchPredicate ForwardChain(ChainedExpression chain, SearchPredicate inner, IInMemorySearchSource source) =>
+        input =>
+        {
+            HashSet<(string ResourceType, string Id)> targets = [.. chain.TargetResourceTypes
+                .SelectMany(type => inner(source.Enumerate(type)))
+                .Select(match => (match.Location.ResourceType, match.Location.Id))];
+
+            return input.Where(x => LocalReferences(x.Index, chain.ReferenceSearchParameter).Any(targets.Contains));
+        };
+
+    /// <summary>
+    /// A resource matches when a resource of the chain's source type both matches the chain's inner expression and
+    /// references it through the chain's parameter.
+    /// </summary>
+    private static SearchPredicate ReverseChain(ChainedExpression chain, SearchPredicate inner, IInMemorySearchSource source) =>
+        input =>
+        {
+            HashSet<(string ResourceType, string Id)> referenced = [.. chain.ResourceTypes
+                .SelectMany(type => inner(source.Enumerate(type)))
+                .SelectMany(match => LocalReferences(match.Index, chain.ReferenceSearchParameter))];
+
+            return input.Where(x => referenced.Contains((x.Location.ResourceType, x.Location.Id)));
+        };
+
+    /// <summary>
+    /// The resources <paramref name="index"/> references through <paramref name="parameter"/> by type and id. A
+    /// reference with a base URI points at another server, and one without a type cannot be resolved, so neither
+    /// names a resource the source could hold.
+    /// </summary>
+    internal static IEnumerable<(string ResourceType, string Id)> LocalReferences(IEnumerable<SearchIndexEntry> index, SearchParameterInfo? parameter) =>
+        index
+            .Where(entry => parameter is null ? entry.SearchParameter.Type == SearchParamType.Reference : entry.SearchParameter.Name == parameter.Name)
+            .Select(entry => entry.Value)
+            .OfType<ReferenceSearchValue>()
+            .Where(reference => reference.BaseUri is null && !string.IsNullOrEmpty(reference.ResourceType) && !string.IsNullOrEmpty(reference.ResourceId))
+            .Select(reference => (reference.ResourceType, reference.ResourceId));
 
     /// <summary>Evaluates the lowered body of <c>_id</c> or <c>_type</c> against the resource key field it searches.</summary>
     private static bool MatchesKeyField(Expression expression, string value, string parameterCode) =>

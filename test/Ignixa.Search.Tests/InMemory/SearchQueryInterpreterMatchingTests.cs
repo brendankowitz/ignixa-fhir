@@ -68,6 +68,8 @@ public class SearchQueryInterpreterMatchingTests
     [InlineData("date=sa2020-12-31T23:59:00Z", true)]
     [InlineData("date=eb2021-01-01T00:20:00Z", false)]
     [InlineData("date=gt2021-01-01T01:00:00Z", false)]
+    [InlineData("date=lt2021-01-01T00:15:00Z", true)]
+    [InlineData("date=sa2021-01-01T00:10:00Z", false)]
     public void GivenAPeriod_WhenSearchedWithDatePrefixes_ThenTheBoundTheFhirPrefixTableNamesIsCompared(string query, bool matches)
     {
         string[] matched = Match(

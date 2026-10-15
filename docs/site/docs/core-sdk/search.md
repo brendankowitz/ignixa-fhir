@@ -226,6 +226,34 @@ Malformed key or value syntax raises `InvalidSearchOperationException` with a po
 
 The mandatory BenchmarkDotNet result and acceptance decision are recorded in [the handwritten syntax parser comparison](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/features/search/benchmarks/2026-07-11-handwritten-syntax-parser-comparison.md). The comparison uses the unchanged public-facade harness and six inputs against the original handwritten baseline. The replacement was classified as **Mixed**, with a -6.31% geometric-mean time change, and all ratified performance limits passed. It was not classified as **Faster**; no speedup is claimed.
 
+## In-memory search
+
+`Ignixa.Search.InMemory` evaluates parsed searches over index entries held in memory (the FileSystem data layer and `cli-on-fhir` use it).
+
+`SearchQueryInterpreter` turns `SearchOptions.Expression` into a predicate over `(ResourceKey, IReadOnlyCollection<SearchIndexEntry>)` rows. Each parameter is compiled into a test of one index entry, so every field of a criterion is matched on the same entry: `code=http://loinc.org|8867-4` needs one coding with both, and a composite needs one value of each component. Date, number and quantity prefixes compare the bound that `DateRangeComparisonSemantics` and `NumericRangeComparisonSemantics` (the tables the SQL backend renders) name; a bound the value lacks never matches. String search folds case and accents, `|code` matches a code without a system, and `_id` / `_type` read the resource key.
+
+`InMemorySearchEngine` adds the features that read other resource types, each opted into with `InMemorySearchFeatures`. A feature that is not enabled throws `SearchOperationNotSupportedException`; the default interpreter enables none.
+
+```csharp
+using Ignixa.Search.InMemory;
+
+// The caller implements IInMemorySearchSource: enumerate a type's indexed resources, resolve one by type and id.
+var engine = new InMemorySearchEngine(source, InMemorySearchFeatures.All);
+
+var matches = engine.Search(options);                  // filter (chains, _has) and _sort
+var page = matches.Take(options.MaxItemCount).ToList(); // paging is the caller's
+var included = engine.Include(page, options);          // _include / _revinclude (with :iterate) for that page
+```
+
+| Feature | Behavior |
+|---------|----------|
+| `Chains` | Forward chains to any depth; a reference with a base URI, without a type, or to a resource the source does not hold matches nothing |
+| `ReverseChains` | `_has`, including nested and chained forms |
+| `Sort` | Date, number, quantity, string, token, uri and `_id`; lowest value ascending, highest descending; missing values last; ties by `_lastUpdated`, then id |
+| `Include` / `RevInclude` | Resolved for the page passed in, in discovery order, each resource once and never a match; `:iterate` repeats until nothing new is added; a reverse include must name its parameter |
+
+`ElementSearchIndexer` emits no `_lastUpdated` entry because a database reads it from a column. Wrap an in-memory index's indexer in `LastUpdatedSearchIndexer` to add one from `meta.lastUpdated`; only a FHIR instant (with a time zone) is indexed, and anything else is logged as a warning.
+
 ## Related Documentation
 
 - [Search Parameters](/docs/server/fhir/search-parameters)

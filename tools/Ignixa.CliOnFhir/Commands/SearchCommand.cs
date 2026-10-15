@@ -37,6 +37,11 @@ internal static class SearchCommand
             Description = "Comma-separated top-level elements to keep (resourceType, id and meta are always kept), for example code,valueQuantity",
         };
 
+        var lenientOption = new Option<bool>("--lenient")
+        {
+            Description = "Ignore query parameter names the search does not recognise, with a parameter-ignored warning, instead of failing; this can widen the results",
+        };
+
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
@@ -50,6 +55,7 @@ internal static class SearchCommand
         command.Options.Add(offsetOption);
         command.Options.Add(summaryOption);
         command.Options.Add(elementsOption);
+        command.Options.Add(lenientOption);
         command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
@@ -63,7 +69,8 @@ internal static class SearchCommand
                 parseResult.GetValue(countOption),
                 parseResult.GetValue(offsetOption),
                 parseResult.GetValue(summaryOption),
-                parseResult.GetValue(elementsOption));
+                parseResult.GetValue(elementsOption),
+                parseResult.GetValue(lenientOption));
 
             return Task.FromResult(EnvelopeOutput.Write(ResourceSearcher.Search(session, request, cancellationToken), parseResult.GetValue(prettyOption)));
         });

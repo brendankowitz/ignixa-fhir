@@ -12,10 +12,15 @@ namespace Ignixa.CliOnFhir.Search;
 /// <param name="Offset">Number of matches to skip, in catalog order.</param>
 /// <param name="Summary">Null for resources, or <c>count</c> for the total only; adds <c>_summary</c> to the query.</param>
 /// <param name="Elements">Comma-separated top-level elements to keep; adds to <c>_elements</c> in the query.</param>
+/// <param name="Lenient">
+/// When true, a parameter name the search pipeline does not recognise is ignored with a <c>parameter-ignored</c> warning
+/// (which can widen the results) instead of failing the request.
+/// </param>
 public sealed record SearchRequest(
     string ResourceType,
     string? Query = null,
     int? Count = null,
     int Offset = 0,
     string? Summary = null,
-    string? Elements = null);
+    string? Elements = null,
+    bool Lenient = false);
