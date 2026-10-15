@@ -38,12 +38,12 @@ public class FhirPatchValidator
         {
             case FhirPatchOperationType.Add:
                 ValidateRequired(operation.Path, "path", index);
-                ValidateRequired(operation.Value, "value", index);
+                ValidateRequired(operation.Value ?? operation.ValueParts, "value", index);
                 break;
 
             case FhirPatchOperationType.Insert:
                 ValidateRequired(operation.Path, "path", index);
-                ValidateRequired(operation.Value, "value", index);
+                ValidateRequired(operation.Value ?? operation.ValueParts, "value", index);
                 ValidateRequired(operation.Index, "index", index);
                 break;
 
@@ -53,7 +53,7 @@ public class FhirPatchValidator
 
             case FhirPatchOperationType.Replace:
                 ValidateRequired(operation.Path, "path", index);
-                ValidateRequired(operation.Value, "value", index);
+                ValidateRequired(operation.Value ?? operation.ValueParts, "value", index);
                 break;
 
             case FhirPatchOperationType.Move:

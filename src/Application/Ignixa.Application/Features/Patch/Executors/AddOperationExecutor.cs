@@ -10,9 +10,8 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Application.Features.Patch.Executors;
 
 /// <summary>
-/// Executes FHIR Patch 'add' operations.
-/// Adds a value to an array property or creates a new array with the value.
-/// Uses IJsonNodeMutator for all mutation operations.
+/// Executes FHIRPath Patch 'add' operations: appends to a repeating element, or sets an absent
+/// non-repeating one when the add was resolved from a 'name' part.
 /// </summary>
 public class AddOperationExecutor(
     ILogger<AddOperationExecutor> logger,
@@ -35,6 +34,16 @@ public class AddOperationExecutor(
             throw new FhirPatchException("Add operation requires 'value'");
         }
 
+        var valueNode = JsonNodeMutator.SerializeValue(operation.Value)
+            ?? throw new FhirPatchException("Failed to serialize value");
+
+        if (operation.TargetParent is { } parent)
+        {
+            AddToResolvedParent(parent, operation.TargetProperty!, operation.TargetIsCollection == true, valueNode);
+            logger.LogDebug("Added value at {Path}", operation.Path);
+            return Task.FromResult(resource);
+        }
+
         try
         {
             // Validate parent path exists (FHIR PATCH requires parent to exist for Add)
@@ -49,31 +58,19 @@ public class AddOperationExecutor(
                 }
             }
 
-            // Try to evaluate the path to see if it exists and validate we can add to it
+            // Path-only add: cardinality is unknown, so infer it from the existing JSON and reject single-valued targets.
             var matches = mutator.Evaluate(resource, operation.Path).ToList();
-
-            // If path exists and is not an array element context, validate it's an array
             if (matches.Count > 0)
             {
                 var existingNode = matches[0];
-                // If the existing value's parent is not a JsonArray, and the value itself is not a JsonArray,
-                // then we cannot add to it (it's a single-valued property)
                 if (existingNode.Parent is not JsonArray && existingNode is not JsonArray)
                 {
-                    // Extract property name from path for better error message
                     var propertyName = operation.Path.Split('.')[^1];
                     throw new FhirPatchException($"Cannot add to non-array property '{propertyName}'");
                 }
             }
 
-            var valueNode = JsonNodeMutator.SerializeValue(operation.Value)
-                ?? throw new FhirPatchException("Failed to serialize value");
-
-            // Use IJsonNodeMutator with Append mode
-            // This handles:
-            // - Path doesn't exist: creates array with value
-            // - Path exists as array: appends to array
-            // - Path exists as single value: converts to array with old + new values
+            // Append mode creates the array when the path is absent and appends when it exists.
             mutator.SetProperty(resource, operation.Path, valueNode, PropertyMutationMode.Append);
 
             logger.LogDebug("Added value to {Path}", operation.Path);
@@ -84,5 +81,35 @@ public class AddOperationExecutor(
         }
 
         return Task.FromResult(resource);
+    }
+
+    /// <summary>
+    /// Writes into the exact parent object the resolver selected, so indexed or filtered parent paths
+    /// (e.g. Patient.name[0]) are honored rather than re-derived from the path text.
+    /// </summary>
+    private static void AddToResolvedParent(JsonObject parent, string property, bool repeats, JsonNode value)
+    {
+        if (!repeats)
+        {
+            if (parent.ContainsKey(property))
+            {
+                throw new FhirPatchException($"Cannot add '{property}': the element does not repeat and already has a value");
+            }
+
+            parent[property] = value;
+            return;
+        }
+
+        switch (parent[property])
+        {
+            case null:
+                parent[property] = new JsonArray(value);
+                break;
+            case JsonArray items:
+                items.Add(value);
+                break;
+            default:
+                throw new FhirPatchException($"Cannot add to '{property}': the existing value is not an array");
+        }
     }
 }

@@ -37,7 +37,7 @@ GET /metadata
 | `read` | ✅ | Retrieve by ID |
 | `vread` | ✅ | Retrieve specific version |
 | `update` | ✅ | Full resource replacement |
-| `patch` | ✅ | FHIRPath Patch, JSON Patch |
+| `patch` | ✅ | FHIRPath Patch only (`patchFormat`: `application/fhir+json`). FHIRPath Patch is defined from R4; Ignixa also accepts it on STU3 |
 | `delete` | ✅ | Soft delete |
 | `history-instance` | ✅ | Version history |
 
