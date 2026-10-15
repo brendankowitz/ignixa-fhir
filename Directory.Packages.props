@@ -116,7 +116,7 @@
     <PackageVersion Include="Grpc.AspNetCore" Version="2.76.0" />
     <PackageVersion Include="Google.Protobuf" Version="3.33.2" />
     <!-- GitVersion for semantic versioning -->
-    <PackageVersion Include="GitVersion.MsBuild" Version="6.5.1" />
+    <PackageVersion Include="GitVersion.MsBuild" Version="6.8.2" />
     <!-- Reproducible Builds -->
     <PackageVersion Include="DotNet.ReproducibleBuilds" Version="1.2.39" />
     <!-- HotChocolate GraphQL -->
