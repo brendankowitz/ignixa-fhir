@@ -167,7 +167,7 @@ What P1 adds:
 
 What P1 does not cover: SNOMED CT, LOINC, RxNorm and ICD content. Core packages reference these systems but do not contain their concepts (their `CodeSystem` stubs have `content` = `not-present`). ValueSets defined by filters over them (for example "descendants of a SNOMED concept") cannot be expanded in P1. Tools must report this as *system not loaded*, not as an empty result. Native loaders for these systems are P2.
 
-Not yet verified: whether `Ignixa.PackageManagement` can read the standard local FHIR package cache used by other FHIR tooling, or only its own download location.
+Verified in the prototype (Task 7): `Ignixa.PackageManagement` reads neither the standard FHIR package cache nor packages.fhir.org as published. Its exact-version `NpmPackageAcquirer` expects npm version metadata at `/<id>/<version>`, where packages.fhir.org serves the archive itself, and an SHA-512 `integrity` the registry does not publish (only an SHA-1 `shasum`); its strict extractor rejects `hl7.fhir.r4.core#4.0.1`, which ships 463 entries outside `package/` (`other/`, `openapi/`). cli-on-fhir therefore has its own bounded reader and registry client (see the tool README, "Terminology"), reads `~/.fhir/packages/<id>#<version>/package/` read only, and keeps downloads in `<cache root>/packages`. Measured: `hl7.fhir.r4.core@4.0.1` loads 1,059 CodeSystems with concepts (3 without), 1,316 ValueSets and 80 ConceptMaps; reading and parsing it takes about 0.5 s.
 
 ### Rules
 

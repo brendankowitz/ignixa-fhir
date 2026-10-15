@@ -13,6 +13,7 @@ root.Subcommands.Add(GetCommand.Create());
 root.Subcommands.Add(PatientsCommand.Create());
 root.Subcommands.Add(ContextCommand.Create());
 root.Subcommands.Add(FindCommand.Create());
+root.Subcommands.Add(TermCommand.Create());
 root.Subcommands.Add(McpCommand.Create());
 
 return await root.Parse(args).InvokeAsync();

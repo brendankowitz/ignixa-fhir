@@ -25,7 +25,7 @@ public class EnvelopeShapeTests
     private static readonly string[] Freshness = ["indexBuiltAt", "staleFiles"];
 
     [Fact]
-    public void GivenMcpCalls_WhenSucceededOrFailedOrFolderMissing_ThenTheTopLevelKeysAreTheSame()
+    public async Task GivenMcpCalls_WhenSucceededOrFailedOrFolderMissing_ThenTheTopLevelKeysAreTheSame()
     {
         using TestFolder folder = Clinic();
         var tools = new ResourceTools(Open(folder));
@@ -41,7 +41,7 @@ public class EnvelopeShapeTests
             tools.ReadResources(["Patient/p1"]),
             tools.ReadResources(["nonsense"]),
             missingTools.SearchFhirResources("Patient"),
-            new FolderTools(Open(folder)).FolderInspect(),
+            await new FolderTools(Open(folder)).FolderInspect(),
             patients.PatientList(),
             patients.ContextGetRoot("p1"),
             patients.ContextGetRoot("nobody"),

@@ -11,6 +11,7 @@ using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Search;
+using Ignixa.CliOnFhir.Terminology;
 using Ignixa.Search.Definition;
 using Ignixa.Search.InMemory;
 using Microsoft.Extensions.Logging;
@@ -49,7 +50,8 @@ public sealed class FolderSession
     /// Clock for the freshness count's short reuse window and for <see cref="UtcNow"/>, which time-dependent answers are
     /// anchored to; the system clock by default.
     /// </param>
-    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null, TimeProvider? timeProvider = null)
+    /// <param name="terminology">How to find terminology for the terminology tools; <see cref="TerminologyOptions.None"/> (only the folder's own) by default.</param>
+    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null, TimeProvider? timeProvider = null, TerminologyOptions? terminology = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(schema);
@@ -107,6 +109,8 @@ public sealed class FolderSession
         _cache = new Lazy<FolderIndexCache>(
             () => new FolderIndexCache(options, Catalog, schema.Version.ToString(), _indexBuilder.Value.Builder.Definitions),
             LazyThreadSafetyMode.ExecutionAndPublication);
+
+        Terminology = new TerminologySession(this, terminology ?? TerminologyOptions.None);
     }
 
     public string RootPath { get; }
@@ -116,6 +120,9 @@ public sealed class FolderSession
     public FolderCatalog Catalog => _catalog.Value.Catalog;
 
     public BuildStats CatalogStats => _catalog.Value.Stats;
+
+    /// <summary>The session's terminology store, loaded on the first terminology call.</summary>
+    public TerminologySession Terminology { get; }
 
     /// <summary>
     /// Wall time spent loading the search parameter definitions and creating the indexer, paid once on the first

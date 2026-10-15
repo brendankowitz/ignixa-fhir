@@ -19,7 +19,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>cli-on-fhir</ToolCommandName>
     <PackageId>Ignixa.CliOnFhir</PackageId>
-    <Description>Prototype CLI and MCP stdio server that lets agents explore a local folder of FHIR resources: catalog, in-memory search index and inspection.</Description>
+    <Description>Prototype CLI and MCP stdio server that lets agents explore a local folder of FHIR resources: catalog, in-memory search index, inspection and a terminology store built from FHIR npm packages.</Description>
     <PackageTags>$(PackageTags);fhir;cli;tool;mcp;agents</PackageTags>
     <PackageOutputPath>./nupkg</PackageOutputPath>
   </PropertyGroup>
@@ -41,6 +41,7 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.PackageManagement\Ignixa.PackageManagement.csproj" />
   </ItemGroup>
 
 </Project>

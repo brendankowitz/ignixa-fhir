@@ -7,6 +7,7 @@ using System.CommandLine;
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Mcp;
 using Ignixa.CliOnFhir.Session;
+using Ignixa.CliOnFhir.Terminology;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -26,17 +27,20 @@ internal static class McpCommand
 
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
+        var terminology = new TerminologyCliOptions();
 
         var command = new Command("mcp", "Serve a folder of FHIR data to an agent over MCP (stdio)");
         command.Arguments.Add(pathArgument);
         command.Options.Add(versionOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
+        terminology.AddTo(command);
 
         command.SetAction(async (parseResult, cancellationToken) =>
         {
             string path = parseResult.GetValue(pathArgument)!;
             string version = parseResult.GetValue(versionOption)!;
             IndexCacheOptions cacheOptions = CommonOptions.ResolveCache(parseResult, cacheDirOption, noCacheOption);
+            TerminologyOptions terminologyOptions = terminology.Resolve(parseResult, cacheDirOption);
 
             HostApplicationBuilder builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings { Args = [] });
             builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
@@ -46,13 +50,15 @@ internal static class McpCommand
                 path,
                 FhirSchemas.Resolve(version),
                 services.GetRequiredService<ILoggerFactory>(),
-                cacheOptions));
+                cacheOptions,
+                terminology: terminologyOptions));
             builder.Services
                 .AddMcpServer(options => options.ServerInfo = new() { Name = "cli-on-fhir", Version = typeof(McpCommand).Assembly.GetName().Version?.ToString() ?? "0.0.0" })
                 .WithStdioServerTransport()
                 .WithTools<FolderTools>()
                 .WithTools<ResourceTools>()
-                .WithTools<PatientTools>();
+                .WithTools<PatientTools>()
+                .WithTools<TerminologyTools>();
 
             await builder.Build().RunAsync(cancellationToken);
             return 0;

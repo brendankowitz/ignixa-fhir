@@ -55,8 +55,7 @@ internal sealed class FolderIndexCache
     private readonly string _folderPath;
     private readonly string _fhirVersion;
     private readonly ISearchParameterDefinitionManager _definitions;
-    private readonly string? _canonicalFolderPath;
-    private readonly string? _folderResolveProblem;
+    private readonly FolderOverlap _overlap;
     private readonly string? _unavailableReason;
     private readonly Lock _gate = new();
     private readonly List<IssueItem> _issues = [];
@@ -77,7 +76,7 @@ internal sealed class FolderIndexCache
         _fhirVersion = fhirVersion;
         _definitions = definitions;
         _folderPath = NormalizeFolderPath(catalog.RootPath);
-        (_canonicalFolderPath, _folderResolveProblem) = ResolveFolder(catalog.RootPath);
+        _overlap = new FolderOverlap(catalog.RootPath);
         _unavailableReason = options.UnavailableReason ?? (options.RootDirectory is null ? null : OverlapReason(options.RootDirectory));
         CacheDirectory = options.RootDirectory is null || _unavailableReason is not null
             ? null
@@ -242,59 +241,8 @@ internal sealed class FolderIndexCache
     private static FileStream OpenShared(string path, FileOptions options) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, FileBufferSize, options);
 
-    /// <summary>
-    /// The cache must neither sit inside the data folder (the folder stays read-only, and cache files would be
-    /// catalogued as data) nor contain it (another run's cache would then be inside the folder it indexes). Both
-    /// paths are compared with links resolved, so a symlinked cache directory cannot lead back into the folder, and
-    /// ignoring case, because a false refusal only costs the cache while a false pass writes into the data.
-    /// </summary>
-    private string? OverlapReason(string cachePath)
-    {
-        string cache;
-        try
-        {
-            cache = CanonicalPath.Resolve(cachePath);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return $"the cache directory '{cachePath}' cannot be checked against the data folder ({Describe(ex)})";
-        }
-
-        // Without the data folder's real location there is nothing to compare against, so nothing is written.
-        if (_canonicalFolderPath is null)
-        {
-            return _folderResolveProblem;
-        }
-
-        if (IsSameOrUnder(cache, _canonicalFolderPath))
-        {
-            return $"the cache directory '{cache}' is inside the data folder '{_canonicalFolderPath}'; the folder is never written and cache files would be read as data. Use --cache-dir outside the folder";
-        }
-
-        return IsSameOrUnder(_canonicalFolderPath, cache)
-            ? $"the data folder '{_canonicalFolderPath}' is inside the cache directory '{cache}'; cache files would be read as data. Use --cache-dir outside the folder"
-            : null;
-    }
-
-    private static (string? Path, string? Problem) ResolveFolder(string path)
-    {
-        try
-        {
-            return (CanonicalPath.Resolve(path), null);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return (null, $"the data folder '{path}' cannot be resolved, so the cache location cannot be checked against it ({Describe(ex)})");
-        }
-    }
-
-    private static bool IsSameOrUnder(string path, string parent)
-    {
-        string child = Path.TrimEndingDirectorySeparator(path);
-        string root = Path.TrimEndingDirectorySeparator(parent);
-        string rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
-        return string.Equals(child, root, StringComparison.OrdinalIgnoreCase) || child.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
-    }
+    /// <summary>Why the cache may not be written at <paramref name="cachePath"/> (see <see cref="FolderOverlap"/>), or null.</summary>
+    private string? OverlapReason(string cachePath) => _overlap.Reason(cachePath, "cache directory");
 
     private static string Describe(Exception ex) => $"{ex.GetType().Name}: {ex.Message}";
 

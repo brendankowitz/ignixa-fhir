@@ -1,0 +1,79 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.CommandLine;
+using Ignixa.CliOnFhir.Caching;
+using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Terminology;
+using Ignixa.CliOnFhir.Terminology.Packages;
+
+namespace Ignixa.CliOnFhir.Commands;
+
+/// <summary>The options that say where terminology comes from, shared by <c>mcp</c>, <c>inspect</c> and the <c>term</c> verbs.</summary>
+internal sealed class TerminologyCliOptions
+{
+    public Option<string[]> Packages { get; } = new("--terminology")
+    {
+        Description = "A FHIR npm package to load on the first terminology call, id@version (repeatable), for example hl7.terminology.r4@7.4.0. "
+            + "Without any, the FHIR version's core package (hl7.fhir.r4.core@4.0.1 for R4) is loaded",
+        AllowMultipleArgumentsPerToken = false,
+    };
+
+    public Option<bool> Offline { get; } = new("--offline")
+    {
+        Description = "Never use the network: packages load only from the package store or the FHIR package cache",
+    };
+
+    public Option<string?> FhirPackageCache { get; } = new("--fhir-package-cache")
+    {
+        Description = "The standard FHIR package cache to read packages from, read only (default: ~/.fhir/packages when it exists)",
+    };
+
+    public void AddTo(Command command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        command.Options.Add(Packages);
+        command.Options.Add(Offline);
+        command.Options.Add(FhirPackageCache);
+        command.Validators.Add(result =>
+        {
+            foreach (string package in result.GetValue(Packages) ?? [])
+            {
+                try
+                {
+                    _ = PackageRequest.Parse(package);
+                }
+                catch (ToolRequestException ex)
+                {
+                    result.AddError($"--terminology {package}: {ex.Issue.Diagnostics}");
+                }
+            }
+        });
+    }
+
+    /// <summary>The session's terminology options. The package store sits under the index cache root (<c>--cache-dir</c> or the user cache directory).</summary>
+    public TerminologyOptions Resolve(ParseResult parseResult, Option<string?> cacheDirOption)
+    {
+        ArgumentNullException.ThrowIfNull(parseResult);
+
+        IndexCacheOptions root = parseResult.GetValue(cacheDirOption) is { } cacheDir ? IndexCacheOptions.At(cacheDir) : IndexCacheOptions.UserDefault();
+        string? fhirCache = parseResult.GetValue(FhirPackageCache) ?? DefaultFhirPackageCache();
+        return new TerminologyOptions
+        {
+            Packages = [.. (parseResult.GetValue(Packages) ?? []).Select(PackageRequest.Parse)],
+            Store = root.RootDirectory is { } directory ? PackageStore.Under(directory) : null,
+            FhirPackageCache = fhirCache,
+            Registry = parseResult.GetValue(Offline) ? null : new FhirPackageRegistry(),
+        };
+    }
+
+    private static string? DefaultFhirPackageCache()
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string cache = Path.Combine(home, ".fhir", "packages");
+        return home.Length > 0 && Directory.Exists(cache) ? cache : null;
+    }
+}

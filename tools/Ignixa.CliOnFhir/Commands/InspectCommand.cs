@@ -30,24 +30,33 @@ internal static class InspectCommand
                 + "(measurement aid; inspect itself answers from the catalog without indexing)",
         };
 
+        var withTerminologyOption = new Option<bool>("--with-terminology")
+        {
+            Description = "Load the terminology store first (the --terminology packages, else the core package; this may download it unless --offline) "
+                + "and report per code system how many of the folder's codes resolve, are inactive or unknown (builds every type's search index)",
+        };
+
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
         Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
+        var terminology = new TerminologyCliOptions();
 
         var command = new Command("inspect", "Overview of a folder of FHIR data: resource types, counts and problems found");
         command.Arguments.Add(pathArgument);
         command.Options.Add(versionOption);
         command.Options.Add(issueLimitOption);
         command.Options.Add(buildIndexOption);
+        command.Options.Add(withTerminologyOption);
         command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
+        terminology.AddTo(command);
 
-        command.SetAction(parseResult =>
+        command.SetAction(async (parseResult, cancellationToken) =>
         {
             using ILoggerFactory loggerFactory = StandardErrorLogging.Create(LogLevel.Warning);
-            FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory);
+            FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory, terminology.Resolve(parseResult, cacheDirOption));
 
-            ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session, parseResult.GetValue(issueLimitOption), parseResult.GetValue(buildIndexOption));
+            ToolEnvelope<FolderInspection> envelope = await FolderInspector.InspectAsync(session, parseResult.GetValue(issueLimitOption), parseResult.GetValue(buildIndexOption), parseResult.GetValue(withTerminologyOption), cancellationToken);
             return EnvelopeOutput.Write(envelope, parseResult.GetValue(prettyOption));
         });
 
