@@ -197,8 +197,7 @@ public class ImportTerminologyResourceActivityTests : IAsyncLifetime
 
     /// <summary>
     /// DurableTask's <see cref="AsyncTaskActivity{TInput,TResult}.ExecuteAsync"/> is protected. This
-    /// subclass exposes it so the tests invoke the real production method, following
-    /// <c>ImportBatchActivityBaseUriWiringTests</c>.
+    /// subclass exposes it so the tests invoke the real production method rather than a substitute.
     /// </summary>
     private sealed class TestableImportTerminologyResourceActivity(
         IServiceProvider serviceProvider,
