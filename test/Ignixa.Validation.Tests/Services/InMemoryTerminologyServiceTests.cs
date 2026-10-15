@@ -308,7 +308,8 @@ public class InMemoryTerminologyServiceTests
     #endregion
 
     // Regression: at 24779ff SubsumesAsync answered "not-subsumed" for every pair, a success-shaped answer for an
-    // operation the service cannot perform (it has no hierarchy).
+    // operation the service cannot perform (it has no hierarchy). The dedicated exception type (Task 7 fix round 2) fails at
+    // 4073a28, which threw a plain NotSupportedException.
     [Fact]
     public async Task GivenAnyTwoCodes_WhenSubsumptionIsAsked_ThenTheServiceFailsInsteadOfAnsweringNotSubsumed()
     {
@@ -320,7 +321,9 @@ public class InMemoryTerminologyServiceTests
         Task<SubsumesResult> subsumption = service.SubsumesAsync(parameters, CancellationToken.None);
 
         // Assert
-        NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(() => subsumption);
+        TerminologyOperationNotSupportedException exception = await Assert.ThrowsAsync<TerminologyOperationNotSupportedException>(() => subsumption);
         Assert.Contains("$subsumes", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(501, exception.StatusCode);
+        Assert.Equal(Ignixa.Models.OperationOutcomeIssue.IssueTypeCommon.NotSupported, Assert.Single(exception.Issues).IssueTypeCode);
     }
 }

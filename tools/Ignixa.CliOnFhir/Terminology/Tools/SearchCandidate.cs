@@ -29,7 +29,7 @@ internal sealed record SearchCandidate(
         [.. concept.Concept.Designations.Select(designation => designation.Value)],
         concept.Designations,
         entry.Origin,
-        store.PrecedenceOf(entry.Origin.Source),
+        store.PrecedenceOf(entry.Origin.Source, entry.Url),
         entry.Origin.Source.Name);
 
     // A ValueSet's code: matched on its own display, plus the code system's designations when that system is loaded.
@@ -48,7 +48,7 @@ internal sealed record SearchCandidate(
             designations,
             [.. designations.Select(TextFolding.Fold)],
             entry?.Origin,
-            entry is null ? int.MaxValue : store.PrecedenceOf(entry.Origin.Source),
+            entry is null ? int.MaxValue : store.PrecedenceOf(entry.Origin.Source, entry.Url),
             entry?.Origin.Source.Name ?? "value-set");
     }
 }

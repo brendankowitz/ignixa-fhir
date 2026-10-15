@@ -15,7 +15,7 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// packages.fhir.org by this call) or <c>folder</c>.
 /// </param>
 /// <param name="Location">The package file or directory read, or the data folder; for diagnostics only.</param>
-/// <param name="IsDefault">True for the FHIR version's core package loaded because no package was configured; it ranks below every package loaded explicitly.</param>
+/// <param name="IsDefault">True for the FHIR version's core package loaded because no package was configured. Like every core package it ranks below every other package (<see cref="VersionPrecedence"/>).</param>
 public sealed record TerminologySourceInfo(string Name, string? PackageId, string? PackageVersion, string Origin, string Location, bool IsDefault = false)
 {
     public const string FolderName = "folder";
@@ -26,9 +26,6 @@ public sealed record TerminologySourceInfo(string Name, string? PackageId, strin
     public string EvidencePrefix => PackageId is null ? string.Empty : $"{PackageId}#{PackageVersion}/";
 
     public static TerminologySourceInfo Folder(string rootPath) => new(FolderName, null, null, FolderName, rootPath);
-
-    /// <summary>Precedence tier: 0 for the folder, 1 for an explicitly loaded package, 2 for the default core package.</summary>
-    public int Tier => IsFolder ? 0 : IsDefault ? 2 : 1;
 
     public static TerminologySourceInfo Package(string id, string version, string origin, string location, bool isDefault = false) =>
         new($"{id}@{version}", id, version, origin, location, isDefault);

@@ -8,11 +8,23 @@ using Ignixa.CliOnFhir.Contracts;
 namespace Ignixa.CliOnFhir.Terminology;
 
 /// <summary>The state of one ValueSet expansion while its rules are evaluated.</summary>
-internal sealed class ExpansionContext(ValueSetEntry valueSet, IReadOnlyList<string> stack)
+/// <param name="valueSet">The ValueSet being expanded.</param>
+/// <param name="graph">The include graph of the whole request, which says which includes close a cycle.</param>
+/// <param name="expanded">The expansions of the ValueSets this one includes, computed before it.</param>
+/// <param name="cancellationToken">Cancels the request.</param>
+internal sealed class ExpansionContext(
+    ValueSetEntry valueSet,
+    ValueSetIncludeGraph graph,
+    IReadOnlyDictionary<ValueSetEntry, ValueSetExpansion> expanded,
+    CancellationToken cancellationToken)
 {
     public ValueSetEntry ValueSet { get; } = valueSet;
 
-    public IReadOnlyList<string> Stack { get; } = stack;
+    public ValueSetIncludeGraph Graph { get; } = graph;
+
+    public IReadOnlyDictionary<ValueSetEntry, ValueSetExpansion> Expanded { get; } = expanded;
+
+    public CancellationToken CancellationToken { get; } = cancellationToken;
 
     public ExpansionBuilder Result { get; } = new();
 

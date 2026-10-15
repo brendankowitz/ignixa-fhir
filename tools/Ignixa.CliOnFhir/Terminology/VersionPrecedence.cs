@@ -9,26 +9,77 @@ using Semver;
 namespace Ignixa.CliOnFhir.Terminology;
 
 /// <summary>
-/// Which loaded version answers a request that names no version: the folder's first, then a package loaded explicitly
-/// before the default core package (<see cref="TerminologySourceInfo.Tier"/>); among the candidates of that tier, the highest
-/// version when they can be ordered (all strict SemVer, or all declaring the same R5 <c>versionAlgorithm</c> of
-/// <c>semver</c>, <c>integer</c>, <c>date</c> or <c>alpha</c>), otherwise the first loaded.
+/// Which loaded definition answers a request that names no version, and which copy a conflict keeps:
+/// <list type="number">
+/// <item>The folder.</item>
+/// <item>
+/// Among packages, authority: for a canonical under <c>http://terminology.hl7.org/</c>, an <c>hl7.terminology.*</c> package
+/// over every other package; core (<c>hl7.fhir.*.core</c>, loaded explicitly or by default) below every other package,
+/// because it carries stale copies of terminology another package owns (core stamps THO-derived CodeSystems with its own
+/// FHIR version, so a version comparison across packages would prefer them).
+/// </item>
+/// <item>
+/// Among the candidates of the first-loaded package of that rank, the highest version when they can be ordered (all strict
+/// SemVer, or all declaring the same R5 <c>versionAlgorithm</c> of <c>semver</c>, <c>integer</c>, <c>date</c> or
+/// <c>alpha</c>). Versions are never compared across package ids.
+/// </item>
+/// <item>Otherwise load order.</item>
+/// </list>
 /// </summary>
 internal static class VersionPrecedence
 {
-    public const string RuleText = "the folder first, then packages loaded explicitly over the default core package, then the highest version when every candidate is SemVer or they share a versionAlgorithm, else the first loaded";
+    public const string RuleText = "the folder first; then, among packages, hl7.terminology.* for terminology.hl7.org canonicals and core (hl7.fhir.*.core) last; then the highest version within one package; else load order";
 
-    /// <param name="candidates">The candidates in load order.</param>
-    public static T? Choose<T>(IReadOnlyList<T> candidates, Func<T, string?> version, Func<T, string?> algorithm, Func<T, TerminologySourceInfo> source)
+    private const string TerminologyHl7Base = "http://terminology.hl7.org/";
+
+    /// <summary>The authority rank of <paramref name="source"/> for <paramref name="url"/>, lower first.</summary>
+    public static int Rank(TerminologySourceInfo source, string url)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(url);
+
+        if (source.IsFolder)
+        {
+            return 0;
+        }
+
+        if (source.IsDefault || IsCore(source.PackageId!))
+        {
+            return 3;
+        }
+
+        return url.StartsWith(TerminologyHl7Base, StringComparison.Ordinal) && source.PackageId!.StartsWith("hl7.terminology.", StringComparison.Ordinal) ? 1 : 2;
+    }
+
+    /// <summary>Whether <paramref name="packageId"/> is a FHIR core package, such as <c>hl7.fhir.r4.core</c>.</summary>
+    public static bool IsCore(string packageId)
+    {
+        ArgumentNullException.ThrowIfNull(packageId);
+
+        string[] parts = packageId.Split('.');
+        return parts is ["hl7", "fhir", { Length: > 0 }, "core"];
+    }
+
+    /// <param name="candidates">The candidates for <paramref name="url"/>.</param>
+    /// <param name="url">The canonical url the candidates share, which decides authority.</param>
+    /// <param name="version">A candidate's version.</param>
+    /// <param name="algorithm">A candidate's declared <c>versionAlgorithm</c>.</param>
+    /// <param name="source">A candidate's source.</param>
+    /// <param name="loadOrder">A source's position in load order.</param>
+    public static T? Choose<T>(IReadOnlyList<T> candidates, string url, Func<T, string?> version, Func<T, string?> algorithm, Func<T, TerminologySourceInfo> source, Func<TerminologySourceInfo, int> loadOrder)
         where T : class
     {
+        ArgumentNullException.ThrowIfNull(candidates);
+
         if (candidates.Count == 0)
         {
             return null;
         }
 
-        int tier = candidates.Min(candidate => source(candidate).Tier);
-        List<T> best = [.. candidates.Where(candidate => source(candidate).Tier == tier)];
+        int rank = candidates.Min(candidate => Rank(source(candidate), url));
+        List<T> ranked = [.. candidates.Where(candidate => Rank(source(candidate), url) == rank).OrderBy(candidate => loadOrder(source(candidate)))];
+        string? package = source(ranked[0]).PackageId;
+        List<T> best = [.. ranked.Where(candidate => string.Equals(source(candidate).PackageId, package, StringComparison.Ordinal))];
         if (best.Count == 1 || Comparer(best, version, algorithm) is not { } compare)
         {
             return best[0];

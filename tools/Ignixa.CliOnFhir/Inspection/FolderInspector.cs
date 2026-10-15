@@ -113,7 +113,7 @@ public static class FolderInspector
                 .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal),
             session.CatalogStats,
             indexFacts,
-            FolderCodeSystems.Summary(session),
+            FolderCodeSystems.Summary(session, cancellationToken),
             terminology);
 
         // Structure only: the tool that lists every code system.

@@ -11,8 +11,14 @@ namespace Ignixa.CliOnFhir.CodeSystems;
 /// <param name="Steward">The steward of a well-known system.</param>
 /// <param name="Kind"><c>external</c>, <c>hl7-v2</c>, <c>hl7-v3</c>, <c>hl7-terminology</c>, <c>fhir</c> or <c>unknown</c>.</param>
 /// <param name="PreferredUri">The preferred URI when the one written is an alias or OID form of a well-known system.</param>
-/// <param name="SuggestedCanonical">For a <c>http://hl7.org/fhir/CodeSystem/...</c>-style URI that is not a FHIR canonical, the canonical it probably means.</param>
-/// <param name="Flags"><c>non-preferred-uri</c>, <c>not-a-fhir-canonical</c> (checked against loaded terminology) or <c>possibly-not-a-fhir-canonical</c> (by pattern only).</param>
+/// <param name="SuggestedCanonical">
+/// For a <c>http://hl7.org/fhir/CodeSystem/...</c>-style URI that is not a FHIR canonical, the canonical it probably means, only
+/// when that canonical is known to exist: defined by the loaded terminology, or with none loaded a well-known system.
+/// </param>
+/// <param name="Flags">
+/// <c>non-preferred-uri</c>, <c>not-a-fhir-canonical</c> (the loaded terminology defines the suggested canonical) or
+/// <c>possibly-not-a-fhir-canonical</c> (by pattern only, or no canonical to suggest is known).
+/// </param>
 /// <param name="DistinctCodes">Distinct codes.</param>
 /// <param name="Codings">Codings in all.</param>
 /// <param name="Resources">Resources holding at least one.</param>

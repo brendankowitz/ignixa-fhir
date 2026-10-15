@@ -89,13 +89,6 @@ public class FhirExceptionMiddleware
             statusCode = HttpStatusCode.BadRequest;
             code = OperationOutcomeIssue.IssueTypeCommon.Invalid;
         }
-        else if (exception is NotSupportedException)
-        {
-            // An operation the configured service cannot perform (the in-memory terminology service's $subsumes) is the
-            // server's limitation, not a fault: 501 not-supported rather than 500.
-            statusCode = HttpStatusCode.NotImplemented;
-            code = OperationOutcomeIssue.IssueTypeCommon.NotSupported;
-        }
         else if (exception is InvalidOperationException)
         {
             statusCode = HttpStatusCode.BadRequest;

@@ -14,18 +14,35 @@ using Ignixa.Search.Generated;
 
 namespace Ignixa.CliOnFhir.CodeSystems;
 
-/// <summary>Builds (once per catalog) the coding inventory of every catalogued resource, reading each file once.</summary>
+/// <summary>
+/// Builds (once per catalog) the coding inventory of every catalogued resource, reading each file once. A cancelled build
+/// is not kept, so the next request builds it afresh.
+/// </summary>
 public static class CodeSystemInventories
 {
     private const int ProblemSamples = 5;
 
     private static readonly ConditionalWeakTable<FolderCatalog, Lazy<CodeSystemInventory>> Cache = [];
 
-    public static CodeSystemInventory For(FolderCatalog catalog, FhirVersion version)
+    public static CodeSystemInventory For(FolderCatalog catalog, FhirVersion version, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(catalog);
 
-        return Cache.GetValue(catalog, key => new Lazy<CodeSystemInventory>(() => Build(key, version), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+        while (true)
+        {
+            Lazy<CodeSystemInventory> inventory = Cache.GetValue(catalog, key => new Lazy<CodeSystemInventory>(() => Build(key, version, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication));
+            try
+            {
+                return inventory.Value;
+            }
+            catch (OperationCanceledException ex) when (ex.CancellationToken.IsCancellationRequested)
+            {
+                // The Lazy keeps the cancellation; drop it. When it was another caller's, this caller builds it itself. A
+                // failure, or an OperationCanceledException no token asked for, is not retried.
+                Forget(catalog, inventory);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+        }
     }
 
     /// <summary>The FHIR <c>code</c> elements with a FHIR-defined binding, by path, from Ignixa's generated element map for <paramref name="version"/>.</summary>
@@ -38,7 +55,19 @@ public static class CodeSystemInventories
         _ => R6CodeSystemMappings.GetMappings().Keys.ToHashSet(StringComparer.Ordinal),
     };
 
-    private static CodeSystemInventory Build(FolderCatalog catalog, FhirVersion version)
+    // Entries are only ever added when absent, so under the lock the entry cannot change between the check and the removal.
+    private static void Forget(FolderCatalog catalog, Lazy<CodeSystemInventory> cancelled)
+    {
+        lock (Cache)
+        {
+            if (Cache.TryGetValue(catalog, out Lazy<CodeSystemInventory>? current) && ReferenceEquals(current, cancelled))
+            {
+                Cache.Remove(catalog);
+            }
+        }
+    }
+
+    private static CodeSystemInventory Build(FolderCatalog catalog, FhirVersion version, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         IReadOnlySet<string> implicitElements = ImplicitElements(version);
@@ -48,6 +77,7 @@ public static class CodeSystemInventories
         int unreadable = 0;
         foreach (IGrouping<string, CatalogEntry> file in catalog.Entries.GroupBy(entry => entry.FilePath, StringComparer.Ordinal))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             byte[] bytes;
             try
             {
@@ -62,6 +92,7 @@ public static class CodeSystemInventories
 
             foreach (CatalogEntry entry in file)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 (ReadOnlyMemory<byte>? json, IssueItem? problem) = ResourceReader.Slice(bytes, entry);
                 if (json is not { } resource)
                 {

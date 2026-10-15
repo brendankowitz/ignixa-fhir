@@ -114,7 +114,10 @@ internal static class TxAnswers
             display,
             displayMatches,
             inactive is null ? null : inactive == "true");
-        return new TerminologyAnswer<TermValidateFacts>(facts, [], [], [], [Used(tx, why)]);
+
+        // The same warning as the local answer, naming the code asked about (never the server's display or system).
+        IssueItem[] mismatch = reason == TermValidate.DisplayMismatch ? [TermValidate.MismatchIssue(system, code, entry: null)] : [];
+        return new TerminologyAnswer<TermValidateFacts>(facts, [], [], [], [.. mismatch, Used(tx, why)]);
     }
 
     public static async Task<TerminologyAnswer<TermSubsumesFacts>> SubsumesAsync(TxServerClient tx, string system, string codeA, string codeB, string? version, string why, CancellationToken cancellationToken)

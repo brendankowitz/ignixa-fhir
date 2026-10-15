@@ -11,7 +11,7 @@ namespace Ignixa.CliOnFhir.Terminology.Tools;
 /// <param name="WorkingSetBytes">Process working set after the most recent load.</param>
 /// <param name="Offline">Whether the network is disabled.</param>
 /// <param name="TxServer">The remote terminology server asked for content not loaded locally; null when none is configured.</param>
-/// <param name="Sources">The loaded sources in precedence order (the folder, then packages in load order).</param>
+/// <param name="Sources">The loaded sources in load order (the folder, then packages); which one answers a url is per url (<see cref="VersionPrecedence"/>).</param>
 /// <param name="Kind">What is listed: <c>codeSystems</c>, <c>valueSets</c> or <c>conceptMaps</c>.</param>
 /// <param name="Package">The source the listing is limited to, when given.</param>
 /// <param name="Filter">The url substring the listing is limited to, when given.</param>

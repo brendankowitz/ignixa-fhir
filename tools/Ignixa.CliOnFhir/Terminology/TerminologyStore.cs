@@ -10,9 +10,10 @@ namespace Ignixa.CliOnFhir.Terminology;
 
 /// <summary>
 /// An immutable snapshot of every loaded terminology source, in load order. A url asked for without a version resolves by
-/// <see cref="VersionPrecedence"/> (the folder, then packages loaded explicitly, then the default core package; the highest
-/// orderable version within that tier). Two sources defining the same <c>url|version</c> with the same content count once; with different content the
-/// first is used and a <see cref="CanonicalConflict"/> is recorded, which every answer that uses it reports.
+/// <see cref="VersionPrecedence"/> (the folder; then package authority, with hl7.terminology.* first for terminology.hl7.org
+/// canonicals and core last; then the highest orderable version within one package; then load order). Two sources
+/// defining the same <c>url|version</c> with the same content count once; with different content the one of higher
+/// precedence is used and a <see cref="CanonicalConflict"/> is recorded, which every answer that uses it reports.
 /// Loading a package builds a new snapshot (<see cref="With"/>), so a call always answers from one consistent state.
 /// </summary>
 public sealed class TerminologyStore
@@ -27,19 +28,19 @@ public sealed class TerminologyStore
         Sources = sources;
         BuiltAt = builtAt;
 
-        // Indexed by precedence (tier, then load order), so a conflict keeps the higher-precedence definition.
-        List<LoadedSource> ranked = [.. sources.OrderBy(source => source.Info.Tier)];
+        // Each url's entries are indexed by its precedence (authority rank, then load order, then file order), so a
+        // conflict keeps the higher-precedence definition.
         List<CanonicalConflict> conflicts = [];
-        _codeSystems = Index(ranked.SelectMany(source => source.CodeSystems), "CodeSystem", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
-        _valueSets = Index(ranked.SelectMany(source => source.ValueSets), "ValueSet", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
-        _conceptMaps = Index(ranked.SelectMany(source => source.ConceptMaps), "ConceptMap", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
+        _codeSystems = Index(sources.SelectMany(source => source.CodeSystems), "CodeSystem", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
+        _valueSets = Index(sources.SelectMany(source => source.ValueSets), "ValueSet", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
+        _conceptMaps = Index(sources.SelectMany(source => source.ConceptMaps), "ConceptMap", entry => entry.Url, entry => entry.Version, entry => entry.Fingerprint, entry => entry.Origin, conflicts);
         Conflicts = conflicts;
         _conflicts = conflicts.GroupBy(conflict => (conflict.ResourceType, conflict.Url, conflict.Version)).ToDictionary(group => group.Key, group => group.ToList());
     }
 
     public static TerminologyStore Empty { get; } = new([], DateTimeOffset.MinValue);
 
-    /// <summary>The sources in precedence order.</summary>
+    /// <summary>The sources in load order: the folder, the packages loaded explicitly, the default core package, then later loads.</summary>
     public IReadOnlyList<LoadedSource> Sources { get; }
 
     /// <summary>When this snapshot was built.</summary>
@@ -83,7 +84,7 @@ public sealed class TerminologyStore
         List<CodeSystemEntry> entries = _codeSystems.GetValueOrDefault(url) ?? [];
         List<CodeSystemEntry> providing = [.. entries.Where(entry => entry.ProvidesConcepts)];
         CodeSystemEntry? entry = version is null
-            ? VersionPrecedence.Choose(providing, candidate => candidate.Version, candidate => candidate.VersionAlgorithm, candidate => candidate.Origin.Source)
+            ? VersionPrecedence.Choose(providing, url, candidate => candidate.Version, candidate => candidate.VersionAlgorithm, candidate => candidate.Origin.Source, LoadOrderOf)
             : providing.FirstOrDefault(candidate => string.Equals(candidate.Version, version, StringComparison.Ordinal));
         IssueItem? others = version is null && entry is not null && providing.Count > 1
             ? OtherVersions("CodeSystem", url, entry.Version, entry.Origin, providing.Select(candidate => (candidate.Version, candidate.Origin)))
@@ -92,29 +93,25 @@ public sealed class TerminologyStore
     }
 
     public CanonicalResolution<ValueSetEntry> ResolveValueSet(string canonical) =>
-        Resolve(_valueSets, "ValueSet", canonical, entry => entry.Version, entry => entry.VersionAlgorithm, entry => entry.Origin);
+        Resolve(_valueSets, "ValueSet", canonical, entry => entry.Version, entry => entry.VersionAlgorithm, entry => entry.Origin, LoadOrderOf);
 
     public CanonicalResolution<ConceptMapEntry> ResolveConceptMap(string canonical) =>
-        Resolve(_conceptMaps, "ConceptMap", canonical, entry => entry.Version, entry => entry.VersionAlgorithm, entry => entry.Origin);
+        Resolve(_conceptMaps, "ConceptMap", canonical, entry => entry.Version, entry => entry.VersionAlgorithm, entry => entry.Origin, LoadOrderOf);
 
     /// <summary>The <c>canonical-conflict</c> warnings for one url and version.</summary>
     public IEnumerable<IssueItem> ConflictIssues(string resourceType, string url, string? version) =>
         _conflicts.GetValueOrDefault((resourceType, url, version))?.Select(conflict => conflict.ToIssue()) ?? [];
 
-    /// <summary>The precedence of a source, lower first: by tier (folder, explicit packages, default core), then load order.</summary>
-    public int PrecedenceOf(TerminologySourceInfo source)
+    /// <summary>
+    /// The precedence of a source for <paramref name="url"/>, lower first: by authority rank (<see cref="VersionPrecedence.Rank"/>),
+    /// then load order.
+    /// </summary>
+    public int PrecedenceOf(TerminologySourceInfo source, string url)
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        for (int index = 0; index < Sources.Count; index++)
-        {
-            if (ReferenceEquals(Sources[index].Info, source))
-            {
-                return (source.Tier * Sources.Count) + index;
-            }
-        }
-
-        return int.MaxValue;
+        int loadOrder = LoadOrderOf(source);
+        return loadOrder == int.MaxValue ? int.MaxValue : (VersionPrecedence.Rank(source, url) * Sources.Count) + loadOrder;
     }
 
     /// <summary>What a "not found" checked: the counts of loaded resources and the sources, by name.</summary>
@@ -131,13 +128,13 @@ public sealed class TerminologyStore
         return bar > 0 ? (canonical[..bar], canonical[(bar + 1)..] is { Length: > 0 } version ? version : null) : (canonical, null);
     }
 
-    private static CanonicalResolution<T> Resolve<T>(Dictionary<string, List<T>> index, string resourceType, string canonical, Func<T, string?> version, Func<T, string?> algorithm, Func<T, ResourceOrigin> origin)
+    private static CanonicalResolution<T> Resolve<T>(Dictionary<string, List<T>> index, string resourceType, string canonical, Func<T, string?> version, Func<T, string?> algorithm, Func<T, ResourceOrigin> origin, Func<TerminologySourceInfo, int> loadOrder)
         where T : class
     {
         (string url, string? requested) = SplitCanonical(canonical);
         List<T> entries = index.GetValueOrDefault(url) ?? [];
         T? entry = requested is null
-            ? VersionPrecedence.Choose(entries, version, algorithm, candidate => origin(candidate).Source)
+            ? VersionPrecedence.Choose(entries, url, version, algorithm, candidate => origin(candidate).Source, loadOrder)
             : entries.FirstOrDefault(candidate => string.Equals(version(candidate), requested, StringComparison.Ordinal));
         IssueItem? others = requested is null && entry is not null && entries.Count > 1
             ? OtherVersions(resourceType, url, version(entry), origin(entry), entries.Select(candidate => (version(candidate), origin(candidate))))
@@ -152,7 +149,7 @@ public sealed class TerminologyStore
             + $"this answer uses {(chosen is null ? "(no version)" : TerminologyNames.Version(chosen))} from {chosenOrigin.Source.Name} ({VersionPrecedence.RuleText}). Pass a version to choose another.",
         chosenOrigin.ToEvidence().File);
 
-    private static Dictionary<string, List<T>> Index<T>(
+    private Dictionary<string, List<T>> Index<T>(
         IEnumerable<T> entries,
         string resourceType,
         Func<T, string> url,
@@ -162,7 +159,9 @@ public sealed class TerminologyStore
         List<CanonicalConflict> conflicts)
     {
         var index = new Dictionary<string, List<T>>(StringComparer.Ordinal);
-        foreach (T entry in entries)
+
+        // OrderBy is stable, so file order within one source is kept.
+        foreach (T entry in entries.OrderBy(entry => PrecedenceOf(origin(entry).Source, url(entry))))
         {
             List<T> sameUrl = index.TryGetValue(url(entry), out List<T>? existing) ? existing : index[url(entry)] = [];
             T? sameVersion = sameUrl.FirstOrDefault(candidate => string.Equals(version(candidate), version(entry), StringComparison.Ordinal));
@@ -179,9 +178,22 @@ public sealed class TerminologyStore
         return index;
     }
 
-    private int Rank(CodeSystemEntry entry) => PrecedenceOf(entry.Origin.Source);
+    private int Rank(CodeSystemEntry entry) => PrecedenceOf(entry.Origin.Source, entry.Url);
 
-    private int Rank(ValueSetEntry entry) => PrecedenceOf(entry.Origin.Source);
+    private int Rank(ValueSetEntry entry) => PrecedenceOf(entry.Origin.Source, entry.Url);
 
-    private int Rank(ConceptMapEntry entry) => PrecedenceOf(entry.Origin.Source);
+    private int Rank(ConceptMapEntry entry) => PrecedenceOf(entry.Origin.Source, entry.Url);
+
+    private int LoadOrderOf(TerminologySourceInfo source)
+    {
+        for (int index = 0; index < Sources.Count; index++)
+        {
+            if (ReferenceEquals(Sources[index].Info, source))
+            {
+                return index;
+            }
+        }
+
+        return int.MaxValue;
+    }
 }

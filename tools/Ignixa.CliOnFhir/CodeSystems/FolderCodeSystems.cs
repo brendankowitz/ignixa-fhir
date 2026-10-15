@@ -27,8 +27,10 @@ public static partial class FolderCodeSystems
 
     public const string Basis = "Every Coding in the catalogued resources' JSON (an object with a string code and a string system, or any object "
         + "with a string code in a 'coding' array), including extensions and contained resources, and every Quantity with a unit system; one coding per "
-        + "occurrence. Values of FHIR code elements with a FHIR-defined binding (Patient.gender, Observation.status, ...) carry no system in the data and "
-        + "are listed separately under implicitCodes, by element, not attributed to a system. No search index is used.";
+        + "occurrence. Values of the FHIR code elements that resources and their backbone elements declare with a FHIR-defined binding (Patient.gender, "
+        + "Observation.status, Patient.contact.gender, ...) carry no system in the data and are listed separately under implicitCodes, by element, not "
+        + "attributed to a system. Code elements of datatypes (HumanName.use, ContactPoint.system, Address.use, Identifier.use, Quantity.comparator, "
+        + "Narrative.status, ...) are not counted. No search index is used.";
 
     private const string PatternCheck = "pattern only (http://hl7.org/fhir/CodeSystem/<name> or http://hl7.org/fhir/ValueSet/<name> used as a system)";
     private const string StoreCheck = "loaded terminology (the session's CodeSystems), then the pattern";
@@ -74,11 +76,11 @@ public static partial class FolderCodeSystems
     }
 
     /// <summary>The ten most used systems, for <c>folder_inspect</c>.</summary>
-    public static IReadOnlyList<CodeSystemBrief> Summary(FolderSession session, int limit = 10)
+    public static IReadOnlyList<CodeSystemBrief> Summary(FolderSession session, CancellationToken cancellationToken, int limit = 10)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        return [.. CodeSystemInventories.For(session.Catalog, session.Schema.Version).Systems
+        return [.. CodeSystemInventories.For(session.Catalog, session.Schema.Version, cancellationToken).Systems
             .Take(limit)
             .Select(tally => new CodeSystemBrief(SafeSystem(tally.System), WellKnownSystems.Identify(tally.System).Name, tally.Codes.Count, tally.Codings))];
     }
@@ -88,7 +90,7 @@ public static partial class FolderCodeSystems
         List<IssueItem> issues = [];
         int pageSize = Paging.Resolve(count, offset, issues);
         int topCodes = Top(top, issues);
-        CodeSystemInventory inventory = CodeSystemInventories.For(session.Catalog, session.Schema.Version);
+        CodeSystemInventory inventory = CodeSystemInventories.For(session.Catalog, session.Schema.Version, cancellationToken);
         TerminologyState? terminology = session.Terminology.Current is { IsUnusable: false } loaded ? loaded : null;
 
         List<OmittedItem> omitted = [];
@@ -153,20 +155,14 @@ public static partial class FolderCodeSystems
         }
 
         string? suggested = null;
-        if (FhirLookalike().Match(tally.System) is { Success: true } lookalike)
+        if (FhirLookalike().Match(tally.System) is { Success: true } lookalike && !Defined(terminology, tally.System))
         {
-            suggested = $"http://hl7.org/fhir/{lookalike.Groups["name"].Value}";
-            CodeSystemResolution? actual = terminology?.Store.ResolveCodeSystem(tally.System, version: null);
-            bool known = actual is not null && (actual.Entry is not null || actual.Stubs.Count > 0 || actual.LoadedVersions.Count > 0);
-            bool suggestionKnown = terminology?.Store.ResolveCodeSystem(suggested, version: null) is { Entry: not null };
-            if (known)
-            {
-                suggested = null;
-            }
-            else
-            {
-                flags.Add(suggestionKnown ? "not-a-fhir-canonical" : "possibly-not-a-fhir-canonical");
-            }
+            // A suggestion is only ever a canonical known to exist: one the loaded terminology defines, or (with none
+            // loaded) a well-known system. The name alone does not make http://hl7.org/fhir/<name> a code system.
+            string candidate = $"http://hl7.org/fhir/{lookalike.Groups["name"].Value}";
+            bool exists = terminology is null ? WellKnownSystems.Identify(candidate) is { Kind: "external", PreferredUri: null } : Defined(terminology, candidate);
+            suggested = exists ? candidate : null;
+            flags.Add(terminology is not null && exists ? "not-a-fhir-canonical" : "possibly-not-a-fhir-canonical");
         }
 
         if (tally.Elements.Count > MaxElements)
@@ -189,6 +185,10 @@ public static partial class FolderCodeSystems
             [.. tally.Codes.Take(top).Select(code => new CodeCount($"{system}|{TerminologyNames.Code(code.Code)}", code.Count))],
             terminology is null ? null : Status(terminology.Store, tally, txServer));
     }
+
+    private static bool Defined(TerminologyState? terminology, string system) =>
+        terminology?.Store.ResolveCodeSystem(system, version: null) is { } resolution
+        && (resolution.Entry is not null || resolution.Stubs.Count > 0 || resolution.LoadedVersions.Count > 0);
 
     private static SystemTerminologyStatus Status(TerminologyStore store, SystemTally tally, bool txServer)
     {
@@ -219,10 +219,10 @@ public static partial class FolderCodeSystems
             yield return new IssueItem("information", "non-preferred-system-uri", $"{aliases.Count} systems on this page are written with a non-preferred identifier of a well-known system: {string.Join("; ", aliases.Take(5).Select(system => $"{system.System} is {system.Name}, preferred {system.PreferredUri}"))}.", Location: null);
         }
 
-        List<CodeSystemUsage> lookalikes = [.. systems.Where(system => system.SuggestedCanonical is not null)];
+        List<CodeSystemUsage> lookalikes = [.. systems.Where(system => system.Flags.Contains("not-a-fhir-canonical") || system.Flags.Contains("possibly-not-a-fhir-canonical"))];
         if (lookalikes.Count > 0)
         {
-            yield return new IssueItem("information", "not-a-fhir-canonical", $"{lookalikes.Count} systems on this page look like FHIR-defined code systems but are not their canonical: {string.Join("; ", lookalikes.Take(5).Select(system => $"{system.System} (probably {system.SuggestedCanonical}; {(system.Flags.Contains("not-a-fhir-canonical") ? "checked against loaded terminology" : "by pattern only, load the core package to check")})"))}.", Location: null);
+            yield return new IssueItem("information", "not-a-fhir-canonical", $"{lookalikes.Count} systems on this page look like FHIR-defined code systems but are not a canonical the loaded terminology defines: {string.Join("; ", lookalikes.Take(5).Select(Lookalike))}.", Location: null);
         }
 
         if (inventory.WithoutSystem.Count > 0)
@@ -235,6 +235,13 @@ public static partial class FolderCodeSystems
             yield return new IssueItem("information", "invalid-value", $"{digested} system URIs on this page are not http(s) or urn URIs without whitespace or control characters, so they are shown as digests ('~' and 16 hex digits).", Location: null);
         }
     }
+
+    private static string Lookalike(CodeSystemUsage system) => (system.SuggestedCanonical, system.Flags.Contains("not-a-fhir-canonical")) switch
+    {
+        ({ } suggested, true) => $"{system.System} (probably {suggested}, which the loaded terminology defines)",
+        ({ } suggested, false) => $"{system.System} (probably the well-known {suggested}; by pattern only, load the core package to check)",
+        (null, _) => $"{system.System} (by pattern only; no canonical to suggest is known{(system.Terminology is null ? ", load the core package to check" : string.Empty)})",
+    };
 
     // Built from structure only: tool names, paging, and package ids of the HL7 packages that carry FHIR and HL7 Terminology systems.
     private static List<NextCall> Next(List<CodeSystemUsage> systems, TerminologyState? terminology, FolderSession session, int offset, int pageSize, int total, int top)

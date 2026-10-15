@@ -13,7 +13,9 @@ namespace Ignixa.CliOnFhir.Terminology;
 /// <c>descendent-of</c>, <c>is-not-a</c>, <c>generalizes</c>, <c>child-of</c> on <c>concept</c>, and <c>=</c>, <c>in</c>
 /// and <c>exists</c> on a concept property. Anything that cannot be evaluated over loaded content (another filter, a system
 /// or ValueSet not loaded, content not complete, a cycle) makes the expansion incomplete, with an issue saying which.
-/// Results are cached on the snapshot.
+/// Include cycles are found on the static include graph (<see cref="ValueSetIncludeGraph"/>) before anything is expanded,
+/// and no include inside a cycle is followed, so every ValueSet in a request is expanded once and the result is the same
+/// whichever ValueSet of a cycle is asked for first. Results are cached on the snapshot.
 /// </summary>
 internal sealed class ValueSetExpander(TerminologyStore store)
 {
@@ -22,22 +24,53 @@ internal sealed class ValueSetExpander(TerminologyStore store)
 
     public const string TooLargeCode = "expansion-too-large";
 
-    /// <summary>The expansion of <paramref name="valueSet"/>, computed once per snapshot.</summary>
-    public ValueSetExpansion Expand(ValueSetEntry valueSet)
+    public const string CycleCode = "value-set-cycle";
+
+    /// <summary>
+    /// The expansion of <paramref name="valueSet"/>, computed once per snapshot. A cancelled computation is not kept, so
+    /// the next request computes it afresh.
+    /// </summary>
+    public ValueSetExpansion Expand(ValueSetEntry valueSet, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(valueSet);
 
-        // Only whole requests are cached. A nested ValueSet is expanded afresh with the caller's own stack (below), so no
-        // cached factory ever holds another thread's stack, which is what lets the cycle check see every include path.
-        return store.Expansions.GetOrAdd(
-            (valueSet.Url, valueSet.Version),
-            _ => new Lazy<ValueSetExpansion>(() => Compute(valueSet, [valueSet.Url]), LazyThreadSafetyMode.ExecutionAndPublication))
-        .Value;
+        (string Url, string? Version) key = (valueSet.Url, valueSet.Version);
+        while (true)
+        {
+            Lazy<ValueSetExpansion> expansion = store.Expansions.GetOrAdd(
+                key,
+                _ => new Lazy<ValueSetExpansion>(() => ExpandRequest(valueSet, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication));
+            try
+            {
+                return expansion.Value;
+            }
+            catch (OperationCanceledException ex) when (ex.CancellationToken.IsCancellationRequested)
+            {
+                // The Lazy keeps the cancellation; drop it. When it was another caller's, this caller computes it itself. A
+                // failure, or an OperationCanceledException no token asked for, is not retried.
+                store.Expansions.TryRemove(KeyValuePair.Create(key, expansion));
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+        }
     }
 
-    private ValueSetExpansion Compute(ValueSetEntry valueSet, IReadOnlyList<string> stack)
+    // Every ValueSet the request reaches is expanded once, in dependency order, after the cycles are found; a ValueSet
+    // included along many paths (a diamond) is looked up, not recomputed.
+    private ValueSetExpansion ExpandRequest(ValueSetEntry valueSet, CancellationToken cancellationToken)
     {
-        var context = new ExpansionContext(valueSet, stack);
+        ValueSetIncludeGraph graph = ValueSetIncludeGraph.Build(store, valueSet, cancellationToken);
+        var expanded = new Dictionary<ValueSetEntry, ValueSetExpansion>(ReferenceEqualityComparer.Instance);
+        foreach (ValueSetEntry entry in graph.DependenciesFirst)
+        {
+            expanded[entry] = Compute(new ExpansionContext(entry, graph, expanded, cancellationToken));
+        }
+
+        return expanded[valueSet];
+    }
+
+    private ValueSetExpansion Compute(ExpansionContext context)
+    {
+        ValueSetEntry valueSet = context.ValueSet;
         context.Used.Add(valueSet.Origin);
         if (!valueSet.HasCompose)
         {
@@ -77,6 +110,7 @@ internal sealed class ValueSetExpander(TerminologyStore store)
 
     private ExpansionBuilder Evaluate(ValueSetRule rule, ExpansionContext context, string part)
     {
+        context.CancellationToken.ThrowIfCancellationRequested();
         List<ExpansionBuilder> sets = [];
         if (rule.System is { } system)
         {
@@ -162,6 +196,7 @@ internal sealed class ValueSetExpander(TerminologyStore store)
 
         foreach (Concept concept in selected)
         {
+            context.CancellationToken.ThrowIfCancellationRequested();
             codes.Add(new ExpansionCode(codeSystem.Url, codeSystem.Version, concept.Code, concept.Display, concept.Inactive, concept.NotSelectable));
             ThrowIfTooLarge(codes.Count, context.ValueSet);
         }
@@ -208,13 +243,16 @@ internal sealed class ValueSetExpander(TerminologyStore store)
             return new ExpansionBuilder();
         }
 
-        if (context.Stack.Contains(nested.Url, StringComparer.Ordinal))
+        if (context.Graph.IsCycleEdge(context.ValueSet, nested))
         {
-            context.Incomplete.Add(Problem(context, "value-set-cycle", $"ValueSet {Name(nested)} includes itself through ValueSet {Name(context.ValueSet)}"));
+            string cycle = ReferenceEquals(nested, context.ValueSet)
+                ? $"ValueSet {Name(nested)} includes itself in a compose.{part}"
+                : $"ValueSet {Name(nested)}, used by a compose.{part} of ValueSet {Name(context.ValueSet)}, includes it in turn (directly or through other ValueSets)";
+            context.Incomplete.Add(Problem(context, CycleCode, $"{cycle}, so that include is not followed"));
             return new ExpansionBuilder();
         }
 
-        ValueSetExpansion expansion = Compute(nested, [.. context.Stack, nested.Url]);
+        ValueSetExpansion expansion = context.Expanded[nested];
         context.Used.AddRange(expansion.Used);
         context.Incomplete.AddRange(expansion.Incomplete);
         context.Notes.AddRange(expansion.Notes);

@@ -44,7 +44,7 @@ public static class TermValidate
                 string? checkedVersion = TermArguments.Optional(version, "version");
                 TerminologyAnswer<TermValidateFacts> local = checkedValueSet is null
                     ? AgainstSystem(state.Store, checkedSystem!, checkedCode, checkedDisplay, checkedVersion)
-                    : AgainstValueSet(state.Store, checkedValueSet, checkedSystem, checkedCode, checkedDisplay, checkedVersion);
+                    : AgainstValueSet(state.Store, checkedValueSet, checkedSystem, checkedCode, checkedDisplay, checkedVersion, cancellationToken);
                 return session.Terminology.Options.TxServer is { } tx && TxFallback.ValidationMissing(local.Facts.Reason)
                     ? await TxAnswers.ValidateAsync(tx, checkedCode, checkedSystem, checkedDisplay, checkedValueSet, checkedVersion, TxFallback.Why(local.Absent, local.Facts.Reason), session.UtcNow(), cancellationToken)
                     : local;
@@ -73,7 +73,7 @@ public static class TermValidate
         return new TerminologyAnswer<TermValidateFacts>(facts, query.Evidence(), [], query.Absent(store) is { } absent ? [absent] : [], issues);
     }
 
-    internal static TerminologyAnswer<TermValidateFacts> AgainstValueSet(TerminologyStore store, string valueSet, string? system, string code, string? display, string? version)
+    internal static TerminologyAnswer<TermValidateFacts> AgainstValueSet(TerminologyStore store, string valueSet, string? system, string code, string? display, string? version, CancellationToken cancellationToken)
     {
         CanonicalResolution<ValueSetEntry> resolution = store.ResolveValueSet(valueSet);
         if (resolution.Entry is not { } entry)
@@ -82,7 +82,7 @@ public static class TermValidate
             return new TerminologyAnswer<TermValidateFacts>(notLoaded, [], [], [TermExpand.NotLoadedAbsent(store, resolution)], []);
         }
 
-        ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry);
+        ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry, cancellationToken);
 
         // The answer used the ValueSet and, through its expansion, every CodeSystem and ValueSet it read: their notes
         // (conflicts, other loaded versions, codes taken unchecked) apply to it.
@@ -192,10 +192,11 @@ public static class TermValidate
 
     private static IEnumerable<IssueItem> Optional(IssueItem? issue) => issue is null ? [] : [issue];
 
-    private static IssueItem MismatchIssue(string system, string code, CodeSystemEntry? entry) => new(
+    /// <summary>The display-mismatch warning; the remote answer passes the system it asked about and no entry.</summary>
+    internal static IssueItem MismatchIssue(string? system, string code, CodeSystemEntry? entry) => new(
         "warning",
         DisplayMismatch,
-        $"The display given for {TerminologyNames.Coded(system, code)} matches neither its display nor any designation{(entry is null ? string.Empty : $" in {TerminologyNames.Canonical(entry.Url, entry.Version)}")}, so the code is not valid with it ('facts.result' is invalid); 'facts.display' has the expected one.",
+        $"The display given for {(system is null ? TerminologyNames.Code(code) : TerminologyNames.Coded(system, code))} matches neither its display nor any designation{(entry is null ? string.Empty : $" in {TerminologyNames.Canonical(entry.Url, entry.Version)}")}, so the code is not valid with it ('facts.result' is invalid); 'facts.display' has the expected one.",
         entry?.Origin.ToEvidence().File);
 
     private static bool Same(string left, string right) => string.Equals(TextFolding.Fold(left), TextFolding.Fold(right), StringComparison.Ordinal);

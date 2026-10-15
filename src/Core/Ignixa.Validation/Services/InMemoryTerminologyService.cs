@@ -322,7 +322,7 @@ public class InMemoryTerminologyService : ITerminologyService
     /// $subsumes operation is not supported by the in-memory implementation: its value sets are flat expansions with no
     /// hierarchy, so it cannot tell related codes from unrelated ones.
     /// </summary>
-    /// <returns>A task faulted with <see cref="NotSupportedException"/>; never an outcome, since "not-subsumed" would assert
+    /// <returns>A task faulted with <see cref="TerminologyOperationNotSupportedException"/> (HTTP 501); never an outcome, since "not-subsumed" would assert
     /// a relationship it never checked.</returns>
     public Task<SubsumesResult> SubsumesAsync(
         SubsumesParameters parameters,
@@ -330,7 +330,7 @@ public class InMemoryTerminologyService : ITerminologyService
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
-        return Task.FromException<SubsumesResult>(new NotSupportedException(
+        return Task.FromException<SubsumesResult>(new TerminologyOperationNotSupportedException(
             "$subsumes is not supported by the in-memory terminology service: it holds no code system hierarchy. Use a terminology service backed by imported CodeSystems."));
     }
 

@@ -81,6 +81,7 @@ internal static partial class CodingWalker
 
     private static string Segment(string name) => ElementName().IsMatch(name) ? name : FhirIds.Digest(name);
 
-    [GeneratedRegex("^[A-Za-z][A-Za-z0-9_]{0,63}$")]
+    // An element name, or a primitive's extension holder: '_' then an element name (Patient._gender).
+    [GeneratedRegex("^_?[A-Za-z][A-Za-z0-9_]{0,63}$")]
     private static partial Regex ElementName();
 }

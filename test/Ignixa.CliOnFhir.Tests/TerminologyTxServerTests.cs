@@ -301,24 +301,27 @@ public class TerminologyTxServerTests
         tx.Requests[^1].Query.ShouldBe("?system=http%3A%2F%2Fsnomed.info%2Fsct&code=44054006&targetsystem=http%3A%2F%2Fhl7.org%2Ffhir%2Fsid%2Ficd-10");
     }
 
-    // Regression (Task 7 review, item 4): at 96d6150 a remote 'disjoint' match was counted as mapped.
-    [Fact]
-    public async Task GivenOnlyADisjointRemoteMatch_WhenTranslated_ThenTheOutcomeIsNotMapped()
+    // Regression (Task 7 review, item 4): at 96d6150 a remote 'disjoint' match was counted as mapped. The 'unmatched' case
+    // (a match with no concept; Task 7 fix round 2) is a guard: it was already not mapped at 4073a28.
+    [Theory]
+    [InlineData("disjoint", """,{"name":"concept","valueCoding":{"system":"http://hl7.org/fhir/sid/icd-10","code":"Z00"}}""")]
+    [InlineData("unmatched", "")]
+    public async Task GivenOnlyARemoteMatchThatMapsToNothing_WhenTranslated_ThenTheOutcomeIsNotMapped(string equivalence, string concept)
     {
         using var folder = new TestFolder();
         using var store = new TestFolder();
         (FolderSession session, _) = Open(folder, store, request => request.RequestUri!.AbsolutePath.EndsWith("/metadata", StringComparison.Ordinal) ? Fhir("""{"resourceType":"CapabilityStatement","fhirVersion":"4.0.1"}""") : Fhir(Parameters(
             """{"name":"result","valueBoolean":true}""",
-            """{"name":"match","part":[{"name":"equivalence","valueCode":"disjoint"},{"name":"concept","valueCoding":{"system":"http://hl7.org/fhir/sid/icd-10","code":"Z00"}}]}""")));
+            $$"""{"name":"match","part":[{"name":"equivalence","valueCode":"{{equivalence}}"}{{concept}}]}""")));
 
         JsonNode result = Json(await TermTranslate.TranslateAsync(session, Snomed, "44054006", null, null, CancellationToken.None));
 
         ((string)result["facts"]!["outcome"]!).ShouldBe("not-mapped");
-        ((string)result["facts"]!["translations"]![0]!["equivalence"]!).ShouldBe("disjoint");
+        ((string)result["facts"]!["translations"]![0]!["equivalence"]!).ShouldBe(equivalence);
     }
 
     // Regression (Task 7 review, ruling 7): at 96d6150 a remote display rejection was 'rejected-by-tx-server' while the local
-    // answer for the same case said valid.
+    // answer for the same case said valid. The display-mismatch warning (Task 7 fix round 2) fails at 4073a28, which had none.
     [Fact]
     public async Task GivenTheServerRejectsTheDisplay_WhenValidated_ThenTheReasonIsDisplayMismatchLikeTheLocalAnswer()
     {
@@ -334,6 +337,9 @@ public class TerminologyTxServerTests
         ((string)result["facts"]!["reason"]!).ShouldBe("display-mismatch");
         ((string)result["facts"]!["display"]!).ShouldBe("Diabetes mellitus");
         ((bool)result["facts"]!["displayMatches"]!).ShouldBeFalse();
+        JsonNode mismatch = result["issues"]!.AsArray().Single(issue => (string)issue!["code"]! == "display-mismatch")!;
+        ((string)mismatch["severity"]!).ShouldBe("warning");
+        ((string)mismatch["diagnostics"]!).ShouldNotContain("Diabetes mellitus", Case.Sensitive);
     }
 
     [Theory]

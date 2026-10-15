@@ -22,7 +22,7 @@ namespace Ignixa.CliOnFhir.Tests;
 
 /// <summary>
 /// folder_code_systems and cli-on-fhir systems (user request, Task 7). New behavior: 96d6150 has no such tool (verified: the
-/// file does not compile there).
+/// file does not compile there). Tests added in Task 7 fix round 2 say whether they fail at 4073a28 (regression) or are guards.
 /// </summary>
 [Collection("Console")]
 public class CodeSystemsToolTests
@@ -110,7 +110,7 @@ public class CodeSystemsToolTests
         ((string)oid["preferredUri"]!).ShouldBe(Snomed);
         oid["flags"]!.AsArray().Select(flag => (string)flag!).ShouldBe(["non-preferred-uri"]);
         JsonNode lookalike = System(result, "http://hl7.org/fhir/CodeSystem/encounter-class");
-        ((string)lookalike["suggestedCanonical"]!).ShouldBe("http://hl7.org/fhir/encounter-class");
+        lookalike["suggestedCanonical"].ShouldBeNull();
         lookalike["flags"]!.AsArray().Select(flag => (string)flag!).ShouldBe(["possibly-not-a-fhir-canonical"]);
         result["facts"]!["codingsWithoutSystem"]!.AsArray().Select(element => ((string)element!["element"]!, (int)element["count"]!)).ShouldBe([("Observation.code", 1)]);
         result["facts"]!["systems"]!.AsArray().Select(system => (string)system!["system"]!).ShouldContain(system => system.StartsWith('~'));
@@ -172,6 +172,81 @@ public class CodeSystemsToolTests
         JsonNode system = System(result, "http://hl7.org/fhir/CodeSystem/real");
         system["flags"]!.AsArray().Select(flag => (string)flag!).ShouldBe(["not-a-fhir-canonical"]);
         ((string)result["facts"]!["fhirCanonicalCheck"]!).ShouldStartWith("loaded terminology");
+    }
+
+    // Regression (F6): at 4073a28 http://hl7.org/fhir/<name> was suggested by pattern even when the loaded terminology
+    // showed it does not exist.
+    [Fact]
+    public async Task GivenLoadedTerminologyWithoutTheMatchingCanonical_WhenAFhirLookalikeIsListed_ThenNothingIsSuggested()
+    {
+        using var folder = new TestFolder();
+        using var store = new TestFolder();
+        folder.Write("data.ndjson", """{"resourceType":"Observation","id":"o1","status":"final","code":{"coding":[{"system":"http://hl7.org/fhir/ValueSet/observation-codes","code":"x"}]}}""" + "\n");
+        FolderSession session = OpenWithPackage(folder, store);
+
+        JsonNode result = Json(await new FolderTools(session).FolderCodeSystems(withTerminology: true));
+
+        JsonNode system = System(result, "http://hl7.org/fhir/ValueSet/observation-codes");
+        system["suggestedCanonical"].ShouldBeNull();
+        system["flags"]!.AsArray().Select(flag => (string)flag!).ShouldBe(["possibly-not-a-fhir-canonical"]);
+        result.ToJsonString().ShouldNotContain("http://hl7.org/fhir/observation-codes", Case.Sensitive);
+    }
+
+    // Guard (F6): with no terminology loaded a well-known canonical is still suggested, as at 4073a28.
+    [Fact]
+    public async Task GivenNoTerminology_WhenALookalikeOfAWellKnownSystemIsListed_ThenTheWellKnownCanonicalIsSuggested()
+    {
+        using TestFolder folder = new TestFolder().Write("data.ndjson", """{"resourceType":"Condition","id":"c1","code":{"coding":[{"system":"http://hl7.org/fhir/CodeSystem/ndfrt","code":"N0000000001"}]}}""" + "\n");
+
+        JsonNode result = await List(Plain(folder));
+
+        JsonNode system = System(result, "http://hl7.org/fhir/CodeSystem/ndfrt");
+        ((string)system["suggestedCanonical"]!).ShouldBe("http://hl7.org/fhir/ndfrt");
+        system["flags"]!.AsArray().Select(flag => (string)flag!).ShouldBe(["possibly-not-a-fhir-canonical"]);
+    }
+
+    // Regression (F6): at 4073a28 the valid FHIR name '_gender' (a primitive's extensions) was shown as a digest.
+    [Fact]
+    public async Task GivenACodingInAPrimitivesExtension_WhenListed_ThenItsElementIsNamedWithTheUnderscore()
+    {
+        using TestFolder folder = new TestFolder().Write("data.ndjson", """{"resourceType":"Patient","id":"p1","gender":"female","_gender":{"extension":[{"url":"http://example.org/x","valueCoding":{"system":"http://loinc.org","code":"9-9"}}]}}""" + "\n");
+
+        JsonNode result = await List(Plain(folder));
+
+        System(result, Loinc)["elements"]!.AsArray().Select(element => (string)element!["element"]!).ShouldBe(["Patient._gender.extension.valueCoding"]);
+    }
+
+    // Regression (F3): at 4073a28 the basis claimed every code element with a FHIR binding was listed. Datatype code
+    // elements are still not counted (guarded below); the basis now says so.
+    [Fact]
+    public async Task GivenDatatypeCodeElements_WhenListed_ThenTheyAreNotCountedAndTheBasisSaysSo()
+    {
+        using TestFolder folder = new TestFolder().Write("data.ndjson", """{"resourceType":"Patient","id":"p1","gender":"female","name":[{"use":"official","family":"X"}],"telecom":[{"system":"phone","value":"555","use":"home"}],"text":{"status":"generated","div":"<div xmlns=\"http://www.w3.org/1999/xhtml\">x</div>"}}""" + "\n");
+
+        JsonNode result = await List(Plain(folder));
+
+        string basis = (string)result["facts"]!["basis"]!;
+        basis.ShouldContain("Code elements of datatypes (HumanName.use, ContactPoint.system", Case.Sensitive);
+        basis.ShouldContain("are not counted", Case.Sensitive);
+        result["facts"]!["implicitCodes"]!.AsArray().Select(element => (string)element!["element"]!).ShouldBe(["Patient.gender"]);
+        result["facts"]!["systems"]!.AsArray().ShouldBeEmpty();
+    }
+
+    // Regression (F7): at 4073a28 the inventory build took no token (this does not compile there), so a cancelled request
+    // still read every file. A cancelled build is not cached: the next request builds it.
+    [Fact]
+    public async Task GivenACancelledRequest_WhenTheInventoryIsBuilt_ThenItIsCancelledAndTheNextRequestBuildsIt()
+    {
+        using TestFolder folder = Ndjson();
+        FolderSession session = Plain(folder);
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        Should.Throw<OperationCanceledException>(() => CodeSystemInventories.For(session.Catalog, session.Schema.Version, cancelled.Token));
+        CodeSystemInventory inventory = await Task.Run(() => CodeSystemInventories.For(session.Catalog, session.Schema.Version, CancellationToken.None)).WaitAsync(TimeSpan.FromSeconds(10));
+
+        inventory.ResourcesRead.ShouldBe(Resources.Length);
+        inventory.Systems.Select(tally => tally.System).ShouldContain(Loinc);
     }
 
     [Fact]

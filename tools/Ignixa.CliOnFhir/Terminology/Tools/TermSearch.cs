@@ -22,11 +22,11 @@ public static class TermSearch
 
         return TerminologyCall.RunAsync(
             session,
-            state => Answer(state.Store, TermArguments.Required(text, "text"), TermArguments.Optional(system, "system"), TermArguments.Optional(valueSet, "valueSet"), count, offset),
+            state => Answer(state.Store, TermArguments.Required(text, "text"), TermArguments.Optional(system, "system"), TermArguments.Optional(valueSet, "valueSet"), count, offset, cancellationToken),
             cancellationToken);
     }
 
-    private static TerminologyAnswer<TermSearchFacts> Answer(TerminologyStore store, string text, string? system, string? valueSet, int? count, int offset)
+    private static TerminologyAnswer<TermSearchFacts> Answer(TerminologyStore store, string text, string? system, string? valueSet, int? count, int offset, CancellationToken cancellationToken)
     {
         List<IssueItem> issues = [];
         int pageSize = Paging.Resolve(count, offset, issues);
@@ -36,7 +36,7 @@ public static class TermSearch
             throw ToolRequestException.Error("invalid-parameter", "'text' has nothing to match once whitespace is removed.");
         }
 
-        (List<SearchCandidate> candidates, int systems, string outcome, AbsentItem? notLoaded, bool? complete, List<EvidenceItem> sourceEvidence) = Candidates(store, system, valueSet, issues);
+        (List<SearchCandidate> candidates, int systems, string outcome, AbsentItem? notLoaded, bool? complete, List<EvidenceItem> sourceEvidence) = Candidates(store, system, valueSet, issues, cancellationToken);
         List<(SearchCandidate Candidate, int Rank, string MatchedOn, string? MatchedText)> matches = [];
         foreach (SearchCandidate candidate in candidates)
         {
@@ -142,7 +142,7 @@ public static class TermSearch
         _ => null,
     };
 
-    private static (List<SearchCandidate> Candidates, int Systems, string Outcome, AbsentItem? NotLoaded, bool? Complete, List<EvidenceItem> Evidence) Candidates(TerminologyStore store, string? system, string? valueSet, List<IssueItem> issues)
+    private static (List<SearchCandidate> Candidates, int Systems, string Outcome, AbsentItem? NotLoaded, bool? Complete, List<EvidenceItem> Evidence) Candidates(TerminologyStore store, string? system, string? valueSet, List<IssueItem> issues, CancellationToken cancellationToken)
     {
         if (valueSet is not null)
         {
@@ -152,7 +152,7 @@ public static class TermSearch
                 return ([], 0, TermExpand.ValueSetNotLoaded, TermExpand.NotLoadedAbsent(store, resolution), null, []);
             }
 
-            ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry);
+            ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry, cancellationToken);
             if (resolution.OtherVersions is { } otherValueSets)
             {
                 issues.Add(otherValueSets);

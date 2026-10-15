@@ -28,7 +28,7 @@ public static class TermExpand
             {
                 string checkedValueSet = TermArguments.Required(valueSet, "valueSet");
                 string? checkedFilter = TermArguments.Optional(filter, "filter");
-                TerminologyAnswer<TermExpandFacts> local = Answer(state.Store, checkedValueSet, checkedFilter, count, offset);
+                TerminologyAnswer<TermExpandFacts> local = Answer(state.Store, checkedValueSet, checkedFilter, count, offset, cancellationToken);
                 bool missing = local.Facts.Outcome != Expanded || local.Facts.Complete == false;
                 return session.Terminology.Options.TxServer is { } tx && missing
                     ? await TxAnswers.ExpandAsync(tx, checkedValueSet, checkedFilter, Patients.Paging.Resolve(count, offset, []), offset, TxFallback.Why(local.Absent, local.Facts.Outcome == Expanded ? ValueSetExpansion.IncompleteCode : local.Facts.Outcome), cancellationToken)
@@ -47,7 +47,7 @@ public static class TermExpand
         $"The expansion of ValueSet {TerminologyNames.Canonical(expansion.ValueSet.Url, expansion.ValueSet.Version)} over the loaded terminology is incomplete: {expansion.Incomplete.Count} rules could not be evaluated (the issues that follow say which), so codes may be missing from it.",
         expansion.ValueSet.Origin.ToEvidence().File);
 
-    private static TerminologyAnswer<TermExpandFacts> Answer(TerminologyStore store, string valueSet, string? filter, int? count, int offset)
+    private static TerminologyAnswer<TermExpandFacts> Answer(TerminologyStore store, string valueSet, string? filter, int? count, int offset, CancellationToken cancellationToken)
     {
         List<IssueItem> issues = [];
         int pageSize = Paging.Resolve(count, offset, issues);
@@ -59,7 +59,7 @@ public static class TermExpand
             return new TerminologyAnswer<TermExpandFacts>(notLoaded, [], [], [NotLoadedAbsent(store, resolution)], issues);
         }
 
-        ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry);
+        ValueSetExpansion expansion = new ValueSetExpander(store).Expand(entry, cancellationToken);
         if (resolution.OtherVersions is { } others)
         {
             issues.Add(others);

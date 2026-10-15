@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using Ignixa.Api.Middleware;
+using Ignixa.Validation.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
@@ -30,14 +31,15 @@ public class FhirExceptionMiddlewareTests
         IssueCode(body).ShouldBe("too-costly");
     }
 
-    // Regression: at 96d6150 a NotSupportedException (the in-memory terminology service's $subsumes) became a 500 exception.
+    // Regression: at 96d6150 the in-memory terminology service's unsupported $subsumes became a 500 exception; at 4073a28
+    // it was a plain NotSupportedException, so this does not compile there (no dedicated type).
     [Fact]
-    public async Task GivenAnOperationTheServiceDoesNotSupport_WhenHandled_ThenRespondsNotImplementedWithNotSupportedOutcome()
+    public async Task GivenAnOperationTheTerminologyServiceDoesNotSupport_WhenHandled_ThenRespondsNotImplementedWithNotSupportedOutcome()
     {
         // Arrange
         var (context, body) = CreateContext();
         var middleware = new FhirExceptionMiddleware(
-            _ => throw new NotSupportedException("$subsumes is not supported by the in-memory terminology service."),
+            _ => throw new TerminologyOperationNotSupportedException("$subsumes is not supported by the in-memory terminology service."),
             NullLogger<FhirExceptionMiddleware>.Instance);
 
         // Act
@@ -46,6 +48,25 @@ public class FhirExceptionMiddlewareTests
         // Assert
         context.Response.StatusCode.ShouldBe(StatusCodes.Status501NotImplemented);
         IssueCode(body).ShouldBe("not-supported");
+    }
+
+    // Regression: at 4073a28 every NotSupportedException became 501, so a fault inside the server (a stream that cannot
+    // seek) read as an unsupported operation.
+    [Fact]
+    public async Task GivenANotSupportedExceptionFromTheRuntime_WhenHandled_ThenRespondsInternalServerErrorWithExceptionOutcome()
+    {
+        // Arrange
+        var (context, body) = CreateContext();
+        var middleware = new FhirExceptionMiddleware(
+            _ => throw new NotSupportedException("Specified method is not supported."),
+            NullLogger<FhirExceptionMiddleware>.Instance);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status500InternalServerError);
+        IssueCode(body).ShouldBe("exception");
     }
 
     [Fact]
