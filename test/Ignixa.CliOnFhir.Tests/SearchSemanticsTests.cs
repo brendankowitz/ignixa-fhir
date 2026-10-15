@@ -176,7 +176,7 @@ public class SearchSemanticsTests
     }
 
     [Fact]
-    public void GivenFilterParameter_WhenSearched_ThenTheCallFailsNamingTheParameterInsteadOfThrowing()
+    public void GivenFilterParameter_WhenSearched_ThenTheCallFailsNamingTheParameterAndNothingElse()
     {
         using TestFolder folder = Clinic();
 
@@ -184,9 +184,55 @@ public class SearchSemanticsTests
 
         envelope.Facts.ShouldBeNull();
         IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
-        issue.Code.ShouldBe("invalid-search-request");
+        issue.Code.ShouldBe("search-not-supported");
         issue.Diagnostics.ShouldContain("_filter=name eq x");
         issue.Diagnostics.ShouldNotContain("family");
+    }
+
+    [Theory]
+    [InlineData("_text=Smith", "_text")]
+    [InlineData("_content=Smith", "_content")]
+    [InlineData("_query=q", "_query")]
+    [InlineData("_list=L1", "_list")]
+    [InlineData("_list:exact=L1", "_list")]
+    [InlineData("_has:Observation:subject:code=x", "_has")]
+    [InlineData("_type=Observation", "_type")]
+    [InlineData("_type=Patient,Observation", "_type")]
+    [InlineData("_type:not=Patient", "_type")]
+    [InlineData("ct=abc", "continuation")]
+    [InlineData("family=Smith&_text=Smith", "_text")]
+    public void GivenStandardFilterTheToolDoesNotApply_WhenSearched_ThenTheCallFailsInsteadOfReturningEverything(string query, string expected)
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", query));
+
+        envelope.Facts.ShouldBeNull();
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        issue.Severity.ShouldBe("error");
+        issue.Code.ShouldBe("search-not-supported");
+        issue.Diagnostics.ShouldContain(expected);
+    }
+
+    [Theory]
+    [InlineData("_format=json")]
+    [InlineData("_pretty=true")]
+    [InlineData("_contained=true")]
+    [InlineData("_containedType=contained")]
+    [InlineData("_type=Patient")]
+    [InlineData("_foo=1")]
+    [InlineData("nonsense=1")]
+    public void GivenParameterOnTheAllowList_WhenSearched_ThenTheResultsAreUnfilteredWithAWarningNamingIt(string query)
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", query));
+
+        envelope.Facts.ShouldNotBeNull().Total.ShouldBe(3);
+        IssueItem warning = envelope.Issues.ShouldHaveSingleItem();
+        warning.Severity.ShouldBe("warning");
+        warning.Code.ShouldBe("parameter-ignored");
+        warning.Diagnostics.ShouldContain(query);
     }
 
     [Fact]

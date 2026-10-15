@@ -53,7 +53,10 @@ Search evaluates FHIR queries with a copy of fhir-candle's interpreter (see `Sea
 
 The 50 KB cap applies to the decoded tool-result text, i.e. the whole serialized envelope (resources, evidence, issues, omitted), not to the JSON-RPC frame, which escapes that text again and is larger. The CLI prints the same compact JSON by default; `--pretty` indents it (and so exceeds the cap).
 
-A construct the search pipeline recognises but this tool cannot evaluate yet (chains, `_has`, `_sort`, `_include`, composite `ap`/`sa`/`eb`, unsupported modifiers) fails the request as `search-not-supported`; only unknown parameter names and result parameters the tool does not need (`_format`, `_type`, ...) are `parameter-ignored` warnings. `param=|code` matches a code with no system.
+What a search may leave unapplied is decided in one place (`Search/ParameterPolicy.cs`):
+
+- A parameter that would change which resources match or which page is returned fails the request as `search-not-supported`: the filters `_text`, `_content`, `_query`, `_list`, `_filter`, `_has` and `_not-referenced`; `_sort`, `_include`, `_revinclude`; chains; continuation tokens (`ct`, `after`; page with `offset`); `_type` unless it names exactly the searched type; and anything the parser recognises but cannot evaluate (composite `ap`/`sa`/`eb`, unsupported modifiers).
+- Only these are ignored, each with a `parameter-ignored` warning naming it: `_format`, `_pretty`, `_contained`, `_containedType`, `_includesCount`, `_includesContinuationToken`, `_summary` values other than `count`, `_type` naming the searched type, a parameter with no value, and names the search pipeline does not recognise (as FHIR allows servers to do for unknown parameters). `param=|code` matches a code with no system.
 
 `_lastUpdated` is indexed from `meta.lastUpdated` only when it is a FHIR instant (date, time and timezone); anything else is reported as an `index-extraction-failed` issue and the resource does not match `_lastUpdated`.
 

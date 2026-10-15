@@ -25,15 +25,6 @@ namespace Ignixa.CliOnFhir.Search;
 /// </summary>
 public sealed class SearchQueryParser
 {
-    private static readonly ParameterCategory[] UnsupportedCategories =
-    [
-        ParameterCategory.Type,
-        ParameterCategory.Formatting,
-        ParameterCategory.ContinuationToken,
-        ParameterCategory.IncludesCount,
-        ParameterCategory.IncludesContinuationToken,
-    ];
-
     private readonly IFhirSchemaProvider _schema;
     private readonly SearchOptionsBuilder _builder;
     private readonly ExpressionParser _expressionParser;
@@ -72,7 +63,7 @@ public sealed class SearchQueryParser
         List<QueryParameter> parameters = [.. _queryParameterParser.Parse(request.Query ?? string.Empty)];
         warnings.AddRange(DroppedByParser(request.Query));
         AddSummary(request.Summary, parameters);
-        RejectUnsupportedFeatures(parameters);
+        RejectUnsupportedFeatures(parameters, request.ResourceType);
 
         List<string> elementLists = [.. parameters.Where(parameter => parameter.Name == "_elements").Select(parameter => parameter.Value)];
         List<QueryParameter> forBuilder = [.. parameters.Where(parameter => parameter.Name != "_elements")];
@@ -193,7 +184,7 @@ public sealed class SearchQueryParser
     /// Rejects features the in-memory interpreter cannot honour. Silently dropping them would return results
     /// that look filtered, sorted or expanded when they are not.
     /// </summary>
-    private static void RejectUnsupportedFeatures(List<QueryParameter> parameters)
+    private static void RejectUnsupportedFeatures(List<QueryParameter> parameters, string resourceType)
     {
         foreach (QueryParameter parameter in parameters)
         {
@@ -209,6 +200,10 @@ public sealed class SearchQueryParser
                 throw SearchFailures.NotSupported($"'{parameter.Name}': {feature} is not supported by this tool yet.");
             }
 
+            if (ParameterPolicy.Rejection(parameter, resourceType) is { } reason)
+            {
+                throw SearchFailures.NotSupported($"'{parameter.Name}={parameter.Value}' is not supported by this tool: {reason}.");
+            }
         }
     }
 
@@ -241,9 +236,17 @@ public sealed class SearchQueryParser
         HashSet<string> traced = [.. traces.Select(trace => trace.Key)];
         foreach (QueryParameter parameter in parameters.Where(parameter => !traced.Contains(parameter.Name)))
         {
-            if (options.UnsupportedParams.Contains(parameter.Name) || UnsupportedCategories.Contains(parameter.Category))
+            // Anything that would change the results was rejected up front (see ParameterPolicy), so what is left is a result
+            // parameter the tool does not need, the searched type named by _type, or a name nobody recognises.
+            bool resultParameter = parameter.Category is ParameterCategory.Type or ParameterCategory.Formatting
+                or ParameterCategory.IncludesCount or ParameterCategory.IncludesContinuationToken
+                || ParameterPolicy.ResultParameters.Contains(ParameterPolicy.BaseName(parameter.Name));
+            if (options.UnsupportedParams.Contains(parameter.Name) || resultParameter)
             {
-                yield return Ignored($"{parameter.Name}={parameter.Value}", "this tool does not support it");
+                string reason = resultParameter
+                    ? "it does not change which resources match, so this tool does not apply it"
+                    : $"it is not a search parameter of {resourceType}";
+                yield return Ignored($"{parameter.Name}={parameter.Value}", reason);
             }
             else if (parameter.Category == ParameterCategory.Summary && options.Summary is not (SummaryType.Count or SummaryType.False or SummaryType.None))
             {
