@@ -9,6 +9,8 @@ using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
+using Ignixa.FhirPath.Visitors;
+using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirMappingLanguage.Evaluation;
 
@@ -38,7 +40,7 @@ internal class FhirPathIntegration
     /// <param name="expression">The FHIRPath expression to evaluate</param>
     /// <param name="element">The element to evaluate against</param>
     /// <returns>The result elements</returns>
-    public IEnumerable<IElement> Evaluate(string expression, IElement element)
+    public IEnumerable<IElement> Evaluate(string expression, IElement element, MappingContext? mappingContext = null)
     {
         if (string.IsNullOrWhiteSpace(expression))
         {
@@ -49,10 +51,20 @@ internal class FhirPathIntegration
         {
             // Get or compile the expression
             var compiledExpression = GetOrCompileExpression(expression);
+            var evaluationContext = new EvaluationContext();
+            if (mappingContext is not null)
+            {
+                var variables = new Dictionary<string, IReadOnlyList<IElement>>(StringComparer.Ordinal);
+                compiledExpression.AcceptVisitor(new MappingVariableVisitor(mappingContext), variables);
+                foreach (var variable in variables)
+                {
+                    evaluationContext = evaluationContext.WithEnvironmentVariable(variable.Key, variable.Value);
+                }
+            }
 
             // Materialized here so evaluation errors surface inside this try rather than at the
             // caller's first enumeration, which would bypass the wrapping below entirely.
-            return _evaluator.Evaluate(element, compiledExpression).ToList();
+            return _evaluator.Evaluate(element, compiledExpression, evaluationContext).ToList();
         }
         catch (FhirPathEvaluationException ex)
         {
@@ -125,5 +137,22 @@ internal class FhirPathIntegration
     public void ClearCache()
     {
         _expressionCache?.Clear();
+    }
+
+    internal static IElement CreateSystemQuantity(FhirQuantity quantity) =>
+        new FhirPathEvaluator().VisitQuantity(
+            new QuantityExpression(quantity.Value, quantity.Unit), new EvaluationContext()).Single();
+
+    private sealed class MappingVariableVisitor(MappingContext mappingContext)
+        : DefaultFhirPathExpressionVisitor<Dictionary<string, IReadOnlyList<IElement>>, bool>
+    {
+        public override bool VisitVariable(VariableRefExpression expression, Dictionary<string, IReadOnlyList<IElement>> context)
+        {
+            if (mappingContext.ResolveElements(expression.Name) is { } values)
+            {
+                context[expression.Name] = values;
+            }
+            return true;
+        }
     }
 }

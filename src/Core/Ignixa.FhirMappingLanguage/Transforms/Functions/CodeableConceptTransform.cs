@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 namespace Ignixa.FhirMappingLanguage.Transforms;
 
 /// <summary>
-/// cc(system, code, [display]) - Creates a CodeableConcept.
+/// cc(text) or cc(system, code, [display]) - Creates a CodeableConcept.
 /// </summary>
 internal class CodeableConceptTransform : ITransformFunction
 {
@@ -18,27 +18,17 @@ internal class CodeableConceptTransform : ITransformFunction
 
     public object Execute(IReadOnlyList<object> arguments, ITransformContext context)
     {
-        if (arguments.Count < 2)
-            throw new ArgumentException("cc() requires system and code arguments");
-
-        var system = arguments[0].ToString()!;
-        var code = arguments[1].ToString()!;
-        var display = arguments.Count > 2 ? arguments[2].ToString() : null;
-
-        // Create a simple CodeableConcept structure
-        var codeableConcept = new JsonObject
+        if (arguments.Count is < 1 or > 3)
         {
-            ["coding"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["system"] = system,
-                    ["code"] = code,
-                    ["display"] = display
-                }
-            }
-        };
+            throw new ArgumentException("cc() requires text, or system and code with an optional display");
+        }
 
-        return codeableConcept;
+        if (arguments.Count == 1)
+        {
+            return new JsonObject { ["text"] = TransformValue.String(arguments[0]) };
+        }
+
+        var coding = (JsonObject)new CodingTransform().Execute(arguments, context);
+        return new JsonObject { ["coding"] = new JsonArray(coding) };
     }
 }

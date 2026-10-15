@@ -196,7 +196,8 @@ public class StructureMapParser
                     check,
                     log,
                     defaultValue,
-                    cardinality);
+                    cardinality,
+                    listMode: s.ListMode is { } mode ? ParseListMode(mode.GetLiteral()) : null);
             })
             .ToList();
     }
@@ -238,7 +239,7 @@ public class StructureMapParser
                 listMode = ParseListMode(listModeValue);
             }
 
-            return new TargetExpression(contextExpr, t.Variable, transform, listMode);
+            return new TargetExpression(contextExpr, t.Variable, transform, listMode, listRuleId: t.ListRuleId);
         }).ToList();
     }
 
@@ -317,29 +318,19 @@ public class StructureMapParser
         IEnumerable<StructureMapGroupRule>? nestedRules,
         IEnumerable<StructureMapGroupRuleDependent>? dependentCalls)
     {
-        // Check for nested rules first (RuleSetExpression)
-        if (nestedRules is not null && nestedRules.Any())
-        {
-            var rules = ParseRules(nestedRules);
-            return new RuleSetExpression(rules);
-        }
+        var rules = ParseRules(nestedRules);
+        var calls = dependentCalls?
+            .Where(d => d.Name is not null)
+            .Select(d => new GroupInvocationExpression(d.Name!, ParseInvocationVariables(d.GetDependentVariables())))
+            .ToList() ?? [];
+        var ruleSet = rules.Count > 0 ? new RuleSetExpression(rules) : null;
 
-        // Check for dependent group invocations
-        if (dependentCalls is not null)
+        return calls.Count switch
         {
-            var firstDependent = dependentCalls.FirstOrDefault();
-            if (firstDependent?.Name is not null)
-            {
-                // Use version-agnostic extension method to get variables
-                // R4: reads from Variable string array
-                // R5: reads from Parameter array
-                var variables = firstDependent.GetDependentVariables();
-                var parameters = ParseInvocationVariables(variables);
-                return new GroupInvocationExpression(firstDependent.Name, parameters);
-            }
-        }
-
-        return null;
+            0 => ruleSet,
+            1 when ruleSet is null => calls[0],
+            _ => new DependentExpression(calls, ruleSet)
+        };
     }
 
     /// <summary>

@@ -27,6 +27,7 @@ public class MappingEvaluatorOptionsTests
         options.MaxErrorsCollected.ShouldBe(100);
         options.ErrorMode.ShouldBe(ErrorMode.Strict);
         options.AllowFileSystemImports.ShouldBeFalse();
+        options.PruneEmptyTargets.ShouldBeTrue();
     }
 
     [Fact]

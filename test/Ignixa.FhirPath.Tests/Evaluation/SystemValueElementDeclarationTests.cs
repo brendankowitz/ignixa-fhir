@@ -26,7 +26,7 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// <see cref="SystemValueTypeMatchingTests"/> pin the wrappers their expressions happen to reach;
 /// removing <see cref="ISystemValueElement"/> from a wrapper no expression in the suite reaches leaves
 /// the whole suite green. That was measured on <c>DateTimeFunctions.PrimitiveElement</c> - the entire
-/// suite passed with the marker removed - and it is why all eight producers now need an explicit
+/// suite passed with the marker removed - and it is why every producer needs an explicit
 /// decision rather than a comment asserting the set is closed.
 /// </para>
 /// <para>
@@ -56,7 +56,7 @@ public class SystemValueElementDeclarationTests
         new Dictionary<string, (bool, string)>(StringComparer.Ordinal)
         {
             ["Ignixa.FhirPath.Evaluation.Functions.FunctionHelpers+PrimitiveElement"] =
-                (true, "Carries the System.Boolean, System.Integer, System.Decimal and System.String results of the FHIRPath function library."),
+                (true, "Carries the System.Boolean, System.Integer, System.Long, System.Decimal and System.String results of the FHIRPath function library."),
             ["Ignixa.FhirPath.Evaluation.FhirPathEvaluator+PrimitiveElement"] =
                 (true, "The interpreter's wrapper for function and operator results, all of them System values."),
             ["Ignixa.FhirPath.Evaluation.FhirPathDelegateCompiler+LiteralElement"] =
@@ -75,11 +75,13 @@ public class SystemValueElementDeclarationTests
             ["Ignixa.Serialization.SourceNodes.SchemaAwareElement"] =
                 (false, "Wraps a caller-supplied source node using schema metadata, so it carries the source's FHIR type rather than an engine-produced System value."),
             ["Ignixa.FhirPath.Evaluation.Functions.FunctionHelpers+QuantityElement"] =
-                (true, "Carries FHIRPath quantity literals and engine-produced quantity results, which are System.Quantity values. Resource-backed FHIR Quantity values use SchemaAwareElement instead. The marker changes only qualified type tests; unqualified Quantity matching is shared by both namespaces. What type() reports is a known divergence rather than a settled classification: the specification puts a quantity literal in the System namespace, so `(1 'mg').type()` should answer System/Quantity, and it still answers FHIR/Quantity because CollectionFunctions.Type special-cases \"quantity\" to FHIR inside its isSystemLiteral branch. Marking this producer therefore closed the `is` half of the divergence and left the type() half open, so `(1 'mg') is System.Quantity` is true while `(1 'mg').type()` says FHIR - the two now contradict each other. Pinned, and recorded as divergent, by SystemValueTypeMatchingTests.GivenQuantityLiteral_WhenItsTypeIsReported_ThenItRemainsFhirQuantity."),
+                (true, "Carries FHIRPath quantity literals and engine-produced quantity results, which are System.Quantity values for both qualified type tests and type() introspection. Resource-backed FHIR Quantity values use SchemaAwareElement instead; unqualified Quantity matching is shared by both namespaces."),
             ["Ignixa.FhirPath.Evaluation.Functions.CollectionFunctions+TypeInfoElement"] =
                 (false, "Describes a type rather than holding a value: its own InstanceType is the FHIR complex type ClassInfo/SimpleTypeInfo that type() returns."),
             ["Ignixa.FhirMappingLanguage.Evaluation.MappingEvaluator+MappingContextElement"] =
-                (false, "A container for the named source and target variables in scope, not a value."),
+                (false, "Carries a FHIR focus or an untyped container for the named source and target variables in scope."),
+            ["Ignixa.FhirMappingLanguage.Evaluation.MappingEvaluator+SystemMappingContextElement"] =
+                (true, "Forwards an existing System-valued focus through the mapping context, preserving its marker for conditions, $this and type() introspection."),
             ["Ignixa.FhirMappingLanguage.Evaluation.MappingEvaluator+TempPropertyWrapper"] =
                 (false, "Wraps a property of a resource under construction, so it carries that property's FHIR type."),
         };
@@ -142,8 +144,8 @@ public class SystemValueElementDeclarationTests
 
     /// <summary>
     /// Proves the census sees a producer that inherits its <see cref="IElement"/> declaration rather than
-    /// making it, using fixtures in this assembly because the production assemblies contain no such shape
-    /// and the census would go on passing if one appeared.
+    /// making it, using fixtures in this assembly so the assertion is independent of which production
+    /// producers currently have that shape.
     /// </summary>
     /// <remarks>
     /// This is the mutation that exposed the hole. Before the base-type walk, a directly-implementing

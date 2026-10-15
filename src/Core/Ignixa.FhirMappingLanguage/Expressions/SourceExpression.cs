@@ -17,7 +17,8 @@ public class SourceExpression : Expression
         Expression? log,
         Expression? defaultValue = null,
         Cardinality? cardinality = null,
-        ISourcePositionInfo? location = null) : base(location)
+        ISourcePositionInfo? location = null,
+        ListMode? listMode = null) : base(location)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -29,6 +30,7 @@ public class SourceExpression : Expression
         Log = log;
         Default = defaultValue;
         Cardinality = cardinality;
+        ListMode = listMode;
     }
 
     public Expression Context { get; }
@@ -39,6 +41,7 @@ public class SourceExpression : Expression
     public Expression? Log { get; }
     public Expression? Default { get; }
     public Cardinality? Cardinality { get; }
+    public ListMode? ListMode { get; }
 
     public override string ToString()
     {

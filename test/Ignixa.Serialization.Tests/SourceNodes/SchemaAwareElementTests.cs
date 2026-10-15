@@ -1260,4 +1260,34 @@ public class SchemaAwareElementTests
     }
 
     #endregion
+
+    [Fact]
+    public void GivenASchemaAwareElement_WhenItsSchemaIsRequestedThroughMeta_ThenTheResolvingSchemaIsReturnedForEveryNode()
+    {
+        // Arrange
+        var patient = ResourceJsonNode.Parse("""{ "resourceType": "Patient", "name": [{ "family": "Doe" }] }""")
+            .ToElement(_r4Provider);
+        var family = patient.Children("name").Single().Children("family").Single();
+
+        // Act
+        var rootSchema = patient.Meta<ISchema>();
+        var childSchema = family.Meta<ISchema>();
+
+        // Assert
+        Assert.Same(_r4Provider, rootSchema);
+        Assert.Same(_r4Provider, childSchema);
+    }
+
+    [Fact]
+    public void GivenASchemaAwareElement_WhenOtherMetadataIsRequested_ThenTheSourceNodeStillAnswers()
+    {
+        // Arrange
+        var patient = ResourceJsonNode.Parse("""{ "resourceType": "Patient", "id": "p1" }""").ToElement(_r4Provider);
+
+        // Act
+        var jsonNode = patient.Meta<System.Text.Json.Nodes.JsonNode>();
+
+        // Assert
+        Assert.NotNull(jsonNode);
+    }
 }

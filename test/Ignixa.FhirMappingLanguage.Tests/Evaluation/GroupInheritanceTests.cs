@@ -333,38 +333,26 @@ group GroupD (source src : Patient, target tgt : Bundle) extends GroupB {
     #region Case Sensitivity Tests
 
     [Fact]
-    public void GivenGroupInheritance_WhenCaseInsensitiveMatch_ThenDetectsCircular()
+    public void GivenGroupsDifferingOnlyByCase_WhenExecutingInheritance_ThenTreatsGroupsAsDistinct()
     {
         // Arrange
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Test' = 'Test'
 
-group GroupA (source src : Patient, target tgt : Bundle) extends groupb {
-  src.id -> tgt.id;
-}
-
-group GROUPB (source src : Patient, target tgt : Bundle) extends groupa {
-  src.name -> tgt.type;
-}";
+group Element() extends element {}
+group element() {}
+";
 
         var compiler = new MappingParser();
         var map = compiler.Parse(mappingText);
         var evaluator = new MappingEvaluator(enableFhirPath: false);
         var context = new MappingContext();
 
-        var source = new TestTypedElement("Patient");
-        var target = new TestTypedElement("Bundle");
-
-        context.SetSource("src", source);
-        context.SetTarget("tgt", target);
-
         // Act
-        var act = () => evaluator.ExecuteGroup(map, "GroupA", context);
+        var act = () => evaluator.ExecuteGroup(map, "Element", context);
 
-        // Assert - Should detect circular inheritance even with different casing
-        var exception = Should.Throw<InvalidOperationException>(act);
-        exception.Message.ShouldContain("circular");
-        exception.Message.ShouldContain("inheritance");
+        // Assert
+        Should.NotThrow(act);
     }
 
     #endregion

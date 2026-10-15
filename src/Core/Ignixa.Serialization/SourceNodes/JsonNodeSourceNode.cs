@@ -178,6 +178,32 @@ public class JsonNodeSourceNode : ISourceNavigator
         return new JsonNodeSourceNode(node, node, name, null, name);
     }
 
+    internal static JsonNodeSourceNode FromProperty(JsonObject owner, string name, int index)
+    {
+        var item = owner[name];
+        var shadow = owner["_" + name];
+        if (item is null)
+        {
+            item = shadow;
+            shadow = null;
+        }
+
+        int count = Math.Max(PropertyCount(item), PropertyCount(shadow));
+        if (index < 0 || index >= count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
+        return CreatePropertyNode(name, FromRoot(owner).Location,
+            PropertyItem(item, index), PropertyItem(shadow, index),
+            item is JsonArray || shadow is JsonArray, item is JsonArray ? index : null, index);
+
+        static int PropertyCount(JsonNode? node) => node is JsonArray array ? array.Count : node is null ? 0 : 1;
+        static JsonNode? PropertyItem(JsonNode? node, int i) => node is JsonArray array
+            ? i < array.Count ? array[i] : null
+            : i == 0 ? node : null;
+    }
+
     internal static JsonNodeSourceNode FromRoot(JsonObject rootNode, string name = "")
     {
         string resourceType = GetResourceTypePropertyFromObject(rootNode, name);
@@ -267,30 +293,8 @@ public class JsonNodeSourceNode : ISourceNavigator
             JsonNode? first = ItemAt(itemList.List, i);
             JsonNode? shadow = ItemAt(shadowItemList.Value.List, i);
 
-            JsonNode? content;
-            JsonNode? value;
-
-            // Determine which is content (object) and which is value (primitive)
-            if (first is JsonObject)
-            {
-                content = first;
-                value = shadow;
-            }
-            else
-            {
-                content = shadow;
-                value = first;
-            }
-
-            string arrayText = isArray ? $"[{i}]" : null;
-            string itemLocation = $"{location}.{name}{arrayText}";
-
-            yield return new JsonNodeSourceNode(
-                value,
-                content,
-                name,
-                itemList.ArrayProperty ? i : null,
-                itemLocation);
+            yield return CreatePropertyNode(name, location, first, shadow,
+                isArray, itemList.ArrayProperty ? i : null, i);
         }
 
         static (IReadOnlyList<JsonNode?> List, bool ArrayProperty) ExpandArray(JsonNode prop)
@@ -313,6 +317,16 @@ public class JsonNodeSourceNode : ISourceNavigator
         {
             return list?.Count > i ? list[i] : null;
         }
+    }
+
+    private static JsonNodeSourceNode CreatePropertyNode(
+        string name, string location, JsonNode? first, JsonNode? shadow, bool isArray, int? arrayIndex, int index)
+    {
+        string arrayText = isArray ? $"[{index}]" : null;
+        return new JsonNodeSourceNode(
+            first is JsonObject ? shadow : first,
+            first is JsonObject ? first : shadow,
+            name, arrayIndex, $"{location}.{name}{arrayText}");
     }
 
     private static string? GetResourceTypePropertyFromObject(JsonObject obj, string name)
