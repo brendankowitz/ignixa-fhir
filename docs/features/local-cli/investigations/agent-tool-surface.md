@@ -140,7 +140,7 @@ Size budgets follow [tool-design.md](../../mcp-integration/investigations/tool-d
 | `SqlServerTerminologyService`, `HybridTerminologyService`, `SqlServerCodeSystemImporter` (`src/DataLayer/Ignixa.DataLayer.SqlServer/Features/Terminology/`) | Imports FHIR `CodeSystem`, `ValueSet` and `ConceptMap` resources with hierarchy flattening (parent reference + level); `$expand` implemented, per `docs/features/terminology-services/investigations/new-design.md` | Requires SQL Server; not usable from a local tool |
 | Native distribution importers | None found: no SNOMED CT RF2, LOINC CSV, RxNorm RRF or ICD-10-CM loaders | Large terminologies can only arrive as FHIR `CodeSystem` resources today |
 
-The `SubsumesAsync` behavior must not reach an agent. A tool that says two codes are unrelated when it cannot tell is worse than no tool. The local store must answer "unknown, `<system>` not loaded" instead, and the existing service should be changed to fail loudly in its own right (an AGENTS.md violation independent of this feature).
+The `SubsumesAsync` behavior must not reach an agent. A tool that says two codes are unrelated when it cannot tell is worse than no tool. The local store must answer "unknown, `<system>` not loaded" instead, and the existing service should be changed to fail loudly in its own right (an AGENTS.md violation independent of this feature). Done in Task 7: `InMemoryTerminologyService.SubsumesAsync` now fails with `NotSupportedException`, and cli-on-fhir's store answers from its own hierarchy without it.
 
 ### Proposed local store
 

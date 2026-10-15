@@ -6,6 +6,7 @@
 using Ignixa.Abstractions;
 using Ignixa.Specification.Generated;
 using Ignixa.Validation;
+using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Services;
 using Xunit;
 
@@ -305,4 +306,21 @@ public class InMemoryTerminologyServiceTests
     }
 
     #endregion
+
+    // Regression: at 24779ff SubsumesAsync answered "not-subsumed" for every pair, a success-shaped answer for an
+    // operation the service cannot perform (it has no hierarchy).
+    [Fact]
+    public async Task GivenAnyTwoCodes_WhenSubsumptionIsAsked_ThenTheServiceFailsInsteadOfAnsweringNotSubsumed()
+    {
+        // Arrange
+        var service = new InMemoryTerminologyService(new R4CoreSchemaProvider().ValueSetProvider);
+        var parameters = new SubsumesParameters("IMP", "_ActEncounterCode", "http://terminology.hl7.org/CodeSystem/v3-ActCode", null);
+
+        // Act
+        Task<SubsumesResult> subsumption = service.SubsumesAsync(parameters, CancellationToken.None);
+
+        // Assert
+        NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(() => subsumption);
+        Assert.Contains("$subsumes", exception.Message, StringComparison.Ordinal);
+    }
 }
