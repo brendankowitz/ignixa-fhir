@@ -26,5 +26,11 @@ internal sealed class TestFolder : IDisposable
 
     public byte[] ReadBytes(string relativePath) => File.ReadAllBytes(System.IO.Path.Combine(Path, relativePath));
 
-    public void Dispose() => Directory.Delete(Path, recursive: true);
+    public void Dispose()
+    {
+        if (Directory.Exists(Path))
+        {
+            Directory.Delete(Path, recursive: true);
+        }
+    }
 }

@@ -714,6 +714,158 @@ public class IndexCacheTests
         string.Join('\n', SearchIndexCanon.Describe(fresh)).ShouldContain("keeps\\,backslash");
     }
 
+    [Theory]
+    [InlineData("formatVersion", 1)]
+    [InlineData("toolVersion", "0.0.0-older")]
+    public void GivenCacheOfAnOlderShape_WhenSessionOpens_ThenItIsADifferentCacheNotACorruptOne(string field, object value)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        first.GetIndex("Encounter");
+        SimulateCacheWrittenByAnotherBuild(first.CacheDirectory!, field, value, inOlderShape: true);
+        string manifestPath = Path.Combine(first.CacheDirectory!, "manifest.json");
+        JsonNode olderManifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        olderManifest.AsObject().Remove("moduleVersions");
+        olderManifest["files"] = new JsonObject();
+        File.WriteAllText(manifestPath, olderManifest.ToJsonString());
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+        second.GetIndex("Encounter").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.Select(issue => issue.Code).ShouldBe(["index-cache-rebuilt"]);
+        FolderSession third = Open(folder, cache);
+        third.GetIndex("Patient").FromCache.ShouldBeTrue();
+        third.CacheIssues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenTypeFileOfAnOlderShapeUnderAnotherManifest_WhenSessionOpens_ThenItIsAPlainMissWithoutAWarning()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string path = Path.Combine(first.CacheDirectory!, "Patient.index.json");
+        JsonNode index = JsonNode.Parse(File.ReadAllText(path))!;
+        index["manifestId"] = "0000";
+        index["resources"] = new JsonObject();
+        File.WriteAllText(path, index.ToJsonString());
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldBeEmpty();
+        Open(folder, cache).GetIndex("Patient").FromCache.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenPersistedCache_WhenTheManifestIsRead_ThenItNamesEveryAssemblyThatBuildsIndexes()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession session = Open(folder, cache);
+        session.GetIndex("Patient");
+
+        JsonNode manifest = JsonNode.Parse(File.ReadAllText(Path.Combine(session.CacheDirectory!, "manifest.json")))!;
+
+        string[] modules = manifest["moduleVersions"]!.GetValue<string>().Split(';');
+        modules.Select(module => module.Split('=')[0]).ShouldBe(["Ignixa.FhirPath", "Ignixa.Search", "Ignixa.Specification", "cli-on-fhir"], ignoreOrder: true);
+        modules.Select(module => Guid.Parse(module.Split('=')[1])).ShouldAllBe(id => id != Guid.Empty);
+    }
+
+    [Fact]
+    public void GivenCacheDirectoryThatIsASymlinkIntoTheDataFolder_WhenIndexed_ThenCacheIsRefusedAndNothingIsWritten()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // creating symbolic links needs a privilege Windows CI does not grant
+        }
+
+        using TestFolder folder = CreateFixture();
+        using var elsewhere = new TestFolder();
+        Directory.CreateDirectory(Path.Combine(folder.Path, "sub"));
+        string link = Path.Combine(elsewhere.Path, "cachelink");
+        Directory.CreateSymbolicLink(link, Path.Combine(folder.Path, "sub"));
+        string[] before = Snapshot(folder.Path);
+
+        foreach (string cacheRoot in new[] { link, Path.Combine(link, "nested", "deeper") })
+        {
+            var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cacheRoot));
+
+            session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+            session.CacheDirectory.ShouldBeNull();
+            session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the data folder");
+        }
+
+        Snapshot(folder.Path).ShouldBe(before);
+    }
+
+    [Fact]
+    public void GivenDataFolderReachedThroughASymlink_WhenCacheIsPlacedInsideItsRealPath_ThenCacheIsRefused()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TestFolder folder = CreateFixture();
+        using var elsewhere = new TestFolder();
+        string link = Path.Combine(elsewhere.Path, "datalink");
+        Directory.CreateSymbolicLink(link, folder.Path);
+        var session = new FolderSession(link, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(Path.Combine(folder.Path, "cache")));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-unavailable");
+        Directory.Exists(Path.Combine(folder.Path, "cache")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenPerFolderCacheDirectoryReplacedByASymlinkIntoTheDataFolder_WhenIndexed_ThenNothingIsWrittenThroughIt()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        string perFolderDirectory = DirectoryOf(Open(folder, cache));
+        Directory.Delete(perFolderDirectory, recursive: true);
+        string target = Path.Combine(folder.Path, "sub");
+        Directory.CreateDirectory(target);
+        Directory.CreateSymbolicLink(perFolderDirectory, target);
+        string[] before = Snapshot(folder.Path);
+        FolderSession session = Open(folder, cache);
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the data folder");
+        Snapshot(folder.Path).ShouldBe(before);
+    }
+
+    [Fact]
+    public void GivenDifferentlyCasedPaths_WhenCacheIsInsideOrAroundTheFolder_ThenCacheIsRefusedBecauseVolumesMayIgnoreCase()
+    {
+        using TestFolder folder = CreateFixture();
+        string upper = folder.Path.ToUpperInvariant();
+
+        foreach (string cacheRoot in new[] { Path.Combine(upper, "CACHE"), upper, Path.GetDirectoryName(upper)! })
+        {
+            var session = new FolderSession(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance, IndexCacheOptions.At(cacheRoot));
+
+            session.GetIndex("Patient");
+
+            session.CacheDirectory.ShouldBeNull(cacheRoot);
+            session.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-unavailable");
+        }
+    }
+
     private static (Command Command, Option<string?> CacheDir, Option<bool> NoCache) CreateCacheCommand()
     {
         Option<string?> cacheDir = CommonOptions.CreateCacheDirOption();
@@ -725,7 +877,7 @@ public class IndexCacheTests
 
     // Rewrites the manifest as an older or foreign build would have written it and rebinds the type files to it, so
     // the cache is internally consistent but no longer matches this run.
-    private static void SimulateCacheWrittenByAnotherBuild(string cacheDirectory, string field, object value)
+    private static void SimulateCacheWrittenByAnotherBuild(string cacheDirectory, string field, object value, bool inOlderShape = false)
     {
         string manifestPath = Path.Combine(cacheDirectory, "manifest.json");
         JsonNode manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
@@ -737,8 +889,19 @@ public class IndexCacheTests
         {
             JsonNode index = JsonNode.Parse(File.ReadAllText(typeFile))!;
             index["manifestId"] = manifestId;
+            if (inOlderShape)
+            {
+                index["resources"] = new JsonObject();
+            }
+
             File.WriteAllText(typeFile, index.ToJsonString());
         }
+    }
+
+    private static string DirectoryOf(FolderSession session)
+    {
+        session.GetIndex("Patient");
+        return session.CacheDirectory!;
     }
 
     private static string[] Snapshot(string root) =>

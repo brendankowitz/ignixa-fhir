@@ -47,6 +47,7 @@ internal sealed class FolderIndexCache
     private readonly string _folderPath;
     private readonly string _fhirVersion;
     private readonly ISearchParameterDefinitionManager _definitions;
+    private readonly string _canonicalFolderPath;
     private readonly string? _unavailableReason;
     private readonly Lock _gate = new();
     private readonly List<IssueItem> _issues = [];
@@ -67,7 +68,8 @@ internal sealed class FolderIndexCache
         _fhirVersion = fhirVersion;
         _definitions = definitions;
         _folderPath = NormalizeFolderPath(catalog.RootPath);
-        _unavailableReason = options.UnavailableReason ?? OverlapReason(options.RootDirectory, catalog.RootPath);
+        _canonicalFolderPath = ResolveOrNull(catalog.RootPath) ?? Path.GetFullPath(catalog.RootPath);
+        _unavailableReason = options.UnavailableReason ?? (options.RootDirectory is null ? null : OverlapReason(options.RootDirectory));
         CacheDirectory = options.RootDirectory is null || _unavailableReason is not null
             ? null
             : Path.Combine(options.RootDirectory, FolderDirectoryName(_folderPath, fhirVersion));
@@ -106,15 +108,33 @@ internal sealed class FolderIndexCache
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            using FileStream stream = OpenShared(path, FileOptions.SequentialScan);
-            CachedTypeIndex cached = JsonSerializer.Deserialize<CachedTypeIndex>(stream, JsonOptions)
-                ?? throw new InvalidDataException("the file holds a JSON null.");
-            cached.Validate();
+            CachedTypeIndex? cached;
+            using (FileStream stream = OpenShared(path, FileOptions.SequentialScan))
+            {
+                try
+                {
+                    cached = JsonSerializer.Deserialize<CachedTypeIndex>(stream, JsonOptions);
+                }
+                catch (Exception ex) when (IsUnreadableCacheFile(ex) && WrittenUnderAnotherManifest(path, manifestId))
+                {
+                    // A file of an older shape from an older manifest is simply not ours.
+                    return null;
+                }
+            }
+
+            if (cached?.ManifestId is not { } writtenUnder)
+            {
+                throw new InvalidDataException("the file names no manifest.");
+            }
 
             // Written under a different manifest (an older run, or a concurrent one): not corrupt, just not ours.
-            return string.Equals(cached.ManifestId, manifestId, StringComparison.Ordinal)
-                ? Materialize(cached, resourceType, stopwatch)
-                : null;
+            if (!string.Equals(writtenUnder, manifestId, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            cached.Validate();
+            return Materialize(cached, resourceType, stopwatch);
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -239,48 +259,90 @@ internal sealed class FolderIndexCache
         ex is JsonException or InvalidDataException or ArgumentException or FormatException or InvalidOperationException
             or NotSupportedException or OverflowException or IOException or UnauthorizedAccessException;
 
+    // Reads only as far as needed to tell whether a file that no longer deserializes belongs to another manifest.
+    private static bool WrittenUnderAnotherManifest(string path, string manifestId)
+    {
+        try
+        {
+            using FileStream stream = OpenShared(path, FileOptions.None);
+            using JsonDocument document = JsonDocument.Parse(stream);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("manifestId", out JsonElement id)
+                && id.ValueKind == JsonValueKind.String
+                && !string.Equals(id.GetString(), manifestId, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (IsUnreadableCacheFile(ex))
+        {
+            return false;
+        }
+    }
+
     // Delete sharing lets another process replace the file (File.Move over it) while this one is still reading.
     private static FileStream OpenShared(string path, FileOptions options) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, FileBufferSize, options);
 
     /// <summary>
     /// The cache must neither sit inside the data folder (the folder stays read-only, and cache files would be
-    /// catalogued as data) nor contain it (another run's cache would then be inside the folder it indexes).
+    /// catalogued as data) nor contain it (another run's cache would then be inside the folder it indexes). Both
+    /// paths are compared with links resolved, so a symlinked cache directory cannot lead back into the folder, and
+    /// ignoring case, because a false refusal only costs the cache while a false pass writes into the data.
     /// </summary>
-    private static string? OverlapReason(string? cacheRoot, string folderRoot)
+    private string? OverlapReason(string cachePath)
     {
-        if (cacheRoot is null)
+        string cache;
+        try
+        {
+            cache = CanonicalPath.Resolve(cachePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"the cache directory '{cachePath}' cannot be checked against the data folder ({Describe(ex)})";
+        }
+
+        if (IsSameOrUnder(cache, _canonicalFolderPath))
+        {
+            return $"the cache directory '{cache}' is inside the data folder '{_canonicalFolderPath}'; the folder is never written and cache files would be read as data. Use --cache-dir outside the folder";
+        }
+
+        return IsSameOrUnder(_canonicalFolderPath, cache)
+            ? $"the data folder '{_canonicalFolderPath}' is inside the cache directory '{cache}'; cache files would be read as data. Use --cache-dir outside the folder"
+            : null;
+    }
+
+    private static string? ResolveOrNull(string path)
+    {
+        try
+        {
+            return CanonicalPath.Resolve(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return null;
         }
-
-        string cache = Path.GetFullPath(cacheRoot);
-        string folder = Path.GetFullPath(folderRoot);
-        if (IsSameOrUnder(cache, folder))
-        {
-            return $"the cache directory '{cache}' is inside the data folder '{folder}'; the folder is never written and cache files would be read as data. Use --cache-dir outside the folder";
-        }
-
-        return IsSameOrUnder(folder, cache)
-            ? $"the data folder '{folder}' is inside the cache directory '{cache}'; cache files would be read as data. Use --cache-dir outside the folder"
-            : null;
     }
 
     private static bool IsSameOrUnder(string path, string parent)
     {
-        StringComparison comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         string child = Path.TrimEndingDirectorySeparator(path);
         string root = Path.TrimEndingDirectorySeparator(parent);
         string rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
-        return string.Equals(child, root, comparison) || child.StartsWith(rootWithSeparator, comparison);
+        return string.Equals(child, root, StringComparison.OrdinalIgnoreCase) || child.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Describe(Exception ex) => $"{ex.GetType().Name}: {ex.Message}";
 
-    private static void WriteAtomically(string path, Action<Stream> write)
+    private void WriteAtomically(string path, Action<Stream> write)
     {
         string directory = Path.GetDirectoryName(path)!;
         Directory.CreateDirectory(directory);
+
+        // Checked again now that the directory exists: a link that was not there (or not followed) before
+        // would otherwise send the write into the data folder.
+        if (OverlapReason(directory) is { } overlap)
+        {
+            throw new IOException($"Refusing to write the index cache: {overlap}.");
+        }
+
         string temporaryPath = Path.Combine(directory, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         try
         {
@@ -362,6 +424,13 @@ internal sealed class FolderIndexCache
             return null;
         }
 
+        // The per-folder directory may itself be a link planted under a perfectly good root.
+        if (OverlapReason(CacheDirectory) is { } overlap)
+        {
+            ReportUnavailable($"The index cache is not available: {overlap}.");
+            return null;
+        }
+
         CacheManifest current = CacheManifest.For(_catalog, _folderPath, _fhirVersion, _definitions);
         string manifestPath = Path.Combine(CacheDirectory, ManifestFileName);
         byte[]? stored = ReadStoredManifest(manifestPath);
@@ -405,13 +474,22 @@ internal sealed class FolderIndexCache
 
     private bool TryMatch(byte[] stored, CacheManifest current, string manifestPath)
     {
-        ManifestMismatch? mismatch;
+        string? differentCache;
+        ManifestMismatch? changedFiles = null;
         try
         {
-            CacheManifest manifest = JsonSerializer.Deserialize<CacheManifest>(stored, JsonOptions)
-                ?? throw new InvalidDataException("the manifest holds a JSON null.");
-            manifest.Validate();
-            mismatch = manifest.Compare(current);
+            // Identity first, straight from the JSON: a manifest from another format, tool or definitions is a
+            // different cache, not a damaged one, even if its shape no longer deserializes.
+            using JsonDocument document = JsonDocument.Parse(stored);
+            differentCache = CacheManifest.CompareIdentity(document.RootElement, current);
+            if (differentCache is null)
+            {
+                CacheManifest manifest = document.RootElement.Deserialize<CacheManifest>(JsonOptions)
+                    ?? throw new InvalidDataException("the manifest holds a JSON null.");
+                manifest.Validate();
+                changedFiles = manifest.CompareFiles(current);
+                differentCache = changedFiles?.Reason;
+            }
         }
         catch (Exception ex) when (IsUnreadableCacheFile(ex))
         {
@@ -419,12 +497,12 @@ internal sealed class FolderIndexCache
             return false;
         }
 
-        if (mismatch is not null)
+        if (differentCache is not null)
         {
-            AddIssue("information", RebuiltCode, $"The cached index was discarded and is being rebuilt: {mismatch.Reason}.");
+            AddIssue("information", RebuiltCode, $"The cached index was discarded and is being rebuilt: {differentCache}.");
         }
 
-        return mismatch is null;
+        return differentCache is null;
     }
 
     private static string IdOf(byte[] manifestBytes) => Convert.ToHexStringLower(SHA256.HashData(manifestBytes));

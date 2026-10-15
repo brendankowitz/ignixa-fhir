@@ -20,7 +20,7 @@ public static class FolderInspector
     /// Summarizes the folder from its catalog alone; no index is built unless
     /// <paramref name="buildIndexes"/> is set, which exists to measure indexing cost.
     /// </summary>
-    public static ToolEnvelope<FolderInspection> Inspect(FolderSession session, int issueLimit = DefaultIssueLimit, bool buildIndexes = false)
+    public static ToolEnvelope<FolderInspection> Inspect(FolderSession session, int issueLimit = DefaultIssueLimit, bool buildIndexes = false, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentOutOfRangeException.ThrowIfNegative(issueLimit);
@@ -74,12 +74,18 @@ public static class FolderInspector
             session.CatalogStats,
             indexFacts);
 
+        StaleFilesCount stale = session.CountStaleFiles(cancellationToken);
         List<IssueItem> issues = [.. diagnostics.Take(issueLimit).Select(ToIssue), .. session.CacheIssues];
+        if (stale.Unavailable is { } reason)
+        {
+            issues.Add(new IssueItem("warning", "freshness-unavailable", $"Could not check whether files changed since they were read, so freshness.staleFiles is unknown: {reason}", Location: null));
+        }
+
         List<OmittedItem> omitted = diagnostics.Count > issueLimit
             ? [new OmittedItem($"{diagnostics.Count - issueLimit} more diagnostics", "limit")]
             : [];
 
-        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(builtAt, session.CountStaleFiles()));
+        return new ToolEnvelope<FolderInspection>(facts, [], omitted, issues, new FreshnessInfo(builtAt, stale.Count));
     }
 
     private static IssueItem ToIssue(CatalogDiagnostic diagnostic) => new(

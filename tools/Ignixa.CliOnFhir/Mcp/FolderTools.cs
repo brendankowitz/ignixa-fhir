@@ -22,6 +22,7 @@ public sealed class FolderTools(FolderSession session)
         Call this first to orient yourself. Problems beyond the issue limit are counted in 'omitted'.
         """)]
     public ToolEnvelope<FolderInspection> FolderInspect(
-        [Description("Maximum number of individual problems to list (default 20).")] int? issueLimit = null) =>
-        FolderInspector.Inspect(session, issueLimit ?? FolderInspector.DefaultIssueLimit);
+        [Description("Maximum number of individual problems to list (default 20).")] int? issueLimit = null,
+        CancellationToken cancellationToken = default) =>
+        FolderInspector.Inspect(session, issueLimit ?? FolderInspector.DefaultIssueLimit, cancellationToken: cancellationToken);
 }

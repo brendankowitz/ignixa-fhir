@@ -7,7 +7,9 @@ using System.Globalization;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Definition;
 using Ignixa.Specification.Generated;
 
@@ -24,7 +26,7 @@ namespace Ignixa.CliOnFhir.Caching;
 /// <param name="ToolVersion">Informational version of the tool assembly that wrote the cache.</param>
 /// <param name="DefinitionsHash">Hash over the search parameter definitions the indexer used.</param>
 /// <param name="ModuleVersions">
-/// Module version ids of the assemblies that build indexes (the tool, Ignixa.Search, Ignixa.Specification). They
+/// Module version ids of the assemblies that build indexes (the tool, Ignixa.Search, Ignixa.Specification, Ignixa.FhirPath). They
 /// derive from the compiled content, so an uncommitted code change invalidates the cache like a release would.
 /// </param>
 /// <param name="Files">The catalogued files with the size and last-write time they had when read.</param>
@@ -37,7 +39,7 @@ internal sealed record CacheManifest(
     string ModuleVersions,
     IReadOnlyList<CatalogFile> Files)
 {
-    public const int CurrentFormatVersion = 1;
+    public const int CurrentFormatVersion = 2;
 
     public static CacheManifest For(FolderCatalog catalog, string folderPath, string fhirVersion, ISearchParameterDefinitionManager definitions)
     {
@@ -82,20 +84,51 @@ internal sealed record CacheManifest(
     }
 
     /// <summary>
-    /// Compares this stored manifest with the manifest of the current run. Returns null when they match;
-    /// otherwise why they differ and how many files were added, removed or modified.
+    /// Compares the identity of a stored manifest, read straight from its JSON, with the current run's. This runs
+    /// before the stored manifest is deserialized or validated, so a file written in an older shape reads as a
+    /// different cache rather than a corrupt one. A different format version is reported alone, since the other
+    /// members' meaning is then unknown; otherwise members that are present and differ are listed.
     /// </summary>
-    public ManifestMismatch? Compare(CacheManifest current)
+    /// <returns>Why the stored manifest belongs to a different cache; null when its identity matches.</returns>
+    /// <exception cref="InvalidDataException">The JSON is not an object with a numeric <c>formatVersion</c>.</exception>
+    public static string? CompareIdentity(JsonElement stored, CacheManifest current)
     {
         ArgumentNullException.ThrowIfNull(current);
 
+        if (stored.ValueKind != JsonValueKind.Object
+            || !stored.TryGetProperty("formatVersion", out JsonElement format)
+            || format.ValueKind != JsonValueKind.Number)
+        {
+            throw new InvalidDataException("the manifest has no format version.");
+        }
+
+        string currentFormat = current.FormatVersion.ToString(CultureInfo.InvariantCulture);
+        if (!string.Equals(format.GetRawText(), currentFormat, StringComparison.Ordinal))
+        {
+            return Describe("cache format", format.GetRawText(), currentFormat);
+        }
+
         List<string> reasons = [];
-        AddIfDifferent(reasons, "cache format", FormatVersion.ToString(CultureInfo.InvariantCulture), current.FormatVersion.ToString(CultureInfo.InvariantCulture));
-        AddIfDifferent(reasons, "folder path", FolderPath, current.FolderPath);
-        AddIfDifferent(reasons, "FHIR version", FhirVersion, current.FhirVersion);
-        AddIfDifferent(reasons, "tool version", ToolVersion, current.ToolVersion);
-        AddIfDifferent(reasons, "search parameter definitions", DefinitionsHash, current.DefinitionsHash);
-        AddIfDifferent(reasons, "indexing code", ModuleVersions, current.ModuleVersions);
+        foreach ((string label, string name, string value) in current.IdentityMembers())
+        {
+            if (stored.TryGetProperty(name, out JsonElement member)
+                && member.ValueKind == JsonValueKind.String
+                && !string.Equals(member.GetString(), value, StringComparison.Ordinal))
+            {
+                reasons.Add(Describe(label, member.GetString()!, value));
+            }
+        }
+
+        return reasons.Count == 0 ? null : string.Join("; ", reasons);
+    }
+
+    /// <summary>
+    /// Compares the files listed in this stored manifest with the current run's. Returns null when they match;
+    /// otherwise how many files were added, removed or modified.
+    /// </summary>
+    public ManifestMismatch? CompareFiles(CacheManifest current)
+    {
+        ArgumentNullException.ThrowIfNull(current);
 
         Dictionary<string, CatalogFile> cached = Files.ToDictionary(file => file.Path, StringComparer.Ordinal);
         int added = 0;
@@ -114,21 +147,21 @@ internal sealed record CacheManifest(
 
         int removed = cached.Count;
         int changed = added + modified + removed;
-        if (changed > 0)
-        {
-            reasons.Add($"{changed} of the folder's files changed since the cache was written ({added} added, {removed} removed, {modified} modified)");
-        }
-
-        return reasons.Count == 0 ? null : new ManifestMismatch(string.Join("; ", reasons), changed);
+        return changed == 0
+            ? null
+            : new ManifestMismatch($"{changed} of the folder's files changed since the cache was written ({added} added, {removed} removed, {modified} modified)", changed);
     }
 
-    private static void AddIfDifferent(List<string> reasons, string what, string cached, string current)
+    private IEnumerable<(string Label, string Name, string Value)> IdentityMembers()
     {
-        if (!string.Equals(cached, current, StringComparison.Ordinal))
-        {
-            reasons.Add($"{what} differs (cached '{cached}', current '{current}')");
-        }
+        yield return ("folder path", "folderPath", FolderPath);
+        yield return ("FHIR version", "fhirVersion", FhirVersion);
+        yield return ("tool version", "toolVersion", ToolVersion);
+        yield return ("search parameter definitions", "definitionsHash", DefinitionsHash);
+        yield return ("indexing code", "moduleVersions", ModuleVersions);
     }
+
+    private static string Describe(string what, string cached, string current) => $"{what} differs (cached '{cached}', current '{current}')";
 
     private static string CurrentToolVersion()
     {
@@ -140,7 +173,7 @@ internal sealed record CacheManifest(
 
     private static string CurrentModuleVersions() => string.Join(
         ';',
-        new[] { typeof(CacheManifest).Assembly, typeof(SearchParameterDefinitionManager).Assembly, typeof(R4CoreSchemaProvider).Assembly }
+        new[] { typeof(CacheManifest).Assembly, typeof(SearchParameterDefinitionManager).Assembly, typeof(R4CoreSchemaProvider).Assembly, typeof(FhirPathEvaluator).Assembly }
             .Distinct()
             .Select(assembly => $"{assembly.GetName().Name}={assembly.ManifestModule.ModuleVersionId}")
             .Order(StringComparer.Ordinal));

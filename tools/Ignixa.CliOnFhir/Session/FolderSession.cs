@@ -25,18 +25,24 @@ public sealed class FolderSession
     private readonly Lazy<(FolderCatalog Catalog, BuildStats Stats)> _catalog;
     private readonly Lazy<(FolderIndexBuilder Builder, long LoadMilliseconds)> _indexBuilder;
     private readonly Lazy<FolderIndexCache> _cache;
+    private readonly TimeProvider _timeProvider;
+    private readonly Lock _staleGate = new();
+    private StaleFilesCount? _lastStaleCount;
+    private long _lastStaleCountTimestamp;
     private readonly ConcurrentDictionary<string, Lazy<ResourceTypeIndex>> _indexes = new(StringComparer.Ordinal);
 
     /// <param name="rootPath">The folder of FHIR data. It is only ever read.</param>
     /// <param name="schema">The FHIR version the folder is read as.</param>
     /// <param name="loggerFactory">Receives the search indexer's own log output.</param>
     /// <param name="cacheOptions">Where to persist indexes between processes; null (the default) keeps them in memory only.</param>
-    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null)
+    /// <param name="timeProvider">Clock for the freshness count's short reuse window; the system clock by default.</param>
+    public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory, IndexCacheOptions? cacheOptions = null, TimeProvider? timeProvider = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         ArgumentNullException.ThrowIfNull(schema);
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
+        _timeProvider = timeProvider ?? TimeProvider.System;
         RootPath = Path.GetFullPath(rootPath);
         Schema = schema;
         _catalog = new Lazy<(FolderCatalog, BuildStats)>(() => BuildCatalog(RootPath, schema), LazyThreadSafetyMode.ExecutionAndPublication);
@@ -73,12 +79,41 @@ public sealed class FolderSession
     /// </summary>
     public long? IndexerLoadMilliseconds => _indexBuilder.IsValueCreated ? _indexBuilder.Value.LoadMilliseconds : null;
 
+    /// <summary>How long a freshness count is reused, so tools answering back to back share one directory walk.</summary>
+    public static readonly TimeSpan StaleFilesReuseWindow = TimeSpan.FromSeconds(2);
+
     /// <summary>
     /// Counts the folder's files that differ from what the catalog recorded when it was walked (modified, removed or
-    /// newly added), by listing the folder and comparing each file's size and last-write time again. Cheap, but it
-    /// is a fresh look at the disk each call, so it reports edits made while a long-running session is open.
+    /// newly added), by listing the folder and comparing each file's size and last-write time again. A fresh look at
+    /// the disk, reused for <see cref="StaleFilesReuseWindow"/>, so it reports edits made while a long-running
+    /// session is open. A folder that can no longer be listed yields an unavailable count rather than an exception.
     /// </summary>
-    public int CountStaleFiles() => FolderCatalogBuilder.CountStaleFiles(Catalog);
+    public StaleFilesCount CountStaleFiles(CancellationToken cancellationToken = default)
+    {
+        lock (_staleGate)
+        {
+            if (_lastStaleCount is not null && _timeProvider.GetElapsedTime(_lastStaleCountTimestamp) < StaleFilesReuseWindow)
+            {
+                return _lastStaleCount;
+            }
+
+            _lastStaleCount = RecountStaleFiles(cancellationToken);
+            _lastStaleCountTimestamp = _timeProvider.GetTimestamp();
+            return _lastStaleCount;
+        }
+    }
+
+    private StaleFilesCount RecountStaleFiles(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new StaleFilesCount(FolderCatalogBuilder.CountStaleFiles(Catalog, cancellationToken), Unavailable: null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new StaleFilesCount(null, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// The search parameter definitions every index entry of this session refers to. Loading them is the

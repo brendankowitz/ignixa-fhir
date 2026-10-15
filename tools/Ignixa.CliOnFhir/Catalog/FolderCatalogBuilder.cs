@@ -67,15 +67,17 @@ public static class FolderCatalogBuilder
     /// that were modified or removed, and files with a supported extension that have appeared since. Costs one
     /// directory walk and one stat per file; nothing is read.
     /// </summary>
-    public static int CountStaleFiles(FolderCatalog catalog)
+    /// <exception cref="IOException">The folder or a subfolder can no longer be listed (deleted, unmounted); also <see cref="UnauthorizedAccessException"/> when it is no longer readable.</exception>
+    public static int CountStaleFiles(FolderCatalog catalog, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(catalog);
 
         Dictionary<string, CatalogFile> recorded = catalog.Files.ToDictionary(file => file.Path, StringComparer.Ordinal);
         int stale = 0;
         int seenRecorded = 0;
-        foreach (string file in EnumerateFiles(catalog.RootPath).Where(IsScanned))
+        foreach (string file in EnumerateFiles(catalog.RootPath, ordered: false).Where(IsScanned))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var info = new FileInfo(file);
             if (!info.Exists)
             {
@@ -105,13 +107,14 @@ public static class FolderCatalogBuilder
         return NdjsonExtensions.Contains(extension) || string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IEnumerable<string> EnumerateFiles(string root)
+    // Cataloguing needs the deterministic order; counting changes does not, so it skips the sort.
+    private static IEnumerable<string> EnumerateFiles(string root, bool ordered = true)
     {
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = false, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };
         string cacheDirectory = Path.Combine(root, CacheDirectoryName) + Path.DirectorySeparatorChar;
-        return Directory.EnumerateFiles(root, "*", options)
-            .Where(file => !file.StartsWith(cacheDirectory, StringComparison.Ordinal))
-            .Order(StringComparer.Ordinal);
+        IEnumerable<string> files = Directory.EnumerateFiles(root, "*", options)
+            .Where(file => !file.StartsWith(cacheDirectory, StringComparison.Ordinal));
+        return ordered ? files.Order(StringComparer.Ordinal) : files;
     }
 
     private static void ReadJson(string file, BuildState state)
