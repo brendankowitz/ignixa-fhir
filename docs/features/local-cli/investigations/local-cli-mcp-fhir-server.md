@@ -45,6 +45,23 @@ Rules, each reported by `inspect` rather than silently handled:
 
 Parse each resource once, `JsonSourceNodeFactory.Parse` → `ToElement(schemaProvider)` → `ElementSearchIndexer.Extract`. This is exactly the pattern in `StreamingImportFileActivity.cs:366-391`. Persist the entries with the existing `CompactSearchIndexConverter` under `.ignixa/` (or a user cache directory when the folder is read-only), invalidated by a `(path, size, mtime)` manifest, with an optional `FileSystemWatcher`. Search reuses `SearchQueryInterpreter` unchanged for the predicate subset it supports. `_sort`, `_include`, `_revinclude` and chaining are post-passes over the snapshot (include = key lookup through reference entries; sort = a stable key with `_lastUpdated`, then id, as tiebreak).
 
+### Index storage: own cache vs. SQLite vs. DuckDB
+
+The expensive part of search is FHIR search semantics, not storage: date ranges and partial-date precision, token `system|code`, string normalization, `:not`, `:missing` and composites. `SearchQueryInterpreter` already implements these over the in-memory `(ResourceKey, SearchIndexEntry[])` shape. At the target size a linear in-memory scan is fast enough, so the on-disk cache is only a **startup optimization** (skip re-parse and re-index), not the query engine.
+
+| Option | Role | Verdict |
+|--------|------|---------|
+| **Own cache format** | Persist `SearchIndexEntry` lists; reload instead of re-indexing | **v1.** Start with the existing `CompactSearchIndexConverter` JSON (no new format to own); move to a binary encoding (MemoryPack/MessagePack or custom) only if P0 shows load time matters. |
+| **SQLite** (`Microsoft.Data.Sqlite`) | Search index as tables, queried with SQL | **Not v1.** Requires re-expressing FHIR search semantics in SQL. The only generator, `Ignixa.Search.Sql`, emits T-SQL for the SQL Server schema and is alpha and unwired (`src/Core/Ignixa.Search.Sql/README.md`). That would be a third copy of search semantics beside the in-memory interpreter and the SQL Server backend. |
+| **DuckDB** (DuckDB.NET) | Columnar analytics over SQL-on-FHIR view output | **Optional add-on (P2/P3), not the index.** Aggregates ("encounters per year by class") are where agents get the most from SQL. Path: ViewDefinitions via `Ignixa.SqlOnFhir` → Parquet (`Parquet.Net` is already a dependency) → a read-only `sql_query` MCP tool. Ships a per-platform native library (size unmeasured), so keep it out of the base tool. |
+| **Lucene.NET** | Full-text `_text` / `_content` | Only if full-text search becomes a requirement. |
+
+Cache requirements, whichever encoding is used:
+- **Invalidation key**: per-file `(path, size, mtime)`, plus FHIR version, indexer/cache-format version, and a hash of the loaded search-parameter definitions. Loading an IG with custom `SearchParameter`s changes what is indexed; a cache that ignores this returns wrong results silently.
+- **Failure mode**: a cache that fails to load is rebuilt and the rebuild is reported. Never serve a partial index.
+
+Triggers to revisit SQLite: datasets that no longer fit in memory (index must be paged), write-through with multiple concurrent processes (SQLite locking instead of a hand-rolled lock file), or incremental updates that outgrow per-file cache rewrites. Any of these turns into the larger question of a SQLite dialect for the search compiler.
+
 ### The `inspect` command
 
 The first thing an agent needs is orientation, not search. `ignixa inspect <dir>` reports: resource types and counts, date ranges, profiles/`meta.profile` in use, FHIR-version hints, broken references, duplicate ids, parse errors, and the search parameters actually populated. It is also the natural first MCP tool.
