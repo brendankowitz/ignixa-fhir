@@ -25,12 +25,17 @@ internal static class ReferenceFollowChecks
 
     /// <summary>
     /// One <c>information</c> issue per reference parameter a chain, <c>_has</c> or include followed whose index holds
-    /// references the engine cannot follow: not a local <c>Type/id</c> (an absolute URL, a bare id, or a <c>urn:</c> such as
-    /// a Bundle's <c>urn:uuid</c> fullUrl, which Ignixa's reference converter keeps in the index), or a canonical, which a
-    /// parameter that also selects references (R5 <c>RequestOrchestration-participant</c>) or <c>_include=*</c> skips. Read
-    /// from the index entries of the parameter followed, over every resource of a chain's referencing type, the page and
-    /// its included resources for a forward include, and every resource of a reverse include's source type.
+    /// references the engine cannot follow: not a local <c>Type/id</c> (an absolute URL no Bundle entry's fullUrl matches, or
+    /// a bare id), or a canonical, which a parameter that also selects references (R5 <c>RequestOrchestration-participant</c>)
+    /// or <c>_include=*</c> skips. Read from the index entries of the parameter followed, over every resource of a chain's
+    /// referencing type, the page and its included resources for a forward include, and every resource of a reverse
+    /// include's source type.
     /// </summary>
+    /// <remarks>
+    /// A <c>urn:</c> reference is not counted here. The folder index resolves those that name a Bundle entry, and reports
+    /// the rest once per type index as <see cref="BundleReferenceResolver.UnresolvedCode"/>, which every search reading
+    /// that index carries, so counting them here too would report the same references twice.
+    /// </remarks>
     public static IEnumerable<IssueItem> UnresolvedReferences(FolderSearchSource source, SearchOptions options, IReadOnlyCollection<IndexedResource> pageAndIncluded)
     {
         List<(string ResourceType, SearchParameterInfo? Parameter, IReadOnlyList<IndexedResource> Resources)> scopes = [];
@@ -57,7 +62,7 @@ internal static class ReferenceFollowChecks
             .Select(count => new IssueItem(
                 "information",
                 UnresolvedCode,
-                $"{count.Count} references through {count.Key.ResourceType}:{count.Key.Parameter} are not local 'Type/id' references (canonicals, urn:uuid, absolute URLs or bare ids) and were not followed, so the chain or include may be missing resources.",
+                $"{count.Count} references through {count.Key.ResourceType}:{count.Key.Parameter} are not local 'Type/id' references (canonicals, absolute URLs or bare ids) and were not followed, so the chain or include may be missing resources.",
                 Location: null));
     }
 
@@ -136,10 +141,8 @@ internal static class ReferenceFollowChecks
             && entry.Value switch
             {
                 UriSearchValue => true,
-                ReferenceSearchValue reference => reference.BaseUri is not null
-                    || string.IsNullOrEmpty(reference.ResourceType)
-                    || string.IsNullOrEmpty(reference.ResourceId)
-                    || reference.ResourceId.StartsWith("urn:", StringComparison.Ordinal),
+                ReferenceSearchValue reference => !BundleReferenceResolver.IsUrn(reference)
+                    && (reference.BaseUri is not null || string.IsNullOrEmpty(reference.ResourceType) || string.IsNullOrEmpty(reference.ResourceId)),
                 _ => false,
             }));
 

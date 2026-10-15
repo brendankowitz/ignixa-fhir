@@ -322,12 +322,12 @@ public class SearchExtensionTests
         ToolEnvelope<SearchFacts?> chained = ResourceSearcher.Search(session, new SearchRequest("Encounter", "subject:Patient.gender=male"));
         ToolEnvelope<SearchFacts?> included = ResourceSearcher.Search(session, new SearchRequest("Encounter", "_id=e1&_include=Encounter:subject"));
 
+        // The absolute reference is counted where it is followed; the urn: once, by the Encounter index, never twice.
         Ids(chained).ShouldBe(["e3"]);
-        IssueItem issue = chained.Issues.ShouldHaveSingleItem();
-        issue.Severity.ShouldBe("information");
-        issue.Code.ShouldBe("references-unresolved");
-        issue.Diagnostics.ShouldStartWith("2 references through Encounter:subject are not local");
-        included.Issues.ShouldHaveSingleItem().Diagnostics.ShouldStartWith("1 references through Encounter:subject are not local");
+        chained.Issues.Select(issue => (issue.Severity, issue.Code)).ShouldBe([("information", "references-unresolved"), ("information", "unresolved-bundle-reference")]);
+        chained.Issues[0].Diagnostics.ShouldStartWith("1 references through Encounter:subject are not local");
+        chained.Issues[1].Diagnostics.ShouldStartWith("1 urn: references in Encounter resources name no Bundle entry fullUrl");
+        included.Issues.Select(issue => issue.Code).ShouldBe(["unresolved-bundle-reference"]);
     }
 
     [Fact]
@@ -369,8 +369,9 @@ public class SearchExtensionTests
         ToolEnvelope<SearchFacts?> chained = ResourceSearcher.Search(session, new SearchRequest("Patient", "general-practitioner:Practitioner.family=Jones"));
         ToolEnvelope<SearchFacts?> byUrn = ResourceSearcher.Search(session, new SearchRequest("Patient", "link=urn:uuid:abc"));
 
+        // The Patient index reports its unresolved urn: once; the chain through general-practitioner adds no count of its own.
         Ids(chained).ShouldBe(["sp1"]);
-        chained.Issues.ShouldBeEmpty();
+        chained.Issues.Select(issue => issue.Code).ShouldBe(["unresolved-bundle-reference"]);
         Ids(byUrn).ShouldBe(["sp1"]);
     }
 

@@ -28,6 +28,7 @@ public sealed class FolderSession
     private readonly Lazy<FolderIndexCache> _cache;
     private readonly Lazy<SearchQueryParser> _queryParser;
     private readonly Lazy<Dictionary<(string ResourceType, string Id), CatalogEntry>> _entriesByReference;
+    private readonly Lazy<BundleReferenceResolver> _bundleReferences;
     private readonly TimeProvider _timeProvider;
     private readonly Lock _staleGate = new();
     private StaleFilesCount? _lastStaleCount;
@@ -68,6 +69,11 @@ public sealed class FolderSession
 
         _entriesByReference = new Lazy<Dictionary<(string, string), CatalogEntry>>(
             () => Catalog.Entries.ToDictionary(entry => (entry.ResourceType, entry.Id)),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        // Read with the index's own reference parser, so a fullUrl parses the way a reference to it does.
+        _bundleReferences = new Lazy<BundleReferenceResolver>(
+            () => new BundleReferenceResolver(Catalog.FullUrls, _indexBuilder.Value.Builder.ReferenceParser),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         // Validating the cache needs the catalog and the definitions, so it also waits for the first index request.
@@ -186,7 +192,7 @@ public sealed class FolderSession
             return cached;
         }
 
-        ResourceTypeIndex built = builder.Build(Catalog, resourceType, CancellationToken.None);
+        ResourceTypeIndex built = builder.Build(Catalog, _bundleReferences.Value, resourceType, CancellationToken.None);
         return built with { CacheWriteMilliseconds = cache.Store(built) };
     }
 

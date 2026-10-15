@@ -5,6 +5,7 @@
 
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Indexing;
 
 namespace Ignixa.CliOnFhir.Session;
 
@@ -82,8 +83,15 @@ public static class EnvelopeAssembler
     {
         ArgumentNullException.ThrowIfNull(diagnostic);
 
+        string severity = diagnostic.Code switch
+        {
+            "duplicate-id" => "warning",
+            BundleReferenceResolver.UnresolvedCode => "information",
+            _ => "error",
+        };
+
         return new IssueItem(
-            diagnostic.Code == "duplicate-id" ? "warning" : "error",
+            severity,
             diagnostic.Code,
             diagnostic.Message,
             diagnostic.Line is int line ? $"{diagnostic.FilePath}:{line}" : diagnostic.FilePath);

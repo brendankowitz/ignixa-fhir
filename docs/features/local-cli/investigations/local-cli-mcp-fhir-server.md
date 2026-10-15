@@ -163,7 +163,7 @@ Consequences for P1:
 Known gaps in the P0 code:
 
 - Search-parameter extraction failures are logged by `ElementSearchIndexer`, not reported as issues; they need to reach `issues` in the envelope.
-- Transaction Bundles reference other entries by `urn:uuid` fullUrl. The catalog does not yet map fullUrl to `Type/id`, so such references are indexed verbatim and will not resolve in reference searches.
+- Transaction Bundles reference other entries by `urn:uuid` fullUrl. The catalog records each entry's fullUrl and the index rewrites references naming one to the entry's `Type/id` before indexing (own Bundle first, then the folder; ambiguous fullUrls resolve nothing); `urn:` references naming no entry stay verbatim and are reported as `unresolved-bundle-reference`. See the tool README, Bundle references.
 
 ## Review and what changed
 

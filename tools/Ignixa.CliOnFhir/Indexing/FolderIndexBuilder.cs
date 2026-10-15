@@ -64,9 +64,17 @@ public sealed class FolderIndexBuilder
     /// catalog order, so the index and its diagnostics are identical from run to run. The files holding
     /// the type's resources are held in memory for the duration of the build.
     /// </summary>
-    public ResourceTypeIndex Build(FolderCatalog catalog, string resourceType, CancellationToken cancellationToken)
+    /// <param name="catalog">The folder's catalog.</param>
+    /// <param name="bundleReferences">
+    /// Rewrites references to Bundle entries by fullUrl before each resource is indexed; the type's <c>urn:</c> references it
+    /// cannot resolve are reported in one <see cref="BundleReferenceResolver.UnresolvedCode"/> diagnostic, after the others.
+    /// </param>
+    /// <param name="resourceType">The type to index.</param>
+    /// <param name="cancellationToken">Cancels extraction.</param>
+    internal ResourceTypeIndex Build(FolderCatalog catalog, BundleReferenceResolver bundleReferences, string resourceType, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(bundleReferences);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceType);
 
         var stopwatch = Stopwatch.StartNew();
@@ -76,32 +84,39 @@ public sealed class FolderIndexBuilder
             .Distinct(StringComparer.Ordinal)
             .ToDictionary(path => path, path => File.ReadAllBytes(Path.Combine(catalog.RootPath, path)), StringComparer.Ordinal);
 
-        var results = new (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics)[entries.Length];
+        var results = new (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics, IReadOnlyList<string> UnresolvedUrns)[entries.Length];
         Parallel.For(
             0,
             entries.Length,
             new ParallelOptions { CancellationToken = cancellationToken },
-            i => results[i] = TryIndex(entries[i], files[entries[i].FilePath]));
+            i => results[i] = TryIndex(entries[i], files[entries[i].FilePath], bundleReferences));
 
         var resources = new List<IndexedResource>(entries.Length);
         var diagnostics = new List<CatalogDiagnostic>();
-        foreach (var (resource, entryDiagnostics) in results)
+        var unresolved = new List<(CatalogEntry Entry, string Urn)>();
+        foreach (var (resource, entryDiagnostics, unresolvedUrns) in results)
         {
             diagnostics.AddRange(entryDiagnostics);
             if (resource is not null)
             {
                 resources.Add(resource);
+                unresolved.AddRange(unresolvedUrns.Select(urn => (resource.Entry, urn)));
             }
+        }
+
+        if (unresolved.Count > 0)
+        {
+            diagnostics.Add(UnresolvedBundleReferences(resourceType, unresolved));
         }
 
         return new ResourceTypeIndex(resourceType, resources, diagnostics, DateTimeOffset.UtcNow, stopwatch.ElapsedMilliseconds, FromCache: false);
     }
 
-    private (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics) TryIndex(CatalogEntry entry, byte[] fileBytes)
+    private (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics, IReadOnlyList<string> UnresolvedUrns) TryIndex(CatalogEntry entry, byte[] fileBytes, BundleReferenceResolver bundleReferences)
     {
         if (entry.Offset + entry.Length > fileBytes.Length)
         {
-            return (null, [Stale(entry, $"the file is now {fileBytes.Length} bytes, shorter than the catalogued range ending at {entry.Offset + entry.Length}")]);
+            return (null, [Stale(entry, $"the file is now {fileBytes.Length} bytes, shorter than the catalogued range ending at {entry.Offset + entry.Length}")], []);
         }
 
         ReadOnlyMemory<byte> json = fileBytes.AsMemory((int)entry.Offset, entry.Length);
@@ -115,19 +130,36 @@ public sealed class FolderIndexBuilder
             {
                 string expected = entry.HasSyntheticId ? entry.ResourceType : $"{entry.ResourceType}/{entry.Id}";
                 string found = entry.HasSyntheticId ? foundType ?? "(no resourceType)" : $"{foundType ?? "(no resourceType)"}/{foundId ?? "(no id)"}";
-                return (null, [Stale(entry, $"expected {expected} but found {found}")]);
+                return (null, [Stale(entry, $"expected {expected} but found {found}")], []);
             }
 
             node = JsonSourceNodeFactory.Parse(json);
         }
         catch (JsonException ex)
         {
-            return (null, [new CatalogDiagnostic("invalid-resource", entry.FilePath, entry.Line, $"{entry.ResourceType}/{entry.Id}: {ex.Message}")]);
+            return (null, [new CatalogDiagnostic("invalid-resource", entry.FilePath, entry.Line, $"{entry.ResourceType}/{entry.Id}: {ex.Message}")], []);
         }
 
+        // Rewritten in the tool's own parse, before conversion, so every parameter sees the resolved reference.
+        IReadOnlyList<string> unresolvedUrns = bundleReferences.Rewrite(entry, ((IMutableJsonNode)node).MutableNode);
         IElement element = node.ToElement(_schema);
         var (index, diagnostics) = ExtractionFailureCapture.Capture(entry, () => _indexer.Extract(element), IndexedCanonicals);
-        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), diagnostics);
+        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), diagnostics, unresolvedUrns);
+    }
+
+    /// <summary>One diagnostic for the type's unresolved <c>urn:</c> references: how many (distinct per resource), and the first few.</summary>
+    private static CatalogDiagnostic UnresolvedBundleReferences(string resourceType, List<(CatalogEntry Entry, string Urn)> unresolved)
+    {
+        CatalogEntry first = unresolved[0].Entry;
+        IEnumerable<string> samples = unresolved
+            .Take(BundleReferenceResolver.SampleLimit)
+            .Select(item => $"{item.Entry.ResourceType}/{item.Entry.Id} -> {item.Urn}");
+        string more = unresolved.Count > BundleReferenceResolver.SampleLimit ? $" (first {BundleReferenceResolver.SampleLimit})" : string.Empty;
+        return new CatalogDiagnostic(
+            BundleReferenceResolver.UnresolvedCode,
+            first.FilePath,
+            first.Line,
+            $"{unresolved.Count} urn: references in {resourceType} resources name no Bundle entry fullUrl in the folder, or name more than one resource, so they are indexed as written and reference searches, chains and includes do not follow them{more}: {string.Join(", ", samples)}.");
     }
 
     /// <summary>

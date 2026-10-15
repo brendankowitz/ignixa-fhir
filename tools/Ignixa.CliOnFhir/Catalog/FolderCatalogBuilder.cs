@@ -59,7 +59,7 @@ public static class FolderCatalogBuilder
             }
         }
 
-        return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles, state.Files, DateTimeOffset.UtcNow);
+        return new FolderCatalog(root, state.Entries, state.Diagnostics, state.FilesScanned, state.FilesSkipped, state.ContainerBundles, state.Files, DateTimeOffset.UtcNow, state.FullUrls);
     }
 
     /// <summary>
@@ -127,11 +127,11 @@ public static class FolderCatalogBuilder
             if (resourceType == "Bundle")
             {
                 state.ContainerBundles++;
-                IReadOnlyList<(int Offset, int Length)> ranges = ResourceSniffer.LocateBundleEntries(bytes);
+                IReadOnlyList<(int Offset, int Length, string? FullUrl)> ranges = ResourceSniffer.LocateBundleEntries(bytes);
                 for (int i = 0; i < ranges.Count; i++)
                 {
-                    var (offset, length) = ranges[i];
-                    state.Add(relativePath, bytes.AsSpan(offset, length), offset, line: null, ordinal: i);
+                    var (offset, length, fullUrl) = ranges[i];
+                    state.Add(relativePath, bytes.AsSpan(offset, length), offset, line: null, ordinal: i, fullUrl);
                 }
 
                 return;
@@ -184,6 +184,8 @@ public static class FolderCatalogBuilder
 
         public List<CatalogFile> Files { get; } = [];
 
+        public List<BundleFullUrl> FullUrls { get; } = [];
+
         public int FilesScanned { get; set; }
 
         public int FilesSkipped { get; set; }
@@ -204,7 +206,7 @@ public static class FolderCatalogBuilder
             return relativePath;
         }
 
-        public void Add(string relativePath, ReadOnlySpan<byte> json, long offset, int? line, int ordinal)
+        public void Add(string relativePath, ReadOnlySpan<byte> json, long offset, int? line, int ordinal, string? fullUrl = null)
         {
             var (resourceType, id) = ResourceSniffer.Sniff(json);
             if (string.IsNullOrEmpty(resourceType))
@@ -222,6 +224,11 @@ public static class FolderCatalogBuilder
             bool synthetic = string.IsNullOrEmpty(id);
             string resourceId = synthetic ? SyntheticId(relativePath, ordinal) : id!;
             var entry = new CatalogEntry(resourceType, resourceId, relativePath, offset, json.Length, line, synthetic);
+            if (fullUrl is not null)
+            {
+                // Recorded for a duplicate too: its fullUrl still names this Type/id, which the first occurrence holds.
+                FullUrls.Add(new BundleFullUrl(fullUrl, relativePath, resourceType, resourceId));
+            }
 
             if (_seen.TryGetValue((resourceType, resourceId), out CatalogEntry? first))
             {

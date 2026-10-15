@@ -29,7 +29,10 @@ namespace Ignixa.CliOnFhir.Caching;
 /// Module version ids of the assemblies that build indexes (the tool, Ignixa.Search, Ignixa.Specification, Ignixa.FhirPath). They
 /// derive from the compiled content, so an uncommitted code change invalidates the cache like a release would.
 /// </param>
-/// <param name="Files">The catalogued files with the size and last-write time they had when read.</param>
+/// <param name="Files">
+/// The catalogued files with the size and last-write time they had when read. Every file, not only a type's own: a type's
+/// index resolves references through the fullUrls of every Bundle in the folder.
+/// </param>
 internal sealed record CacheManifest(
     int FormatVersion,
     string FolderPath,
@@ -39,7 +42,7 @@ internal sealed record CacheManifest(
     string ModuleVersions,
     IReadOnlyList<CatalogFile> Files)
 {
-    public const int CurrentFormatVersion = 7;
+    public const int CurrentFormatVersion = 8;
 
     public static CacheManifest For(FolderCatalog catalog, string folderPath, string fhirVersion, ISearchParameterDefinitionManager definitions)
     {

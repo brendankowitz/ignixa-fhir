@@ -54,12 +54,13 @@ internal static class ResourceSniffer
 
     /// <summary>
     /// Returns the byte range of every <c>entry[].resource</c> in a Bundle, relative to the start of
-    /// <paramref name="bundle"/>. Entries without a <c>resource</c> are not returned.
+    /// <paramref name="bundle"/>, with the entry's <c>fullUrl</c> (null when it has none). Entries without a
+    /// <c>resource</c> are not returned.
     /// </summary>
     /// <exception cref="JsonException">The input is not well-formed JSON.</exception>
-    public static IReadOnlyList<(int Offset, int Length)> LocateBundleEntries(ReadOnlySpan<byte> bundle)
+    public static IReadOnlyList<(int Offset, int Length, string? FullUrl)> LocateBundleEntries(ReadOnlySpan<byte> bundle)
     {
-        var ranges = new List<(int Offset, int Length)>();
+        var ranges = new List<(int Offset, int Length, string? FullUrl)>();
         var reader = new Utf8JsonReader(bundle, ReaderOptions);
         if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
         {
@@ -83,24 +84,37 @@ internal static class ResourceSniffer
         return ranges;
     }
 
-    private static void ReadEntries(ref Utf8JsonReader reader, List<(int Offset, int Length)> ranges)
+    private static void ReadEntries(ref Utf8JsonReader reader, List<(int Offset, int Length, string? FullUrl)> ranges)
     {
         while (reader.Read() && reader.TokenType == JsonTokenType.StartObject)
         {
+            (int Offset, int Length)? resource = null;
+            string? fullUrl = null;
             while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
             {
                 bool isResource = reader.ValueTextEquals("resource"u8);
+                bool isFullUrl = !isResource && reader.ValueTextEquals("fullUrl"u8);
                 reader.Read();
                 if (isResource && reader.TokenType == JsonTokenType.StartObject)
                 {
                     int start = (int)reader.TokenStartIndex;
                     reader.Skip();
-                    ranges.Add((start, (int)reader.BytesConsumed - start));
+                    resource = (start, (int)reader.BytesConsumed - start);
+                }
+                else if (isFullUrl && reader.TokenType == JsonTokenType.String)
+                {
+                    fullUrl = reader.GetString();
                 }
                 else
                 {
                     reader.Skip();
                 }
+            }
+
+            // fullUrl may follow resource, so an entry is complete only at its end.
+            if (resource is var (offset, length))
+            {
+                ranges.Add((offset, length, string.IsNullOrWhiteSpace(fullUrl) ? null : fullUrl));
             }
         }
     }
