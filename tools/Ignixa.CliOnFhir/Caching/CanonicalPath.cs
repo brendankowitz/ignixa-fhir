@@ -15,23 +15,38 @@ internal static class CanonicalPath
     private const int MaxLinkHops = 40;
 
     /// <summary>
-    /// Resolves <paramref name="path"/> against the file system. Components that do not exist yet (a cache directory
-    /// not created so far) are kept as written, appended to the resolved form of their deepest existing ancestor.
+    /// Resolves <paramref name="path"/> against the file system the way the operating system does: one component at
+    /// a time, left to right, expanding each link where it stands. A relative link target is read relative to the
+    /// link's own directory, and a <c>..</c> means the parent of what the components before it resolved to, which
+    /// is not the lexical parent when one of them was a link. Components that do not exist yet (a cache directory
+    /// not created so far) are kept as written.
     /// </summary>
-    /// <exception cref="IOException">A link chain is too long or cyclic, or a link cannot be read.</exception>
+    /// <exception cref="IOException">A link chain is too long or cyclic.</exception>
     public static string Resolve(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        string full = Path.GetFullPath(path);
-        string current = Path.GetPathRoot(full)!;
+        string absolute = Path.IsPathRooted(path) ? path : Path.Combine(Directory.GetCurrentDirectory(), path);
+        string current = Path.GetPathRoot(absolute)!;
         Stack<string> pending = new();
-        PushSegments(pending, full, current);
+        PushSegments(pending, absolute[current.Length..]);
         int hops = 0;
         while (pending.TryPop(out string? segment))
         {
+            if (segment == ".")
+            {
+                continue;
+            }
+
+            if (segment == "..")
+            {
+                current = Path.GetDirectoryName(current) ?? current;
+                continue;
+            }
+
             string next = Path.Combine(current, segment);
-            if (new DirectoryInfo(next).LinkTarget is null)
+            string? linkTarget = new DirectoryInfo(next).LinkTarget;
+            if (linkTarget is null)
             {
                 current = next;
                 continue;
@@ -42,20 +57,26 @@ internal static class CanonicalPath
                 throw new IOException($"Too many levels of links while resolving '{path}'.");
             }
 
-            // The target's own ancestors may be links too, so it is walked component by component as well.
-            string target = new DirectoryInfo(next).ResolveLinkTarget(returnFinalTarget: true)?.FullName
-                ?? throw new IOException($"The link '{next}' has no resolvable target.");
-            current = Path.GetPathRoot(target)!;
-            PushSegments(pending, target, current);
+            // An absolute target restarts from its root; a relative one continues from the link's directory, which
+            // is where `current` already is. Either way its components are resolved before anything after the link.
+            if (Path.IsPathRooted(linkTarget))
+            {
+                current = Path.GetPathRoot(linkTarget)!;
+                PushSegments(pending, linkTarget[current.Length..]);
+            }
+            else
+            {
+                PushSegments(pending, linkTarget);
+            }
         }
 
         return current;
     }
 
-    // Pushes the segments below the root so that the first one ends up on top.
-    private static void PushSegments(Stack<string> stack, string fullPath, string root)
+    // Pushes the segments so that the first one ends up on top.
+    private static void PushSegments(Stack<string> stack, string path)
     {
-        string[] segments = fullPath[root.Length..].Split(
+        string[] segments = path.Split(
             [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
             StringSplitOptions.RemoveEmptyEntries);
         for (int i = segments.Length - 1; i >= 0; i--)

@@ -84,25 +84,29 @@ internal sealed record CacheManifest(
     }
 
     /// <summary>
-    /// Compares the identity of a stored manifest, read straight from its JSON, with the current run's. This runs
-    /// before the stored manifest is deserialized or validated, so a file written in an older shape reads as a
-    /// different cache rather than a corrupt one. A different format version is reported alone, since the other
-    /// members' meaning is then unknown; otherwise members that are present and differ are listed.
+    /// Compares the identity of a stored manifest, read straight from its JSON with exact member names, with the
+    /// current run's. This runs before the stored manifest is deserialized or validated, so a file written in an
+    /// older shape reads as a different cache rather than a corrupt one. A different format version is reported
+    /// alone, since the other members' meaning is then unknown. Every other identity member must be present as
+    /// a string and equal: a missing or wrongly typed one is a difference, never skipped.
     /// </summary>
     /// <returns>Why the stored manifest belongs to a different cache; null when its identity matches.</returns>
-    /// <exception cref="InvalidDataException">The JSON is not an object with a numeric <c>formatVersion</c>.</exception>
+    /// <exception cref="InvalidDataException">The JSON is not an object.</exception>
     public static string? CompareIdentity(JsonElement stored, CacheManifest current)
     {
         ArgumentNullException.ThrowIfNull(current);
 
-        if (stored.ValueKind != JsonValueKind.Object
-            || !stored.TryGetProperty("formatVersion", out JsonElement format)
-            || format.ValueKind != JsonValueKind.Number)
+        if (stored.ValueKind != JsonValueKind.Object)
         {
-            throw new InvalidDataException("the manifest has no format version.");
+            throw new InvalidDataException("the manifest is not a JSON object.");
         }
 
         string currentFormat = current.FormatVersion.ToString(CultureInfo.InvariantCulture);
+        if (!stored.TryGetProperty("formatVersion", out JsonElement format) || format.ValueKind != JsonValueKind.Number)
+        {
+            return $"cache format is missing or not a number (current '{currentFormat}')";
+        }
+
         if (!string.Equals(format.GetRawText(), currentFormat, StringComparison.Ordinal))
         {
             return Describe("cache format", format.GetRawText(), currentFormat);
@@ -111,9 +115,11 @@ internal sealed record CacheManifest(
         List<string> reasons = [];
         foreach ((string label, string name, string value) in current.IdentityMembers())
         {
-            if (stored.TryGetProperty(name, out JsonElement member)
-                && member.ValueKind == JsonValueKind.String
-                && !string.Equals(member.GetString(), value, StringComparison.Ordinal))
+            if (!stored.TryGetProperty(name, out JsonElement member) || member.ValueKind != JsonValueKind.String)
+            {
+                reasons.Add($"{label} is missing or not a string (current '{value}')");
+            }
+            else if (!string.Equals(member.GetString(), value, StringComparison.Ordinal))
             {
                 reasons.Add(Describe(label, member.GetString()!, value));
             }

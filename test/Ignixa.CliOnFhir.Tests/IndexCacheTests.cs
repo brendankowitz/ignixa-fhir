@@ -594,7 +594,6 @@ public class IndexCacheTests
     [InlineData("files-null")]
     [InlineData("files-duplicate-path")]
     [InlineData("files-null-element")]
-    [InlineData("module-versions-missing")]
     public void GivenManifestWithNullOrDuplicateMembers_WhenSessionOpens_ThenItIsReplacedWithAWarningInsteadOfFailing(string damage)
     {
         using TestFolder folder = CreateFixture();
@@ -608,7 +607,7 @@ public class IndexCacheTests
             case "files-null": manifest["files"] = null; break;
             case "files-duplicate-path": manifest["files"]!.AsArray().Add(manifest["files"]![0]!.DeepClone()); break;
             case "files-null-element": manifest["files"]!.AsArray().Add(null); break;
-            default: manifest.AsObject().Remove("moduleVersions"); break;
+            default: throw new ArgumentOutOfRangeException(nameof(damage), damage, null);
         }
 
         File.WriteAllText(manifestPath, manifest.ToJsonString());
@@ -866,6 +865,235 @@ public class IndexCacheTests
         }
     }
 
+    [Theory]
+    [InlineData("formatVersion", "cache format is missing")]
+    [InlineData("toolVersion", "tool version is missing or not a string")]
+    [InlineData("definitionsHash", "search parameter definitions is missing or not a string")]
+    [InlineData("moduleVersions", "indexing code is missing or not a string")]
+    public void GivenManifestMissingAnIdentityMember_WhenSessionOpens_ThenItIsADifferentCacheAndNeverSkipped(string member, string expectedReason)
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        RewriteManifest(first.CacheDirectory!, manifest => manifest.Remove(member));
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        IssueItem issue = second.CacheIssues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-rebuilt");
+        issue.Diagnostics.ShouldContain(expectedReason);
+    }
+
+    [Fact]
+    public void GivenManifestIdentityOfTheWrongType_WhenSessionOpens_ThenItIsADifferentCache()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        RewriteManifest(first.CacheDirectory!, manifest => manifest["toolVersion"] = 7);
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("tool version is missing or not a string");
+    }
+
+    [Fact]
+    public void GivenManifestWithPascalCaseMembers_WhenSessionOpens_ThenItDoesNotPassAsTheCurrentCache()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        RewriteManifest(first.CacheDirectory!, manifest =>
+        {
+            foreach (var (name, value) in manifest.ToArray())
+            {
+                manifest.Remove(name);
+                manifest[char.ToUpperInvariant(name[0]) + name[1..]] = value;
+            }
+        });
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-rebuilt");
+    }
+
+    [Fact]
+    public void GivenStaleMemberAlsoPresentInAnotherCasing_WhenSessionOpens_ThenTheExactCasedMemberDecides()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string current = string.Empty;
+        RewriteManifest(first.CacheDirectory!, manifest =>
+        {
+            current = manifest["toolVersion"]!.GetValue<string>();
+            manifest["toolVersion"] = "0.0.0-stale";
+            manifest["ToolVersion"] = current;
+        });
+
+        FolderSession stale = Open(folder, cache);
+        stale.GetIndex("Patient").FromCache.ShouldBeFalse();
+        stale.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("tool version differs");
+
+        RewriteManifest(first.CacheDirectory!, manifest =>
+        {
+            manifest["ToolVersion"] = "0.0.0-stale";
+            manifest["toolVersion"] = current;
+        });
+        FolderSession inert = Open(folder, cache);
+        inert.GetIndex("Patient").FromCache.ShouldBeTrue();
+        inert.CacheIssues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenManifestRepeatingAMemberName_WhenSessionOpens_ThenItIsCorruptAndReplaced()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string manifestPath = Path.Combine(first.CacheDirectory!, "manifest.json");
+        string text = File.ReadAllText(manifestPath);
+        File.WriteAllText(manifestPath, text.Replace("{\"formatVersion\"", "{\"toolVersion\":\"0.0.0-stale\",\"formatVersion\"", StringComparison.Ordinal));
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+        File.ReadAllText(manifestPath).ShouldBe(text);
+    }
+
+    [Fact]
+    public void GivenTypeFileRepeatingAMemberName_WhenSessionOpens_ThenItIsCorruptAndRebuilt()
+    {
+        using TestFolder folder = CreateFixture();
+        using var cache = new TestFolder();
+        FolderSession first = Open(folder, cache);
+        first.GetIndex("Patient");
+        string path = Path.Combine(first.CacheDirectory!, "Patient.index.json");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("\"catalogEntryCount\":", "\"catalogEntryCount\":0,\"catalogEntryCount\":", StringComparison.Ordinal));
+        FolderSession second = Open(folder, cache);
+
+        second.GetIndex("Patient").FromCache.ShouldBeFalse();
+
+        second.CacheIssues.ShouldHaveSingleItem().Code.ShouldBe("index-cache-corrupt");
+    }
+
+    [Fact]
+    public void GivenRelativeLinkWithParentSegmentThroughAnotherLink_WhenCacheIsPlacedAtIt_ThenItIsResolvedLikeTheOperatingSystemAndRefused()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // out/hop -> data/inner ; out/cache -> "hop/../c". The OS resolves hop first, so `..` is data and the
+        // cache lands in data/c; resolving `..` lexically would put it in out/c.
+        using var root = new TestFolder();
+        root.Write("data/patient.json", """{"resourceType":"Patient","id":"p1"}""");
+        Directory.CreateDirectory(Path.Combine(root.Path, "data", "inner"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "data", "c"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "out"));
+        Directory.CreateSymbolicLink(Path.Combine(root.Path, "out", "hop"), Path.Combine(root.Path, "data", "inner"));
+        Directory.CreateSymbolicLink(Path.Combine(root.Path, "out", "cache"), "hop/../c");
+        string[] before = Snapshot(Path.Combine(root.Path, "data"));
+        var session = new FolderSession(
+            Path.Combine(root.Path, "data"),
+            new R4CoreSchemaProvider(),
+            NullLoggerFactory.Instance,
+            IndexCacheOptions.At(Path.Combine(root.Path, "out", "cache")));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the data folder");
+        Snapshot(Path.Combine(root.Path, "data")).ShouldBe(before);
+        Directory.Exists(Path.Combine(root.Path, "out", "c")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenRelativeLinkWithoutParentSegments_WhenCacheIsPlacedAtIt_ThenItIsResolvedFromTheLinksDirectoryAndRefused()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var root = new TestFolder();
+        root.Write("data/patient.json", """{"resourceType":"Patient","id":"p1"}""");
+        Directory.CreateDirectory(Path.Combine(root.Path, "data", "sub"));
+        Directory.CreateSymbolicLink(Path.Combine(root.Path, "link"), "data/sub");
+        var session = new FolderSession(
+            Path.Combine(root.Path, "data"),
+            new R4CoreSchemaProvider(),
+            NullLoggerFactory.Instance,
+            IndexCacheOptions.At(Path.Combine(root.Path, "link")));
+
+        session.GetIndex("Patient").Resources.ShouldHaveSingleItem();
+
+        session.CacheDirectory.ShouldBeNull();
+        session.CacheIssues.ShouldHaveSingleItem().Diagnostics.ShouldContain("inside the data folder");
+        Directory.EnumerateFileSystemEntries(Path.Combine(root.Path, "data", "sub")).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenRelativeLinksThatStayOutsideTheFolder_WhenCacheIsPlacedAtThem_ThenTheCacheIsUsed()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var root = new TestFolder();
+        root.Write("data/patient.json", """{"resourceType":"Patient","id":"p1"}""");
+        Directory.CreateDirectory(Path.Combine(root.Path, "elsewhere", "real"));
+        Directory.CreateDirectory(Path.Combine(root.Path, "out"));
+        Directory.CreateSymbolicLink(Path.Combine(root.Path, "out", "cache"), "../elsewhere/real");
+        var session = new FolderSession(
+            Path.Combine(root.Path, "data"),
+            new R4CoreSchemaProvider(),
+            NullLoggerFactory.Instance,
+            IndexCacheOptions.At(Path.Combine(root.Path, "out", "cache")));
+
+        session.GetIndex("Patient");
+
+        session.CacheIssues.ShouldBeEmpty();
+        Directory.EnumerateFiles(Path.Combine(root.Path, "elsewhere", "real"), "manifest.json", SearchOption.AllDirectories).ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void GivenDataFolderPathThatCannotBeResolved_WhenTheCacheIsUsed_ThenItFailsClosedWithAnUnavailableWarning()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using TestFolder folder = CreateFixture();
+        using var elsewhere = new TestFolder();
+        Directory.CreateSymbolicLink(Path.Combine(elsewhere.Path, "loopA"), "loopB");
+        Directory.CreateSymbolicLink(Path.Combine(elsewhere.Path, "loopB"), "loopA");
+        FolderSession session = new(folder.Path, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
+        FolderCatalog unresolvable = session.Catalog with { RootPath = Path.Combine(elsewhere.Path, "loopA", "data") };
+        string cacheRoot = Path.Combine(elsewhere.Path, "cache");
+        var cache = new FolderIndexCache(IndexCacheOptions.At(cacheRoot), unresolvable, "R4", session.Definitions);
+
+        cache.TryLoad("Patient").ShouldBeNull();
+
+        cache.CacheDirectory.ShouldBeNull();
+        IssueItem issue = cache.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe("index-cache-unavailable");
+        issue.Diagnostics.ShouldContain("cannot be resolved");
+        Directory.Exists(cacheRoot).ShouldBeFalse();
+    }
+
     private static (Command Command, Option<string?> CacheDir, Option<bool> NoCache) CreateCacheCommand()
     {
         Option<string?> cacheDir = CommonOptions.CreateCacheDirOption();
@@ -877,11 +1105,16 @@ public class IndexCacheTests
 
     // Rewrites the manifest as an older or foreign build would have written it and rebinds the type files to it, so
     // the cache is internally consistent but no longer matches this run.
-    private static void SimulateCacheWrittenByAnotherBuild(string cacheDirectory, string field, object value, bool inOlderShape = false)
+    private static void SimulateCacheWrittenByAnotherBuild(string cacheDirectory, string field, object value, bool inOlderShape = false) =>
+        RewriteManifest(cacheDirectory, manifest => manifest[field] = JsonValue.Create(value), inOlderShape);
+
+    // Rewrites the manifest and re-binds the type files to the rewritten bytes, so the cache stays internally
+    // consistent and only differs from what this run would write.
+    private static void RewriteManifest(string cacheDirectory, Action<JsonObject> change, bool typeFilesInOlderShape = false)
     {
         string manifestPath = Path.Combine(cacheDirectory, "manifest.json");
-        JsonNode manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
-        manifest[field] = JsonValue.Create(value);
+        JsonObject manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();
+        change(manifest);
         byte[] manifestBytes = System.Text.Encoding.UTF8.GetBytes(manifest.ToJsonString());
         File.WriteAllBytes(manifestPath, manifestBytes);
         string manifestId = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(manifestBytes));
@@ -889,7 +1122,7 @@ public class IndexCacheTests
         {
             JsonNode index = JsonNode.Parse(File.ReadAllText(typeFile))!;
             index["manifestId"] = manifestId;
-            if (inOlderShape)
+            if (typeFilesInOlderShape)
             {
                 index["resources"] = new JsonObject();
             }

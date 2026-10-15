@@ -40,14 +40,24 @@ internal sealed class FolderIndexCache
     private const string TypeFileSuffix = ".index.json";
     private const int FileBufferSize = 1 << 16;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    // Exact member names and no duplicates: the identity checks read the JSON with exact names, so the typed read
+    // must see the same members, not a differently cased or repeated one that wins silently.
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = false,
+        AllowDuplicateProperties = false,
+    };
+
+    private static readonly JsonDocumentOptions DocumentOptions = new() { AllowDuplicateProperties = false };
 
     private readonly IndexCacheOptions _options;
     private readonly FolderCatalog _catalog;
     private readonly string _folderPath;
     private readonly string _fhirVersion;
     private readonly ISearchParameterDefinitionManager _definitions;
-    private readonly string _canonicalFolderPath;
+    private readonly string? _canonicalFolderPath;
+    private readonly string? _folderResolveProblem;
     private readonly string? _unavailableReason;
     private readonly Lock _gate = new();
     private readonly List<IssueItem> _issues = [];
@@ -68,7 +78,7 @@ internal sealed class FolderIndexCache
         _fhirVersion = fhirVersion;
         _definitions = definitions;
         _folderPath = NormalizeFolderPath(catalog.RootPath);
-        _canonicalFolderPath = ResolveOrNull(catalog.RootPath) ?? Path.GetFullPath(catalog.RootPath);
+        (_canonicalFolderPath, _folderResolveProblem) = ResolveFolder(catalog.RootPath);
         _unavailableReason = options.UnavailableReason ?? (options.RootDirectory is null ? null : OverlapReason(options.RootDirectory));
         CacheDirectory = options.RootDirectory is null || _unavailableReason is not null
             ? null
@@ -265,7 +275,7 @@ internal sealed class FolderIndexCache
         try
         {
             using FileStream stream = OpenShared(path, FileOptions.None);
-            using JsonDocument document = JsonDocument.Parse(stream);
+            using JsonDocument document = JsonDocument.Parse(stream, DocumentOptions);
             return document.RootElement.ValueKind == JsonValueKind.Object
                 && document.RootElement.TryGetProperty("manifestId", out JsonElement id)
                 && id.ValueKind == JsonValueKind.String
@@ -299,6 +309,12 @@ internal sealed class FolderIndexCache
             return $"the cache directory '{cachePath}' cannot be checked against the data folder ({Describe(ex)})";
         }
 
+        // Without the data folder's real location there is nothing to compare against, so nothing is written.
+        if (_canonicalFolderPath is null)
+        {
+            return _folderResolveProblem;
+        }
+
         if (IsSameOrUnder(cache, _canonicalFolderPath))
         {
             return $"the cache directory '{cache}' is inside the data folder '{_canonicalFolderPath}'; the folder is never written and cache files would be read as data. Use --cache-dir outside the folder";
@@ -309,15 +325,15 @@ internal sealed class FolderIndexCache
             : null;
     }
 
-    private static string? ResolveOrNull(string path)
+    private static (string? Path, string? Problem) ResolveFolder(string path)
     {
         try
         {
-            return CanonicalPath.Resolve(path);
+            return (CanonicalPath.Resolve(path), null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return null;
+            return (null, $"the data folder '{path}' cannot be resolved, so the cache location cannot be checked against it ({Describe(ex)})");
         }
     }
 
@@ -480,7 +496,7 @@ internal sealed class FolderIndexCache
         {
             // Identity first, straight from the JSON: a manifest from another format, tool or definitions is a
             // different cache, not a damaged one, even if its shape no longer deserializes.
-            using JsonDocument document = JsonDocument.Parse(stored);
+            using JsonDocument document = JsonDocument.Parse(stored, DocumentOptions);
             differentCache = CacheManifest.CompareIdentity(document.RootElement, current);
             if (differentCache is null)
             {
