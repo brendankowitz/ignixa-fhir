@@ -7,6 +7,7 @@ using Ignixa.Abstractions;
 using Medino;
 using Microsoft.Extensions.Logging;
 using Ignixa.Application.Features.Bundle;
+using Ignixa.Application.Features.SemanticSearch;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
@@ -43,6 +44,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
     private readonly IFhirVersionContext _fhirVersionContext;
     private readonly Func<FhirVersion, IValidationSchemaResolver> _schemaResolverFactory;
     private readonly ILogger<CreateOrUpdateResourceHandler> _logger;
+    private readonly SemanticIndexer? _semanticIndexer;
 
     public CreateOrUpdateResourceHandler(
         IPartitionStrategy partitionStrategy,
@@ -50,7 +52,8 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext fhirVersionContext,
         Func<FhirVersion, IValidationSchemaResolver> schemaResolverFactory,
-        ILogger<CreateOrUpdateResourceHandler> logger)
+        ILogger<CreateOrUpdateResourceHandler> logger,
+        SemanticIndexer? semanticIndexer = null)
     {
         _partitionStrategy = partitionStrategy ?? throw new ArgumentNullException(nameof(partitionStrategy));
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
@@ -58,6 +61,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         _fhirVersionContext = fhirVersionContext ?? throw new ArgumentNullException(nameof(fhirVersionContext));
         _schemaResolverFactory = schemaResolverFactory ?? throw new ArgumentNullException(nameof(schemaResolverFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _semanticIndexer = semanticIndexer;
     }
 
     public async Task<UpdateResult> HandleAsync(CreateOrUpdateResourceCommand command, CancellationToken cancellationToken)
@@ -173,10 +177,20 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             // 4. Get repository from factory
             var repository = await _repositoryFactory.GetRepositoryAsync(resolvedTenantId, cancellationToken);
 
-            // 5. Write immediately to repository - returns UpdateResult with ResourceKey + raw bytes
+            // 5. Embed semantic text before writing: a committed write must never leave the vector
+            // index stale, so embedding failures must surface before the repository call below, not
+            // after. Bundle writes are embedded separately by DeferredWriteCoordinator -- after alias
+            // rewrite/re-extraction, and batched across the whole transaction/micro-batch -- not here.
+            if (_semanticIndexer is not null)
+            {
+                var hasSemanticSearchParameter = BuildSemanticParameterPredicate(fhirVersionEnum, tenantId);
+                wrapper = (await _semanticIndexer.IndexAsync([wrapper], hasSemanticSearchParameter, cancellationToken))[0];
+            }
+
+            // 6. Write immediately to repository - returns UpdateResult with ResourceKey + raw bytes
             result = await repository.CreateOrUpdateAsync(wrapper, cancellationToken);
 
-            // 6. Process X-Provenance header if provided (only for standalone operations)
+            // 7. Process X-Provenance header if provided (only for standalone operations)
             // Provenance cannot be processed in bundle/deferred context because the main resource isn't persisted yet
             if (command.ProvenanceResource != null)
             {
@@ -377,6 +391,13 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             SearchIndices = searchIndices?.ToArray()
         };
 
+        // No semantic indexing call here: Provenance carries no semantic search parameter in any shipped
+        // definition, so IndexAsync would always find zero semantic entries and its
+        // hasSemanticSearchParameter predicate would always say "not evaluated" for it, leaving
+        // VectorIndices null either way (see ResourceWrapper.VectorIndices) -- the same value the record
+        // already defaults to. If a tenant-defined custom package ever adds a semantic search parameter
+        // targeting Provenance, this will need the same predicate-driven call the main resource gets above.
+
         // Persist the Provenance resource (validation was performed above by ValidateProvenance)
         var provenanceResult = await repository.CreateOrUpdateAsync(provenanceWrapper, cancellationToken);
 
@@ -386,6 +407,19 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
             provenanceResult.Key.VersionId,
             mainResourceResult.Key.ResourceType,
             mainResourceResult.Key.Id);
+    }
+
+    /// <summary>
+    /// Builds the predicate <see cref="SemanticIndexer.IndexAsync"/> uses to decide, per resource type,
+    /// whether to evaluate it at all (see that method's remarks): true when the type carries at least one
+    /// active (<c>IsSemantic &amp;&amp; IsSupported</c>) semantic search parameter in this tenant's
+    /// version-scoped definition manager -- the same manager <see cref="CreateResourceWrapper"/> already
+    /// resolves its indexer from for <paramref name="fhirVersion"/>/<paramref name="tenantId"/>.
+    /// </summary>
+    private Func<string, bool> BuildSemanticParameterPredicate(FhirVersion fhirVersion, int? tenantId)
+    {
+        var definitionManager = _fhirVersionContext.GetSearchParameterDefinitionManager(fhirVersion, tenantId);
+        return resourceType => definitionManager.GetSearchParameters(resourceType).Any(p => p.IsSemantic && p.IsSupported);
     }
 
     /// <summary>

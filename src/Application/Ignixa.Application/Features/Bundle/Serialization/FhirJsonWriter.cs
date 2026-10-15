@@ -200,6 +200,23 @@ internal class FhirJsonWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Writes a floating-point number property, skipping if the value is null. Used for
+    /// <c>Bundle.entry.search.score</c>, which FHIR declares a <c>decimal</c> and this server computes
+    /// as <c>1 - distance / 2</c> -- always fractional, never representable as <see cref="WriteNumber(string, int)"/>'s int.
+    /// </summary>
+    public FhirJsonWriter WriteOptionalNumber(string name, double? value)
+    {
+        EnsureArg.IsNotNullOrEmpty(name, nameof(name));
+
+        if (value.HasValue)
+        {
+            _writer.WriteNumber(name, value.Value);
+        }
+
+        return this;
+    }
+
+    /// <summary>
     /// Writes a raw JSON property value from pre-serialized UTF-8 bytes.
     /// This enables zero-copy passthrough of already-serialized JSON.
     /// Strips UTF-8 BOM if present for backward compatibility with legacy files.

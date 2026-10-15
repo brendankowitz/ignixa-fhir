@@ -63,7 +63,7 @@ public static class PlanExplainer
             var canonicalLabel = ExplainCteLabel(cte, i);
             var label = isRoot ? "root" : canonicalLabel;
             var top = isRoot && !hasMatchPageCte ? plan.MatchSpec.Top : null;
-            var body = PrintCte(cte, top, cursor);
+            var body = PrintCte(cte, top, plan.Ctes, cursor);
 
             if (isRoot)
             {
@@ -73,6 +73,12 @@ public static class PlanExplainer
             rows.Add(new PlanExplainRow(
                 label, canonicalLabel, KindOf(cte), body, ReferencedCteIndexesOf(cte)));
         }
+
+        // The match select binds the ranking's embedding before its WHERE clauses (see EmitMatchOnlyShape), so it
+        // is read before the outer predicate below. With a match-page CTE, PrintMatchPageCte reads it inline.
+        var rankingBody = !hasMatchPageCte && plan.MatchSpec.Ranking is { } ranking
+            ? PrintRanking(ranking, plan.Ctes, cursor)
+            : null;
 
         // Appended after the whole CTE loop, not inside it, because emission binds every CTE body before it
         // touches the outer predicate: SqlBuilder.Run calls EmitCteBodies first and only then the shape
@@ -93,6 +99,11 @@ public static class PlanExplainer
         if (plan.MatchSpec.Sort is { } sort)
         {
             rows.Add(new PlanExplainRow("sort", "sort", PlanRowKind.SortSpec, PrintSortSpec(sort), []));
+        }
+
+        if (rankingBody is not null)
+        {
+            rows.Add(new PlanExplainRow("ranking", "ranking", PlanRowKind.VectorRank, rankingBody, []));
         }
 
         if (!hasMatchPageCte)
@@ -189,6 +200,7 @@ public static class PlanExplainer
         CteDefinition.TableExistsPredicate => PlanRowKind.TableExistsPredicate,
         CteDefinition.VisibleSinceFilter => PlanRowKind.VisibleSinceFilter,
         CteDefinition.ReferencedTypeExpansion => PlanRowKind.ReferencedTypeExpansion,
+        CteDefinition.VectorMatchSource => PlanRowKind.VectorMatchSource,
         CteDefinition.MatchPage => PlanRowKind.MatchPageCte,
         CteDefinition.MatchSeed => PlanRowKind.MatchSeedCte,
         _ => throw new NotSupportedException($"No Explain() kind for {cte.GetType().Name}."),
@@ -209,7 +221,7 @@ public static class PlanExplainer
         CteDefinition.MatchPage page => [page.Spec.Root.Index],
         CteDefinition.MatchSeed seed => [seed.Page.Index],
         CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource or CteDefinition.MultiTypeResourceSource
-            or CteDefinition.TableExistsPredicate or CteDefinition.VisibleSinceFilter => [],
+            or CteDefinition.TableExistsPredicate or CteDefinition.VisibleSinceFilter or CteDefinition.VectorMatchSource => [],
         _ => throw new NotSupportedException($"No Explain() CTE references for {cte.GetType().Name}."),
     };
 
@@ -254,12 +266,18 @@ public static class PlanExplainer
     private static string PrintSearchParameterHash(SqlParameterRef hash, EmittedParameterCursor cursor)
         => $"SearchParameterHash(hash={cursor.Next(hash.Value)})";
 
-    private static string PrintMatchPageCte(MatchPageSpec spec, EmittedParameterCursor cursor)
+    private static string PrintMatchPageCte(MatchPageSpec spec, IReadOnlyList<CteDefinition> ctes, EmittedParameterCursor cursor)
     {
         var top = spec.Top is { } n ? n.ToString(CultureInfo.InvariantCulture) : "none";
         var sortJoins = SortEmitter.EmitSortJoins(spec.Sort).Length > 0;
         var resourceJoin = spec.OuterPredicate is not null || spec.SearchParameterHash is not null;
         var body = $"MatchPageCte(top={top}, sortJoins={(sortJoins ? "true" : "false")}, resourceJoin={(resourceJoin ? "true" : "false")})";
+
+        // First: EmitMatchPage binds the ranking ahead of its WHERE clauses.
+        if (spec.Ranking is { } ranking)
+        {
+            body += $" {PrintRanking(ranking, ctes, cursor)}";
+        }
 
         if (spec.OuterPredicate is { } outerPredicate)
         {
@@ -287,6 +305,17 @@ public static class PlanExplainer
         }
 
         return body;
+    }
+
+    /// <summary>
+    /// Renders the semantic ranking: the gate it reads and the embedding <c>EmitRankJoin</c> binds, one ordinal.
+    /// The gate is named by its CTE label; <see cref="QueryPlanValidator"/> has already required it to be in
+    /// <paramref name="ctes"/>.
+    /// </summary>
+    private static string PrintRanking(VectorRankSpec ranking, IReadOnlyList<CteDefinition> ctes, EmittedParameterCursor cursor)
+    {
+        var sourceIndex = ctes.Select((cte, index) => (cte, index)).First(entry => ReferenceEquals(entry.cte, ranking.Source)).index;
+        return $"VectorRank(source={CteLabel(sourceIndex)}, embedding={cursor.Next(ranking.Source.Embedding.Value)})";
     }
 
     private static string PrintMatchSeedCte(MatchPageSpec spec)
@@ -333,7 +362,7 @@ public static class PlanExplainer
         return $"IncludeStage(ref={refParam}, seedTypes={seedTypes}, outputTypes={outputTypes}, seeds=[{string.Join(",", seeds)}], limit={limit}{iterate}, {stage.Direction})";
     }
 
-    private static string PrintCte(CteDefinition cte, int? top, EmittedParameterCursor cursor) => cte switch
+    private static string PrintCte(CteDefinition cte, int? top, IReadOnlyList<CteDefinition> ctes, EmittedParameterCursor cursor) => cte switch
     {
         CteDefinition.ParamSource p =>
             $"{p.Table.TableName}[{PrintTypeScope(p.ResourceTypeId)},{p.SearchParamId}]{(p.Predicate is null ? string.Empty : $"  {PrintPredicate(p.Predicate, cursor)}")}{PrintTop(top)}",
@@ -355,10 +384,24 @@ public static class PlanExplainer
             $"VisibleSinceFilter({cursor.Next(vsf.Since.Value)}){PrintTop(top)}",
         CteDefinition.ReferencedTypeExpansion re =>
             $"ReferencedTypeExpansion({CteLabel(re.Seed.Index)}, output=[{string.Join(",", re.OutputResourceTypeIds)}]){PrintTop(top)}",
-        CteDefinition.MatchPage page => PrintMatchPageCte(page.Spec, cursor),
+        CteDefinition.VectorMatchSource vms => PrintVectorMatchSource(vms, top, cursor),
+        CteDefinition.MatchPage page => PrintMatchPageCte(page.Spec, ctes, cursor),
         CteDefinition.MatchSeed seed => PrintMatchSeedCte(seed.Spec),
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
+
+    /// <summary>
+    /// Renders the semantic gate. Type, parameter and model ids are literals in Emit; the embedding and the
+    /// threshold are bound in that order. The embedding prints as its parameter name only — the vector itself
+    /// is thousands of characters and says nothing about the plan's shape.
+    /// </summary>
+    private static string PrintVectorMatchSource(CteDefinition.VectorMatchSource vms, int? top, EmittedParameterCursor cursor)
+    {
+        var embedding = cursor.Next(vms.Embedding.Value);
+        var maxDistance = cursor.Next(vms.MaxDistance.Value);
+        return $"VectorMatchSource[{PrintTypeScope(vms.ResourceTypeId)},{vms.SearchParamId},model={vms.EmbeddingModelId}]  " +
+               $"VECTOR_DISTANCE(Embedding, {embedding}) <= {maxDistance}{PrintTop(top)}";
+    }
 
     private static string PrintNotReferencedSource(CteDefinition.NotReferencedSource nr, int? top, EmittedParameterCursor cursor)
     {

@@ -95,6 +95,7 @@ public interface ISymbolResolver
     Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken);
     Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken);
     Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken);
+    Task<short?> GetEmbeddingModelIdAsync(string modelKey, CancellationToken cancellationToken);
 }
 ```
 
@@ -310,6 +311,49 @@ is what a caller totalling the two phases separately needs.
 | **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, [two-phase missing-value sort](#two-phase-missing-value-sort) | caller drives the phases |
 | **Counting** | `ResultShape.Count` | `COUNT_BIG(DISTINCT …)`; the caller sets the shape — `_summary=count` / `_total` are not read |
 | **Missing** | `:missing` for leaf and composite parameters | |
+| **Semantic search** | one prepared `VectorSearchExpression` per search, as a top-level AND term | gate CTE + distance ranking; see [Semantic (vector) search](#semantic-vector-search) |
+
+## Semantic (vector) search
+
+A `VectorSearchExpression` is compiled only after the caller has embedded its query text
+(`VectorSearchExpression.WithPrepared`); an unprepared one fails at `Lower` with *"Semantic query was not
+prepared"*. Resolve looks up the prepared model key through `ISymbolResolver.GetEmbeddingModelIdAsync`,
+which must never create the row: a key with no `dbo.EmbeddingModel` row means no vector was ever written under
+it, so the leaf lowers to the same `1 = 0` known miss an unknown token system does.
+
+The leaf becomes two independent pieces:
+
+- **The gate** — `CteDefinition.VectorMatchSource`: distinct `(T1, Sid1)` rows of `dbo.VectorSearchParam`
+  for the parameter and model with any chunk within the prepared maximum cosine distance. It is a leaf like
+  any `ParamSource`, so filters, compartments, access constraints and the type allow-list intersect with it
+  before anything is ranked, and a count (`ResultShape.Count`) reads the gate alone. It joins `dbo.Resource`
+  under the plan's visibility because, unlike every other index table, `dbo.VectorSearchParam` rows do not
+  always disappear with the version that produced them: a normal single-resource delete removes them in the
+  same transaction, but a failed or skipped post-merge vector write, a merge-path/bundle delete, or a write
+  made while the feature was off can all leave rows behind for a version that is no longer current. The
+  join hides exactly those.
+- **The ranking** — `MatchPageSpec.Ranking` (`VectorRankSpec`): a correlated `CROSS APPLY` computing each
+  match row's minimum distance over its chunks, projected as a final `Distance` (float) column. The ORDER BY
+  is `[_sort keys…], vr.Distance ASC, [m.T1 ASC], m.Sid1 ASC` — distance after any explicit sort, ahead of
+  the identity tie-break. With includes, the match page, the probe-trimming match seed and the outer UNION
+  ALL all order by the same terms, and include rows carry `NULL` for `Distance`.
+
+The embedding is bound as an `nvarchar(max)` JSON array (`SqlVectorText.Format`) — twice, once for the gate
+and once for the ranking — so the SQL text never varies with the query vector and the plan cache holds one
+entry per query shape. The type, parameter and model ids are inlined like every other schema surrogate.
+
+Restrictions, each rejected rather than compiled into something that would silently rank wrongly:
+
+- At most one semantic expression per search, and only as the whole expression or a top-level AND term.
+  Under OR a match may have no distance; under `:not`, a union leg, a chain, or inside an access
+  constraint's predicate, the distance would rank rows by a condition they were selected for failing, or
+  one belonging to another resource. (A constraint on the searched type is intersected with the gate like
+  any other filter before ranking runs; only a semantic term nested inside a constraint's own predicate is
+  rejected.)
+- No keyset paging (`SearchPaging.Keyset`): the seek predicate cannot express distance order, so a
+  continuation would skip or repeat rows. Page with `SearchPaging.Offset`, which re-runs the ordering.
+- Ranking appears only on `ResultShape.Matches`; the validator rejects it on any other shape or alongside a
+  keyset `Page`.
 
 ## Comparator semantics
 
@@ -541,8 +585,8 @@ consumer reaches, grouped by namespace.
 |-----------|----------------|
 | `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
 | `Ignixa.Search.Sql.Symbols` | `ISymbolResolver` — the one seam your data layer implements |
-| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `SortPhase`, `ResultShape`, `SearchPaging`, `KeysetContinuationToken`, `KeysetPosition`, `PlanExplainer`, and the SQL value types |
-| `Ignixa.Search.Sql.Builders` | `EmittedSqlParameter` (the bound `@pN` values on `CompiledSearch`) and `SqlTextRange` |
+| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `VectorRankSpec`, `SortPhase`, `ResultShape`, `SearchPaging`, `KeysetContinuationToken`, `KeysetPosition`, `PlanExplainer`, and the SQL value types |
+| `Ignixa.Search.Sql.Builders` | `EmittedSqlParameter` (the bound `@pN` values on `CompiledSearch`), `SqlTextRange`, and `SqlVectorText` (the vector-literal format shared with the index writer) |
 | `Ignixa.Search.Sql.Catalog` | `SqlCatalog` and its `TableDescriptor` / `ColumnDescriptor` (data generated from DDL) |
 
 ## Related packages

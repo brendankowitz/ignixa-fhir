@@ -145,6 +145,11 @@ BEGIN TRY
                                    AND ResourceSurrogateId IN (SELECT ResourceSurrogateId
                                                                FROM   @SurrogateIds);
                             SET @DeletedSearchParams += @@rowcount;
+                            DELETE dbo.VectorSearchParam
+                            WHERE  ResourceTypeId = @ResourceTypeId
+                                   AND ResourceSurrogateId IN (SELECT ResourceSurrogateId
+                                                               FROM   @SurrogateIds);
+                            SET @DeletedSearchParams += @@rowcount;
                             IF @DeleteResources = 1
                                 BEGIN
                                     DELETE dbo.Resource
