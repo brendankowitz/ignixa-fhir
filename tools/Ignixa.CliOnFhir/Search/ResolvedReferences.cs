@@ -24,15 +24,22 @@ internal static class ResolvedReferences
     /// The first <paramref name="limit"/> resolutions of <paramref name="resources"/>, in order: what the response may list, so
     /// its size can be reserved before the resources are read.
     /// </summary>
-    public static Dictionary<string, Dictionary<string, string>> Candidates(IEnumerable<IndexedResource> resources, int limit)
+    public static Dictionary<string, Dictionary<string, string>> Candidates(IEnumerable<IndexedResource> resources, int limit) =>
+        Candidates(resources.Select(resource => (ResourceReader.Describe(resource.Entry), resource.BundleReferences.Resolved)), limit);
+
+    /// <summary>
+    /// <see cref="Candidates(IEnumerable{IndexedResource}, int)"/> over each resource's <c>Type/id</c> and resolutions, for a
+    /// caller that resolved them without the index (<c>read_resources</c>).
+    /// </summary>
+    public static Dictionary<string, Dictionary<string, string>> Candidates(IEnumerable<(string Reference, IReadOnlyDictionary<string, string> Resolved)> resources, int limit)
     {
         Dictionary<string, Dictionary<string, string>> candidates = new(StringComparer.Ordinal);
         int count = 0;
-        foreach (IndexedResource resource in resources)
+        foreach ((string resource, IReadOnlyDictionary<string, string> resolved) in resources)
         {
-            foreach ((string reference, string target) in resource.BundleReferences.Resolved.Take(limit - count))
+            foreach ((string reference, string target) in resolved.Take(limit - count))
             {
-                Add(candidates, ResourceReader.Describe(resource.Entry), reference, target);
+                Add(candidates, resource, reference, target);
                 count++;
             }
         }
@@ -47,14 +54,23 @@ internal static class ResolvedReferences
     public static (Dictionary<string, Dictionary<string, string>> Shown, int NotListed) Shown(
         IEnumerable<IndexedResource> requested,
         ResourceBatch batch,
+        Dictionary<string, Dictionary<string, string>> candidates) =>
+        Shown(requested.ToDictionary(resource => ResourceReader.Describe(resource.Entry), resource => resource.BundleReferences.Resolved, StringComparer.Ordinal), batch, candidates);
+
+    /// <summary><see cref="Shown(IEnumerable{IndexedResource}, ResourceBatch, Dictionary{string, Dictionary{string, string}})"/> over each resource's resolutions by <c>Type/id</c>.</summary>
+    public static (Dictionary<string, Dictionary<string, string>> Shown, int NotListed) Shown(
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> resolvedByResource,
+        ResourceBatch batch,
         Dictionary<string, Dictionary<string, string>> candidates)
     {
-        Dictionary<string, IndexedResource> byReference = requested.ToDictionary(resource => ResourceReader.Describe(resource.Entry), StringComparer.Ordinal);
+        ArgumentNullException.ThrowIfNull(resolvedByResource);
+        ArgumentNullException.ThrowIfNull(batch);
+
         Dictionary<string, Dictionary<string, string>> shown = new(StringComparer.Ordinal);
         int notListed = 0;
         foreach ((JsonNode returned, string reference) in batch.Resources.Zip(batch.Evidence.Select(item => item.Reference)))
         {
-            IReadOnlyDictionary<string, string> resolved = byReference[reference].BundleReferences.Resolved;
+            IReadOnlyDictionary<string, string> resolved = resolvedByResource[reference];
             foreach (string written in BundleReferenceResolver.References(returned).Where(resolved.ContainsKey).Distinct(StringComparer.Ordinal))
             {
                 if (candidates.GetValueOrDefault(reference)?.ContainsKey(written) == true)

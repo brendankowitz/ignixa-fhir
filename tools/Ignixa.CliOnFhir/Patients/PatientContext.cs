@@ -11,7 +11,6 @@ using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Search;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.Search.InMemory;
 
 namespace Ignixa.CliOnFhir.Patients;
 
@@ -23,56 +22,59 @@ namespace Ignixa.CliOnFhir.Patients;
 /// </summary>
 internal sealed class PatientContext
 {
-    /// <summary>The issue code for a sort key the session's FHIR version does not define.</summary>
-    public const string SortParameterMissingCode = "sort-parameter-missing";
-
     /// <summary>Most items a domain stub shows.</summary>
     public const int TopItems = 5;
 
     /// <summary>The relative change between the newest and the oldest of the last three values that still counts as flat.</summary>
     public const decimal FlatTolerance = 0.05m;
 
-    // The rules as facts state them: exact but compact, since the root digest aims at 5 KB. The FHIRPath behind each is in
-    // ClinicalRules and the tool README.
-    public const string ActiveProblemRule = "active: clinicalStatus (condition-clinical) active, recurrence or relapse; active first, each newest first by onset-date, then recorded-date";
+    // The rules as facts state them: exact but compact. The FHIRPath behind each is in ClinicalRules and the tool README.
+    // Every list is ordered by the date its items show (the main date), compared by its earliest instant (a date or a
+    // year counts from its first moment; a time without an offset as UTC), newest first, undated last, then by id.
+    public const string ActiveProblemRule =
+        "active: clinicalStatus (condition-clinical) active, recurrence or relapse, and verificationStatus (condition-ver-status) not refuted or entered-in-error; active first, each newest first by date (onset, else recordedDate), then id";
 
-    public const string ActiveMedicationRule = "active: status active; MedicationRequests newest first by authoredon, then MedicationStatements by effective; active first";
+    public const string ActiveMedicationRule =
+        "active: status active and not doNotPerform; MedicationRequests and MedicationStatements newest first by date (authoredOn; effective, else dateAsserted), active first, then id";
 
-    public const string AllergyRule = "every AllergyIntolerance, any status; newest first by date";
+    public const string AllergyRule = "every AllergyIntolerance, any status; newest first by date (onset, else recordedDate), then id";
 
-    public const string EncounterRule = "period starts at or before asOf, status not cancelled or entered-in-error; newest first by date";
+    public const string EncounterRule = "period.start at or before asOf, status not planned, cancelled or entered-in-error; newest first by period.start, then id";
 
     public const string LabRule =
-        "Observations dated at or before asOf, status not cancelled or entered-in-error, category laboratory, vital-signs or none; one series per first coding with system and code; "
-        + "most observations first; trend: newest vs oldest of the last 3 values, numeric valueQuantity in one unit only (else n/a), flat within 5%";
+        "Observations whose date (effective, else issued) is at or before asOf, status not cancelled or entered-in-error, category laboratory, vital-signs or none; one series per first coding with system and code; "
+        + "most observations first; latest = newest by that date, then id; trend: newest vs oldest of the last 3 values, numeric valueQuantity in one unit without a comparator only (else n/a), flat within 5%";
 
-    public const string EncounterRuleUnverified = "period starts at or before asOf; newest first by date";
+    public const string EncounterRuleUnverified = "period.start at or before asOf; newest first by period.start, then id";
 
-    public const string LabRuleUnverified = "Observations dated at or before asOf; one series per first coding with system and code; most observations first; trend as for R4";
+    public const string LabRuleUnverified = "Observations whose date (effective, else issued) is at or before asOf; one series per first coding with system and code; most observations first; trend as for R4";
 
     public const string ProblemLinkRule =
         "the Condition, then every MedicationRequest and MedicationStatement whose reasonReference references it (reasonReference) or whose reasonCode shares a system and code with its code (reasonCode)";
 
-    private readonly List<IssueItem> _queryWarnings = [];
     private readonly Lazy<IReadOnlyList<ContextEntry>> _problems;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _medications;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _allergies;
     private readonly Lazy<IReadOnlyList<ContextEntry>> _encounters;
     private readonly Lazy<(IReadOnlyList<LabSeries> Series, int Excluded)> _labs;
+    private readonly FhirTemporal _asOf;
 
     private PatientContext(FolderSession session, PatientCompartment compartment, DateTimeOffset asOf)
     {
         Session = session;
         Compartment = compartment;
         AsOf = asOf;
+        _asOf = FhirTemporal.TryParse(asOf.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture), FhirPrimitive.Instant, out FhirTemporal? parsed)
+            ? parsed
+            : throw new InvalidOperationException($"asOf {asOf:O} did not parse as a FHIR instant.");
         Elements = new ResourceElements(session);
         RulesApplied = ClinicalRules.Verified(session.Schema.Version);
-        _problems = new(() => ActiveFirst(Describe(Ordered("Condition", filter: null, "onset-date", "recorded-date")), ClinicalRules.ActiveCondition));
+        _problems = new(() => ActiveFirst(Newest(Describe(Compartment.OfType("Condition"))), ClinicalRules.ActiveCondition));
         _medications = new(() => ActiveFirst(
-            [.. Describe(Ordered("MedicationRequest", filter: null, "authoredon")), .. Describe(Ordered("MedicationStatement", filter: null, "effective"))],
+            Newest([.. Describe(Compartment.OfType("MedicationRequest")), .. Describe(Compartment.OfType("MedicationStatement"))]),
             ClinicalRules.ActiveMedication));
-        _allergies = new(() => Describe(Ordered("AllergyIntolerance", filter: null, "date")));
-        _encounters = new(() => Recorded(Describe(Ordered("Encounter", $"date=le{AsOfLiteral}", "date"))));
+        _allergies = new(() => Newest(Describe(Compartment.OfType("AllergyIntolerance"))));
+        _encounters = new(() => Keep(Newest(Describe(Compartment.OfType("Encounter")).Where(InWindow)), ClinicalRules.RecordedEncounter));
         _labs = new(BuildLabs);
     }
 
@@ -94,7 +96,11 @@ internal sealed class PatientContext
     /// <summary>The labs domain's rule, as applied.</summary>
     public string LabRuleApplied => RulesApplied ? LabRule : LabRuleUnverified;
 
-    public string PatientReference => $"Patient/{Compartment.Patient.Key.Id}";
+    /// <summary>The patient as summaries name it: <c>Patient/id</c>, the id replaced by its digest when it is not a FHIR id.</summary>
+    public string PatientReference => FhirIds.Reference("Patient", Compartment.Patient.Key.Id);
+
+    /// <summary>The patient id as <c>next</c> passes it back (see <see cref="PatientReference"/>).</summary>
+    public string PatientId => FhirIds.Safe(Compartment.Patient.Key.Id);
 
     /// <summary>The window of the time-dependent domains: everything up to <see cref="AsOf"/>.</summary>
     public ContextWindow Window => new(From: null, AsOf);
@@ -115,8 +121,6 @@ internal sealed class PatientContext
 
     /// <summary>Observations of the compartment in no lab series: outside the window or the category rule, or without a coded code.</summary>
     public int LabsExcluded => _labs.Value.Excluded;
-
-    private string AsOfLiteral => AsOf.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
     /// <summary>Opens the context of <c>Patient/<paramref name="patientId"/></c> as of <paramref name="asOf"/> (truncated to the second).</summary>
     /// <exception cref="ToolRequestException">The id is malformed or the folder holds no such Patient.</exception>
@@ -156,7 +160,6 @@ internal sealed class PatientContext
             issues.Add(unevaluable);
         }
 
-        issues.AddRange(_queryWarnings.DistinctBy(issue => issue.Diagnostics, StringComparer.Ordinal));
         issues.AddRange(Elements.Problems);
         ResourceSearcher.AddDiagnostics(Session, Compartment.Folder, issues, omitted);
         return issues;
@@ -196,17 +199,19 @@ internal sealed class PatientContext
         LabCoding? labCoding = type == "Observation" ? LabCoding.Of(element) : null;
         IElement? quantity = type == "Observation" ? element.Select(ClinicalRules.QuantityValue).FirstOrDefault() : null;
         string? valueType = type == "Observation" && quantity is null ? element.Select("value").FirstOrDefault()?.InstanceType : null;
+        FhirTemporal? date = ClinicalValues.MainDate(type, element);
         var item = new ContextItem(
-            $"{type}/{resource.Key.Id}",
+            FhirIds.Reference(type, resource.Key.Id),
             NodeKey.Of(type, resource.Key.Id, labCoding),
             concept?.Key,
             concept?.Display,
             ClinicalValues.Status(type, element),
-            ClinicalValues.MainDate(type, element)?.Literal,
+            date?.Literal,
             Value: quantity?.Scalar("value") as decimal?,
+            Comparator: quantity?.Scalar("comparator") as string,
             Unit: quantity is null ? null : (quantity.Scalar("unit") ?? quantity.Scalar("code")) as string,
             ValueType: valueType);
-        return new ContextEntry(resource, item, sources, absent);
+        return new ContextEntry(resource, item, sources, absent, date);
     }
 
     /// <summary>
@@ -230,37 +235,22 @@ internal sealed class PatientContext
     }
 
     /// <summary>
-    /// The compartment's resources of <paramref name="resourceType"/> matching <paramref name="filter"/>, newest first by
-    /// <paramref name="sortParameters"/> in turn, by the in-memory engine over the compartment. A sort parameter the session's
-    /// FHIR version does not define for the type (STU3 has no Condition <c>recorded-date</c>) is dropped, with a
-    /// <see cref="SortParameterMissingCode"/> warning when the compartment holds that type; under a version the rules were not written for, a filter parameter the
-    /// version lacks is ignored with the parser's warning. Either way the call is answered, with the order it could give.
+    /// <paramref name="entries"/> newest first by the date they show (<see cref="FhirTemporal.CompareTo"/>, whose first key is
+    /// the earliest instant), undated ones last, then by type and id, so the order is total.
     /// </summary>
-    private IReadOnlyList<IndexedResource> Ordered(string resourceType, string? filter, params string[] sortParameters)
-    {
-        List<string> sort = [];
-        foreach (string parameter in sortParameters)
-        {
-            if (Session.Definitions.TryGetSearchParameter(resourceType, parameter, out _))
-            {
-                sort.Add("-" + parameter);
-            }
-            else if (Compartment.OfType(resourceType).Count > 0)
-            {
-                _queryWarnings.Add(new IssueItem("warning", SortParameterMissingCode, $"{resourceType} resources are not ordered by '{parameter}': {Session.Schema.Version} defines no such search parameter for {resourceType}, so that sort key was dropped.", Location: null));
-            }
-        }
+    private static IReadOnlyList<ContextEntry> Newest(IEnumerable<ContextEntry> entries) =>
+        [.. entries
+            .OrderBy(entry => entry.Date is null)
+            .ThenByDescending(entry => entry.Date)
+            .ThenBy(entry => entry.Resource.Key.ResourceType, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Resource.Key.Id, StringComparer.Ordinal)];
 
-        string query = string.Join('&', new[] { filter, sort.Count == 0 ? null : "_sort=" + string.Join(',', sort) }.OfType<string>());
-        ParsedSearch parsed = Session.QueryParser.Parse(new SearchRequest(resourceType, query, Lenient: !RulesApplied));
-        _queryWarnings.AddRange(parsed.Warnings);
-        var engine = new InMemorySearchEngine(Compartment, InMemorySearchFeatures.Sort);
-        return [.. engine.Search(parsed.Options).Select(match => Compartment.Indexed(match.Location))];
-    }
+    /// <summary>Whether the date <paramref name="entry"/> shows starts at or before <see cref="AsOf"/>; an undated entry is outside.</summary>
+    private bool InWindow(ContextEntry entry) => entry.Date is { } date && date.CompareTo(_asOf) <= 0;
 
-    /// <summary>The entries <see cref="ClinicalRules.Recorded"/> keeps, when rules are applied.</summary>
-    private IReadOnlyList<ContextEntry> Recorded(IReadOnlyList<ContextEntry> entries) =>
-        RulesApplied ? [.. entries.Where(entry => Element(entry)!.IsTrue(ClinicalRules.Recorded))] : entries;
+    /// <summary>The entries <paramref name="rule"/> keeps, when rules are applied; all of them otherwise.</summary>
+    private IReadOnlyList<ContextEntry> Keep(IReadOnlyList<ContextEntry> entries, string rule) =>
+        RulesApplied ? [.. entries.Where(entry => Element(entry)!.IsTrue(rule))] : entries;
 
     /// <summary>The entries with <see cref="ContextItem.Active"/> set by <paramref name="rule"/>, active ones first (stable); unchanged when rules are not applied.</summary>
     private IReadOnlyList<ContextEntry> ActiveFirst(IReadOnlyList<ContextEntry> entries, string rule)
@@ -300,7 +290,7 @@ internal sealed class PatientContext
         if (Session.FindEntry("Medication", id) is not { } entry)
         {
             int medications = Session.Catalog.Entries.Count(candidate => candidate.ResourceType == "Medication");
-            absent.Add(new AbsentItem(reference, $"catalog of {Session.RootPath}: {medications} Medication resources", Session.Catalog.BuiltAt));
+            absent.Add(new AbsentItem(FhirIds.Reference("Medication", id), $"catalog of {Session.RootPath}: {medications} Medication resources", Session.Catalog.BuiltAt));
             return null;
         }
 
@@ -310,7 +300,7 @@ internal sealed class PatientContext
 
     private (IReadOnlyList<LabSeries> Series, int Excluded) BuildLabs()
     {
-        IReadOnlyList<ContextEntry> windowed = Recorded(Describe(Ordered("Observation", $"date=le{AsOfLiteral}", "date")));
+        IReadOnlyList<ContextEntry> windowed = Keep(Newest(Describe(Compartment.OfType("Observation")).Where(InWindow)), ClinicalRules.Recorded);
         IEnumerable<ContextEntry> labs = RulesApplied ? windowed.Where(entry => Element(entry)!.IsTrue(ClinicalRules.LabCategory)) : windowed;
         List<LabSeries> series = [.. labs
             .Where(entry => entry.Item.NodeKey is not null)
@@ -332,7 +322,9 @@ internal sealed class PatientContext
     private static string Trend(IReadOnlyList<ContextEntry> newestFirst)
     {
         List<ContextItem> last = [.. newestFirst.Take(3).Select(entry => entry.Item)];
-        if (last.Count < 2 || last.Any(item => item.Value is null) || last.Select(item => item.Unit).Distinct(StringComparer.Ordinal).Count() != 1)
+        if (last.Count < 2
+            || last.Any(item => item.Value is null || item.Comparator is not null)
+            || last.Select(item => item.Unit).Distinct(StringComparer.Ordinal).Count() != 1)
         {
             return "n/a";
         }

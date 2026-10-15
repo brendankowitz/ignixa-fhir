@@ -5,6 +5,7 @@
 
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Search;
 using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Reading;
@@ -70,31 +71,69 @@ public static class ResourceFetcher
             }
         }
 
-        List<IssueItem> issues = [.. DuplicateIdIssues.For(session.Catalog, parsed.Select(reference => reference.Type))];
+        List<IssueItem> issues = [.. DuplicateIdIssues.For(session.Catalog, parsed.Select(reference => reference.Type)), .. DuplicateIdIssues.InvalidIds(session.Catalog, parsed.Select(reference => reference.Type))];
         foreach (string type in found.Select(entry => entry.ResourceType).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             issues.AddRange(projection?.Validate(type) ?? []);
         }
 
-        // The closing omitted item names the first reference not returned, so reserve room for the longest one.
+        // The listed resolutions can only shrink once the resources are read, so reserving the candidates keeps the cap.
+        Dictionary<string, IReadOnlyDictionary<string, string>> resolutions = Resolutions(session, found);
+        Dictionary<string, Dictionary<string, string>> candidates = ResolvedReferences.Candidates(
+            found.Select(entry => (ResourceReader.Describe(entry), resolutions[ResourceReader.Describe(entry)])),
+            ResolvedReferences.Limit);
+
+        // The closing omitted items name the first reference not returned and count unlisted resolutions, so reserve room for both.
         int longestReference = found.Select(entry => ResourceReader.Describe(entry).Length).DefaultIfEmpty(0).Max();
         int reserved = EnvelopeJson.SizeOf(new ToolEnvelope<ReadFacts?>(
-            new ReadFacts(parsed.Count, []),
+            new ReadFacts(parsed.Count, [], Facts(candidates)),
             [],
-            [.. omitted, new OmittedItem(UnreadMessage(int.MaxValue, new string('x', longestReference)), "size-budget")],
+            [.. omitted, new OmittedItem(UnreadMessage(int.MaxValue, new string('x', longestReference)), "size-budget"), new OmittedItem(NotListedMessage(int.MaxValue), "limit")],
             absent,
             issues,
             new FreshnessInfo(builtAt, StaleFiles: int.MaxValue)));
         ResourceBatch batch = ResourceBatch.Collect(session.RootPath, found, projection, reserved, cancellationToken);
         issues.AddRange(batch.Issues);
         omitted.AddRange(batch.Skipped);
+        (Dictionary<string, Dictionary<string, string>> shown, int notListed) = ResolvedReferences.Shown(resolutions, batch, candidates);
+        if (notListed > 0)
+        {
+            omitted.Add(new OmittedItem(NotListedMessage(notListed), "limit"));
+        }
+
         if (batch.Consumed < found.Count)
         {
             omitted.Add(new OmittedItem(UnreadMessage(found.Count - batch.Consumed, ResourceReader.Describe(found[batch.Consumed])), "size-budget"));
         }
 
-        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken);
+        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources, Facts(shown)), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken);
     }
+
+    /// <summary>
+    /// Each found resource's Bundle references and the <c>Type/id</c> they name, by <c>Type/id</c>, resolved as the index
+    /// resolves them (<see cref="Indexing.BundleReferenceResolver"/>) but without building any index. A folder without Bundle
+    /// entry fullUrls has no Bundle references, so nothing is read for it; a resource that cannot be read resolves nothing
+    /// here and is reported by the batch.
+    /// </summary>
+    private static Dictionary<string, IReadOnlyDictionary<string, string>> Resolutions(FolderSession session, List<CatalogEntry> found)
+    {
+        Dictionary<string, IReadOnlyDictionary<string, string>> resolutions = new(StringComparer.Ordinal);
+        foreach (CatalogEntry entry in found)
+        {
+            resolutions[ResourceReader.Describe(entry)] = session.Catalog.FullUrls.Count > 0 && ResourceReader.Read(session.RootPath, entry).Resource is { } resource
+                ? session.BundleReferences.Rewrite(entry, resource).Resolution.Resolved
+                : Indexing.ReferenceResolution.None.Resolved;
+        }
+
+        return resolutions;
+    }
+
+    /// <summary>The facts form of a resolved-references map: null when it lists nothing, so the member is left out.</summary>
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? Facts(Dictionary<string, Dictionary<string, string>> resolved) =>
+        resolved.Count == 0 ? null : resolved.ToDictionary(pair => pair.Key, pair => (IReadOnlyDictionary<string, string>)pair.Value, StringComparer.Ordinal);
+
+    private static string NotListedMessage(int count) =>
+        $"{count} more resolved Bundle references in the returned resources (resolvedReferences lists at most {ResolvedReferences.Limit})";
 
     /// <summary>The unread resources are the tail of the found list, in request order, so the first one identifies where to resume.</summary>
     private static string UnreadMessage(int count, string first) =>

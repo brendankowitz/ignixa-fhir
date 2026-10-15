@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Reading;
@@ -106,11 +107,11 @@ public static class ContextExpander
         (IReadOnlyList<IndexedResource> members, IReadOnlyList<string> unevaluable) = context.Compartment.Folder.CompartmentMembers("Encounter", encounter.Key.Id);
         if (unevaluable.Count > 0)
         {
-            issues.Add(new IssueItem("warning", PatientCompartment.UnevaluableCode, $"{string.Join(", ", unevaluable)} resources in the folder were not considered for Encounter/{encounter.Key.Id}'s compartment: the CompartmentDefinition lists codes for them that are not reference search parameters.", Location: null));
+            issues.Add(new IssueItem("warning", PatientCompartment.UnevaluableCode, $"{string.Join(", ", unevaluable)} resources in the folder were not considered for {FhirIds.Reference("Encounter", encounter.Key.Id)}'s compartment: the CompartmentDefinition lists codes for them that are not reference search parameters.", Location: null));
         }
 
         IReadOnlyList<ContextEntry> entries = context.Navigable(context.Describe([encounter, .. members.Where(member => member.Key != encounter.Key)]));
-        return new(entries, $"Encounter/{encounter.Key.Id}, then every resource in its Encounter compartment (by the {context.Session.Schema.Version} CompartmentDefinition), type by type in catalog order");
+        return new(entries, $"{FhirIds.Reference("Encounter", encounter.Key.Id)}, then every resource in its Encounter compartment (by the {context.Session.Schema.Version} CompartmentDefinition), type by type in catalog order");
     }
 
     /// <summary>Every observation of one lab code in the window, newest first.</summary>

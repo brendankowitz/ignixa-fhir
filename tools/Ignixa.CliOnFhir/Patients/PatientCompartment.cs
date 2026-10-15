@@ -3,13 +3,11 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Abstractions;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Search;
 using Ignixa.CliOnFhir.Session;
-using Ignixa.Search.Indexing;
-using Ignixa.Search.InMemory;
 
 namespace Ignixa.CliOnFhir.Patients;
 
@@ -17,10 +15,9 @@ namespace Ignixa.CliOnFhir.Patients;
 /// One patient's resources: the Patient itself and every resource in its Patient compartment, by the session's
 /// CompartmentDefinition (<see cref="FolderSearchSource.CompartmentMembers"/>). The Patient is added explicitly, since the R4
 /// definition has no <c>{def}</c> and so does not make it a member of its own compartment (R5 does; it is counted once).
-/// As a search source it exposes only these resources, so the in-memory engine filters and sorts within the compartment;
-/// references still resolve against the whole folder. Created for one call; not thread-safe.
+/// Created for one call; not thread-safe.
 /// </summary>
-internal sealed class PatientCompartment : IInMemorySearchSource
+internal sealed class PatientCompartment
 {
     /// <summary>The issue code for types whose membership the definition makes impossible to evaluate.</summary>
     public const string UnevaluableCode = "compartment-type-unevaluable";
@@ -64,13 +61,17 @@ internal sealed class PatientCompartment : IInMemorySearchSource
 
         PatientIds.Validate(patientId);
         var folder = new FolderSearchSource(session);
-        if (folder.Resolve("Patient", patientId) is not { } patient)
+        // A digest names the Patient whose id is not a FHIR id and hashes to it, as patient_list lists it.
+        IndexedResource? patient = !session.HoldsType("Patient") ? null
+            : FhirIds.IsDigest(patientId) ? folder.Resources("Patient").FirstOrDefault(candidate => !FhirIds.IsValid(candidate.Key.Id) && FhirIds.Digest(candidate.Key.Id) == patientId)
+            : folder.Resolve("Patient", patientId) is { } location ? folder.Indexed(location.Location) : null;
+        if (patient is null)
         {
             int patients = session.HoldsType("Patient") ? folder.Resources("Patient").Count : 0;
             throw ToolRequestException.Error("unknown-patient", $"The folder holds no Patient/{patientId} ({patients} Patient resources). Call patient_list (CLI: patients) for the patient ids.");
         }
 
-        return Of(folder, folder.Indexed(patient.Location));
+        return Of(folder, patient);
     }
 
     /// <summary>The compartment of <paramref name="patient"/>, read through <paramref name="folder"/>.</summary>
@@ -106,12 +107,4 @@ internal sealed class PatientCompartment : IInMemorySearchSource
             UnevaluableCode,
             $"{string.Join(", ", UnevaluableTypes)} resources in the folder were not considered for {patientReference}'s compartment: the CompartmentDefinition lists codes for them that are not reference search parameters, so their membership cannot be evaluated.",
             Location: null);
-
-    public IEnumerable<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> Enumerate(string resourceType) =>
-        OfType(resourceType).Select(member => (member.Key, member.Index));
-
-    public (ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)? Resolve(string resourceType, string id) => Folder.Resolve(resourceType, id);
-
-    /// <summary>The indexed resource behind a location this source returned.</summary>
-    public IndexedResource Indexed(ResourceKey location) => Folder.Indexed(location);
 }

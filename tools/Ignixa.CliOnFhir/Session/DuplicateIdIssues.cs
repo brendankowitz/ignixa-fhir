@@ -48,4 +48,28 @@ internal static class DuplicateIdIssues
                 duplicates[0].Ignored);
         }
     }
+
+    /// <summary>
+    /// One <see cref="FhirIds.InvalidCode"/> warning per type among <paramref name="resourceTypes"/> whose catalogued resources
+    /// include ids that are not FHIR ids, located at the first; the ids themselves are not echoed.
+    /// </summary>
+    public static IEnumerable<IssueItem> InvalidIds(FolderCatalog catalog, IEnumerable<string> resourceTypes)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(resourceTypes);
+
+        HashSet<string> types = [.. resourceTypes];
+        foreach (IGrouping<string, CatalogEntry> invalid in catalog.Entries
+            .Where(entry => !entry.HasSyntheticId && types.Contains(entry.ResourceType) && !FhirIds.IsValid(entry.Id))
+            .GroupBy(entry => entry.ResourceType, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            CatalogEntry first = invalid.First();
+            yield return new IssueItem(
+                "warning",
+                FhirIds.InvalidCode,
+                $"{invalid.Count()} {invalid.Key} resources have ids that are not FHIR ids (1 to 64 letters, digits, '-' or '.'): the patient tools name each by a digest ({invalid.Key}/~<16 hex digits>), and searches and reads return them as written.",
+                first.Line is int line ? $"{first.FilePath}:{line}" : first.FilePath);
+        }
+    }
 }

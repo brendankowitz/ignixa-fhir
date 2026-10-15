@@ -353,6 +353,51 @@ public class BundleReferenceTests
         EnvelopeJson.SizeOf(envelope).ShouldBeLessThanOrEqualTo(EnvelopeJson.MaxBytes);
     }
 
+    // Regression (fix round 1): at 1bfaad9 read_resources returned urn:uuid references with no way to tell what they name.
+    [Fact]
+    public void GivenBundleResources_WhenRead_ThenResolvedReferencesMapEachShownReferenceWithoutBuildingAnIndex()
+    {
+        using TestFolder folder = PatientFixture.Bundle();
+        FolderSession session = Open(folder);
+
+        ToolEnvelope<Reading.ReadFacts?> whole = Reading.ResourceFetcher.Read(session, ["MedicationRequest/m1"]);
+        ToolEnvelope<Reading.ReadFacts?> trimmed = Reading.ResourceFetcher.Read(session, ["MedicationRequest/m1"], "status");
+
+        whole.Facts.ShouldNotBeNull().ResolvedReferences.ShouldNotBeNull()["MedicationRequest/m1"].ShouldBe(
+            new Dictionary<string, string> { [PatientFixture.Urn("Patient/p1")] = "Patient/p1", [PatientFixture.Urn("Condition/c1")] = "Condition/c1" },
+            ignoreOrder: true);
+        ((string)whole.Facts.Resources[0]["subject"]!["reference"]!).ShouldBe(PatientFixture.Urn("Patient/p1"));
+        trimmed.Facts.ShouldNotBeNull().ResolvedReferences.ShouldBeNull();
+        session.BuiltIndexTypes.ShouldBeEmpty();
+    }
+
+    // Guard: a folder without Bundle entries has nothing to resolve, and read_resources says nothing about it.
+    [Fact]
+    public void GivenNoBundles_WhenRead_ThenNoResolvedReferencesAreListed()
+    {
+        using TestFolder folder = PatientFixture.Ndjson();
+
+        Reading.ResourceFetcher.Read(Open(folder), ["MedicationRequest/m1"]).Facts.ShouldNotBeNull().ResolvedReferences.ShouldBeNull();
+    }
+
+    // Regression (fix round 1): read_resources lists at most 100 resolutions and counts the rest, as search does.
+    [Fact]
+    public void GivenMoreResolvedReferencesThanTheLimit_WhenRead_ThenTheRestAreOmitted()
+    {
+        IEnumerable<string> encounters = Enumerable.Range(1, 50).Select(i =>
+            "{\"fullUrl\":\"urn:uuid:e" + i + "\",\"resource\":{\"resourceType\":\"Encounter\",\"id\":\"e" + i + "\",\"status\":\"finished\",\"class\":{\"code\":\"AMB\"},"
+            + "\"subject\":{\"reference\":\"urn:uuid:p\"},\"serviceProvider\":{\"reference\":\"urn:uuid:org\"},\"partOf\":{\"reference\":\"urn:uuid:e" + (i == 1 ? 2 : 1) + "\"}}}");
+        using TestFolder folder = new TestFolder().Write("bundle.json",
+            "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:p\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"p\"}},"
+            + "{\"fullUrl\":\"urn:uuid:org\",\"resource\":{\"resourceType\":\"Organization\",\"id\":\"org\"}}," + string.Join(',', encounters) + "]}");
+
+        ToolEnvelope<Reading.ReadFacts?> envelope = Reading.ResourceFetcher.Read(Open(folder), [.. Enumerable.Range(1, 50).Select(i => $"Encounter/e{i}")]);
+
+        envelope.Facts.ShouldNotBeNull().ResolvedReferences.ShouldNotBeNull().Values.Sum(references => references.Count).ShouldBe(100);
+        envelope.Omitted.ShouldContain(item => item.What == "50 more resolved Bundle references in the returned resources (resolvedReferences lists at most 100)" && item.Why == "limit");
+        EnvelopeJson.SizeOf(envelope).ShouldBeLessThanOrEqualTo(EnvelopeJson.MaxBytes);
+    }
+
     /// <summary>Every entry of <c>facts.resolvedReferences</c> as <c>resource: reference -> Type/id</c>, in order.</summary>
     private static string[] Resolved(ToolEnvelope<SearchFacts?> envelope) =>
         [.. (envelope.Facts.ShouldNotBeNull().ResolvedReferences ?? new Dictionary<string, IReadOnlyDictionary<string, string>>())

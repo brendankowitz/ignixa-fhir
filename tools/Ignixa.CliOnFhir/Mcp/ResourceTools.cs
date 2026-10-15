@@ -57,7 +57,8 @@ public sealed class ResourceTools(FolderSession session)
     [Description("""
         Reads resources by reference (for example 'Patient/123') straight from their files, each with its file
         location (file, line, byte offset) as evidence. A reference the folder does not hold is listed in 'absent'
-        with what was checked. Pass 'elements' to return only some top-level elements and keep responses small
+        with what was checked. Resources keep their Bundle references as written (urn:uuid:...); 'facts.resolvedReferences'
+        maps each one shown to the Type/id it names. Pass 'elements' to return only some top-level elements and keep responses small
         (the whole response, i.e. the decoded tool-result text, is capped at 50 KB and 'omitted' lists anything left out). Reads at most 50 references per call.
         """)]
     public CallToolResult ReadResources(

@@ -10,8 +10,8 @@ namespace Ignixa.CliOnFhir.Patients;
 
 /// <summary>A CodeableConcept as the patient tools use it, read with FHIRPath.</summary>
 /// <param name="Key">The first coding with both a system and a code, as <c>system|code</c>; null when there is none.</param>
-/// <param name="Display">The concept's <c>text</c>, else its first coding <c>display</c>; null when it has neither.</param>
-/// <param name="Text">The concept's <c>text</c>.</param>
+/// <param name="Display">The first coding <c>display</c>; null when no coding has one. Never the concept's free <c>text</c>.</param>
+/// <param name="Text">The concept's <c>text</c>, free text that <c>context_find</c> matches but no summary shows.</param>
 /// <param name="Codings">Every coding's system, code and display, in order.</param>
 internal sealed record CodedConcept(string? Key, string? Display, string? Text, IReadOnlyList<(string? System, string? Code, string? Display)> Codings)
 {
@@ -27,7 +27,7 @@ internal sealed record CodedConcept(string? Key, string? Display, string? Text, 
         string? text = concept.Scalar("text") as string;
         (string? System, string? Code, string? Display) keyed = codings.FirstOrDefault(coding => coding.System is not null && coding.Code is not null);
         string? key = keyed.Code is null ? null : $"{keyed.System}|{keyed.Code}";
-        return new CodedConcept(key, text ?? codings.Select(coding => coding.Display).FirstOrDefault(display => display is not null), text, codings);
+        return new CodedConcept(key, codings.Select(coding => coding.Display).FirstOrDefault(display => display is not null), text, codings);
     }
 
     /// <summary>The main codes of <paramref name="resource"/> by <see cref="ClinicalRules.MainCode"/>; empty for a type without one.</summary>

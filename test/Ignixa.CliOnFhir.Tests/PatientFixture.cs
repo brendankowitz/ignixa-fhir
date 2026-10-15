@@ -51,7 +51,7 @@ internal static partial class PatientFixture
         Condition("c2", "p1", "resolved", "59621000", "Essential hypertension", "2010-01-01"),
         Condition("c3", "p1", "recurrence", "44054006", "Diabetes mellitus type 2", "2018-01-01"),
         Condition("c4", "p2", "active", "195967001", "Asthma", "2021-01-01"),
-        """{"resourceType":"AllergyIntolerance","id":"a1","patient":{"reference":"Patient/p2"},"code":{"text":"Peanut"},"recordedDate":"2021-02-02"}""",
+        """{"resourceType":"AllergyIntolerance","id":"a1","patient":{"reference":"Patient/p2"},"code":{"coding":[{"system":"http://snomed.info/sct","code":"91935009","display":"Peanut"}],"text":"Peanut allergy (free text)"},"recordedDate":"2021-02-02"}""",
         Medication("m1", "active", "435", "Albuterol", "2020-05-02", ""","reasonReference":[{"reference":"Condition/c1"}]"""),
         Medication("m2", "stopped", "314076", "Lisinopril", "2010-01-02", ""","reasonCode":[{"coding":[{"system":"http://snomed.info/sct","code":"59621000"}]}]"""),
         Medication("m3", "active", "860975", "Metformin", "2018-01-02", $$""","note":[{"text":"{{Hostile}}"}]"""),

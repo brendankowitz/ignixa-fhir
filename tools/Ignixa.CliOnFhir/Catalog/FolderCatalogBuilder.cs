@@ -245,6 +245,15 @@ public static class FolderCatalogBuilder
 
             _seen.Add((resourceType, resourceId), entry);
             Entries.Add(entry);
+            if (!synthetic && !FhirIds.IsValid(resourceId))
+            {
+                // The id itself is never echoed: it is folder text that is not shaped like an id.
+                Diagnostics.Add(new CatalogDiagnostic(
+                    FhirIds.InvalidCode,
+                    relativePath,
+                    line,
+                    $"A {resourceType} resource has an id that is not a FHIR id (1 to 64 letters, digits, '-' or '.'); the patient tools name it {FhirIds.Reference(resourceType, resourceId)}, and searches and reads return it as written."));
+            }
         }
 
         private static string Describe(CatalogEntry entry) =>

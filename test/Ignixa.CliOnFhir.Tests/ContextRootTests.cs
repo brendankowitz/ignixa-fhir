@@ -254,11 +254,11 @@ public class ContextRootTests
     [Fact]
     public void GivenAnStu3Folder_WhenTheRootIsRead_ThenItIsAnsweredWithWarningsForWhatStu3CannotDo()
     {
-        // STU3 lists Provenance codes that are not search parameters, and has no Condition recorded-date to sort by.
+        // STU3 lists Provenance codes that are not search parameters; Condition.clinicalStatus is a plain code there.
         using TestFolder folder = new TestFolder().Write("chart.ndjson", """
             {"resourceType":"Patient","id":"p1"}
             {"resourceType":"Provenance","id":"pv1","target":[{"reference":"Patient/p1"}],"recorded":"2020-01-01T00:00:00Z","agent":[{"whoReference":{"reference":"Patient/p1"}}]}
-            {"resourceType":"Condition","id":"c1","clinicalStatus":"active","code":{"text":"Asthma"},"subject":{"reference":"Patient/p1"},"onsetDateTime":"2020-01-01"}
+            {"resourceType":"Condition","id":"c1","clinicalStatus":"active","code":{"coding":[{"system":"http://snomed.info/sct","code":"195967001","display":"Asthma"}]},"subject":{"reference":"Patient/p1"},"onsetDateTime":"2020-01-01"}
             """);
 
         ToolEnvelope<RootDigestFacts?> envelope = ContextRoot.Get(Open(folder, schema: new STU3CoreSchemaProvider()), "p1");
@@ -266,10 +266,8 @@ public class ContextRootTests
         envelope.Facts.ShouldNotBeNull().Problems.Items.ShouldHaveSingleItem().Display.ShouldBe("Asthma");
         envelope.Issues.Select(item => $"{item.Severity} {item.Code}").ShouldBe([
             "warning domain-rule-unsupported-version",
-            "warning compartment-type-unevaluable",
-            "warning sort-parameter-missing"]);
+            "warning compartment-type-unevaluable"]);
         envelope.Issues[1].Diagnostics.ShouldStartWith("Provenance resources in the folder were not considered for Patient/p1's compartment");
-        envelope.Issues[2].Diagnostics.ShouldStartWith("Condition resources are not ordered by 'recorded-date': Stu3 defines no such search parameter");
     }
 
     private static RootDigestFacts Root(TestFolder folder) => ContextRoot.Get(Open(folder), "p1").Facts.ShouldNotBeNull();

@@ -197,6 +197,7 @@ public static class ResourceSearcher
     internal static void AddDiagnostics(FolderSession session, FolderSearchSource source, List<IssueItem> issues, List<OmittedItem> omitted)
     {
         issues.AddRange(DuplicateIdIssues.For(session.Catalog, source.IndexesRead.Select(index => index.ResourceType)));
+        issues.AddRange(DuplicateIdIssues.InvalidIds(session.Catalog, source.IndexesRead.Select(index => index.ResourceType)));
         List<CatalogDiagnostic> diagnostics = [.. source.IndexesRead.SelectMany(index => index.Diagnostics)];
         issues.AddRange(diagnostics.Take(FolderInspector.DefaultIssueLimit).Select(EnvelopeAssembler.ToIssue));
         if (diagnostics.Count > FolderInspector.DefaultIssueLimit)

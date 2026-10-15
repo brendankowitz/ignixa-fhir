@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Reading;
 using Ignixa.CliOnFhir.Search;
@@ -134,7 +135,18 @@ internal static class ContextPage
         return (new Contents([.. returned.Select(entry => entry.Item)], batch.Resources, Facts(shown)), batch.Consumed);
     }
 
-    /// <summary>The facts form of a resolved-references map: null when it lists nothing, so the member is left out.</summary>
+    /// <summary>
+    /// The facts form of a resolved-references map: null when it lists nothing, so the member is left out. Resources and
+    /// targets are named as summaries name them (<see cref="FhirIds.Reference(string, string)"/>); the references as written
+    /// are those the returned JSON shows.
+    /// </summary>
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? Facts(Dictionary<string, Dictionary<string, string>> resolved) =>
-        resolved.Count == 0 ? null : resolved.ToDictionary(pair => pair.Key, pair => (IReadOnlyDictionary<string, string>)pair.Value, StringComparer.Ordinal);
+        resolved.Count == 0 ? null : resolved.ToDictionary(
+            pair => Safe(pair.Key),
+            pair => (IReadOnlyDictionary<string, string>)pair.Value.ToDictionary(reference => reference.Key, reference => Safe(reference.Value), StringComparer.Ordinal),
+            StringComparer.Ordinal);
+
+    /// <summary>A <c>Type/id</c> the index produced, with the id made safe.</summary>
+    private static string Safe(string reference) =>
+        reference.IndexOf('/', StringComparison.Ordinal) is int slash and > 0 ? FhirIds.Reference(reference[..slash], reference[(slash + 1)..]) : FhirIds.Safe(reference);
 }

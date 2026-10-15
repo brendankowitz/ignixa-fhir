@@ -24,18 +24,16 @@ internal static class ClinicalValues
     public static string? Status(string resourceType, IElement resource) =>
         resource.Select(ClinicalRules.StatusCode.GetValueOrDefault(resourceType, "status")).Select(element => element.Value).OfType<string>().FirstOrDefault();
 
-    /// <summary>The Patient's display name: <see cref="ClinicalRules.PatientName"/>'s first match, as its <c>text</c> or else given names then family.</summary>
+    /// <summary>
+    /// The Patient's display name: <see cref="ClinicalRules.PatientName"/>'s first match, as its given names then family. The
+    /// name's free <c>text</c> is never used.
+    /// </summary>
     public static string? PatientName(IElement patient)
     {
         IElement? name = ClinicalRules.PatientName.Select(expression => patient.Select(expression).FirstOrDefault()).FirstOrDefault(found => found is not null);
         if (name is null)
         {
             return null;
-        }
-
-        if (name.Scalar("text") is string text)
-        {
-            return text;
         }
 
         List<string> parts = [.. name.Select("given").Select(element => element.Value).OfType<string>(), .. name.Select("family").Select(element => element.Value).OfType<string>()];

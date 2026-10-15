@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Search;
@@ -87,7 +88,7 @@ public static class PatientLister
             next.Add(new NextCall("patient_list", new Dictionary<string, object>(StringComparer.Ordinal) { ["offset"] = offset + page.Count, ["sort"] = sort }));
         }
 
-        next.AddRange(page.Take(1).Select(patient => new NextCall("context_get_root", new Dictionary<string, object>(StringComparer.Ordinal) { ["patientId"] = patient.Key.Id })));
+        next.AddRange(page.Take(1).Select(patient => new NextCall("context_get_root", new Dictionary<string, object>(StringComparer.Ordinal) { ["patientId"] = FhirIds.Safe(patient.Key.Id) })));
         if (!ClinicalRules.Verified(session.Schema.Version))
         {
             issues.Add(PatientContext.UnsupportedVersionIssue(session.Schema.Version));
@@ -159,7 +160,7 @@ public static class PatientLister
             FhirTemporal? latest = dates.Count == 0 ? null : dates.Max();
             IElement? element = elements.Get(patient.Entry);
             var summary = new PatientSummary(
-                patient.Key.Id,
+                FhirIds.Safe(patient.Key.Id),
                 names[patient.Key.Id],
                 element is null ? null : ClinicalValues.Literal(element, "gender"),
                 element is null ? null : ClinicalValues.Literal(element, "birthDate"),

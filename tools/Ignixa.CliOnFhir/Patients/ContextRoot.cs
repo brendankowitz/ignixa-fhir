@@ -5,7 +5,6 @@
 
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
-using Ignixa.CliOnFhir.Reading;
 using Ignixa.CliOnFhir.Session;
 
 namespace Ignixa.CliOnFhir.Patients;
@@ -93,7 +92,7 @@ public static class ContextRoot
             .. new[] { problems, medications, allergies, encounters, labs }
                 .Where(stub => stub.Count > 0 || stub.Excluded > 0)
                 .Select(stub => Expand(context, stub.NodeKey)),
-            .. otherTypes.Keys.Select(type => new NextCall("search_fhir_resources", new Dictionary<string, object>(StringComparer.Ordinal)
+            .. otherTypes.Keys.Where(_ => FhirIds.IsValid(context.Compartment.Patient.Key.Id)).Select(type => new NextCall("search_fhir_resources", new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["resourceType"] = type,
                 ["compartment"] = context.PatientReference,
@@ -109,7 +108,7 @@ public static class ContextRoot
     {
         Dictionary<string, object> args = new(StringComparer.Ordinal)
         {
-            ["patientId"] = context.Compartment.Patient.Key.Id,
+            ["patientId"] = context.PatientId,
             ["nodeKey"] = nodeKey,
         };
         if (offset is int value)
@@ -120,11 +119,11 @@ public static class ContextRoot
         return new NextCall("context_expand", args);
     }
 
-    /// <summary>The evidence items of <paramref name="entries"/>, in order, each resource once.</summary>
+    /// <summary>The evidence items of <paramref name="entries"/>, in order, each resource once, named as summaries name it (<see cref="FhirIds.Reference(CatalogEntry)"/>).</summary>
     internal static List<EvidenceItem> Evidence(IEnumerable<CatalogEntry> entries) =>
         [.. entries
             .DistinctBy(entry => (entry.ResourceType, entry.Id))
-            .Select(entry => new EvidenceItem(ResourceReader.Describe(entry), entry.FilePath, entry.Line, entry.Offset))];
+            .Select(entry => new EvidenceItem(FhirIds.Reference(entry), entry.FilePath, entry.Line, entry.Offset))];
 
     /// <summary>The absence of allergies, with the compartment and the folder's AllergyIntolerance resources it checked.</summary>
     internal static AbsentItem AllergyAbsence(PatientContext context)

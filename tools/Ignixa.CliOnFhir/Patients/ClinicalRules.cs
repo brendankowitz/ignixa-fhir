@@ -10,7 +10,8 @@ namespace Ignixa.CliOnFhir.Patients;
 
 /// <summary>
 /// The judgement calls of the patient tools, as FHIRPath over each resource (risk 3 in agent-tool-surface.md: rules must be
-/// documented, version-aware and visible in facts). Written and checked against R4; under another version they are reported
+/// documented, version-aware and visible in facts). Written and checked against R4 (R4B shares the elements and codes they
+/// read); under STU3 or R5 they are reported
 /// with a <see cref="UnsupportedVersionCode"/> warning and the status rules are not applied.
 /// </summary>
 internal static class ClinicalRules
@@ -18,19 +19,26 @@ internal static class ClinicalRules
     /// <summary>The issue code saying the rules were not written for the session's FHIR version.</summary>
     public const string UnsupportedVersionCode = "domain-rule-unsupported-version";
 
-    /// <summary>A Condition is an active problem (R4 condition-clinical: active, recurrence, relapse).</summary>
+    /// <summary>
+    /// A Condition is an active problem: R4 condition-clinical active, recurrence or relapse, and not refuted or entered in
+    /// error by its condition-ver-status.
+    /// </summary>
     public const string ActiveCondition =
-        "clinicalStatus.coding.where(system = 'http://terminology.hl7.org/CodeSystem/condition-clinical' and (code = 'active' or code = 'recurrence' or code = 'relapse')).exists()";
+        "clinicalStatus.coding.where(system = 'http://terminology.hl7.org/CodeSystem/condition-clinical' and (code = 'active' or code = 'recurrence' or code = 'relapse')).exists()"
+        + " and verificationStatus.coding.where(system = 'http://terminology.hl7.org/CodeSystem/condition-ver-status' and (code = 'refuted' or code = 'entered-in-error')).empty()";
 
-    /// <summary>A MedicationRequest or MedicationStatement is an active medication.</summary>
-    public const string ActiveMedication = "status = 'active'";
+    /// <summary>A MedicationRequest or MedicationStatement is an active medication: active, and not an order not to give it.</summary>
+    public const string ActiveMedication = "status = 'active' and (doNotPerform.empty() or doNotPerform = false)";
 
     /// <summary>An Observation counts as a lab or vital sign: its category says so, or it has no category.</summary>
     public const string LabCategory =
         "category.empty() or category.coding.where(system = 'http://terminology.hl7.org/CodeSystem/observation-category' and (code = 'laboratory' or code = 'vital-signs')).exists()";
 
-    /// <summary>An Observation or Encounter that is a record of something that happened: not cancelled or entered in error.</summary>
+    /// <summary>An Observation that records a result: not cancelled or entered in error.</summary>
     public const string Recorded = "status != 'cancelled' and status != 'entered-in-error'";
+
+    /// <summary>An Encounter that took or is taking place: not planned, cancelled or entered in error.</summary>
+    public const string RecordedEncounter = "status != 'planned' and status != 'cancelled' and status != 'entered-in-error'";
 
     /// <summary>The coding a lab series is keyed by: the Observation's first coding with both a system and a code.</summary>
     public const string LabKeyCoding = "code.coding.where(system.exists() and code.exists()).first()";
@@ -107,8 +115,8 @@ internal static class ClinicalRules
         ["Condition"] = "clinicalStatus.coding.code.first()",
     };
 
-    /// <summary>Whether the rules were written for <paramref name="version"/>.</summary>
-    public static bool Verified(FhirVersion version) => version == FhirVersion.R4;
+    /// <summary>Whether the rules were written for <paramref name="version"/>: R4, and R4B, whose elements and codes they read are R4's.</summary>
+    public static bool Verified(FhirVersion version) => version is FhirVersion.R4 or FhirVersion.R4B;
 
     /// <summary>
     /// Parses and compiles every expression above into FHIRPath's process-wide caches, once, so an unparseable rule fails on
@@ -120,7 +128,7 @@ internal static class ClinicalRules
     {
         IEnumerable<string> all =
         [
-            ActiveCondition, ActiveMedication, Recorded, LabCategory, LabKeyCoding, QuantityValue, ReasonReferences, ReasonCodes, MedicationReference,
+            ActiveCondition, ActiveMedication, Recorded, RecordedEncounter, LabCategory, LabKeyCoding, QuantityValue, ReasonReferences, ReasonCodes, MedicationReference,
             .. PatientName, .. MainDate.Values.SelectMany(expressions => expressions), .. MainCode.Values, .. StatusCode.Values,
         ];
         foreach (string expression in all)

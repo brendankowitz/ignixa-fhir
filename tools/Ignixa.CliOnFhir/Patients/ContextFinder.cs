@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Reading;
@@ -99,9 +100,9 @@ public static class ContextFinder
         }
 
         List<ContextEntry> codeMatches = byCode ? Where(context, coded, concept => concept.HasCode(system, code), "code") : [];
-        HashSet<string> matched = [.. codeMatches.Select(entry => entry.Item.Reference)];
+        HashSet<ResourceKey> matched = [.. codeMatches.Select(entry => entry.Resource.Key)];
         List<ContextEntry> textMatches = byText
-            ? Where(context, coded.Where(member => !matched.Contains($"{member.Key.ResourceType}/{member.Key.Id}")), concept => concept.Mentions(query), "text")
+            ? Where(context, coded.Where(member => !matched.Contains(member.Key)), concept => concept.Mentions(query), "text")
             : [];
 
         string mode = (byCode, byText) switch
@@ -133,7 +134,7 @@ public static class ContextFinder
 
     private static NextCall Next(PatientContext context, string query, int offset) => new("context_find", new Dictionary<string, object>(StringComparer.Ordinal)
     {
-        ["patientId"] = context.Compartment.Patient.Key.Id,
+        ["patientId"] = context.PatientId,
         ["query"] = query,
         ["offset"] = offset,
     });
