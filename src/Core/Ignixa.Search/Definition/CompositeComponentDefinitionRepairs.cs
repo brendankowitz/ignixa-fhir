@@ -32,6 +32,7 @@ internal static class CompositeComponentDefinitionRepairs
 {
     private const string ClinicalCode = "http://hl7.org/fhir/SearchParameter/clinical-code";
     private const string Stu3ObservationCode = "http://hl7.org/fhir/SearchParameter/Observation-code";
+    private const string DocumentReferenceRelationship = "http://hl7.org/fhir/SearchParameter/DocumentReference-relationship";
 
     /// <summary>
     /// The redirects, keyed by version and by the component's URL as written.
@@ -53,12 +54,6 @@ internal static class CompositeComponentDefinitionRepairs
         };
 
     /// <summary>
-    /// Returns the URL the component reference meant, or <paramref name="definitionUrl"/> when this
-    /// version has no repair for it.
-    /// </summary>
-    private const string DocumentReferenceRelationship = "http://hl7.org/fhir/SearchParameter/DocumentReference-relationship";
-
-    /// <summary>
     /// Component expressions a shipped specification gets wrong, keyed by composite and component definition URL, with the
     /// expression it publishes and the one that selects the element of the component's declared type.
     /// </summary>
@@ -66,8 +61,10 @@ internal static class CompositeComponentDefinitionRepairs
     /// Every version from STU3 to R6 publishes DocumentReference-relationship with its two expressions swapped: the
     /// reference component <c>relatesto</c> (DocumentReference.relatesTo.target) is given <c>code</c> and the token component
     /// <c>relation</c> (DocumentReference.relatesTo.code) is given <c>target</c>, so the indexer files a token where a
-    /// reference is declared and no query can match. Repairing it changes the composite's index rows (in every backend)
-    /// from {token, reference} to {reference, token}, the order the definition declares.
+    /// reference is declared and no query can match. Repairing it changes the order of the composite's components in the
+    /// in-memory and FileSystem compact indexes from {token, reference} to {reference, token}, the order the definition
+    /// declares, so an existing FileSystem store needs a reindex of this parameter. SQL rows are unchanged: the reference-token
+    /// row generator and lowering pick components by type, not position. The search parameter hash does not change.
     /// </remarks>
     private static readonly IReadOnlyDictionary<(string Composite, string Component), (string Published, string Repaired)> ExpressionRepairs =
         new Dictionary<(string, string), (string, string)>
@@ -90,6 +87,10 @@ internal static class CompositeComponentDefinitionRepairs
         }
     }
 
+    /// <summary>
+    /// Returns the URL the component reference meant, or <paramref name="definitionUrl"/> when this
+    /// version has no repair for it.
+    /// </summary>
     public static Uri Resolve(FhirVersion version, Uri definitionUrl)
     {
         ArgumentNullException.ThrowIfNull(definitionUrl);

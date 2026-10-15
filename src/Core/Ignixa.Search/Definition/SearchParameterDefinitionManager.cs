@@ -7,8 +7,6 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using EnsureThat;
-using Ignixa.FhirPath.Analysis;
-using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using Ignixa.Specification;
@@ -83,7 +81,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         // Pre-generated parameters have Component[].DefinitionUrl set, but ResolvedSearchParameter is null
         // We must resolve these references by looking up the component parameters in UrlLookup
         ResolveCompositeComponents(baseParameters, logger);
-        AttachCompositeConsistencyChecks(baseParameters);
+        MarkInconsistentComposites(baseParameters);
 
         CalculateSearchParameterHash();
     }
@@ -192,29 +190,14 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
     }
 
     /// <summary>
-    /// Gives each composite a lazily computed <see cref="SearchParameterInfo.ComponentInconsistency"/>. Typing the
-    /// component expressions needs a FHIRPath analyzer over the schema, which costs hundreds of milliseconds, so it is
-    /// paid only by the first search that asks, never by loading the definitions.
+    /// Marks the shipped composites listed in <see cref="KnownInconsistentComposites"/>, whose components can never match a
+    /// query, so in-memory search refuses them instead of answering "nothing".
     /// </summary>
-    private void AttachCompositeConsistencyChecks(SearchParameterInfo[] parameters)
+    private void MarkInconsistentComposites(SearchParameterInfo[] parameters)
     {
-        var analyzer = new Lazy<FhirPathAnalyzer>(() => new FhirPathAnalyzer(_modelInfoProvider), LazyThreadSafetyMode.ExecutionAndPublication);
-        var converters = new Lazy<IReadOnlySet<(string FhirType, Type SearchValueType)>>(
-            () =>
-            {
-                var referenceParser = new ReferenceSearchValueParser(_modelInfoProvider, NullFhirBaseUriProvider.Instance);
-                return SearchIndexerFactory
-                    .CreateConverters(_modelInfoProvider, referenceParser, new LightweightReferenceToElementResolver(referenceParser, _modelInfoProvider))
-                    .SelectMany(converter => converter.FhirTypes.Select(fhirType => (fhirType, converter.SearchValueType)))
-                    .ToHashSet();
-            },
-            LazyThreadSafetyMode.ExecutionAndPublication);
-
         foreach (SearchParameterInfo composite in parameters.Where(parameter => parameter.Type == SearchParamType.Composite))
         {
-            composite.ComponentInconsistency = new Lazy<string>(
-                () => CompositeComponentConsistency.Inconsistency(composite, analyzer.Value, converters.Value),
-                LazyThreadSafetyMode.ExecutionAndPublication);
+            composite.ComponentInconsistency = KnownInconsistentComposites.For(_modelInfoProvider.Version, composite.Url);
         }
     }
 

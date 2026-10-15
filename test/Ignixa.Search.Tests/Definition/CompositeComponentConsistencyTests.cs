@@ -20,49 +20,88 @@ namespace Ignixa.Search.Tests.Definition;
 
 /// <summary>
 /// A census of composite search parameters whose component expressions index values of another kind than the component
-/// declares, so no query could match them. Each is either repaired in <c>CompositeComponentDefinitionRepairs</c> or listed
-/// here, and in-memory search refuses the listed ones instead of answering "nothing".
+/// declares, so no query could match them. Each is either repaired in <c>CompositeComponentDefinitionRepairs</c> or listed in
+/// <see cref="KnownInconsistentComposites"/>, which in-memory search refuses instead of answering "nothing";
+/// <see cref="CompositeComponentConsistency"/> is the oracle that keeps that table honest.
 /// </summary>
 public class CompositeComponentConsistencyTests
 {
-    /// <summary>Shipped composites that stay inconsistent after repair, with the component at fault.</summary>
-    private static readonly IReadOnlySet<(FhirVersion Version, string Url)> KnownInconsistent = new HashSet<(FhirVersion, string)>
+    /// <summary>
+    /// Shipped composites the oracle cannot type, each with the reason it is not a finding. An unlisted one fails the census,
+    /// so a composite the analyzer gives up on is never counted as consistent.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<(FhirVersion Version, string Url), string> Untyped = new Dictionary<(FhirVersion, string), string>
     {
-        // location.reference selects the reference string, which indexes as a string under a reference component.
-        (FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Encounter-location-period"),
-
-        // artifact is a canonical, and no converter turns a canonical into a reference value.
-        (FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-conformance"),
-        (FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-phase"),
+        [(FhirVersion.Stu3, "http://hl7.org/fhir/SearchParameter/Sequence-coordinate")] = PercentResource,
+        [(FhirVersion.R4, "http://hl7.org/fhir/SearchParameter/MolecularSequence-chromosome-variant-coordinate")] = PercentResource,
+        [(FhirVersion.R4, "http://hl7.org/fhir/SearchParameter/MolecularSequence-referenceseqid-variant-coordinate")] = PercentResource,
+        [(FhirVersion.R4B, "http://hl7.org/fhir/SearchParameter/MolecularSequence-chromosome-variant-coordinate")] = PercentResource,
+        [(FhirVersion.R4B, "http://hl7.org/fhir/SearchParameter/MolecularSequence-referenceseqid-variant-coordinate")] = PercentResource,
+        [(FhirVersion.R4B, "http://hl7.org/fhir/SearchParameter/Group-characteristic-value")] = UnionOfCasts,
+        [(FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Group-characteristic-value")] = UnionOfCasts,
+        [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/Group-characteristic-value")] = UnionOfCasts,
     };
+
+    private const string PercentResource =
+        "The component reads %resource, which the analyzer does not bind inside a composite's context; the components select "
+        + "referenceSeq strings for a string component, which index as declared.";
+
+    private const string UnionOfCasts =
+        "The value component is a parenthesised union of casts the analyzer types as nothing; it selects CodeableConcept or "
+        + "boolean, both of which index as the declared token (the reviewer's Group fixture matches it).";
 
     public static TheoryData<FhirVersion> Versions => new(FhirVersion.Stu3, FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5, FhirVersion.R6);
 
     [Theory]
     [MemberData(nameof(Versions))]
-    public void GivenShippedComposites_WhenTheirComponentsAreTyped_ThenOnlyTheKnownOnesAreInconsistent(FhirVersion version)
+    public void GivenShippedComposites_WhenTypedByTheOracle_ThenTheInconsistentOnesAreExactlyTheStaticTable(FhirVersion version)
     {
-        SearchParameterDefinitionManager definitions = Definitions(version);
+        IFhirSchemaProvider schema = version.GetSchemaProvider();
+        var analyzer = new FhirPathAnalyzer(schema);
+        HashSet<(string FhirType, Type SearchValueType)> converters = Converters(schema);
+        List<(string Url, CompositeConsistencyVerdict Verdict, string? Detail)> verdicts = [.. Definitions(version).AllSearchParameters
+            .Where(parameter => parameter.Type == SearchParamType.Composite)
+            .DistinctBy(parameter => parameter.Url)
+            .Select(parameter => CompositeComponentConsistency.Check(parameter, analyzer, converters) is var (verdict, detail)
+                ? (parameter.Url.OriginalString, verdict, detail)
+                : default)];
 
-        HashSet<(FhirVersion, string)> inconsistent = [.. definitions.AllSearchParameters
-            .Where(parameter => parameter.Type == SearchParamType.Composite && parameter.ComponentInconsistency?.Value is not null)
-            .Select(parameter => (version, parameter.Url.OriginalString))];
+        verdicts.Where(row => row.Verdict == CompositeConsistencyVerdict.Unknown && !Untyped.ContainsKey((version, row.Url)))
+            .Select(row => $"{row.Url}: {row.Detail}")
+            .ShouldBeEmpty("composites the oracle cannot type must be listed in Untyped with a reason");
+        verdicts.Where(row => row.Verdict == CompositeConsistencyVerdict.Unknown).Select(row => row.Url)
+            .ShouldBe([.. Untyped.Keys.Where(key => key.Version == version).Select(key => key.Url)], ignoreOrder: true, customMessage: "an Untyped entry the analyzer now types must be removed");
+        HashSet<(FhirVersion, string, int)> documentedUnresolved = [.. KnownCompositeComponentDivergences.All.Select(divergence => divergence.Key)];
+        verdicts.Where(row => row.Verdict == CompositeConsistencyVerdict.Unresolved)
+            .Where(row => !documentedUnresolved.Contains((version, row.Url, int.Parse(row.Detail!, System.Globalization.CultureInfo.InvariantCulture))))
+            .Select(row => $"{row.Url} component {row.Detail}")
+            .ShouldBeEmpty("an unresolved component must be recorded in KnownCompositeComponentDivergences");
+        verdicts.Where(row => row.Verdict == CompositeConsistencyVerdict.Inconsistent).Select(row => row.Url)
+            .ShouldBe(
+                [.. KnownInconsistentComposites.All.Keys.Where(key => key.Version == version).Select(key => key.Url)],
+                ignoreOrder: true,
+                customMessage: "the oracle's findings must equal KnownInconsistentComposites; update the table with the regenerated definitions");
+    }
 
-        inconsistent.ShouldBe([.. KnownInconsistent.Where(known => known.Version == version)], ignoreOrder: true);
+    [Theory]
+    [MemberData(nameof(Versions))]
+    public void GivenShippedComposites_WhenLoaded_ThenExactlyTheTablesEntriesAreMarkedInconsistent(FhirVersion version)
+    {
+        Definitions(version).AllSearchParameters
+            .Where(parameter => parameter.Type == SearchParamType.Composite && parameter.ComponentInconsistency is not null)
+            .Select(parameter => parameter.Url.OriginalString)
+            .Distinct()
+            .ShouldBe([.. KnownInconsistentComposites.All.Keys.Where(key => key.Version == version).Select(key => key.Url)], ignoreOrder: true);
     }
 
     [Theory]
     [MemberData(nameof(Versions))]
     public void GivenDocumentReferenceRelationship_WhenLoaded_ThenItsSwappedComponentExpressionsAreRepaired(FhirVersion version)
     {
-        definitionsHave(version).ShouldBe(("target", "code"));
+        Definitions(version).TryGetSearchParameter("DocumentReference", "relationship", out SearchParameterInfo relationship).ShouldBeTrue();
 
-        static (string, string) definitionsHave(FhirVersion version)
-        {
-            Definitions(version).TryGetSearchParameter("DocumentReference", "relationship", out SearchParameterInfo relationship).ShouldBeTrue();
-            relationship.ComponentInconsistency.ShouldNotBeNull().Value.ShouldBeNull();
-            return (relationship.Component[0].Expression, relationship.Component[1].Expression);
-        }
+        (relationship.Component[0].Expression, relationship.Component[1].Expression).ShouldBe(("target", "code"));
+        relationship.ComponentInconsistency.ShouldBeNull();
     }
 
     [Fact]
@@ -81,8 +120,10 @@ public class CompositeComponentConsistencyTests
             "DocumentReference.relatesTo",
             baseResourceTypes: ["DocumentReference"]);
 
-        CompositeComponentConsistency.Inconsistency(swapped, new FhirPathAnalyzer(schema), Converters(schema))
-            .ShouldNotBeNull().ShouldContain("component 0 ('code') is declared Reference");
+        (CompositeConsistencyVerdict verdict, string? detail) = CompositeComponentConsistency.Check(swapped, new FhirPathAnalyzer(schema), Converters(schema));
+
+        verdict.ShouldBe(CompositeConsistencyVerdict.Inconsistent);
+        detail.ShouldNotBeNull().ShouldContain("component 0 ('code') is declared Reference");
     }
 
     [Fact]
