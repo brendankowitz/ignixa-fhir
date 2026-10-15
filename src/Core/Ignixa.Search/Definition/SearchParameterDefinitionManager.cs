@@ -7,6 +7,9 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using EnsureThat;
+using Ignixa.FhirPath.Analysis;
+using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 using Ignixa.Specification;
 using Ignixa.Search.Generated;
@@ -80,6 +83,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         // Pre-generated parameters have Component[].DefinitionUrl set, but ResolvedSearchParameter is null
         // We must resolve these references by looking up the component parameters in UrlLookup
         ResolveCompositeComponents(baseParameters, logger);
+        AttachCompositeConsistencyChecks(baseParameters);
 
         CalculateSearchParameterHash();
     }
@@ -151,6 +155,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
             for (int i = 0; i < parameter.Component.Count; i++)
             {
                 var component = parameter.Component[i];
+                CompositeComponentDefinitionRepairs.RepairExpression(parameter.Url, component);
 
                 // Skip if already resolved (shouldn't happen with pre-generated params, but defensive check)
                 if (component.ResolvedSearchParameter != null)
@@ -184,6 +189,33 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         }
 
         LogCompositeComponentsResolved(logger, resolvedCount, unresolvedCount);
+    }
+
+    /// <summary>
+    /// Gives each composite a lazily computed <see cref="SearchParameterInfo.ComponentInconsistency"/>. Typing the
+    /// component expressions needs a FHIRPath analyzer over the schema, which costs hundreds of milliseconds, so it is
+    /// paid only by the first search that asks, never by loading the definitions.
+    /// </summary>
+    private void AttachCompositeConsistencyChecks(SearchParameterInfo[] parameters)
+    {
+        var analyzer = new Lazy<FhirPathAnalyzer>(() => new FhirPathAnalyzer(_modelInfoProvider), LazyThreadSafetyMode.ExecutionAndPublication);
+        var converters = new Lazy<IReadOnlySet<(string FhirType, Type SearchValueType)>>(
+            () =>
+            {
+                var referenceParser = new ReferenceSearchValueParser(_modelInfoProvider, NullFhirBaseUriProvider.Instance);
+                return SearchIndexerFactory
+                    .CreateConverters(_modelInfoProvider, referenceParser, new LightweightReferenceToElementResolver(referenceParser, _modelInfoProvider))
+                    .SelectMany(converter => converter.FhirTypes.Select(fhirType => (fhirType, converter.SearchValueType)))
+                    .ToHashSet();
+            },
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        foreach (SearchParameterInfo composite in parameters.Where(parameter => parameter.Type == SearchParamType.Composite))
+        {
+            composite.ComponentInconsistency = new Lazy<string>(
+                () => CompositeComponentConsistency.Inconsistency(composite, analyzer.Value, converters.Value),
+                LazyThreadSafetyMode.ExecutionAndPublication);
+        }
     }
 
     internal ConcurrentDictionary<Uri, SearchParameterInfo> UrlLookup { get; set; }

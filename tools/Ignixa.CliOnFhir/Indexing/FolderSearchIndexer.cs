@@ -20,8 +20,9 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.CliOnFhir.Indexing;
 
 /// <summary>
-/// The folder's search indexer: Ignixa's <see cref="ElementSearchIndexer"/> with two tool-local converter substitutions
-/// (<see cref="SystemValueContactPointConverter"/>, <see cref="UnitAwareQuantityConverter"/>), the in-memory
+/// The folder's search indexer: Ignixa's <see cref="ElementSearchIndexer"/> with three tool-local converter substitutions
+/// (<see cref="SystemValueContactPointConverter"/>, <see cref="UnitAwareQuantityConverter"/>,
+/// <see cref="UrnAwareReferenceConverter"/>), the in-memory
 /// <c>_lastUpdated</c> entry from <see cref="LastUpdatedSearchIndexer"/>, and, where the version defines <c>_profile</c>
 /// as a reference parameter (R5), <c>_profile</c> entries the stock indexer does not extract.
 /// </summary>
@@ -57,7 +58,7 @@ internal sealed class FolderSearchIndexer : ISearchIndexer
 
     /// <summary>
     /// Mirrors <see cref="SearchIndexerFactory.CreateInstance"/>'s reflection scan over Ignixa's converter types,
-    /// substituting the ContactPoint and Quantity converters; the factory offers no converter-customization hook.
+    /// substituting the ContactPoint, Quantity and Reference converters; the factory offers no converter-customization hook.
     /// </summary>
     private static ElementSearchIndexer CreateIndexer(
         IFhirSchemaProvider schema,
@@ -73,11 +74,13 @@ internal sealed class FolderSearchIndexer : ISearchIndexer
             .Assembly
             .ExportedTypes
             .Where(x => typeof(IElementToSearchValueConverter).IsAssignableFrom(x) && !x.IsAbstract && !x.IsGenericType)
-            .Where(x => x != typeof(ContactPointToTokenSearchValueConverter) && x != typeof(QuantityToQuantitySearchValueConverter))
+            .Where(x => x != typeof(ContactPointToTokenSearchValueConverter) && x != typeof(QuantityToQuantitySearchValueConverter)
+                && x != typeof(ResourceReferenceToReferenceSearchValueConverter))
             .Select(x => (IElementToSearchValueConverter)CreateWithArguments(x, wellKnownArguments))];
 
         converters.Add(new SystemValueContactPointConverter());
         converters.Add(new UnitAwareQuantityConverter());
+        converters.Add(new UrnAwareReferenceConverter(referenceParser));
 
         return new ElementSearchIndexer(
             new SupportedSearchParameterDefinitionManager(definitions),

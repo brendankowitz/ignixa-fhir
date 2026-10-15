@@ -120,6 +120,12 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     public SearchParamType Type { get; }
 
     /// <summary>
+    /// For a composite loaded by <c>SearchParameterDefinitionManager</c>: why its components' expressions cannot index values
+    /// a query could match, or null when they can; computed on first use. Null when the composite was not checked.
+    /// </summary>
+    internal Lazy<string> ComponentInconsistency { get; set; }
+
+    /// <summary>
     /// Returns true if this parameter is enabled for searches
     /// </summary>
     public bool IsSearchable { get; set; } = true;

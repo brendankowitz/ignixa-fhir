@@ -73,7 +73,7 @@ public static class ResourceSearcher
         List<OmittedItem> omitted = [];
         if (parsed.CountOnly)
         {
-            issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(session.RootPath, source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));
+            issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, new SearchOptions(parsed.Options) { Include = [], RevInclude = [] }, []));
             AddDiagnostics(source, issues, omitted);
             var countFacts = new SearchFacts(request.ResourceType, query, matches.Count, request.Offset, Returned: 0, Resources: null);
             return Envelope(session, source, countFacts, [], omitted, issues, cancellationToken);
@@ -93,7 +93,7 @@ public static class ResourceSearcher
             issues.AddRange(ReferenceFollowChecks.InapplicableIncludes(parsed.Options));
         }
 
-        issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(session.RootPath, source, parsed.Options, [.. page, .. included ?? []]));
+        issues.AddRange(ReferenceFollowChecks.UnresolvedReferences(source, parsed.Options, [.. page, .. included ?? []]));
         AddDiagnostics(source, issues, omitted);
 
         int reserved = ReservedBytes(request, query, matches.Count, included, issues, omitted);

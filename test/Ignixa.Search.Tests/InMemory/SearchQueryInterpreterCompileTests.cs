@@ -38,6 +38,23 @@ public class SearchQueryInterpreterCompileTests
         Match("Group", query, GenderGroup, AgeGroup, FlagGroup).ShouldBe(expected.Length == 0 ? [] : expected.Split(','));
     }
 
+    [Theory]
+    [InlineData("relationship=DocumentReference/dr0$replaces", "dr1")]
+    [InlineData("relationship=DocumentReference/dr0$appends", "")]
+    [InlineData("relationship=DocumentReference/other$replaces", "")]
+    [InlineData("relationship=replaces$DocumentReference/dr0", "")]
+    public void GivenDocumentReferenceRelationship_WhenSearchedInTheDefinitionsComponentOrder_ThenTheRelatedDocumentMatches(string query, string expected)
+    {
+        // relatesto (the target reference) is component 0 and relation (the code) component 1; the reversed order asks for
+        // target "replaces" with relation "DocumentReference/dr0", which no relatesTo has.
+        Match(
+            "DocumentReference",
+            query,
+            """{"resourceType":"DocumentReference","id":"dr1","status":"current","relatesTo":[{"code":"replaces","target":{"reference":"DocumentReference/dr0"}}],"content":[{"attachment":{"url":"http://x"}}]}""",
+            """{"resourceType":"DocumentReference","id":"dr2","status":"current","relatesTo":[{"code":"appends","target":{"reference":"DocumentReference/other"}}],"content":[{"attachment":{"url":"http://x"}}]}""")
+            .ShouldBe(expected.Length == 0 ? [] : expected.Split(','));
+    }
+
     [Fact]
     public void GivenAFieldTheParameterCanNeverHold_WhenCompiled_ThenTheQueryIsRejectedBeforeAnyEntryIsRead()
     {

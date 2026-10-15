@@ -17,7 +17,7 @@ namespace Ignixa.Search.InMemory;
 /// <remarks>
 /// <para>
 /// <c>_include=Source:param[:Target]</c> adds the resources that the page's <c>Source</c> resources reference through
-/// <c>param</c> (any reference parameter for <c>Source:*</c>), limited to <c>Target</c> when given.
+/// <c>param</c> (any reference parameter for <c>Source:*</c>, and of any resource for <c>*</c>), limited to <c>Target</c> when given.
 /// <c>_revinclude=Source:param[:Target]</c> adds the <c>Source</c> resources that reference a page resource through
 /// <c>param</c>. A reference to another server, or to a resource the source does not hold, includes nothing.
 /// </para>
@@ -30,6 +30,9 @@ namespace Ignixa.Search.InMemory;
 /// </remarks>
 internal static class InMemoryIncludeResolver
 {
+    /// <summary>The source type of <c>_include=*</c>, which follows every reference of every resource it is applied to.</summary>
+    private const string AnySource = "*";
+
     public static IReadOnlyList<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> Resolve(
         IInMemorySearchSource source,
         IReadOnlyCollection<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> matches,
@@ -80,7 +83,7 @@ internal static class InMemoryIncludeResolver
         IReadOnlyList<IncludeExpression> includes) =>
         round
             .SelectMany(resource => includes
-                .Where(include => include.SourceResourceType == resource.Location.ResourceType)
+                .Where(include => include.SourceResourceType == AnySource || include.SourceResourceType == resource.Location.ResourceType)
                 .SelectMany(include => SearchQueryInterpreter
                     .LocalReferences(resource.Index, include.WildCard ? null : include.ReferenceSearchParameter)
                     .Where(reference => include.TargetResourceType is null || include.TargetResourceType == reference.ResourceType)))

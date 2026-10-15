@@ -326,9 +326,8 @@ public class SearchExtensionTests
         IssueItem issue = chained.Issues.ShouldHaveSingleItem();
         issue.Severity.ShouldBe("information");
         issue.Code.ShouldBe("references-unresolved");
-        issue.Diagnostics.ShouldContain("Encounter:subject");
-        issue.Diagnostics.ShouldContain("1 absolute or untyped references, and 1 Encounter resources holding urn: references");
-        included.Issues.ShouldHaveSingleItem().Diagnostics.ShouldContain("0 absolute or untyped references, and 1 Encounter resources holding urn: references");
+        issue.Diagnostics.ShouldStartWith("2 references through Encounter:subject are not local");
+        included.Issues.ShouldHaveSingleItem().Diagnostics.ShouldStartWith("1 references through Encounter:subject are not local");
     }
 
     [Fact]
@@ -357,5 +356,54 @@ public class SearchExtensionTests
 
         envelope.Facts.ShouldNotBeNull().Total.ShouldBe(total);
         envelope.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenAUrnUnderAnotherParameter_WhenChainedThroughAParameterWithoutOne_ThenNoUnresolvedReferencesAreReported()
+    {
+        using TestFolder folder = new TestFolder()
+            .Write("pat.json", """{"resourceType":"Patient","id":"sp1","generalPractitioner":[{"reference":"Practitioner/pr1"}],"link":[{"other":{"reference":"urn:uuid:abc"},"type":"seealso"}]}""")
+            .Write("pr.json", """{"resourceType":"Practitioner","id":"pr1","name":[{"family":"Jones"}]}""");
+        FolderSession session = Open(folder);
+
+        ToolEnvelope<SearchFacts?> chained = ResourceSearcher.Search(session, new SearchRequest("Patient", "general-practitioner:Practitioner.family=Jones"));
+        ToolEnvelope<SearchFacts?> byUrn = ResourceSearcher.Search(session, new SearchRequest("Patient", "link=urn:uuid:abc"));
+
+        Ids(chained).ShouldBe(["sp1"]);
+        chained.Issues.ShouldBeEmpty();
+        Ids(byUrn).ShouldBe(["sp1"]);
+    }
+
+    [Fact]
+    public void GivenIncludeOfEveryReference_WhenSearched_ThenEveryReferencedResourceIsIncludedWithoutAWarning()
+    {
+        using TestFolder folder = Clinic();
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Observation", "_id=o1&_include=*"));
+
+        envelope.Facts.ShouldNotBeNull().Included.ShouldNotBeNull().Select(resource => (string)resource["id"]!).ShouldBe(["p1"]);
+        envelope.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenARevIncludeTargetingAnotherType_WhenSearched_ThenTheWarningNamesTheTargetAndTheSearchedType()
+    {
+        using TestFolder folder = Clinic();
+
+        IssueItem warning = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", "_revinclude=Observation:subject:Group")).Issues.ShouldHaveSingleItem();
+
+        warning.Code.ShouldBe("include-not-applicable");
+        warning.Diagnostics.ShouldContain("reference Group, which is not the searched type Patient");
+    }
+
+    [Fact]
+    public void GivenAFileThatDisappearsBeforeItIsIndexed_WhenSearched_ThenTheFailureSurfacesInsteadOfBeingReportedAsUnsupported()
+    {
+        using TestFolder folder = Clinic();
+        FolderSession session = Open(folder);
+        _ = session.Catalog;
+        File.Delete(Path.Combine(folder.Path, ObservationsFile));
+
+        Should.Throw<FileNotFoundException>(() => ResourceSearcher.Search(session, new SearchRequest("Observation", "subject:Patient.gender=male")));
     }
 }

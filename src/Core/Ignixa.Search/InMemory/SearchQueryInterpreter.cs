@@ -67,6 +67,12 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         EnsureArg.IsNotNull(expression, nameof(expression));
 
         string parameterName = expression.Parameter.Name;
+        if (expression.Parameter.ComponentInconsistency?.Value is { } inconsistency)
+        {
+            throw new SearchOperationNotSupportedException(
+                $"Composite search parameter '{expression.Parameter.Code}' cannot be searched in memory: {inconsistency}.");
+        }
+
         Expression body = LegacyExpressionLowerer.LowerToLegacy(expression.Expression);
 
         if (expression.Parameter.Code == SearchParameterNames.ResourceType)
