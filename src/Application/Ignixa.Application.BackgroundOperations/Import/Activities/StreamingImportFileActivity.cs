@@ -49,6 +49,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
     private readonly IBlobStorageClient _blobStorageClient;
     private readonly IConfiguration _configuration;
     private readonly IFhirRequestContextAccessor _fhirContextAccessor;
+    private readonly ResourceElementOrdering _elementOrdering;
     private readonly ILogger<StreamingImportFileActivity> _logger;
 
     public StreamingImportFileActivity(
@@ -58,6 +59,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         IBlobStorageClient blobStorageClient,
         IConfiguration configuration,
         IFhirRequestContextAccessor fhirContextAccessor,
+        ResourceElementOrdering elementOrdering,
         ILogger<StreamingImportFileActivity> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
@@ -66,6 +68,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         _blobStorageClient = blobStorageClient ?? throw new ArgumentNullException(nameof(blobStorageClient));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
+        _elementOrdering = elementOrdering ?? throw new ArgumentNullException(nameof(elementOrdering));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -387,6 +390,8 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 jsonNode.Id = resourceId;
                 _logger.LogDebug("Generated ID for {ResourceType}: {Id}", expectedResourceType, resourceId);
             }
+
+            _elementOrdering.OrderForStorage(jsonNode, schemaProvider);
 
             var typedElement = jsonNode.ToElement(schemaProvider);
             IReadOnlyList<object> searchIndices = searchIndexer.Extract((IElement)typedElement).ToArray();

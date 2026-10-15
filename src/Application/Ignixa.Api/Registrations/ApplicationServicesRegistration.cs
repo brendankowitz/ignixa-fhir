@@ -192,6 +192,10 @@ public static class ApplicationServicesRegistration
             .As<IRequestHandler<GetResourceQuery, SearchEntryResult?>>()
             .InstancePerDependency();
 
+        builder.RegisterType<ResourceElementOrdering>()
+            .AsSelf()
+            .SingleInstance();
+
         builder.RegisterType<CreateOrUpdateResourceHandler>()
             .As<IRequestHandler<CreateOrUpdateResourceCommand, UpdateResult>>()
             .InstancePerDependency();

@@ -32,6 +32,30 @@ These settings are request-size and transaction-cardinality guards, not a memory
 transaction cap changes behavior for clients that previously submitted transactions larger than
 500 entries.
 
+## Resource Element Order
+
+```json
+{
+  "Serialization": {
+    "OrderElementsOnWrite": false
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Serialization:OrderElementsOnWrite` | `false` | Store resources with their properties in StructureDefinition element order, the order the Firely SDK serializer uses. |
+
+By default the server keeps the property order the client sent, with `meta` appended when the
+client omitted it. When enabled, every stored resource is reordered on write: create, update,
+patch, conditional operations, batch and transaction bundles, `X-Provenance`, and bulk `$import`.
+The order applies to `resourceType` first, then elements as defined for the resource's FHIR
+version; a primitive's extension sibling (`_birthDate`) follows its value, and properties the
+specification does not define are kept after the defined ones. Array element order never changes.
+
+Reads return stored bytes unchanged, so resources written before the setting was enabled keep
+their original order until they are next updated.
+
 ## Tenant Configuration (Required)
 
 Ignixa requires at least two tenant configurations: Tenant 0 (system partition) and Tenant 1+ (your data).

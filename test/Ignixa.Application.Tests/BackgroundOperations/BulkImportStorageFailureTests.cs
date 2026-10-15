@@ -13,6 +13,7 @@ using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 
@@ -62,7 +63,8 @@ public class BulkImportStorageFailureTests
         TaskActivity activity = streaming
             ? new StreamingImportFileActivity(factory, versions, tenants, blobs,
                 new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Import:ConsumerCount"] = "1" }).Build(),
-                new FhirRequestContextAccessor(), NullLogger<StreamingImportFileActivity>.Instance)
+                new FhirRequestContextAccessor(), new ResourceElementOrdering(Options.Create(new SerializationOptions())),
+                NullLogger<StreamingImportFileActivity>.Instance)
             : new ImportBatchActivity(factory, versions, tenants, new FhirRequestContextAccessor(), NullLogger<ImportBatchActivity>.Instance);
         object input = streaming
             ? new StreamingImportFileInput { JobId = "job", TenantId = 1, ResourceType = "Patient", FileUrl = "input.ndjson",
