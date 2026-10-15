@@ -20,7 +20,7 @@ namespace Ignixa.CliOnFhir.Session;
 public sealed class FolderSession
 {
     private readonly Lazy<(FolderCatalog Catalog, BuildStats Stats)> _catalog;
-    private readonly Lazy<FolderIndexBuilder> _indexBuilder;
+    private readonly Lazy<(FolderIndexBuilder Builder, long LoadMilliseconds)> _indexBuilder;
     private readonly ConcurrentDictionary<string, Lazy<ResourceTypeIndex>> _indexes = new(StringComparer.Ordinal);
 
     public FolderSession(string rootPath, IFhirSchemaProvider schema, ILoggerFactory loggerFactory)
@@ -33,8 +33,16 @@ public sealed class FolderSession
         Schema = schema;
         _catalog = new Lazy<(FolderCatalog, BuildStats)>(() => BuildCatalog(RootPath, schema), LazyThreadSafetyMode.ExecutionAndPublication);
 
-        // Loading the search parameter definitions is the dominant fixed cost of indexing, so it waits for the first index request.
-        _indexBuilder = new Lazy<FolderIndexBuilder>(() => new FolderIndexBuilder(schema, loggerFactory), LazyThreadSafetyMode.ExecutionAndPublication);
+        // Loading the search parameter definitions is the dominant fixed cost of indexing, so it waits for the
+        // first index request and is timed separately from the per-type builds.
+        _indexBuilder = new Lazy<(FolderIndexBuilder, long)>(
+            () =>
+            {
+                var stopwatch = Stopwatch.StartNew();
+                var builder = new FolderIndexBuilder(schema, loggerFactory);
+                return (builder, stopwatch.ElapsedMilliseconds);
+            },
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public string RootPath { get; }
@@ -44,6 +52,12 @@ public sealed class FolderSession
     public FolderCatalog Catalog => _catalog.Value.Catalog;
 
     public BuildStats CatalogStats => _catalog.Value.Stats;
+
+    /// <summary>
+    /// Wall time spent loading the search parameter definitions and creating the indexer, paid once on the first
+    /// index request and not included in any type's <see cref="ResourceTypeIndex.BuildMilliseconds"/>; null until then.
+    /// </summary>
+    public long? IndexerLoadMilliseconds => _indexBuilder.IsValueCreated ? _indexBuilder.Value.LoadMilliseconds : null;
 
     /// <summary>Resource types whose index has been built so far, in ordinal order.</summary>
     public IReadOnlyList<string> BuiltIndexTypes => [.. _indexes
@@ -66,7 +80,7 @@ public sealed class FolderSession
 
         return _indexes
             .GetOrAdd(resourceType, type => new Lazy<ResourceTypeIndex>(
-                () => _indexBuilder.Value.Build(Catalog, type, CancellationToken.None),
+                () => _indexBuilder.Value.Builder.Build(Catalog, type, CancellationToken.None),
                 LazyThreadSafetyMode.ExecutionAndPublication))
             .Value;
     }

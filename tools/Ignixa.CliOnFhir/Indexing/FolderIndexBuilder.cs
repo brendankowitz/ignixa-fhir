@@ -80,10 +80,26 @@ public sealed class FolderIndexBuilder
 
     private (IndexedResource? Resource, List<CatalogDiagnostic> Diagnostics) TryIndex(CatalogEntry entry, byte[] fileBytes)
     {
+        if (entry.Offset + entry.Length > fileBytes.Length)
+        {
+            return (null, [Stale(entry, $"the file is now {fileBytes.Length} bytes, shorter than the catalogued range ending at {entry.Offset + entry.Length}")]);
+        }
+
+        ReadOnlyMemory<byte> json = fileBytes.AsMemory((int)entry.Offset, entry.Length);
         ResourceJsonNode node;
         try
         {
-            node = JsonSourceNodeFactory.Parse(fileBytes.AsMemory((int)entry.Offset, entry.Length));
+            // The file may have changed since it was catalogued; confirm the range still holds the catalogued resource.
+            var (foundType, foundId) = ResourceSniffer.Sniff(json.Span);
+            if (!string.Equals(foundType, entry.ResourceType, StringComparison.Ordinal)
+                || (!entry.HasSyntheticId && !string.Equals(foundId, entry.Id, StringComparison.Ordinal)))
+            {
+                string expected = entry.HasSyntheticId ? entry.ResourceType : $"{entry.ResourceType}/{entry.Id}";
+                string found = entry.HasSyntheticId ? foundType ?? "(no resourceType)" : $"{foundType ?? "(no resourceType)"}/{foundId ?? "(no id)"}";
+                return (null, [Stale(entry, $"expected {expected} but found {found}")]);
+            }
+
+            node = JsonSourceNodeFactory.Parse(json);
         }
         catch (JsonException ex)
         {
@@ -94,4 +110,10 @@ public sealed class FolderIndexBuilder
         var (index, diagnostics) = ExtractionFailureCapture.Capture(entry, () => _indexer.Extract(element));
         return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), diagnostics);
     }
+
+    private static CatalogDiagnostic Stale(CatalogEntry entry, string detail) => new(
+        "catalog-stale",
+        entry.FilePath,
+        entry.Line,
+        $"{entry.ResourceType}/{entry.Id} is no longer where the catalog recorded it ({detail}); the file changed after it was catalogued, so the resource was not indexed.");
 }

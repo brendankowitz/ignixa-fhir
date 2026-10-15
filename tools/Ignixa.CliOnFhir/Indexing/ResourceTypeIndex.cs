@@ -14,7 +14,7 @@ namespace Ignixa.CliOnFhir.Indexing;
 /// <param name="Resources">Indexed resources, in catalog order. Empty when the folder holds none of this type.</param>
 /// <param name="Diagnostics">Resources that could not be parsed, and search parameters that could not be extracted.</param>
 /// <param name="BuiltAt">When the index finished building.</param>
-/// <param name="BuildMilliseconds">Wall time the build took.</param>
+/// <param name="BuildMilliseconds">Wall time the build took, excluding the one-time indexer load (<see cref="Session.FolderSession.IndexerLoadMilliseconds"/>).</param>
 public sealed record ResourceTypeIndex(
     string ResourceType,
     IReadOnlyList<IndexedResource> Resources,

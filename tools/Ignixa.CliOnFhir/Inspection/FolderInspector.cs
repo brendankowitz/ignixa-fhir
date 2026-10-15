@@ -44,6 +44,7 @@ public static class FolderInspector
             diagnostics.AddRange(indexes.SelectMany(index => index.Diagnostics));
             indexFacts = new IndexFacts(
                 indexes.Sum(index => index.IndexEntryCount),
+                session.IndexerLoadMilliseconds,
                 indexes.Sum(index => index.BuildMilliseconds),
                 [.. indexes.Select(index => new TypeIndexFacts(index.ResourceType, index.Resources.Count, index.IndexEntryCount, index.BuildMilliseconds))]);
             builtAt = indexes.Select(index => index.BuiltAt).Prepend(builtAt).Max();

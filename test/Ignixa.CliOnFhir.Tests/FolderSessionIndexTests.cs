@@ -120,6 +120,65 @@ public class FolderSessionIndexTests
         second.Resources.Select(r => r.Key.Id).ShouldBe(first.Resources.Select(r => r.Key.Id));
         second.Resources.Select(r => r.Index.Count).ShouldBe(first.Resources.Select(r => r.Index.Count));
         second.Diagnostics.ShouldBe(first.Diagnostics);
+
+        // Parallel extraction must still attribute every failure to the right resource, in catalog order.
+        first.Diagnostics.Count.ShouldBe(20);
+        first.Diagnostics.Select(d => d.Code).ShouldAllBe(code => code == "index-extraction-failed");
+        first.Diagnostics.Select(d => d.Line).ShouldBe([.. Enumerable.Range(0, 20).Select(i => (int?)(i * 10 + 1))]);
+        for (int i = 0; i < 20; i++)
+        {
+            first.Diagnostics[i].Message.ShouldContain($"Observation/o{i * 10}'");
+        }
+    }
+
+    [Fact]
+    public void GivenFileEditedAfterCataloguing_WhenRangePointsAtAnotherResource_ThenCatalogStaleDiagnosticIsReportedAndResourceIsNotIndexed()
+    {
+        const string original = """{"resourceType":"Patient","id":"p1"}""";
+        const string replacement = """{"resourceType":"Patient","id":"p2"}""";
+        using var folder = new TestFolder().Write("p.json", original);
+        FolderSession session = Open(folder);
+        session.Catalog.Entries.ShouldHaveSingleItem();
+
+        File.WriteAllText(Path.Combine(folder.Path, "p.json"), replacement);
+        ResourceTypeIndex index = session.GetIndex("Patient");
+
+        index.Resources.ShouldBeEmpty();
+        CatalogDiagnostic diagnostic = index.Diagnostics.ShouldHaveSingleItem();
+        diagnostic.Code.ShouldBe("catalog-stale");
+        diagnostic.FilePath.ShouldBe("p.json");
+        diagnostic.Message.ShouldContain("expected Patient/p1 but found Patient/p2");
+    }
+
+    [Fact]
+    public void GivenFileTruncatedAfterCataloguing_WhenIndexed_ThenCatalogStaleDiagnosticIsReported()
+    {
+        using var folder = new TestFolder().Write("obs.ndjson", """
+            {"resourceType":"Observation","id":"o1","status":"final","code":{"text":"a"}}
+            {"resourceType":"Observation","id":"o2","status":"final","code":{"text":"b"}}
+            """);
+        FolderSession session = Open(folder);
+        session.Catalog.Entries.Count.ShouldBe(2);
+
+        File.WriteAllText(Path.Combine(folder.Path, "obs.ndjson"), """{"resourceType":"Observation","id":"o1","status":"final","code":{"text":"a"}}""");
+        ResourceTypeIndex index = session.GetIndex("Observation");
+
+        index.Resources.Select(r => r.Key.Id).ShouldBe(["o1"]);
+        CatalogDiagnostic diagnostic = index.Diagnostics.ShouldHaveSingleItem();
+        diagnostic.Code.ShouldBe("catalog-stale");
+        diagnostic.Line.ShouldBe(2);
+    }
+
+    [Fact]
+    public void GivenIndexRequested_WhenIndexerLoadIsTimed_ThenItIsReportedSeparatelyAndOnlyOnceBuilt()
+    {
+        using var folder = new TestFolder().Write("p.json", PatientJson);
+        FolderSession session = Open(folder);
+        session.IndexerLoadMilliseconds.ShouldBeNull();
+
+        session.GetIndex("Patient");
+
+        session.IndexerLoadMilliseconds.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
