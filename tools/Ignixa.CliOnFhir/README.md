@@ -46,7 +46,13 @@ Search indexes are persisted per resource type so a new process does not pay for
 | MCP tool | CLI verb | Status |
 |----------|----------|--------|
 | `folder_inspect` | `inspect` | Implemented |
+| `search_fhir_resources` | `search <path> <type> [query]` | Implemented (no `_sort`, `_include`, chains or `_has` yet: they fail as `search-not-supported`) |
+| `read_resources` | `get <path> <ref>...` | Implemented |
+
+Search evaluates FHIR queries with a copy of fhir-candle's interpreter (see `Search/Candle/`), which matches multi-field criteria such as `system|code` within one index entry and compares both bounds of periods and partial dates. A parameter that does not filter is a `parameter-ignored` warning; a request that cannot be answered fails with an `error` issue (exit code 1 on the CLI, `isError` over MCP) and no facts.
+
+The 50 KB cap applies to the whole serialized MCP response (resources, evidence, issues, omitted). The CLI prints the same compact JSON by default; `--pretty` indents it (and so exceeds the cap).
 
 `freshness.staleFiles` is recounted by listing the folder and comparing each file's size and last-write time with what the catalog recorded (the count is reused for 2 seconds so back-to-back tools share one walk). If the folder can no longer be listed the value is null and a `freshness-unavailable` warning says why.
 
-Every response uses the shared envelope: `facts`, `derived` (always null), `evidence`, `omitted`, `issues`, `freshness`.
+Every response uses the shared envelope: `facts`, `derived` (always null, omitted from the JSON), `evidence`, `omitted`, `absent`, `issues`, `freshness`.

@@ -44,6 +44,39 @@ public static class EnvelopeAssembler
         return new ToolEnvelope<TFacts>(facts, evidence, omitted, absent, allIssues, new FreshnessInfo(builtAt, stale.Count));
     }
 
+    /// <summary>
+    /// An <c>error</c> issue when the folder cannot be read at all (missing, unmounted, unreadable), otherwise null. Tools
+    /// check this first so an unreachable folder is reported as a request problem rather than an unhandled exception.
+    /// </summary>
+    public static IssueItem? FolderProblem(FolderSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        try
+        {
+            _ = session.Catalog;
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new IssueItem("error", "folder-unavailable", $"The folder '{session.RootPath}' cannot be read: {ex.Message}", Location: null);
+        }
+    }
+
+    /// <summary>
+    /// The envelope of a call that could not be answered: null facts and the problem as an issue. An unreadable folder is
+    /// reported instead of <paramref name="issue"/>, with no freshness since no catalog exists.
+    /// </summary>
+    public static ToolEnvelope<TFacts?> Failure<TFacts>(FolderSession session, IssueItem issue, CancellationToken cancellationToken)
+        where TFacts : class
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        return FolderProblem(session) is { } folderProblem
+            ? new ToolEnvelope<TFacts?>(null, [], [], [], [folderProblem], new FreshnessInfo(IndexBuiltAt: null, StaleFiles: null))
+            : Create<TFacts?>(session, null, session.Catalog.BuiltAt, [], [], [], [issue], cancellationToken);
+    }
+
     /// <summary>The issue form of a catalog or index diagnostic.</summary>
     public static IssueItem ToIssue(CatalogDiagnostic diagnostic)
     {

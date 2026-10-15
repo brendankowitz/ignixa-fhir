@@ -7,8 +7,10 @@ using System.Diagnostics;
 using System.Text.Json;
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Catalog;
+using Ignixa.CliOnFhir.Search.Candle;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Extensions.Logging;
@@ -33,14 +35,20 @@ public sealed class FolderIndexBuilder
         _schema = schema;
         Definitions = new SearchParameterDefinitionManager(schema, loggerFactory.CreateLogger<SearchParameterDefinitionManager>());
 
-        // A local folder has no service base URI, so absolute references are kept verbatim.
+        // A local folder has no service base URI, so absolute references are kept verbatim. The same parser instance
+        // serves the query side (see SearchQueryParser), so index and queries agree on reference forms.
+        ReferenceParser = new ReferenceSearchValueParser(schema, NullFhirBaseUriProvider.Instance);
+
         // The indexer keeps only its logger, so the (non-owning) factory wrapper can be disposed right away.
         using ILoggerFactory capturingFactory = ExtractionFailureCapture.Wrap(loggerFactory, typeof(ElementSearchIndexer).FullName!);
-        _indexer = SearchIndexerFactory.CreateInstance(schema, capturingFactory, Definitions, NullFhirBaseUriProvider.Instance);
+        _indexer = new CandleSearchIndexer(schema, capturingFactory, Definitions, ReferenceParser);
     }
 
     /// <summary>The search parameter definitions the indexer extracts with; the same instances its entries refer to.</summary>
-    public ISearchParameterDefinitionManager Definitions { get; }
+    public SearchParameterDefinitionManager Definitions { get; }
+
+    /// <summary>Parses reference values for both indexing and queries.</summary>
+    public ReferenceSearchValueParser ReferenceParser { get; }
 
     /// <summary>
     /// Indexes every catalogued resource of <paramref name="resourceType"/>. Extraction runs in parallel

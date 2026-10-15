@@ -10,6 +10,7 @@ using Ignixa.CliOnFhir.Mcp;
 using Ignixa.CliOnFhir.Reading;
 using Ignixa.CliOnFhir.Search;
 using Ignixa.CliOnFhir.Session;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Shouldly;
 using static Ignixa.CliOnFhir.Tests.SearchFixture;
@@ -68,7 +69,7 @@ public class ResourceReadTests
         AbsentItem patient = envelope.Absent[0];
         patient.Checked.ShouldContain("3 Patient resources");
         patient.Checked.ShouldContain("2 files");
-        patient.IndexBuiltAt.ShouldBe(envelope.Freshness.IndexBuiltAt);
+        ((DateTimeOffset?)patient.IndexBuiltAt).ShouldBe(envelope.Freshness.IndexBuiltAt);
         envelope.Absent[1].Checked.ShouldContain("0 Condition resources");
         envelope.Issues.ShouldBeEmpty();
     }
@@ -214,12 +215,32 @@ public class ResourceReadTests
         using TestFolder folder = Clinic();
         var tools = new ResourceTools(Open(folder));
 
-        ToolEnvelope<SearchFacts?> search = tools.SearchFhirResources("Patient", "family=Jones", count: 5);
-        ToolEnvelope<ReadFacts?> read = tools.ReadResources(["Patient/p3", "Patient/none"]);
+        JsonNode search = Envelope(tools.SearchFhirResources("Patient", "family=Jones", count: 5), expectError: false);
+        JsonNode read = Envelope(tools.ReadResources(["Patient/p3", "Patient/none"]), expectError: false);
 
-        Ids(search).ShouldBe(["p2"]);
-        read.Facts.ShouldNotBeNull().Resources.ShouldHaveSingleItem();
-        read.Absent.ShouldHaveSingleItem().What.ShouldBe("Patient/none");
+        search["facts"]!["resources"]!.AsArray().Select(resource => (string)resource!["id"]!).ShouldBe(["p2"]);
+        read["facts"]!["resources"]!.AsArray().ShouldHaveSingleItem();
+        ((string)read["absent"]![0]!["what"]!).ShouldBe("Patient/none");
+    }
+
+    [Fact]
+    public void GivenRequestThatCannotBeAnswered_WhenMcpToolCalled_ThenTheResultIsFlaggedAsErrorAndStillCarriesTheEnvelope()
+    {
+        using TestFolder folder = Clinic();
+        var tools = new ResourceTools(Open(folder));
+
+        JsonNode search = Envelope(tools.SearchFhirResources("Patient", "_sort=family"), expectError: true);
+        JsonNode read = Envelope(tools.ReadResources(["nonsense"]), expectError: true);
+
+        search["facts"].ShouldBeNull();
+        ((string)search["issues"]![0]!["code"]!).ShouldBe("search-not-supported");
+        ((string)read["issues"]![0]!["code"]!).ShouldBe("invalid-reference");
+    }
+
+    private static JsonNode Envelope(CallToolResult result, bool expectError)
+    {
+        (result.IsError ?? false).ShouldBe(expectError);
+        return JsonNode.Parse(result.Content.OfType<TextContentBlock>().ShouldHaveSingleItem().Text)!;
     }
 
     [Theory]

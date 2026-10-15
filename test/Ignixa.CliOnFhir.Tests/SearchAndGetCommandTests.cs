@@ -88,7 +88,36 @@ public class SearchAndGetCommandTests
         ((string)output["issues"]![0]!["code"]!).ShouldBe("invalid-reference");
     }
 
+    [Fact]
+    public async Task GivenDefaultOutput_WhenRun_ThenJsonIsCompactAndPrettyIsOptIn()
+    {
+        using TestFolder folder = Clinic();
+
+        (_, _, string compact) = await RunWithTextAsync(SearchCommand.Create(), "search", folder.Path, "Patient", "--no-cache");
+        (_, _, string pretty) = await RunWithTextAsync(SearchCommand.Create(), "search", folder.Path, "Patient", "--no-cache", "--pretty");
+
+        compact.TrimEnd().ShouldNotContain('\n');
+        pretty.TrimEnd().ShouldContain('\n');
+    }
+
+    [Fact]
+    public async Task GivenFolderThatDoesNotExist_WhenSearched_ThenIssueJsonIsPrintedAndExitCodeIsNonZero()
+    {
+        string missing = Path.Combine(Path.GetTempPath(), "cli-on-fhir-tests", Guid.NewGuid().ToString("N"));
+
+        (int exitCode, JsonNode output) = await RunAsync(SearchCommand.Create(), "search", missing, "Patient", "--no-cache");
+
+        exitCode.ShouldNotBe(0);
+        ((string)output["issues"]![0]!["code"]!).ShouldBe("folder-unavailable");
+    }
+
     private static async Task<(int ExitCode, JsonNode Output)> RunAsync(Command command, params string[] args)
+    {
+        (int exitCode, JsonNode output, _) = await RunWithTextAsync(command, args);
+        return (exitCode, output);
+    }
+
+    private static async Task<(int ExitCode, JsonNode Output, string Text)> RunWithTextAsync(Command command, params string[] args)
     {
         var root = new RootCommand();
         root.Subcommands.Add(command);
@@ -98,7 +127,7 @@ public class SearchAndGetCommandTests
         try
         {
             int exitCode = await root.Parse(args).InvokeAsync();
-            return (exitCode, JsonNode.Parse(captured.ToString())!);
+            return (exitCode, JsonNode.Parse(captured.ToString())!, captured.ToString());
         }
         finally
         {

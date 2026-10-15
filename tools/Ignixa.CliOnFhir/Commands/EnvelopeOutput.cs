@@ -11,14 +11,15 @@ namespace Ignixa.CliOnFhir.Commands;
 /// <summary>Writes a tool envelope to stdout as indented JSON.</summary>
 internal static class EnvelopeOutput
 {
-    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-
-    /// <summary>Prints <paramref name="envelope"/> and returns the exit code: 0, or 1 when the request failed (no facts).</summary>
-    public static int Write<TFacts>(ToolEnvelope<TFacts> envelope)
+    /// <summary>
+    /// Prints <paramref name="envelope"/> as compact JSON (indented when <paramref name="pretty"/>) and returns the exit
+    /// code: 0, or 1 when the request failed (no facts).
+    /// </summary>
+    public static int Write<TFacts>(ToolEnvelope<TFacts> envelope, bool pretty = false)
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
-        Console.Out.WriteLine(JsonSerializer.Serialize(envelope, Options));
+        Console.Out.WriteLine(JsonSerializer.Serialize(envelope, pretty ? EnvelopeJson.Pretty : EnvelopeJson.Compact));
         return envelope.Facts is null ? 1 : 0;
     }
 }

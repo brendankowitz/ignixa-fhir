@@ -25,13 +25,18 @@ public static class ResourceFetcher
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(references);
 
+        if (EnvelopeAssembler.FolderProblem(session) is { } folderProblem)
+        {
+            return EnvelopeAssembler.Failure<ReadFacts>(session, folderProblem, cancellationToken);
+        }
+
         try
         {
             return Execute(session, references, elements, cancellationToken);
         }
         catch (ToolRequestException ex)
         {
-            return EnvelopeAssembler.Create<ReadFacts?>(session, null, session.Catalog.BuiltAt, [], [], [], [ex.Issue], cancellationToken);
+            return EnvelopeAssembler.Failure<ReadFacts>(session, ex.Issue, cancellationToken);
         }
     }
 
@@ -71,15 +76,23 @@ public static class ResourceFetcher
             issues.AddRange(projection?.Validate(type) ?? []);
         }
 
-        ResourceBatch collection = ResourceBatch.Collect(session.RootPath, found, projection, cancellationToken);
-        issues.AddRange(collection.Issues);
-        if (collection.Consumed < found.Count)
+        int reserved = EnvelopeJson.SizeOf(new ToolEnvelope<ReadFacts?>(
+            new ReadFacts(parsed.Count, []),
+            [],
+            [.. omitted, new OmittedItem(new string('x', 96 + (48 * found.Count)), "size-budget")],
+            absent,
+            issues,
+            new FreshnessInfo(builtAt, StaleFiles: int.MaxValue)));
+        ResourceBatch batch = ResourceBatch.Collect(session.RootPath, found, projection, reserved, cancellationToken);
+        issues.AddRange(batch.Issues);
+        omitted.AddRange(batch.Skipped);
+        if (batch.Consumed < found.Count)
         {
-            IEnumerable<string> unread = found.Skip(collection.Consumed).Select(ResourceReader.Describe);
-            omitted.Add(new OmittedItem($"{found.Count - collection.Consumed} found resources not returned: {string.Join(", ", unread)}", "size-budget"));
+            IEnumerable<string> unread = found.Skip(batch.Consumed).Select(ResourceReader.Describe);
+            omitted.Add(new OmittedItem($"{found.Count - batch.Consumed} found resources not returned: {string.Join(", ", unread)}", "size-budget"));
         }
 
-        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, collection.Resources), builtAt, collection.Evidence, omitted, absent, issues, cancellationToken);
+        return EnvelopeAssembler.Create<ReadFacts?>(session, new ReadFacts(parsed.Count, batch.Resources), builtAt, batch.Evidence, omitted, absent, issues, cancellationToken);
     }
 
     private static (string Type, string Id) ParseReference(FolderSession session, string reference)

@@ -39,6 +39,7 @@ internal static class SearchCommand
 
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
+        Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
 
         var command = new Command("search", "FHIR search over a folder of FHIR data. Exits non-zero, with the problem in 'issues', when the query cannot be answered");
         command.Arguments.Add(pathArgument);
@@ -49,6 +50,7 @@ internal static class SearchCommand
         command.Options.Add(offsetOption);
         command.Options.Add(summaryOption);
         command.Options.Add(elementsOption);
+        command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
         command.SetAction((parseResult, cancellationToken) =>
@@ -63,7 +65,7 @@ internal static class SearchCommand
                 parseResult.GetValue(summaryOption),
                 parseResult.GetValue(elementsOption));
 
-            return Task.FromResult(EnvelopeOutput.Write(ResourceSearcher.Search(session, request, cancellationToken)));
+            return Task.FromResult(EnvelopeOutput.Write(ResourceSearcher.Search(session, request, cancellationToken), parseResult.GetValue(prettyOption)));
         });
 
         return command;

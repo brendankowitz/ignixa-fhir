@@ -30,19 +30,21 @@ internal static class GetCommand
 
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
+        Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
 
         var command = new Command("get", "Read resources by reference with the file location of each. Exits non-zero, with the problem in 'issues', when a reference is malformed");
         command.Arguments.Add(pathArgument);
         command.Arguments.Add(referencesArgument);
         command.Options.Add(versionOption);
         command.Options.Add(elementsOption);
+        command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
         command.SetAction((parseResult, cancellationToken) =>
         {
             using ILoggerFactory loggerFactory = StandardErrorLogging.Create(LogLevel.Warning);
             FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory);
-            return Task.FromResult(EnvelopeOutput.Write(ResourceFetcher.Read(session, parseResult.GetValue(referencesArgument)!, parseResult.GetValue(elementsOption), cancellationToken)));
+            return Task.FromResult(EnvelopeOutput.Write(ResourceFetcher.Read(session, parseResult.GetValue(referencesArgument)!, parseResult.GetValue(elementsOption), cancellationToken), parseResult.GetValue(prettyOption)));
         });
 
         return command;

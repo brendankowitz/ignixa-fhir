@@ -32,12 +32,14 @@ internal static class InspectCommand
 
         Option<string?> cacheDirOption = CommonOptions.CreateCacheDirOption();
         Option<bool> noCacheOption = CommonOptions.CreateNoCacheOption();
+        Option<bool> prettyOption = CommonOptions.CreatePrettyOption();
 
         var command = new Command("inspect", "Overview of a folder of FHIR data: resource types, counts and problems found");
         command.Arguments.Add(pathArgument);
         command.Options.Add(versionOption);
         command.Options.Add(issueLimitOption);
         command.Options.Add(buildIndexOption);
+        command.Options.Add(prettyOption);
         CommonOptions.AddCacheOptions(command, cacheDirOption, noCacheOption);
 
         command.SetAction(parseResult =>
@@ -46,7 +48,7 @@ internal static class InspectCommand
             FolderSession session = CommonOptions.CreateSession(parseResult, pathArgument, versionOption, cacheDirOption, noCacheOption, loggerFactory);
 
             ToolEnvelope<FolderInspection> envelope = FolderInspector.Inspect(session, parseResult.GetValue(issueLimitOption), parseResult.GetValue(buildIndexOption));
-            return EnvelopeOutput.Write(envelope);
+            return EnvelopeOutput.Write(envelope, parseResult.GetValue(prettyOption));
         });
 
         return command;

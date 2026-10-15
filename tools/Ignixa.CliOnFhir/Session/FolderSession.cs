@@ -63,7 +63,7 @@ public sealed class FolderSession
 
         // Query parsing must use the same definitions the index was extracted with, so it shares the index builder's.
         _queryParser = new Lazy<SearchQueryParser>(
-            () => new SearchQueryParser(schema, _indexBuilder.Value.Builder.Definitions),
+            () => new SearchQueryParser(schema, _indexBuilder.Value.Builder.Definitions, _indexBuilder.Value.Builder.ReferenceParser),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         _entriesByReference = new Lazy<Dictionary<(string, string), CatalogEntry>>(

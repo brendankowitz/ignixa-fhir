@@ -26,6 +26,11 @@ internal static class CommonOptions
         return option;
     }
 
+    public static Option<bool> CreatePrettyOption() => new("--pretty")
+    {
+        Description = "Indent the JSON output (default: compact, the size an MCP client would receive)",
+    };
+
     public static Option<string?> CreateCacheDirOption() => new("--cache-dir")
     {
         Description = "Root directory for the persisted index cache (default: the user cache directory, "

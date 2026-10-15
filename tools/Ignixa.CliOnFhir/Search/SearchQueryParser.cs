@@ -6,6 +6,7 @@
 using Ignixa.Abstractions;
 using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Reading;
+using Ignixa.CliOnFhir.Search.Candle;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
@@ -37,16 +38,18 @@ public sealed class SearchQueryParser
     private readonly SearchOptionsBuilder _builder;
     private readonly QueryParameterParser _queryParameterParser = new();
 
-    public SearchQueryParser(IFhirSchemaProvider schema, ISearchParameterDefinitionManager definitions)
+    /// <param name="referenceParser">The parser the index was built with, so references are read the same way on both sides.</param>
+    public SearchQueryParser(IFhirSchemaProvider schema, ISearchParameterDefinitionManager definitions, ReferenceSearchValueParser referenceParser)
     {
         ArgumentNullException.ThrowIfNull(schema);
         ArgumentNullException.ThrowIfNull(definitions);
+        ArgumentNullException.ThrowIfNull(referenceParser);
 
         _schema = schema;
 
-        // A local folder has no service base URI, so absolute references are kept verbatim, as the index builder does.
-        var referenceParser = new ReferenceSearchValueParser(schema, NullFhirBaseUriProvider.Instance);
-        var expressionParser = new ExpressionParser(() => definitions, new SearchParameterExpressionParser(referenceParser, schema), schema);
+        // fhir-candle's parser overrides restore search semantics the stock parser diverges from (date ap, empty token
+        // systems, composites); the interpreter in Candle/ evaluates what it produces.
+        var expressionParser = new ExpressionParser(() => definitions, new CandleSearchParameterExpressionParser(referenceParser, schema), schema);
         _builder = new SearchOptionsBuilder(expressionParser, definitions);
     }
 
@@ -70,24 +73,8 @@ public sealed class SearchQueryParser
         AddSummary(request.Summary, parameters);
         RejectUnsupportedFeatures(parameters);
 
-        List<IReadOnlySet<string>> idFilters = [];
-        List<string> elementLists = [];
-        List<QueryParameter> forBuilder = [];
-        foreach (QueryParameter parameter in parameters)
-        {
-            switch (parameter.Name)
-            {
-                case "_id":
-                    idFilters.Add(parameter.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal));
-                    break;
-                case "_elements":
-                    elementLists.Add(parameter.Value);
-                    break;
-                default:
-                    forBuilder.Add(parameter);
-                    break;
-            }
-        }
+        List<string> elementLists = [.. parameters.Where(parameter => parameter.Name == "_elements").Select(parameter => parameter.Value)];
+        List<QueryParameter> forBuilder = [.. parameters.Where(parameter => parameter.Name != "_elements")];
 
         if (request.Elements is not null)
         {
@@ -112,7 +99,7 @@ public sealed class SearchQueryParser
         }
 
         int? requestedCount = RequestedCount(forBuilder, options);
-        return new ParsedSearch(options, idFilters, elements, requestedCount, countOnly, warnings);
+        return new ParsedSearch(options, elements, requestedCount, countOnly, traces, warnings);
     }
 
     private static int? RequestedCount(List<QueryParameter> parameters, SearchOptions options)
@@ -130,6 +117,25 @@ public sealed class SearchQueryParser
     {
         try
         {
+            return BuildChecked(resourceType, parameters, traces);
+        }
+        catch (ToolRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The parsing pipeline throws arbitrary exception types for input it cannot handle (for example a
+            // KeyNotFoundException for '_filter'), so name the parameter(s) that fail on their own.
+            traces.Clear();
+            throw NamedParseFailure(resourceType, parameters, ex);
+        }
+    }
+
+    private SearchOptions BuildChecked(string resourceType, List<QueryParameter> parameters, List<ParameterTrace> traces)
+    {
+        try
+        {
             SearchOptions options = _builder.Build(resourceType, parameters, _schema, traces);
 
             // The builder only records an unsupported modifier; executing without this check would widen the search.
@@ -140,6 +146,31 @@ public sealed class SearchQueryParser
         {
             throw SearchFailures.From(ex);
         }
+        catch (CandleMalformedSearchParameterException ex)
+        {
+            throw ToolRequestException.Error(SearchFailures.InvalidRequestCode, $"'{ex.ParameterCode}': {ex.Message}");
+        }
+    }
+
+    private ToolRequestException NamedParseFailure(string resourceType, List<QueryParameter> parameters, Exception failure)
+    {
+        List<string> offenders = [];
+        foreach (QueryParameter parameter in parameters)
+        {
+            try
+            {
+                _builder.Build(resourceType, [parameter], _schema);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                offenders.Add($"'{parameter.Name}={parameter.Value}' ({ex.GetType().Name})");
+            }
+        }
+
+        string named = offenders.Count > 0
+            ? string.Join(", ", offenders)
+            : $"the query ({failure.GetType().Name}: {failure.Message})";
+        return ToolRequestException.Error(SearchFailures.InvalidRequestCode, $"Could not parse {named}; check the parameter name, modifier and value syntax.");
     }
 
     private static void AddSummary(string? summary, List<QueryParameter> parameters)
@@ -177,15 +208,6 @@ public sealed class SearchQueryParser
                 throw SearchFailures.NotSupported($"'{parameter.Name}': {feature} is not supported by this tool yet.");
             }
 
-            if (parameter.Name.StartsWith("_id:", StringComparison.Ordinal))
-            {
-                throw SearchFailures.NotSupported($"'{parameter.Name}': modifiers on _id are not supported; use '_id=a,b'.");
-            }
-
-            if (parameter.Name.Split(':')[0] == "_lastUpdated")
-            {
-                throw SearchFailures.NotSupported($"'{parameter.Name}': _lastUpdated is not supported because meta.lastUpdated is not indexed.");
-            }
         }
     }
 

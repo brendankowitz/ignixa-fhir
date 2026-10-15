@@ -183,8 +183,6 @@ public class ResourceSearchTests
     [InlineData("_sort=family", "_sort")]
     [InlineData("_include=Observation:subject", "_include")]
     [InlineData("_revinclude=Observation:subject", "_revinclude")]
-    [InlineData("_lastUpdated=gt2020", "_lastUpdated")]
-    [InlineData("_id:not=p1", "_id:not")]
     public void GivenUnsupportedFeature_WhenSearched_ThenTheCallFailsNamingTheFeature(string query, string feature)
     {
         using TestFolder folder = Clinic();
@@ -458,20 +456,45 @@ public class ResourceSearchTests
         envelope.Facts.ShouldNotBeNull().Total.ShouldBe(5);
         Ids(envelope).ShouldBe(["p0", "p1"]);
         envelope.Omitted.ShouldHaveSingleItem().ShouldBe(new OmittedItem("3 more matches (offset=2)", "size-budget"));
-        envelope.Issues.ShouldHaveSingleItem().Code.ShouldBe("size-budget");
+        envelope.Issues.ShouldBeEmpty();
         envelope.Evidence.Count.ShouldBe(2);
     }
 
     [Fact]
-    public void GivenOneResourceLargerThanTheBudget_WhenSearched_ThenNoneIsReturnedAndTrimmingIsSuggested()
+    public void GivenOneResourceLargerThanTheBudget_WhenSearched_ThenItIsSkippedByNameAndPagingMovesPastIt()
     {
-        using TestFolder folder = Patients(count: 1, paddingBytes: 60_000);
+        string huge = new('x', 60_000);
+        using TestFolder folder = new TestFolder().Write(
+            "patients.ndjson",
+            "{\"resourceType\":\"Patient\",\"id\":\"big\",\"text\":{\"status\":\"generated\",\"div\":\"" + huge + "\"}}\n"
+            + "{\"resourceType\":\"Patient\",\"id\":\"s1\"}\n"
+            + "{\"resourceType\":\"Patient\",\"id\":\"s2\"}\n");
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient", Count: 1));
+
+        envelope.Facts.ShouldNotBeNull().Returned.ShouldBe(0);
+        OmittedItem skipped = envelope.Omitted[0];
+        skipped.Why.ShouldBe("size-budget");
+        skipped.What.ShouldContain("Patient/big");
+        skipped.What.ShouldContain("read_resources");
+        skipped.What.ShouldContain("elements");
+        envelope.Omitted[1].ShouldBe(new OmittedItem("2 more matches (offset=1)", "limit"));
+    }
+
+    [Fact]
+    public void GivenOneResourceLargerThanTheBudgetInAPage_WhenSearched_ThenTheRestOfThePageIsStillReturned()
+    {
+        string huge = new('x', 60_000);
+        using TestFolder folder = new TestFolder().Write(
+            "patients.ndjson",
+            "{\"resourceType\":\"Patient\",\"id\":\"s1\"}\n"
+            + "{\"resourceType\":\"Patient\",\"id\":\"big\",\"text\":{\"status\":\"generated\",\"div\":\"" + huge + "\"}}\n"
+            + "{\"resourceType\":\"Patient\",\"id\":\"s2\"}\n");
 
         ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder), new SearchRequest("Patient"));
 
-        envelope.Facts.ShouldNotBeNull().Returned.ShouldBe(0);
-        envelope.Omitted.ShouldHaveSingleItem().Why.ShouldBe("size-budget");
-        envelope.Issues.ShouldHaveSingleItem().Diagnostics.ShouldContain("elements");
+        Ids(envelope).ShouldBe(["s1", "s2"]);
+        envelope.Omitted.ShouldHaveSingleItem().What.ShouldContain("Patient/big");
     }
 
     [Fact]
