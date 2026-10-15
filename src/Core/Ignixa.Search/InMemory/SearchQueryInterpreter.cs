@@ -89,12 +89,30 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
 
         if (body is NotExpression not)
         {
-            Func<SearchIndexEntry, bool> negated = SearchIndexEntryMatcher.Compile(not.Expression, expression.Parameter);
+            Func<SearchIndexEntry, bool> negated = WithCanonicals(SearchIndexEntryMatcher.Compile(not.Expression, expression.Parameter), expression, negatedBody: true);
             return input => input.Where(x => !x.Index.Any(y => y.SearchParameter.Name == parameterName && negated(y)));
         }
 
-        Func<SearchIndexEntry, bool> matcher = SearchIndexEntryMatcher.Compile(body, expression.Parameter);
+        Func<SearchIndexEntry, bool> matcher = WithCanonicals(SearchIndexEntryMatcher.Compile(body, expression.Parameter), expression, negatedBody: false);
         return input => input.Where(x => x.Index.Any(y => y.SearchParameter.Name == parameterName && matcher(y)));
+    }
+
+    /// <summary>
+    /// For a reference parameter, extends <paramref name="matcher"/> to the canonical entries
+    /// <see cref="CanonicalReferenceSearchIndexer"/> adds, which the field-level matcher never matches.
+    /// </summary>
+    private static Func<SearchIndexEntry, bool> WithCanonicals(Func<SearchIndexEntry, bool> matcher, SearchParameterExpression expression, bool negatedBody)
+    {
+        if (expression.Parameter.Type != SearchParamType.Reference)
+        {
+            return matcher;
+        }
+
+        Expression positive = negatedBody && expression.Expression is NotExpression { Expression: { } inner } ? inner : expression.Expression;
+        Func<UriSearchValue, bool>? canonical = CanonicalReferenceMatcher.Compile(positive);
+        return canonical is null
+            ? matcher
+            : entry => entry.Value is UriSearchValue uri ? canonical(uri) : matcher(entry);
     }
 
     public SearchPredicate VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, Context context)
@@ -291,10 +309,17 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
     /// reference with a base URI points at another server, and one without a type cannot be resolved, so neither
     /// names a resource the source could hold.
     /// </summary>
+    /// <exception cref="SearchOperationNotSupportedException">
+    /// The parameter holds a canonical (<see cref="CanonicalReferenceSearchIndexer"/>): resolving a canonical to the resource
+    /// it names is a value join this engine does not perform, so following it would silently find nothing.
+    /// </exception>
     internal static IEnumerable<(string ResourceType, string Id)> LocalReferences(IEnumerable<SearchIndexEntry> index, SearchParameterInfo? parameter) =>
         index
             .Where(entry => parameter is null ? entry.SearchParameter.Type == SearchParamType.Reference : entry.SearchParameter.Name == parameter.Name)
-            .Select(entry => entry.Value)
+            .Select(entry => entry.Value is UriSearchValue
+                ? throw new SearchOperationNotSupportedException(
+                    $"Search parameter '{entry.SearchParameter.Code}' holds canonical references; canonical resolution is not supported, so a chain, _has or include cannot follow it in in-memory search.")
+                : entry.Value)
             .OfType<ReferenceSearchValue>()
             .Where(reference => reference.BaseUri is null && !string.IsNullOrEmpty(reference.ResourceType) && !string.IsNullOrEmpty(reference.ResourceId))
             .Select(reference => (reference.ResourceType, reference.ResourceId));

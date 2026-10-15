@@ -7,13 +7,15 @@ using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Indexing.Converters;
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Tests.Indexing;
 
 /// <summary>
 /// Regressions for the shared converters' index values (what the in-memory, FileSystem and SQL backends all store), each
 /// checked against the search page's mapping for its type. Every row fails at 206143a except these guards, each
-/// mutation-checked: <c>telecom=phone|...</c>, the quantity rows that name a system or no unit (<c>|ucum|[lb_av]</c>,
+/// mutation-checked: the shared-indexer canonical rows (see their comment), <c>telecom=phone|...</c>, the quantity rows that name a system or no unit (<c>|ucum|[lb_av]</c>,
 /// <c>|ucum|lbs</c>, <c>||[lb_av]</c>, <c>||kg</c>) and <c>probability=gt0.6</c>.
 /// </summary>
 public class SpecConverterIndexingTests
@@ -119,31 +121,18 @@ public class SpecConverterIndexingTests
     }
 
     [Theory]
-    [InlineData("_profile=http://example.org/fhir/StructureDefinition/my-patient", "typed")]
-    [InlineData("_profile=http://example.org/profiles/plain", "plain")]
-    [InlineData("_profile=http://example.org/profiles/versioned", "versioned")]
-    public void GivenR5ResourcesWithProfiles_WhenSearchedByProfile_ThenTheCanonicalIsIndexedAsAReference(string query, string expected)
+    [InlineData(FhirVersion.R5, "Patient", """{"resourceType":"Patient","id":"p","meta":{"profile":["http://example.org/fhir/StructureDefinition/my-patient|1.0"]}}""", "_profile")]
+    [InlineData(FhirVersion.R4, "CarePlan", """{"resourceType":"CarePlan","id":"c","status":"active","intent":"plan","subject":{"reference":"Patient/p"},"instantiatesCanonical":["http://example.org/PlanDefinition/pd"]}""", "instantiates-canonical")]
+    public void GivenACanonicalUnderAReferenceParameter_WhenIndexedByTheSharedIndexer_ThenNothingIsIndexedForIt(FhirVersion version, string resourceType, string json, string code)
     {
-        VersionedCorpus.For(FhirVersion.R5)
-            .Match(
-                "Patient",
-                query,
-                """{"resourceType":"Patient","id":"typed","meta":{"profile":["http://example.org/fhir/StructureDefinition/my-patient"]}}""",
-                """{"resourceType":"Patient","id":"plain","meta":{"profile":["http://example.org/profiles/plain"]}}""",
-                """{"resourceType":"Patient","id":"versioned","meta":{"profile":["http://example.org/profiles/versioned|2.1.0"]}}""")
-            .ShouldBe(Ids(expected));
-    }
+        // Regression against b096951, which indexed these as references (so SQL wrote ReferenceSearchParam rows); a guard
+        // against 206143a. Canonical storage is the open #430 work, so the shared indexer, and with it every backend's
+        // rows, holds nothing for them; only CanonicalReferenceSearchIndexer adds them, in memory.
+        VersionedCorpus corpus = VersionedCorpus.For(version);
+        corpus.Definitions.TryGetSearchParameter(resourceType, code, out SearchParameterInfo parameter).ShouldBeTrue();
+        parameter.Type.ShouldBe(SearchParamType.Reference);
 
-    [Fact]
-    public void GivenAnR5CanonicalUnderAReferenceParameter_WhenIndexed_ThenTheVersionIsDroppedAndTheUrlParsedAsAReference()
-    {
-        ReferenceSearchValue reference = VersionedCorpus.For(FhirVersion.R5)
-            .Values("""{"resourceType":"Patient","id":"p","meta":{"profile":["http://example.org/fhir/StructureDefinition/my-patient|1.0"]}}""", "_profile")
-            .ShouldHaveSingleItem()
-            .ShouldBeOfType<ReferenceSearchValue>();
-
-        (reference.Kind, reference.BaseUri?.OriginalString, reference.ResourceType, reference.ResourceId)
-            .ShouldBe((ReferenceKind.External, "http://example.org/fhir/", "StructureDefinition", "my-patient"));
+        corpus.Values(json, code).ShouldBeEmpty();
     }
 
     [Theory]

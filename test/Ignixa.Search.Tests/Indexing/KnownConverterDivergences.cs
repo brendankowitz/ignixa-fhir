@@ -23,6 +23,16 @@ internal static class KnownConverterDivergences
     public static IReadOnlyDictionary<ConverterPair, string> MissingFromIgnixa { get; } =
         new Dictionary<ConverterPair, string>
         {
+            [new("canonical", typeof(ReferenceSearchValue))] =
+                """
+                Deliberate storage divergence, tracked as #430. Ignixa stores canonical references in
+                UriSearchParam rather than upstream's ReferenceSearchParam, so CanonicalToUri is the
+                registration Ignixa keeps and CanonicalToReference is the one it does not port. The
+                consequence is real and measured, not theoretical: 46 shipped Reference-typed search
+                parameters currently index nothing, which is why #430 is release-blocking. Closing it
+                is a decision about which table canonical lands in, not about restoring parity here -
+                if it is closed by adopting upstream's converter, delete this entry.
+                """,
             [new("Identifier", typeof(StringSearchValue))] =
                 """
                 Deliberate divergence, tracked as #421. Upstream's IdentifierToStringSearchValueConverter

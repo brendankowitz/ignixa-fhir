@@ -64,10 +64,12 @@ internal sealed class VersionedCorpus
 
     public IElement Parse(string json) => JsonSourceNodeFactory.Parse(json).ToElement(Schema);
 
-    public (ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index) Index(string json)
+    public (ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index) Index(string json) => Index(Indexer, json);
+
+    public (ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index) Index(ISearchIndexer indexer, string json)
     {
         IElement element = Parse(json);
-        return (new ResourceKey(element.InstanceType, (string)element.FirstChild("id")!.Value!), Indexer.Extract(element));
+        return (new ResourceKey(element.InstanceType, (string)element.FirstChild("id")!.Value!), indexer.Extract(element));
     }
 
     /// <summary>The values indexed for <paramref name="code"/> on the resource, in extraction order.</summary>
@@ -79,12 +81,15 @@ internal sealed class VersionedCorpus
         _builder.Build(resourceType, new QueryParameterParser().Parse(query), Schema);
 
     /// <summary>The ids of <paramref name="resources"/> the in-memory interpreter matches, failing if any parameter was dropped.</summary>
-    public string[] Match(string resourceType, string query, params string[] resources)
+    public string[] Match(string resourceType, string query, params string[] resources) => Match(Indexer, resourceType, query, resources);
+
+    /// <summary>As <see cref="Match(string, string, string[])"/>, with the resources indexed by <paramref name="indexer"/>.</summary>
+    public string[] Match(ISearchIndexer indexer, string resourceType, string query, params string[] resources)
     {
         SearchOptions options = Options(resourceType, query);
         options.UnsupportedParams.ShouldBeEmpty($"'{query}' was not fully parsed");
         var interpreter = new SearchQueryInterpreter();
         SearchPredicate predicate = options.Expression.AcceptVisitor(interpreter, interpreter.InitialContext);
-        return [.. predicate([.. resources.Select(Index)]).Select(match => match.Location.Id)];
+        return [.. predicate([.. resources.Select(json => Index(indexer, json))]).Select(match => match.Location.Id)];
     }
 }

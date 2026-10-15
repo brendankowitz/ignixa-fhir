@@ -13,6 +13,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.InMemory;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.CliOnFhir.Indexing;
@@ -39,12 +40,15 @@ public sealed class FolderIndexBuilder
         // serves the query side (see SearchQueryParser), so index and queries agree on reference forms.
         ReferenceParser = new ReferenceSearchValueParser(schema, NullFhirBaseUriProvider.Instance);
 
-        // Ignixa's own indexer plus the in-memory _lastUpdated entry. The indexer keeps only its loggers, so the
-        // (non-owning) factory wrapper can be disposed right away; both report through the ElementSearchIndexer category
-        // the capture listens on.
+        // Ignixa's own indexer plus the in-memory-only entries: _lastUpdated, and the canonicals of reference parameters
+        // (R5 _profile), which no stored backend indexes. The indexer keeps only its loggers, so the (non-owning) factory
+        // wrapper can be disposed right away; both report through the ElementSearchIndexer category the capture listens on.
         using ILoggerFactory capturingFactory = ExtractionFailureCapture.Wrap(loggerFactory, typeof(ElementSearchIndexer).FullName!);
         _indexer = new LastUpdatedSearchIndexer(
-            SearchIndexerFactory.CreateInstance(schema, capturingFactory, Definitions, NullFhirBaseUriProvider.Instance),
+            new CanonicalReferenceSearchIndexer(
+                SearchIndexerFactory.CreateInstance(schema, capturingFactory, Definitions, NullFhirBaseUriProvider.Instance),
+                Definitions,
+                schema),
             Definitions,
             capturingFactory.CreateLogger<ElementSearchIndexer>());
     }
@@ -124,7 +128,21 @@ public sealed class FolderIndexBuilder
 
         IElement element = node.ToElement(_schema);
         var (index, diagnostics) = ExtractionFailureCapture.Capture(entry, () => _indexer.Extract(element));
-        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), diagnostics);
+        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), WithoutCoveredCanonicals(diagnostics, index));
+    }
+
+    /// <summary>
+    /// Drops the stock indexer's "element 'canonical' is not supported" warning for a reference parameter whose canonicals
+    /// <see cref="CanonicalReferenceSearchIndexer"/> did index on this resource; a canonical it did not cover keeps its
+    /// warning. Matched on the indexer's exact message, so a reworded one is reported rather than hidden.
+    /// </summary>
+    private static List<CatalogDiagnostic> WithoutCoveredCanonicals(List<CatalogDiagnostic> diagnostics, IReadOnlyCollection<SearchIndexEntry> index)
+    {
+        HashSet<string> covered = [.. index
+            .Where(indexed => indexed.SearchParameter.Type == SearchParamType.Reference && indexed.Value is UriSearchValue)
+            .Select(indexed => $"The FHIR element 'canonical' is not supported for search parameter '{indexed.SearchParameter.Url}'.")];
+
+        return covered.Count == 0 ? diagnostics : [.. diagnostics.Where(diagnostic => !covered.Contains(diagnostic.Message))];
     }
 
     private static CatalogDiagnostic Stale(CatalogEntry entry, string detail) => new(

@@ -53,6 +53,7 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
     {
         EnsureArg.IsNotNullOrWhiteSpace(s, nameof(s));
 
+
         Match match = ReferenceRegex.Match(s);
 
         if (match.Success)
@@ -71,7 +72,7 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
                     ReferenceKind.InternalOrExternal,
                     null,
                     resourceTypeInString,
-                    resourceId);
+                    resourceId) { OriginalString = s };
 
             try
             {
@@ -88,7 +89,7 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
                         ReferenceKind.Internal,
                         null,
                         resourceTypeInString,
-                        resourceId);
+                        resourceId) { OriginalString = s };
                 }
 
                 if (baseUri.IsAbsoluteUri && SupportedSchemes.Contains(baseUri.Scheme, StringComparer.OrdinalIgnoreCase))
@@ -97,7 +98,7 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
                         ReferenceKind.External,
                         baseUri,
                         resourceTypeInString,
-                        resourceId);
+                        resourceId) { OriginalString = s };
                 }
 
                 // Neither this server's base nor a usable absolute URL: leave the base attached but do not
@@ -106,7 +107,7 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
                     ReferenceKind.InternalOrExternal,
                     baseUri,
                     resourceTypeInString,
-                    resourceId);
+                    resourceId) { OriginalString = s };
             }
             catch (UriFormatException)
             {
@@ -123,6 +124,6 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
             ReferenceKind.InternalOrExternal,
             null,
             null,
-            s);
+            s) { OriginalString = s };
     }
 }

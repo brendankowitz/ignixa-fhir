@@ -74,6 +74,18 @@ public class ReferenceSearchValue : ISearchValue
     /// </summary>
     public string ResourceId { get; }
 
+    /// <summary>
+    /// The text <see cref="ReferenceSearchValueParser"/> parsed this value from, or null when it was constructed
+    /// directly.
+    /// </summary>
+    /// <remarks>
+    /// Kept because parsing is lossy for a value that is not a literal reference: a canonical url keeps only the
+    /// <c>Type/id</c>-shaped part the parser recognises, and its <c>|version</c> is dropped. The in-memory search compares
+    /// a query value's original text against indexed canonicals with it. It is not part of equality and index stores do
+    /// not persist it.
+    /// </remarks>
+    public string OriginalString { get; init; }
+
     /// <inheritdoc />
     public bool IsValidAsCompositeComponent => true;
 

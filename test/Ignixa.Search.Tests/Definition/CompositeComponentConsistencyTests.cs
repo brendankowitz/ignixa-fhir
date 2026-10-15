@@ -158,28 +158,38 @@ public class CompositeComponentConsistencyTests
     }
 
     [Fact]
-    public void GivenEveryShippedTableEntry_WhenSearched_ThenItIsRefusedBeforeInMemorySearchReadsTheTable()
+    public void GivenEveryShippedTableEntry_WhenSearched_ThenItIsRefusedWhereTheDocumentationSays()
     {
-        // Guard on the documented reach of KnownInconsistentComposites: none of its entries reaches the interpreter's
-        // check, so the table is a backstop. A new entry needs a row here saying where it is refused.
-        Dictionary<(FhirVersion, string), (string ResourceType, string Query, bool RefusedByBinder)> refusals = new()
+        // Guard on the documented reach of KnownInconsistentComposites: the R6 TestScript entries reach the interpreter's
+        // check; the others are refused earlier, so for them the table is a backstop. A new entry needs a row here.
+        Dictionary<(FhirVersion, string), (string ResourceType, string Query, string RefusedBy)> refusals = new()
         {
-            [(FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Composition-section-code-text")] = ("Composition", "section-code-text=10154-3$chief", true),
-            [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/Composition-section-code-text")] = ("Composition", "section-code-text=10154-3$chief", true),
-            [(FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Encounter-location-period")] = ("Encounter", "location-period=Location/l1$ge2020", false),
+            [(FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Composition-section-code-text")] = ("Composition", "section-code-text=10154-3$chief", "binder"),
+            [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/Composition-section-code-text")] = ("Composition", "section-code-text=10154-3$chief", "binder"),
+            [(FhirVersion.R5, "http://hl7.org/fhir/SearchParameter/Encounter-location-period")] = ("Encounter", "location-period=Location/l1$ge2020", "builder"),
+            [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-conformance")] = ("TestScript", "scope-artifact-conformance=http://x$required", "interpreter"),
+            [(FhirVersion.R6, "http://hl7.org/fhir/SearchParameter/TestScript-scope-artifact-phase")] = ("TestScript", "scope-artifact-phase=http://x$unit", "interpreter"),
         };
 
         refusals.Keys.ShouldBe(KnownInconsistentComposites.All.Keys, ignoreOrder: true);
-        foreach (((FhirVersion version, string url), (string resourceType, string query, bool refusedByBinder)) in refusals)
+        foreach (((FhirVersion version, string url), (string resourceType, string query, string refusedBy)) in refusals)
         {
             VersionedCorpus corpus = VersionedCorpus.For(version);
-            if (refusedByBinder)
+            switch (refusedBy)
             {
-                Should.Throw<SearchOperationNotSupportedException>(() => corpus.Options(resourceType, query), $"{version} {url}");
-            }
-            else
-            {
-                corpus.Options(resourceType, query).UnsupportedParams.ShouldNotBeEmpty($"{version} {url}");
+                case "binder":
+                    Should.Throw<SearchOperationNotSupportedException>(() => corpus.Options(resourceType, query), $"{version} {url}");
+                    break;
+                case "builder":
+                    corpus.Options(resourceType, query).UnsupportedParams.ShouldNotBeEmpty($"{version} {url}");
+                    break;
+                default:
+                    SearchOptions options = corpus.Options(resourceType, query);
+                    options.UnsupportedParams.ShouldBeEmpty($"{version} {url}");
+                    var interpreter = new SearchQueryInterpreter();
+                    Should.Throw<SearchOperationNotSupportedException>(() => options.Expression.AcceptVisitor(interpreter, interpreter.InitialContext), $"{version} {url}")
+                        .Issues.ShouldHaveSingleItem().Diagnostics.ShouldNotBeNull().ShouldContain(query[..query.IndexOf('=', StringComparison.Ordinal)]);
+                    break;
             }
         }
     }
@@ -187,8 +197,7 @@ public class CompositeComponentConsistencyTests
     [Fact]
     public void GivenAKnownInconsistentComposite_WhenSearchedInMemory_ThenTheSearchIsRejectedBeforeAnyEntryIsRead()
     {
-        // Guard. Every shipped entry is refused before the interpreter (the binder or the options builder), so the
-        // expression is built by hand to reach the interpreter's backstop.
+        // Guard. The expression is built by hand so the interpreter's own check is what refuses it.
         Definitions(FhirVersion.R5).TryGetSearchParameter("Encounter", "location-period", out SearchParameterInfo locationPeriod).ShouldBeTrue();
         Expression expression = Expression.SearchParameter(locationPeriod, Expression.StringEquals(FieldName.ReferenceResourceId, 0, "l1", false));
         var interpreter = new SearchQueryInterpreter();

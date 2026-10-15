@@ -19,13 +19,17 @@ namespace Ignixa.CliOnFhir.Tests;
 /// copies must come from them. Regressions (fail at 206143a): <c>telecom=phone|...</c> (the tool's copy indexed
 /// <c>system|value</c>), R5 <c>_profile</c> (the stock indexer reported an <c>index-extraction-failed</c> error for the
 /// canonical next to the tool's synthesized entry) and the <c>Special</c> composite rows (reported as unparseable input).
-/// The other rows are guards, passing at 206143a through the tool's copies and mutation-checked against the shared fix.
+/// The KBV <c>_profile</c> rows and the include refusal fail at b096951, where canonicals indexed as references (the
+/// two profiles collided on <c>StructureDefinition/KBV</c> and a version was ignored). The other rows are guards,
+/// passing at 206143a through the tool's copies and mutation-checked against the shared fix.
 /// </summary>
 public class SharedIndexingTests
 {
     private const string Patients = """
         {"resourceType":"Patient","id":"p1","meta":{"profile":["http://example.org/fhir/StructureDefinition/my-patient"]},"telecom":[{"system":"phone","value":"555-1234","use":"home"}]}
         {"resourceType":"Patient","id":"p2","telecom":[{"system":"email","value":"x@example.org","use":"work"}]}
+        {"resourceType":"Patient","id":"kbv-patient","meta":{"profile":["https://fhir.kbv.de/StructureDefinition/KBV_PR_Base_Patient|1.5.0"]}}
+        {"resourceType":"Patient","id":"kbv-observation","meta":{"profile":["https://fhir.kbv.de/StructureDefinition/KBV_PR_Base_Observation"]}}
         """;
 
     private const string Observations = """
@@ -41,6 +45,10 @@ public class SharedIndexingTests
     [InlineData(FhirVersion.R4, "Observation", "subject=urn:uuid:5f0c4b1e-7b8e-4d6f-9c2a-0e1f2a3b4c5d", "w1")]
     [InlineData(FhirVersion.R4, "Observation", "subject:missing=true", "")]
     [InlineData(FhirVersion.R5, "Patient", "_profile=http://example.org/fhir/StructureDefinition/my-patient", "p1")]
+    [InlineData(FhirVersion.R5, "Patient", "_profile=https://fhir.kbv.de/StructureDefinition/KBV_PR_Base_Patient", "kbv-patient")]
+    [InlineData(FhirVersion.R5, "Patient", "_profile=https://fhir.kbv.de/StructureDefinition/KBV_PR_Base_Patient|1.5.0", "kbv-patient")]
+    [InlineData(FhirVersion.R5, "Patient", "_profile=https://fhir.kbv.de/StructureDefinition/KBV_PR_Base_Patient|1.4.0", "")]
+    [InlineData(FhirVersion.R5, "Patient", "_profile=https://fhir.kbv.de/StructureDefinition/KBV_PR_Base_Observation", "kbv-observation")]
     public void GivenAFolder_WhenSearchedOnValuesTheSharedConvertersIndex_ThenTheSpecifiedResourcesMatch(FhirVersion version, string resourceType, string query, string expected)
     {
         using TestFolder folder = new TestFolder().Write("patients.ndjson", Patients).Write("observations.ndjson", Observations);
@@ -49,6 +57,19 @@ public class SharedIndexingTests
 
         envelope.Issues.Where(issue => issue.Severity == "error").ShouldBeEmpty();
         Ids(envelope).ShouldBe(expected.Length == 0 ? [] : expected.Split(','));
+    }
+
+    [Fact]
+    public void GivenAnIncludeThroughACanonicalParameter_WhenSearched_ThenTheCallFailsAsNotSupported()
+    {
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", Patients);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder, FhirVersion.R5), new SearchRequest("Patient", "_include=Patient:_profile"));
+
+        envelope.Facts.ShouldBeNull();
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe(SearchFailures.NotSupportedCode);
+        issue.Diagnostics.ShouldNotBeNull().ShouldContain("canonical resolution is not supported");
     }
 
     [Theory]
