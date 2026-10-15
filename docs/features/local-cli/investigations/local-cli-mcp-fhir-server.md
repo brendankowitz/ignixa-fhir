@@ -52,7 +52,7 @@ The expensive part of search is FHIR search semantics, not storage: date ranges 
 | Option | Role | Verdict |
 |--------|------|---------|
 | **Own cache format** | Persist `SearchIndexEntry` lists; reload instead of re-indexing | **v1.** Start with the existing `CompactSearchIndexConverter` JSON (no new format to own); move to a binary encoding (MemoryPack/MessagePack or custom) only if P0 shows load time matters. |
-| **SQLite** (`Microsoft.Data.Sqlite`) | Search index as tables, queried with SQL | **Not v1.** Requires re-expressing FHIR search semantics in SQL. The only generator, `Ignixa.Search.Sql`, emits T-SQL for the SQL Server schema and is alpha and unwired (`src/Core/Ignixa.Search.Sql/README.md`). That would be a third copy of search semantics beside the in-memory interpreter and the SQL Server backend. |
+| **SQLite** (`Microsoft.Data.Sqlite`) | Search index as tables, queried with SQL | **Not v1 for the resource index** (it is the likely store for large terminologies; see [agent-tool-surface: Terminology store](agent-tool-surface.md#terminology-store)). Requires re-expressing FHIR search semantics in SQL. The only generator, `Ignixa.Search.Sql`, emits T-SQL for the SQL Server schema and is alpha and unwired (`src/Core/Ignixa.Search.Sql/README.md`). That would be a third copy of search semantics beside the in-memory interpreter and the SQL Server backend. |
 | **DuckDB** (DuckDB.NET) | Columnar analytics over SQL-on-FHIR view output | **Optional add-on (P2/P3), not the index.** Aggregates ("encounters per year by class") are where agents get the most from SQL. Path: ViewDefinitions via `Ignixa.SqlOnFhir` → Parquet (`Parquet.Net` is already a dependency) → a read-only `sql_query` MCP tool. Ships a per-platform native library (size unmeasured), so keep it out of the base tool. |
 | **Lucene.NET** | Full-text `_text` / `_content` | Only if full-text search becomes a requirement. |
 
@@ -64,9 +64,11 @@ Triggers to revisit SQLite: datasets that no longer fit in memory (index must be
 
 ### The `inspect` command
 
-The first thing an agent needs is orientation, not search. `ignixa inspect <dir>` reports: resource types and counts, date ranges, profiles/`meta.profile` in use, FHIR-version hints, broken references, duplicate ids, parse errors, and the search parameters actually populated. It is also the natural first MCP tool.
+The full capability set, response envelope and tool contracts are formalized in [agent-tool-surface](agent-tool-surface.md). The first thing an agent needs is orientation, not search. `ignixa inspect <dir>` reports: resource types and counts, date ranges, profiles/`meta.profile` in use, FHIR-version hints, broken references, duplicate ids, parse errors, and the search parameters actually populated. It is also the natural first MCP tool.
 
 ### Interface strategy
+
+For the prototype (working name **cli-on-fhir**), duplicating logic from `Ignixa.Application` or fhir-candle is acceptable; the goal is to learn which capabilities are useful before investing in shared abstractions (see [agent-tool-surface: Prototype stance](agent-tool-surface.md#prototype-stance)). The rest of this section describes the target once the prototype has shown what to keep.
 
 Do not widen `IFhirRepository` / `ISearchService` in v1. Keep a narrow internal read contract (`IResourceCatalog`: enumerate keys, read bytes by key) that the CLI and MCP tools use directly. In a later phase, adapt it once to the Domain interfaces so existing handlers (`$validate`, SQL-on-FHIR, de-id, IPS) work against a folder. At that point unsupported members must throw `NotSupportedException` (no success-shaped fallbacks), history members report the single on-disk version truthfully, and the capability statement advertises read-only.
 
@@ -113,6 +115,8 @@ Read at `b26718a`. Unless marked, verified by reading code; nothing was built, r
 ### Search gaps
 `SearchQueryInterpreter` throws for chained (`:135`), missing-field (`:145`), compartment (`:245`), `$everything` (`:253`), include (`:261`, bare `NotImplementedException`), sort (`:315`), `InExpression<T>` (`:323`), and `_not-referenced` (`:342`). `FileBasedSearchService` never reads `SearchOptions.Sort/Include/RevInclude`, and result order is `Directory.GetDirectories` order plus Skip/Take. Supported: string/token/date/number/reference/quantity/uri predicates, `:not`, and/or, `:missing` on search parameters, `_count`, continuation, `_total`, `_summary=count`.
 
+fhir-candle already implements most of these gaps on top of Ignixa's packages (includes, forward and `_has` chains, `_sort`, compartments, and matching fixes in a forked interpreter). The prototype copies them rather than writing them again, and upstreams them behind opt-in options once usage justifies it; see [agent-tool-surface: Search extensions](agent-tool-surface.md#search-extensions).
+
 ### Hosting and HTTP coupling
 - The full server boots headless on the file provider in `IgnixaApiFixture` under `TEST_USE_FILESYSTEM=true` (no SQL, no socket), but `Ignixa.Web/Program.cs` also runs OpenIddict and `InitializeDatabasesAsync`.
 - `BundleEntryExecutor.cs:115-135` builds a `DefaultHttpContext` and requires a parent `IHttpContextAccessor`; transaction/batch bundles therefore need the HTTP pipeline.
@@ -145,9 +149,9 @@ An independent architecture review (run on a different model, given the draft an
 | Phase | Scope | Rough size (estimate) |
 |-------|-------|-----------------------|
 | **P0 spike** | Console under `tools/`: walk folder → catalog → index → `SearchQueryInterpreter`; report index time and memory for ~10k resources; confirm stdio transport on the pinned MCP package | 1-2 days |
-| **P1** | `ignixa inspect\|search\|get\|fhirpath\|validate <dir>` over libraries only (no Application layer); catalog + sniff; index cache; sort/include post-passes | ~2 weeks |
-| **P2** | Stdio MCP in the same tool: thin tools reusing `SearchResultsDto`/`ResourceEntryDto` and the `tool-design.md` limits; `inspect` as first tool | ~3-4 days |
-| **P3** | `Ignixa.DataLayer.LocalFolder` adapter to `IFhirRepository`/`ISearchService` plus slim Autofac composition; unlocks `$validate`, SQL-on-FHIR, de-id, IPS; optional `Storage:Type=LocalFolder` for `Ignixa.Web` | TBD after P1 |
+| **P1** | Catalog + sniff; index cache; search extensions copied from fhir-candle (upstreaming deferred until usage shows which matter); the P1 capabilities of [agent-tool-surface](agent-tool-surface.md), including the terminology store, on the CLI; Core libraries plus code copied from Application where faster | ~2-3 weeks |
+| **P2** | Stdio MCP in the same tool with parity to the CLI and the shared response envelope; the P2 capabilities of [agent-tool-surface](agent-tool-surface.md) | ~1 week |
+| **P3** | The P3 capabilities of [agent-tool-surface](agent-tool-surface.md) (`deid`, `fml_transform`); `Ignixa.DataLayer.LocalFolder` adapter to `IFhirRepository`/`ISearchService` plus slim Autofac composition, which unlocks Application-layer operations such as IPS; optional `Storage:Type=LocalFolder` for `Ignixa.Web` | TBD after P1 |
 | **P4 (optional)** | Write-through to `{Type}/{id}.json` + reindex, lock file or single-owner process | TBD |
 
 The reviewer's total for a read-only v1 (P0-P2) is roughly 3-4 engineer-weeks; treat as an order of magnitude until P0 reports.
