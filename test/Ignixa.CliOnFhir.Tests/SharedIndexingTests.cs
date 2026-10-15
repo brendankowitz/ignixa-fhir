@@ -21,7 +21,8 @@ namespace Ignixa.CliOnFhir.Tests;
 /// canonical next to the tool's synthesized entry) and the <c>Special</c> composite rows (reported as unparseable input).
 /// The KBV <c>_profile</c> rows and the include refusal fail at b096951, where canonicals indexed as references (the
 /// two profiles collided on <c>StructureDefinition/KBV</c> and a version was ignored). The other rows are guards,
-/// passing at 206143a through the tool's copies and mutation-checked against the shared fix.
+/// passing at 206143a through the tool's copies and mutation-checked against the shared fix. The participant and wildcard
+/// rows fail at 78d8b45, where a canonical entry made the follow throw once it was reached or went uncounted.
 /// </summary>
 public class SharedIndexingTests
 {
@@ -36,6 +37,17 @@ public class SharedIndexingTests
         {"resourceType":"Observation","id":"w1","status":"final","code":{"text":"weight"},"subject":{"reference":"urn:uuid:5f0c4b1e-7b8e-4d6f-9c2a-0e1f2a3b4c5d"},"valueQuantity":{"value":185,"unit":"lbs","system":"http://unitsofmeasure.org","code":"[lb_av]"}}
         {"resourceType":"Observation","id":"w2","status":"final","code":{"text":"weight"},"subject":{"reference":"Patient/p1"},"valueQuantity":{"value":84,"unit":"kg","system":"http://unitsofmeasure.org","code":"kg"}}
         """;
+
+    private const string Smith = """{"resourceType":"Patient","id":"p1","name":[{"family":"Smith"}]}""";
+
+    private const string Orchestrations = """
+        {"resourceType":"RequestOrchestration","id":"ro1","status":"active","intent":"plan","action":[{"participant":[{"actorReference":{"reference":"Patient/p1"}},{"actorCanonical":"http://example.org/fhir/PlanDefinition/pd"}]}]}
+        {"resourceType":"RequestOrchestration","id":"ro2","status":"active","intent":"plan","action":[{"participant":[{"actorReference":{"reference":"Patient/p1"}}]}]}
+        """;
+
+    private const string UsCorePatient = """{"resourceType":"Patient","id":"p1","meta":{"profile":["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient|7.0.0"]},"name":[{"family":"Smith"}]}""";
+
+    private const string UsCoreObservation = """{"resourceType":"Observation","id":"o1","meta":{"profile":["http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab"]},"status":"final","code":{"text":"x"},"subject":{"reference":"Patient/p1"}}""";
 
     [Theory]
     [InlineData(FhirVersion.R4, "Patient", "telecom=555-1234", "p1")]
@@ -73,6 +85,38 @@ public class SharedIndexingTests
     }
 
     [Theory]
+    [InlineData("RequestOrchestration", "participant:Patient.name=Smith", "ro1,ro2")]
+    [InlineData("RequestOrchestration", "participant:Patient.name=Jones", "")]
+    [InlineData("RequestOrchestration", "_id=ro1&_include=RequestOrchestration:participant", "ro1,p1")]
+    [InlineData("Patient", "_revinclude=RequestOrchestration:participant", "p1,ro1,ro2")]
+    public void GivenAParameterOverReferencesAndCanonicals_WhenFollowed_ThenItsReferencesAreFollowedAndItsCanonicalIsCounted(string resourceType, string query, string expected)
+    {
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", Smith).Write("orchestrations.ndjson", Orchestrations);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder, FhirVersion.R5), new SearchRequest(resourceType, query));
+
+        Returned(envelope).ShouldBe(expected.Length == 0 ? [] : expected.Split(','));
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        (issue.Severity, issue.Code).ShouldBe(("information", ReferenceFollowChecks.UnresolvedCode));
+        issue.Diagnostics.ShouldStartWith("1 references through RequestOrchestration:participant are not local 'Type/id' references (canonicals,");
+    }
+
+    [Theory]
+    [InlineData("_include=*", "2 references through *:*")]
+    [InlineData("_include=Observation:*", "1 references through Observation:*")]
+    public void GivenProfiledResources_WhenIncludedByWildcard_ThenTheReferencesAreFollowedAndTheProfilesCounted(string query, string unresolved)
+    {
+        using TestFolder folder = new TestFolder().Write("patients.ndjson", UsCorePatient).Write("observations.ndjson", UsCoreObservation);
+
+        ToolEnvelope<SearchFacts?> envelope = ResourceSearcher.Search(Open(folder, FhirVersion.R5), new SearchRequest("Observation", query));
+
+        Returned(envelope).ShouldBe(["o1", "p1"]);
+        IssueItem issue = envelope.Issues.ShouldHaveSingleItem();
+        (issue.Severity, issue.Code).ShouldBe(("information", ReferenceFollowChecks.UnresolvedCode));
+        issue.Diagnostics.ShouldStartWith(unresolved);
+    }
+
+    [Theory]
     [InlineData(FhirVersion.R5)]
     [InlineData(FhirVersion.R6)]
     public void GivenACompositeWithASpecialComponent_WhenSearched_ThenTheCallFailsAsNotSupportedNamingTheParameter(FhirVersion version)
@@ -87,6 +131,10 @@ public class SharedIndexingTests
         issue.Diagnostics.ShouldNotBeNull().ShouldContain("section-code-text");
         issue.Diagnostics.ShouldContain("Special");
     }
+
+    /// <summary>The ids of the matches, then of the included resources, in the order returned.</summary>
+    private static string[] Returned(ToolEnvelope<SearchFacts?> envelope) =>
+        [.. Ids(envelope), .. (envelope.Facts.ShouldNotBeNull().Included ?? []).Select(resource => (string)resource["id"]!)];
 
     private static FolderSession Open(TestFolder folder, FhirVersion version) => new(
         folder.Path,

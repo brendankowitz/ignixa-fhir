@@ -23,6 +23,9 @@ internal static class ExtractionFailureCapture
 {
     public const string DiagnosticCode = "index-extraction-failed";
 
+    /// <summary>The event <c>ElementSearchIndexer</c> logs for an element type no converter of the parameter accepts.</summary>
+    private const string ElementTypeNotSupportedEvent = "FhirElementTypeNotSupported";
+
     [ThreadStatic]
     private static Scope? _current;
 
@@ -30,11 +33,16 @@ internal static class ExtractionFailureCapture
     public static ILoggerFactory Wrap(ILoggerFactory inner, string indexerCategory) => new CapturingLoggerFactory(inner, indexerCategory);
 
     /// <summary>
-    /// Runs <paramref name="extract"/> and returns the diagnostics logged by the indexer while it ran on this thread.
+    /// Runs <paramref name="extract"/> and returns the diagnostics logged by the indexer while it ran on this thread,
+    /// except the "element type 'canonical' is not supported" warnings for the parameters in
+    /// <paramref name="indexedCanonicals"/>'s answer: the parameter URLs whose canonicals another indexer did index on this
+    /// resource. The warning is recognised from the log event's structured state (its name, <c>ElementType</c> and
+    /// <c>SearchParameterUrl</c>), never its text; any other canonical keeps its warning.
     /// </summary>
-    public static (T Result, List<CatalogDiagnostic> Diagnostics) Capture<T>(CatalogEntry entry, Func<T> extract)
+    public static (T Result, List<CatalogDiagnostic> Diagnostics) Capture<T>(CatalogEntry entry, Func<T> extract, Func<T, IReadOnlySet<string>> indexedCanonicals)
     {
         ArgumentNullException.ThrowIfNull(extract);
+        ArgumentNullException.ThrowIfNull(indexedCanonicals);
 
         var scope = new Scope(entry);
         Scope? previous = _current;
@@ -42,7 +50,10 @@ internal static class ExtractionFailureCapture
         try
         {
             T result = extract();
-            return (result, scope.Diagnostics);
+            IReadOnlySet<string> covered = indexedCanonicals(result);
+            return (result, [.. scope.Captured
+                .Where(captured => captured.UnsupportedCanonicalUrl is not { } url || !covered.Contains(url))
+                .Select(captured => captured.Diagnostic)]);
         }
         finally
         {
@@ -50,11 +61,30 @@ internal static class ExtractionFailureCapture
         }
     }
 
+    /// <summary>The <c>SearchParameterUrl</c> of an "element type 'canonical' is not supported" event, or null for any other event.</summary>
+    private static string? UnsupportedCanonicalUrl<TState>(EventId eventId, TState state)
+    {
+        if (eventId.Name != ElementTypeNotSupportedEvent || state is not IReadOnlyList<KeyValuePair<string, object?>> fields)
+        {
+            return null;
+        }
+
+        string? elementType = null;
+        string? url = null;
+        foreach (KeyValuePair<string, object?> field in fields)
+        {
+            elementType = field.Key == "ElementType" ? field.Value?.ToString() : elementType;
+            url = field.Key == "SearchParameterUrl" ? field.Value?.ToString() : url;
+        }
+
+        return elementType == "canonical" ? url : null;
+    }
+
     private sealed class Scope(CatalogEntry entry)
     {
         public CatalogEntry Entry { get; } = entry;
 
-        public List<CatalogDiagnostic> Diagnostics { get; } = [];
+        public List<(CatalogDiagnostic Diagnostic, string? UnsupportedCanonicalUrl)> Captured { get; } = [];
     }
 
     private sealed class CapturingLoggerFactory(ILoggerFactory inner, string indexerCategory) : ILoggerFactory
@@ -98,7 +128,7 @@ internal static class ExtractionFailureCapture
                 message = $"{message} {exception.GetType().Name}: {exception.Message}";
             }
 
-            scope.Diagnostics.Add(new CatalogDiagnostic(DiagnosticCode, scope.Entry.FilePath, scope.Entry.Line, message));
+            scope.Captured.Add((new CatalogDiagnostic(DiagnosticCode, scope.Entry.FilePath, scope.Entry.Line, message), UnsupportedCanonicalUrl(eventId, state)));
         }
     }
 }

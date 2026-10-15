@@ -98,21 +98,19 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
     }
 
     /// <summary>
-    /// For a reference parameter, extends <paramref name="matcher"/> to the canonical entries
+    /// For a reference parameter that selects canonicals, extends <paramref name="matcher"/> to the canonical entries
     /// <see cref="CanonicalReferenceSearchIndexer"/> adds, which the field-level matcher never matches.
     /// </summary>
     private static Func<SearchIndexEntry, bool> WithCanonicals(Func<SearchIndexEntry, bool> matcher, SearchParameterExpression expression, bool negatedBody)
     {
-        if (expression.Parameter.Type != SearchParamType.Reference)
+        if (expression.Parameter.CanonicalReferences == CanonicalReferenceKind.None)
         {
             return matcher;
         }
 
         Expression positive = negatedBody && expression.Expression is NotExpression { Expression: { } inner } ? inner : expression.Expression;
-        Func<UriSearchValue, bool>? canonical = CanonicalReferenceMatcher.Compile(positive);
-        return canonical is null
-            ? matcher
-            : entry => entry.Value is UriSearchValue uri ? canonical(uri) : matcher(entry);
+        Func<UriSearchValue, bool> canonical = CanonicalReferenceMatcher.Compile(positive);
+        return entry => entry.Value is UriSearchValue uri ? canonical(uri) : matcher(entry);
     }
 
     public SearchPredicate VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, Context context)
@@ -220,6 +218,7 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
                 : "ChainedExpression is not supported.");
         }
 
+        RefuseCanonicalOnly(expression.ReferenceSearchParameter, expression.Reversed ? "_has" : "a chain");
         SearchPredicate inner = expression.Expression.AcceptVisitor(this, InitialContext);
         return expression.Reversed
             ? ReverseChain(expression, inner, _source)
@@ -305,21 +304,30 @@ public sealed class SearchQueryInterpreter : IExpressionVisitorWithInitialContex
         };
 
     /// <summary>
-    /// The resources <paramref name="index"/> references through <paramref name="parameter"/> by type and id. A
-    /// reference with a base URI points at another server, and one without a type cannot be resolved, so neither
-    /// names a resource the source could hold.
+    /// Refuses following <paramref name="parameter"/> when it selects only canonicals, decided from its definition so the
+    /// answer never depends on the data or the order of its index entries. Resolving a canonical to the resource it names is
+    /// a value join this engine does not perform, so following such a parameter would always find nothing.
     /// </summary>
-    /// <exception cref="SearchOperationNotSupportedException">
-    /// The parameter holds a canonical (<see cref="CanonicalReferenceSearchIndexer"/>): resolving a canonical to the resource
-    /// it names is a value join this engine does not perform, so following it would silently find nothing.
-    /// </exception>
+    /// <exception cref="SearchOperationNotSupportedException">The parameter selects only canonicals.</exception>
+    internal static void RefuseCanonicalOnly(SearchParameterInfo parameter, string follower)
+    {
+        if (parameter.CanonicalReferences == CanonicalReferenceKind.Only)
+        {
+            throw new SearchOperationNotSupportedException(
+                $"Search parameter '{parameter.Code}' selects only canonical references; canonical resolution is not supported, so {follower} cannot follow it in in-memory search.");
+        }
+    }
+
+    /// <summary>
+    /// The resources <paramref name="index"/> references through <paramref name="parameter"/>, or through every reference
+    /// parameter when it is null, by type and id. A reference with a base URI points at another server, and one without a
+    /// type cannot be resolved, so neither names a resource the source could hold. A canonical entry
+    /// (<see cref="CanonicalReferenceSearchIndexer"/>) is skipped: it is never followed, whatever entries surround it.
+    /// </summary>
     internal static IEnumerable<(string ResourceType, string Id)> LocalReferences(IEnumerable<SearchIndexEntry> index, SearchParameterInfo? parameter) =>
         index
             .Where(entry => parameter is null ? entry.SearchParameter.Type == SearchParamType.Reference : entry.SearchParameter.Name == parameter.Name)
-            .Select(entry => entry.Value is UriSearchValue
-                ? throw new SearchOperationNotSupportedException(
-                    $"Search parameter '{entry.SearchParameter.Code}' holds canonical references; canonical resolution is not supported, so a chain, _has or include cannot follow it in in-memory search.")
-                : entry.Value)
+            .Select(entry => entry.Value)
             .OfType<ReferenceSearchValue>()
             .Where(reference => reference.BaseUri is null && !string.IsNullOrEmpty(reference.ResourceType) && !string.IsNullOrEmpty(reference.ResourceId))
             .Select(reference => (reference.ResourceType, reference.ResourceId));

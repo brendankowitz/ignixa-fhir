@@ -82,6 +82,7 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         // We must resolve these references by looking up the component parameters in UrlLookup
         ResolveCompositeComponents(baseParameters, logger);
         MarkInconsistentComposites(baseParameters);
+        MarkCanonicalReferences(baseParameters);
 
         CalculateSearchParameterHash();
     }
@@ -198,6 +199,18 @@ public partial class SearchParameterDefinitionManager : ISearchParameterDefiniti
         foreach (SearchParameterInfo composite in parameters.Where(parameter => parameter.Type == SearchParamType.Composite))
         {
             composite.ComponentInconsistency = KnownInconsistentComposites.For(_modelInfoProvider.Version, composite.Url);
+        }
+    }
+
+    /// <summary>
+    /// Marks the shipped reference parameters listed in <see cref="KnownCanonicalReferenceParameters"/>, so in-memory search
+    /// indexes their canonicals and decides from the definition alone whether a chain or include can follow them.
+    /// </summary>
+    private void MarkCanonicalReferences(SearchParameterInfo[] parameters)
+    {
+        foreach (SearchParameterInfo reference in parameters.Where(parameter => parameter.Type == SearchParamType.Reference))
+        {
+            reference.CanonicalReferences = KnownCanonicalReferenceParameters.For(_modelInfoProvider.Version, reference.Url);
         }
     }
 

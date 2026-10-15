@@ -387,7 +387,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
                 reference.Kind,
                 reference.BaseUri,
                 modifier.ResourceType,
-                reference.ResourceId);
+                reference.ResourceId) { OriginalString = reference.OriginalString };
         }
         catch (ArgumentException)
         {

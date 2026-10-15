@@ -47,8 +47,7 @@ public sealed class FolderIndexBuilder
         _indexer = new LastUpdatedSearchIndexer(
             new CanonicalReferenceSearchIndexer(
                 SearchIndexerFactory.CreateInstance(schema, capturingFactory, Definitions, NullFhirBaseUriProvider.Instance),
-                Definitions,
-                schema),
+                Definitions),
             Definitions,
             capturingFactory.CreateLogger<ElementSearchIndexer>());
     }
@@ -127,23 +126,19 @@ public sealed class FolderIndexBuilder
         }
 
         IElement element = node.ToElement(_schema);
-        var (index, diagnostics) = ExtractionFailureCapture.Capture(entry, () => _indexer.Extract(element));
-        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), WithoutCoveredCanonicals(diagnostics, index));
+        var (index, diagnostics) = ExtractionFailureCapture.Capture(entry, () => _indexer.Extract(element), IndexedCanonicals);
+        return (new IndexedResource(new ResourceKey(entry.ResourceType, entry.Id), entry, index), diagnostics);
     }
 
     /// <summary>
-    /// Drops the stock indexer's "element 'canonical' is not supported" warning for a reference parameter whose canonicals
-    /// <see cref="CanonicalReferenceSearchIndexer"/> did index on this resource; a canonical it did not cover keeps its
-    /// warning. Matched on the indexer's exact message, so a reworded one is reported rather than hidden.
+    /// The reference parameters whose canonicals <see cref="CanonicalReferenceSearchIndexer"/> indexed on this resource, so
+    /// the stock indexer's "element 'canonical' is not supported" warning for them is not reported; a canonical it did not
+    /// cover keeps its warning.
     /// </summary>
-    private static List<CatalogDiagnostic> WithoutCoveredCanonicals(List<CatalogDiagnostic> diagnostics, IReadOnlyCollection<SearchIndexEntry> index)
-    {
-        HashSet<string> covered = [.. index
+    private static HashSet<string> IndexedCanonicals(IReadOnlyCollection<SearchIndexEntry> index) =>
+        [.. index
             .Where(indexed => indexed.SearchParameter.Type == SearchParamType.Reference && indexed.Value is UriSearchValue)
-            .Select(indexed => $"The FHIR element 'canonical' is not supported for search parameter '{indexed.SearchParameter.Url}'.")];
-
-        return covered.Count == 0 ? diagnostics : [.. diagnostics.Where(diagnostic => !covered.Contains(diagnostic.Message))];
-    }
+            .Select(indexed => indexed.SearchParameter.Url.ToString())];
 
     private static CatalogDiagnostic Stale(CatalogEntry entry, string detail) => new(
         "catalog-stale",

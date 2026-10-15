@@ -70,7 +70,7 @@ public class IndexedCorpusRoundTripTests
     {
         VersionedCorpus r4 = VersionedCorpus.For(FhirVersion.R4);
         ISearchIndexer indexer = new LastUpdatedSearchIndexer(
-            new CanonicalReferenceSearchIndexer(r4.Indexer, r4.Definitions, r4.Schema),
+            new CanonicalReferenceSearchIndexer(r4.Indexer, r4.Definitions),
             r4.Definitions,
             NullLogger.Instance);
         return Corpus.Select(json => r4.Index(indexer, json)).Select(resource => (resource.Location.Id, resource.Index));

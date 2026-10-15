@@ -19,7 +19,8 @@ namespace Ignixa.Search.InMemory;
 /// <c>_include=Source:param[:Target]</c> adds the resources that the page's <c>Source</c> resources reference through
 /// <c>param</c> (any reference parameter for <c>Source:*</c>, and of any resource for <c>*</c>), limited to <c>Target</c> when given.
 /// <c>_revinclude=Source:param[:Target]</c> adds the <c>Source</c> resources that reference a page resource through
-/// <c>param</c>. A reference to another server, or to a resource the source does not hold, includes nothing.
+/// <c>param</c>. A reference to another server, or to a resource the source does not hold, includes nothing, and a
+/// canonical is never followed (see <see cref="Validate"/>).
 /// </para>
 /// <para>
 /// <c>:iterate</c> includes are applied again to what the previous round added, until a round adds nothing. A
@@ -40,10 +41,7 @@ internal static class InMemoryIncludeResolver
         IReadOnlyList<IncludeExpression> revIncludes,
         int maxIncluded)
     {
-        if (revIncludes.FirstOrDefault(revInclude => revInclude.WildCard) is { } wildcard)
-        {
-            throw new SearchOperationNotSupportedException($"{wildcard} is not supported in in-memory search: a reverse include must name its search parameter.");
-        }
+        Validate(includes, revIncludes);
 
         HashSet<(string ResourceType, string Id)> seen = [.. matches.Select(match => Key(match.Location))];
         List<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> included = [];
@@ -75,6 +73,25 @@ internal static class InMemoryIncludeResolver
         }
 
         return included;
+    }
+
+    /// <summary>
+    /// Refuses the includes this resolver cannot follow, from their definitions alone, so the refusal never depends on the
+    /// page or the data: a wildcard <c>_revinclude</c>, and any include through a parameter that selects only canonicals.
+    /// A wildcard <c>_include</c> and a parameter that also selects references follow the references and skip canonicals.
+    /// </summary>
+    /// <exception cref="SearchOperationNotSupportedException">An include cannot be followed in memory.</exception>
+    public static void Validate(IReadOnlyList<IncludeExpression> includes, IReadOnlyList<IncludeExpression> revIncludes)
+    {
+        if (revIncludes.FirstOrDefault(revInclude => revInclude.WildCard) is { } wildcard)
+        {
+            throw new SearchOperationNotSupportedException($"{wildcard} is not supported in in-memory search: a reverse include must name its search parameter.");
+        }
+
+        foreach (IncludeExpression include in includes.Concat(revIncludes).Where(include => !include.WildCard))
+        {
+            SearchQueryInterpreter.RefuseCanonicalOnly(include.ReferenceSearchParameter, include.Reversed ? "_revinclude" : "_include");
+        }
     }
 
     private static IEnumerable<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> Forward(

@@ -26,7 +26,8 @@ internal static class ReferenceFollowChecks
     /// <summary>
     /// One <c>information</c> issue per reference parameter a chain, <c>_has</c> or include followed whose index holds
     /// references the engine cannot follow: not a local <c>Type/id</c> (an absolute URL, a bare id, or a <c>urn:</c> such as
-    /// a Bundle's <c>urn:uuid</c> fullUrl, which Ignixa's reference converter keeps in the index). Read
+    /// a Bundle's <c>urn:uuid</c> fullUrl, which Ignixa's reference converter keeps in the index), or a canonical, which a
+    /// parameter that also selects references (R5 <c>RequestOrchestration-participant</c>) or <c>_include=*</c> skips. Read
     /// from the index entries of the parameter followed, over every resource of a chain's referencing type, the page and
     /// its included resources for a forward include, and every resource of a reverse include's source type.
     /// </summary>
@@ -56,7 +57,7 @@ internal static class ReferenceFollowChecks
             .Select(count => new IssueItem(
                 "information",
                 UnresolvedCode,
-                $"{count.Count} references through {count.Key.ResourceType}:{count.Key.Parameter} are not local 'Type/id' references (urn:uuid, absolute URLs or bare ids) and were not followed, so the chain or include may be missing resources.",
+                $"{count.Count} references through {count.Key.ResourceType}:{count.Key.Parameter} are not local 'Type/id' references (canonicals, urn:uuid, absolute URLs or bare ids) and were not followed, so the chain or include may be missing resources.",
                 Location: null));
     }
 
@@ -132,11 +133,15 @@ internal static class ReferenceFollowChecks
     private static int NotLocal(IEnumerable<IndexedResource> resources, SearchParameterInfo? parameter) =>
         resources.Sum(resource => resource.Index.Count(entry =>
             (parameter is null ? entry.SearchParameter.Type == SearchParamType.Reference : entry.SearchParameter.Name == parameter.Name)
-            && entry.Value is ReferenceSearchValue reference
-            && (reference.BaseUri is not null
-                || string.IsNullOrEmpty(reference.ResourceType)
-                || string.IsNullOrEmpty(reference.ResourceId)
-                || reference.ResourceId.StartsWith("urn:", StringComparison.Ordinal))));
+            && entry.Value switch
+            {
+                UriSearchValue => true,
+                ReferenceSearchValue reference => reference.BaseUri is not null
+                    || string.IsNullOrEmpty(reference.ResourceType)
+                    || string.IsNullOrEmpty(reference.ResourceId)
+                    || reference.ResourceId.StartsWith("urn:", StringComparison.Ordinal),
+                _ => false,
+            }));
 
     private static IEnumerable<ChainedExpression> Chains(Expression? expression) =>
         expression switch

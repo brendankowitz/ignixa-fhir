@@ -52,7 +52,8 @@ public sealed class InMemorySearchEngine
     /// otherwise.
     /// </summary>
     /// <exception cref="SearchOperationNotSupportedException">
-    /// The options ask for a feature that is not enabled, or contain an expression in-memory search cannot evaluate.
+    /// The options ask for a feature that is not enabled, contain an expression in-memory search cannot evaluate, or
+    /// include through a parameter it cannot follow (checked here too, so such a search fails before it matches anything).
     /// </exception>
     public IReadOnlyList<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> Search(SearchOptions options)
     {
@@ -62,6 +63,7 @@ public sealed class InMemorySearchEngine
         Require(InMemorySearchFeatures.Sort, options.Sort.Count > 0, "_sort");
         Require(InMemorySearchFeatures.Include, options.Include.Count > 0, "_include");
         Require(InMemorySearchFeatures.RevInclude, options.RevInclude.Count > 0, "_revinclude");
+        InMemoryIncludeResolver.Validate(options.Include, options.RevInclude);
 
         // Read once: each predicate in the tree enumerates its input, and a source need not be cheap to enumerate.
         List<(ResourceKey Location, IReadOnlyCollection<SearchIndexEntry> Index)> candidates = [.. _source.Enumerate(options.ResourceType)];

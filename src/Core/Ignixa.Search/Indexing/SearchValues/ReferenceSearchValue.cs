@@ -82,9 +82,11 @@ public class ReferenceSearchValue : ISearchValue
     /// Kept because parsing is lossy for a value that is not a literal reference: a canonical url keeps only the
     /// <c>Type/id</c>-shaped part the parser recognises, and its <c>|version</c> is dropped. The in-memory search compares
     /// a query value's original text against indexed canonicals with it. It is not part of equality and index stores do
-    /// not persist it.
+    /// not persist it. Internal so the stable package does not commit to it while it serves only the experimental engine.
     /// </remarks>
-    public string OriginalString { get; init; }
+#nullable enable
+    internal string? OriginalString { get; init; }
+#nullable restore
 
     /// <inheritdoc />
     public bool IsValidAsCompositeComponent => true;

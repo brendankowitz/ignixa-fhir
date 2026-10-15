@@ -53,7 +53,6 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
     {
         EnsureArg.IsNotNullOrWhiteSpace(s, nameof(s));
 
-
         Match match = ReferenceRegex.Match(s);
 
         if (match.Success)

@@ -29,7 +29,8 @@ namespace Ignixa.DataLayer.SqlServer.Tests.RowGenerators;
 /// <remarks>
 /// The ContactPoint, quantity-unit, Range and <c>urn:</c> rows pin 4b's converter changes: they fail at 206143a and are
 /// guards against b096951 (mutation-checked against the converters). The over-wide reference rows fail at b096951,
-/// where <c>SetString</c> truncated them. The row whose base URI and id fit is a guard.
+/// where <c>SetString</c> truncated them; the reference-token composite's long <c>urn:oid</c> row is a guard against 78d8b45
+/// (mutation-checked against <c>ReferenceColumnWidths.Fit</c> in its generator). The row whose base URI and id fit is a guard.
 /// </remarks>
 public class IndexedValueRowTests
 {
@@ -41,7 +42,7 @@ public class IndexedValueRowTests
 
     private static readonly ISearchIndexer Indexer = SearchIndexerFactory.CreateInstance(Schema, NullLoggerFactory.Instance, Definitions, NullFhirBaseUriProvider.Instance);
 
-    private static readonly IReadOnlyDictionary<string, short> ResourceTypeIds = new Dictionary<string, short> { ["Patient"] = 1, ["Observation"] = 2, ["RiskAssessment"] = 3 };
+    private static readonly IReadOnlyDictionary<string, short> ResourceTypeIds = new Dictionary<string, short> { ["Patient"] = 1, ["Observation"] = 2, ["RiskAssessment"] = 3, ["DocumentReference"] = 4 };
 
     private static readonly IReadOnlyDictionary<string, short> SearchParamIds = Definitions.AllSearchParameters
         .Select(parameter => parameter.Url.ToString())
@@ -49,7 +50,7 @@ public class IndexedValueRowTests
         .Select((url, index) => (url, (short)(index + 1)))
         .ToDictionary(pair => pair.url, pair => pair.Item2);
 
-    private static readonly IReadOnlyDictionary<string, int> Systems = new Dictionary<string, int> { [Ucum] = 7, ["http://loinc.org"] = 8, ["home"] = 9, ["phone"] = 10 };
+    private static readonly IReadOnlyDictionary<string, int> Systems = new Dictionary<string, int> { [Ucum] = 7, ["http://loinc.org"] = 8, ["home"] = 9, ["phone"] = 10, ["http://hl7.org/fhir/CodeSystem/document-relationship-type"] = 15 };
 
     private static readonly IReadOnlyDictionary<string, int> QuantityCodes = new Dictionary<string, int> { ["[lb_av]"] = 11, ["lbs"] = 12, ["mg"] = 13, ["milligram"] = 14 };
 
@@ -144,6 +145,23 @@ public class IndexedValueRowTests
 
         rows.Select(row => row.GetString(5)).ShouldBe([fitting]);
         logger.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)call.GetArguments()[0]! == LogLevel.Warning).ShouldBe(2);
+    }
+
+    [Fact]
+    public void GivenAReferenceTokenCompositeWhoseReferenceIdIsALongUrnOid_WhenRowsAreGenerated_ThenItIsSkippedAndLoggedAndTheFittingOneIsWritten()
+    {
+        string longOid = "urn:oid:1.2.840.113619." + new string('1', 50) + ".1";
+        string fitting = "urn:oid:1.2.3";
+        ILogger logger = Substitute.For<ILogger>();
+
+        IReadOnlyList<SqlDataRecord> rows = Rows(
+            new RefTokenCompositeRowGenerator(Systems),
+            $$$"""{"resourceType":"DocumentReference","id":"d1","status":"current","content":[{"attachment":{"url":"http://example.org/d1"}}],"relatesTo":[{"code":"replaces","target":{"reference":"{{{longOid}}}"}},{"code":"appends","target":{"reference":"{{{fitting}}}"}}]}""",
+            "DocumentReference-relationship",
+            logger);
+
+        rows.Select(row => (row.GetString(5), row.GetString(8))).ShouldBe([(fitting, "appends")]);
+        logger.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ILogger.Log) && (LogLevel)call.GetArguments()[0]! == LogLevel.Warning).ShouldBe(1);
     }
 
     [Fact]

@@ -375,7 +375,7 @@ public sealed partial class FileBasedFhirRepository : IFhirRepository, IDisposab
     /// it cannot read - never sees one half written.
     /// </summary>
     private Task WriteMetadataFileAsync(string path, ResourceMetadata metadata, CancellationToken cancellationToken) =>
-        AtomicFile.WriteAllTextAsync(path, JsonSerializer.Serialize(metadata, _jsonOptions), cancellationToken);
+        AtomicFile.WriteAllTextAsync(path, JsonSerializer.Serialize(metadata, _jsonOptions), _logger, cancellationToken);
 
     private async ValueTask<string> ReadResourceFromNdjsonByIdAsync(string path, string resourceId, CancellationToken cancellationToken)
     {
