@@ -36,4 +36,39 @@ public sealed record SearchFacts(
     int Returned,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<JsonNode>? Resources,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<JsonNode>? Included = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? ResolvedReferences = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? ResolvedReferences = null)
+{
+    /// <summary>
+    /// With <c>columns</c>: the table's header, <c>ref</c> (the row's resource, as evidence names it) and then each column; absent otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Columns { get; init; }
+
+    /// <summary>With <c>columns</c>: one row per returned match, its cells in <see cref="Columns"/> order; absent otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<JsonArray>? Rows { get; init; }
+
+    /// <summary>
+    /// With <c>columns</c>: per column, how many of the returned rows have no value in it (a JSON null cell); absent when every
+    /// cell has a value.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, int>? EmptyCells { get; init; }
+
+    /// <summary>With <c>fhirpath</c>: the expression as received; absent otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("fhirpath")]
+    public string? FhirPath { get; init; }
+
+    /// <summary>With <c>fhirpath</c>: the expression's result, every item in order (empty when it yields nothing); absent otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonArray? Value { get; init; }
+
+    /// <summary>
+    /// With <c>fhirpath</c>: what evidence lists. <c>result-elements</c> when every result item was read from a match (evidence
+    /// lists those matches); <c>matches</c> when the result was computed (a count, a maximum) or read from a resource
+    /// <c>resolve()</c> reached (evidence lists every match, then each resource <c>resolve()</c> reached). Absent otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ValueFrom { get; init; }
+}

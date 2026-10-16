@@ -51,6 +51,11 @@ public class McpInstructionsTests
     [InlineData("_include")]
     [InlineData("conditional")]
     [InlineData("issues")]
+    [InlineData("columns={")]
+    [InlineData("requester.resolve()")]
+    [InlineData("medication.ofType(Reference).resolve()")]
+    [InlineData("fhirpath")]
+    [InlineData("goes inside query")]
     public void GivenTheInstructions_WhenRead_ThenTheyNameEachCheapPath(string mention)
     {
         McpServerSetup.Instructions.ShouldContain(mention);
@@ -78,5 +83,19 @@ public class McpInstructionsTests
         description.ShouldContain("compartment=Patient/<id>");
         description.ShouldContain("summary=count");
         description.ShouldNotContain("folder_inspect first");
+    }
+
+    // New at V2: the description steers to columns with resolve() and to fhirpath, and says where _sort goes.
+    [Theory]
+    [InlineData("columns={\"date\":\"authoredOn\"")]
+    [InlineData("requester.resolve().name.first().family")]
+    [InlineData("medication.ofType(Reference).resolve().code")]
+    [InlineData("'fhirpath'")]
+    [InlineData("_sort and _count included, goes inside 'query'")]
+    public void GivenTheSearchTool_WhenDescribed_ThenItShowsColumnsAndFhirPathAndWhereSearchParametersGo(string mention)
+    {
+        string description = typeof(ResourceTools).GetMethod(nameof(ResourceTools.SearchFhirResources))!.GetCustomAttribute<DescriptionAttribute>()!.Description;
+
+        description.ShouldContain(mention);
     }
 }

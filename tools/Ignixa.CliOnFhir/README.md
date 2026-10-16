@@ -17,6 +17,8 @@ cli-on-fhir systems ./my-fhir-data --top 5
 cli-on-fhir patients ./my-fhir-data --sort latest
 cli-on-fhir patients ./my-fhir-data --query Madalyn            # name, identifier value (MRN), id or birth date
 cli-on-fhir search ./my-fhir-data Observation "code=http://loinc.org|4548-4&_sort=-date" --compartment Patient/<id> --elements code,valueQuantity,effectiveDateTime --count 1
+cli-on-fhir search ./my-fhir-data MedicationRequest "_sort=-authoredon" --compartment Patient/<id> --columns '{"date":"authoredOn","prescriber":"requester.resolve().name.first().family"}'
+cli-on-fhir search ./my-fhir-data Observation "code=http://loinc.org|4548-4" --compartment Patient/<id> --fhirpath "entry.resource.value.ofType(Quantity).value.max()"
 cli-on-fhir context ./my-fhir-data <patientId>
 cli-on-fhir context ./my-fhir-data <patientId> --node "labs/http://loinc.org|8302-2"
 cli-on-fhir find ./my-fhir-data <patientId> asthma
@@ -73,7 +75,7 @@ Search indexes are persisted per resource type so a new process does not pay for
 |----------|----------|--------|
 | `folder_inspect` | `inspect` | Implemented; `facts.codeSystems` summarizes the ten most used coding systems |
 | `folder_code_systems` | `systems <path>` | Implemented, see [Coding systems](#coding-systems) |
-| `search_fhir_resources` | `search <path> <type> [query]` | Implemented, including chains, `_has`, `_sort`, `_include`, `_revinclude` and compartments (`compartment` / `--compartment`); responses are held to a budget, see [Response budget](#response-budget) (`maxBytes` / `--max-bytes`) |
+| `search_fhir_resources` | `search <path> <type> [query]` | Implemented, including chains, `_has`, `_sort`, `_include`, `_revinclude` and compartments (`compartment` / `--compartment`); `columns` / `--columns` returns a table of FHIRPath values instead of resources (see [Columns](#columns)) and `fhirpath` / `--fhirpath` one value over every match (see [FHIRPath value](#fhirpath-value)); responses are held to a budget, see [Response budget](#response-budget) (`maxBytes` / `--max-bytes`) |
 | `plan_fhir_search` | `search <path> <type> [query] --check [--execute]` | Implemented, see [Search plans](#search-plans) |
 | `read_resources` | `get <path> <ref>...` | Implemented; returned resources keep their Bundle references and `facts.resolvedReferences` maps them as search does (resolved without building an index); same budget (`maxBytes` / `--max-bytes`) |
 | `patient_list` | `patients <path>` | Implemented, see [Patient tools](#patient-tools); `query` / `--query` finds a patient by name, identifier value, id or birth date |
@@ -101,6 +103,10 @@ Search parses queries with Ignixa's own search pipeline and evaluates them with 
 The diagnostics of every index a search read (the searched type and any type a chain or include read) are reported in `issues`, since a resource that could not be indexed is silently absent from a chain or include otherwise. A request that cannot be answered fails with an `error` issue (exit code 1 on the CLI, `isError` over MCP) and no facts.
 
 The response budget applies to the decoded tool-result text, i.e. the whole serialized envelope (resources, evidence, issues, omitted, next), not to the JSON-RPC frame, which escapes that text again and is larger. The CLI prints the same compact JSON by default; `--pretty` indents it (and so exceeds the budget). See [Response budget](#response-budget).
+
+Every FHIR search parameter, `_sort` and `_count` included, goes inside `query`. The MCP SDK binds the arguments a tool defines and drops any other without a trace, so `search_fhir_resources` reads the raw argument names (`RequestContext<CallToolRequestParams>`, `Mcp/ToolArguments.cs`): an argument it does not define (`"_sort": "-date"` beside `query`) fails the call as `invalid-parameter`, saying it belongs in `query`, or with `lenient` is a `parameter-ignored` warning.
+
+`:text` on a token matches the start of a code's text or a coding's display, ignoring case (`code:text=carvedilol` matches "Carvedilol 25 MG ...", `code:text=vedilol` matches nothing). R4 MedicationRequest `code` searches `medicationCodeableConcept` only; an order with `medicationReference` (about a quarter of Synthea's) is found through the chain `medication:Medication.code=...`, and the [Columns](#columns) example reads the drug of either shape.
 
 What a search may leave unapplied is decided in one place (`Search/ParameterPolicy.cs`):
 
@@ -152,9 +158,36 @@ When a page is cut, nothing is dropped silently:
 - Resources trimmed with `elements` keep `resourceType`, `id` and `meta`, but not `meta.profile`, which repeats the same long list on every resource; the `SUBSETTED` tag stays.
 - The evidence of a response is written as a table: `evidence.files` names each file once, and each `evidence.items[]` entry has the `reference`, the index `file` into that table, the 1-based `line` for NDJSON (left out otherwise) and the byte `offset`. A page of resources from one patient's Bundle names the file once, not once per resource.
 
+## Columns
+
+`columns` (CLI `--columns`, a JSON object) maps column names to FHIRPath, each evaluated on every resource of the page; the page comes back as a table instead of resources, in `facts.columns` (`ref`, then each name in the order given) and `facts.rows` (one array per match: its reference, as evidence names it, then the cells). For a patient's medication list, whichever of `medicationCodeableConcept` or `medicationReference` each order uses:
+
+```json
+{"date":"authoredOn",
+ "drug":"(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display",
+ "prescriber":"requester.resolve().name.first().family"}
+```
+
+- **Evaluation.** Each path is parsed and evaluated by the FHIRPath engine a SQL-on-FHIR ViewDefinition's `column.path` is evaluated with (`FhirPathParser`, `FhirPathEvaluator`, the resource as `%resource` and `%rootResource`), so a path means what it means in a ViewDefinition. `SqlOnFhirEvaluator` itself is not used: it builds its own context with no `resolve()` hook, gives a complex value (a CodeableConcept column) as null, and returns `collection` cells as JSON text.
+- **`resolve()`** reaches any resource the folder holds. Resources are read with their Bundle and conditional references already rewritten to the `Type/id` the search index resolved them to (see [Bundle references](#bundle-references)), so `requester.resolve()` follows `Practitioner?identifier=...|...` and `result.resolve()` follows `urn:uuid:...` exactly as a chain or `_include` would; contained resources and sibling Bundle entries resolve in place. A reference it cannot find (another server's, or one the index left unresolved) yields nothing, and the response carries a `resolve-target-absent` information issue naming up to five. With `resolve()` in a column, `_include` is not needed.
+- **Cells.** No value is a JSON `null`; one value is the value (a date or time as its FHIR literal, as written; a complex element such as a CodeableConcept or Quantity as its JSON); several are a JSON array of them, as a ViewDefinition column with `collection: true` gives them. There is no `forEach`: a row is always one match, so the page, the budget and evidence stay per resource; `first()`, `where(...)` and `[n]` pick one value. `facts.emptyCells` counts the null cells per column (absent when there are none), and a column null in every returned row is a `column-empty` warning naming its path, which is usually a misspelt one.
+- **Evidence** cites each row's resource and, once each, every resource `resolve()` reached for the returned rows.
+- **Paging and budget.** Pages default to 50 rows (`count`, at most 200, `count-clamped` above). Rows count against the same budget as resources (see [Response budget](#response-budget)) with the same `omitted` and `next` rules: the largest prefix of the page that fits is returned, `next` keeps `columns`, and a row too large to fit alone is named in `omitted` and passed over. A cut page of resources (no `columns`) also offers, in `next`, the same page as a table of the type's usual columns.
+- **Not with** `elements`/`_elements`, `summary=count`, `_include`/`_revinclude` or `fhirpath`: each fails as `invalid-parameter`. More than 20 columns, a blank or repeated name, or the name `ref` fail the same way.
+- **Errors.** A path that does not parse, or that the engine cannot evaluate on a matching resource (an unknown function, `date + string`), fails the call as `invalid-parameter`, quoting the column, the path, the resource and the engine's message. When nothing matches, each path is evaluated once on an empty resource of the type, so an unknown function still fails.
+
+## FHIRPath value
+
+`fhirpath` (CLI `--fhirpath`) evaluates one FHIRPath over a `searchset` Bundle holding every match in result order (`_sort`, else catalog order) as `entry.resource`, and returns the result in `facts.value` (always an array, empty when it yields nothing) with `facts.fhirpath` echoing the expression and no resources. Examples: `entry.count()`; `entry.resource.value.ofType(Quantity).value.max()`; with `_sort=-date`, `entry.resource.first().value.ofType(Quantity)` for the latest value.
+
+- **Why a parameter and not a separate tool:** it reuses the search's query, compartment, sort, index diagnostics and issues unchanged, and an agent that can write the search already knows the call; a separate `evaluate_fhirpath` tool would have to take all of those again. The Bundle input is the shape a FHIR client gets back from a search, so the expression is the one it would write against one.
+- **Evidence** (`facts.valueFrom`): `result-elements` when every item of the value was read from a match (`max()`, `min()`, `first()` and `where()` keep the element they chose), and evidence cites those matches; `matches` when the value was computed (`count()`, arithmetic) or reached through `resolve()`, and evidence cites every match, then each resource `resolve()` reached.
+- **Limits.** At most 5,000 matches are read (more fails as `too-many-matches`, saying how to narrow the search). `count`, `_count` and `offset` do not apply and fail as `invalid-parameter`, as do `columns`, `elements`, `summary=count` and includes. The response holds to the budget: the value first, then as much evidence as fits; what is left out is counted in `omitted`.
+- **Errors** are those of [Columns](#columns): a parse or evaluation error fails the call as `invalid-parameter` quoting the expression, and `resolve()` misses are a `resolve-target-absent` issue.
+
 ## Server instructions
 
-`cli-on-fhir mcp` sends fixed instructions with the initialize result (`McpServerSetup.Instructions`), pointing at the cheap paths: search directly with `compartment=Patient/<id>` when the id or MRN is known, find a patient with a `Patient` search on `identifier` or `name` or with `patient_list` `query`, pass `elements`, use `summary=count` for counts, `_sort=-date` with `count=1` for the latest value, `_include` (conditional references included), follow `next` when a response is cut, and check `issues`. They never contain anything read from the folder.
+`cli-on-fhir mcp` sends fixed instructions with the initialize result (`McpServerSetup.Instructions`), pointing at the cheap paths: search directly with `compartment=Patient/<id>` when the id or MRN is known, find a patient with a `Patient` search on `identifier` or `name` or with `patient_list` `query`, ask for values with `columns` (the medication example above, `resolve()` instead of `_include`), use `fhirpath` for one value over the matches and `summary=count` for counts, put every search parameter (`_sort`, `_count`) inside `query`, use `_sort=-date` with `count=1` for the latest value, follow `next` when a response is cut, and check `issues` (`column-empty` included). They never contain anything read from the folder.
 
 Every response uses the shared envelope: `facts`, `derived` (always null), `evidence`, `omitted`, `absent`, `issues`, `freshness` (`indexBuiltAt`, `staleFiles`) and `next`. All of them are always present, as `null` where there is no value (for example `facts` of a failed call or `indexBuiltAt` when the folder cannot be read); `evidence` is the table described under [Response budget](#response-budget); `next` is a list of suggested calls `{ "tool", "args" }` plus a `hint` where the call narrows or widens the one just made (the MCP tool name; the CLI verb of that tool takes the same arguments), empty when there is none. `next` is built from the response's structure only (node keys, ids, offsets, type names), never from resource content.
 

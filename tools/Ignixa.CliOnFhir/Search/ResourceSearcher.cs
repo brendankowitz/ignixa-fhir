@@ -134,9 +134,42 @@ public static class ResourceSearcher
     private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, int extraBytes, CancellationToken cancellationToken)
     {
         ValidatePaging(request);
-        (ParsedSearch parsed, FolderSearchSource source, InMemorySearchEngine engine, List<IndexedResource> matches, List<IssueItem> issues, List<OmittedItem> parseOmitted) = MatchAll(session, request);
-        int count = EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
+        (ParsedSearch parsed, List<IssueItem> issues, List<OmittedItem> parseOmitted) = Parse(session, request);
+        IReadOnlyList<ColumnSearch.CompiledColumn>? columns = null;
+        FhirPath.Expressions.Expression? expression = null;
+        if (request.Columns is not null && request.FhirPath is not null)
+        {
+            throw ToolRequestException.Error("invalid-parameter", "Pass either 'columns' (a row per match) or 'fhirpath' (one value over every match), not both.");
+        }
+
+        if (request.Columns is { } requested)
+        {
+            RefuseBesideProjection("columns", request, parsed);
+            columns = ColumnSearch.Compile(requested);
+        }
+        else if (request.FhirPath is { } text)
+        {
+            RefuseBesideProjection("fhirpath", request, parsed);
+            if (request.Count is not null || request.Offset != 0 || parsed.RequestedCount is not null)
+            {
+                throw ToolRequestException.Error("invalid-parameter", "'fhirpath' is evaluated once over every match, so 'count', '_count' and 'offset' do not apply; leave them out.");
+            }
+
+            expression = ExpressionSearch.Compile(text);
+        }
+
+        int count = columns is null
+            ? EffectiveCount(request.Count ?? parsed.RequestedCount, issues)
+            : EffectiveCount(request.Count ?? parsed.RequestedCount, ColumnSearch.DefaultRows, ColumnSearch.MaxRows, issues);
         int budget = Math.Min(ResponseBudget.Resolve(request.MaxBytes, issues), EnvelopeJson.MaxBytes - extraBytes);
+        var source = new FolderSearchSource(session);
+        var engine = new InMemorySearchEngine(source, Features, session.Compartments);
+        List<IndexedResource> matches = Match(engine, source, parsed);
+
+        if (expression is not null)
+        {
+            return ExpressionSearch.Evaluate(session, source, request, parsed, expression, matches, issues, budget, cancellationToken);
+        }
 
         string query = QueryEcho.Of(request.Query ?? string.Empty);
         List<OmittedItem> omitted = [.. parseOmitted];
@@ -155,6 +188,11 @@ public static class ResourceSearcher
         if (request.Offset > 0 && request.Offset >= matches.Count)
         {
             issues.Add(new IssueItem("information", "offset-beyond-total", $"offset {request.Offset} is at or beyond the {matches.Count} matches, so no resources are returned.", Location: null));
+        }
+
+        if (columns is not null)
+        {
+            return ColumnSearch.Page(session, source, request, parsed, columns, matches, count, issues, budget, cancellationToken);
         }
 
         List<IndexedResource> page = [.. matches.Skip(request.Offset).Take(count)];
@@ -284,10 +322,10 @@ public static class ResourceSearcher
         }
     }
 
-    private static ToolEnvelope<SearchFacts?> Envelope(
+    internal static ToolEnvelope<SearchFacts?> Envelope(
         FolderSession session,
         FolderSearchSource source,
-        SearchFacts facts,
+        SearchFacts? facts,
         IReadOnlyList<EvidenceItem> evidence,
         IReadOnlyList<OmittedItem> omitted,
         IReadOnlyList<IssueItem> issues,
@@ -333,15 +371,41 @@ public static class ResourceSearcher
         }
     }
 
-    internal static int EffectiveCount(int? requested, List<IssueItem> issues)
+    internal static int EffectiveCount(int? requested, List<IssueItem> issues) => EffectiveCount(requested, DefaultCount, MaxCount, issues);
+
+    private static int EffectiveCount(int? requested, int defaultCount, int maxCount, List<IssueItem> issues)
     {
-        if (requested > MaxCount)
+        if (requested > maxCount)
         {
-            issues.Add(new IssueItem("warning", "count-clamped", $"count {requested} exceeds the maximum of {MaxCount}, so {MaxCount} were returned per page; use offset to read further.", Location: null));
-            return MaxCount;
+            issues.Add(new IssueItem("warning", "count-clamped", $"count {requested} exceeds the maximum of {maxCount}, so {maxCount} were returned per page; use offset to read further.", Location: null));
+            return maxCount;
         }
 
-        return requested ?? DefaultCount;
+        return requested ?? defaultCount;
+    }
+
+    /// <summary>
+    /// Fails a request that pairs <c>columns</c> or <c>fhirpath</c> with something that returns or trims resources: they replace
+    /// the resources, and a column (or <c>resolve()</c> in the expression) reaches referenced resources an include would add.
+    /// </summary>
+    private static void RefuseBesideProjection(string name, SearchRequest request, ParsedSearch parsed)
+    {
+        if (parsed.CountOnly)
+        {
+            throw ToolRequestException.Error("invalid-parameter", $"'{name}' and summary=count do not combine: summary=count returns only the total. Use one of them.");
+        }
+
+        if (parsed.Elements is not null || request.Elements is not null)
+        {
+            throw ToolRequestException.Error("invalid-parameter", $"'{name}' replaces the returned resources, so 'elements' (or _elements) does not apply; leave it out.");
+        }
+
+        if (HasIncludes(parsed.Options))
+        {
+            throw ToolRequestException.Error(
+                "invalid-parameter",
+                $"'{name}' does not return included resources; follow the reference inside the expression instead, for example requester.resolve().name.first().family for _include=MedicationRequest:requester, and leave _include/_revinclude out.");
+        }
     }
 
     /// <summary>The indexed resources matching the query, in <c>_sort</c> order or else catalog order.</summary>

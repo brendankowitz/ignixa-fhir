@@ -24,6 +24,14 @@ namespace Ignixa.CliOnFhir.Search;
 /// The most the whole serialized response may take; null means <see cref="Ignixa.CliOnFhir.Contracts.EnvelopeJson.DefaultBudget"/>,
 /// and more than <see cref="Ignixa.CliOnFhir.Contracts.EnvelopeJson.MaxBytes"/> is clamped to it.
 /// </param>
+/// <param name="Columns">
+/// When given, each matching resource of the page is returned as a row of these FHIRPath values (<c>facts.columns</c>,
+/// <c>facts.rows</c>) instead of as a resource; null returns resources.
+/// </param>
+/// <param name="FhirPath">
+/// When given, this FHIRPath is evaluated once over a <c>searchset</c> Bundle of every match (in result order) and its value
+/// returned in <c>facts.value</c>, with no resources or paging; null returns resources.
+/// </param>
 public sealed record SearchRequest(
     string ResourceType,
     string? Query = null,
@@ -33,4 +41,6 @@ public sealed record SearchRequest(
     string? Elements = null,
     bool Lenient = false,
     string? Compartment = null,
-    int? MaxBytes = null);
+    int? MaxBytes = null,
+    IReadOnlyList<SearchColumn>? Columns = null,
+    string? FhirPath = null);

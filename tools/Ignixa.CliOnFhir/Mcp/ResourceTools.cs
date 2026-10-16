@@ -17,14 +17,33 @@ namespace Ignixa.CliOnFhir.Mcp;
 [McpServerToolType]
 public sealed class ResourceTools(FolderSession session)
 {
+    /// <summary>The argument names <c>search_fhir_resources</c> takes, as the client sends them.</summary>
+    private static readonly IReadOnlySet<string> SearchArguments = ToolArguments.Names(typeof(ResourceTools).GetMethod(nameof(SearchFhirResources))!);
+
     [McpServerTool(Name = "search_fhir_resources", ReadOnly = true, Idempotent = true)]
     [Description("""
         FHIR search over the folder: finds resources of one type that match a standard FHIR search query. Cheapest paths: scope
-        to one patient with compartment=Patient/<id> (needs only the patient's id, no lookup first); pass
-        'elements' to keep only the fields you need; summary=count answers "how many" with no resources; _sort=-date with
-        count=1 gives the latest; _include follows references, conditional ones ('Type?identifier=system|value') included.
-        The query uses FHIR search syntax, for example 'family=Smith', 'birthdate=gt1980', 'subject=Patient/p1',
-        'code=http://loinc.org|8867-4' or '_id=a,b'; parameters are ANDed, comma-separated values ORed.
+        to one patient with compartment=Patient/<id> (needs only the patient's id, no lookup first); ask for exactly the values
+        you need with 'columns' instead of reading resources; summary=count answers "how many" with no resources; _sort=-date
+        with count=1 gives the latest.
+        'columns' maps names to FHIRPath evaluated on each match and returns a table, facts.columns and facts.rows (each row
+        starts with 'ref', the resource it was read from), a fraction of the size of resources. .resolve() follows a reference
+        (urn:uuid and conditional ones included), so no _include is needed. Example for a medication list, whichever of
+        medicationCodeableConcept or medicationReference an order uses:
+        columns={"date":"authoredOn","drug":"(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display","prescriber":"requester.resolve().name.first().family"}.
+        A cell is null when the path yields nothing ('facts.emptyCells' counts them per column), the value when it yields one,
+        and an array when it yields several. Pages default to 50 rows (maximum 200).
+        'fhirpath' instead evaluates one FHIRPath over a searchset Bundle of every match (in _sort order) and returns
+        facts.value, with the resources it came from as evidence: 'entry.count()',
+        'entry.resource.value.ofType(Quantity).value.max()', or with _sort=-date 'entry.resource.first().value.ofType(Quantity)'.
+        An invalid FHIRPath fails the call with 'invalid-parameter'. 'elements' trims whole resources to top-level fields;
+        _include follows references, conditional ones ('Type?identifier=system|value') included.
+        Every FHIR search parameter, _sort and _count included, goes inside 'query' (for example
+        query='code=http://loinc.org|4548-4&_sort=-date'); an argument this tool does not define fails the call. The query uses
+        FHIR search syntax, for example 'family=Smith', 'birthdate=gt1980', 'subject=Patient/p1',
+        'code=http://loinc.org|8867-4' or '_id=a,b'; parameters are ANDed, comma-separated values ORed. ':text' matches the
+        start of a code's text or display, ignoring case. MedicationRequest 'code' matches medicationCodeableConcept only; an
+        order with medicationReference is found through the chain 'medication:Medication.code=...'.
         Also supported: chains ('subject:Patient.name=Smith', or 'subject.gender=female' when only one target type has
         the parameter), reverse chains ('_has:Observation:subject:code=8867-4'), '_sort=-date,_id' and
         '_include'/'_revinclude' (with ':iterate'), for example '_include=Encounter:subject'.
@@ -51,16 +70,29 @@ public sealed class ResourceTools(FolderSession session)
         """)]
     public CallToolResult SearchFhirResources(
         [Description("Resource type to search, for example 'Observation'.")] string resourceType,
-        [Description("FHIR search query string without the leading '?', for example 'code=http://loinc.org|8867-4&date=ge2020'. Omit to match every resource of the type.")] string? query = null,
-        [Description("Resources per page. Default 10, maximum 50. Overrides '_count' in the query.")] int? count = null,
+        [Description("FHIR search query string without the leading '?', for example 'code=http://loinc.org|8867-4&date=ge2020&_sort=-date'. Every search parameter, _sort and _count included, goes here. Omit to match every resource of the type.")] string? query = null,
+        [Description("Resources per page. Default 10, maximum 50 (with 'columns': rows per page, default 50, maximum 200). Overrides '_count' in the query.")] int? count = null,
         [Description("Number of matches to skip, in result order. Default 0. Use the offset given in 'omitted' to read the next page.")] int offset = 0,
         [Description("Pass 'count' to get only the total number of matches and no resources.")] string? summary = null,
         [Description("Comma-separated top-level elements to keep, for example 'code,valueQuantity'. resourceType, id and meta are always kept and trimmed resources are tagged SUBSETTED. Use the JSON property name (valueQuantity, not value[x]). Resources trimmed this way also lose meta.profile. Included resources are not trimmed.")] string? elements = null,
         [Description("True to ignore parameter names the search does not recognise (each reported as a 'parameter-ignored' warning) instead of failing. This can widen the results. Default false.")] bool lenient = false,
         [Description("Compartment to search within, 'Type/id', for example 'Patient/123'. Compartment types: Patient, Encounter, Practitioner, RelatedPerson, Device. A type that is never in such a compartment matches nothing, with a 'compartment-excludes-type' warning.")] string? compartment = null,
         [Description("Response budget in bytes. Default 12288, maximum 51200. Prefer 'elements', a date range or summary=count over raising it.")] int? maxBytes = null,
-        CancellationToken cancellationToken = default) =>
-        ToolResults.From(ResourceSearcher.Search(session, new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, maxBytes), cancellationToken));
+        [Description("""
+            Return a table instead of resources: an object mapping each column name to a FHIRPath evaluated on every match, for
+            example {"date":"effectiveDateTime","value":"valueQuantity.value","unit":"valueQuantity.unit"}. Use .resolve() to
+            read a referenced resource, for example "requester.resolve().name.first().family". Not with elements, summary or _include.
+            """)] Dictionary<string, string>? columns = null,
+        [Description("""
+            One FHIRPath evaluated over a searchset Bundle of every match (in _sort order), returned in facts.value; for example
+            'entry.count()' or 'entry.resource.valueQuantity.value.max()'. Not with columns, elements, summary, _include, count or offset.
+            """)] string? fhirpath = null,
+        RequestContext<CallToolRequestParams>? context = null,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new SearchRequest(resourceType, query, count, offset, summary, elements, lenient, compartment, maxBytes, columns is null ? null : SearchColumn.From(columns), fhirpath);
+        return ToolResults.From(ToolArguments.Check(session, SearchArguments, context?.Params?.Arguments?.Keys, lenient, () => ResourceSearcher.Search(session, request, cancellationToken), cancellationToken));
+    }
 
     [McpServerTool(Name = "plan_fhir_search", ReadOnly = true, Idempotent = true)]
     [Description("""

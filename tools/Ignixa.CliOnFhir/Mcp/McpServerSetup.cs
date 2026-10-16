@@ -18,11 +18,11 @@ public static class McpServerSetup
         Read-only FHIR data in one folder. Cheapest paths:
         - Patient: with an id or MRN, search directly with compartment=Patient/<id>; no lookup first. To find one, search Patient with identifier=<value> or name=<text>, or call patient_list with query (name, MRN, id or birth date). Do not list all patients.
         - Scope every other search to the patient with compartment=Patient/<id>.
-        - Pass elements to keep only the fields you need (for example code,value[x],effective[x]). summary=count answers "how many" with no resources.
-        - For the latest value use _sort=-date (or the type's date parameter) with count=1. Limit a range with date=ge<yyyy-mm-dd>.
-        - _include follows references, conditional ones such as Practitioner?identifier=system|value included, and returns them in 'included'.
+        - Ask for values, not resources: columns={"date":"authoredOn","drug":"(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display","prescriber":"requester.resolve().name.first().family"} returns a small table, whichever medication[x] an order uses. .resolve() follows references, conditional ones included, so _include and elements are rarely needed.
+        - One value over all matches: fhirpath, for example entry.count() or entry.resource.value.ofType(Quantity).value.max(). summary=count answers "how many".
+        - Every search parameter, _sort and _count included, goes inside query. Latest value: query=...&_sort=-date (or the type's date parameter) with count=1. Limit a range with date=ge<yyyy-mm-dd>.
         - Responses are held to about 12 KB. When one is cut, 'next' has the exact call for the rest and ways to narrow it; narrow rather than raise maxBytes.
-        - Check 'issues' every time: a parameter-ignored warning means a filter did not apply.
+        - Check 'issues' every time: parameter-ignored means a filter did not apply; column-empty means a path matched nothing.
         """;
 
     /// <summary>Names the server and gives it its <see cref="Instructions"/>.</summary>

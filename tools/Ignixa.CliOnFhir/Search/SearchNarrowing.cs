@@ -33,6 +33,18 @@ internal static class SearchNarrowing
         ["Patient"] = "name,birthDate,gender,identifier",
     };
 
+    /// <summary>Columns that answer most list questions about a type, as a table instead of resources.</summary>
+    private static readonly Dictionary<string, IReadOnlyList<SearchColumn>> Columns = new(StringComparer.Ordinal)
+    {
+        ["Observation"] = [new("date", "effective.ofType(dateTime)"), new("code", "code.coding.first().code"), new("display", "code.coding.first().display"), new("value", "value.ofType(Quantity).value"), new("unit", "value.ofType(Quantity).unit")],
+        ["Condition"] = [new("onset", "onset.ofType(dateTime)"), new("code", "code.coding.first().code"), new("display", "code.coding.first().display"), new("clinicalStatus", "clinicalStatus.coding.first().code")],
+        ["MedicationRequest"] = [new("date", "authoredOn"), new("drug", "(medication.ofType(CodeableConcept) | medication.ofType(Reference).resolve().code).coding.first().display"), new("status", "status")],
+        ["Encounter"] = [new("start", "period.start"), new("class", "class.code"), new("type", "type.first().coding.first().display")],
+        ["Procedure"] = [new("start", "performed.ofType(Period).start"), new("code", "code.coding.first().code"), new("display", "code.coding.first().display")],
+        ["DiagnosticReport"] = [new("date", "effective.ofType(dateTime)"), new("code", "code.coding.first().code"), new("display", "code.coding.first().display"), new("results", "result.count()")],
+        ["Immunization"] = [new("date", "occurrence.ofType(dateTime)"), new("vaccine", "vaccineCode.coding.first().display")],
+    };
+
     /// <summary>The search parameter that limits a type to a date range.</summary>
     private static readonly Dictionary<string, string> DateParameters = new(StringComparer.Ordinal)
     {
@@ -69,6 +81,11 @@ internal static class SearchNarrowing
             args["elements"] = request.Elements;
         }
 
+        if (request.Columns is not null)
+        {
+            args["columns"] = AsArgument(request.Columns);
+        }
+
         if (request.Lenient)
         {
             args["lenient"] = true;
@@ -103,9 +120,19 @@ internal static class SearchNarrowing
             return calls;
         }
 
-        if (request.Elements is null)
+        if (request.Columns is null && request.Elements is null)
         {
             calls.Add(TruncationCalls.Trim(current, Elements.GetValueOrDefault(request.ResourceType)));
+        }
+
+        if (request.Columns is null && Columns.TryGetValue(request.ResourceType, out IReadOnlyList<SearchColumn>? columns))
+        {
+            Dictionary<string, object> args = new(current.Args, StringComparer.Ordinal) { ["columns"] = AsArgument(columns) };
+            args.Remove("elements");
+            calls.Add(new NextCall(
+                Tool,
+                args,
+                "this page again as a table of values instead of resources, so many more fit; change the columns to the FHIRPath you need (.resolve() follows a reference)"));
         }
 
         if (DateParameters.TryGetValue(request.ResourceType, out string? parameter) && request.Query?.Contains(parameter + "=", StringComparison.Ordinal) != true)
@@ -129,6 +156,18 @@ internal static class SearchNarrowing
         }
 
         return calls;
+    }
+
+    /// <summary>Columns as the tool takes them: an object mapping each name to its FHIRPath, in column order.</summary>
+    private static Dictionary<string, string> AsArgument(IReadOnlyList<SearchColumn> columns)
+    {
+        Dictionary<string, string> map = new(StringComparer.Ordinal);
+        foreach (SearchColumn column in columns)
+        {
+            map[column.Name] = column.Path;
+        }
+
+        return map;
     }
 
     private static NextCall Count(SearchRequest request)
