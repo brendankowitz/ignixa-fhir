@@ -66,11 +66,20 @@ public sealed record SearchFacts(
 
     /// <summary>
     /// With <c>fhirpath</c>: what evidence lists. <c>result-elements</c> when every result item was read from a match (evidence
-    /// lists those matches); <c>matches</c> when the result was computed (a count, a maximum) or read from a resource
-    /// <c>resolve()</c> reached (evidence lists every match, then each resource <c>resolve()</c> reached). Absent otherwise.
+    /// lists those matches); <c>counted</c> when the expression is <c>X.count()</c> and X's items are whole matches (evidence and
+    /// <see cref="Counted"/> list the matches counted); <c>matches</c> when the result was otherwise computed (a maximum, a count of
+    /// elements) or read from a resource <c>resolve()</c> reached (evidence lists every match, then each resource <c>resolve()</c>
+    /// reached). Absent otherwise.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ValueFrom { get; init; }
+
+    /// <summary>
+    /// With a <c>fhirpath</c> of the form <c>X.count()</c> whose items are whole matches (<see cref="ValueFrom"/> <c>counted</c>):
+    /// the references of the matches counted, in result order, as many as fit; absent otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Counted { get; init; }
 
     /// <summary>
     /// With <c>perPatient</c>: the matches and patients before the selection and the matches kept, one per patient. <see cref="Total"/>,

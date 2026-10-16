@@ -5,6 +5,7 @@
 
 using System.ComponentModel;
 using Ignixa.CliOnFhir.CodeSystems;
+using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Inspection;
 using Ignixa.CliOnFhir.Session;
 using ModelContextProtocol.Protocol;
@@ -28,13 +29,21 @@ public sealed class FolderTools(FolderSession session)
 
     [McpServerTool(Name = "folder_code_systems", ReadOnly = true, Idempotent = true)]
     [Description("""
-        Which code systems the folder's codings use (SNOMED CT, LOINC, RxNorm, ICD-10, ...), counted from the data with no terminology and no network: per system its URI as written, name, distinct codes, the elements that use it and the most frequent codes. Paged by usage.
+        Which code systems the folder's codings use (SNOMED CT, LOINC, RxNorm, ICD-10, ...), counted from the data with no terminology and no network: per system its URI, alias and counts. top=n adds its top codes; detail=full adds elements and hints. Paged by usage.
         """)]
     public async Task<CallToolResult> FolderCodeSystems(
         [Description("Default 10, maximum 50.")] int? count = null,
         int offset = 0,
-        [Description("Codes listed per system, default 5.")] int? top = null,
+        [Description("Codes per system.")] int? top = null,
         [Description("Load terminology first to report how codes resolve.")] bool withTerminology = false,
-        CancellationToken cancellationToken = default) =>
-        ToolResults.From(await CodeSystems.FolderCodeSystems.ListAsync(session, count, offset, top, withTerminology, cancellationToken));
+        string? detail = null,
+        CancellationToken cancellationToken = default) => detail switch
+        {
+            null or "compact" => ToolResults.From(await CodeSystems.FolderCodeSystems.ListCompactAsync(session, count, offset, top, withTerminology, cancellationToken)),
+            "full" => ToolResults.From(await CodeSystems.FolderCodeSystems.ListAsync(session, count, offset, top, withTerminology, cancellationToken)),
+            _ => ToolResults.From(EnvelopeAssembler.Failure<object>(
+                session,
+                new IssueItem("error", "invalid-parameter", $"'detail' must be 'compact' (the default) or 'full', not '{detail}'.", Location: null),
+                cancellationToken)),
+        };
 }

@@ -111,7 +111,8 @@ internal static class PerPatient
     /// <summary>The bytes <paramref name="facts"/> add to a response's <c>facts</c>, so the rest can be fitted to what is left.</summary>
     public static int SizeOf(PerPatientFacts facts) => EnvelopeJson.SizeOf(facts) + ",\"perPatient\":".Length;
 
-    private static IEnumerable<string> Owners(InMemoryCompartmentMembership membership, IndexedResource match) =>
+    /// <summary>The ids of the patients whose Patient compartment <paramref name="match"/> is in; a Patient's own id for a Patient.</summary>
+    internal static IEnumerable<string> Owners(InMemoryCompartmentMembership membership, IndexedResource match) =>
         match.Key.ResourceType == CompartmentType
             ? [match.Key.Id]
             : FolderSearchSource.Candidates(match, CompartmentType).Where(id => membership.IsInCompartment(match.Key, match.Index, CompartmentType, id));

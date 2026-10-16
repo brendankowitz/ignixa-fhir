@@ -109,6 +109,7 @@ internal static class ColumnSearch
         }
 
         issues.AddRange(fhirPath.Problems);
+        omitted.AddRange(fhirPath.Omitted);
 
         // Assembled once: the assembler hands over the session's one-time cache notices, so each candidate size is a copy of it.
         ToolEnvelope<SearchFacts?> shell = ResourceSearcher.Envelope(session, source, facts: null, [], omitted, issues, cancellationToken);

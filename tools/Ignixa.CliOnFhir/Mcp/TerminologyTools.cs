@@ -30,7 +30,7 @@ public sealed class TerminologyTools(FolderSession session)
         new("validate", ["code"], ["system", "valueSet", "display", "version"]),
         new("subsumes", ["system", "codeA", "codeB"], ["version"]),
         new("navigate", ["system", "code"], ["direction", "depth", "version", "count", "offset"]),
-        new("expand", ["valueSet"], ["filter", "count", "offset"]),
+        new("expand", ["valueSet"], ["filter", "scope", "count", "offset"]),
         new("translate", ["system", "code"], ["targetSystem", "conceptMap"]),
         new("list", [], ["kind", "package", "filter", "includeFolderUsage", "count", "offset"]),
         new("classes", ["code"], ["source"]),
@@ -48,7 +48,7 @@ public sealed class TerminologyTools(FolderSession session)
         validate: code [system, valueSet, display, version]
         subsumes: system, codeA, codeB [version]
         navigate: system, code [direction, depth, version, count, offset] - descendants or ancestors
-        expand: valueSet [filter, count, offset]
+        expand: valueSet [filter, scope, count, offset] - isa/<sctid>; scope=folder: codes the data uses
         translate: system, code [targetSystem, conceptMap] - through ConceptMaps
         list: [kind, package, filter, includeFolderUsage, count, offset] - what is loaded
         class-search: text [source, count, offset] - drug classes (statin, beta blocker)
@@ -78,7 +78,7 @@ public sealed class TerminologyTools(FolderSession session)
         int? offset = null,
         string? classId = null,
         [Description("ATC, VA, EPC or MOA.")] string? source = null,
-        string? scope = null,
+        [Description("all or folder.")] string? scope = null,
         RequestContext<CallToolRequestParams>? context = null,
         CancellationToken cancellationToken = default)
     {
@@ -101,7 +101,7 @@ public sealed class TerminologyTools(FolderSession session)
             "validate" => ToolResults.From(await TermValidate.ValidateAsync(session, code, system, display, valueSet, version, cancellationToken)),
             "subsumes" => ToolResults.From(await TermSubsumes.SubsumesAsync(session, system, codeA, codeB, version, cancellationToken)),
             "navigate" => ToolResults.From(await TermNavigate.NavigateAsync(session, system, code, direction, depth, count, skip, version, cancellationToken)),
-            "expand" => ToolResults.From(await TermExpand.ExpandAsync(session, valueSet, filter, count, skip, cancellationToken)),
+            "expand" => await ExpandAsync(valueSet, filter, scope, count, skip, cancellationToken),
             "translate" => ToolResults.From(await TermTranslate.TranslateAsync(session, system, code, targetSystem, conceptMap, cancellationToken)),
             "list" => ToolResults.From(await TermList.ListAsync(session, kind, package, filter, count, skip, includeFolderUsage ?? false, cancellationToken)),
             "classes" => ToolResults.From(await TermClasses.ClassesAsync(session, code, source, cancellationToken)),
@@ -110,6 +110,16 @@ public sealed class TerminologyTools(FolderSession session)
             _ => throw new InvalidOperationException($"Operation '{operation}' passed the check but has no handler."),
         };
     }
+
+    private async Task<CallToolResult> ExpandAsync(string? valueSet, string? filter, string? scope, int? count, int offset, CancellationToken cancellationToken) => scope switch
+    {
+        null or "all" => ToolResults.From(await TermExpand.ExpandAsync(session, valueSet, filter, count, offset, cancellationToken)),
+        TermExpandInFolder.FolderScope => ToolResults.From(await TermExpandInFolder.ExpandAsync(session, valueSet, filter, count, offset, cancellationToken)),
+        _ => ToolResults.From(EnvelopeAssembler.Failure<object>(
+            session,
+            new IssueItem("error", "invalid-parameter", $"operation=expand takes scope 'all' (the default: every code) or 'folder' (only the codes the folder uses), not '{scope}'.", Location: null),
+            cancellationToken)),
+    };
 
     [McpServerTool(Name = "terminology_load_package", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = true)]
     [Description("""

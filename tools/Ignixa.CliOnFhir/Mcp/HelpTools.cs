@@ -17,7 +17,7 @@ namespace Ignixa.CliOnFhir.Mcp;
 public sealed class HelpTools
 {
     [McpServerTool(Name = "help", ReadOnly = true, Idempotent = true)]
-    [Description("Explains the other tools in depth. topic: search, columns, fhirpath, paging, references, issues, plan, patient_context, terminology, drug_classes, validate or folder.")]
+    [Description("Explains the other tools in depth. topic: search, columns, fhirpath, cohorts, hierarchies, paging, references, issues, plan, patient_context, terminology, drug_classes, validate or folder.")]
     public static CallToolResult Help(string topic) =>
         HelpTopics.All.TryGetValue(topic.Trim(), out string? text)
             ? new CallToolResult { Content = [new TextContentBlock { Text = text }] }

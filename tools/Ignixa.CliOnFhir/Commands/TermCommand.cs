@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.CommandLine;
+using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Terminology.DrugClasses;
 using Ignixa.CliOnFhir.Terminology.Tools;
@@ -103,9 +104,15 @@ internal static class TermCommand
     {
         Argument<string> valueSet = Required("valueSet", "The ValueSet url or url|version");
         var filter = new Option<string?>("--filter") { Description = "Keep codes whose display contains this text or whose code starts with it" };
+        var scope = new Option<string?>("--scope") { Description = "all (default) or folder: only the codes the folder's resources carry, with counts and the searches that find them" };
         (Option<int?> count, Option<int> offset) = Paging();
-        return Verb("expand", "A ValueSet's codes over the loaded terminology", [valueSet], [filter, count, offset], (parse, session, token) =>
-            TermExpand.ExpandAsync(session, parse.GetValue(valueSet), parse.GetValue(filter), parse.GetValue(count), parse.GetValue(offset), token));
+        return Verb("expand", "A ValueSet's codes over the loaded terminology (isa/<code> for a SNOMED CT hierarchy)", [valueSet], [filter, scope, count, offset], (parse, session, token) =>
+            parse.GetValue(scope) switch
+            {
+                TermExpandInFolder.FolderScope => Untyped(TermExpandInFolder.ExpandAsync(session, parse.GetValue(valueSet), parse.GetValue(filter), parse.GetValue(count), parse.GetValue(offset), token)),
+                null or "all" => Untyped(TermExpand.ExpandAsync(session, parse.GetValue(valueSet), parse.GetValue(filter), parse.GetValue(count), parse.GetValue(offset), token)),
+                string other => Task.FromResult(EnvelopeAssembler.Failure<object>(session, new IssueItem("error", "invalid-parameter", $"--scope is 'all' or 'folder', not '{other}'.", Location: null), token)),
+            });
     }
 
     private static Command Translate()
@@ -188,6 +195,14 @@ internal static class TermCommand
         });
 
         return command;
+    }
+
+    /// <summary>A call's envelope with its facts typed as object, for a verb whose answer type depends on an option.</summary>
+    private static async Task<ToolEnvelope<object?>> Untyped<TFacts>(Task<ToolEnvelope<TFacts?>> call)
+        where TFacts : class
+    {
+        ToolEnvelope<TFacts?> envelope = await call;
+        return new ToolEnvelope<object?>(envelope.Facts, envelope.Evidence, envelope.Omitted, envelope.Absent, envelope.Issues, envelope.Freshness) { Next = envelope.Next };
     }
 
     private static Argument<string> Required(string name, string description) => new(name) { Description = description };

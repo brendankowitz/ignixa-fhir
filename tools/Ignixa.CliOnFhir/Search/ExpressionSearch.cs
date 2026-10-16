@@ -34,6 +34,12 @@ internal static partial class ExpressionSearch
     public const string FromMatches = "matches";
 
     /// <summary>
+    /// The value is the number of matches an expression <c>X.count()</c> counted, each a whole match: they are listed in
+    /// <c>facts.counted</c> and cited in evidence, as many as fit.
+    /// </summary>
+    public const string FromCounted = "counted";
+
+    /// <summary>
     /// Most matches cited for a value computed over them (<see cref="FromMatches"/>): the query that found them is the citation,
     /// so listing every one would spend the budget on a count's provenance.
     /// </summary>
@@ -88,18 +94,75 @@ internal static partial class ExpressionSearch
         };
 
         IElement input = JsonSourceNodeFactory.Parse(bundle).ToElement(session.Schema);
-        IReadOnlyList<IElement> result = fhirPath.Evaluate(input, expression, "'fhirpath'", request.FhirPath!, $"the Bundle of {entries.Count} matches");
-        issues.AddRange(fhirPath.Problems);
-        issues.AddRange(UnresolvedNote(fhirPath.TakeUnresolved()));
+        string subject = $"the Bundle of {entries.Count} matches";
+        JsonArray value;
+        List<CatalogEntry> cited;
+        string valueFrom;
+        List<string>? counted = null;
+        if (CountedFocus(expression) is { } countedFocus)
+        {
+            // X.count() is evaluated as X and counted here, so that the matches it counts can be listed and cited.
+            IReadOnlyList<IElement> items = fhirPath.Evaluate(input, countedFocus, "'fhirpath'", request.FhirPath!, subject);
+            value = new JsonArray(items.Count);
+            IReadOnlyList<CatalogEntry> resolved = fhirPath.TakeResolved();
+            if (EntryPositions(items, entries.Count, wholeResources: true) is { } positions)
+            {
+                cited = [.. positions.Distinct().Select(position => entries[position])];
+                counted = [.. cited.Select(ResourceReader.Describe)];
+                valueFrom = FromCounted;
+            }
+            else
+            {
+                (cited, valueFrom) = ([.. entries.Concat(resolved).DistinctBy(entry => (entry.ResourceType, entry.Id))], FromMatches);
+            }
+        }
+        else
+        {
+            IReadOnlyList<IElement> result = fhirPath.Evaluate(input, expression, "'fhirpath'", request.FhirPath!, subject);
+            (cited, valueFrom) = Cited(result, entries, fhirPath.TakeResolved());
+            value = FhirPathJson.Values(result);
+        }
 
-        (List<CatalogEntry> cited, string valueFrom) = Cited(result, entries, fhirPath.TakeResolved());
+        issues.AddRange(fhirPath.Problems);
+        omitted.AddRange(fhirPath.Omitted);
+        issues.AddRange(UnresolvedNote(fhirPath.TakeUnresolved()));
         issues.AddRange(NameIssues.For(cited));
         List<EvidenceItem> evidence = [.. cited.Select(entry => new EvidenceItem(ResourceReader.Describe(entry), entry.FilePath, entry.Line, entry.Offset))];
-        JsonArray value = FhirPathJson.Values(result);
 
         // Assembled once: the assembler hands over the session's one-time cache notices, so each candidate size is a copy of it.
         ToolEnvelope<SearchFacts?> shell = ResourceSearcher.Envelope(session, source, facts: null, [], omitted, issues, cancellationToken);
-        return new Fit(shell, request, matches.Count, value, valueFrom, evidence).Within(budget);
+        return new Fit(shell, request, matches.Count, value, valueFrom, evidence, counted).Within(budget);
+    }
+
+    /// <summary>The <c>X</c> of an expression that is <c>X.count()</c>; null for any other expression.</summary>
+    private static Expression? CountedFocus(Expression expression) =>
+        expression is FunctionCallExpression { Focus: { } focus, Arguments.Count: 0 } call && call.FunctionName.Equals("count", StringComparison.OrdinalIgnoreCase)
+            ? focus
+            : null;
+
+    /// <summary>
+    /// The Bundle entry each item was read from, when every item was read from one (and, with <paramref name="wholeResources"/>,
+    /// is that entry's resource itself rather than an element inside it); null otherwise.
+    /// </summary>
+    private static List<int>? EntryPositions(IReadOnlyList<IElement> items, int entryCount, bool wholeResources)
+    {
+        List<int> positions = [];
+        foreach (IElement item in items)
+        {
+            string location = item.Location ?? string.Empty;
+            Match entry = EntryLocation().Match(location);
+            if (!entry.Success
+                || (wholeResources && entry.Length != location.Length)
+                || !int.TryParse(entry.Groups["index"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int position)
+                || position >= entryCount)
+            {
+                return null;
+            }
+
+            positions.Add(position);
+        }
+
+        return positions;
     }
 
     /// <summary>
@@ -109,20 +172,7 @@ internal static partial class ExpressionSearch
     /// </summary>
     private static (List<CatalogEntry> Cited, string ValueFrom) Cited(IReadOnlyList<IElement> result, List<CatalogEntry> entries, IReadOnlyList<CatalogEntry> resolved)
     {
-        List<int> positions = [];
-        foreach (IElement item in result)
-        {
-            Match entry = EntryLocation().Match(item.Location ?? string.Empty);
-            if (!entry.Success || !int.TryParse(entry.Groups["index"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int position) || position >= entries.Count)
-            {
-                positions.Clear();
-                break;
-            }
-
-            positions.Add(position);
-        }
-
-        if (result.Count > 0 && positions.Count == result.Count)
+        if (result.Count > 0 && EntryPositions(result, entries.Count, wholeResources: false) is { } positions)
         {
             return ([.. positions.Distinct().Select(position => entries[position])], FromResultElements);
         }
@@ -145,18 +195,20 @@ internal static partial class ExpressionSearch
             Location: null)];
     }
 
-    [GeneratedRegex(@"^Bundle\.entry\[(?<index>\d+)\]\.resource(\.|\[|$)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^Bundle\.entry\[(?<index>\d+)\]\.resource(?=\.|\[|$)", RegexOptions.CultureInvariant)]
     private static partial Regex EntryLocation();
 
     /// <summary>The value and its evidence cut to the budget: the value first, then as much evidence as still fits.</summary>
-    private sealed class Fit(ToolEnvelope<SearchFacts?> shell, SearchRequest request, int total, JsonArray value, string valueFrom, List<EvidenceItem> evidence)
+    private sealed class Fit(ToolEnvelope<SearchFacts?> shell, SearchRequest request, int total, JsonArray value, string valueFrom, List<EvidenceItem> evidence, List<string>? counted)
     {
+        /// <summary>The value first, then as many counted references as fit, then as much evidence as still fits.</summary>
         public ToolEnvelope<SearchFacts?> Within(int budget)
         {
-            int items = Largest(value.Count, shown => Build(shown, evidenceShown: 0), budget);
+            int items = Largest(value.Count, shown => Build(shown, countedShown: 0, evidenceShown: 0), budget);
+            int listed = Largest(counted?.Count ?? 0, shown => Build(items, shown, evidenceShown: 0), budget);
             int cap = valueFrom == FromMatches ? Math.Min(evidence.Count, MatchEvidenceLimit) : evidence.Count;
-            int cited = Largest(cap, shown => Build(items, shown), budget);
-            return Build(items, cited);
+            int cited = Largest(cap, shown => Build(items, listed, shown), budget);
+            return Build(items, listed, cited);
         }
 
         /// <summary>The largest <c>n</c> in <c>[0, count]</c> whose response fits, assuming size grows with <c>n</c>.</summary>
@@ -180,13 +232,20 @@ internal static partial class ExpressionSearch
             return low;
         }
 
-        private ToolEnvelope<SearchFacts?> Build(int valueShown, int evidenceShown)
+        private ToolEnvelope<SearchFacts?> Build(int valueShown, int countedShown, int evidenceShown)
         {
             List<OmittedItem> allOmitted = [.. shell.Omitted];
             if (valueShown < value.Count)
             {
                 allOmitted.Add(new OmittedItem(
                     $"{value.Count - valueShown} more items of the value (offset={valueShown}); narrow the expression, for example with .select(...), .take(n) or .skip(n)",
+                    "size-budget"));
+            }
+
+            if (counted is not null && countedShown < counted.Count)
+            {
+                allOmitted.Add(new OmittedItem(
+                    $"{counted.Count - countedShown} more counted matches are not listed in facts.counted (it lists the first {countedShown}); the same fhirpath without .count(), with .select(id), returns them all",
                     "size-budget"));
             }
 
@@ -202,6 +261,7 @@ internal static partial class ExpressionSearch
                 FhirPath = request.FhirPath,
                 Value = new JsonArray([.. value.Take(valueShown).Select(item => item?.DeepClone())]),
                 ValueFrom = valueFrom,
+                Counted = counted is null ? null : [.. counted.Take(countedShown)],
             };
 
             return shell with { Facts = facts, Evidence = [.. evidence.Take(evidenceShown)], Omitted = allOmitted };

@@ -20,6 +20,7 @@ internal static class TxAnswers
 {
     public const string UsedCode = "tx-server-answered";
     public const string NotFoundOutcome = "not-found-by-tx-server";
+    public const string TotalUnknownCode = "tx-server-total-unknown";
 
     /// <summary>A <c>$validate-code</c> answer of <c>result: false</c> because the server does not have the code system or ValueSet.</summary>
     public const string NotCheckedOutcome = "not-checked-by-tx-server";
@@ -192,7 +193,7 @@ internal static class TxAnswers
         int? total = expansion["total"] is JsonValue count && count.GetValueKind() == JsonValueKind.Number ? count.GetValue<int>() : null;
         if (total is null)
         {
-            issues.Add(new IssueItem("information", "tx-server-total-unknown", "The terminology server did not say how many codes the expansion has; 'facts.total' counts only those up to this page, and more may follow.", Location: null));
+            issues.Add(new IssueItem("information", TotalUnknownCode, "The terminology server did not say how many codes the expansion has; 'facts.total' counts only those up to this page, and more may follow.", Location: null));
         }
 
         string? reported = TxParameters.String(expanded, "version");

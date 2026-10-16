@@ -25,17 +25,34 @@ namespace Ignixa.CliOnFhir.Search;
 /// Resources are read through <see cref="ResourceElements"/>, so a Bundle (<c>urn:uuid:</c>) or conditional
 /// (<c>Type?identifier=...</c>) reference reads as the <c>Type/id</c> the search index resolved it to, and <c>resolve()</c>
 /// follows it as a search or <c>_include</c> would. Records which resources <c>resolve()</c> reached, for evidence, and which
-/// references it could not find. Not thread-safe.
+/// references it could not find. Binds <see cref="PatientSearch"/> as <c>patientSearch(type, query)</c>. Not thread-safe.
 /// </summary>
-internal sealed partial class FolderFhirPath(FolderSession session)
+internal sealed partial class FolderFhirPath
 {
-    private readonly ResourceElements _elements = new(session);
+    private readonly FolderSession _session;
+    private readonly ResourceElements _elements;
     private readonly FhirPathEvaluator _evaluator = new();
+    private readonly PatientSearch _patientSearch;
+    private readonly IReadOnlyDictionary<string, HostFunction> _functions;
     private readonly List<CatalogEntry> _resolved = [];
     private readonly List<string> _unresolved = [];
 
-    /// <summary>Resources that could not be read (changed or removed since they were catalogued), one issue each.</summary>
-    public IReadOnlyList<IssueItem> Problems => _elements.Problems;
+    public FolderFhirPath(FolderSession session)
+    {
+        _session = session;
+        _elements = new ResourceElements(session);
+        _patientSearch = new PatientSearch(session, _elements.Get);
+        _functions = new Dictionary<string, HostFunction>(StringComparer.OrdinalIgnoreCase) { [PatientSearch.FunctionName] = _patientSearch.Invoke };
+    }
+
+    /// <summary>
+    /// Resources that could not be read (changed or removed since they were catalogued), one issue each, then the notes of
+    /// the <c>patientSearch</c> subqueries.
+    /// </summary>
+    public IReadOnlyList<IssueItem> Problems => [.. _elements.Problems, .. _patientSearch.Notes];
+
+    /// <summary>Diagnostics of the <c>patientSearch</c> subqueries beyond those in <see cref="Problems"/>, counted.</summary>
+    public IReadOnlyList<OmittedItem> Omitted => _patientSearch.Omitted;
 
     /// <summary>Parses <paramref name="expression"/>, failing the request with what is wrong with it.</summary>
     /// <param name="label">How the request names the expression, for example <c>column 'date'</c>.</param>
@@ -62,7 +79,7 @@ internal sealed partial class FolderFhirPath(FolderSession session)
     /// nothing else to evaluate it on, so a function the engine does not implement fails the call even when nothing matched.
     /// </summary>
     public IElement Empty(string resourceType) =>
-        JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = resourceType }).ToElement(session.Schema);
+        JsonSourceNodeFactory.Parse(new JsonObject { ["resourceType"] = resourceType }).ToElement(_session.Schema);
 
     /// <summary>The resource as FHIRPath input, or null when it cannot be read now (the reason is in <see cref="Problems"/>).</summary>
     public IElement? Read(CatalogEntry entry) => _elements.Get(entry);
@@ -74,7 +91,7 @@ internal sealed partial class FolderFhirPath(FolderSession session)
     /// <exception cref="ToolRequestException">The engine could not evaluate the expression on this input.</exception>
     public IReadOnlyList<IElement> Evaluate(IElement resource, Expression expression, string label, string text, string subject)
     {
-        var context = new FhirEvaluationContext { ElementResolver = Resolve, Resource = resource, RootResource = resource };
+        var context = new FhirEvaluationContext { ElementResolver = Resolve, Resource = resource, RootResource = resource, HostFunctions = _functions };
         try
         {
             return [.. _evaluator.Evaluate(resource, expression, context)];
@@ -112,7 +129,7 @@ internal sealed partial class FolderFhirPath(FolderSession session)
     {
         Match local = LocalReference().Match(reference);
         if (local.Success
-            && session.FindEntry(local.Groups["type"].Value, local.Groups["id"].Value) is { } entry
+            && _session.FindEntry(local.Groups["type"].Value, local.Groups["id"].Value) is { } entry
             && _elements.Get(entry) is { } element)
         {
             _resolved.Add(entry);
