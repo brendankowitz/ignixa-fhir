@@ -20,11 +20,12 @@ namespace Ignixa.CliOnFhir.Validation;
 /// Validates one resource against its core definition and its profiles: the requested one, or else each <c>meta.profile</c>
 /// that is loaded (one that is not is reported as <see cref="ValidationRules.ProfileNotLoaded"/>). Each schema is run on its
 /// own, so every issue names the StructureDefinition that raised it; an issue a profile repeats from the core definition
-/// is counted once, under the core definition. The checks the validator skips without a word are added by
-/// <see cref="ValidatorGapDetectors"/>, and at depth <c>spec</c> a <see cref="ValidationRules.DepthSpec"/> note keeps every
-/// verdict from reading <c>valid</c>.
+/// is counted once, under the core definition. Each resource is validated with its own settings, whose
+/// <see cref="ValidationSettings.ReferenceTypeResolver"/> answers the urns the folder's Bundles resolve; the references
+/// whose target type the validator could not tell are counted, not grouped. At depth <c>spec</c> a
+/// <see cref="ValidationRules.DepthSpec"/> note keeps every verdict from reading <c>valid</c>.
 /// </summary>
-internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, ValidationSettings settings, LoadedProfile? requested, IReadOnlySet<string> resourceTypes, Func<CatalogEntry, JsonObject, IReadOnlyDictionary<string, string>> bundleReferences)
+internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, ValidationSettings settings, LoadedProfile? requested, Func<CatalogEntry, JsonObject, IReadOnlyDictionary<string, string>> bundleReferences)
 {
     private const string CorePrefix = "http://hl7.org/fhir/StructureDefinition/";
 
@@ -53,6 +54,8 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
 
         IElement element = JsonNodeSourceNode.Create(resource).ToElement(profiles.Schema);
         string coreUrl = CorePrefix + entry.ResourceType;
+        ValidationSettings resourceSettings = ForResource(bundleReferences(entry, resource));
+        UncheckedReferences references = new();
         List<ClassifiedIssue> classified = [];
         List<ValidationIssue> raw = [];
         HashSet<(IssueSeverity, string, string, string)> seen = [];
@@ -63,8 +66,7 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
             return new ResourceValidation(entry, ResourceValidation.Unknown, [IssueClassifier.Classify(missing, coreUrl) with { Rule = ValidationRules.SchemaNotFound }], [missing], null);
         }
 
-        Run(core, coreUrl, element, classified, raw, seen);
-        List<(LoadedProfile Profile, string Name)> applied = [];
+        Run(core, coreUrl, element, resourceSettings, references, classified, raw, seen);
         foreach (string canonical in ProfilesOf(resource, coreUrl))
         {
             LoadedProfile? profile = profiles.Find(canonical);
@@ -81,26 +83,28 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
                 continue;
             }
 
-            Run(schema, named, element, classified, raw, seen);
-            applied.Add((profile, named));
-        }
-
-        GapFindings gaps = ValidatorGapDetectors.Detect(element, coreUrl, applied, profiles.TypeOf, resourceTypes, bundleReferences(entry, resource));
-        foreach ((ValidationIssue gap, ClassifiedIssue summary) in gaps.Issues)
-        {
-            raw.Add(gap);
-            classified.Add(summary);
+            Run(schema, named, element, resourceSettings, references, classified, raw, seen);
         }
 
         if (settings.Depth == ValidationDepth.Spec)
         {
-            ValidationIssue spec = new(IssueSeverity.Information, ValidationRules.DepthSpec, entry.ResourceType, $"{ValidationRules.DepthSpec}: invariants, slicing, extensible bindings and complex choice variants were not checked at depth spec");
+            ValidationIssue spec = new(IssueSeverity.Information, ValidationRules.DepthSpec, entry.ResourceType, $"{ValidationRules.DepthSpec}: invariants, slicing, extensible bindings and extension definitions were not checked at depth spec");
             raw.Add(spec);
             classified.Add(new ClassifiedIssue("information", coreUrl, ValidationRules.DepthSpec, null, null, entry.ResourceType));
         }
 
-        return new ResourceValidation(entry, ResourceValidation.VerdictOf(classified), classified, raw, null) { UndeterminableReferences = gaps.UndeterminableReferences, DisplayOnlyReferences = gaps.DisplayOnlyReferences };
+        return new ResourceValidation(entry, ResourceValidation.VerdictOf(classified), classified, raw, null) { UndeterminableReferences = references.Undeterminable.Count, DisplayOnlyReferences = references.DisplayOnly.Count };
     }
+
+    /// <summary>The call's settings, with a resolver for the urns <paramref name="resolved"/> maps to the <c>Type/id</c> they name in the folder.</summary>
+    private ValidationSettings ForResource(IReadOnlyDictionary<string, string> resolved) => new()
+    {
+        Depth = settings.Depth,
+        TerminologyService = settings.TerminologyService,
+        TerminologyFailureMode = settings.TerminologyFailureMode,
+        SkipTerminologyValidation = settings.SkipTerminologyValidation,
+        ReferenceTypeResolver = resolved.Count == 0 ? null : new BundleReferenceTypes(resolved),
+    };
 
     /// <summary>The requested profile, or else the resource's <c>meta.profile</c> canonicals, each once, without its core definition.</summary>
     private IEnumerable<string> ProfilesOf(JsonObject resource, string coreUrl)
@@ -116,15 +120,27 @@ internal sealed class ResourceCheck(string rootPath, ProfileSet profiles, Valida
         return declared.Where(canonical => canonical.Length > 0 && TerminologyStore.SplitCanonical(canonical).Url != coreUrl).Distinct(StringComparer.Ordinal);
     }
 
-    private void Run(ValidationSchema schema, string profile, IElement element, List<ClassifiedIssue> classified, List<ValidationIssue> raw, HashSet<(IssueSeverity, string, string, string)> seen)
+    /// <summary>
+    /// Runs one schema, keeping each issue once. A reference whose target type the validator could not tell is counted (once per
+    /// element, whichever schema reported it) and kept in the full outcome, but not grouped: it leaves the verdict as it is.
+    /// </summary>
+    private static void Run(ValidationSchema schema, string profile, IElement element, ValidationSettings settings, UncheckedReferences references, List<ClassifiedIssue> classified, List<ValidationIssue> raw, HashSet<(IssueSeverity, string, string, string)> seen)
     {
         foreach (ValidationIssue issue in schema.Validate(element, settings).Issues)
         {
-            if (seen.Add((issue.Severity, issue.Code, issue.Path, issue.Message)))
+            if (!seen.Add((issue.Severity, issue.Code, issue.Path, issue.Message)))
             {
-                raw.Add(issue);
-                classified.Add(IssueClassifier.Classify(issue, profile));
+                continue;
             }
+
+            raw.Add(issue);
+            if (issue.Code == ValidationRules.ReferenceTargetUnchecked)
+            {
+                (issue.TemplateId == IssueTemplates.ReferenceTargetDisplayOnly.Id ? references.DisplayOnly : references.Undeterminable).Add(issue.Path);
+                continue;
+            }
+
+            classified.Add(IssueClassifier.Classify(issue, profile));
         }
     }
 

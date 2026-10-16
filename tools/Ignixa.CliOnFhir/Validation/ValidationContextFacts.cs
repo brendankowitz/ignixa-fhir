@@ -16,9 +16,10 @@ namespace Ignixa.CliOnFhir.Validation;
 /// <param name="TxServer">Whether bindings the local terminology could not decide were asked of the <c>--tx-server</c>.</param>
 /// <param name="DisplaysChecked">Always false: coding displays are not checked.</param>
 /// <param name="ChecksNotRun">
-/// The checks that did not run at this depth: at <c>spec</c> invariants, slicing, extensible bindings and complex choice
-/// variants (so no resource is reported valid, see <c>depth-spec</c>); at every depth extensions (a resource with any is
-/// <c>unknown</c>, see <c>extensions-not-validated</c>) and displays (which cannot change a verdict).
+/// The checks that did not run at this depth: at <c>spec</c> invariants, slicing, extensible bindings and extension
+/// definitions (so no resource is reported valid, see <c>depth-spec</c>); at every depth extension contexts and displays
+/// (an extension whose definition is not loaded is reported per resource, see <c>extension-definition-unchecked</c>); and
+/// the references whose target type could not be checked, counted (they cannot change a verdict).
 /// </param>
 public sealed record ValidationContextFacts(
     string Depth,

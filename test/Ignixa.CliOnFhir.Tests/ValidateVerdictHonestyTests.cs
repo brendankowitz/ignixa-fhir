@@ -65,13 +65,16 @@ public class ValidateVerdictHonestyTests
         }
     }
 
+    // Since Task 9b the validator validates extensions: as the Extension datatype at every depth, and against a loaded definition
+    // at full; one whose definition is not loaded is reported, so its resource is unknown, never valid.
     [Fact]
-    public async Task GivenResourcesWithExtensions_WhenValidatedAtEitherDepth_ThenTheyAreUnknownBecauseExtensionsAreNotValidated()
+    public async Task GivenResourcesWithExtensions_WhenValidatedAtEitherDepth_ThenTheirValuesAreCheckedAndAnUndefinedOneLeavesTheVerdictUnknown()
     {
         using var folder = new TestFolder();
         folder.Write("r.ndjson", """
-            {"resourceType":"Patient","id":"x1","extension":[{"url":"http://example.org/ext","valueQuantity":{"value":1,"comparator":"bogus"}}]}
+            {"resourceType":"Patient","id":"x1","extension":[{"url":"http://example.org/ext","valueQuantity":{"value":"1"}}]}
             {"resourceType":"Patient","id":"x2","gender":"male"}
+            {"resourceType":"Patient","id":"x3","extension":[{"url":"http://example.org/ext","valueString":"ok"}]}
             """);
         using var store = new TestFolder();
         FolderSession session = WithTerminology(folder, store);
@@ -79,13 +82,45 @@ public class ValidateVerdictHonestyTests
         JsonNode full = Json(await ResourceValidator.ValidateAsync(session, new ValidateRequest(Depth: "full")));
         JsonNode spec = Json(await ResourceValidator.ValidateAsync(session, new ValidateRequest(Depth: "spec")));
 
+        ((int)full["facts"]!["verdicts"]!["invalid"]!).ShouldBe(1);
         ((int)full["facts"]!["verdicts"]!["valid"]!).ShouldBe(1);
         ((int)full["facts"]!["verdicts"]!["unknown"]!).ShouldBe(1);
-        JsonNode extension = Groups(full).Single(item => (string)item!["rule"]! == "extensions-not-validated")!;
-        ((string)extension["path"]!).ShouldBe("Patient.extension");
-        Strings(extension["samples"]!).ShouldBe(["Patient/x1"]);
-        Rules(spec).ShouldContain("extensions-not-validated");
+        JsonNode type = Groups(full).Single(item => (string)item!["rule"]! == "type-1")!;
+        ((string)type["path"]!).ShouldBe("Patient.extension.valueQuantity.value");
+        Strings(type["samples"]!).ShouldBe(["Patient/x1"]);
+        JsonNode undefined = Groups(full).Single(item => (string)item!["rule"]! == "extension-definition-unchecked")!;
+        ((string)undefined["path"]!).ShouldBe("Patient.extension");
+        Strings(undefined["samples"]!).ShouldBe(["Patient/x1", "Patient/x3"]);
+        Rules(full).ShouldNotContain("extensions-not-validated");
+        ((int)spec["facts"]!["verdicts"]!["invalid"]!).ShouldBe(1);
         ((int)spec["facts"]!["verdicts"]!["valid"]!).ShouldBe(0);
+        Strings(spec["facts"]!["against"]!["checksNotRun"]!).ShouldContain("extension-definitions");
+    }
+
+    // Regression: at 635c8f6 a resource with any extension was unknown, so one conforming to a loaded extension definition was
+    // never valid and one breaking it was never invalid.
+    [Fact]
+    public async Task GivenAFolderExtensionDefinition_WhenValidatedAtFull_ThenAConformingExtensionIsValidAndAWrongValueTypeInvalid()
+    {
+        using var folder = new TestFolder();
+        folder.Write("sd.json", """
+            {"resourceType":"StructureDefinition","id":"ext-code","url":"http://example.org/fhir/StructureDefinition/ext-code","version":"1.0.0","name":"ExtCode","status":"active","fhirVersion":"4.0.1",
+             "kind":"complex-type","abstract":false,"context":[{"type":"element","expression":"Patient"}],"type":"Extension","baseDefinition":"http://hl7.org/fhir/StructureDefinition/Extension","derivation":"constraint",
+             "differential":{"element":[{"id":"Extension","path":"Extension","max":"1"},{"id":"Extension.extension","path":"Extension.extension","max":"0"},{"id":"Extension.url","path":"Extension.url","fixedUri":"http://example.org/fhir/StructureDefinition/ext-code"},{"id":"Extension.value[x]","path":"Extension.value[x]","min":1,"type":[{"code":"code"}]}]}}
+            """);
+        folder.Write("r.ndjson", """
+            {"resourceType":"Patient","id":"good","extension":[{"url":"http://example.org/fhir/StructureDefinition/ext-code","valueCode":"a"}]}
+            {"resourceType":"Patient","id":"bad","extension":[{"url":"http://example.org/fhir/StructureDefinition/ext-code","valueString":"a"}]}
+            """);
+        using var store = new TestFolder();
+
+        JsonNode full = Json(await ResourceValidator.ValidateAsync(WithTerminology(folder, store), new ValidateRequest(ResourceType: "Patient", Depth: "full")));
+
+        ((int)full["facts"]!["verdicts"]!["valid"]!).ShouldBe(1);
+        ((int)full["facts"]!["verdicts"]!["invalid"]!).ShouldBe(1);
+        JsonNode choice = Groups(full).Single(item => (string)item!["rule"]! == "choice-invalid-type")!;
+        Strings(choice["samples"]!).ShouldBe(["Patient/bad"]);
+        Rules(full).ShouldNotContain("extension-definition-unchecked");
     }
 
     [Fact]

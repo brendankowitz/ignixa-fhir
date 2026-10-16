@@ -61,10 +61,10 @@ internal static class RuleDescriptions
         [ValidationRules.ConstraintNotEvaluated] = "A FHIRPath constraint (named in 'constraint') could not be evaluated against the resource.",
         [ValidationRules.SlicingDeferred] = "A slicing could not be evaluated (its discriminator could not be read), so it was not enforced.",
         [ValidationRules.NestingLimit] = "The element is nested deeper than the validator descends, so it was not validated.",
-        [ValidationRules.DepthSpec] = "Validated at depth spec, which does not run invariants, slicing, extensible bindings or complex choice variants; validate at depth full for a verdict.",
+        [ValidationRules.DepthSpec] = "Validated at depth spec, which does not run invariants, slicing, extensible bindings or extension definitions; validate at depth full for a verdict.",
         [ValidationRules.ReferenceTypeMismatch] = "A reference's 'type' names a different resource type than its 'reference' does.",
         [ValidationRules.ReferenceTargetType] = "A reference points at a resource type the element does not allow (by the core definition or a profile's target profiles).",
-        [ValidationRules.ExtensionsNotValidated] = "The resource has extensions, which the validator does not check (definitions, value types, bindings), so its verdict is unknown.",
+        [ValidationRules.ExtensionDefinitionUnchecked] = "An extension was validated only as the Extension datatype: its definition is not loaded, or it is a sub-extension whose slice rules are not checked; so the verdict is unknown.",
         [ValidationRules.BindingRequiredTextOnly] = "A CodeableConcept under a required binding has text only: it carries no coding from the ValueSet (named in 'valueSet').",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 

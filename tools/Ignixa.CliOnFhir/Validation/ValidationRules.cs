@@ -35,20 +35,29 @@ internal static class ValidationRules
     public const string ProfileTypeMismatch = "profile-type-mismatch";
 
     /// <summary>
-    /// Validated at <c>spec</c> depth, which does not run invariants, slicing, extensible bindings or complex choice variants.
+    /// Validated at <c>spec</c> depth, which does not run invariants, slicing, extensible bindings or extension definitions.
     /// Every resource is subject to invariants (<c>ele-1</c> on every element, <c>dom-*</c> on every DomainResource), so at
     /// <c>spec</c> one of the skipped checks always applies and no resource can be shown valid.
     /// </summary>
     public const string DepthSpec = "depth-spec";
 
-    /// <summary>The resource has extensions, which Ignixa.Validation does not validate (see <see cref="ValidatorGapDetectors"/>).</summary>
-    public const string ExtensionsNotValidated = "extensions-not-validated";
+    /// <summary>
+    /// An extension validated only as the Extension datatype: its definition is not loaded, or it is a sub-extension of a complex
+    /// extension whose slice rules the validator does not model.
+    /// </summary>
+    public const string ExtensionDefinitionUnchecked = "extension-definition-unchecked";
 
-    /// <summary>A reference whose <c>type</c> names another resource type than its <c>reference</c> does (see <see cref="ValidatorGapDetectors"/>).</summary>
+    /// <summary>A reference whose <c>type</c> names another resource type than its <c>reference</c> does.</summary>
     public const string ReferenceTypeMismatch = "reference-type-mismatch";
 
-    /// <summary>A reference to a resource type the element does not allow (see <see cref="ValidatorGapDetectors"/>).</summary>
+    /// <summary>A reference to a resource type the element does not allow.</summary>
     public const string ReferenceTargetType = "reference-target-type";
+
+    /// <summary>
+    /// A reference whose target type the validator could not check (undeterminable, display-only, or a target profile not loaded);
+    /// counted in <c>checksNotRun</c>, and leaving the verdict as it is, since no validator can check it without the target.
+    /// </summary>
+    public const string ReferenceTargetUnchecked = "reference-target-unchecked";
 
     /// <summary>A CodeableConcept with text only under a required binding: it carries no coding from the ValueSet.</summary>
     public const string BindingRequiredTextOnly = "binding-required-text-only";
@@ -58,7 +67,7 @@ internal static class ValidationRules
 
     /// <summary>The rules that leave a verdict unknown.</summary>
     public static IReadOnlySet<string> Unevaluated { get; } = new HashSet<string>(
-        [StoreTerminologyService.NotCheckedRule, ProfileNotLoaded, ConstraintNotEvaluated, TerminologyError, SlicingDeferred, NestingLimit, SchemaNotFound, DepthSpec, ExtensionsNotValidated],
+        [StoreTerminologyService.NotCheckedRule, ProfileNotLoaded, ConstraintNotEvaluated, TerminologyError, SlicingDeferred, NestingLimit, SchemaNotFound, DepthSpec, ExtensionDefinitionUnchecked],
         StringComparer.Ordinal);
 
     /// <summary>The rules counted in a summary's <c>notChecked</c>: the unevaluated ones and unchecked extensible bindings.</summary>

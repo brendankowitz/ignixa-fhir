@@ -32,12 +32,13 @@ public sealed class ValidationTools(FolderSession session)
         to a resource type the element or a profile does not allow: 'reference-target-type', or one whose 'type' disagrees
         with it: 'reference-type-mismatch'), unknown (no error, but a
         check could not be evaluated or did not run: a required binding (core or a profile's) the loaded terminology cannot
-        decide, a profile not loaded, a constraint the engine cannot evaluate, any extension (the validator does not check
-        extensions), depth spec) and unreadable. 'facts.notChecked' counts the checks that did not conclude, by rule;
+        decide, a profile not loaded, a constraint the engine cannot evaluate, an extension whose definition is not loaded
+        or a sub-extension whose slice rules are not checked ('extension-definition-unchecked'), depth spec) and unreadable. 'facts.notChecked' counts the checks that did not conclude, by rule;
         'facts.against.checksNotRun' lists what the depth does not run, and 'reference-target-type (undeterminable: N)' for
         references whose target type cannot be told (an unresolved urn, an identifier only) and '(display-only: N)' for
         references with only a display, which leave the verdict unchanged. 'depth' is 'full' (default: structure, cardinality, types, bindings, invariants,
-        slicing) or 'spec' (no invariants, slicing, extensible bindings or complex choice variants, so no resource is valid).
+        slicing) or 'spec' (no invariants, slicing, extensible bindings or extension definitions, so no resource is valid).
+        Extension contexts are not checked at either depth.
         'facts.groups' groups the issues by severity, profile, rule, constraint key, ValueSet and element path, each with the
         tool's own description of the rule, counts and up to 3 sample resources, which are the evidence; the validator's
         messages, which quote the data and profile text, are never shown there.

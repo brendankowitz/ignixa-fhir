@@ -107,7 +107,6 @@ public static class ResourceValidator
             profiles,
             new ValidationSettings { Depth = depth, TerminologyService = session.Validators.Terminology },
             requested,
-            session.Schema.ResourceTypeNames,
             (entry, resource) => BundleReferences(session, entry, resource));
         List<ResourceValidation> validations = [.. page.Select(entry =>
         {
@@ -277,16 +276,16 @@ public static class ResourceValidator
             yield return new IssueItem("information", ValidationRules.ConstraintNotEvaluated, $"{constraints} resources have FHIRPath constraints the engine could not evaluate against them; their verdict is unknown unless another check failed.", Location: null);
         }
 
-        int extensions = summary.ResourcesNotChecked(ValidationRules.ExtensionsNotValidated);
+        int extensions = summary.ResourcesNotChecked(ValidationRules.ExtensionDefinitionUnchecked);
         if (extensions > 0)
         {
-            yield return new IssueItem("warning", ValidationRules.ExtensionsNotValidated, $"{extensions} resources have extensions, which Ignixa.Validation does not validate (definitions, value types, bindings), so their verdict is unknown unless another check failed.", Location: null);
+            yield return new IssueItem("warning", ValidationRules.ExtensionDefinitionUnchecked, $"{extensions} resources have extensions validated only as the Extension datatype: their definitions are not loaded, or they are sub-extensions of a complex extension whose slice rules are not checked. Their verdict is unknown unless another check failed; pass the package that defines them in 'packages'.", Location: null);
         }
 
         int spec = summary.ResourcesNotChecked(ValidationRules.DepthSpec);
         if (spec > 0)
         {
-            yield return new IssueItem("information", ValidationRules.DepthSpec, $"Validated at depth spec, which does not run invariants, slicing, extensible bindings or complex choice variants: every resource is subject to invariants, so none is reported valid ({spec} unknown unless another check failed). Use depth full for a verdict.", Location: null);
+            yield return new IssueItem("information", ValidationRules.DepthSpec, $"Validated at depth spec, which does not run invariants, slicing, extensible bindings or extension definitions: every resource is subject to invariants, so none is reported valid ({spec} unknown unless another check failed). Use depth full for a verdict.", Location: null);
         }
     }
 
@@ -409,12 +408,13 @@ public static class ResourceValidator
     /// <summary>
     /// The checks that do not run at <paramref name="depth"/>, as facts state them, and the reference target checks that could
     /// not run because the target's type could not be told or the reference has only a display (they leave verdicts as they are).
+    /// Extension contexts (where a definition allows an extension) are checked at no depth.
     /// </summary>
     private static IReadOnlyList<string> ChecksNotRun(ValidationDepth depth, int undeterminableReferences, int displayOnlyReferences)
     {
         List<string> notRun = depth == ValidationDepth.Spec
-            ? ["invariants", "slicing", "extensible-bindings", "complex-choice-variants", "extensions", "displays"]
-            : ["extensions", "displays"];
+            ? ["invariants", "slicing", "extensible-bindings", "extension-definitions", "extension-contexts", "displays"]
+            : ["extension-contexts", "displays"];
         if (undeterminableReferences > 0)
         {
             notRun.Add($"{ValidationRules.ReferenceTargetType} (undeterminable: {undeterminableReferences})");
