@@ -6,7 +6,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Ignixa.CliOnFhir.Views;
+namespace Ignixa.CliOnFhir.Output;
 
 /// <summary>
 /// A directory as the file system knows it, by device and inode rather than by path. A bind mount (or a second mount) of the data

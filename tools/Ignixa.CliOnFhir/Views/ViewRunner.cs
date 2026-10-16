@@ -6,6 +6,7 @@
 using System.Text.Json.Nodes;
 using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Output;
 using Ignixa.CliOnFhir.Reading;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.Serialization;
@@ -119,7 +120,7 @@ public static class ViewRunner
         List<IssueItem> issues = [];
         List<OmittedItem> omitted = [];
         ViewPaging paging = ViewPaging.Resolve(request, issues);
-        OutputTarget? target = OutputTarget.Resolve(session, request);
+        OutputTarget? target = ViewOutput.Resolve(session, request);
         int budget = ResponseBudget.Resolve(request.MaxBytes, session.MaxResponseBytes, issues, BudgetAlternatives);
 
         LoadedView loaded = ViewLocator.Resolve(session, request.View);

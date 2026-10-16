@@ -5,12 +5,11 @@
 
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
-using Ignixa.CliOnFhir.Session;
 using Microsoft.Win32.SafeHandles;
 
-namespace Ignixa.CliOnFhir.Views;
+namespace Ignixa.CliOnFhir.Output;
 
-/// <summary>Where a run writes every row, checked before anything is evaluated or written.</summary>
+/// <summary>A file a run writes outside the data folder (a view's rows, a type file of <c>deid</c> or <c>map</c>), checked before anything is read or written.</summary>
 /// <param name="Path">
 /// The file's one canonical path (links resolved, <c>..</c> applied after them, as the operating system does). The checks, the
 /// directories created and the write all use this string, so what was checked is what is written.
@@ -29,50 +28,38 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
     private const string Remedy = "files written into it can be read as data on the next catalog. Give an out path outside the folder";
 
     /// <summary>
-    /// The file a request writes to, or null when it only returns rows. The path must be outside the data folder, by the
-    /// same check the index cache uses (links resolved, case ignored), and must not exist unless <c>overwrite</c> is given.
+    /// The file at <paramref name="requestedPath"/>, which must be outside the data folder, by the same check the index cache uses
+    /// (links resolved, case ignored), must not be a directory, and must not exist unless <paramref name="overwrite"/> is given.
     /// </summary>
-    /// <exception cref="ToolRequestException">
-    /// <c>format</c> without <c>out</c>, <c>count</c> or <c>offset</c> with it, a format that is not offered or cannot be told from
-    /// the extension, a path in or around the data folder, a directory, or an existing file without <c>overwrite</c>.
-    /// </exception>
-    public static OutputTarget? Resolve(FolderSession session, ViewRequest request)
+    /// <param name="folderPath">The data folder.</param>
+    /// <param name="requestedPath">The path as the caller gave it.</param>
+    /// <param name="format">What the file will hold, for the writer the caller picks.</param>
+    /// <param name="overwrite">Whether an existing file may be replaced.</param>
+    /// <exception cref="ToolRequestException"><c>out-refused</c>: a path in or around the data folder, a directory, or an existing file without <paramref name="overwrite"/>.</exception>
+    public static OutputTarget ForFile(string folderPath, string requestedPath, string format, bool overwrite)
     {
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrEmpty(folderPath);
+        ArgumentException.ThrowIfNullOrEmpty(requestedPath);
 
-        if (request.Out is null)
-        {
-            return request.Format is null && !request.Overwrite
-                ? null
-                : throw ToolRequestException.Error("invalid-parameter", "'format' and 'overwrite' apply to 'out', which was not given.");
-        }
-
-        if (request.Count is not null || request.Offset != 0)
-        {
-            throw ToolRequestException.Error("invalid-parameter", "'count' and 'offset' page the rows a response returns; 'out' writes every row to the file and returns none.");
-        }
-
-        string format = FormatOf(request);
-        string path = Canonical(request.Out);
-        Check(session.RootPath, path);
+        string path = Canonical(requestedPath);
+        Check(folderPath, path);
 
         if (Directory.Exists(path))
         {
             throw ToolRequestException.Error("out-refused", $"The output path '{path}' is a directory; name a file.");
         }
 
-        if (File.Exists(path) && !request.Overwrite)
+        if (File.Exists(path) && !overwrite)
         {
             throw ToolRequestException.Error("out-refused", $"The output file '{path}' already exists; choose another path, or set overwrite to replace it.");
         }
 
-        return new OutputTarget(path, format, request.Overwrite, session.RootPath);
+        return new OutputTarget(path, format, overwrite, folderPath);
     }
 
     /// <summary>
     /// Creates the directories the file needs and a new file beside the target to write into, and returns it open. The directory is
-    /// resolved again once it exists, since a link may have replaced a part of it since <see cref="Resolve"/> looked, and the file
+    /// resolved again once it exists, since a link may have replaced a part of it since <see cref="ForFile"/> looked, and the file
     /// is created exclusively (<c>CreateNew</c>: never an existing file, never one a link names). Then, before anything is written,
     /// the operating system is asked where the open file really is (<see cref="OpenFilePath"/>): a directory swapped for a link
     /// between the check and the creation puts the file wherever the link leads, which no check of a path string can see. A file
@@ -101,7 +88,7 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         {
             Directory.CreateDirectory(directory);
 
-            // Resolve() looked at this very string; if the directory now resolves to anything else, a link has replaced a part of it.
+            // ForFile() looked at this very string; if the directory now resolves to anything else, a link has replaced a part of it.
             if (!DirectoryUnchanged(directory))
             {
                 throw ToolRequestException.Error("out-refused", $"The directory '{directory}' of the output file is now reached through a link; run it again.");
@@ -212,25 +199,36 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
     /// Linux also by identity, so that a bind mount or a second mount of the folder, which no link leads to, is the folder too.
     /// </summary>
     /// <exception cref="ToolRequestException"><c>out-refused</c>.</exception>
-    internal static void Check(string folderPath, string resolvedPath)
+    internal static void Check(string folderPath, string resolvedPath) =>
+        Check(folderPath, resolvedPath, "output file", System.IO.Path.GetDirectoryName(resolvedPath)!);
+
+    /// <summary>
+    /// <see cref="Check(string, string)"/> for a directory a run writes several files into: refused when it is the data folder, in it,
+    /// or around it (the index cache's rule), or, on Linux, the folder by identity, itself or through an ancestor.
+    /// </summary>
+    /// <exception cref="ToolRequestException"><c>out-refused</c>.</exception>
+    internal static void CheckDirectory(string folderPath, string resolvedDirectory) =>
+        Check(folderPath, resolvedDirectory, "output directory", resolvedDirectory);
+
+    private static void Check(string folderPath, string resolvedPath, string noun, string directory)
     {
-        if (new FolderOverlap(folderPath).Reason(resolvedPath, "output file", Remedy) is { } reason)
+        if (new FolderOverlap(folderPath).Reason(resolvedPath, noun, Remedy) is { } reason)
         {
             throw ToolRequestException.Error("out-refused", $"Cannot write there: {reason}.");
         }
 
-        if (DirectoryIdentity.IsAvailable && MountedFolder(folderPath, resolvedPath) is { } alias)
+        if (DirectoryIdentity.IsAvailable && MountedFolder(folderPath, directory) is { } alias)
         {
             throw ToolRequestException.Error("out-refused", $"Cannot write there: the directory '{alias}' is the data folder itself under another path (a bind mount or a second mount of it, or a link that replaced the directory after its path was resolved); the folder is never written and {Remedy}.");
         }
     }
 
     // The output's directory, or the first of its ancestors, that is the data folder by device and inode; null when none is.
-    private static string? MountedFolder(string folderPath, string resolvedPath)
+    private static string? MountedFolder(string folderPath, string directory)
     {
         try
         {
-            return DirectoryIdentity.Of(folderPath) is { } folder ? DirectoryIdentity.SameAsOrUnder(System.IO.Path.GetDirectoryName(resolvedPath)!, folder) : null;
+            return DirectoryIdentity.Of(folderPath) is { } folder ? DirectoryIdentity.SameAsOrUnder(directory, folder) : null;
         }
         catch (IOException ex)
         {
@@ -321,19 +319,5 @@ internal sealed record OutputTarget(string Path, string Format, bool Overwrite, 
         }
 
         return missing;
-    }
-
-    private static string FormatOf(ViewRequest request)
-    {
-        string? chosen = request.Format ?? System.IO.Path.GetExtension(request.Out)?.TrimStart('.');
-        return chosen?.ToUpperInvariant() switch
-        {
-            "CSV" => Csv,
-            "NDJSON" => Ndjson,
-            "PARQUET" => Parquet,
-            _ => throw ToolRequestException.Error("invalid-parameter", request.Format is null
-                ? $"The format cannot be told from the extension of '{QueryEcho.Of(request.Out!)}'; end it in .csv, .ndjson or .parquet, or give format."
-                : $"'format' must be csv, ndjson or parquet, not '{QueryEcho.Of(request.Format)}'."),
-        };
     }
 }

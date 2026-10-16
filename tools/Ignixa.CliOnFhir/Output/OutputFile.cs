@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using Ignixa.CliOnFhir.Contracts;
 using Microsoft.Win32.SafeHandles;
 
-namespace Ignixa.CliOnFhir.Views;
+namespace Ignixa.CliOnFhir.Output;
 
 /// <summary>
 /// The file a run writes into, beside its target, created exclusively and held open from creation to <see cref="Commit"/> or
@@ -66,23 +66,29 @@ internal sealed class OutputFile
     /// </exception>
     public void Commit()
     {
-        string directory = Path.GetDirectoryName(_target.Path)!;
         try
         {
-            _file.Flush();
-            if (OpenFilePath.IsAvailable && !AtTempPath())
-            {
-                throw ToolRequestException.Error("out-refused", $"The temporary output file was moved, or its directory '{directory}' replaced, while the view was running, so nothing was renamed.");
-            }
-
-            // Implied by the handle's check where there is one; the only check of the path where there is not.
-            if (!OutputTarget.DirectoryUnchanged(directory))
-            {
-                throw ToolRequestException.Error("out-refused", $"The directory '{directory}' of the output file was replaced by a link while the view was running, so nothing was renamed.");
-            }
-
+            CheckInPlace();
             string? landed = Rename();
             _target.CheckFinal(landed);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw ToolRequestException.Error("out-write-failed", $"Writing '{_target.Path}' failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The checks of <see cref="Commit"/> without the rename: flushes the file and checks that its handle still shows it at
+    /// <see cref="TempPath"/> and that the target's directory is still the one that was checked. A run that writes several files
+    /// prepares every one before it commits any, so that a file found moved stops the run before any is renamed.
+    /// </summary>
+    /// <exception cref="ToolRequestException"><c>out-refused</c>: the file or its directory moved. <c>out-write-failed</c>: the file could not be flushed.</exception>
+    public void Prepare()
+    {
+        try
+        {
+            CheckInPlace();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -147,6 +153,22 @@ internal sealed class OutputFile
         return OutputTarget.RemoveCreated(_createdDirectories);
     }
 
+    private void CheckInPlace()
+    {
+        string directory = Path.GetDirectoryName(_target.Path)!;
+        _file.Flush();
+        if (OpenFilePath.IsAvailable && !AtTempPath())
+        {
+            throw ToolRequestException.Error("out-refused", $"The temporary output file was moved, or its directory '{directory}' replaced, while the run was writing it, so nothing was renamed.");
+        }
+
+        // Implied by the handle's check where there is one; the only check of the path where there is not.
+        if (!OutputTarget.DirectoryUnchanged(directory))
+        {
+            throw ToolRequestException.Error("out-refused", $"The directory '{directory}' of the output file was replaced by a link while the run was writing it, so nothing was renamed.");
+        }
+    }
+
     private static IssueItem Left(string location, string why) =>
         new("information", "out-temp-left", $"The temporary file was left at '{location}' (where it was as of the check): {why}. Delete it when the directory is safe to use.", Location: null);
 
@@ -171,7 +193,7 @@ internal sealed class OutputFile
         }
         catch (IOException ex) when (!_target.Overwrite && File.Exists(_target.Path))
         {
-            throw ToolRequestException.Error("out-refused", $"The output file '{_target.Path}' appeared while the view was running ({ex.GetType().Name}); choose another path, or set overwrite to replace it.");
+            throw ToolRequestException.Error("out-refused", $"The output file '{_target.Path}' appeared while the run was writing it ({ex.GetType().Name}); choose another path, or set overwrite to replace it.");
         }
 
         _moved = true;

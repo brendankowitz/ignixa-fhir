@@ -3,7 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-namespace Ignixa.CliOnFhir.Views;
+namespace Ignixa.CliOnFhir.Output;
 
 /// <summary>
 /// The output file as the writers see it. The writers dispose the stream they are given when they finish (Parquet already in its

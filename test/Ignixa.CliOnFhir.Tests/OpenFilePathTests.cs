@@ -4,7 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.CliOnFhir.Caching;
-using Ignixa.CliOnFhir.Views;
+using Ignixa.CliOnFhir.Output;
 using Microsoft.Win32.SafeHandles;
 using Shouldly;
 

@@ -30,35 +30,47 @@ internal sealed record ValidationScope(ValidationScopeFacts Facts, IReadOnlyList
     /// <exception cref="ToolRequestException">The scope arguments contradict each other, or name something that cannot be resolved.</exception>
     public static ValidationScope Resolve(FolderSession session, ValidateRequest request)
     {
-        ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
 
-        if (request.References is { Count: > 0 } references)
+        return Resolve(session, request.ResourceType, request.Query, request.Patient, request.References);
+    }
+
+    /// <summary>
+    /// The resources a tool that reads a scope of the folder covers (<c>validate</c>, <c>deid</c>): the folder; a type, optionally
+    /// narrowed by <paramref name="query"/> and <paramref name="patient"/>'s compartment; a patient's whole compartment; or exactly
+    /// <paramref name="references"/>.
+    /// </summary>
+    /// <exception cref="ToolRequestException">The scope arguments contradict each other, or name something that cannot be resolved.</exception>
+    public static ValidationScope Resolve(FolderSession session, string? resourceType, string? query, string? patient, IReadOnlyList<string>? references)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (references is { Count: > 0 })
         {
-            if (request.ResourceType is not null || request.Query is not null || request.Patient is not null)
+            if (resourceType is not null || query is not null || patient is not null)
             {
-                throw ToolRequestException.Error("invalid-parameter", "'references' names the resources to validate exactly, so it cannot be combined with 'resourceType', 'query' or 'patient'.");
+                throw ToolRequestException.Error("invalid-parameter", "'references' names the resources in scope exactly, so it cannot be combined with 'resourceType', 'query' or 'patient'.");
             }
 
             return References(session, references);
         }
 
-        if (request.Query is not null && request.ResourceType is null)
+        if (query is not null && resourceType is null)
         {
             throw ToolRequestException.Error("invalid-parameter", "'query' needs 'resourceType': a search query is over one resource type.");
         }
 
-        if (request.Patient is { } patient)
+        if (patient is not null)
         {
             PatientIds.Validate(patient);
         }
 
-        if (request.ResourceType is { } type)
+        if (resourceType is not null)
         {
-            return Search(session, type, request.Query, request.Patient);
+            return Search(session, resourceType, query, patient);
         }
 
-        return request.Patient is { } compartment ? Compartment(session, compartment) : Folder(session);
+        return patient is not null ? Compartment(session, patient) : Folder(session);
     }
 
     private static ValidationScope Folder(FolderSession session) =>

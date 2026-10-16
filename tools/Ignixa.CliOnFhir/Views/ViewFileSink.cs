@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Globalization;
+using Ignixa.CliOnFhir.Output;
 using Ignixa.SqlOnFhir.Evaluation;
 using Ignixa.SqlOnFhir.Writers;
 using Microsoft.Extensions.Logging.Abstractions;

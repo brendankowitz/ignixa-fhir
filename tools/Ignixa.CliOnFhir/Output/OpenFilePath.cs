@@ -6,7 +6,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-namespace Ignixa.CliOnFhir.Views;
+namespace Ignixa.CliOnFhir.Output;
 
 /// <summary>
 /// Where an open file really is, asked of the operating system by its handle rather than worked out from a path string: a path

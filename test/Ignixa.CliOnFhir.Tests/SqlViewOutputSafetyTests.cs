@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using Ignixa.CliOnFhir.Caching;
 using Ignixa.CliOnFhir.Contracts;
+using Ignixa.CliOnFhir.Output;
 using Ignixa.CliOnFhir.Session;
 using Ignixa.CliOnFhir.Views;
 using Ignixa.SqlOnFhir.Evaluation;
@@ -90,7 +91,7 @@ public class SqlViewOutputSafetyTests
         Directory.CreateDirectory(Path.Combine(data, "inner"));
         var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         string swapped = Path.Combine(root.Path, "out");
-        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(swapped, "rows.csv"))).ShouldNotBeNull();
+        OutputTarget target = ViewOutput.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(swapped, "rows.csv"))).ShouldNotBeNull();
         Directory.CreateSymbolicLink(swapped, Path.Combine(data, "inner"));
         string[] before = Snapshot(data);
 
@@ -114,7 +115,7 @@ public class SqlViewOutputSafetyTests
         string elsewhere = Directory.CreateDirectory(Path.Combine(root.Path, "elsewhere")).FullName;
         var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         string swapped = Path.Combine(root.Path, "out");
-        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(swapped, "rows.csv"))).ShouldNotBeNull();
+        OutputTarget target = ViewOutput.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(swapped, "rows.csv"))).ShouldNotBeNull();
         Directory.CreateSymbolicLink(swapped, elsewhere);
 
         ToolRequestException refused = Should.Throw<ToolRequestException>(() => target.Begin([]));
@@ -143,7 +144,7 @@ public class SqlViewOutputSafetyTests
         string inner = Directory.CreateDirectory(Path.Combine(data, "inner")).FullName;
         var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         string output = Path.Combine(root.Path, "out");
-        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, $"rows.{format}"))).ShouldNotBeNull();
+        OutputTarget target = ViewOutput.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, $"rows.{format}"))).ShouldNotBeNull();
         OutputFile file = target.Begin([]);
         string decoy = Path.Combine(inner, Path.GetFileName(file.TempPath));
 
@@ -319,7 +320,7 @@ public class SqlViewOutputSafetyTests
         string data = Path.Combine(root.Path, "data");
         var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         string output = Directory.CreateDirectory(Path.Combine(root.Path, "out")).FullName;
-        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
+        OutputTarget target = ViewOutput.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
         string[] before = Snapshot(data);
         List<IssueItem> notes = [];
 
@@ -350,7 +351,7 @@ public class SqlViewOutputSafetyTests
         string elsewhere = Directory.CreateDirectory(Path.Combine(root.Path, "elsewhere")).FullName;
         var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         string output = Directory.CreateDirectory(Path.Combine(root.Path, "out")).FullName;
-        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
+        OutputTarget target = ViewOutput.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
 
         ToolRequestException refused = Should.Throw<ToolRequestException>(() => target.Begin([], beforeCreate: () =>
         {
@@ -376,7 +377,7 @@ public class SqlViewOutputSafetyTests
         string data = Path.Combine(root.Path, "data");
         var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         string output = Directory.CreateDirectory(Path.Combine(root.Path, "out")).FullName;
-        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.ndjson"))).ShouldNotBeNull();
+        OutputTarget target = ViewOutput.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.ndjson"))).ShouldNotBeNull();
         OutputFile file = target.Begin([]);
         ViewFileSink sink = ViewFileSink.Create(file.Stream, "ndjson", [new ColumnSchema("id", "string", false)]);
         await sink.WriteAsync(["p1"], CancellationToken.None);
@@ -410,7 +411,7 @@ public class SqlViewOutputSafetyTests
         string data = Path.Combine(root.Path, "data");
         var session = new FolderSession(data, new R4CoreSchemaProvider(), NullLoggerFactory.Instance);
         string output = Path.Combine(root.Path, "made", "deeper");
-        OutputTarget target = OutputTarget.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
+        OutputTarget target = ViewOutput.Resolve(session, new ViewRequest(PatientView, Out: Path.Combine(output, "rows.csv"))).ShouldNotBeNull();
         OutputFile file = target.Begin([]);
         Directory.Delete(Path.Combine(root.Path, "made"), recursive: true);
 
