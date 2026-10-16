@@ -63,6 +63,7 @@ public static class ContextFinder
                     contents.Items.Count,
                     [.. contents.Items.Select(item => item.NodeKey).OfType<string>().Distinct(StringComparer.Ordinal)],
                     contents.Items,
+                    context.Shapes.Membership,
                     contents.Resources ?? [],
                     contents.ResolvedReferences),
                 resume => Next(context, query, resume),

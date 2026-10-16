@@ -115,6 +115,13 @@ internal static class ClinicalRules
         ["Condition"] = "clinicalStatus.coding.code.first()",
     };
 
+    /// <summary>The element whose required binding a status shown by <see cref="StatusCode"/> belongs to; <c>status</c> for the other types.</summary>
+    public static readonly IReadOnlyDictionary<string, string> StatusElement = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["AllergyIntolerance"] = "clinicalStatus",
+        ["Condition"] = "clinicalStatus",
+    };
+
     /// <summary>Whether the rules were written for <paramref name="version"/>: R4, and R4B, whose elements and codes they read are R4's.</summary>
     public static bool Verified(FhirVersion version) => version is FhirVersion.R4 or FhirVersion.R4B;
 

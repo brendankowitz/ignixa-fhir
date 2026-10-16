@@ -17,6 +17,11 @@ namespace Ignixa.CliOnFhir.Patients;
 /// <param name="Encounters">Encounters in the window, newest first.</param>
 /// <param name="Labs">The most frequent lab and vital-sign codes, with latest value and trend.</param>
 /// <param name="OtherTypes">Compartment resources of types no stub covers, counted by type (search them with the compartment argument).</param>
+/// <param name="ValueBindings">
+/// <c>checked</c> when the session's terminology was loaded, so shown statuses, genders and comparators were also checked against
+/// their required-binding ValueSets (a value outside is a digest, with an <c>invalid-value</c> issue naming the element and the
+/// ValueSet); <c>not-checked</c> when no terminology call has loaded it, so only their shape was checked.
+/// </param>
 public sealed record RootDigestFacts(
     string Patient,
     string FhirVersion,
@@ -28,4 +33,5 @@ public sealed record RootDigestFacts(
     DomainStub Allergies,
     DomainStub Encounters,
     DomainStub Labs,
-    IReadOnlyDictionary<string, int> OtherTypes);
+    IReadOnlyDictionary<string, int> OtherTypes,
+    string ValueBindings);

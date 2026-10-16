@@ -16,6 +16,11 @@ namespace Ignixa.CliOnFhir.Patients;
 /// <param name="Offset">Items skipped before the first returned.</param>
 /// <param name="Returned">Items in <paramref name="Items"/>.</param>
 /// <param name="Items">The page of items, in the node's order.</param>
+/// <param name="ValueBindings">
+/// <c>checked</c> when the session's terminology was loaded, so shown statuses, genders and comparators were also checked against
+/// their required-binding ValueSets (a value outside is a digest, with an <c>invalid-value</c> issue naming the element and the
+/// ValueSet); <c>not-checked</c> when no terminology call has loaded it, so only their shape was checked.
+/// </param>
 /// <param name="Rule">The rule that decided membership, order or links, as applied; absent when none applies.</param>
 /// <param name="Window">The time window, for a node that depends on <paramref name="AsOf"/>.</param>
 /// <param name="Resources">The page's resources as they are in the folder (trimmed by <c>elements</c>), in item order; absent for a node of lab codes.</param>
@@ -28,6 +33,7 @@ public sealed record NodeFacts(
     int Offset,
     int Returned,
     IReadOnlyList<ContextItem> Items,
+    string ValueBindings,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Rule = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ContextWindow? Window = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<JsonNode>? Resources = null,

@@ -68,7 +68,7 @@ internal sealed class PatientContext
             ? parsed
             : throw new InvalidOperationException($"asOf {asOf:O} did not parse as a FHIR instant.");
         Elements = new ResourceElements(session);
-        Shapes = new ValueShapes(session.Schema.Version);
+        Shapes = new ValueShapes(session.Schema.Version, BindingMembership.IfLoaded(session));
         RulesApplied = ClinicalRules.Verified(session.Schema.Version);
         _problems = new(() => ActiveFirst(Newest(Describe(Compartment.OfType("Condition"))), ClinicalRules.ActiveCondition));
         _medications = new(() => ActiveFirst(

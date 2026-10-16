@@ -62,7 +62,7 @@ public static class PatientLister
             patient => patient.Key.Id,
             patient => elements.Get(patient.Entry) is { } element ? ClinicalValues.PatientName(element) : null,
             StringComparer.Ordinal);
-        var shapes = new ValueShapes(session.Schema.Version);
+        var shapes = new ValueShapes(session.Schema.Version, BindingMembership.IfLoaded(session));
         var summaries = new Summaries(folder, elements, names, shapes, cancellationToken);
 
         // Sorting by date needs every patient's span; by name, only the page's.
@@ -109,7 +109,7 @@ public static class PatientLister
             .OrderBy(rule => rule.Key, StringComparer.Ordinal)
             .ToDictionary(rule => rule.Key, rule => string.Join(", else ", rule.Value), StringComparer.Ordinal);
 
-        var facts = new PatientListFacts(patients.Count, offset, rows.Count, sort, dateRule, rows);
+        var facts = new PatientListFacts(patients.Count, offset, rows.Count, sort, dateRule, rows, shapes.Membership);
         DateTimeOffset builtAt = folder.IndexesRead.Count > 0 ? folder.IndexesRead.Max(index => index.BuiltAt) : session.Catalog.BuiltAt;
         return EnvelopeAssembler.Create<PatientListFacts?>(session, facts, builtAt, ContextRoot.Evidence(page.Select(patient => patient.Entry)), omitted, absent, issues, cancellationToken) with { Next = next };
     }

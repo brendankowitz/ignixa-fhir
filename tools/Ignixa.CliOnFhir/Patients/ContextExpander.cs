@@ -53,7 +53,7 @@ public static class ContextExpander
                 pageSize,
                 projection,
                 node.WithResources,
-                contents => new NodeFacts(context.PatientReference, nodeKey, context.AsOf, node.Entries.Count, offset, contents.Items.Count, contents.Items, node.Rule, node.Window, contents.Resources, contents.ResolvedReferences),
+                contents => new NodeFacts(context.PatientReference, nodeKey, context.AsOf, node.Entries.Count, offset, contents.Items.Count, contents.Items, context.Shapes.Membership, node.Rule, node.Window, contents.Resources, contents.ResolvedReferences),
                 resume => ContextRoot.Expand(context, nodeKey, resume),
                 issues,
                 absent,

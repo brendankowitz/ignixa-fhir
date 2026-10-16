@@ -17,6 +17,11 @@ namespace Ignixa.CliOnFhir.Patients;
 /// <param name="Returned">Items in <paramref name="Items"/>.</param>
 /// <param name="NodeKeys">The distinct node keys of the returned items, in order: where to go next.</param>
 /// <param name="Items">The page of matches, code matches before text matches.</param>
+/// <param name="ValueBindings">
+/// <c>checked</c> when the session's terminology was loaded, so shown statuses, genders and comparators were also checked against
+/// their required-binding ValueSets (a value outside is a digest, with an <c>invalid-value</c> issue naming the element and the
+/// ValueSet); <c>not-checked</c> when no terminology call has loaded it, so only their shape was checked.
+/// </param>
 /// <param name="Resources">The page's resources as they are in the folder (trimmed by <c>elements</c>), in item order.</param>
 /// <param name="ResolvedReferences">For each returned resource, the Bundle references it shows and the <c>Type/id</c> they resolved to; absent when none.</param>
 public sealed record FindFacts(
@@ -28,5 +33,6 @@ public sealed record FindFacts(
     int Returned,
     IReadOnlyList<string> NodeKeys,
     IReadOnlyList<ContextItem> Items,
+    string ValueBindings,
     IReadOnlyList<JsonNode> Resources,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? ResolvedReferences = null);

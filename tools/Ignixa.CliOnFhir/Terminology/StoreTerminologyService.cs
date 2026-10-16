@@ -109,6 +109,18 @@ internal sealed class StoreTerminologyService(FolderSession session) : ITerminol
         return await _remote.GetOrAdd((valueSetUrl, system, code, version), key => AskRemoteAsync(tx, key.ValueSet, key.System, key.Code, key.Version, why, cancellationToken));
     }
 
+    /// <summary>
+    /// <see cref="CheckAsync"/> against <paramref name="store"/> alone, never the terminology server: <c>valid</c>,
+    /// <c>invalid</c>, or <c>unknown</c> with the reason.
+    /// </summary>
+    public static (string Result, string Reason) CheckLocal(TerminologyStore store, string valueSetUrl, string? system, string code)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+
+        TerminologyAnswer<TermValidateFacts> local = TermValidate.AgainstValueSet(store, valueSetUrl, system, code, display: null, version: null, CancellationToken.None);
+        return (local.Facts.Result, local.Facts.Reason);
+    }
+
     public Task<LookupResult> LookupCodeAsync(string system, string code, string? version, CancellationToken cancellationToken) => throw NotProvided("$lookup");
 
     public Task<ExpandResult?> ExpandValueSetAsync(ExpansionParameters parameters, CancellationToken cancellationToken) => throw NotProvided("$expand");

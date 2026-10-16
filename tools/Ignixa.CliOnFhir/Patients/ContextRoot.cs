@@ -82,7 +82,8 @@ public static class ContextRoot
             allergies,
             encounters,
             labs,
-            otherTypes);
+            otherTypes,
+            context.Shapes.Membership);
 
         List<EvidenceItem> evidence = Evidence([context.Compartment.Patient.Entry, .. shown.SelectMany(entry => entry.Sources)]);
         List<OmittedItem> omitted = [];
