@@ -14,6 +14,8 @@ namespace Ignixa.CliOnFhir.Caching;
 /// </summary>
 internal sealed class FolderOverlap
 {
+    private const string CacheRemedy = "cache files would be read as data. Use --cache-dir outside the folder";
+
     private readonly string? _canonicalFolderPath;
     private readonly string? _folderResolveProblem;
 
@@ -36,7 +38,8 @@ internal sealed class FolderOverlap
     /// Why <paramref name="writePath"/> may not be written, or null when it is safe; <paramref name="noun"/> names it in the
     /// reason (for example <c>cache directory</c>). Without the data folder's real location nothing counts as safe.
     /// </summary>
-    public string? Reason(string writePath, string noun)
+    /// <param name="remedy">Why the overlap matters and what to do instead, for a write that is not a cache file.</param>
+    public string? Reason(string writePath, string noun, string remedy = CacheRemedy)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(writePath);
 
@@ -57,11 +60,11 @@ internal sealed class FolderOverlap
 
         if (IsSameOrUnder(resolved, _canonicalFolderPath))
         {
-            return $"the {noun} '{resolved}' is inside the data folder '{_canonicalFolderPath}'; the folder is never written and cache files would be read as data. Use --cache-dir outside the folder";
+            return $"the {noun} '{resolved}' is inside the data folder '{_canonicalFolderPath}'; the folder is never written and {remedy}";
         }
 
         return IsSameOrUnder(_canonicalFolderPath, resolved)
-            ? $"the data folder '{_canonicalFolderPath}' is inside the {noun} '{resolved}'; cache files would be read as data. Use --cache-dir outside the folder"
+            ? $"the data folder '{_canonicalFolderPath}' is inside the {noun} '{resolved}'; {remedy}"
             : null;
     }
 
