@@ -45,17 +45,17 @@ internal static class TermText
     }
 
     /// <summary>
-    /// The largest prefix of <paramref name="page"/> whose facts fit <see cref="FactsBudget"/>, the facts built from it, and an
+    /// The largest prefix of <paramref name="page"/> whose facts fit <paramref name="budget"/>, the facts built from it, and an
     /// omitted note when items were dropped for size.
     /// </summary>
-    public static (TFacts Facts, int Kept) FitPage<TItem, TFacts>(IReadOnlyList<TItem> page, Func<IReadOnlyList<TItem>, TFacts> build, string what, List<OmittedItem> omitted)
+    public static (TFacts Facts, int Kept) FitPage<TItem, TFacts>(IReadOnlyList<TItem> page, Func<IReadOnlyList<TItem>, TFacts> build, string what, List<OmittedItem> omitted, int budget = FactsBudget)
     {
         ArgumentNullException.ThrowIfNull(page);
         ArgumentNullException.ThrowIfNull(build);
 
         int kept = page.Count;
         TFacts facts = build(page);
-        while (kept > 0 && EnvelopeJson.SizeOf(facts) > FactsBudget)
+        while (kept > 0 && EnvelopeJson.SizeOf(facts) > budget)
         {
             kept /= 2;
             facts = build([.. page.Take(kept)]);

@@ -22,7 +22,8 @@ public static class McpServerSetup
         - Medications come in two shapes, medicationCodeableConcept and medicationReference; read both, as the search tool's columns example does.
         - Every search parameter, _sort and _count included, goes inside query. Latest value: _sort=-date with count=1.
         - When a response is cut, 'next' has the exact call for the rest. Check 'issues' every time.
-        - Which code systems the data uses: folder_code_systems. Look up, search, validate or expand codes: terminology. Check resources against profiles: validate_resources. In-depth rules: help.
+        - Which code systems the data uses: folder_code_systems. Look up, search, validate or expand codes: terminology. In-depth rules: help.
+        - Drug classes (statin, beta blocker): terminology class-search, class-members (needs --rxclass-server).
         """;
 
     /// <summary>The types whose <see cref="McpServerToolAttribute"/> methods the server offers.</summary>

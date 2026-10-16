@@ -39,6 +39,12 @@ internal sealed class TerminologyCliOptions
             + "never resource content. Not with --offline",
     };
 
+    public Option<string?> RxClassServer { get; } = new("--rxclass-server")
+    {
+        Description = "NLM RxNav (https://rxnav.nlm.nih.gov/REST) for drug classes (ATC, VA, EPC, MoA) through RxClass. Off by default; requests carry "
+            + "only RxCUIs, class ids and class types, never resource content or search text. Answers are cached under the cache root. Not with --offline",
+    };
+
     public void AddTo(Command command)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -47,8 +53,25 @@ internal sealed class TerminologyCliOptions
         command.Options.Add(Offline);
         command.Options.Add(FhirPackageCache);
         command.Options.Add(TxServer);
+        command.Options.Add(RxClassServer);
         command.Validators.Add(result =>
         {
+            if (result.GetValue(RxClassServer) is { } rxClass)
+            {
+                if (result.GetValue(Offline))
+                {
+                    result.AddError("--rxclass-server and --offline cannot be used together: --offline disables the network.");
+                }
+                else if (!Uri.TryCreate(rxClass, UriKind.Absolute, out Uri? uri))
+                {
+                    result.AddError($"--rxclass-server {rxClass}: not an absolute URL.");
+                }
+                else if (RxClassClient.Validate(uri) is { } problem)
+                {
+                    result.AddError($"--rxclass-server {rxClass}: {problem}");
+                }
+            }
+
             if (result.GetValue(TxServer) is { } server)
             {
                 if (result.GetValue(Offline))
@@ -79,7 +102,7 @@ internal sealed class TerminologyCliOptions
         });
     }
 
-    /// <summary>The session's terminology options. The package store sits under the index cache root (<c>--cache-dir</c> or the user cache directory).</summary>
+    /// <summary>The session's terminology options. The package store and the RxClass answers sit under the index cache root (<c>--cache-dir</c> or the user cache directory).</summary>
     public TerminologyOptions Resolve(ParseResult parseResult, Option<string?> cacheDirOption)
     {
         ArgumentNullException.ThrowIfNull(parseResult);
@@ -93,6 +116,7 @@ internal sealed class TerminologyCliOptions
             FhirPackageCache = fhirCache,
             Registry = parseResult.GetValue(Offline) ? null : new FhirPackageRegistry(),
             TxServer = parseResult.GetValue(TxServer) is { } server ? new TxServerClient(new Uri(server)) : null,
+            RxClass = parseResult.GetValue(RxClassServer) is { } rxClass ? new RxClassClient(new Uri(rxClass), root.RootDirectory is { } cacheRoot ? Path.Combine(cacheRoot, "rxclass") : null) : null,
         };
     }
 

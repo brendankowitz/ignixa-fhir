@@ -42,7 +42,7 @@ public class OperationToolTests
     }
 
     [Theory]
-    [InlineData("terminology", "define", "{}", "'define' is not an operation of this tool: lookup | search | validate | subsumes | navigate | expand | translate | list.")]
+    [InlineData("terminology", "define", "{}", "'define' is not an operation of this tool: lookup | search | validate | subsumes | navigate | expand | translate | list | classes | class-search | class-members.")]
     [InlineData("terminology", "lookup", """{"system":"http://example.org/fhir/CodeSystem/body","code":"heart","valueSet":"http://example.org/fhir/ValueSet/heart"}""", "operation=lookup does not take 'valueSet'. It takes system, code [version].")]
     [InlineData("terminology", "subsumes", """{"system":"http://example.org/fhir/CodeSystem/body","codeA":"disorder"}""", "operation=subsumes needs 'codeB'. It takes system, codeA, codeB [version].")]
     [InlineData("terminology", "search", """{"text":"heart","_sort":"display"}""", "'_sort' is not an argument of this tool.")]

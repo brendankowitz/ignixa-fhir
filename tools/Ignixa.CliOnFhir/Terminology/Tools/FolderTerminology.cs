@@ -46,6 +46,37 @@ public static class FolderTerminology
         return (new TermFolderUsage(TermFolderUsage.LoadedStatus, Rule, systems.Count, [.. systems.Take(limit)]), omitted);
     }
 
+    /// <summary>
+    /// Per distinct code of <paramref name="system"/> in the token search-index entries of <paramref name="types"/> (by the
+    /// same rule as <see cref="Compute"/>), how many resources carry it. Types the folder does not hold are skipped.
+    /// </summary>
+    public static IReadOnlyDictionary<string, int> ResourcesPerCode(FolderSession session, string system, IEnumerable<string> types)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentException.ThrowIfNullOrEmpty(system);
+        ArgumentNullException.ThrowIfNull(types);
+
+        HashSet<string> held = [.. session.Catalog.Entries.Select(entry => entry.ResourceType)];
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (string type in types.Where(held.Contains))
+        {
+            foreach (var resource in session.GetIndex(type).Resources)
+            {
+                IEnumerable<string> codes = resource.Index
+                    .Where(entry => !OverIdentifier(entry.SearchParameter))
+                    .Select(entry => entry.Value is TokenSearchValue { Code: { Length: > 0 } code } token && token.System == system ? code : null)
+                    .OfType<string>()
+                    .Distinct(StringComparer.Ordinal);
+                foreach (string code in codes)
+                {
+                    counts[code] = counts.GetValueOrDefault(code) + 1;
+                }
+            }
+        }
+
+        return counts;
+    }
+
     private static bool OverIdentifier(SearchParameterInfo parameter) =>
         parameter.Code == "identifier" || (parameter.Expression?.Contains("identifier", StringComparison.OrdinalIgnoreCase) ?? false);
 
