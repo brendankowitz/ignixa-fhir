@@ -31,7 +31,7 @@ public sealed class PatientTools(FolderSession session)
 
     [McpServerTool(Name = "patient_cohort", ReadOnly = true, Idempotent = true)]
     [Description("""
-        Population counts: patients meeting every criterion (AND), living by default; facts.count, facts.steps (left after each), facts.patients. Example, adults with prediabetes:
+        Population counts: patients meeting every criterion (AND), living by default; facts.count, facts.steps, facts.patients. Counts are final; steps show each criterion. Example, adults with prediabetes:
         {"ageMin":18,"conditions":[{"codes":["http://snomed.info/sct|714628002"]}]}
         Also: conditions valueSet, medications [{codes or classId}], immunizations [{codes, window}], observations (a lab compared with a value). Rules, examples: help topic=cohorts.
         """)]
