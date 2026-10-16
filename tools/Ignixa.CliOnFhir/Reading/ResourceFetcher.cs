@@ -139,7 +139,7 @@ public static class ResourceFetcher
     private static string UnreadMessage(int count, string first) =>
         $"{count} found resources not returned, from {first} on (request them in a further call)";
 
-    private static (string Type, string Id) ParseReference(FolderSession session, string reference)
+    internal static (string Type, string Id) ParseReference(FolderSession session, string reference)
     {
         string[] parts = reference?.Split('/') ?? [];
         if (parts.Length != 2 || parts[0].Length == 0 || parts[1].Length == 0)

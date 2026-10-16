@@ -76,10 +76,29 @@ public sealed class TerminologySession
 
     /// <summary>Adds <paramref name="request"/> to the store (after every source loaded so far), unless it is already loaded.</summary>
     /// <exception cref="ToolRequestException">The package cannot be found, downloaded or read.</exception>
-    public async Task<PackageLoadOutcome> LoadPackageAsync(PackageRequest request, CancellationToken cancellationToken)
+    public Task<PackageLoadOutcome> LoadPackageAsync(PackageRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        return LoadAsync(request, () => _acquisition.AcquireAsync(request, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    /// Adds a package another caller already acquired (validation reads a package's profiles and terminology in one read) to
+    /// the store, as <see cref="LoadPackageAsync"/> would, unless it is already loaded.
+    /// </summary>
+    internal Task<PackageLoadOutcome> LoadAcquiredAsync(AcquiredPackage acquired, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(acquired);
+
+        return LoadAsync(PackageRequest.Exact(acquired.Id, acquired.Version), () => Task.FromResult(acquired), cancellationToken);
+    }
+
+    /// <summary>The acquisition this session reads packages with, for a caller that needs more of a package than its terminology.</summary>
+    internal PackageAcquisition Acquisition => _acquisition;
+
+    private async Task<PackageLoadOutcome> LoadAsync(PackageRequest request, Func<Task<AcquiredPackage>> acquire, CancellationToken cancellationToken)
+    {
         await GetAsync(request, cancellationToken);
         await _gate.WaitAsync(cancellationToken);
         try
@@ -90,7 +109,7 @@ public sealed class TerminologySession
                 return new PackageLoadOutcome(existing, null, AlreadyLoaded: true, state);
             }
 
-            AcquiredPackage acquired = await _acquisition.AcquireAsync(request, cancellationToken);
+            AcquiredPackage acquired = await acquire();
             if (Loaded(state, acquired.Id, acquired.Version) is { } loaded)
             {
                 return new PackageLoadOutcome(loaded, acquired, AlreadyLoaded: true, state);

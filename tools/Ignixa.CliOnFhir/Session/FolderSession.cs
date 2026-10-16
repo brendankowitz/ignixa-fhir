@@ -12,6 +12,7 @@ using Ignixa.CliOnFhir.Contracts;
 using Ignixa.CliOnFhir.Indexing;
 using Ignixa.CliOnFhir.Search;
 using Ignixa.CliOnFhir.Terminology;
+using Ignixa.CliOnFhir.Validation;
 using Ignixa.Search.Definition;
 using Ignixa.Search.InMemory;
 using Microsoft.Extensions.Logging;
@@ -111,6 +112,7 @@ public sealed class FolderSession
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         Terminology = new TerminologySession(this, terminology ?? TerminologyOptions.None);
+        Validators = new ValidatorCache(this);
     }
 
     public string RootPath { get; }
@@ -123,6 +125,9 @@ public sealed class FolderSession
 
     /// <summary>The session's terminology store, loaded on the first terminology call.</summary>
     public TerminologySession Terminology { get; }
+
+    /// <summary>The session's validators and the terminology adapter their binding checks use, built on first use.</summary>
+    internal ValidatorCache Validators { get; }
 
     /// <summary>
     /// Wall time spent loading the search parameter definitions and creating the indexer, paid once on the first

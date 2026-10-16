@@ -85,7 +85,7 @@ Terminology also feeds the other groups:
 
 | Tool / CLI verb | Purpose | Key inputs | Backing | Gap |
 |-----------------|---------|-----------|---------|-----|
-| `validate` / `cli-on-fhir validate` | Validate resources against core or loaded IG profiles; summarized by profile and rule, with sample failures | `scope`, `profile?`, `packages?` | `Ignixa.Validation`, `Ignixa.PackageManagement` | Summarizer; lazy package load |
+| `validate_resources` / `cli-on-fhir validate` (prototype: implemented) | Validate resources against core or loaded IG profiles; summarized by profile and rule, with sample failures; a resource is `valid` only when every check ran, `unknown` when a binding or profile could not be checked | `resourceType`/`query`/`patient`/`references` (scope), `profile?`, `packages?`, `depth?`, `detail?` | `Ignixa.Validation`, `Ignixa.PackageManagement` (`ProfileLayeredSchemaProvider`), the terminology store through an `ITerminologyService` adapter | Summarizer; lazy package load |
 | `deid` / `cli-on-fhir deid` | De-identify the folder, a patient, or a query result into an output folder | `scope`, `config`, `out` | `Ignixa.DeId`, `tools/Ignixa.DeId.Cli` | Catalog as input source |
 | `fml_transform` / `cli-on-fhir map` | Apply a StructureMap (FHIR Mapping Language) to resources; preview or write output | `map`, `scope`, `out?` | `Ignixa.FhirMappingLanguage` | Map resolution from folder or `--maps` |
 

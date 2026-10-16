@@ -12,9 +12,12 @@ namespace Ignixa.CliOnFhir.Terminology.Npm;
 /// </summary>
 internal static class PackageDirectoryReader
 {
+    /// <param name="directory">The extracted package directory.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <param name="keepStructureDefinitions">Also keep the StructureDefinitions directly under <c>package/</c>, for profile validation.</param>
     /// <exception cref="PackageFormatException">No usable package.json, or a file over a limit.</exception>
     /// <exception cref="IOException">The directory cannot be read.</exception>
-    public static PackageContents Read(string directory, CancellationToken cancellationToken)
+    public static PackageContents Read(string directory, CancellationToken cancellationToken, bool keepStructureDefinitions = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
 
@@ -33,6 +36,7 @@ internal static class PackageDirectoryReader
         }
 
         List<TerminologyFile> files = [];
+        List<TerminologyFile> structureDefinitions = [];
         int other = 0;
         int ignored = 0;
         foreach (string path in paths)
@@ -54,14 +58,17 @@ internal static class PackageDirectoryReader
             if (PackageEntryFilter.IsTerminology(json))
             {
                 files.Add(new TerminologyFile(relative, json, Line: null, Offset: 0));
+                continue;
             }
-            else
+
+            other++;
+            if (keepStructureDefinitions && PackageEntryFilter.IsStructureDefinition(json))
             {
-                other++;
+                structureDefinitions.Add(new TerminologyFile(relative, json, Line: null, Offset: 0));
             }
         }
 
-        return new PackageContents(name, version, fhirVersions, files, other, ignored);
+        return new PackageContents(name, version, fhirVersions, files, other, ignored, structureDefinitions);
     }
 
     private static byte[] ReadFile(string path, int maxBytes)

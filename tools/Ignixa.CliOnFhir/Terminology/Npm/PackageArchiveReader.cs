@@ -16,8 +16,11 @@ namespace Ignixa.CliOnFhir.Terminology.Npm;
 /// </summary>
 internal static class PackageArchiveReader
 {
+    /// <param name="archive">The <c>.tgz</c> bytes.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <param name="keepStructureDefinitions">Also keep the StructureDefinitions directly under <c>package/</c>, for profile validation.</param>
     /// <exception cref="PackageFormatException">The archive is corrupt, over a limit, or has no usable manifest.</exception>
-    public static PackageContents Read(byte[] archive, CancellationToken cancellationToken)
+    public static PackageContents Read(byte[] archive, CancellationToken cancellationToken, bool keepStructureDefinitions = false)
     {
         ArgumentNullException.ThrowIfNull(archive);
 
@@ -32,7 +35,7 @@ internal static class PackageArchiveReader
             using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
             using var expanded = new BoundedReadStream(gzip, PackageLimits.MaxExpandedBytes);
             using var tar = new TarReader(expanded);
-            return ReadEntries(tar, cancellationToken);
+            return ReadEntries(tar, keepStructureDefinitions, cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException or FormatException or ArgumentException or InvalidOperationException)
         {
@@ -40,10 +43,11 @@ internal static class PackageArchiveReader
         }
     }
 
-    private static PackageContents ReadEntries(TarReader tar, CancellationToken cancellationToken)
+    private static PackageContents ReadEntries(TarReader tar, bool keepStructureDefinitions, CancellationToken cancellationToken)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         List<TerminologyFile> files = [];
+        List<TerminologyFile> structureDefinitions = [];
         (string Name, string Version, IReadOnlyList<string> FhirVersions)? manifest = null;
         int entries = 0;
         int other = 0;
@@ -89,10 +93,13 @@ internal static class PackageArchiveReader
             if (PackageEntryFilter.IsTerminology(json))
             {
                 files.Add(new TerminologyFile(path, json, Line: null, Offset: 0));
+                continue;
             }
-            else
+
+            other++;
+            if (keepStructureDefinitions && PackageEntryFilter.IsStructureDefinition(json))
             {
-                other++;
+                structureDefinitions.Add(new TerminologyFile(path, json, Line: null, Offset: 0));
             }
         }
 
@@ -101,7 +108,7 @@ internal static class PackageArchiveReader
             throw new PackageFormatException("The package has no package/package.json.");
         }
 
-        return new PackageContents(found.Name, found.Version, found.FhirVersions, files, other, ignored);
+        return new PackageContents(found.Name, found.Version, found.FhirVersions, files, other, ignored, structureDefinitions);
     }
 
     private static byte[] ReadData(TarEntry entry, int maxBytes)

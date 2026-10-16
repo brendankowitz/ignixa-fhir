@@ -20,8 +20,11 @@ internal sealed class PackageAcquisition(PackageStore? store, string? fhirPackag
     public const string InvalidCode = "package-invalid";
     public const string StoreUnwritableCode = "package-store-unwritable";
 
+    /// <param name="request">The package asked for.</param>
+    /// <param name="cancellationToken">Cancels the acquisition.</param>
+    /// <param name="keepStructureDefinitions">Also keep the package's StructureDefinitions (<see cref="PackageContents.Profiles"/>), for profile validation.</param>
     /// <exception cref="ToolRequestException">The package cannot be found, downloaded or read.</exception>
-    public async Task<AcquiredPackage> AcquireAsync(PackageRequest request, CancellationToken cancellationToken)
+    public async Task<AcquiredPackage> AcquireAsync(PackageRequest request, CancellationToken cancellationToken, bool keepStructureDefinitions = false)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -42,7 +45,7 @@ internal sealed class PackageAcquisition(PackageStore? store, string? fhirPackag
         bool fromRegistry = request.Version is null;
         if (store?.TryRead(request.Id, version) is { } stored)
         {
-            return Checked(request.Id, version, Read(stored, cancellationToken), "package-store", store.ArchivePath(request.Id, version), fromRegistry, []);
+            return Checked(request.Id, version, Read(stored, keepStructureDefinitions, cancellationToken), "package-store", store.ArchivePath(request.Id, version), fromRegistry, []);
         }
 
         if (fhirPackageCache is not null && Path.Combine(fhirPackageCache, $"{request.Id}#{version}") is { } cached && File.Exists(Path.Combine(cached, "package", PackageEntryFilter.ManifestName)))
@@ -50,7 +53,7 @@ internal sealed class PackageAcquisition(PackageStore? store, string? fhirPackag
             PackageContents contents;
             try
             {
-                contents = PackageDirectoryReader.Read(cached, cancellationToken);
+                contents = PackageDirectoryReader.Read(cached, cancellationToken, keepStructureDefinitions);
             }
             catch (PackageFormatException ex)
             {
@@ -71,7 +74,7 @@ internal sealed class PackageAcquisition(PackageStore? store, string? fhirPackag
         }
 
         byte[] archive = await registry!.DownloadAsync(request.Id, version, shasum, cancellationToken);
-        AcquiredPackage downloaded = Checked(request.Id, version, Read(archive, cancellationToken), "downloaded", FhirPackageRegistry.ArchiveUri(request.Id, version).AbsoluteUri, fromRegistry, []);
+        AcquiredPackage downloaded = Checked(request.Id, version, Read(archive, keepStructureDefinitions, cancellationToken), "downloaded", FhirPackageRegistry.ArchiveUri(request.Id, version).AbsoluteUri, fromRegistry, []);
         return downloaded with { Warnings = Store(downloaded, archive, shasum) };
     }
 
@@ -129,11 +132,11 @@ internal sealed class PackageAcquisition(PackageStore? store, string? fhirPackag
         }
     }
 
-    private static PackageContents Read(byte[] archive, CancellationToken cancellationToken)
+    private static PackageContents Read(byte[] archive, bool keepStructureDefinitions, CancellationToken cancellationToken)
     {
         try
         {
-            return PackageArchiveReader.Read(archive, cancellationToken);
+            return PackageArchiveReader.Read(archive, cancellationToken, keepStructureDefinitions);
         }
         catch (PackageFormatException ex)
         {

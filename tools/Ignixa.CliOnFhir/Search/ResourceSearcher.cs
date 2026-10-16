@@ -61,9 +61,14 @@ public static class ResourceSearcher
         }
     }
 
-    private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, CancellationToken cancellationToken)
+    /// <summary>
+    /// Parses <paramref name="request"/> (digest ids rewritten, the compartment applied) and finds every match, unpaged: the
+    /// part of a search that decides which resources match, shared by <see cref="Search"/> and the tools that work on a
+    /// search's results.
+    /// </summary>
+    /// <exception cref="ToolRequestException">The query cannot be parsed or evaluated.</exception>
+    internal static SearchMatch MatchAll(FolderSession session, SearchRequest request)
     {
-        ValidatePaging(request);
         ParsedSearch parsed = session.QueryParser.Parse(request with { Query = DigestIdQuery.Rewrite(session, request.ResourceType, request.Query) });
         List<IssueItem> issues = [.. parsed.Warnings];
         if (request.Compartment is { } compartment)
@@ -73,10 +78,16 @@ public static class ResourceSearcher
             issues.AddRange(compartmentIssues);
         }
 
-        int count = EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
         var source = new FolderSearchSource(session);
         var engine = new InMemorySearchEngine(source, Features, session.Compartments);
-        List<IndexedResource> matches = Match(engine, source, parsed);
+        return new SearchMatch(parsed, source, engine, Match(engine, source, parsed), issues);
+    }
+
+    private static ToolEnvelope<SearchFacts?> Execute(FolderSession session, SearchRequest request, CancellationToken cancellationToken)
+    {
+        ValidatePaging(request);
+        (ParsedSearch parsed, FolderSearchSource source, InMemorySearchEngine engine, List<IndexedResource> matches, List<IssueItem> issues) = MatchAll(session, request);
+        int count = EffectiveCount(request.Count ?? parsed.RequestedCount, issues);
 
         string query = request.Query ?? string.Empty;
         List<OmittedItem> omitted = [];

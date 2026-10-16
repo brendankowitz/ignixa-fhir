@@ -11,7 +11,8 @@ namespace Ignixa.CliOnFhir.Terminology.Npm;
 /// <summary>
 /// Decides which package files the store keeps, the same way for an archive and a directory: JSON files directly under
 /// <c>package/</c> (not <c>.index.json</c> or other dot-files, not subfolders such as <c>package/example</c>) that are
-/// CodeSystem, ValueSet or ConceptMap, plus those whose type cannot be read, so they are reported as unusable.
+/// CodeSystem, ValueSet or ConceptMap, plus those whose type cannot be read, so they are reported as unusable; and, when a
+/// caller validates against profiles, StructureDefinitions.
 /// </summary>
 internal static class PackageEntryFilter
 {
@@ -44,6 +45,19 @@ internal static class PackageEntryFilter
         catch (JsonException)
         {
             return true;
+        }
+    }
+
+    /// <summary>Whether the file is a StructureDefinition (one whose type cannot be read is not).</summary>
+    public static bool IsStructureDefinition(ReadOnlySpan<byte> json)
+    {
+        try
+        {
+            return ResourceSniffer.Sniff(json).ResourceType == "StructureDefinition";
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 }

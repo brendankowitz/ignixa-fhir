@@ -58,7 +58,8 @@ internal static class McpCommand
                 .WithTools<FolderTools>()
                 .WithTools<ResourceTools>()
                 .WithTools<PatientTools>()
-                .WithTools<TerminologyTools>();
+                .WithTools<TerminologyTools>()
+                .WithTools<ValidationTools>();
 
             await builder.Build().RunAsync(cancellationToken);
             return 0;
