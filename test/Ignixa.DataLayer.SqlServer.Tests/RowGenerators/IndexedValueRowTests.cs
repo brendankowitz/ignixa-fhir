@@ -50,7 +50,7 @@ public class IndexedValueRowTests
         .Select((url, index) => (url, (short)(index + 1)))
         .ToDictionary(pair => pair.url, pair => pair.Item2);
 
-    private static readonly IReadOnlyDictionary<string, int> Systems = new Dictionary<string, int> { [Ucum] = 7, ["http://loinc.org"] = 8, ["home"] = 9, ["phone"] = 10, ["http://hl7.org/fhir/CodeSystem/document-relationship-type"] = 15 };
+    private static readonly IReadOnlyDictionary<string, int> Systems = new Dictionary<string, int> { [Ucum] = 7, ["http://loinc.org"] = 8, ["home"] = 9, ["phone"] = 10, ["http://hl7.org/fhir/document-relationship-type"] = 15 };
 
     private static readonly IReadOnlyDictionary<string, int> QuantityCodes = new Dictionary<string, int> { ["[lb_av]"] = 11, ["lbs"] = 12, ["mg"] = 13, ["milligram"] = 14 };
 

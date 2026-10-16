@@ -29,7 +29,7 @@ string fhirVersion = (mode != "structure" && args.Length > 1) ? args[1] : (args.
 
 string defaultOutputDir = mode switch
 {
-    "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Ignixa.Search", "Generated"),
+    "search" or "compartment" or "codesystem" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Search", "Generated"),
     "valueset" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "ValueSets", "Normative"),
     "valueset-provider" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),
     "invariant" or "coreschema" => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Core", "Ignixa.Specification", "Generated"),

@@ -27,6 +27,10 @@ generate_version() {
     # runtime providers stale after a CSharpCoreSchemaLanguage change (see PR #310 slicing metadata).
     dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- coreschema "$version"
 
+    # Code-system mode: src/Core/Ignixa.Search/Generated/*CodeSystemMappings.g.cs, the implicit system of each
+    # resource `code` element (read by CodeSystemResolver when indexing token search values).
+    dotnet run --project "$GENERATORS_DIR/Ignixa.Specification.Generators.csproj" --configuration Release -- codesystem "$version"
+
     if [ $? -eq 0 ]; then
         echo -e "\033[0;32m✓ Generated $version provider\033[0m"
         return 0
