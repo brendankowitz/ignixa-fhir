@@ -194,6 +194,16 @@ Some argument combinations conflict in a way whose intent is clear. Since V14 ([
 
 The list is closed. A combination whose intent is not clear still fails as `invalid-parameter`: `columns` or `fhirpath` with `summary=count` or `_include`, `perPatient=first` without a `_sort`, `fhirpath` with `elements`.
 
+## FHIRPath hints
+
+Since V14 ([ADR 2610](../../docs/adr/adr-2610-cli-on-fhir-agent-surface.md)) every `columns` path and `fhirpath` expression is analysed by `Ignixa.FhirPath`'s `FhirPathAnalyzer` before it is evaluated (`Search/FhirPathHints.cs`): a column against the searched type, a `fhirpath` against `Bundle` with `entry.resource` taken as the searched type, with the folder's FHIR schema. In the bench, 31% of `fhirpath` calls failed, most on a path that could never yield anything.
+
+- **An element the type does not declare** fails the call as `invalid-parameter` before anything is read, naming the type and what it does declare: `'statuss' is not an element of Observation, so it never yields a value; did you mean 'status'?` (up to three names within a third of the length in edits). Before V14 the column came back null with a `column-empty` warning.
+- **A choice element spelt with a type it does not have** fails the same way, naming its types and the `ofType()` spelling: `effectiveDate` gives `effective is one of dateTime, Period, Timing, instant. Write effective.ofType(dateTime) (or effectiveDateTime).` A choice spelt with one of its types (`valueQuantity`) is valid: the evaluator answers it, so it raises nothing.
+- **A path the analyzer proves always empty** (an element only other resource types have, a type filter no value can pass) is a `fhirpath-never-yields` warning, and the results are returned as usual.
+- **Never a false refusal.** Only the first kind blocks, and only on a concrete type. After `resolve()`, an unknown function (`patientSearch()`), or on an abstract `Resource` focus (`contained`; `entry.resource` is the searched type) where the name is one some resource type declares, the analyzer cannot decide and nothing is raised. The analyzer's other findings (a collection where a singleton is expected, for example) are not shown. A case-only misspelling (`authoredon`) is not caught, since the analyzer resolves names case-insensitively, and still yields a `column-empty` warning.
+- **Analyzer fixes** made for this, in `src/Core/Ignixa.FhirPath`: an element named like a resource type in lower case (`medication`, `encounter`) was typed as that resource; a property on an abstract `Resource` focus was an error; `ofType(<resource type>)` on a `Resource` focus was always empty; an unknown function's result took its focus's type. Unresolved properties are now structured issues (`ValidationIssueKind.UnresolvedProperty`, with `Property` and `FocusTypes`), so the hint does not read messages.
+
 ## Columns
 
 `columns` (CLI `--columns`, a JSON object) maps column names to FHIRPath, each evaluated on every resource of the page; the page comes back as a table instead of resources, in `facts.columns` (`ref`, then each name in the order given) and `facts.rows` (one array per match: its reference, as evidence names it, then the cells). For a patient's medication list, whichever of `medicationCodeableConcept` or `medicationReference` each order uses:

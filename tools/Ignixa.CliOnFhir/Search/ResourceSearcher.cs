@@ -156,11 +156,13 @@ public static class ResourceSearcher
         {
             RefuseBesideProjection("columns", request, parsed);
             columns = ColumnSearch.Compile(requested);
+            issues.AddRange(FhirPathHints.ForColumns(session.Schema, request.ResourceType, columns));
         }
         else if (request.FhirPath is { } text)
         {
             RefuseBesideProjection("fhirpath", request, parsed);
             expression = ExpressionSearch.Compile(text);
+            issues.AddRange(FhirPathHints.ForFhirPath(session.Schema, request.ResourceType, expression));
         }
 
         int count = columns is null
