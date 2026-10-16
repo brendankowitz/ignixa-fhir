@@ -23,7 +23,7 @@ internal static class ValidateCommand
         var referenceOption = new Option<string[]>("--reference") { Description = "A resource to validate, Type/id (repeatable); not combined with --type, --query or --patient" };
         var profileOption = new Option<string?>("--profile") { Description = "Validate against this one profile canonical (url or url|version) instead of each resource's meta.profile" };
         var packageOption = new Option<string[]>("--package") { Description = "A FHIR npm package, id@version (repeatable), whose StructureDefinitions and terminology to load first" };
-        var depthOption = new Option<string?>("--depth") { Description = "spec (default: structure, cardinality, types, required bindings) or full (also invariants, slicing, extensible bindings)" };
+        var depthOption = new Option<string?>("--depth") { Description = "full (default: structure, cardinality, types, bindings, invariants, slicing) or spec (no invariants, slicing, extensible bindings or complex choice variants, so no resource is reported valid)" };
         var limitOption = new Option<int?>("--limit") { Description = $"Resources validated (default {ResourceValidator.DefaultLimit}, maximum {ResourceValidator.MaxLimit}; with --detail {ResourceValidator.DefaultDetailLimit} and {ResourceValidator.MaxDetailLimit})" };
         var offsetOption = new Option<int>("--offset") { Description = "Resources in scope to skip, in scope order" };
         var detailOption = new Option<bool>("--detail") { Description = "Also return each resource's full OperationOutcome (resource content)" };

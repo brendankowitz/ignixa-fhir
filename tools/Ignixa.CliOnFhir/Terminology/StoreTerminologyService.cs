@@ -106,7 +106,18 @@ internal sealed class StoreTerminologyService(FolderSession session) : ITerminol
 
         // One remote question per ValueSet, system and code for the session's lifetime: a folder repeats the same codes.
         string why = TxFallback.Why(local.Absent, local.Facts.Reason);
-        return await _remote.GetOrAdd((valueSetUrl, system, code, version), key => AskRemoteAsync(tx, key.ValueSet, key.System, key.Code, key.Version, why, cancellationToken));
+        (string, string?, string, string?) key = (valueSetUrl, system, code, version);
+        Task<(string Result, string Reason)> asked = _remote.GetOrAdd(key, _ => AskRemoteAsync(tx, valueSetUrl, system, code, version, why, cancellationToken));
+        try
+        {
+            return await asked;
+        }
+        catch (Exception)
+        {
+            // A cancelled or failed question is not an answer: the next check asks again.
+            _remote.TryRemove(KeyValuePair.Create(key, asked));
+            throw;
+        }
     }
 
     /// <summary>

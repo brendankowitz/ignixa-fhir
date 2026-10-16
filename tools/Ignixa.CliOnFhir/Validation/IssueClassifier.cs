@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.RegularExpressions;
+using Ignixa.CliOnFhir.Catalog;
 using Ignixa.CliOnFhir.Terminology;
 using Ignixa.Validation;
 
@@ -13,14 +14,15 @@ namespace Ignixa.CliOnFhir.Validation;
 /// Names each validator issue by rule and says whether its check concluded. The validator reports a check it could not run
 /// as a non-failing warning or information (an unloaded profile, an unevaluable constraint, a deferred slicing, a binding
 /// the terminology adapter could not check); those get a <see cref="ValidationRules"/> name so the verdict can be
-/// <c>unknown</c> rather than <c>valid</c>.
+/// <c>unknown</c> rather than <c>valid</c>. The validator's messages interpolate data (values, property names) and profile
+/// text (constraint <c>human</c>, patterns), so they are only read to classify, never carried: what is kept is the issue code,
+/// a constraint key and a ValueSet canonical, each shape-checked, and the path with data-chosen names as digests.
 /// </summary>
 internal static partial class IssueClassifier
 {
-    /// <param name="issue">The validator's issue.</param>
+    /// <param name="issue">The validator's (or a detector's) issue.</param>
     /// <param name="profile">The StructureDefinition whose schema raised it, already shape-checked.</param>
-    /// <param name="vocabulary">The resource's string values (<see cref="MessageTemplate.Vocabulary"/>).</param>
-    public static ClassifiedIssue Classify(ValidationIssue issue, string profile, IReadOnlyList<string> vocabulary)
+    public static ClassifiedIssue Classify(ValidationIssue issue, string profile)
     {
         ArgumentNullException.ThrowIfNull(issue);
 
@@ -32,46 +34,66 @@ internal static partial class IssueClassifier
             _ => "information",
         };
 
-        (string rule, string message) = Rule(issue);
-        return new ClassifiedIssue(severity, profile, rule, IssuePath.Normalize(issue.Path), MessageTemplate.Of(message, vocabulary));
+        (string rule, string? constraint, string? valueSet) = Rule(issue);
+        return new ClassifiedIssue(severity, profile, rule, constraint, valueSet, Path(rule, issue.Path));
     }
 
-    private static (string Rule, string Message) Rule(ValidationIssue issue)
+    private static (string Rule, string? Constraint, string? ValueSet) Rule(ValidationIssue issue)
     {
-        // The terminology adapter starts each of its messages with its rule name; BindingCheck wraps them in its own codes.
+        // The terminology adapter starts each of its messages with its rule name and names only the (shape-checked) ValueSet.
         if (issue.Code is "code-invalid" or "terminology-validation-warning" or "terminology-unavailable"
             && StoreTerminologyService.Rules.FirstOrDefault(rule => issue.Message.StartsWith(rule + ":", StringComparison.Ordinal)) is { } adapterRule)
         {
-            return (adapterRule, issue.Message);
+            return (adapterRule, null, AdapterValueSet().Match(issue.Message) is { Success: true } match ? match.Groups["vs"].Value : null);
         }
 
         if (issue.Code is "terminology-error" or "terminology-unavailable")
         {
-            // BindingCheck's own failure text quotes an exception message, which may quote the data.
-            return (ValidationRules.TerminologyError, "the terminology adapter failed, so the binding was not checked");
+            return (ValidationRules.TerminologyError, null, null);
         }
 
         if (issue.Code == "unresolvable-profile")
         {
-            return (ValidationRules.ProfileNotLoaded, "a profile in meta.profile is not loaded and was not validated");
+            return (ValidationRules.ProfileNotLoaded, null, null);
         }
 
-        if (issue.Code is "slicing-deferred" or "validation-nesting-limit")
-        {
-            return (issue.Code == "slicing-deferred" ? ValidationRules.SlicingDeferred : ValidationRules.NestingLimit, issue.Message);
-        }
-
-        // FhirPathInvariantCheck: "Constraint '<key>' could not be evaluated: <engine message>"; the engine message is dropped.
+        // FhirPathInvariantCheck: "Constraint '<key>' could not be evaluated: <engine message>".
         if (NotEvaluated().Match(issue.Message) is { Success: true } notEvaluated && notEvaluated.Groups["key"].Value == issue.Code)
         {
-            return (ValidationRules.ConstraintNotEvaluated, $"constraint {Token(issue.Code)} could not be evaluated");
+            return (ValidationRules.ConstraintNotEvaluated, Token(issue.Code), null);
         }
 
-        return (Token(issue.Code), issue.Message);
+        // A failed invariant is reported as "<key>: <human>", its code the key; the validator's own codes are in the table.
+        if (!RuleDescriptions.IsKnownRule(issue.Code) && ConstraintKey().IsMatch(issue.Code) && issue.Message.StartsWith(issue.Code + ":", StringComparison.Ordinal))
+        {
+            return (ValidationRules.Invariant, Token(issue.Code), null);
+        }
+
+        return (Token(issue.Code), null, null);
+    }
+
+    /// <summary>The path without indexes; an unknown property's name is the data's own, so it is always a digest.</summary>
+    private static string Path(string rule, string path)
+    {
+        string normalized = IssuePath.Normalize(path);
+        if (rule != "unknown-property")
+        {
+            return normalized;
+        }
+
+        int dot = normalized.LastIndexOf('.');
+        string last = path[(path.LastIndexOf('.') + 1)..];
+        return dot < 0 ? FhirIds.Digest(last) : $"{normalized[..dot]}.{(FhirIds.IsDigest(normalized[(dot + 1)..]) ? normalized[(dot + 1)..] : FhirIds.Digest(last))}";
     }
 
     private static string Token(string code) => TerminologyNames.Token(code);
 
     [GeneratedRegex("^Constraint '(?<key>[^']+)' could not be evaluated")]
     private static partial Regex NotEvaluated();
+
+    [GeneratedRegex("^[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9]+)*-[0-9]+[a-z]?$")]
+    private static partial Regex ConstraintKey();
+
+    [GeneratedRegex("ValueSet (?<vs>[^\\s;()]+)")]
+    private static partial Regex AdapterValueSet();
 }

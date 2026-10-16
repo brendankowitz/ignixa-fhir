@@ -39,6 +39,9 @@ public static class ResourceValidator
 
     private const int ListedProfiles = 5;
 
+    /// <summary>Unreadable-resource issues listed per response; the rest are counted in <c>omitted</c>.</summary>
+    private const int MaxListedProblems = 20;
+
     public static async Task<ToolEnvelope<ValidateFacts?>> ValidateAsync(FolderSession session, ValidateRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -62,8 +65,7 @@ public static class ResourceValidator
     private static async Task<ToolEnvelope<ValidateFacts?>> ExecuteAsync(FolderSession session, ValidateRequest request, CancellationToken cancellationToken)
     {
         ValidationDepth depth = Depth(request.Depth);
-        List<IssueItem> requestIssues = [];
-        int limit = Limit(request, requestIssues);
+        int limit = Limit(request);
         List<PackageRequest> packageRequests = [.. (request.Packages ?? []).Select(PackageRequest.Parse).Distinct()];
 
         // The terminology store first (the folder's, then the configured or core packages), then each requested package,
@@ -98,7 +100,8 @@ public static class ResourceValidator
         }
 
         List<CatalogEntry> page = [.. inScope.Skip(request.Offset).Take(limit)];
-        var check = new ResourceCheck(session.RootPath, profiles, new ValidationSettings { Depth = depth, TerminologyService = session.Validators.Terminology }, requested, session.Schema.ResourceTypeNames);
+        List<IssueItem> requestIssues = [.. PagingNotes(request, limit, page.Count, inScope.Count)];
+        var check = new ResourceCheck(session.RootPath, profiles, new ValidationSettings { Depth = depth, TerminologyService = session.Validators.Terminology }, requested);
         List<ResourceValidation> validations = [.. page.Select(entry =>
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -109,7 +112,13 @@ public static class ResourceValidator
         validations.ForEach(summary.Add);
 
         List<IssueItem> issues = [.. requestIssues, .. scope.Issues, .. profiles.Problems];
-        issues.AddRange(validations.Where(validation => validation.Problem is not null).Select(validation => validation.Problem!));
+        List<IssueItem> unreadable = [.. validations.Where(validation => validation.Problem is not null).Select(validation => validation.Problem!)];
+        issues.AddRange(unreadable.Take(MaxListedProblems));
+        if (unreadable.Count > MaxListedProblems)
+        {
+            omitted.Add(new OmittedItem($"{unreadable.Count - MaxListedProblems} more unreadable-resource issues (facts.verdicts.unreadable counts them all)", "limit"));
+        }
+
         issues.AddRange(NotCheckedIssues(summary, session, terminology));
         issues.AddRange(ProfileNotLoadedIssue(validations));
         issues.AddRange(terminology.LoadIssues);
@@ -128,7 +137,8 @@ public static class ResourceValidator
             profiles.Profiles.Count,
             [.. terminology.Store.Sources.Select(source => source.Info.Name)],
             session.Terminology.Options.TxServer is not null,
-            DisplaysChecked: false);
+            DisplaysChecked: false,
+            ChecksNotRun(depth));
         var facts = new ValidateFacts(scope.Facts with { Total = inScope.Count }, against, request.Offset, validations.Count, summary.Verdicts, summary.NotChecked, [], groups.Count);
         List<NextCall> nextCalls = Next(request, next < inScope.Count ? next : null, groups);
         return Fit(session, scope, facts, groups, request.Detail ? validations : null, omitted, issues, nextCalls, cancellationToken);
@@ -136,7 +146,8 @@ public static class ResourceValidator
 
     /// <summary>
     /// The envelope with as many groups (up to <see cref="MaxGroups"/>), and with <c>detail</c> as many outcomes, as fit under
-    /// the size cap, in order; what is left out is counted in <c>omitted</c>. Evidence is the sample resources of the listed groups.
+    /// the size cap, in order; then, if it still does not fit, as many issues and <c>absent</c> entries as do. What is left out
+    /// is counted in <c>omitted</c>. Evidence is the sample resources of the listed groups.
     /// </summary>
     private static ToolEnvelope<ValidateFacts?> Fit(
         FolderSession session,
@@ -152,9 +163,21 @@ public static class ResourceValidator
         List<ResourceOutcome>? outcomes = detail?.Where(validation => validation.Problem is null).Select(Outcome).ToList();
         int listedGroups = Math.Min(groups.Count, MaxGroups);
         int listedOutcomes = outcomes?.Count ?? 0;
+        int listedIssues = issues.Count;
+        int listedAbsent = scope.Absent.Count;
         while (true)
         {
             List<OmittedItem> allOmitted = [.. omitted];
+            if (listedIssues < issues.Count)
+            {
+                allOmitted.Add(new OmittedItem($"{issues.Count - listedIssues} more issues", "size-budget"));
+            }
+
+            if (listedAbsent < scope.Absent.Count)
+            {
+                allOmitted.Add(new OmittedItem($"{scope.Absent.Count - listedAbsent} more references the folder does not hold", "size-budget"));
+            }
+
             if (listedGroups < groups.Count)
             {
                 allOmitted.Add(new OmittedItem($"{groups.Count - listedGroups} more issue groups (validate a narrower scope, or use detail on fewer resources)", listedGroups < MaxGroups ? "size-budget" : "limit"));
@@ -168,8 +191,8 @@ public static class ResourceValidator
             List<(IssueGroup Group, IReadOnlyList<CatalogEntry> Samples)> listed = [.. groups.Take(listedGroups)];
             List<EvidenceItem> evidence = [.. listed.SelectMany(group => group.Samples).Distinct().Select(entry => new EvidenceItem(FhirIds.Reference(entry), entry.FilePath, entry.Line, entry.Offset))];
             ValidateFacts shown = facts with { Groups = [.. listed.Select(group => group.Group)], Outcomes = outcomes?.Take(listedOutcomes).ToList() };
-            ToolEnvelope<ValidateFacts?> envelope = EnvelopeAssembler.Create<ValidateFacts?>(session, shown, scope.BuiltAt, evidence, allOmitted, scope.Absent, issues, cancellationToken) with { Next = next };
-            if (EnvelopeJson.SizeOf(envelope) <= EnvelopeJson.MaxBytes || (listedGroups == 0 && listedOutcomes == 0))
+            ToolEnvelope<ValidateFacts?> envelope = EnvelopeAssembler.Create<ValidateFacts?>(session, shown, scope.BuiltAt, evidence, allOmitted, [.. scope.Absent.Take(listedAbsent)], [.. issues.Take(listedIssues)], cancellationToken) with { Next = next };
+            if (EnvelopeJson.SizeOf(envelope) <= EnvelopeJson.MaxBytes || (listedGroups == 0 && listedOutcomes == 0 && listedIssues == 0 && listedAbsent == 0))
             {
                 return envelope;
             }
@@ -178,9 +201,17 @@ public static class ResourceValidator
             {
                 listedOutcomes--;
             }
-            else
+            else if (listedGroups > 0)
             {
                 listedGroups = Math.Max(0, listedGroups - Math.Max(1, listedGroups / 4));
+            }
+            else if (listedAbsent > 0)
+            {
+                listedAbsent = Math.Max(0, listedAbsent - Math.Max(1, listedAbsent / 4));
+            }
+            else
+            {
+                listedIssues = Math.Max(0, listedIssues - Math.Max(1, listedIssues / 4));
             }
         }
     }
@@ -235,6 +266,18 @@ public static class ResourceValidator
         if (constraints > 0)
         {
             yield return new IssueItem("information", ValidationRules.ConstraintNotEvaluated, $"{constraints} resources have FHIRPath constraints the engine could not evaluate against them; their verdict is unknown unless another check failed.", Location: null);
+        }
+
+        int extensions = summary.ResourcesNotChecked(ValidationRules.ExtensionsNotValidated);
+        if (extensions > 0)
+        {
+            yield return new IssueItem("warning", ValidationRules.ExtensionsNotValidated, $"{extensions} resources have extensions, which Ignixa.Validation does not validate (definitions, value types, bindings), so their verdict is unknown unless another check failed.", Location: null);
+        }
+
+        int spec = summary.ResourcesNotChecked(ValidationRules.DepthSpec);
+        if (spec > 0)
+        {
+            yield return new IssueItem("information", ValidationRules.DepthSpec, $"Validated at depth spec, which does not run invariants, slicing, extensible bindings or complex choice variants: every resource is subject to invariants, so none is reported valid ({spec} unknown unless another check failed). Use depth full for a verdict.", Location: null);
         }
     }
 
@@ -319,12 +362,13 @@ public static class ResourceValidator
 
     private static ValidationDepth Depth(string? depth) => depth switch
     {
-        null or "spec" => ValidationDepth.Spec,
-        "full" => ValidationDepth.Full,
+        null or "full" => ValidationDepth.Full,
+        "spec" => ValidationDepth.Spec,
         _ => throw ToolRequestException.Error("invalid-parameter", $"'depth' must be 'spec' or 'full', not '{depth}'."),
     };
 
-    private static int Limit(ValidateRequest request, List<IssueItem> issues)
+    /// <summary>The resources to validate in this call: the requested limit, at most the maximum for the mode.</summary>
+    private static int Limit(ValidateRequest request)
     {
         (int fallback, int max) = request.Detail ? (DefaultDetailLimit, MaxDetailLimit) : (DefaultLimit, MaxLimit);
         if (request.Limit is < 1)
@@ -332,12 +376,25 @@ public static class ResourceValidator
             throw ToolRequestException.Error("invalid-parameter", $"'limit' must be at least 1, not {request.Limit}.");
         }
 
-        if (request.Limit > max)
+        return Math.Min(request.Limit ?? fallback, max);
+    }
+
+    /// <summary>A clamped limit (stating how many were validated) and an offset at or past the end of the scope.</summary>
+    private static IEnumerable<IssueItem> PagingNotes(ValidateRequest request, int limit, int validated, int inScope)
+    {
+        if (request.Limit > limit)
         {
-            issues.Add(new IssueItem("warning", "limit-clamped", $"limit {request.Limit} exceeds the maximum of {max}{(request.Detail ? " with detail" : string.Empty)}, so {max} resources were validated; use offset to continue.", Location: null));
-            return max;
+            yield return new IssueItem("warning", "limit-clamped", $"limit {request.Limit} exceeds the maximum of {limit}{(request.Detail ? " with detail" : string.Empty)}, so {validated} resources were validated; use offset to continue.", Location: null);
         }
 
-        return request.Limit ?? fallback;
+        if (request.Offset > 0 && request.Offset >= inScope)
+        {
+            yield return new IssueItem("information", "offset-beyond-total", $"offset {request.Offset} is at or beyond the {inScope} resources in scope, so none were validated.", Location: null);
+        }
     }
+
+    /// <summary>The checks that do not run at <paramref name="depth"/>, as facts state them.</summary>
+    private static IReadOnlyList<string> ChecksNotRun(ValidationDepth depth) => depth == ValidationDepth.Spec
+        ? ["invariants", "slicing", "extensible-bindings", "complex-choice-variants", "extensions", "displays"]
+        : ["extensions", "displays"];
 }

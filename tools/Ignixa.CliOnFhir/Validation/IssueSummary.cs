@@ -8,7 +8,7 @@ using Ignixa.CliOnFhir.Catalog;
 namespace Ignixa.CliOnFhir.Validation;
 
 /// <summary>
-/// Groups the issues of validated resources by severity, profile, rule, path and message template, counting issues and
+/// Groups the issues of validated resources by severity, profile, rule, constraint, ValueSet and path, counting issues and
 /// resources and keeping the first three resources of each group as samples; and counts verdicts and unconcluded checks.
 /// Resources must be added in scope order, which makes the samples, and so the whole summary, deterministic. Not thread-safe.
 /// </summary>
@@ -60,11 +60,22 @@ internal sealed class IssueSummary
             .OrderBy(pair => SeverityRank(pair.Key.Severity))
             .ThenByDescending(pair => pair.Value.Count)
             .ThenBy(pair => pair.Key.Rule, StringComparer.Ordinal)
+            .ThenBy(pair => pair.Key.Constraint ?? string.Empty, StringComparer.Ordinal)
             .ThenBy(pair => pair.Key.Path, StringComparer.Ordinal)
             .ThenBy(pair => pair.Key.Profile, StringComparer.Ordinal)
-            .ThenBy(pair => pair.Key.Message ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(pair => pair.Key.ValueSet ?? string.Empty, StringComparer.Ordinal)
             .Select(pair => (
-                new IssueGroup(pair.Key.Severity, pair.Key.Profile, pair.Key.Rule, pair.Key.Path, pair.Key.Message, pair.Value.Count, pair.Value.Resources.Count, [.. pair.Value.Samples.Select(FhirIds.Reference)]),
+                new IssueGroup(
+                    pair.Key.Severity,
+                    pair.Key.Profile,
+                    pair.Key.Rule,
+                    pair.Key.Constraint,
+                    pair.Key.ValueSet,
+                    pair.Key.Path,
+                    RuleDescriptions.Describe(pair.Key.Rule, pair.Key.Constraint),
+                    pair.Value.Count,
+                    pair.Value.Resources.Count,
+                    [.. pair.Value.Samples.Select(FhirIds.Reference)]),
                 (IReadOnlyList<CatalogEntry>)pair.Value.Samples)),
     ];
 

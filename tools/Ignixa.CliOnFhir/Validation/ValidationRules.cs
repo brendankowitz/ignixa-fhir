@@ -34,9 +34,22 @@ internal static class ValidationRules
     /// <summary>A resource claims a profile that constrains another resource type.</summary>
     public const string ProfileTypeMismatch = "profile-type-mismatch";
 
+    /// <summary>
+    /// Validated at <c>spec</c> depth, which does not run invariants, slicing, extensible bindings or complex choice variants.
+    /// Every resource is subject to invariants (<c>ele-1</c> on every element, <c>dom-*</c> on every DomainResource), so at
+    /// <c>spec</c> one of the skipped checks always applies and no resource can be shown valid.
+    /// </summary>
+    public const string DepthSpec = "depth-spec";
+
+    /// <summary>The resource has extensions, which Ignixa.Validation does not validate (see <see cref="ValidatorGapDetectors"/>).</summary>
+    public const string ExtensionsNotValidated = "extensions-not-validated";
+
+    /// <summary>A failed FHIRPath invariant; the group names its key in <c>constraint</c>.</summary>
+    public const string Invariant = "invariant";
+
     /// <summary>The rules that leave a verdict unknown.</summary>
     public static IReadOnlySet<string> Unevaluated { get; } = new HashSet<string>(
-        [StoreTerminologyService.NotCheckedRule, ProfileNotLoaded, ConstraintNotEvaluated, TerminologyError, SlicingDeferred, NestingLimit, SchemaNotFound],
+        [StoreTerminologyService.NotCheckedRule, ProfileNotLoaded, ConstraintNotEvaluated, TerminologyError, SlicingDeferred, NestingLimit, SchemaNotFound, DepthSpec, ExtensionsNotValidated],
         StringComparer.Ordinal);
 
     /// <summary>The rules counted in a summary's <c>notChecked</c>: the unevaluated ones and unchecked extensible bindings.</summary>

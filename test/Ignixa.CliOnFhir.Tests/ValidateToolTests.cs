@@ -37,7 +37,7 @@ public class ValidateToolTests
         ValidateFacts facts = (await ResourceValidator.ValidateAsync(WithTerminology(folder, store), new ValidateRequest(ResourceType: "Observation"))).Facts.ShouldNotBeNull();
 
         facts.Verdicts.ShouldBe(new VerdictCounts(Valid: 0, Invalid: 4, Unknown: 0, Unreadable: 0));
-        IssueGroup status = facts.Groups.ShouldHaveSingleItem();
+        IssueGroup status = Finding(facts);
         status.Severity.ShouldBe("error");
         status.Rule.ShouldBe("cardinality-violation");
         status.Path.ShouldBe("Observation.status");
@@ -45,7 +45,7 @@ public class ValidateToolTests
         status.Count.ShouldBe(4);
         status.Resources.ShouldBe(4);
         status.Samples.ShouldBe(["Observation/o1", "Observation/o2", "Observation/o3"]);
-        facts.GroupsTotal.ShouldBe(1);
+        facts.GroupsTotal.ShouldBe(2);
     }
 
     [Fact]
@@ -80,11 +80,11 @@ public class ValidateToolTests
 
         ValidateFacts facts = envelope.Facts.ShouldNotBeNull();
         facts.Verdicts.ShouldBe(new VerdictCounts(Valid: 1, Invalid: 1, Unknown: 0, Unreadable: 0));
-        IssueGroup binding = facts.Groups.ShouldHaveSingleItem();
+        IssueGroup binding = Finding(facts);
         binding.Rule.ShouldBe("not-in-value-set");
         binding.Path.ShouldBe("Patient.gender");
         binding.Samples.ShouldBe(["Patient/p2"]);
-        binding.Message.ShouldNotBeNull().ShouldContain(GenderValueSet);
+        binding.ValueSet.ShouldBe(GenderValueSet);
         facts.NotChecked.ShouldBeEmpty();
         facts.Against.TerminologySources.ShouldBe([Package]);
         JsonSerializer.Serialize(envelope, EnvelopeJson.Compact).ShouldNotContain("robot");
@@ -105,7 +105,7 @@ public class ValidateToolTests
         ValidateFacts facts = envelope.Facts.ShouldNotBeNull();
         facts.Verdicts.ShouldBe(new VerdictCounts(Valid: 1, Invalid: 0, Unknown: 2, Unreadable: 0));
         facts.NotChecked.ShouldBe([new NotCheckedCount("binding-not-checked", Checks: 2, Resources: 2)]);
-        IssueGroup group = facts.Groups.ShouldHaveSingleItem();
+        IssueGroup group = Finding(facts);
         group.Rule.ShouldBe("binding-not-checked");
         group.Severity.ShouldBe("warning");
         group.Samples.ShouldBe(["Patient/p1", "Patient/p2"]);
@@ -124,7 +124,7 @@ public class ValidateToolTests
 
         ValidateFacts facts = envelope.Facts.ShouldNotBeNull();
         facts.Verdicts.ShouldBe(new VerdictCounts(Valid: 0, Invalid: 0, Unknown: 1, Unreadable: 0));
-        IssueGroup group = facts.Groups.ShouldHaveSingleItem();
+        IssueGroup group = Finding(facts);
         group.Rule.ShouldBe("profile-not-loaded");
         group.Profile.ShouldBe("http://example.org/fhir/StructureDefinition/nowhere");
         facts.NotChecked.ShouldBe([new NotCheckedCount("profile-not-loaded", Checks: 1, Resources: 1)]);
@@ -145,7 +145,7 @@ public class ValidateToolTests
         ValidateFacts facts = (await ResourceValidator.ValidateAsync(WithRegistry(folder, store), new ValidateRequest(ResourceType: "Patient", Packages: [Package]))).Facts.ShouldNotBeNull();
 
         facts.Verdicts.ShouldBe(new VerdictCounts(Valid: 2, Invalid: 1, Unknown: 0, Unreadable: 0));
-        IssueGroup group = facts.Groups.ShouldHaveSingleItem();
+        IssueGroup group = Finding(facts);
         group.Profile.ShouldBe(BirthRequired);
         group.Rule.ShouldBe("cardinality-violation");
         group.Path.ShouldBe("Patient.birthDate");
@@ -172,7 +172,7 @@ public class ValidateToolTests
         facts.Scope.Total.ShouldBe(2);
         facts.Against.Profile.ShouldBe($"{BirthRequired}|1.0.0");
         facts.Verdicts.ShouldBe(new VerdictCounts(Valid: 1, Invalid: 1, Unknown: 0, Unreadable: 0));
-        facts.Groups.ShouldHaveSingleItem().Samples.ShouldBe(["Patient/p1"]);
+        Finding(facts).Samples.ShouldBe(["Patient/p1"]);
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public class ValidateToolTests
         summaryJson.ShouldNotContain("evil-token");
         IssueGroup dates = summary.Facts.ShouldNotBeNull().Groups.Single(group => group.Path == "Patient.birthDate");
         dates.Count.ShouldBe(2);
-        dates.Message.ShouldBe("type-1: Value '…' is not a valid 'date'");
+        dates.Description.ShouldNotBeNull().ShouldStartWith("The value does not have the element's FHIR type");
         summary.Facts.Groups.ShouldContain(group => group.Rule == "unknown-property" && group.Path.StartsWith("Patient.~", StringComparison.Ordinal));
 
         ValidateFacts detailFacts = detail.Facts.ShouldNotBeNull();
@@ -292,7 +292,7 @@ public class ValidateToolTests
 
         facts.Verdicts.ShouldBe(new VerdictCounts(Valid: 1, Invalid: 0, Unknown: 1, Unreadable: 0));
         facts.NotChecked.ShouldBe([new NotCheckedCount("binding-not-checked", Checks: 1, Resources: 1)]);
-        facts.Groups.ShouldHaveSingleItem().Samples.ShouldBe(["Observation/o2"]);
+        Finding(facts).Samples.ShouldBe(["Observation/o2"]);
         facts.Against.TxServer.ShouldBeTrue();
         tx.Requests.ShouldAllBe(uri => uri.AbsolutePath == "/r4/ValueSet/$validate-code");
         tx.Requests.Select(uri => uri.Query).ShouldAllBe(query => !query.Contains("8867-4", StringComparison.Ordinal));
@@ -317,6 +317,9 @@ public class ValidateToolTests
         failedExit.ShouldNotBe(0);
         ((string)failed["issues"]![0]!["code"]!).ShouldBe("invalid-parameter");
     }
+
+    /// <summary>The one group besides the dom-6 narrative warning every resource here raises at depth full.</summary>
+    private static IssueGroup Finding(ValidateFacts facts) => facts.Groups.Where(group => group.Constraint != "dom-6").ShouldHaveSingleItem();
 
     private static async Task<(int ExitCode, JsonNode Output)> RunAsync(string[] args)
     {

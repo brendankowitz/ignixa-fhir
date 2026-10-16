@@ -21,6 +21,12 @@ internal static class TxAnswers
     public const string UsedCode = "tx-server-answered";
     public const string NotFoundOutcome = "not-found-by-tx-server";
 
+    /// <summary>A <c>$validate-code</c> answer of <c>result: false</c> because the server does not have the code system or ValueSet.</summary>
+    public const string NotCheckedOutcome = "not-checked-by-tx-server";
+
+    /// <summary>OperationOutcome issue codes (<c>issue.code</c> or a <c>details</c> coding) that mean the server lacked the content.</summary>
+    private static readonly string[] UnknownContentCodes = ["not-found", "x-caused-by-unknown-system", "unknown-system"];
+
     private static readonly string[] SubsumptionOutcomes = [TermSubsumes.Equivalent, TermSubsumes.Subsumes, TermSubsumes.SubsumedBy, TermSubsumes.NotSubsumed];
 
     public static async Task<TerminologyAnswer<TermLookupFacts>> LookupAsync(TxServerClient tx, string system, string code, string? version, string why, DateTimeOffset checkedAt, CancellationToken cancellationToken)
@@ -92,6 +98,13 @@ internal static class TxAnswers
         }
 
         bool valid = result.GetValue<bool>();
+        if (!valid && UnknownToServer(parameters))
+        {
+            // The server does not have the code system or ValueSet: it evaluated nothing, so this is no rejection.
+            var notEvaluated = new TermValidateFacts(TermValidate.Unknown, NotCheckedOutcome, system, version, code, valueSet, null, AnswerSource.Remote(tx.BaseUri, null), null, display, null, null);
+            return new TerminologyAnswer<TermValidateFacts>(notEvaluated, [], [], [], [Used(tx, why), NotChecked(tx, system ?? valueSet!, code)]);
+        }
+
         string? reported = TxParameters.Value(parameters, "version");
         string? inactive = TxParameters.Value(parameters, "inactive");
         string? expected = TxParameters.Value(parameters, "display");
@@ -119,6 +132,33 @@ internal static class TxAnswers
         IssueItem[] mismatch = reason == TermValidate.DisplayMismatch ? [TermValidate.MismatchIssue(system, code, entry: null)] : [];
         return new TerminologyAnswer<TermValidateFacts>(facts, [], [], [], [.. mismatch, Used(tx, why)]);
     }
+
+    /// <summary>
+    /// Whether a <c>result: false</c> answer says the server lacks the code system or ValueSet: an
+    /// <c>x-caused-by-unknown-system</c> parameter, or an <c>issues</c> OperationOutcome with a not-found or unknown-system issue
+    /// (as tx.fhir.org answers for a system it does not have).
+    /// </summary>
+    private static bool UnknownToServer(JsonObject parameters)
+    {
+        if (TxParameters.All(parameters, "x-caused-by-unknown-system").Any())
+        {
+            return true;
+        }
+
+        IEnumerable<JsonObject> issues = TxParameters.All(parameters, "issues")
+            .Select(parameter => parameter["resource"] as JsonObject)
+            .OfType<JsonObject>()
+            .SelectMany(outcome => (outcome["issue"] as JsonArray ?? []).OfType<JsonObject>());
+        return issues.Any(issue =>
+            UnknownContentCodes.Contains(TxParameters.String(issue, "code"), StringComparer.Ordinal)
+            || ((issue["details"] as JsonObject)?["coding"] as JsonArray ?? []).OfType<JsonObject>().Any(coding => UnknownContentCodes.Contains(TxParameters.String(coding, "code"), StringComparer.Ordinal)));
+    }
+
+    private static IssueItem NotChecked(TxServerClient tx, string canonical, string code) => new(
+        "warning",
+        NotCheckedOutcome,
+        $"The terminology server {tx.BaseUri} does not have the code system or ValueSet for {TerminologyNames.Coded(canonical, code)}, so it evaluated nothing: 'facts.result' is unknown, not invalid.",
+        Location: null);
 
     public static async Task<TerminologyAnswer<TermSubsumesFacts>> SubsumesAsync(TxServerClient tx, string system, string codeA, string codeB, string? version, string why, CancellationToken cancellationToken)
     {
